@@ -23,6 +23,7 @@ use std::any::Any;
 use std::sync::Arc;
 use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
+use crate::level_editor::core::commands::{execute_command, SceneCommand};
 use super::category_section::group_rows_by_category;
 use super::ObjectTypeFieldsSection;
 
@@ -65,7 +66,6 @@ impl ObjectTypeFieldsSection {
                     Option<usize>,
                 )> = Vec::new();
 
-                let scene_db_for_props = self.scene_db.clone();
                 let object_id_for_props = self.object_id.clone();
 
                 for prop in &properties {
@@ -94,8 +94,16 @@ impl ObjectTypeFieldsSection {
                         .unwrap_or_else(|| (prop.getter)(instance.as_ref()));
 
                     // ── Write-back closure for the runtime renderer ──────────
+                    //
+                    // Builds a `SceneCommand::SetComponentProperty` and runs
+                    // it through `execute_command` (Pulsar-Native#561) --
+                    // every properties-panel edit now goes through the same
+                    // undo-tracked write path, instead of calling
+                    // `SceneDatabase::update_live_component_property`/
+                    // `update_component_property` directly from UI code
+                    // (which never touched the undo stack at all).
                     let write_back = {
-                        let db = scene_db_for_props.clone();
+                        let state_arc = self.state_arc.clone();
                         let oid = object_id_for_props.clone();
                         let cls = class_name.to_string();
                         let pn = prop.name.to_string();
@@ -103,23 +111,20 @@ impl ObjectTypeFieldsSection {
                             move |new_val: Box<dyn Any + Send>,
                                   _window: &mut Window,
                                   _cx: &mut App| {
-                                // Live `World` mutation first, no JSON
-                                // involved (Pulsar-Native#561) -- true for
-                                // every real, migrated component. Only the
-                                // handful of props-only classes with no
-                                // `ComponentRuntimeBehavior` fall through to
-                                // the legacy flat-JSON path below.
-                                let new_val =
-                                    match db.update_live_component_property(&oid, &cls, &pn, new_val)
-                                    {
-                                        Ok(()) => return,
-                                        Err(new_val) => new_val,
-                                    };
-                                if let Ok(json) =
-                                    RUNTIME_TYPE_REGISTRY.serialize_json_for_any(new_val.as_ref())
-                                {
-                                    db.update_component_property(&oid, &cls, &pn, json);
-                                }
+                                // Straight through, no JSON (Pulsar-Native#561):
+                                // the widget already hands us the typed value
+                                // `update_live_component_property`'s reflected
+                                // setter closure needs, so `SceneCommand::
+                                // SetComponentProperty` carries it as-is.
+                                execute_command(
+                                    &mut state_arc.write(),
+                                    SceneCommand::SetComponentProperty {
+                                        id: oid.clone(),
+                                        class_name: cls.clone(),
+                                        prop_name: pn.clone(),
+                                        value: new_val,
+                                    },
+                                );
                             },
                         )
                     };

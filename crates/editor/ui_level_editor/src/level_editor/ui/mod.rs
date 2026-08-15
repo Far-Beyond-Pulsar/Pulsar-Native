@@ -14,8 +14,8 @@ pub use dialogs::*;
 pub use hierarchy::HierarchyPanel;
 pub use panel::LevelEditorPanel;
 pub use properties::{
-    ComponentHierarchyPanel, MaterialSection, ObjectHeaderSection, ObjectTypeFieldsSection,
-    PropertiesPanel, TransformSection,
+    ComponentHierarchyPanel, ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel,
+    TransformSection,
 };
 pub use status_bar_view::StatusBarView;
 pub use toolbar::{ToolbarPanel, ToolbarView};

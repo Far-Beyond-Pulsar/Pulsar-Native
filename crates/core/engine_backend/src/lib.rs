@@ -10,6 +10,18 @@ pub mod scene;
 pub mod services;
 pub mod subsystems;
 
+// Force-link `helio_component`: this crate is the one that actually runs
+// `dispatch_world_component_for_class`/`apply_runtime_behavior_for_class`
+// against its `inventory`-based `#[register_world_component]`/
+// `#[register_runtime_behavior]` registrations (see
+// `subsystems::render::helio_renderer::renderer`), but unlike its sibling
+// crates (`ui_level_editor`, `pulsar_scene`), it only names a few of
+// `helio_component`'s types directly (`PlanetTerrainRuntime`, the subsystem
+// caches) -- not every component. Without an explicit symbol reference the
+// linker can dead-strip the rest of `helio_component`'s `#[used]` inventory
+// statics in an optimized build.
+use helio_component as _;
+
 #[cfg(feature = "render")]
 pub use services::GpuRenderer;
 #[cfg(feature = "editor-ui")]
@@ -30,10 +42,7 @@ pub use helio::GizmoMode;
 pub use pulsar_reflection::*;
 
 // Re-export scene types used by UI crates
-pub use scene::{
-    ComponentInstance, EditorObjectId, HelioActorHandle, MetadataObjectType, SceneMetadataDb,
-    SceneObjectMetadata,
-};
+pub use scene::{ComponentInstance, EditorObjectId, SceneMetadataDb};
 
 /// Global instance handle, set once during engine init.
 static GLOBAL_BACKEND: OnceLock<engine_state::ResourceHandle<EngineBackend>> = OnceLock::new();

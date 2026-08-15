@@ -20,7 +20,7 @@ engine_fs = { workspace = true, features = ["editor"] }
 # Reflection system
 pulsar_reflection = { workspace = true }
 engine_state.workspace = true
-pulsar_rendering.workspace = true
+helio_component.workspace = true
 tracing.workspace = true
 
 # Plugin system

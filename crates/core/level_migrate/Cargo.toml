@@ -1,0 +1,20 @@
+[package]
+name = "level_migrate"
+version = "0.1.0"
+edition = "2021"
+description = "Standalone best-effort repair tool for .level files whose component JSON was saved in the wrong shape -- migrates via the same reflection machinery and hydrate-verification path the editor/runtime use. Always backs up the original as <file>.bak first."
+
+[[bin]]
+name = "pulsar_level_repair"
+path = "src/main.rs"
+
+[dependencies]
+pulsar_reflection     = { workspace = true }
+pulsar_world_registry = { workspace = true }
+pulsar_scenedb        = { workspace = true }
+helio_component       = { workspace = true }
+pulsar_physics        = { workspace = true }
+serde_json            = { workspace = true }
+
+[lints]
+workspace = true

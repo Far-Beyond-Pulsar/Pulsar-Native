@@ -2997,6 +2997,7 @@ dependencies = [
  "helio",
  "helio-asset-compat",
  "helio-default-graphs",
+ "helio_component",
  "libloading 0.9.0",
  "lsp-types",
  "parking_lot",
@@ -3005,7 +3006,6 @@ dependencies = [
  "pulsar_lsp",
  "pulsar_pie_abi",
  "pulsar_reflection",
- "pulsar_rendering",
  "pulsar_scene",
  "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
  "pulsar_world_registry",
@@ -5176,6 +5176,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio_component"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "engine_class_derive",
+ "engine_fs",
+ "engine_state",
+ "engine_subsystems",
+ "glam 0.33.2",
+ "gpui-ce",
+ "helio",
+ "helio-asset-compat",
+ "helio-pass-planetary-voxel",
+ "helio-planet-voxel-core",
+ "libhelio",
+ "plugin_editor_api",
+ "pollster 0.4.0",
+ "pulsar_events",
+ "pulsar_reflection",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
+ "pulsar_terrain",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tracing",
+ "ui",
+ "ui_common",
+ "wgpu",
+]
+
+[[package]]
 name = "hermit-abi"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6090,6 +6122,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40a8225d44241fd324a8af2806ba635fc7c8a7e9a7de4d5cf3ef54e71f5926fc"
 dependencies = [
  "leak",
+]
+
+[[package]]
+name = "level_migrate"
+version = "0.1.0"
+dependencies = [
+ "helio_component",
+ "pulsar_physics",
+ "pulsar_reflection",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
+ "pulsar_world_registry",
+ "serde_json",
 ]
 
 [[package]]
@@ -9101,38 +9145,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pulsar_rendering"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "engine_class_derive",
- "engine_fs",
- "engine_state",
- "engine_subsystems",
- "glam 0.33.2",
- "gpui-ce",
- "helio",
- "helio-asset-compat",
- "helio-pass-planetary-voxel",
- "helio-planet-voxel-core",
- "libhelio",
- "plugin_editor_api",
- "pollster 0.4.0",
- "pulsar_events",
- "pulsar_reflection",
- "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
- "pulsar_terrain",
- "pulsar_world_registry",
- "serde",
- "serde_json",
- "thiserror 2.0.19",
- "tracing",
- "ui",
- "ui_common",
- "wgpu",
-]
-
-[[package]]
 name = "pulsar_scene"
 version = "0.1.0"
 dependencies = [
@@ -9140,9 +9152,9 @@ dependencies = [
  "glam 0.33.2",
  "helio",
  "helio-asset-compat",
+ "helio_component",
  "pulsar_events",
  "pulsar_reflection",
- "pulsar_rendering",
  "serde",
  "serde_json",
  "tracing",
@@ -13443,10 +13455,10 @@ dependencies = [
  "engine_fs",
  "engine_state",
  "gpui-ce",
+ "helio_component",
  "image",
  "plugin_editor_api",
  "pulsar_reflection",
- "pulsar_rendering",
  "rust-i18n",
  "schemars",
  "serde",
@@ -13553,6 +13565,7 @@ dependencies = [
  "glam 0.33.2",
  "gpui-ce",
  "helio-asset-compat",
+ "helio_component",
  "image",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
@@ -13564,7 +13577,6 @@ dependencies = [
  "pulsar_physics",
  "pulsar_pie_abi",
  "pulsar_reflection",
- "pulsar_rendering",
  "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
  "pulsar_world_registry",
  "raw-window-handle",

@@ -4,10 +4,13 @@
 //! at the top of the properties panel.
 
 use gpui::{prelude::*, *};
+use std::sync::Arc;
 use ui::{h_flex, v_flex, ActiveTheme};
 
 use super::super::bindings::bound_field::{BoolBoundField, StringBoundField};
+use crate::level_editor::core::commands::{execute_command, SceneCommand};
 use crate::level_editor::scene_database::SceneDatabase;
+use crate::level_editor::state::LevelEditorState;
 
 /// Object header section showing name, visibility, and locked status
 pub struct ObjectHeaderSection {
@@ -21,15 +24,31 @@ impl ObjectHeaderSection {
     pub fn new(
         object_id: String,
         scene_db: SceneDatabase,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         use super::super::bindings::field_bindings::{BoolFieldBinding, StringFieldBinding};
 
+        // Name/visible/locked all go through `SceneCommand`/`execute_command`
+        // now (Pulsar-Native#561), not `SceneDatabase::update_object`
+        // (whole-object overwrite, and -- despite a since-removed comment
+        // claiming otherwise -- never actually undo-tracked).
+
         // Name field
         let name_field = cx.new(|cx| {
+            let state_arc = state_arc.clone();
             StringBoundField::new(
-                StringFieldBinding::new(|obj| obj.name.clone(), |obj, val| obj.name = val),
+                StringFieldBinding::new_with_db(
+                    |id, db| db.get_object(id).map(|obj| obj.name),
+                    move |id, name, _db| {
+                        execute_command(
+                            &mut state_arc.write(),
+                            SceneCommand::SetName { id: id.clone(), name },
+                        )
+                        .changed
+                    },
+                ),
                 "Name",
                 object_id.clone(),
                 scene_db.clone(),
@@ -40,8 +59,22 @@ impl ObjectHeaderSection {
 
         // Visible field
         let visible_field = cx.new(|cx| {
+            let state_arc = state_arc.clone();
             BoolBoundField::new(
-                BoolFieldBinding::new(|obj| obj.visible, |obj, val| obj.visible = val),
+                BoolFieldBinding::new_with_db(
+                    |id, db| db.get_object(id).map(|obj| obj.visible),
+                    move |id, visible, _db| {
+                        execute_command(
+                            &mut state_arc.write(),
+                            SceneCommand::SetVisibility {
+                                id: id.clone(),
+                                visible: Some(visible),
+                                locked: None,
+                            },
+                        )
+                        .changed
+                    },
+                ),
                 "Visible",
                 object_id.clone(),
                 scene_db.clone(),
@@ -53,7 +86,20 @@ impl ObjectHeaderSection {
         // Locked field
         let locked_field = cx.new(|cx| {
             BoolBoundField::new(
-                BoolFieldBinding::new(|obj| obj.locked, |obj, val| obj.locked = val),
+                BoolFieldBinding::new_with_db(
+                    |id, db| db.get_object(id).map(|obj| obj.locked),
+                    move |id, locked, _db| {
+                        execute_command(
+                            &mut state_arc.write(),
+                            SceneCommand::SetVisibility {
+                                id: id.clone(),
+                                visible: None,
+                                locked: Some(locked),
+                            },
+                        )
+                        .changed
+                    },
+                ),
                 "Locked",
                 object_id.clone(),
                 scene_db.clone(),

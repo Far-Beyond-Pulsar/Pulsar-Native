@@ -107,7 +107,7 @@ fn build_game_manifest_deps(
     // `pulsar_reflection` rev than the workspace, so a graph that uses BOTH
     // `pulsar_scenedb` and `pulsar_reflection` (a generated game's class code
     // does) gets two incompatible copies → E0308. The editor tolerates two copies
-    // and CANNOT be unified this way (it would change `pulsar_rendering`'s derive
+    // and CANNOT be unified this way (it would change `helio_component`'s derive
     // resolution), so this is applied to generated games only, never the
     // workspace. `refl_spec` forces every reflection reference to one rev via the
     // double-slash URL alias (a distinct source string to cargo, same repo to

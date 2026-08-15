@@ -4,10 +4,82 @@
 //! of scene objects using the field binding system for automatic sync and undo/redo.
 
 use gpui::{prelude::*, *};
+use std::sync::Arc;
 use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
 
 use super::super::bindings::bound_field::F32BoundField;
+use crate::level_editor::core::commands::{execute_command, SceneCommand};
 use crate::level_editor::scene_database::SceneDatabase;
+use crate::level_editor::state::LevelEditorState;
+
+#[derive(Clone, Copy)]
+enum Axis {
+    Position,
+    Rotation,
+    Scale,
+}
+
+/// Builds an `F32FieldBinding` for one axis (x/y/z) of one transform
+/// component (position/rotation/scale), routed through `SceneCommand::
+/// SetTransform`/`execute_command` (Pulsar-Native#561), not
+/// `SceneDatabase::update_object`.
+///
+/// Previously every one of these 9 fields used `F32FieldBinding::new`
+/// (whole-`SceneObjectData` getter/setter) whose `set()` called
+/// `db.update_object(obj)` -- a full read-modify-write of the ENTIRE object,
+/// which (via `sync_registered_component_props_to_scene_db`) re-serialized
+/// and re-hydrated every `World`-registered component on the object on
+/// *every keystroke*, and never touched the undo stack despite this
+/// module's own now-removed doc claiming it did. `new_with_db`'s setter
+/// closure below builds the single, minimal `SceneCommand::SetTransform`
+/// for just the axis that changed and runs it through `execute_command`,
+/// which is both cheaper (`SceneDatabase::set_transform` touches only the
+/// transform, not any component) and correctly undo-tracked.
+fn axis_binding(
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    axis: Axis,
+    index: usize,
+) -> super::super::bindings::field_bindings::F32FieldBinding {
+    use super::super::bindings::field_bindings::F32FieldBinding;
+
+    F32FieldBinding::new_with_db(
+        move |id, db| {
+            db.get_object(id).map(|obj| match axis {
+                Axis::Position => obj.transform.position[index],
+                Axis::Rotation => obj.transform.rotation[index],
+                Axis::Scale => obj.transform.scale[index],
+            })
+        },
+        move |id, val, db| {
+            let Some(obj) = db.get_object(id) else { return false };
+            let mut position = None;
+            let mut rotation = None;
+            let mut scale = None;
+            match axis {
+                Axis::Position => {
+                    let mut v = obj.transform.position;
+                    v[index] = val;
+                    position = Some(v);
+                }
+                Axis::Rotation => {
+                    let mut v = obj.transform.rotation;
+                    v[index] = val;
+                    rotation = Some(v);
+                }
+                Axis::Scale => {
+                    let mut v = obj.transform.scale;
+                    v[index] = val;
+                    scale = Some(v);
+                }
+            }
+            execute_command(
+                &mut state_arc.write(),
+                SceneCommand::SetTransform { id: id.clone(), position, rotation, scale },
+            )
+            .changed
+        },
+    )
+}
 
 /// Transform section component for the properties panel
 ///
@@ -39,18 +111,14 @@ impl TransformSection {
     pub fn new(
         object_id: String,
         scene_db: SceneDatabase,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        use super::super::bindings::field_bindings::F32FieldBinding;
-
         // Position fields
         let position_x = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    |obj| obj.transform.position[0],
-                    |obj, val| obj.transform.position[0] = val,
-                ),
+                axis_binding(state_arc.clone(), Axis::Position, 0),
                 "X",
                 object_id.clone(),
                 scene_db.clone(),
@@ -61,10 +129,7 @@ impl TransformSection {
 
         let position_y = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    |obj| obj.transform.position[1],
-                    |obj, val| obj.transform.position[1] = val,
-                ),
+                axis_binding(state_arc.clone(), Axis::Position, 1),
                 "Y",
                 object_id.clone(),
                 scene_db.clone(),
@@ -75,10 +140,7 @@ impl TransformSection {
 
         let position_z = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    |obj| obj.transform.position[2],
-                    |obj, val| obj.transform.position[2] = val,
-                ),
+                axis_binding(state_arc.clone(), Axis::Position, 2),
                 "Z",
                 object_id.clone(),
                 scene_db.clone(),
@@ -90,10 +152,7 @@ impl TransformSection {
         // Rotation fields
         let rotation_x = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    |obj| obj.transform.rotation[0],
-                    |obj, val| obj.transform.rotation[0] = val,
-                ),
+                axis_binding(state_arc.clone(), Axis::Rotation, 0),
                 "X",
                 object_id.clone(),
                 scene_db.clone(),
@@ -104,10 +163,7 @@ impl TransformSection {
 
         let rotation_y = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    |obj| obj.transform.rotation[1],
-                    |obj, val| obj.transform.rotation[1] = val,
-                ),
+                axis_binding(state_arc.clone(), Axis::Rotation, 1),
                 "Y",
                 object_id.clone(),
                 scene_db.clone(),
@@ -118,10 +174,7 @@ impl TransformSection {
 
         let rotation_z = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    |obj| obj.transform.rotation[2],
-                    |obj, val| obj.transform.rotation[2] = val,
-                ),
+                axis_binding(state_arc.clone(), Axis::Rotation, 2),
                 "Z",
                 object_id.clone(),
                 scene_db.clone(),
@@ -133,10 +186,7 @@ impl TransformSection {
         // Scale fields
         let scale_x = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    |obj| obj.transform.scale[0],
-                    |obj, val| obj.transform.scale[0] = val,
-                ),
+                axis_binding(state_arc.clone(), Axis::Scale, 0),
                 "X",
                 object_id.clone(),
                 scene_db.clone(),
@@ -147,10 +197,7 @@ impl TransformSection {
 
         let scale_y = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    |obj| obj.transform.scale[1],
-                    |obj, val| obj.transform.scale[1] = val,
-                ),
+                axis_binding(state_arc.clone(), Axis::Scale, 1),
                 "Y",
                 object_id.clone(),
                 scene_db.clone(),
@@ -161,10 +208,7 @@ impl TransformSection {
 
         let scale_z = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    |obj| obj.transform.scale[2],
-                    |obj, val| obj.transform.scale[2] = val,
-                ),
+                axis_binding(state_arc.clone(), Axis::Scale, 2),
                 "Z",
                 object_id.clone(),
                 scene_db,

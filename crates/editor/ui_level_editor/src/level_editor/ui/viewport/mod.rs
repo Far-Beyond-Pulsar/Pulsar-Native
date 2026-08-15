@@ -571,7 +571,18 @@ impl ViewportPanel {
         let _input_state_scroll = Arc::clone(&self.input_state);
         let mouse_right_captured = self.mouse_right_captured.clone();
         let mouse_middle_captured = self.mouse_middle_captured.clone();
-        let gpu_engine_for_click = gpu_engine.clone();
+        // Pointer-event queue for the left-click/left-release handlers below
+        // (Pulsar-Native drag-release freeze fix -- see `PendingPointerEvent`'s
+        // doc). One `try_lock()` here, per element rebuild, not per click --
+        // and non-blocking, so a miss just means those two handlers fall back
+        // to a no-op this rebuild and correctly pick the queue back up next
+        // time (GPUI rebuilds this element tree far more often than a user
+        // can actually click). The click/release closures themselves never
+        // touch `gpu_engine` again after this.
+        let pointer_events_for_click = gpu_engine
+            .try_lock()
+            .ok()
+            .and_then(|engine| engine.pointer_event_queue());
         let element_bounds_for_prepaint = self.element_bounds.clone();
         let element_bounds_for_click = self.element_bounds.clone();
         let _state_arc_scroll = state_arc.clone();
@@ -938,7 +949,7 @@ impl ViewportPanel {
             })
             // Left-click for object selection
             .on_mouse_down(gpui::MouseButton::Left, {
-                let gpu_engine_click = gpu_engine_for_click.clone();
+                let pointer_events = pointer_events_for_click.clone();
                 let element_bounds = element_bounds_for_click.clone();
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
@@ -980,21 +991,26 @@ impl ViewportPanel {
                         )
                     };
 
-                    if let Ok(mut engine) = gpu_engine_click.try_lock() {
-                        tracing::info!(
-                            "[VIEWPORT] Left click: screen=({:.1},{:.1}) norm=({:.4},{:.4})",
-                            event.position.x,
-                            event.position.y,
-                            norm_x,
-                            norm_y
-                        );
-                        engine.handle_left_click(norm_x, norm_y);
+                    if let Some(events) = &pointer_events {
+                        if let Ok(mut events) = events.lock() {
+                            tracing::info!(
+                                "[VIEWPORT] Left click: screen=({:.1},{:.1}) norm=({:.4},{:.4})",
+                                event.position.x,
+                                event.position.y,
+                                norm_x,
+                                norm_y
+                            );
+                            events.push(engine_backend::subsystems::render::PendingPointerEvent::LeftClick {
+                                norm_x,
+                                norm_y,
+                            });
+                        }
                     }
                 }
             })
             // Left-click release
             .on_mouse_up(gpui::MouseButton::Left, {
-                let gpu_engine_up = gpu_engine_for_click.clone();
+                let pointer_events = pointer_events_for_click.clone();
                 let state_arc_up = state_arc.clone();
 
                 move |_event: &gpui::MouseUpEvent,
@@ -1007,8 +1023,20 @@ impl ViewportPanel {
                     state.overlays.positions.viewport_drag_start = None;
                     drop(state);
 
-                    if let Ok(mut engine) = gpu_engine_up.try_lock() {
-                        engine.handle_left_release();
+                    // This push is the actual fix for the drag-release
+                    // freeze: previously this was `gpu_engine_up.try_lock()`
+                    // then `engine.handle_left_release()` directly -- a
+                    // non-blocking lock with no retry, racing the render
+                    // thread's own unconditional per-frame `gpu_engine.lock()`.
+                    // A lost race silently dropped the release, which
+                    // permanently wedged `EditorState::is_dragging()` (only
+                    // `handle_left_release` ever calls `end_drag()`), gating
+                    // out all future scene sync. This queue push can't lose
+                    // that race -- there's no lock left to lose it on.
+                    if let Some(events) = &pointer_events {
+                        if let Ok(mut events) = events.lock() {
+                            events.push(engine_backend::subsystems::render::PendingPointerEvent::LeftRelease);
+                        }
                     }
                 }
             })

@@ -4,7 +4,7 @@
 //!
 //! Component dispatch goes through the **inventory registration system**:
 //!
-//! 1. Each component crate (e.g. `pulsar_rendering`) submits a
+//! 1. Each component crate (e.g. `helio_component`) submits a
 //!    `RuntimeBehaviorRegistration` via `inventory::submit!` in its
 //!    `#[register_runtime_behavior]` proc-macro expansion.
 //! 2. The loader creates a [`SceneObjectContext`] that implements
@@ -20,9 +20,9 @@
 //!
 //! ## Linker note
 //!
-//! `pulsar_rendering` types are re-exported from `pulsar_scene::rendering` to
+//! `helio_component` types are re-exported from `pulsar_scene::rendering` to
 //! create a live code reference.  Without it the linker can silently drop
-//! `pulsar_rendering`'s `#[used]` inventory statics.
+//! `helio_component`'s `#[used]` inventory statics.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -35,23 +35,23 @@ use pulsar_reflection::{
     ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner, Subsystems,
     apply_runtime_behavior_for_class,
 };
-use pulsar_rendering::subsystems::{FoliageCache, MeshCache, PortalLinkCache, SceneObjectCache};
+use helio_component::subsystems::{FoliageCache, MeshCache, PortalLinkCache};
 
 use crate::format::{SceneFile, SceneLoadError};
 
-// ── Force pulsar_rendering into the binary ────────────────────────────────────
+// ── Force helio_component into the binary ────────────────────────────────────
 // Re-exporting these types creates a live symbol reference that prevents the
-// linker from dropping pulsar_rendering's #[used] inventory statics.
+// linker from dropping helio_component's #[used] inventory statics.
 // (ComponentRuntimeContext dispatch only works if those statics are linked in.)
-pub use pulsar_rendering::FoliageComponent as _ForceLink_FoliageComponent;
-pub use pulsar_rendering::LightComponent as _ForceLink_LightComponent;
-pub use pulsar_rendering::PlanetTerrainComponent as _ForceLink_PlanetTerrainComponent;
-pub use pulsar_rendering::PortalComponent as _ForceLink_PortalComponent;
-pub use pulsar_rendering::PostProcessVolumeComponent as _ForceLink_PostProcessVolumeComponent;
-pub use pulsar_rendering::ReflectionCaptureComponent as _ForceLink_ReflectionCaptureComponent;
-pub use pulsar_rendering::ScriptComponent as _ForceLink_ScriptComponent;
-pub use pulsar_rendering::StaticMeshComponent as _ForceLink_StaticMeshComponent;
-pub use pulsar_rendering::WaterVolumeComponent as _ForceLink_WaterVolumeComponent;
+pub use helio_component::FoliageComponent as _ForceLink_FoliageComponent;
+pub use helio_component::LightComponent as _ForceLink_LightComponent;
+pub use helio_component::PlanetTerrainComponent as _ForceLink_PlanetTerrainComponent;
+pub use helio_component::PortalComponent as _ForceLink_PortalComponent;
+pub use helio_component::PostProcessVolumeComponent as _ForceLink_PostProcessVolumeComponent;
+pub use helio_component::ReflectionCaptureComponent as _ForceLink_ReflectionCaptureComponent;
+pub use helio_component::ScriptComponent as _ForceLink_ScriptComponent;
+pub use helio_component::StaticMeshComponent as _ForceLink_StaticMeshComponent;
+pub use helio_component::WaterVolumeComponent as _ForceLink_WaterVolumeComponent;
 
 // ── SceneLoader ───────────────────────────────────────────────────────────────
 
@@ -121,7 +121,14 @@ impl SceneLoader {
                 let mut subsystems = Subsystems::new();
                 subsystems.register_ref::<Renderer>(renderer);
                 subsystems.register(MeshCache::new());
-                subsystems.register(SceneObjectCache::new());
+                // `SceneObjectCache` used to be registered here too
+                // (Pulsar-Native#561) -- deleted along with the type itself,
+                // confirmed fully dead: `StaticMeshComponent` resolves
+                // identity via `scene.object_by_tag` instead, and this loop
+                // constructed a brand-new, empty instance per object anyway
+                // (registered fresh inside the `for obj in objects` loop),
+                // so it could never have cached anything across calls even
+                // if something had read from it.
                 subsystems.register(FoliageCache::new());
                 subsystems.register_ref::<PortalLinkCache>(&mut portal_link_cache);
                 subsystems.register(LiveKeySet::new());
@@ -265,10 +272,10 @@ mod tests {
         };
 
         assert!(apply_runtime_behavior_for_class(
-            pulsar_rendering::PLANET_TERRAIN_CLASS_NAME,
+            helio_component::PLANET_TERRAIN_CLASS_NAME,
             &owner,
             0,
-            &serde_json::to_value(pulsar_rendering::PlanetTerrainComponent::default()).unwrap(),
+            &serde_json::to_value(helio_component::PlanetTerrainComponent::default()).unwrap(),
             &mut context,
         ));
         assert!(context.errors.is_empty());

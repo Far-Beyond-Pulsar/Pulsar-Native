@@ -6,8 +6,6 @@
 //! - LSP completion provider for code suggestions
 
 pub mod core_project_builder;
-#[cfg(feature = "physics")]
-pub mod gizmo_interaction_controller;
 #[cfg(feature = "render")]
 pub mod gpu_renderer;
 #[cfg(feature = "editor-ui")]
@@ -24,8 +22,6 @@ pub mod rust_analyzer_manager {
 }
 
 pub use core_project_builder::ensure_core_bootstrap;
-#[cfg(feature = "physics")]
-pub use gizmo_interaction_controller::{DragState, GizmoInteractionController, InteractionState};
 #[cfg(feature = "render")]
 pub use gpu_renderer::GpuRenderer;
 #[cfg(feature = "editor-ui")]

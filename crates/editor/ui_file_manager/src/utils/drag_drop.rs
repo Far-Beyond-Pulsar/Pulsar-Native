@@ -67,7 +67,7 @@ impl FileManagerDrawer {
         let (models, others): (Vec<PathBuf>, Vec<PathBuf>) = s.iter().cloned().partition(|p| {
             p.extension()
                 .and_then(|e| e.to_str())
-                .map(pulsar_rendering::mesh_cache::is_importable_model)
+                .map(helio_component::mesh_cache::is_importable_model)
                 .unwrap_or(false)
         });
 
@@ -114,7 +114,7 @@ impl FileManagerDrawer {
                 .and_then(|e| e.to_str())
                 .unwrap_or("")
                 .to_string();
-            if let Some(schema) = pulsar_rendering::mesh_cache::options_schema(&ext) {
+            if let Some(schema) = helio_component::mesh_cache::options_schema(&ext) {
                 use ui_common::PulsarWindowExt as _;
                 let params = crate::configurator::ImportConfiguratorParams {
                     sources: models.clone(),
@@ -125,7 +125,7 @@ impl FileManagerDrawer {
                 any_ok = true;
             } else {
                 for src in &models {
-                    match pulsar_rendering::mesh_cache::import_model_to_native_default(src, &t) {
+                    match helio_component::mesh_cache::import_model_to_native_default(src, &t) {
                         Ok(_) => any_ok = true,
                         Err(e) => {
                             tracing::error!("Model import failed for {}: {}", src.display(), e)

@@ -227,7 +227,7 @@ impl WorldSceneStore {
     }
 
     /// Direct access to the underlying `World`, for callers that need to
-    /// `insert`/`get`/`get_mut` real component types (e.g. `pulsar_rendering`
+    /// `insert`/`get`/`get_mut` real component types (e.g. `helio_component`
     /// components, once Phase B4/B5 land) beyond this store's own CRUD API.
     pub fn world(&self) -> &World {
         &self.world
@@ -389,6 +389,70 @@ impl WorldSceneStore {
         self.publish(entity, ObjectDirtyFlags::HIERARCHY | ObjectDirtyFlags::TRANSFORM);
 
         Ok(())
+    }
+
+    /// Swap `entity` and `target`'s positions within their shared parent's
+    /// ordered children list. Both must share the same parent (including
+    /// both being root-level, i.e. `parent_of` is `None` for both).
+    ///
+    /// `World` itself has no ordering concept at all -- this is exactly the
+    /// kind of bookkeeping `children` (the `HashMap<Option<Entity>,
+    /// Vec<Entity>>` reverse-index above) legitimately owns, same as
+    /// `reparent`'s cycle check. Returns `false` if the two don't share a
+    /// parent or either isn't a live child of it.
+    pub fn reorder_sibling(&mut self, entity: Entity, target: Entity) -> bool {
+        let parent = self.parent_of(entity);
+        if parent != self.parent_of(target) {
+            return false;
+        }
+        let Some(siblings) = self.children.get_mut(&parent) else {
+            return false;
+        };
+        let from = siblings.iter().position(|&e| e == entity);
+        let to = siblings.iter().position(|&e| e == target);
+        match (from, to) {
+            (Some(from), Some(to)) => {
+                siblings.swap(from, to);
+                self.publish(entity, ObjectDirtyFlags::HIERARCHY);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Swap `entity` with the sibling immediately before it in their shared
+    /// parent's children list. `false` if `entity` is already first (or has
+    /// no live parent entry).
+    pub fn move_sibling_up(&mut self, entity: Entity) -> bool {
+        let parent = self.parent_of(entity);
+        let Some(siblings) = self.children.get(&parent) else {
+            return false;
+        };
+        let Some(index) = siblings.iter().position(|&e| e == entity) else {
+            return false;
+        };
+        if index == 0 {
+            return false;
+        }
+        let prev = siblings[index - 1];
+        self.reorder_sibling(entity, prev)
+    }
+
+    /// Swap `entity` with the sibling immediately after it. `false` if
+    /// `entity` is already last (or has no live parent entry).
+    pub fn move_sibling_down(&mut self, entity: Entity) -> bool {
+        let parent = self.parent_of(entity);
+        let Some(siblings) = self.children.get(&parent) else {
+            return false;
+        };
+        let Some(index) = siblings.iter().position(|&e| e == entity) else {
+            return false;
+        };
+        if index + 1 >= siblings.len() {
+            return false;
+        }
+        let next = siblings[index + 1];
+        self.reorder_sibling(entity, next)
     }
 
     // ── Transform / name / visibility ───────────────────────────────────
@@ -835,6 +899,56 @@ mod tests {
         let e = store.spawn(Some("self".into()), "Self", None).unwrap();
         let err = store.reparent(e, Some(e)).unwrap_err();
         assert_eq!(err, WorldSceneStoreError::WouldCreateCycle("self".into(), "self".into()));
+    }
+
+    #[test]
+    fn reorder_sibling_swaps_two_children_in_place() {
+        let mut store = WorldSceneStore::new();
+        let root = store.spawn(Some("root".into()), "Root", None).unwrap();
+        let a = store.spawn(Some("a".into()), "A", Some(root)).unwrap();
+        let b = store.spawn(Some("b".into()), "B", Some(root)).unwrap();
+        let c = store.spawn(Some("c".into()), "C", Some(root)).unwrap();
+        assert_eq!(store.children_of(Some(root)), &[a, b, c]);
+
+        assert!(store.reorder_sibling(a, c));
+        assert_eq!(store.children_of(Some(root)), &[c, b, a]);
+    }
+
+    #[test]
+    fn reorder_sibling_rejects_a_non_shared_parent() {
+        let mut store = WorldSceneStore::new();
+        let parent1 = store.spawn(Some("p1".into()), "P1", None).unwrap();
+        let parent2 = store.spawn(Some("p2".into()), "P2", None).unwrap();
+        let a = store.spawn(Some("a".into()), "A", Some(parent1)).unwrap();
+        let b = store.spawn(Some("b".into()), "B", Some(parent2)).unwrap();
+
+        assert!(!store.reorder_sibling(a, b));
+        assert_eq!(store.children_of(Some(parent1)), &[a]);
+        assert_eq!(store.children_of(Some(parent2)), &[b]);
+    }
+
+    #[test]
+    fn move_sibling_up_and_down_walk_the_ordered_list() {
+        let mut store = WorldSceneStore::new();
+        let root = store.spawn(Some("root".into()), "Root", None).unwrap();
+        let a = store.spawn(Some("a".into()), "A", Some(root)).unwrap();
+        let b = store.spawn(Some("b".into()), "B", Some(root)).unwrap();
+        let c = store.spawn(Some("c".into()), "C", Some(root)).unwrap();
+        assert_eq!(store.children_of(Some(root)), &[a, b, c]);
+
+        // Already first -- no-op.
+        assert!(!store.move_sibling_up(a));
+        assert_eq!(store.children_of(Some(root)), &[a, b, c]);
+
+        assert!(store.move_sibling_down(a));
+        assert_eq!(store.children_of(Some(root)), &[b, a, c]);
+
+        assert!(store.move_sibling_up(a));
+        assert_eq!(store.children_of(Some(root)), &[a, b, c]);
+
+        // Already last -- no-op.
+        assert!(!store.move_sibling_down(c));
+        assert_eq!(store.children_of(Some(root)), &[a, b, c]);
     }
 
     #[test]

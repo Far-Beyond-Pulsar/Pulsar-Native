@@ -113,85 +113,15 @@ impl FieldBinding for F32FieldBinding {
 }
 
 // ============================================================================
-// Vec3 Field Binding ([f32; 3])
-// ============================================================================
-
-/// Binding for a [f32; 3] field (position, rotation, scale)
-pub struct Vec3FieldBinding {
-    getter: Arc<dyn Fn(&SceneObjectData) -> [f32; 3] + Send + Sync>,
-    setter: Arc<dyn Fn(&mut SceneObjectData, [f32; 3]) + Send + Sync>,
-}
-
-impl Vec3FieldBinding {
-    pub fn new<G, S>(getter: G, setter: S) -> Self
-    where
-        G: Fn(&SceneObjectData) -> [f32; 3] + Send + Sync + 'static,
-        S: Fn(&mut SceneObjectData, [f32; 3]) + Send + Sync + 'static,
-    {
-        Self {
-            getter: Arc::new(getter),
-            setter: Arc::new(setter),
-        }
-    }
-}
-
-impl FieldBinding for Vec3FieldBinding {
-    type Value = [f32; 3];
-
-    fn get(&self, object_id: &ObjectId, db: &SceneDatabase) -> Option<[f32; 3]> {
-        db.get_object(object_id).map(|obj| (self.getter)(&obj))
-    }
-
-    fn set(&self, object_id: &ObjectId, value: [f32; 3], db: &SceneDatabase) -> bool {
-        if let Some(mut obj) = db.get_object(object_id) {
-            (self.setter)(&mut obj, value);
-            db.update_object(obj)
-        } else {
-            false
-        }
-    }
-
-    fn to_string(&self, value: &[f32; 3]) -> String {
-        format!("[{:.3}, {:.3}, {:.3}]", value[0], value[1], value[2])
-    }
-
-    fn from_string(&self, s: &str) -> Result<[f32; 3], String> {
-        let s = s.trim();
-
-        // Try parsing "[x, y, z]" format
-        if s.starts_with('[') && s.ends_with(']') {
-            let inner = &s[1..s.len() - 1];
-            let parts: Vec<&str> = inner.split(',').collect();
-
-            if parts.len() == 3 {
-                let x = parts[0]
-                    .trim()
-                    .parse::<f32>()
-                    .map_err(|_| format!("Invalid X value"))?;
-                let y = parts[1]
-                    .trim()
-                    .parse::<f32>()
-                    .map_err(|_| format!("Invalid Y value"))?;
-                let z = parts[2]
-                    .trim()
-                    .parse::<f32>()
-                    .map_err(|_| format!("Invalid Z value"))?;
-                return Ok([x, y, z]);
-            }
-        }
-
-        Err(format!("Invalid Vec3 format. Expected [x, y, z]"))
-    }
-}
-
-// ============================================================================
 // String Field Binding
 // ============================================================================
 
 /// Binding for a String field
 pub struct StringFieldBinding {
-    getter: Arc<dyn Fn(&SceneObjectData) -> String + Send + Sync>,
-    setter: Arc<dyn Fn(&mut SceneObjectData, String) + Send + Sync>,
+    getter: Option<Arc<dyn Fn(&SceneObjectData) -> String + Send + Sync>>,
+    setter: Option<Arc<dyn Fn(&mut SceneObjectData, String) + Send + Sync>>,
+    getter_db: Option<Arc<dyn Fn(&ObjectId, &SceneDatabase) -> Option<String> + Send + Sync>>,
+    setter_db: Option<Arc<dyn Fn(&ObjectId, String, &SceneDatabase) -> bool + Send + Sync>>,
 }
 
 impl StringFieldBinding {
@@ -201,8 +131,24 @@ impl StringFieldBinding {
         S: Fn(&mut SceneObjectData, String) + Send + Sync + 'static,
     {
         Self {
-            getter: Arc::new(getter),
-            setter: Arc::new(setter),
+            getter: Some(Arc::new(getter)),
+            setter: Some(Arc::new(setter)),
+            getter_db: None,
+            setter_db: None,
+        }
+    }
+
+    /// Same shape as `F32FieldBinding::new_with_db` -- see that method's doc.
+    pub fn new_with_db<G, S>(getter: G, setter: S) -> Self
+    where
+        G: Fn(&ObjectId, &SceneDatabase) -> Option<String> + Send + Sync + 'static,
+        S: Fn(&ObjectId, String, &SceneDatabase) -> bool + Send + Sync + 'static,
+    {
+        Self {
+            getter: None,
+            setter: None,
+            getter_db: Some(Arc::new(getter)),
+            setter_db: Some(Arc::new(setter)),
         }
     }
 }
@@ -211,16 +157,24 @@ impl FieldBinding for StringFieldBinding {
     type Value = String;
 
     fn get(&self, object_id: &ObjectId, db: &SceneDatabase) -> Option<String> {
-        db.get_object(object_id).map(|obj| (self.getter)(&obj))
+        if let Some(getter_db) = &self.getter_db {
+            return getter_db(object_id, db);
+        }
+        let getter = self.getter.as_ref()?;
+        db.get_object(object_id).map(|obj| getter(&obj))
     }
 
     fn set(&self, object_id: &ObjectId, value: String, db: &SceneDatabase) -> bool {
-        if let Some(mut obj) = db.get_object(object_id) {
-            (self.setter)(&mut obj, value);
-            db.update_object(obj)
-        } else {
-            false
+        if let Some(setter_db) = &self.setter_db {
+            return setter_db(object_id, value, db);
         }
+        if let Some(mut obj) = db.get_object(object_id) {
+            if let Some(setter) = &self.setter {
+                setter(&mut obj, value);
+                return db.update_object(obj);
+            }
+        }
+        false
     }
 
     fn to_string(&self, value: &String) -> String {
@@ -238,8 +192,10 @@ impl FieldBinding for StringFieldBinding {
 
 /// Binding for a boolean field
 pub struct BoolFieldBinding {
-    getter: Arc<dyn Fn(&SceneObjectData) -> bool + Send + Sync>,
-    setter: Arc<dyn Fn(&mut SceneObjectData, bool) + Send + Sync>,
+    getter: Option<Arc<dyn Fn(&SceneObjectData) -> bool + Send + Sync>>,
+    setter: Option<Arc<dyn Fn(&mut SceneObjectData, bool) + Send + Sync>>,
+    getter_db: Option<Arc<dyn Fn(&ObjectId, &SceneDatabase) -> Option<bool> + Send + Sync>>,
+    setter_db: Option<Arc<dyn Fn(&ObjectId, bool, &SceneDatabase) -> bool + Send + Sync>>,
 }
 
 impl BoolFieldBinding {
@@ -249,8 +205,24 @@ impl BoolFieldBinding {
         S: Fn(&mut SceneObjectData, bool) + Send + Sync + 'static,
     {
         Self {
-            getter: Arc::new(getter),
-            setter: Arc::new(setter),
+            getter: Some(Arc::new(getter)),
+            setter: Some(Arc::new(setter)),
+            getter_db: None,
+            setter_db: None,
+        }
+    }
+
+    /// Same shape as `F32FieldBinding::new_with_db` -- see that method's doc.
+    pub fn new_with_db<G, S>(getter: G, setter: S) -> Self
+    where
+        G: Fn(&ObjectId, &SceneDatabase) -> Option<bool> + Send + Sync + 'static,
+        S: Fn(&ObjectId, bool, &SceneDatabase) -> bool + Send + Sync + 'static,
+    {
+        Self {
+            getter: None,
+            setter: None,
+            getter_db: Some(Arc::new(getter)),
+            setter_db: Some(Arc::new(setter)),
         }
     }
 }
@@ -259,16 +231,24 @@ impl FieldBinding for BoolFieldBinding {
     type Value = bool;
 
     fn get(&self, object_id: &ObjectId, db: &SceneDatabase) -> Option<bool> {
-        db.get_object(object_id).map(|obj| (self.getter)(&obj))
+        if let Some(getter_db) = &self.getter_db {
+            return getter_db(object_id, db);
+        }
+        let getter = self.getter.as_ref()?;
+        db.get_object(object_id).map(|obj| getter(&obj))
     }
 
     fn set(&self, object_id: &ObjectId, value: bool, db: &SceneDatabase) -> bool {
-        if let Some(mut obj) = db.get_object(object_id) {
-            (self.setter)(&mut obj, value);
-            db.update_object(obj)
-        } else {
-            false
+        if let Some(setter_db) = &self.setter_db {
+            return setter_db(object_id, value, db);
         }
+        if let Some(mut obj) = db.get_object(object_id) {
+            if let Some(setter) = &self.setter {
+                setter(&mut obj, value);
+                return db.update_object(obj);
+            }
+        }
+        false
     }
 
     fn to_string(&self, value: &bool) -> String {
@@ -282,220 +262,6 @@ impl FieldBinding for BoolFieldBinding {
             _ => Err(format!("Invalid boolean: {}", s)),
         }
     }
-}
-
-// ============================================================================
-// Color Field Binding ([f32; 4] - RGBA)
-// ============================================================================
-
-/// Binding for a color field (RGBA)
-pub struct ColorFieldBinding {
-    getter: Arc<dyn Fn(&SceneObjectData) -> [f32; 4] + Send + Sync>,
-    setter: Arc<dyn Fn(&mut SceneObjectData, [f32; 4]) + Send + Sync>,
-}
-
-impl ColorFieldBinding {
-    pub fn new<G, S>(getter: G, setter: S) -> Self
-    where
-        G: Fn(&SceneObjectData) -> [f32; 4] + Send + Sync + 'static,
-        S: Fn(&mut SceneObjectData, [f32; 4]) + Send + Sync + 'static,
-    {
-        Self {
-            getter: Arc::new(getter),
-            setter: Arc::new(setter),
-        }
-    }
-}
-
-impl FieldBinding for ColorFieldBinding {
-    type Value = [f32; 4];
-
-    fn get(&self, object_id: &ObjectId, db: &SceneDatabase) -> Option<[f32; 4]> {
-        db.get_object(object_id).map(|obj| (self.getter)(&obj))
-    }
-
-    fn set(&self, object_id: &ObjectId, value: [f32; 4], db: &SceneDatabase) -> bool {
-        if let Some(mut obj) = db.get_object(object_id) {
-            (self.setter)(&mut obj, value);
-            db.update_object(obj)
-        } else {
-            false
-        }
-    }
-
-    fn to_string(&self, value: &[f32; 4]) -> String {
-        format!(
-            "rgba({:.3}, {:.3}, {:.3}, {:.3})",
-            value[0], value[1], value[2], value[3]
-        )
-    }
-
-    fn from_string(&self, s: &str) -> Result<[f32; 4], String> {
-        let s = s.trim();
-
-        // Try parsing "rgba(r, g, b, a)" format
-        if s.starts_with("rgba(") && s.ends_with(')') {
-            let inner = &s[5..s.len() - 1];
-            let parts: Vec<&str> = inner.split(',').collect();
-
-            if parts.len() == 4 {
-                let r = parts[0]
-                    .trim()
-                    .parse::<f32>()
-                    .map_err(|_| format!("Invalid R value"))?;
-                let g = parts[1]
-                    .trim()
-                    .parse::<f32>()
-                    .map_err(|_| format!("Invalid G value"))?;
-                let b = parts[2]
-                    .trim()
-                    .parse::<f32>()
-                    .map_err(|_| format!("Invalid B value"))?;
-                let a = parts[3]
-                    .trim()
-                    .parse::<f32>()
-                    .map_err(|_| format!("Invalid A value"))?;
-                return Ok([r, g, b, a]);
-            }
-        }
-
-        Err(format!("Invalid color format. Expected rgba(r, g, b, a)"))
-    }
-}
-
-// ============================================================================
-// Enum Field Binding
-// ============================================================================
-
-/// Binding for an enum/dropdown field
-pub struct EnumFieldBinding {
-    getter: Arc<dyn Fn(&SceneObjectData) -> usize + Send + Sync>,
-    setter: Arc<dyn Fn(&mut SceneObjectData, usize) + Send + Sync>,
-    variants: Vec<String>,
-}
-
-impl EnumFieldBinding {
-    pub fn new<G, S>(variants: Vec<String>, getter: G, setter: S) -> Self
-    where
-        G: Fn(&SceneObjectData) -> usize + Send + Sync + 'static,
-        S: Fn(&mut SceneObjectData, usize) + Send + Sync + 'static,
-    {
-        Self {
-            getter: Arc::new(getter),
-            setter: Arc::new(setter),
-            variants,
-        }
-    }
-
-    pub fn variants(&self) -> &[String] {
-        &self.variants
-    }
-}
-
-impl FieldBinding for EnumFieldBinding {
-    type Value = usize;
-
-    fn get(&self, object_id: &ObjectId, db: &SceneDatabase) -> Option<usize> {
-        db.get_object(object_id).map(|obj| (self.getter)(&obj))
-    }
-
-    fn set(&self, object_id: &ObjectId, value: usize, db: &SceneDatabase) -> bool {
-        if value >= self.variants.len() {
-            return false;
-        }
-
-        if let Some(mut obj) = db.get_object(object_id) {
-            (self.setter)(&mut obj, value);
-            db.update_object(obj)
-        } else {
-            false
-        }
-    }
-
-    fn to_string(&self, value: &usize) -> String {
-        self.variants
-            .get(*value)
-            .cloned()
-            .unwrap_or_else(|| "Unknown".to_string())
-    }
-
-    fn from_string(&self, s: &str) -> Result<usize, String> {
-        self.variants
-            .iter()
-            .position(|v| v == s)
-            .ok_or_else(|| format!("Invalid variant: {}", s))
-    }
-}
-
-// ============================================================================
-// Declarative Macros for Easy Binding Creation
-// ============================================================================
-
-/// Create an F32 field binding with custom getter/setter closures
-///
-/// # Examples
-///
-/// ```rust
-/// // Bind to transform.position[0]
-/// let binding = bind_f32_field!(
-///     get: |obj| obj.transform.position[0],
-///     set: |obj, val| obj.transform.position[0] = val
-/// );
-///
-/// // Bind to a conditional field
-/// let binding = bind_f32_field!(
-///     get: |obj| match &obj.object_type {
-///         ObjectType::Light(LightType::Point { intensity, .. }) => *intensity,
-///         _ => 1.0,
-///     },
-///     set: |obj, val| {
-///         if let ObjectType::Light(LightType::Point { intensity, .. }) = &mut obj.object_type {
-///             *intensity = val;
-///         }
-///     }
-/// );
-/// ```
-#[macro_export]
-macro_rules! bind_f32_field {
-    (get: |$obj_get:ident| $get_expr:expr, set: |$obj_set:ident, $val:ident| $set_expr:expr) => {{
-        $crate::level_editor::ui::field_bindings::F32FieldBinding::new(
-            |$obj_get| $get_expr,
-            |$obj_set, $val| $set_expr,
-        )
-    }};
-}
-
-/// Create a Vec3 field binding with custom getter/setter closures
-#[macro_export]
-macro_rules! bind_vec3_field {
-    (get: |$obj_get:ident| $get_expr:expr, set: |$obj_set:ident, $val:ident| $set_expr:expr) => {{
-        $crate::level_editor::ui::field_bindings::Vec3FieldBinding::new(
-            |$obj_get| $get_expr,
-            |$obj_set, $val| $set_expr,
-        )
-    }};
-}
-
-/// Create a String field binding with custom getter/setter closures
-#[macro_export]
-macro_rules! bind_string_field {
-    (get: |$obj_get:ident| $get_expr:expr, set: |$obj_set:ident, $val:ident| $set_expr:expr) => {{
-        $crate::level_editor::ui::field_bindings::StringFieldBinding::new(
-            |$obj_get| $get_expr,
-            |$obj_set, $val| $set_expr,
-        )
-    }};
-}
-
-/// Create a Bool field binding with custom getter/setter closures
-#[macro_export]
-macro_rules! bind_bool_field {
-    (get: |$obj_get:ident| $get_expr:expr, set: |$obj_set:ident, $val:ident| $set_expr:expr) => {{
-        $crate::level_editor::ui::field_bindings::BoolFieldBinding::new(
-            |$obj_get| $get_expr,
-            |$obj_set, $val| $set_expr,
-        )
-    }};
 }
 
 #[cfg(test)]
@@ -549,26 +315,6 @@ mod tests {
         // Test from_string
         assert_eq!(binding.from_string("2.5"), Ok(2.5));
         assert!(binding.from_string("invalid").is_err());
-    }
-
-    #[test]
-    fn test_vec3_binding() {
-        let binding = Vec3FieldBinding::new(
-            |obj| obj.transform.position,
-            |obj, val| obj.transform.position = val,
-        );
-
-        // Test to_string
-        assert_eq!(
-            binding.to_string(&[1.0, 2.5, 3.13]),
-            "[1.000, 2.500, 3.130]"
-        );
-
-        // Test from_string
-        assert_eq!(binding.from_string("[1, 2, 3]"), Ok([1.0, 2.0, 3.0]));
-        assert_eq!(binding.from_string("[1.5, 2.5, 3.5]"), Ok([1.5, 2.5, 3.5]));
-        assert!(binding.from_string("invalid").is_err());
-        assert!(binding.from_string("[1, 2]").is_err());
     }
 
     #[test]

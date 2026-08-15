@@ -28,7 +28,7 @@ use crate::level_editor::scene_database::{
 };
 use crate::level_editor::{request_thumbnail_capture, CameraMode, LevelEditorState, TransformTool};
 use engine_backend::scene::WorldSceneStore;
-use engine_backend::subsystems::render::EditorCameraState;
+use engine_backend::subsystems::render::{EditorCameraState, HelioEditorMailbox};
 use plugin_manager;
 
 /// Main Level Editor Panel - Orchestrates all sub-components
@@ -48,6 +48,10 @@ pub struct LevelEditorPanel {
     // Helio viewport rendered via WgpuSurfaceHandle
     viewport: Entity<HelioViewport>,
     gpu_engine: Arc<Mutex<GpuRenderer>>, // Full GPU renderer from backend
+    // Cheap, `gpu_engine`-lock-free handle for one-shot editor commands
+    // (gizmo mode, deselect, force-full-resync) -- see `HelioEditorMailbox`'s
+    // doc. Fetched once at construction, not re-locked per command.
+    helio_mailbox: Option<HelioEditorMailbox>,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
 
     // Shared state for all panels (single source of truth)
@@ -336,6 +340,15 @@ impl LevelEditorPanel {
         let toolbar = cx.new(|_| ToolbarView::new(shared_state.clone(), gpu_engine.clone()));
         let status_bar = cx.new(|_| StatusBarView::new(shared_state.clone()));
 
+        // Fetched once here, not re-acquired via `gpu_engine.lock()` per
+        // command -- see `HelioEditorMailbox`'s doc. `GpuRendererBuilder::build`
+        // always sets `helio_renderer: Some(...)` synchronously, so this is
+        // `Some` immediately after construction; `None` only if `gpu_engine`
+        // somehow arrived pre-torn-down, which the `if let` call sites below
+        // degrade out of harmlessly (same "skip this one tick" shape the old
+        // `gpu_engine.lock()` sites already had on any lock failure).
+        let helio_mailbox = gpu_engine.lock().ok().and_then(|engine| engine.editor_mailbox());
+
         Self {
             focus_handle: cx.focus_handle(),
             fps_graph_is_line: Rc::new(RefCell::new(true)),
@@ -343,6 +356,7 @@ impl LevelEditorPanel {
             status_bar,
             viewport,
             gpu_engine: gpu_engine.clone(),
+            helio_mailbox,
             render_enabled,
             shared_state,
             workspace: None,
@@ -568,23 +582,32 @@ impl LevelEditorPanel {
     fn sync_gizmo_to_helio(&mut self) {
         let tool = self.shared_state.read().editor.current_tool;
         let (scene_type, helio_mode) = Self::tool_to_gizmo(tool);
-        if let Ok(mut engine) = self.gpu_engine.lock() {
-            engine.set_scene_gizmo_type(scene_type);
-            engine.queue_gizmo_mode(helio_mode);
+        // Mailbox, not `gpu_engine.lock()` -- fires on every tool hotkey
+        // press, frequent enough that a dropped tick (the old blocking-lock
+        // site's failure mode when contended) would be visibly janky. See
+        // `HelioEditorMailbox`'s doc.
+        if let Some(mailbox) = &self.helio_mailbox {
+            mailbox.queue_gizmo(scene_type, helio_mode);
         }
     }
 
     fn queue_gizmo_mode_for_tool(&mut self, tool: TransformTool) {
         let (scene_type, helio_mode) = Self::tool_to_gizmo(tool);
-        if let Ok(mut engine) = self.gpu_engine.lock() {
-            engine.set_scene_gizmo_type(scene_type);
-            engine.queue_gizmo_mode(helio_mode);
+        if let Some(mailbox) = &self.helio_mailbox {
+            mailbox.queue_gizmo(scene_type, helio_mode);
         }
     }
 
     fn current_editor_camera_state(&self) -> Option<LevelEditorCameraState> {
+        // `.try_lock()`, not `.lock()`: camera pose is continuously-mutated
+        // state (touched every frame by the render thread's own camera-input
+        // handling), not a one-shot command, so it doesn't fit the mailbox
+        // shape -- but this call site is load/save/construction only, never
+        // per-frame and never on the drag path, so a rare missed read here
+        // (falls through to `None`, already handled by every caller) is a
+        // fine tradeoff against ever blocking the UI thread on it.
         self.gpu_engine
-            .lock()
+            .try_lock()
             .ok()
             .and_then(|engine| engine.editor_camera_state())
             .map(|camera| LevelEditorCameraState {
@@ -599,12 +622,15 @@ impl LevelEditorPanel {
             return;
         };
 
-        if let Ok(mut engine) = self.gpu_engine.lock() {
+        // Same `.try_lock()` reasoning as `current_editor_camera_state`.
+        if let Ok(mut engine) = self.gpu_engine.try_lock() {
             engine.set_editor_camera_state(EditorCameraState {
                 position: camera.position,
                 yaw: camera.yaw,
                 pitch: camera.pitch,
             });
+        } else {
+            tracing::debug!("[CAMERA_STATE] gpu_engine busy, skipped applying camera state");
         }
     }
 
@@ -795,8 +821,11 @@ impl LevelEditorPanel {
         if state.scene.undo() {
             state.scene.bump_revision(true);
             drop(state);
-            if let Ok(mut engine) = self.gpu_engine.lock() {
-                engine.force_full_resync();
+            // Mailbox, not `gpu_engine.lock()`: this must never be silently
+            // dropped the way a lost `try_lock()`/blocked `.lock()` could --
+            // see `pending_force_full_resync`'s doc.
+            if let Some(mailbox) = &self.helio_mailbox {
+                mailbox.queue_force_full_resync();
             }
             self.sync_gizmo_to_helio();
         }
@@ -810,8 +839,8 @@ impl LevelEditorPanel {
         if state.scene.redo() {
             state.scene.bump_revision(true);
             drop(state);
-            if let Ok(mut engine) = self.gpu_engine.lock() {
-                engine.force_full_resync();
+            if let Some(mailbox) = &self.helio_mailbox {
+                mailbox.queue_force_full_resync();
             }
             self.sync_gizmo_to_helio();
         }
@@ -1385,9 +1414,12 @@ impl Render for LevelEditorPanel {
                     "escape" => {
                         // Update UI state unconditionally — always clear GPUI selection.
                         this.shared_state.write().scene.select_object(None);
-                        // Signal the render thread to call editor_state.deselect() next frame.
-                        if let Ok(engine) = this.gpu_engine.lock() {
-                            engine.queue_deselect();
+                        // Mailbox, not `gpu_engine.lock()` -- `queue_deselect`
+                        // was already just an atomic-flag write internally;
+                        // the lock here was pure incidental overhead from the
+                        // wrapper shape, not a real dependency.
+                        if let Some(mailbox) = &this.helio_mailbox {
+                            mailbox.queue_deselect();
                         }
                         cx.notify();
                     }

@@ -368,10 +368,22 @@ impl Render for PropertiesPanelWrapper {
                 let object_id_clone = object_id.clone();
 
                 self.object_header_section = Some(cx.new(|cx| {
-                    ObjectHeaderSection::new(object_id_clone.clone(), scene_db.clone(), window, cx)
+                    ObjectHeaderSection::new(
+                        object_id_clone.clone(),
+                        scene_db.clone(),
+                        self.state.clone(),
+                        window,
+                        cx,
+                    )
                 }));
                 self.transform_section = Some(cx.new(|cx| {
-                    TransformSection::new(object_id_clone.clone(), scene_db.clone(), window, cx)
+                    TransformSection::new(
+                        object_id_clone.clone(),
+                        scene_db.clone(),
+                        self.state.clone(),
+                        window,
+                        cx,
+                    )
                 }));
                 self.object_type_fields_section = Some(cx.new(|cx| {
                     ObjectTypeFieldsSection::new(

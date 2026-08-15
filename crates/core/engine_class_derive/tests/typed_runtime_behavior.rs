@@ -5,7 +5,7 @@
 //! generated shim deserializes the `&serde_json::Value` dispatch payload
 //! into the registered class's own concrete type exactly once, then calls
 //! the real typed `sync_component`, so the component's own body never
-//! touches JSON -- the same mechanism every real `pulsar_rendering`/
+//! touches JSON -- the same mechanism every real `helio_component`/
 //! `pulsar_physics` component now uses too (see the root `Cargo.toml`'s
 //! Pulsar-Reflection `[patch]` comment for that migration's own history).
 

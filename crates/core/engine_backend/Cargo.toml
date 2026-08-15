@@ -40,7 +40,7 @@ pulsar_world_registry.workspace = true
 
 # Shared scene loading — canonical implementation used by both engine and game
 pulsar_scene.workspace = true
-pulsar_rendering.workspace = true
+helio_component.workspace = true
 engine_fs.workspace = true
 
 # Profiling - instrumentation-based

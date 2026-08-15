@@ -9,7 +9,7 @@ rust_i18n::i18n!("locales", fallback = "en");
 // Without an explicit symbol reference the linker can dead-strip these
 // crates before inventory collects their EngineClass registrations.
 use pulsar_physics as _;
-use pulsar_rendering as _;
+use helio_component as _;
 
 use gpui::AppContext;
 

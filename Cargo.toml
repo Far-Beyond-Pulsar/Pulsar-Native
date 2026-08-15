@@ -121,7 +121,16 @@ agent_provider_cohere              = { path = "crates/agent-providers/agent_prov
 
 # ---------- Subsystem Crates ----------
 pulsar_physics        = { path = "crates/subsystems/pulsar_physics" }
-pulsar_rendering      = { path = "crates/subsystems/pulsar_rendering" }
+# Formerly `crates/subsystems/pulsar_rendering`, renamed `helio_component` and
+# physically relocated inside the Helio submodule
+# (`crates/renderer/helio/crates/helio-component`) -- see that crate's own
+# Cargo.toml doc comment for why it still declares `package.workspace =
+# "../../../.."` to explicitly stay a member of THIS workspace (not Helio's
+# own nested one) despite living under `crates/renderer/helio/`: it needs
+# `pulsar_scenedb`/`pulsar_reflection`/`pulsar_world_registry` to resolve to
+# the exact same copies `engine_backend`/`ui_level_editor` use below, for
+# `inventory`-based registry identity.
+helio_component       = { path = "crates/renderer/helio/crates/helio-component" }
 
 
 # ---------- Editor Crates ----------

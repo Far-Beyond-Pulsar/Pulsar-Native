@@ -23,7 +23,7 @@ use ui_common::reflected_properties_panel::PropertyStateManager;
 use ui_common::render_property_row_runtime;
 use window_manager::{PulsarWindow, default_window_options};
 
-use pulsar_rendering::mesh_cache::{self, ImportField};
+use helio_component::mesh_cache::{self, ImportField};
 
 /// Parameters for opening the import configurator as its own window.
 pub struct ImportConfiguratorParams {

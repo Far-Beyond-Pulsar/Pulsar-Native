@@ -35,7 +35,9 @@ use syn::{
         category,
         engine_class_category,
         sub_props,
-        engine_class_no_register
+        engine_class_no_register,
+        engine_class_serialize,
+        engine_class_deserialize
     )
 )]
 pub fn derive_engine_class(input: TokenStream) -> TokenStream {
@@ -207,12 +209,25 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
 
     // Whole-instance JSON round trip (Pulsar-Native#561's properties-panel
     // fix): `to_json`/`from_json` only make sense for classes that actually
-    // derive `Serialize`/`Deserialize` -- both are siblings in the same
-    // combined `#[derive(...)]` list `#[engine_class(..., serialize,
-    // deserialize, ...)]` builds, so `has_derive` sees them here exactly
-    // like `engine_class`'s own attribute-macro pass does.
-    let has_serialize = has_derive(&input.attrs, "Serialize");
-    let has_deserialize = has_derive(&input.attrs, "Deserialize");
+    // derive `Serialize`/`Deserialize`. Can't detect that with `has_derive`
+    // here the way `engine_class`'s attribute-macro pass does on
+    // `item_struct.attrs` -- a `#[proc_macro_derive]` never sees the
+    // `#[derive(...)]` list that triggered it (confirmed by instrumenting
+    // this function: `input.attrs` for a real component contained only its
+    // OTHER attributes -- `category`, `engine_class_category`, etc. --
+    // never `derive` itself). So `#[engine_class(..., serialize,
+    // deserialize, ...)]` instead stamps two marker attributes
+    // (`engine_class_serialize`/`engine_class_deserialize`) onto the struct
+    // alongside `category_attr`/`no_register_attr` below, and THOSE are
+    // what this derive macro can actually see.
+    let has_serialize = input
+        .attrs
+        .iter()
+        .any(|a| a.path().is_ident("engine_class_serialize"));
+    let has_deserialize = input
+        .attrs
+        .iter()
+        .any(|a| a.path().is_ident("engine_class_deserialize"));
 
     let to_json_impl = if has_serialize {
         quote! {
@@ -430,7 +445,7 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     // That `cfg`, once spliced into the crate where the struct is actually
     // DEFINED by macro expansion, checks THAT crate's own Cargo features --
     // not `pulsar_scenedb`'s. So the crate defining the struct (e.g.
-    // `pulsar_rendering`) needs its own feature named exactly "gpu", same
+    // `helio_component`) needs its own feature named exactly "gpu", same
     // as `engine_class_derive`'s own `[features] gpu` (Cargo.toml) exists
     // solely to make this crate's own `tests/scene_store_delegation.rs`
     // compile -- `helio-scenedb/Cargo.toml` documents the identical gotcha.
@@ -464,6 +479,25 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let no_register_attr = if no_register {
         quote! { #[engine_class_no_register] }
+    } else {
+        quote! {}
+    };
+
+    // Tell the `EngineClass` derive macro (below, via `derive_attr`) whether
+    // `Serialize`/`Deserialize` end up on this struct at all -- whether we
+    // just added them or the user already had them written by hand either
+    // way. Has to be a marker attribute, not something the derive macro
+    // infers from the `#[derive(...)]` list itself: a `#[proc_macro_derive]`
+    // never sees the derive list that triggered it (only its OTHER
+    // attributes), confirmed by instrumenting `derive_engine_class` directly
+    // -- see that function's own comment on `has_serialize`/`has_deserialize`.
+    let serialize_marker_attr = if add_serialize || has_serialize_derive {
+        quote! { #[engine_class_serialize] }
+    } else {
+        quote! {}
+    };
+    let deserialize_marker_attr = if add_deserialize || has_deserialize_derive {
+        quote! { #[engine_class_deserialize] }
     } else {
         quote! {}
     };
@@ -548,6 +582,8 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         #derive_attr
         #category_attr
         #no_register_attr
+        #serialize_marker_attr
+        #deserialize_marker_attr
         #item_struct
         #sub_props_marker_impl
         #runtime_registration

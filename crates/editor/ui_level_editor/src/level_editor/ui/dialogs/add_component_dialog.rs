@@ -109,25 +109,52 @@ impl AddComponentDialog {
         cx.emit(DismissEvent);
     }
 
-    /// Serialize an EngineClass instance to JSON using its reflection metadata,
-    /// then add it to the scene database.
+    /// Serialize an EngineClass instance to JSON, then add it to the scene
+    /// database.
+    ///
+    /// Uses `EngineClass::to_json()` (the class's own `#[derive(Serialize)]`
+    /// shape, including `#[sub_props]` nesting) as the primary path -- NOT
+    /// `get_properties()`. `get_properties()` flattens `#[sub_props]`-nested
+    /// structs (e.g. `LightComponent::color: ColorLightProps`) down to their
+    /// LEAF field names, so building JSON from it produces a flat map like
+    /// `{"color": [1,1,1,1], ...}` when the real struct expects the nested
+    /// shape `{"color": {...ColorLightProps...}, ...}`. Serde then tries to
+    /// deserialize the flat array as the nested struct via positional-sequence
+    /// deserialization, assigns array element 0 to the struct's first field
+    /// (`ColorLightProps::color: [f32; 4]`), and fails with exactly "invalid
+    /// type: floating point X, expected an array of length 4" -- this WAS the
+    /// bug behind that exact crash (Pulsar-Native#561): every `#[sub_props]`
+    /// + `#[register_world_component]` class (`LightComponent`,
+    /// `FoliageComponent`, `PhysicsComponent`, `RigidbodyComponent`) was
+    /// corrupted the moment it was added via this dialog, permanently
+    /// blocking `World` hydration for that entity from then on.
+    ///
+    /// Falls back to the old flat-`get_properties()` map only for classes
+    /// that don't support `to_json()` (no `serialize` marker) -- those have
+    /// no nested-struct shape to get wrong in the first place.
     fn add_from_engine_class(
         &self,
         class_name: &str,
         instance: Box<dyn pulsar_reflection::EngineClass>,
         _cx: &mut Context<Self>,
     ) {
-        let props = instance.get_properties();
-        let mut map = serde_json::Map::new();
-        for prop in &props {
-            let v = (prop.getter)(instance.as_ref());
-            let json_value = RUNTIME_TYPE_REGISTRY
-                .serialize_json_for_any(v.as_ref())
-                .unwrap_or(serde_json::json!(null));
-            map.insert(prop.name.to_string(), json_value);
-        }
+        let data = match instance.to_json() {
+            Ok(value) => value,
+            Err(_) => {
+                let props = instance.get_properties();
+                let mut map = serde_json::Map::new();
+                for prop in &props {
+                    let v = (prop.getter)(instance.as_ref());
+                    let json_value = RUNTIME_TYPE_REGISTRY
+                        .serialize_json_for_any(v.as_ref())
+                        .unwrap_or(serde_json::json!(null));
+                    map.insert(prop.name.to_string(), json_value);
+                }
+                Value::Object(map)
+            }
+        };
         self.scene_db
-            .add_component(&self.object_id, class_name.to_string(), Value::Object(map));
+            .add_component(&self.object_id, class_name.to_string(), data);
     }
 
     fn add_from_registry(&self, class_name: &str, _cx: &mut Context<Self>) {

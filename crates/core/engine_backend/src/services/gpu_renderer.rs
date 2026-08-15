@@ -184,6 +184,33 @@ impl GpuRenderer {
         self.helio_renderer.as_ref().map(|r| r.camera_input.clone())
     }
 
+    /// Pointer-event (left-click/left-release) queue handle for the viewport
+    /// input thread, fetched once alongside `camera_input()`. Pushing onto
+    /// this instead of calling `handle_left_click`/`handle_left_release`
+    /// through `gpu_engine` removes the `try_lock()` race that could
+    /// silently drop a release event and permanently wedge `is_dragging()`
+    /// -- see `PendingPointerEvent`'s doc.
+    pub fn pointer_event_queue(
+        &self,
+    ) -> Option<
+        std::sync::Arc<
+            std::sync::Mutex<Vec<crate::subsystems::render::helio_renderer::PendingPointerEvent>>,
+        >,
+    > {
+        self.helio_renderer
+            .as_ref()
+            .map(|r| r.pending_pointer_events.clone())
+    }
+
+    /// Cheap, lock-free-of-`gpu_engine` handle bundle for one-shot editor
+    /// commands (gizmo mode, deselect, force-full-resync) -- see
+    /// `HelioEditorMailbox`'s doc. Fetched once at panel construction.
+    pub fn editor_mailbox(
+        &self,
+    ) -> Option<crate::subsystems::render::helio_renderer::HelioEditorMailbox> {
+        self.helio_renderer.as_ref().map(|r| r.editor_mailbox())
+    }
+
     pub fn editor_camera_state(&self) -> Option<EditorCameraState> {
         self.helio_renderer
             .as_ref()
@@ -333,5 +360,78 @@ mod tests {
         renderer.set_spike_log_config(config);
 
         assert_eq!(renderer.spike_log_config(), Some(config));
+    }
+
+    // ── Pulsar-Native drag-release freeze fix: mailbox plumbing ────────────
+    // These exercise the queue/mailbox data structures in isolation, with no
+    // render thread involved -- the actual drag-release scenario itself
+    // still needs manual verification in the running editor (a real render
+    // thread racing real GPUI mouse events), which no automated test here
+    // can reach.
+
+    #[test]
+    fn pointer_event_queue_is_available_right_after_construction() {
+        let renderer = GpuRendererBuilder::new(1, 1).build();
+        assert!(
+            renderer.pointer_event_queue().is_some(),
+            "GpuRendererBuilder::build always sets helio_renderer synchronously"
+        );
+    }
+
+    #[test]
+    fn queue_left_click_and_release_push_onto_the_queue_in_order() {
+        use crate::subsystems::render::PendingPointerEvent;
+
+        let renderer = GpuRendererBuilder::new(1, 1).build();
+        let queue = renderer
+            .pointer_event_queue()
+            .expect("pointer event queue should exist");
+
+        // Simulate what viewport/mod.rs's on_mouse_down/on_mouse_up closures
+        // do -- push directly onto the shared queue, no gpu_engine lock.
+        queue
+            .lock()
+            .unwrap()
+            .push(PendingPointerEvent::LeftClick { norm_x: 0.25, norm_y: 0.75 });
+        queue.lock().unwrap().push(PendingPointerEvent::LeftRelease);
+
+        let drained = std::mem::take(&mut *queue.lock().unwrap());
+        assert_eq!(drained.len(), 2);
+        match drained[0] {
+            PendingPointerEvent::LeftClick { norm_x, norm_y } => {
+                assert_eq!((norm_x, norm_y), (0.25, 0.75));
+            }
+            PendingPointerEvent::LeftRelease => panic!("expected LeftClick first"),
+        }
+        assert!(matches!(drained[1], PendingPointerEvent::LeftRelease));
+
+        // Queue is empty again after the drain -- matches render_frame's own
+        // std::mem::take drain, proving a second drain sees nothing stale.
+        assert!(queue.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn editor_mailbox_queue_deselect_and_force_full_resync_set_their_flags() {
+        use std::sync::atomic::Ordering;
+
+        let renderer = GpuRendererBuilder::new(1, 1).build();
+        let mailbox = renderer
+            .editor_mailbox()
+            .expect("editor mailbox should exist");
+
+        mailbox.queue_deselect();
+        mailbox.queue_force_full_resync();
+
+        // `tests` is a child module of `gpu_renderer`, so it can reach
+        // `GpuRenderer`'s private `helio_renderer` field directly to prove
+        // the mailbox's writes actually land on the same `HelioRenderer`
+        // `render_frame` itself reads from -- `HelioEditorMailbox::Clone` is
+        // a shallow `Arc` handle clone, not a deep copy, so this is the same
+        // underlying `AtomicBool`s the render thread would see.
+        let inner = renderer.helio_renderer.as_ref().unwrap();
+        assert!(inner.pending_deselect.load(Ordering::Acquire));
+        assert!(inner
+            .pending_force_full_resync
+            .load(Ordering::Acquire));
     }
 }

@@ -17,16 +17,13 @@ use pulsar_reflection::{
     apply_runtime_behavior_for_class, scene_id_to_tag, ComponentRuntimeContext, LiveKeySet,
     RuntimeComponentOwner, Subsystems,
 };
-use pulsar_rendering::{
-    subsystems::{
-        apply_portal_pair_action, remove_foliage_handles, FoliageCache, LightCache, MeshCache,
-        PortalLinkCache, SceneObjectCache,
-    },
+use helio_component::{
+    subsystems::{apply_portal_pair_action, remove_foliage_handles, FoliageCache, MeshCache, PortalLinkCache},
     PlanetTerrainFrameInput, PlanetTerrainRuntime, PLANET_TERRAIN_CLASS_NAME,
 };
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
 
-use crate::scene::{ObjectUpdate, SceneDbDelta, WorldSceneStore};
+use crate::scene::{ObjectDirtyFlags, ObjectUpdate, SceneDbDelta, WorldSceneStore};
 use parking_lot::RwLock;
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 
@@ -49,6 +46,78 @@ pub struct EditorCameraState {
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+/// A left-click or left-release event, queued by the UI thread and drained
+/// on the render thread at the top of [`HelioRenderer::render_frame`]
+/// (Pulsar-Native drag-release freeze fix).
+///
+/// Previously `viewport/mod.rs`'s `on_mouse_up` called
+/// `HelioRenderer::handle_left_release` directly via `gpu_engine.try_lock()`
+/// -- non-blocking, with no retry. If that lost the race against the render
+/// thread's own unconditional per-frame `gpu_engine.lock()` (which happens
+/// every frame, not just under load), the release event was silently
+/// dropped: `EditorState::end_drag()` -- called *only* from
+/// `handle_left_release` -- never ran, `is_dragging()` stayed `true`
+/// forever, and that permanently gated out `sync_scene`/`sync_scene_delta`
+/// (`render_frame`'s `!inner.editor_state.is_dragging()` check) and idle
+/// detection. This queue removes `gpu_engine` from the click/release path
+/// entirely, so there's no lock left to lose that race on.
+///
+/// A `Vec`-backed mailbox, not a single-slot `Option` like
+/// `pending_gizmo_mode` below -- click and release are order-sensitive and
+/// must not collapse into "latest wins."
+#[derive(Debug, Clone, Copy)]
+pub enum PendingPointerEvent {
+    LeftClick { norm_x: f32, norm_y: f32 },
+    LeftRelease,
+}
+
+/// Cheap, `Clone`-able handle bundle for issuing editor commands
+/// (gizmo-mode change, deselect, force-full-resync) without ever taking
+/// `gpu_engine`'s blocking `std::sync::Mutex`.
+///
+/// `panel.rs` previously did `self.gpu_engine.lock()` for several one-shot
+/// UI actions (tool switch, undo/redo, escape-to-deselect) -- a blocking
+/// call that could stall the UI thread for as long as the render thread
+/// holds `gpu_engine` (unconditionally, every frame, for the whole
+/// `render_frame` call). Each of `queue_gizmo`/`queue_deselect`/
+/// `queue_force_full_resync` below only ever touches its own small
+/// `Arc<Mutex<...>>`/`Arc<AtomicBool>` mailbox (or `scene_store`'s already
+/// cheap, short-held lock for `queue_gizmo`'s `set_gizmo_type` call) --
+/// never `gpu_engine` -- so none of them can block on the render thread's
+/// per-frame lock hold at all.
+#[derive(Clone)]
+pub struct HelioEditorMailbox {
+    scene_store: Arc<RwLock<WorldSceneStore>>,
+    pending_gizmo_mode: Arc<Mutex<Option<GizmoMode>>>,
+    pending_deselect: Arc<AtomicBool>,
+    pending_force_full_resync: Arc<AtomicBool>,
+}
+
+impl HelioEditorMailbox {
+    /// Set the scene-store-level gizmo type immediately (already a cheap,
+    /// short `scene_store.write()`, unrelated to `gpu_engine`) and queue the
+    /// matching Helio gizmo mode for the render thread to pick up next frame.
+    pub fn queue_gizmo(&self, scene_type: crate::scene::GizmoType, mode: GizmoMode) {
+        self.scene_store.write().set_gizmo_type(scene_type);
+        if let Ok(mut guard) = self.pending_gizmo_mode.lock() {
+            *guard = Some(mode);
+        }
+    }
+
+    /// Request that the editor state deselects the current object next frame.
+    pub fn queue_deselect(&self) {
+        self.pending_deselect.store(true, Ordering::Relaxed);
+    }
+
+    /// Request `force_full_resync()` at the start of the next render frame.
+    /// See `HelioRenderer::pending_force_full_resync`'s doc for why this
+    /// must never be silently dropped (unlike `queue_deselect`, which is
+    /// pure UX and fine to occasionally miss a frame on).
+    pub fn queue_force_full_resync(&self) {
+        self.pending_force_full_resync.store(true, Ordering::Relaxed);
+    }
+}
+
 // ── HelioRenderer ─────────────────────────────────────────────────────────────
 
 /// Main renderer coordinating Helio 3D rendering with GPUI.
@@ -66,6 +135,15 @@ pub struct HelioRenderer {
     pub pending_gizmo_mode: Arc<Mutex<Option<GizmoMode>>>,
     /// When true, the render thread should call editor_state.deselect() next frame.
     pub pending_deselect: Arc<AtomicBool>,
+    /// Left-click/left-release events queued by the UI thread, drained in
+    /// order at the top of every `render_frame` -- see [`PendingPointerEvent`].
+    pub pending_pointer_events: Arc<Mutex<Vec<PendingPointerEvent>>>,
+    /// When true, the render thread should call `force_full_resync()` next
+    /// frame. Unlike `pending_deselect` this is correctness-load-bearing,
+    /// not just UX (see `force_full_resync`'s own doc) -- undo/redo route
+    /// through this instead of a `gpu_engine.lock()` that could silently
+    /// drop the request the same way the old click/release path could.
+    pub pending_force_full_resync: Arc<AtomicBool>,
 
     // ── Renderer State ──
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
@@ -118,17 +196,10 @@ struct HelioInner {
     /// Persists GPU-uploaded mesh geometry across frames so components
     /// don't re-load + re-upload the same asset every sync pass.
     mesh_cache: MeshCache,
-    /// Tracks scene object instances keyed by tag for incremental
-    /// update (avoid cascade-free on clear-all-insert-each-frame).
-    object_cache: SceneObjectCache,
     /// Persists foliage component handles (types/layers/interactors/materials)
     /// so the editor's per-sync component pass updates them in place instead of
     /// re-registering (which re-rolls GPU placement) every scene change.
     foliage_cache: FoliageCache,
-    /// Tracks light actors keyed by scene-object ID so LightComponent can
-    /// update them in place instead of the scene wholesale-clearing and
-    /// re-inserting every light on every sync pass.
-    light_cache: LightCache,
     /// Pairs up `PortalComponent` instances that share a `portal_id` into
     /// real `helio::Scene` portals — see that type's doc for why portals
     /// need their own cache (unlike every other single-object cache here,
@@ -150,6 +221,48 @@ struct HelioInner {
     known_ids: HashSet<String>,
 }
 
+// component_instances_from_snap delegates to pulsar_scene's shared impl.
+// Hoisted out of `sync_scene` (was a nested fn) so `sync_scene_delta`'s own
+// per-entity dispatch path (`sync_snapshot_components`) can call it too --
+// see that fn's doc for why the delta path needs the same dispatch `sync_scene`
+// already does, not just a separate transform/visibility patch.
+fn component_instances_from_snap(
+    snap: &crate::scene::ObjectSnapshot,
+) -> Vec<(usize, String, serde_json::Value)> {
+    component_instances_from_props(
+        &snap.render_props.props,
+        snap.render_props.component_instances.as_ref(),
+    )
+}
+
+// Hoisted out of `sync_scene` for the same reason as `component_instances_from_snap`
+// above -- `sync_snapshot_components` (shared by `sync_scene` and `sync_scene_delta`)
+// needs it too, and a struct definition can't live inside an `impl` block as an
+// associated item the way a nested fn can live inside a method.
+struct HelioRuntimeContext<'a> {
+    renderer: &'a mut Renderer,
+    subsystems: Subsystems,
+    error_queue: &'a Arc<Mutex<Vec<String>>>,
+    project_root: &'a Path,
+}
+
+impl<'a> ComponentRuntimeContext for HelioRuntimeContext<'a> {
+    fn subsystems_mut(&mut self) -> &mut Subsystems {
+        &mut self.subsystems
+    }
+
+    fn project_root(&self) -> &std::path::Path {
+        &self.project_root
+    }
+
+    fn report_error(&mut self, message: String) {
+        tracing::error!("{}", message);
+        if let Ok(mut eq) = self.error_queue.lock() {
+            eq.push(message);
+        }
+    }
+}
+
 impl HelioRenderer {
     pub fn new(scene_store: Arc<RwLock<WorldSceneStore>>) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
@@ -160,6 +273,8 @@ impl HelioRenderer {
             command_receiver,
             pending_gizmo_mode: Arc::new(Mutex::new(None)),
             pending_deselect: Arc::new(AtomicBool::new(false)),
+            pending_pointer_events: Arc::new(Mutex::new(Vec::new())),
+            pending_force_full_resync: Arc::new(AtomicBool::new(false)),
             reset_taa_next_frame: false,
             inner: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
@@ -259,9 +374,7 @@ impl HelioRenderer {
                 editor_state: EditorState::new(),
                 scene_picker: ScenePicker::new(),
                 mesh_cache: MeshCache::new(),
-                object_cache: SceneObjectCache::new(),
                 foliage_cache: FoliageCache::new(),
-                light_cache: LightCache::new(),
                 portal_link_cache: PortalLinkCache::new(),
                 planet_terrain: None,
                 planet_graph_rebuilt: false,
@@ -279,6 +392,29 @@ impl HelioRenderer {
                 self.cam_pitch
             );
             // First frame must render (lazy init includes nothing visible)
+        }
+
+        // ── Pending pointer events (queued by the UI thread, see
+        // `PendingPointerEvent`'s doc) ──────────────────────────────────────────
+        // Drained unconditionally, before `self.inner` is borrowed below and
+        // before the idle/pending-scene checks that follow -- `handle_left_click`/
+        // `handle_left_release` already set `self.gizmo_dirty = true`
+        // internally, so processing them here needs no extra plumbing to keep
+        // this frame from idling out on a drag-release commit.
+        let pending_pointer_events = self
+            .pending_pointer_events
+            .lock()
+            .map(|mut events| std::mem::take(&mut *events))
+            .unwrap_or_default();
+        for event in pending_pointer_events {
+            match event {
+                PendingPointerEvent::LeftClick { norm_x, norm_y } => {
+                    self.handle_left_click(norm_x, norm_y);
+                }
+                PendingPointerEvent::LeftRelease => {
+                    self.handle_left_release();
+                }
+            }
         }
 
         // ── Detect input activity BEFORE consuming ──────────────────────────────
@@ -368,6 +504,16 @@ impl HelioRenderer {
                 self.gizmo_dirty = true;
             }
         }
+        // Inlined rather than calling `self.force_full_resync()` -- `inner`
+        // above is already a live `&mut` borrow of `self.inner` at this
+        // point, and `force_full_resync` needs the same borrow itself.
+        if self
+            .pending_force_full_resync
+            .swap(false, Ordering::AcqRel)
+        {
+            inner.last_scene_revision = 0;
+            inner.known_ids.clear();
+        }
 
         // ── Early out when idle ─────────────────────────────────────────────────
         // No GPU work, no gizmo rebuild, no planet terrain tick, no profiler reads.
@@ -390,7 +536,7 @@ impl HelioRenderer {
             if inner.last_scene_revision == 0 && inner.known_ids.is_empty() {
                 Self::sync_scene(&self.scene_store, inner, &self.pending_errors);
             } else {
-                Self::sync_scene_delta(&self.scene_store, inner);
+                Self::sync_scene_delta(&self.scene_store, inner, &self.pending_errors);
             }
             sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
             inner.last_scene_revision = scene_revision;
@@ -644,6 +790,34 @@ impl HelioRenderer {
             .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
+    /// Queue a left-click for the render thread to process at the top of
+    /// its next frame, instead of the UI thread calling `handle_left_click`
+    /// directly through `gpu_engine`. See [`PendingPointerEvent`]'s doc.
+    pub fn queue_left_click(&self, norm_x: f32, norm_y: f32) {
+        if let Ok(mut events) = self.pending_pointer_events.lock() {
+            events.push(PendingPointerEvent::LeftClick { norm_x, norm_y });
+        }
+    }
+
+    /// Queue a left-release the same way. See [`PendingPointerEvent`]'s doc
+    /// -- this is the one that used to be silently droppable via a lost
+    /// `gpu_engine.try_lock()` race, permanently wedging `is_dragging()`.
+    pub fn queue_left_release(&self) {
+        if let Ok(mut events) = self.pending_pointer_events.lock() {
+            events.push(PendingPointerEvent::LeftRelease);
+        }
+    }
+
+    /// Request `force_full_resync()` at the start of the next render frame,
+    /// via the same always-delivered mailbox mechanism as `pending_deselect`
+    /// rather than a `gpu_engine.lock()` call that could race and drop the
+    /// request. See [`Self::pending_force_full_resync`]'s doc for why this
+    /// one specifically must never be silently dropped.
+    pub fn queue_force_full_resync(&self) {
+        self.pending_force_full_resync
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Get the active gizmo state from the scene store (gizmo_type, highlighted_axis, etc.).
     pub fn get_scene_gizmo_type(&self) -> crate::scene::GizmoType {
         self.scene_store.read().get_gizmo_state().gizmo_type
@@ -681,6 +855,19 @@ impl HelioRenderer {
         if let Some(inner) = &mut self.inner {
             inner.last_scene_revision = 0;
             inner.known_ids.clear();
+        }
+    }
+
+    /// A small, cheaply-`Clone`-able bundle of this renderer's cross-thread
+    /// mailbox handles, for UI code (`panel.rs`) that wants to send an
+    /// editor command without going through `gpu_engine`'s blocking
+    /// `Mutex`. See [`HelioEditorMailbox`]'s own doc.
+    pub fn editor_mailbox(&self) -> HelioEditorMailbox {
+        HelioEditorMailbox {
+            scene_store: self.scene_store.clone(),
+            pending_gizmo_mode: self.pending_gizmo_mode.clone(),
+            pending_deselect: self.pending_deselect.clone(),
+            pending_force_full_resync: self.pending_force_full_resync.clone(),
         }
     }
 
@@ -1034,176 +1221,79 @@ impl HelioRenderer {
         inner: &mut HelioInner,
         error_queue: &Arc<Mutex<Vec<String>>>,
     ) {
-        // component_instances_from_snap now delegates to pulsar_scene's shared impl.
-        fn component_instances_from_snap(
-            snap: &crate::scene::ObjectSnapshot,
-        ) -> Vec<(usize, String, serde_json::Value)> {
-            component_instances_from_props(
-                &snap.render_props.props,
-                snap.render_props.component_instances.as_ref(),
-            )
-        }
-
-        struct HelioRuntimeContext<'a> {
-            renderer: &'a mut Renderer,
-            subsystems: Subsystems,
-            error_queue: &'a Arc<Mutex<Vec<String>>>,
-            project_root: &'a Path,
-        }
-
-        impl<'a> ComponentRuntimeContext for HelioRuntimeContext<'a> {
-            fn subsystems_mut(&mut self) -> &mut Subsystems {
-                &mut self.subsystems
-            }
-
-            fn project_root(&self) -> &std::path::Path {
-                &self.project_root
-            }
-
-            fn report_error(&mut self, message: String) {
-                tracing::error!("{}", message);
-                if let Ok(mut eq) = self.error_queue.lock() {
-                    eq.push(message);
-                }
-            }
-        }
-
         // Skip sync while the gizmo is actively dragging.
         if inner.editor_state.is_dragging() {
             return;
         }
 
-        // Lights are managed incrementally through LightCache (like objects
-        // via SceneObjectCache below): LightComponent looks up its cached
-        // LightId and calls Scene::update_light in place instead of the
-        // scene being wholesale-cleared and every light re-inserted fresh
+        // Lights and objects are managed incrementally via `Scene::light_by_tag`/
+        // `object_by_tag` (Pulsar-Native#561) -- each component looks up its
+        // own existing Helio actor by tag and updates it in place, rather
+        // than the scene wholesale-clearing and re-inserting everything on
         // every sync pass.
-        // Objects are managed incrementally through SceneObjectCache:
-        // components call get_subsystem!(context, SceneObjectCache) to look up
-        // existing objects by tag, then either update transforms in-place or
-        // insert new ones.  After the sync pass we remove stale entries (those
-        // the component system didn't touch this frame).
 
         // ── Component sync pass ───────────────────────────────────────────────
-        // Single write-lock held for the whole pass -- see this module's top
-        // doc / SceneDatabase's B1 migration note for why: WorldSceneStore
-        // has no lock-free per-entry design, so a snapshot pull followed by a
-        // dirty-flag drain needs one held guard, not two racing acquisitions.
-        let mut store = scene_store.write();
-        let t_snap = std::time::Instant::now();
-        let snapshots = store.get_all_snapshots();
-        let snap_ms = t_snap.elapsed().as_secs_f64() * 1000.0;
-        if snap_ms > 2.0 {
-            tracing::warn!("[SYNC_SCENE] get_all_snapshots took {:.2}ms", snap_ms);
-        }
-        let mut live_keys = LiveKeySet::new();
-        let project_root = engine_state::get_project_path()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-        let mut planet_runtime_init_attempted = inner.planet_terrain.is_some();
-
-        // Process all snapshots through the component system regardless of
-        // visibility so objects exist in the Helio scene for gizmo rendering
-        // and selection picking.
-        for snap in &snapshots {
-            let owner = RuntimeComponentOwner {
-                scene_object_id: snap.stable_id.as_str(),
-                position: snap.transform.position,
-                rotation: snap.transform.rotation,
-                scale: snap.transform.scale,
-                props: &snap.render_props.props,
-            };
-
-            let component_instances = component_instances_from_snap(snap);
-            let needs_planet_runtime = component_instances.iter().any(|(_, class_name, data)| {
-                class_name == PLANET_TERRAIN_CLASS_NAME
-                    && data
-                        .get("enabled")
-                        .and_then(serde_json::Value::as_bool)
-                        .unwrap_or(true)
-            });
-            if needs_planet_runtime
-                && inner.planet_terrain.is_none()
-                && !planet_runtime_init_attempted
-            {
-                planet_runtime_init_attempted = true;
-                match PlanetTerrainRuntime::new() {
-                    Ok(runtime) => inner.planet_terrain = Some(runtime),
-                    Err(error) => {
-                        let message =
-                            format!("Planet terrain runtime initialization failed: {error}");
-                        tracing::error!("{message}");
-                        if let Ok(mut errors) = error_queue.lock() {
-                            errors.push(message);
-                        }
-                    }
-                }
+        // Phase 1: READ lock, scoped as tightly as possible (Pulsar-Native
+        // drag-release freeze fix -- see the plan this landed from). Every
+        // `store` call in this block is `&self` (`get_all_snapshots`,
+        // `entity_for`, `world()`; `dispatch_world_component_for_class` also
+        // only takes `&World`), so a shared read lock is all this needs --
+        // it no longer blocks a concurrent `SceneDatabase` write from the UI
+        // thread the way a write lock held for this whole pass used to.
+        // Previously this was ONE write-lock guard held across this entire
+        // function, specifically so the snapshot pull and the dirty-flag
+        // drain at the very end shared one critical section instead of two
+        // racing acquisitions -- but everything between them (mesh loading,
+        // GPU resource creation, cache teardown, a render-graph rebuild, a
+        // *nested* `script_registry` lock, a BVH rebuild) never actually
+        // touched `store` at all, so holding the write lock across all of it
+        // was pure incidental scope creep, not a real requirement. Dirty-flag
+        // draining now happens in its own short Phase 2 write lock, below.
+        let (snapshots, mut live_keys) = {
+            let store = scene_store.read();
+            let t_snap = std::time::Instant::now();
+            let snapshots = store.get_all_snapshots();
+            let snap_ms = t_snap.elapsed().as_secs_f64() * 1000.0;
+            if snap_ms > 2.0 {
+                tracing::warn!("[SYNC_SCENE] get_all_snapshots took {:.2}ms", snap_ms);
             }
-            let mut subsystems = Subsystems::new();
-            subsystems.register_ref::<Renderer>(&mut inner.renderer);
-            subsystems.register_ref::<MeshCache>(&mut inner.mesh_cache);
-            subsystems.register_ref::<SceneObjectCache>(&mut inner.object_cache);
-            subsystems.register_ref::<FoliageCache>(&mut inner.foliage_cache);
-            subsystems.register_ref::<LightCache>(&mut inner.light_cache);
-            subsystems.register_ref::<PortalLinkCache>(&mut inner.portal_link_cache);
-            if let Some(planet_terrain) = inner.planet_terrain.as_mut() {
-                let (runtime, cache) = planet_terrain.component_context_mut();
-                subsystems.register_ref(runtime);
-                subsystems.register_ref(cache);
-            }
-            subsystems.register_ref::<LiveKeySet>(&mut live_keys);
-            let mut ctx = HelioRuntimeContext {
-                renderer: &mut inner.renderer,
-                subsystems,
-                error_queue,
-                project_root: &project_root,
-            };
+            let mut live_keys = LiveKeySet::new();
+            let project_root = engine_state::get_project_path()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let mut planet_runtime_init_attempted = inner.planet_terrain.is_some();
 
-            // Phase B4/B5 (Pulsar-Native#555/#556): a class registered with
-            // `#[register_world_component]` dispatches directly off the
-            // typed value `SceneDatabase` already hydrated into `World` --
-            // no `serde_json::from_value` on this hot path. Falls back to
-            // the JSON dispatch below for anything not yet migrated (most of
-            // B5's list, at time of writing), or in the unexpected case
-            // hydration didn't happen for some reason -- fails safe rather
-            // than silently dropping the object's rendering.
-            let entity = store.entity_for(snap.stable_id.as_str());
-            for (component_index, class_name, data) in component_instances {
-                if let Some(entity) = entity {
-                    if pulsar_world_registry::dispatch_world_component_for_class(
-                        class_name.as_str(),
-                        store.world(),
-                        entity,
-                        &owner,
-                        component_index,
-                        &mut ctx,
-                    ) {
-                        continue;
-                    }
-                }
-                let _ = apply_runtime_behavior_for_class(
-                    class_name.as_str(),
-                    &owner,
-                    component_index,
-                    &data,
-                    &mut ctx,
+            // Process all snapshots through the component system regardless of
+            // visibility so objects exist in the Helio scene for gizmo rendering
+            // and selection picking.
+            for snap in &snapshots {
+                Self::sync_snapshot_components(
+                    inner,
+                    &store,
+                    snap,
+                    error_queue,
+                    &project_root,
+                    &mut planet_runtime_init_attempted,
+                    &mut live_keys,
                 );
             }
-        }
+            (snapshots, live_keys)
+        }; // read guard dropped here -- everything below is lock-free w.r.t. `scene_store`.
 
-        // Remove stale scene objects and cache entries (components didn't touch them).
-        let stale_ids: Vec<String> = inner
-            .object_cache
-            .map
-            .keys()
-            .filter(|id| !live_keys.inner().contains(*id))
-            .cloned()
-            .collect();
-        for scene_id in stale_ids {
-            if let Some((obj_id, _)) = inner.object_cache.remove(&scene_id) {
-                let _ = inner.renderer.scene_mut().remove_object(obj_id);
-            }
-        }
+        // NOTE (Pulsar-Native#561): there used to be a "remove stale scene
+        // objects" sweep here, keyed off `inner.object_cache` (a
+        // `SceneObjectCache`, since deleted). It was already silently
+        // non-functional before this cleanup -- `SceneObjectCache` was never
+        // actually populated anywhere (`StaticMeshComponent::sync_component`
+        // resolves objects via `scene.object_by_tag` instead, confirmed by
+        // grep), so `.map.keys()` was always empty and this loop's body
+        // never ran. Meaning: removing a `StaticMeshComponent` from an
+        // object while leaving the object itself alive does NOT currently
+        // remove its mesh from the Helio scene. This is a real, pre-existing
+        // gap (not introduced by this cleanup, which only removes dead
+        // scaffolding that was already a no-op) -- a correct fix needs an
+        // `object_by_tag`-based staleness check instead of a cache, tracked
+        // as a follow-up rather than attempted here.
 
         // Remove stale foliage component instances (components didn't touch them
         // this pass): the cached type/layer/interactor/material are all torn down.
@@ -1218,21 +1308,11 @@ impl HelioRenderer {
             remove_foliage_handles(inner.renderer.scene_mut(), &mut inner.foliage_cache, &key);
         }
 
-        // Remove stale lights (object deleted, or its LightComponent removed
-        // while the object stayed — LightComponent itself handles the
-        // disabled-but-still-attached case).
-        let stale_lights: Vec<String> = inner
-            .light_cache
-            .map
-            .keys()
-            .filter(|key| !live_keys.contains(*key))
-            .cloned()
-            .collect();
-        for key in stale_lights {
-            if let Some(light_id) = inner.light_cache.remove(&key) {
-                let _ = inner.renderer.scene_mut().remove_light(light_id);
-            }
-        }
+        // NOTE (Pulsar-Native#561): same story as the object-cache sweep
+        // above -- `LightCache` (since deleted) was never actually
+        // populated (`LightComponent::sync_component` resolves via
+        // `scene.light_by_tag` instead), so this was already a silent
+        // no-op. Same pre-existing gap, same follow-up needed.
 
         // Drop stale portal sides (their object deleted, or their
         // PortalComponent removed/disabled while the object stayed —
@@ -1271,8 +1351,16 @@ impl HelioRenderer {
         // Apply editor visibility: hidden objects remain in the Helio scene
         // (for gizmo rendering and selection picking) but are assigned to the
         // HIDDEN group so they don't render visually.
+        //
+        // `object_by_tag`, not the now-deleted `SceneObjectCache` -- that
+        // cache was never actually populated anywhere in the codebase
+        // (confirmed: no `.insert()` call existed), so this loop was a
+        // silent no-op before this fix, in both this full-sync pass AND
+        // `sync_scene_delta`'s own equivalent (`apply_visibility_patch`,
+        // which uses the same `object_by_tag` resolution for consistency).
         for snap in &snapshots {
-            if let Some((obj_id, _)) = inner.object_cache.get(&snap.stable_id) {
+            let tag = scene_id_to_tag(snap.stable_id.as_str());
+            if let Some(obj_id) = inner.renderer.scene().object_by_tag(tag) {
                 let groups = if snap.visibility.visible {
                     GroupMask::NONE
                 } else {
@@ -1294,6 +1382,9 @@ impl HelioRenderer {
             tracing::warn!("[SYNC_SCENE] picker rebuild took {:.2}ms", picker_ms);
         }
 
+        // Phase 2: short WRITE lock, the only part of this whole function
+        // that genuinely needs `&mut WorldSceneStore`.
+        //
         // Full sync just brought every object in `live_keys` fully up to
         // date from its snapshot, so clear their dirty flags here — full
         // sync never marked them dirty in the first place (that only
@@ -1303,19 +1394,122 @@ impl HelioRenderer {
         // every frame until something happened to touch drain_dirty().
         //
         // Scoped to `live_keys` (this pass's snapshot) rather than a global
-        // `store.drain_dirty()`, matching the pre-B1 behavior: this whole
-        // function now holds `store`'s write lock for its entire duration
-        // (see the guard taken above), so the original race this comment
-        // used to describe -- another thread inserting into a
-        // concurrently-mutated `DashMap` between the snapshot pull and this
-        // loop -- can no longer happen; the lock rules it out. Kept scoped
-        // to `live_keys` anyway rather than switching to a global drain,
-        // since that's a distinct, unrelated behavior change (it would also
-        // clear dirty flags for objects this pass never actually synced to
-        // Helio, which isn't what "full sync completed" should mean) and
-        // not something this migration set out to change.
-        for id in live_keys.inner() {
-            let _ = store.take_dirty_flags(id);
+        // `store.drain_dirty()`, matching the pre-B1 behavior. Note this is
+        // now a genuinely separate lock acquisition from Phase 1's read lock
+        // above (no guard held across both), so in principle another writer
+        // could interleave between them -- accepted, and harmless here: the
+        // only other writers of dirty flags are `WorldSceneStore`'s own
+        // mutation methods reacting to real edits, and any such edit that
+        // lands in this narrow window just gets its dirty flag cleared one
+        // pass later than it otherwise would (picked up by the very next
+        // `sync_scene`/`sync_scene_delta`), not lost. Kept scoped to
+        // `live_keys` anyway rather than switching to a global drain, since
+        // that's a distinct, unrelated behavior change (it would also clear
+        // dirty flags for objects this pass never actually synced to Helio,
+        // which isn't what "full sync completed" should mean) and not
+        // something this migration set out to change.
+        {
+            let mut store = scene_store.write();
+            for id in live_keys.inner() {
+                let _ = store.take_dirty_flags(id);
+            }
+        }
+    }
+
+    /// Dispatches one snapshot's components into Helio -- the same
+    /// `dispatch_world_component_for_class`/`apply_runtime_behavior_for_class`
+    /// call `sync_scene`'s full pass has always made, factored out so
+    /// `sync_scene_delta` can invoke it too (Pulsar-Native#561: the steady-state
+    /// per-frame path previously never dispatched components at all -- see that
+    /// fn's own doc). `store` only needs `&self` for the duration of this call
+    /// (`entity_for`, `world()`); callers hold whatever lock (read is enough)
+    /// gets them that reference.
+    fn sync_snapshot_components(
+        inner: &mut HelioInner,
+        store: &WorldSceneStore,
+        snap: &crate::scene::ObjectSnapshot,
+        error_queue: &Arc<Mutex<Vec<String>>>,
+        project_root: &Path,
+        planet_runtime_init_attempted: &mut bool,
+        live_keys: &mut LiveKeySet,
+    ) {
+        let owner = RuntimeComponentOwner {
+            scene_object_id: snap.stable_id.as_str(),
+            position: snap.transform.position,
+            rotation: snap.transform.rotation,
+            scale: snap.transform.scale,
+            props: &snap.render_props.props,
+        };
+
+        let component_instances = component_instances_from_snap(snap);
+        let needs_planet_runtime = component_instances.iter().any(|(_, class_name, data)| {
+            class_name == PLANET_TERRAIN_CLASS_NAME
+                && data
+                    .get("enabled")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(true)
+        });
+        if needs_planet_runtime && inner.planet_terrain.is_none() && !*planet_runtime_init_attempted
+        {
+            *planet_runtime_init_attempted = true;
+            match PlanetTerrainRuntime::new() {
+                Ok(runtime) => inner.planet_terrain = Some(runtime),
+                Err(error) => {
+                    let message = format!("Planet terrain runtime initialization failed: {error}");
+                    tracing::error!("{message}");
+                    if let Ok(mut errors) = error_queue.lock() {
+                        errors.push(message);
+                    }
+                }
+            }
+        }
+        let mut subsystems = Subsystems::new();
+        subsystems.register_ref::<Renderer>(&mut inner.renderer);
+        subsystems.register_ref::<MeshCache>(&mut inner.mesh_cache);
+        subsystems.register_ref::<FoliageCache>(&mut inner.foliage_cache);
+        subsystems.register_ref::<PortalLinkCache>(&mut inner.portal_link_cache);
+        if let Some(planet_terrain) = inner.planet_terrain.as_mut() {
+            let (runtime, cache) = planet_terrain.component_context_mut();
+            subsystems.register_ref(runtime);
+            subsystems.register_ref(cache);
+        }
+        subsystems.register_ref::<LiveKeySet>(live_keys);
+        let mut ctx = HelioRuntimeContext {
+            renderer: &mut inner.renderer,
+            subsystems,
+            error_queue,
+            project_root,
+        };
+
+        // Phase B4/B5 (Pulsar-Native#555/#556): a class registered with
+        // `#[register_world_component]` dispatches directly off the
+        // typed value `SceneDatabase` already hydrated into `World` --
+        // no `serde_json::from_value` on this hot path. Falls back to
+        // the JSON dispatch below for anything not yet migrated (most of
+        // B5's list, at time of writing), or in the unexpected case
+        // hydration didn't happen for some reason -- fails safe rather
+        // than silently dropping the object's rendering.
+        let entity = store.entity_for(snap.stable_id.as_str());
+        for (component_index, class_name, data) in component_instances {
+            if let Some(entity) = entity {
+                if pulsar_world_registry::dispatch_world_component_for_class(
+                    class_name.as_str(),
+                    store.world(),
+                    entity,
+                    &owner,
+                    component_index,
+                    &mut ctx,
+                ) {
+                    continue;
+                }
+            }
+            let _ = apply_runtime_behavior_for_class(
+                class_name.as_str(),
+                &owner,
+                component_index,
+                &data,
+                &mut ctx,
+            );
         }
     }
 
@@ -1375,23 +1569,91 @@ impl HelioRenderer {
         }
     }
 
+    /// Steady-state per-frame sync path -- everything after the very first
+    /// `sync_scene` full pass (or a `force_full_resync()`) goes through here
+    /// instead. Pulsar-Native#561: this function used to compute `added`/
+    /// `updated` and then discard them (the return value was never assigned
+    /// at the `render_frame` call site), and never inspected `flags` at all
+    /// -- so no per-frame change of ANY kind (not transform, not visibility,
+    /// not component data) actually reached `helio::Scene` after the first
+    /// frame. Fixed here: entities whose dirty flags include `COMPONENTS`/
+    /// `PROPS` (or that are new since the last pass) get the same full
+    /// per-component dispatch `sync_scene`'s full pass has always used
+    /// (`sync_snapshot_components` -- the same registered `sync_component`
+    /// translations, e.g. `LightComponent::to_gpu_light`, now actually run
+    /// continuously instead of only once). A `TRANSFORM`-only or
+    /// `VISIBILITY`-only change on an already-known entity takes a cheaper
+    /// direct-patch path instead of a full re-dispatch. Removed entities now
+    /// actually get removed from `helio::Scene` too (previously only
+    /// `known_ids` bookkeeping happened; the actor lingered until the next
+    /// full resync).
     fn sync_scene_delta(
         scene_store: &Arc<RwLock<WorldSceneStore>>,
         inner: &mut HelioInner,
+        error_queue: &Arc<Mutex<Vec<String>>>,
     ) -> SceneDbDelta {
-        let mut store = scene_store.write();
-        let revision = store.dirty_gen();
-        let dirty = store.drain_dirty();
-        let removed = store.take_removed_ids();
+        // Phase 0: short WRITE lock -- draining is the only `&mut WorldSceneStore`
+        // work this function needs. Dropped immediately after, matching
+        // `sync_scene`'s own Phase 1/Phase 2 split (never hold a write lock
+        // across dispatch/GPU work -- see that fn's doc for why).
+        let (revision, dirty, removed) = {
+            let mut store = scene_store.write();
+            let revision = store.dirty_gen();
+            let dirty = store.drain_dirty();
+            let removed = store.take_removed_ids();
+            (revision, dirty, removed)
+        };
 
         let mut added = Vec::new();
         let mut updated = Vec::new();
+        let anything_changed = !dirty.is_empty() || !removed.is_empty();
 
-        for (id, flags) in dirty {
-            if inner.known_ids.contains(&id) {
-                if let Some(snap) = store.get_object(&id) {
+        // Phase 1: fresh READ lock, only entered if there's actually dirty
+        // work -- `dispatch_world_component_for_class` needs `&World` for the
+        // call's duration, same precedent as `sync_scene`'s own Phase 1.
+        if !dirty.is_empty() {
+            let store = scene_store.read();
+            let project_root = engine_state::get_project_path()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+            let mut planet_runtime_init_attempted = inner.planet_terrain.is_some();
+
+            for (id, flags) in &dirty {
+                let Some(snap) = store.get_object(id) else {
+                    // Drained as dirty, then removed again before this loop
+                    // ran -- the `removed` list (handled below) already
+                    // covers cleanup.
+                    continue;
+                };
+                let is_known = inner.known_ids.contains(id);
+
+                if !is_known || flags.intersects(ObjectDirtyFlags::COMPONENTS | ObjectDirtyFlags::PROPS)
+                {
+                    // Full per-component dispatch -- also what makes a newly
+                    // spawned entity (`WorldSceneStore::spawn` publishes
+                    // `ObjectDirtyFlags::all()`) actually appear in
+                    // `helio::Scene` for the first time.
+                    let mut live_keys = LiveKeySet::new();
+                    Self::sync_snapshot_components(
+                        inner,
+                        &store,
+                        &snap,
+                        error_queue,
+                        &project_root,
+                        &mut planet_runtime_init_attempted,
+                        &mut live_keys,
+                    );
+                } else if flags.contains(ObjectDirtyFlags::TRANSFORM) {
+                    Self::apply_transform_patch(inner, &snap);
+                }
+
+                if flags.contains(ObjectDirtyFlags::VISIBILITY) {
+                    Self::apply_visibility_patch(inner, &snap);
+                }
+
+                if is_known {
                     updated.push(ObjectUpdate {
-                        id,
+                        id: id.clone(),
                         transform: Some(build_transform_parts(
                             snap.transform.position,
                             snap.transform.rotation,
@@ -1400,17 +1662,30 @@ impl HelioRenderer {
                         visible: Some(snap.visibility.visible),
                         name: None,
                     });
+                } else {
+                    added.push(id.clone());
                 }
-            } else {
-                added.push(id);
             }
-        }
+        } // read guard dropped here -- everything below is lock-free w.r.t. `scene_store`.
 
+        // Removed entities: actually tear down their Helio-side actor now,
+        // rather than leaving it to linger until the next full resync.
         for id in &removed {
+            let tag = scene_id_to_tag(id.as_str());
+            let scene = inner.renderer.scene_mut();
+            if let Some(obj_id) = scene.object_by_tag(tag) {
+                let _ = scene.remove_object(obj_id);
+            } else if let Some(light_id) = scene.light_by_tag(tag) {
+                let _ = scene.remove_light(light_id);
+            }
             inner.known_ids.remove(id);
         }
         for id in &added {
             inner.known_ids.insert(id.clone());
+        }
+
+        if anything_changed {
+            inner.scene_picker.rebuild_instances(inner.renderer.scene());
         }
 
         SceneDbDelta {
@@ -1418,6 +1693,56 @@ impl HelioRenderer {
             removed,
             updated,
             revision,
+        }
+    }
+
+    /// Cheap fast path for a `TRANSFORM`-only change on an entity already
+    /// known to Helio -- skips the full per-component re-dispatch
+    /// `sync_snapshot_components` would otherwise do. Uses `object_by_tag`/
+    /// `light_by_tag` -- the now-deleted `SceneObjectCache` was never
+    /// populated anywhere in the codebase, so using it here would have
+    /// made this silently a no-op.
+    fn apply_transform_patch(inner: &mut HelioInner, snap: &crate::scene::ObjectSnapshot) {
+        let tag = scene_id_to_tag(snap.stable_id.as_str());
+        let transform = build_transform_parts(
+            snap.transform.position,
+            snap.transform.rotation,
+            snap.transform.scale,
+        );
+        let scene = inner.renderer.scene_mut();
+        if let Some(obj_id) = scene.object_by_tag(tag) {
+            let _ = scene.update_object_transform(obj_id, transform);
+        } else if let Some(light_id) = scene.light_by_tag(tag) {
+            // Lights have no dedicated "move" API -- copy-modify-write the
+            // position component of the existing GpuLight, same pattern
+            // `LightComponent::sync_component`'s full dispatch would end up
+            // doing via `to_gpu_light`, just without recomputing every other
+            // field (color, cone angles, shadow settings, ...) that a plain
+            // move didn't touch.
+            if let Some(mut light) = scene.get_light(light_id) {
+                light.position_range[0] = snap.transform.position[0];
+                light.position_range[1] = snap.transform.position[1];
+                light.position_range[2] = snap.transform.position[2];
+                let _ = scene.update_light(light_id, light);
+            }
+        }
+    }
+
+    /// Cheap fast path for a `VISIBILITY`-only change -- same group-mask
+    /// logic `sync_scene`'s own "apply editor visibility" pass uses. Lights
+    /// have no visibility/group mechanism today (`LightComponent::
+    /// sync_component` doesn't implement one either), so this is a no-op for
+    /// them -- a pre-existing gap, not introduced here.
+    fn apply_visibility_patch(inner: &mut HelioInner, snap: &crate::scene::ObjectSnapshot) {
+        let tag = scene_id_to_tag(snap.stable_id.as_str());
+        let scene = inner.renderer.scene_mut();
+        if let Some(obj_id) = scene.object_by_tag(tag) {
+            let groups = if snap.visibility.visible {
+                GroupMask::NONE
+            } else {
+                GroupMask::from(GroupId::new(8))
+            };
+            let _ = scene.set_object_groups(obj_id, groups);
         }
     }
 }

@@ -68,7 +68,20 @@ impl F32BoundField {
                             let text = state.text().to_string();
                             if let Ok(value) = this.binding.from_string(&text) {
                                 if this.binding.validate(&value).is_ok() {
-                                    // Update scene database (this records to undo/redo)
+                                    // `binding.set` -- whether this is
+                                    // undo-tracked depends entirely on which
+                                    // `FieldBinding` was constructed with
+                                    // (Pulsar-Native#561): every live caller
+                                    // now uses a `*_with_db` binding whose
+                                    // setter runs `execute_command` (see
+                                    // `TransformSection`/
+                                    // `ObjectHeaderSection`), so it IS
+                                    // undo-tracked in practice today -- but
+                                    // this type itself doesn't guarantee
+                                    // that, since the plain `new()`
+                                    // whole-object constructor's `set()`
+                                    // still calls `db.update_object`
+                                    // directly, which is NOT undo-tracked.
                                     this.binding.set(&this.object_id, value, &this.scene_db);
                                 }
                             }
@@ -340,147 +353,5 @@ impl Render for BoolBoundField {
                     this.toggle(cx);
                 })),
         )
-    }
-}
-
-// ============================================================================
-// Vec3 Bound Field - For [f32; 3] fields (position, rotation, scale)
-// ============================================================================
-
-/// A UI component that renders three F32 inputs for a Vec3 field
-pub struct Vec3BoundField {
-    x_field: Entity<F32BoundField>,
-    y_field: Entity<F32BoundField>,
-    z_field: Entity<F32BoundField>,
-    label: String,
-}
-
-impl Vec3BoundField {
-    pub fn new(
-        label: impl Into<String>,
-        object_id: String,
-        scene_db: SceneDatabase,
-        get_vec: impl Fn(&crate::level_editor::scene_database::SceneObjectData) -> [f32; 3]
-            + Send
-            + Sync
-            + 'static,
-        set_vec: impl Fn(&mut crate::level_editor::scene_database::SceneObjectData, [f32; 3])
-            + Send
-            + Sync
-            + 'static,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        use super::field_bindings::F32FieldBinding;
-        use std::sync::Arc;
-
-        // Create closures wrapped in Arc for shared access
-        let get_vec = Arc::new(get_vec);
-        let set_vec = Arc::new(set_vec);
-
-        // Create X field binding
-        let get_vec_x = get_vec.clone();
-        let get_vec_x2 = get_vec.clone();
-        let set_vec_x = set_vec.clone();
-        let x_binding = F32FieldBinding::new(
-            move |obj| (get_vec_x)(obj)[0],
-            move |obj, val| {
-                let mut vec = (get_vec_x2)(obj);
-                vec[0] = val;
-                (set_vec_x)(obj, vec);
-            },
-        );
-
-        // Create Y field binding
-        let get_vec_y = get_vec.clone();
-        let get_vec_y2 = get_vec.clone();
-        let set_vec_y = set_vec.clone();
-        let y_binding = F32FieldBinding::new(
-            move |obj| (get_vec_y)(obj)[1],
-            move |obj, val| {
-                let mut vec = (get_vec_y2)(obj);
-                vec[1] = val;
-                (set_vec_y)(obj, vec);
-            },
-        );
-
-        // Create Z field binding
-        let get_vec_z = get_vec.clone();
-        let get_vec_z2 = get_vec.clone();
-        let set_vec_z = set_vec.clone();
-        let z_binding = F32FieldBinding::new(
-            move |obj| (get_vec_z)(obj)[2],
-            move |obj, val| {
-                let mut vec = (get_vec_z2)(obj);
-                vec[2] = val;
-                (set_vec_z)(obj, vec);
-            },
-        );
-
-        // Create field entities
-        let x_field = cx.new(|cx| {
-            F32BoundField::new(
-                x_binding,
-                "X",
-                object_id.clone(),
-                scene_db.clone(),
-                window,
-                cx,
-            )
-        });
-
-        let y_field = cx.new(|cx| {
-            F32BoundField::new(
-                y_binding,
-                "Y",
-                object_id.clone(),
-                scene_db.clone(),
-                window,
-                cx,
-            )
-        });
-
-        let z_field =
-            cx.new(|cx| F32BoundField::new(z_binding, "Z", object_id, scene_db, window, cx));
-
-        Self {
-            x_field,
-            y_field,
-            z_field,
-            label: label.into(),
-        }
-    }
-
-    /// Update all three fields when scene data changes externally
-    pub fn refresh(&self, window: &mut Window, cx: &mut App) {
-        self.x_field
-            .update(cx, |field, cx| field.refresh(window, cx));
-        self.y_field
-            .update(cx, |field, cx| field.refresh(window, cx));
-        self.z_field
-            .update(cx, |field, cx| field.refresh(window, cx));
-    }
-}
-
-impl Render for Vec3BoundField {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .w_full()
-            .gap_2()
-            .child(
-                div()
-                    .text_xs()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(cx.theme().muted_foreground)
-                    .child(self.label.clone()),
-            )
-            .child(
-                h_flex()
-                    .w_full()
-                    .gap_2()
-                    .child(self.x_field.clone())
-                    .child(self.y_field.clone())
-                    .child(self.z_field.clone()),
-            )
     }
 }

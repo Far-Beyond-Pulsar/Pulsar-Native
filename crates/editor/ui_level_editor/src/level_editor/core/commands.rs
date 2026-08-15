@@ -10,12 +10,26 @@
 /// undo / redo to be layered on top.
 use crate::level_editor::scene_database::SceneObjectData;
 use crate::level_editor::state::LevelEditorState;
+use std::any::Any;
 
 // ── Command types ─────────────────────────────────────────────────────────────
 
 /// A self-contained scene mutation.  All fields use owned data so the command
 /// can be constructed on a background thread and executed on the UI thread.
-#[derive(Debug, Clone)]
+///
+/// Deliberately NOT `Clone` or `#[derive(Debug)]` (Pulsar-Native#561): no call
+/// site anywhere in the codebase clones a `SceneCommand` value or
+/// `{:?}`-prints one (checked -- every `execute_command` caller constructs a
+/// command and immediately passes it by value; `undo`/`redo` are snapshot-
+/// based, not command-replay-based, so they never touch `SceneCommand` at
+/// all -- see `state/scene.rs`). Those derives existed only to justify
+/// `SetComponentProperty` carrying `serde_json::Value` instead of the typed
+/// `Box<dyn Any + Send>` the properties panel actually produces -- a JSON
+/// round trip inserted into the live edit path purely to satisfy a trait
+/// bound nothing downstream needed. A hand-written `Debug` impl below prints
+/// enough to be useful in logs without requiring the payload itself to be
+/// `Debug` (`Box<dyn Any>` isn't, and boxing a closure to fake it would be
+/// its own complexity for zero real benefit).
 pub enum SceneCommand {
     /// Add a new object.  The `id` field in `data` is ignored — SceneDb assigns it.
     AddObject {
@@ -47,6 +61,97 @@ pub enum SceneCommand {
         rotation: Option<[f32; 3]>,
         scale: Option<[f32; 3]>,
     },
+    /// Rename an object.
+    ///
+    /// Pulsar-Native#561: added so the properties panel's name field can go
+    /// through `execute_command` (undo-tracked) like every other edit,
+    /// instead of calling `SceneDatabase::update_object` (whole-object
+    /// overwrite, NOT undo-tracked despite a comment that used to claim
+    /// otherwise) directly.
+    SetName { id: String, name: String },
+    /// Set an object's visible/locked flags; `None` fields are unchanged.
+    ///
+    /// Pulsar-Native#561, same reasoning as `SetName`.
+    SetVisibility {
+        id: String,
+        visible: Option<bool>,
+        locked: Option<bool>,
+    },
+    /// Set a single property on a reflected component, by class + property
+    /// name, carrying the widget-produced value as `Box<dyn Any + Send>` --
+    /// exactly what `update_live_component_property` needs, with zero JSON
+    /// in between (Pulsar-Native#561: the previous `value_json:
+    /// serde_json::Value` shape round-tripped every edit through
+    /// `RUNTIME_TYPE_REGISTRY.serialize_json_for_any`/`deserialize_json_for_type`
+    /// for no reason a real caller needed -- see this enum's top doc).
+    ///
+    /// The single, unified write path for every component-property edit in
+    /// the properties panel -- replaces calling
+    /// `SceneDatabase::update_live_component_property`/
+    /// `update_component_property` directly from UI code, so every such
+    /// edit is undo-tracked and goes through exactly one code path.
+    SetComponentProperty {
+        id: String,
+        class_name: String,
+        prop_name: String,
+        value: Box<dyn Any + Send>,
+    },
+}
+
+impl std::fmt::Debug for SceneCommand {
+    /// Hand-written because `SetComponentProperty`'s payload is
+    /// `Box<dyn Any + Send>`, which isn't `Debug` -- see this type's doc for
+    /// why that's the right trade (nothing needs `SceneCommand: Debug` for
+    /// more than an occasional log line, and nothing needs `Clone` at all).
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AddObject { data, parent_id } => f
+                .debug_struct("AddObject")
+                .field("data.id", &data.id)
+                .field("data.name", &data.name)
+                .field("parent_id", parent_id)
+                .finish(),
+            Self::RemoveObject { id } => f.debug_struct("RemoveObject").field("id", id).finish(),
+            Self::UpdateObject { data } => {
+                f.debug_struct("UpdateObject").field("data.id", &data.id).finish()
+            }
+            Self::ReparentObject { id, new_parent_id } => f
+                .debug_struct("ReparentObject")
+                .field("id", id)
+                .field("new_parent_id", new_parent_id)
+                .finish(),
+            Self::DuplicateObject { source_id, count, position_offset } => f
+                .debug_struct("DuplicateObject")
+                .field("source_id", source_id)
+                .field("count", count)
+                .field("position_offset", position_offset)
+                .finish(),
+            Self::SelectObject { id } => f.debug_struct("SelectObject").field("id", id).finish(),
+            Self::SetTransform { id, position, rotation, scale } => f
+                .debug_struct("SetTransform")
+                .field("id", id)
+                .field("position", position)
+                .field("rotation", rotation)
+                .field("scale", scale)
+                .finish(),
+            Self::SetName { id, name } => {
+                f.debug_struct("SetName").field("id", id).field("name", name).finish()
+            }
+            Self::SetVisibility { id, visible, locked } => f
+                .debug_struct("SetVisibility")
+                .field("id", id)
+                .field("visible", visible)
+                .field("locked", locked)
+                .finish(),
+            Self::SetComponentProperty { id, class_name, prop_name, value } => f
+                .debug_struct("SetComponentProperty")
+                .field("id", id)
+                .field("class_name", class_name)
+                .field("prop_name", prop_name)
+                .field("value_type", &value.type_id())
+                .finish(),
+        }
+    }
 }
 
 // ── Outcome ───────────────────────────────────────────────────────────────────
@@ -207,37 +312,92 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             rotation,
             scale,
         } => {
-            let Some(mut obj) = state.scene.database.get_object(id) else {
-                return CommandResult::noop("Object not found");
-            };
-            let mut changed = false;
-            if let Some(p) = position {
-                if obj.transform.position != p {
-                    obj.transform.position = p;
-                    changed = true;
-                }
-            }
-            if let Some(r) = rotation {
-                if obj.transform.rotation != r {
-                    obj.transform.rotation = r;
-                    changed = true;
-                }
-            }
-            if let Some(s) = scale {
-                if obj.transform.scale != s {
-                    obj.transform.scale = s;
-                    changed = true;
-                }
-            }
-
-            if !changed {
-                return CommandResult::noop("No transform fields changed");
-            }
-            if state.scene.database.update_object(obj.clone()) {
+            // `SceneDatabase::set_transform`, NOT `get_object`+`update_object`
+            // (Pulsar-Native#561): the old whole-object round trip triggered
+            // `sync_registered_component_props_to_scene_db` -- a full
+            // re-serialize/re-hydrate of every component on the object --
+            // on every keystroke of a position/rotation/scale field, for a
+            // change that has nothing to do with component data at all.
+            if state.scene.database.set_transform(id, position, rotation, scale) {
                 state.scene.bump_revision(true);
                 CommandResult::ok(vec![id.clone()])
             } else {
-                CommandResult::noop("Transform update failed")
+                CommandResult::noop("Object not found or no transform fields changed")
+            }
+        }
+
+        SceneCommand::SetName { ref id, name } => {
+            if state.scene.database.set_name(id, name) {
+                state.scene.bump_revision(true);
+                CommandResult::ok(vec![id.clone()])
+            } else {
+                CommandResult::noop("Object not found")
+            }
+        }
+
+        SceneCommand::SetVisibility { ref id, visible, locked } => {
+            let mut changed = false;
+            if let Some(v) = visible {
+                changed |= state.scene.database.set_visible(id, v);
+            }
+            if let Some(l) = locked {
+                changed |= state.scene.database.set_locked(id, l);
+            }
+            if changed {
+                state.scene.bump_revision(true);
+                CommandResult::ok(vec![id.clone()])
+            } else {
+                CommandResult::noop("Object not found or no visibility fields changed")
+            }
+        }
+
+        SceneCommand::SetComponentProperty { ref id, ref class_name, ref prop_name, value } => {
+            // Typed path first -- `update_live_component_property` writes
+            // `value` straight onto the live `World` component via its
+            // reflected setter closure, no JSON anywhere (Pulsar-Native#561).
+            // Only on `Err` (the class isn't `World`-registered at all --
+            // the handful of props-only classes with no
+            // `ComponentRuntimeBehavior`, e.g. `LODComponent`/
+            // `MaterialOverrideComponent`, see `update_component_property`'s
+            // own doc) do we serialize to JSON, and only then, to feed
+            // `metadata_db`'s legacy flat-JSON storage -- the one
+            // representation those specific classes actually have. Every
+            // migrated component's live edit never touches JSON at all.
+            match state
+                .scene
+                .database
+                .update_live_component_property(id, class_name, prop_name, value)
+            {
+                Ok(()) => {
+                    state.scene.bump_revision(true);
+                    CommandResult::ok(vec![id.clone()])
+                }
+                Err(value) => {
+                    match pulsar_reflection::RUNTIME_TYPE_REGISTRY.serialize_json_for_any(value.as_ref()) {
+                        Ok(value_json) => {
+                            state
+                                .scene
+                                .database
+                                .update_component_property(id, class_name, prop_name, value_json);
+                            state.scene.bump_revision(true);
+                            CommandResult::ok(vec![id.clone()])
+                        }
+                        Err(error) => {
+                            // Not `World`-registered AND not in
+                            // `RUNTIME_TYPE_REGISTRY` either -- nothing this
+                            // command can do with the value. Surfaced loudly
+                            // rather than silently dropping the edit: this
+                            // should only happen for a genuinely new/
+                            // misconfigured property type, not real usage.
+                            tracing::error!(
+                                "[SetComponentProperty] '{class_name}.{prop_name}' on '{id}' has \
+                                 no live World value and its type isn't registered for JSON \
+                                 fallback either -- edit dropped: {error}"
+                            );
+                            CommandResult::noop("Property type not registered for World or JSON fallback")
+                        }
+                    }
+                }
             }
         }
         }
@@ -359,5 +519,83 @@ mod undo_redo_tests {
         let mut state = LevelEditorState::new();
         assert!(!state.scene.undo());
         assert!(!state.scene.redo());
+    }
+
+    // ── SetComponentProperty: end-to-end through the command layer ─────────
+    //
+    // Pulsar-Native#561: proves the whole live-edit call graph a real
+    // properties-panel color/intensity edit takes -- widget produces a typed
+    // `Box<dyn Any + Send>`, `SceneCommand::SetComponentProperty` carries it
+    // unchanged, `execute_command` applies it -- actually reaches the live
+    // `World` value and is undo-tracked, with no `serde_json::Value`
+    // anywhere on this call path (unlike the tests in `scene_database.rs`,
+    // which exercise `SceneDatabase` methods directly, this goes through the
+    // actual `SceneCommand` enum + `execute_command` UI code calls).
+    #[test]
+    fn set_component_property_reaches_the_live_world_value_with_no_json() {
+        let mut state = LevelEditorState::new();
+        let id = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: "Light".to_string(),
+                    object_type: crate::level_editor::scene_database::ObjectType::Light(
+                        crate::level_editor::scene_database::LightType::Point,
+                    ),
+                    transform: crate::level_editor::scene_database::Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone();
+
+        let default_light_json =
+            serde_json::to_value(helio_component::LightComponent::default()).unwrap();
+        state
+            .scene
+            .database
+            .add_component(&id, "LightComponent".to_string(), default_light_json);
+
+        // The widget layer's actual contract: a boxed, already-typed value --
+        // never JSON. `intensity` is a leaf of the `#[sub_props]`-nested
+        // `IntensityLightProps`, so this also exercises the nested getter/
+        // setter closure chain, not just a top-level field.
+        let result = execute_command(
+            &mut state,
+            SceneCommand::SetComponentProperty {
+                id: id.clone(),
+                class_name: "LightComponent".to_string(),
+                prop_name: "intensity".to_string(),
+                value: Box::new(4242.0_f32),
+            },
+        );
+        assert!(result.changed, "typed live write must succeed, not fall through to the JSON path");
+
+        let live = state
+            .scene
+            .database
+            .read_live_component_property(&id, "LightComponent", "intensity")
+            .expect("intensity must be live-readable after the edit");
+        assert_eq!(live.downcast_ref::<f32>(), Some(&4242.0));
+
+        // Undo-tracked like every other command: restoring the pre-edit
+        // snapshot must revert the live World value too, not just
+        // `metadata_db`'s mirror.
+        assert!(state.scene.undo());
+        let reverted = state
+            .scene
+            .database
+            .read_live_component_property(&id, "LightComponent", "intensity")
+            .expect("intensity must still be live-readable after undo");
+        assert_eq!(reverted.downcast_ref::<f32>(), Some(&1000.0)); // IntensityLightProps::default()
     }
 }

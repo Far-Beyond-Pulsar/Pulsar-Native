@@ -19,7 +19,7 @@ use ui::{ActiveTheme as _, ContextModal, notification::Notification};
 use crate::level_editor::commands::{SceneCommand, execute_command};
 use crate::level_editor::scene_database::{MeshType, ObjectType, SceneObjectData, Transform};
 use crate::level_editor::state::LevelEditorState;
-use pulsar_rendering::asset_component::component_class_for_asset;
+use helio_component::asset_component::component_class_for_asset;
 use pulsar_reflection::REGISTRY;
 
 /// A GPUI component that drives the Helio renderer into a `WgpuSurfaceHandle`.

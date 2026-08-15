@@ -34,7 +34,7 @@
 //! [SceneDB#46](https://github.com/Far-Beyond-Pulsar/SceneDB/issues/46)) --
 //! landing new SceneDB-repo code and getting it pulled into this workspace
 //! is real, avoidable friction right now. Every actual consumer here
-//! (`pulsar_rendering`, `pulsar_physics`, `engine_backend`, `ui_level_editor`)
+//! (`helio_component`, `pulsar_physics`, `engine_backend`, `ui_level_editor`)
 //! already depends on both `pulsar_scenedb` and `pulsar_reflection` directly,
 //! so a small Pulsar-Native-internal crate sitting alongside them -- itself
 //! depending on both -- is a clean fit with no cross-repo coordination

@@ -24,7 +24,8 @@
 //! across the editor and AI tools don't need to change.
 
 use engine_backend::scene::{
-    Transform as WorldTransform, Visibility as WorldVisibility, WorldSceneStoreError,
+    ObjectDirtyFlags, Transform as WorldTransform, Visibility as WorldVisibility,
+    WorldSceneStoreError,
 };
 use engine_backend::{ComponentInstance, EditorObjectId, SceneMetadataDb};
 use engine_fs::virtual_fs;
@@ -370,18 +371,67 @@ impl SceneDatabase {
             return Err(new_value);
         };
 
-        let mut store = self.store.write();
-        let Some(entity) = store.entity_for(object_id) else {
-            return Err(new_value);
+        // Scoped so the `store` write-guard is dropped before the
+        // `metadata_db` persistence step below -- that step goes through
+        // `self.get_components`, which takes its own `self.store.read()`;
+        // `parking_lot::RwLock` isn't reentrant, so holding this write guard
+        // across that call would deadlock.
+        let persisted_json = {
+            let mut store = self.store.write();
+            let Some(entity) = store.entity_for(object_id) else {
+                return Err(new_value);
+            };
+            let Some(instance) = pulsar_world_registry::get_world_component_as_engine_class_mut(
+                class_name,
+                store.world_mut(),
+                entity,
+            ) else {
+                return Err(new_value);
+            };
+            (setter)(instance, new_value);
+            // This was the actual bug behind "the properties panel shows the
+            // right value but the light in the scene never changes": mutating
+            // the live World component directly (above) is correct and
+            // sufficient for anything that reads World directly (this method's
+            // own read-side counterpart, `read_live_component_property`) --
+            // but the renderer's per-frame sync (`sync_scene`/`sync_scene_delta`
+            // in HelioRenderer) is gated entirely on `WorldSceneStore`'s own
+            // dirty-tracking/`render_revision` counters, which a raw
+            // `get_world_component_as_engine_class_mut` write never touches.
+            // Without this, the edit is genuinely live in `World` -- correctly
+            // observable by direct reads -- but invisible to the mechanism that
+            // decides whether to re-sync Helio's scene at all. `mark_dirty`
+            // (`WorldSceneStore::publish` under the hood) is what actually
+            // signals the render thread.
+            // Capture the component's full current shape while `instance` is
+            // still borrowed (must happen before `mark_dirty` below, which
+            // needs its own `&mut store` -- `instance` borrows `store`
+            // mutably via `world_mut()`, so the two borrows can't overlap).
+            let json = instance.to_json().ok();
+            store.mark_dirty(object_id, ObjectDirtyFlags::PROPS | ObjectDirtyFlags::COMPONENTS);
+            json
         };
-        let Some(instance) = pulsar_world_registry::get_world_component_as_engine_class_mut(
-            class_name,
-            store.world_mut(),
-            entity,
-        ) else {
-            return Err(new_value);
-        };
-        (setter)(instance, new_value);
+
+        // Persist back into `metadata_db` (Pulsar-Native#561, Bug B): without
+        // this, `update_live_component_property` mutates `World` and stops --
+        // `metadata_db` keeps the pre-edit value. The NEXT unrelated edit to
+        // this object (a transform move, a name change, any legacy-path
+        // component write) runs `sync_registered_component_props_to_scene_db`,
+        // which re-hydrates every `World`-registered component from
+        // `metadata_db`'s JSON -- silently reverting this write. Writing
+        // through here closes that gap: `metadata_db` and `World` never
+        // diverge for longer than this one call.
+        if let Some(json) = persisted_json {
+            if let Some((idx, _)) = self
+                .get_components(object_id)
+                .into_iter()
+                .enumerate()
+                .find(|(_, c)| c.class_name == class_name)
+            {
+                self.metadata_db.components().update_component(object_id, idx, json);
+            }
+        }
+
         Ok(())
     }
 
@@ -524,6 +574,52 @@ impl SceneDatabase {
         store.set_visibility(entity, visibility)
     }
 
+    /// Narrow transform update -- writes only `WorldSceneStore`'s own
+    /// transform, no full-object `SceneObjectData` round trip. Unlike
+    /// `update_object(SceneObjectData)`, this does NOT call
+    /// `sync_registered_component_props_to_scene_db` -- a transform never
+    /// needs a component re-hydration, so the old whole-object path (used
+    /// by `SceneCommand::SetTransform`'s handler before Pulsar-Native#561's
+    /// properties-panel rewrite) was re-serializing/re-hydrating every
+    /// `World`-registered component on the object on every keystroke of a
+    /// position/rotation/scale field, for no reason. `None` fields are left
+    /// unchanged; returns `false` if nothing actually changed or the object
+    /// doesn't exist.
+    pub fn set_transform(
+        &self,
+        id: &ObjectId,
+        position: Option<[f32; 3]>,
+        rotation: Option<[f32; 3]>,
+        scale: Option<[f32; 3]>,
+    ) -> bool {
+        let mut store = self.store.write();
+        let Some(entity) = store.entity_for(id) else { return false };
+        let mut transform = store.transform(entity).unwrap_or_default();
+        let mut changed = false;
+        if let Some(p) = position {
+            if transform.position != p {
+                transform.position = p;
+                changed = true;
+            }
+        }
+        if let Some(r) = rotation {
+            if transform.rotation != r {
+                transform.rotation = r;
+                changed = true;
+            }
+        }
+        if let Some(s) = scale {
+            if transform.scale != s {
+                transform.scale = s;
+                changed = true;
+            }
+        }
+        if !changed {
+            return false;
+        }
+        store.set_transform(entity, transform)
+    }
+
     /// Re-parent an object (cycle-safe).
     pub fn reparent_object(&self, id: &ObjectId, new_parent: Option<ObjectId>) -> bool {
         let mut store = self.store.write();
@@ -543,27 +639,35 @@ impl SceneDatabase {
         self.reparent_object(id, new_parent)
     }
 
-    /// Reorder two sibling objects by swapping their positions
+    /// Reorder two sibling objects by swapping their positions.
     ///
-    /// Both objects must have the same parent. Returns false if they don't share a parent.
+    /// Both objects must have the same parent. Returns false if they don't
+    /// share a parent or either id is unknown.
     pub fn reorder_object_siblings(&self, object_id: &ObjectId, target_id: &ObjectId) -> bool {
-        self.metadata_db
-            .reorder_object_siblings(object_id, target_id)
+        let mut store = self.store.write();
+        let Some(entity) = store.entity_for(object_id) else { return false };
+        let Some(target) = store.entity_for(target_id) else { return false };
+        store.reorder_sibling(entity, target)
     }
 
     // ── Ordering ──────────────────────────────────────────────────────────
 
-    /// Move an object one step earlier among its siblings.
-    ///
-    /// Full reorder support requires a `WorldSceneStore` API extension; this
-    /// is a best-effort stub that is safe to call today.
-    pub fn move_object_up(&self, _id: &str) {
-        // TODO: implement when WorldSceneStore exposes sibling reordering
+    /// Move an object one step earlier among its siblings (swaps with the
+    /// preceding sibling). No-op (returns without effect) if already first.
+    pub fn move_object_up(&self, id: &str) {
+        let mut store = self.store.write();
+        if let Some(entity) = store.entity_for(id) {
+            store.move_sibling_up(entity);
+        }
     }
 
-    /// Move an object one step later among its siblings.
-    pub fn move_object_down(&self, _id: &str) {
-        // TODO: implement when WorldSceneStore exposes sibling reordering
+    /// Move an object one step later among its siblings (swaps with the
+    /// following sibling). No-op if already last.
+    pub fn move_object_down(&self, id: &str) {
+        let mut store = self.store.write();
+        if let Some(entity) = store.entity_for(id) {
+            store.move_sibling_down(entity);
+        }
     }
 
     // ── Duplication ────────────────────────────────────────────────────────
@@ -983,6 +1087,27 @@ impl SceneDatabase {
     }
 
     fn sync_registered_component_props_to_scene_db(&self, object_id: &str) {
+        // Deliberately `self.metadata_db.get_components(...)` directly, NOT
+        // `self.get_components(...)`. This function's whole job is to push
+        // `metadata_db`'s CURRENT value into `World` (its own doc below:
+        // "hydrate ... to match this object's current enabled component
+        // list") -- it's the one-way sync driving World FROM metadata_db.
+        // `get_components()`'s live-overlay goes the other direction (prefer
+        // World over metadata_db, for READERS who want the freshest value
+        // regardless of source) -- routing THIS function through it would
+        // make it read back the very World value it's about to replace,
+        // permanently freezing World's value at whatever it was first
+        // hydrated to and defeating any legacy-path (`update_component`/
+        // `update_component_property`) write. (An earlier version of this
+        // fix tried exactly that and broke `update_component_property_re_
+        // hydrates_the_typed_value` -- confirmed by running the test suite.)
+        //
+        // Bug B (Pulsar-Native#561, the light-color crash's second cause)
+        // is instead fixed at the source: `update_live_component_property`
+        // now persists its write straight back into `metadata_db` (see that
+        // method), so metadata_db and World never diverge for typed-path
+        // edits in the first place -- this function reading metadata_db
+        // directly is safe again once that's true.
         let components = self.metadata_db.get_components(&object_id.to_string());
         let mut store = self.store.write();
         store.update_render_props(object_id, |render_props| {
@@ -1032,7 +1157,21 @@ impl SceneDatabase {
                             entity,
                             data,
                         ) {
-                            tracing::warn!(
+                            // `error!`, not `warn!`: with Bug A (creation-time
+                            // JSON corruption, `add_component_dialog.rs`) and
+                            // Bug B (this function reading stale, non-overlaid
+                            // `metadata_db` JSON) both fixed, hydration should
+                            // essentially never fail for a well-formed
+                            // component -- if it does, that's a real, rare
+                            // problem worth being loud about in logs. Still
+                            // not surfaced as a user-facing toast:
+                            // `SceneDatabase` is a pure data-layer type with
+                            // no error channel into the UI/notification layer
+                            // (unlike `HelioRenderer::report_error`, which has
+                            // one) -- wiring that up would mean threading a
+                            // shared error queue from here up through the UI,
+                            // real plumbing out of scope for this fix.
+                            tracing::error!(
                                 "World hydration failed for {class_name} on '{object_id}': {error}"
                             );
                         }
@@ -1114,6 +1253,26 @@ impl SceneDatabase {
                 self.metadata_db
                     .add_component_instance(object_id, component.clone());
             }
+        }
+
+        // Pulsar-Native#561 (found while adding end-to-end coverage for
+        // `SceneCommand::SetComponentProperty`): `metadata_db.
+        // add_component_instance` above only repopulates `metadata_db`'s own
+        // JSON-shaped store -- unlike `SceneDatabase::add_component_instance`
+        // (the public wrapper every other caller uses), it does NOT re-drive
+        // `sync_registered_component_props_to_scene_db`, so a fresh
+        // `WorldSceneStore` built by `load_from_snapshots` above never gets
+        // its `World`-registered components (`LightComponent`,
+        // `StaticMeshComponent`, ...) hydrated at all. Before this fix, an
+        // undo/redo that crossed a component edit left every migrated
+        // component invisible to `World`-direct readers (the renderer's
+        // per-frame dispatch, `read_live_component_property`) even though
+        // `metadata_db`/`get_components()` still reported it present --
+        // exactly the kind of live-World/metadata_db divergence this whole
+        // fix is about closing. One resync pass per restored object with
+        // components closes it here too.
+        for object_id in snapshot.components.keys() {
+            self.sync_registered_component_props_to_scene_db(object_id);
         }
         Ok(())
     }
@@ -1308,7 +1467,7 @@ mod history_snapshot_tests {
 #[cfg(test)]
 mod world_component_hydration_tests {
     use super::*;
-    use pulsar_rendering::StaticMeshComponent;
+    use helio_component::StaticMeshComponent;
 
     fn object(name: &str) -> SceneObjectData {
         SceneObjectData {
@@ -1437,13 +1596,13 @@ mod world_component_hydration_tests {
     fn light_component_hydrates_via_its_default_json() {
         let db = SceneDatabase::new();
         let id = db.add_object(object("Light"), None);
-        let default_json = serde_json::to_value(pulsar_rendering::LightComponent::default()).unwrap();
+        let default_json = serde_json::to_value(helio_component::LightComponent::default()).unwrap();
 
         db.add_component(&id, "LightComponent".to_string(), default_json);
 
         let store = db.store.read();
         let entity = store.entity_for(&id).unwrap();
-        assert!(store.world().get::<pulsar_rendering::LightComponent>(entity).is_some());
+        assert!(store.world().get::<helio_component::LightComponent>(entity).is_some());
     }
 
     /// Pulsar-Native#561 regression test: editing a `#[sub_props]`-nested
@@ -1457,7 +1616,7 @@ mod world_component_hydration_tests {
     /// sub-props field's own name (`color`/`color`).
     #[test]
     fn update_live_component_property_edits_only_the_targeted_nested_leaf() {
-        use pulsar_rendering::LightComponent;
+        use helio_component::LightComponent;
         use std::any::Any;
 
         let db = SceneDatabase::new();
@@ -1523,6 +1682,53 @@ mod world_component_hydration_tests {
         );
     }
 
+    /// Regression test for the actual bug behind "the properties panel
+    /// shows the right value, but the light in the scene never changes":
+    /// `update_live_component_property` mutated the live `World` component
+    /// correctly, but never touched `WorldSceneStore`'s own dirty-tracking
+    /// (`dirty`/`dirty_gen`/`render_revision`), which is the *only* thing
+    /// `HelioRenderer::render_frame` checks to decide whether a sync pass
+    /// (`sync_scene`/`sync_scene_delta` -- the thing that actually pushes a
+    /// component's current value into Helio's scene) should run at all.
+    /// A `World`-correct edit that never bumps `render_revision` is
+    /// invisible to the renderer, indefinitely, even though every direct
+    /// `World` read (this method's own `read_live_component_property`
+    /// counterpart, and the properties panel that calls it) sees it fine.
+    #[test]
+    fn update_live_component_property_marks_the_object_dirty_for_the_renderer() {
+        use helio_component::LightComponent;
+        use std::any::Any;
+
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Light"), None);
+        let default_json = serde_json::to_value(LightComponent::default()).unwrap();
+        db.add_component(&id, "LightComponent".to_string(), default_json);
+
+        let revision_before = db.store.read().render_revision();
+
+        db.update_live_component_property(
+            &id,
+            "LightComponent",
+            "intensity",
+            Box::new(1000.0_f32) as Box<dyn Any + Send>,
+        )
+        .expect("live edit should apply");
+
+        assert!(
+            db.store.read().render_revision() > revision_before,
+            "a live component edit must bump render_revision, or HelioRenderer's \
+             render_frame never even attempts a sync pass for it -- the World value \
+             would be correct (readable directly) but never reach the actual scene"
+        );
+
+        let flags = db.store.write().take_dirty_flags(&id);
+        assert!(
+            flags.contains(engine_backend::scene::ObjectDirtyFlags::COMPONENTS),
+            "dirty flags must include COMPONENTS so sync picks the object's \
+             components back up, not just its transform"
+        );
+    }
+
     /// Pulsar-Native#561 regression test: `update_live_component_property`
     /// writes straight to `World` and nowhere else -- `get_components`
     /// (what both the properties panel's card list and
@@ -1535,7 +1741,7 @@ mod world_component_hydration_tests {
     /// bug this whole fix exists to eliminate.
     #[test]
     fn live_edit_is_visible_through_get_components_not_just_the_live_read_path() {
-        use pulsar_rendering::LightComponent;
+        use helio_component::LightComponent;
         use std::any::Any;
 
         let db = SceneDatabase::new();
@@ -1564,6 +1770,67 @@ mod world_component_hydration_tests {
         );
     }
 
+    /// Pulsar-Native#561 regression test for Bug B (the light-color crash's
+    /// second, independent cause): `update_live_component_property` writes
+    /// straight to `World`, but before this fix never persisted back into
+    /// `metadata_db`. `sync_registered_component_props_to_scene_db` -- which
+    /// runs on *every* transform/name/visibility/legacy-component edit, not
+    /// just component-property edits -- re-hydrates every `World`-registered
+    /// component from `metadata_db`'s (stale, pre-edit) JSON. Net effect
+    /// before the fix: a live-edited property was visible immediately, then
+    /// silently reverted the moment the user made *any other* edit to the
+    /// same object. This test edits a component property live, then performs
+    /// a wholly unrelated `update_object` (a transform move) on the SAME
+    /// object, and asserts the property edit survived -- the exact sequence
+    /// that used to clobber it.
+    #[test]
+    fn update_live_component_property_survives_an_unrelated_update_object_call() {
+        use helio_component::LightComponent;
+        use std::any::Any;
+
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Light"), None);
+        let default_json = serde_json::to_value(LightComponent::default()).unwrap();
+        db.add_component(&id, "LightComponent".to_string(), default_json);
+
+        db.update_live_component_property(
+            &id,
+            "LightComponent",
+            "intensity",
+            Box::new(750.0_f32) as Box<dyn Any + Send>,
+        )
+        .expect("LightComponent is World-registered, edit should apply live");
+
+        // An edit to something else entirely on the same object -- this used
+        // to be exactly what triggered the clobber, since `update_object`
+        // calls `sync_registered_component_props_to_scene_db` unconditionally.
+        let mut moved = db.get_object(&id).expect("object should exist");
+        moved.transform.position = [1.0, 2.0, 3.0];
+        db.update_object(moved);
+
+        let components = db.get_components(&id);
+        let light = components
+            .iter()
+            .find(|c| c.class_name == "LightComponent")
+            .expect("LightComponent should still be attached");
+        assert_eq!(
+            light.data.get("intensity").and_then(|v| v.get("intensity")),
+            Some(&serde_json::json!(750.0)),
+            "an unrelated update_object call must not revert a live component \
+             property edit -- metadata_db and World must never diverge for \
+             typed-path edits"
+        );
+
+        let store = db.store.read();
+        let entity = store.entity_for(&id).unwrap();
+        let hydrated = store.world().get::<LightComponent>(entity).unwrap();
+        assert_eq!(
+            hydrated.intensity.intensity, 750.0,
+            "the live World value itself must also survive, not just what \
+             get_components reports"
+        );
+    }
+
     /// `PortalComponent` is the trickiest of B5's list -- its
     /// `sync_component` pairs two components sharing a `portal_id` via
     /// `PortalLinkCache`, tracked independently of storage. Worth confirming
@@ -1575,7 +1842,7 @@ mod world_component_hydration_tests {
         let db = SceneDatabase::new();
         let a = db.add_object(object("PortalA"), None);
         let b = db.add_object(object("PortalB"), None);
-        let default_json = serde_json::to_value(pulsar_rendering::PortalComponent::default()).unwrap();
+        let default_json = serde_json::to_value(helio_component::PortalComponent::default()).unwrap();
 
         db.add_component(&a, "PortalComponent".to_string(), default_json.clone());
         db.add_component(&b, "PortalComponent".to_string(), default_json);
@@ -1583,8 +1850,8 @@ mod world_component_hydration_tests {
         let store = db.store.read();
         let entity_a = store.entity_for(&a).unwrap();
         let entity_b = store.entity_for(&b).unwrap();
-        assert!(store.world().get::<pulsar_rendering::PortalComponent>(entity_a).is_some());
-        assert!(store.world().get::<pulsar_rendering::PortalComponent>(entity_b).is_some());
+        assert!(store.world().get::<helio_component::PortalComponent>(entity_a).is_some());
+        assert!(store.world().get::<helio_component::PortalComponent>(entity_b).is_some());
     }
 
     /// Phase D (Pulsar-Native#558): `ReflectionCaptureComponent` is the
@@ -1597,7 +1864,7 @@ mod world_component_hydration_tests {
         let db = SceneDatabase::new();
         let id = db.add_object(object("Probe"), None);
         let default_json =
-            serde_json::to_value(pulsar_rendering::ReflectionCaptureComponent::default()).unwrap();
+            serde_json::to_value(helio_component::ReflectionCaptureComponent::default()).unwrap();
 
         db.add_component(&id, "ReflectionCaptureComponent".to_string(), default_json);
 
@@ -1605,7 +1872,7 @@ mod world_component_hydration_tests {
         let entity = store.entity_for(&id).unwrap();
         assert!(store
             .world()
-            .get::<pulsar_rendering::ReflectionCaptureComponent>(entity)
+            .get::<helio_component::ReflectionCaptureComponent>(entity)
             .is_some());
     }
 
@@ -1614,7 +1881,7 @@ mod world_component_hydration_tests {
         let db = SceneDatabase::new();
         let id = db.add_object(object("Lake"), None);
         let default_json =
-            serde_json::to_value(pulsar_rendering::WaterVolumeComponent::default()).unwrap();
+            serde_json::to_value(helio_component::WaterVolumeComponent::default()).unwrap();
 
         db.add_component(&id, "WaterVolumeComponent".to_string(), default_json);
 
@@ -1622,7 +1889,7 @@ mod world_component_hydration_tests {
         let entity = store.entity_for(&id).unwrap();
         assert!(store
             .world()
-            .get::<pulsar_rendering::WaterVolumeComponent>(entity)
+            .get::<helio_component::WaterVolumeComponent>(entity)
             .is_some());
     }
 
@@ -1631,7 +1898,7 @@ mod world_component_hydration_tests {
         let db = SceneDatabase::new();
         let id = db.add_object(object("GlobalPostFx"), None);
         let default_json =
-            serde_json::to_value(pulsar_rendering::PostProcessVolumeComponent::default()).unwrap();
+            serde_json::to_value(helio_component::PostProcessVolumeComponent::default()).unwrap();
 
         db.add_component(&id, "PostProcessVolumeComponent".to_string(), default_json);
 
@@ -1639,7 +1906,8 @@ mod world_component_hydration_tests {
         let entity = store.entity_for(&id).unwrap();
         assert!(store
             .world()
-            .get::<pulsar_rendering::PostProcessVolumeComponent>(entity)
+            .get::<helio_component::PostProcessVolumeComponent>(entity)
             .is_some());
     }
+
 }

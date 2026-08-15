@@ -77,7 +77,7 @@ const WORLD_GPU_CAPACITY: u32 = 1024;
 
 /// The struct under test: a real `#[engine_class]` component (reflection-
 /// visible `label` field, exactly like every other component in
-/// `pulsar_rendering`) that ALSO opts into SceneDB storage via the new
+/// `helio_component`) that ALSO opts into SceneDB storage via the new
 /// `scene_store` flag, with one `#[gpu]` field. `no_register` keeps this
 /// hermetic -- no global `inventory` registration from a throwaway test
 /// type.
