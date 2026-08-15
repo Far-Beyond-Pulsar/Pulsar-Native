@@ -463,7 +463,7 @@ impl WorldSceneStore {
 
     pub fn set_transform(&mut self, entity: Entity, transform: Transform) -> bool {
         match self.world.get_mut::<Transform>(entity) {
-            Some(t) => {
+            Some(mut t) => {
                 *t = transform;
                 true
             }
@@ -479,7 +479,7 @@ impl WorldSceneStore {
 
     pub fn set_name(&mut self, entity: Entity, name: impl Into<String>) -> bool {
         match self.world.get_mut::<Name>(entity) {
-            Some(n) => {
+            Some(mut n) => {
                 n.0 = name.into();
                 true
             }
@@ -495,7 +495,7 @@ impl WorldSceneStore {
 
     pub fn set_visibility(&mut self, entity: Entity, visibility: Visibility) -> bool {
         match self.world.get_mut::<Visibility>(entity) {
-            Some(v) => {
+            Some(mut v) => {
                 *v = visibility;
                 true
             }
@@ -517,7 +517,7 @@ impl WorldSceneStore {
     /// that -- it's a plain settable component like the others.
     pub fn set_object_type(&mut self, entity: Entity, object_type: ObjectType) -> bool {
         match self.world.get_mut::<ObjectType>(entity) {
-            Some(t) => *t = object_type,
+            Some(mut t) => *t = object_type,
             None => return false,
         };
         self.publish(entity, ObjectDirtyFlags::PROPS);
@@ -533,7 +533,7 @@ impl WorldSceneStore {
     pub fn update_render_props(&mut self, id: &str, f: impl FnOnce(&mut RenderProps)) -> bool {
         let Some(entity) = self.entity_for(id) else { return false };
         match self.world.get_mut::<RenderProps>(entity) {
-            Some(props) => f(props),
+            Some(mut props) => f(&mut props),
             None => return false,
         }
         self.publish(entity, ObjectDirtyFlags::PROPS | ObjectDirtyFlags::COMPONENTS);

@@ -95,7 +95,11 @@ impl TickLoop {
             tick: time.tick,
         };
         self.schedule.run(&mut self.world, scenedb_time);
-        self.actors.tick_all(&mut self.world, scenedb_time);
+        // `Actor::tick` is deliberately time-free (see `pulsar_scenedb::actor`'s
+        // trait doc, post-2026-08-15 rev bump) -- `tick_all` dropped its
+        // `GameTime` parameter accordingly; actors needing time read it from
+        // wherever the engine already publishes it, not from this call.
+        self.actors.tick_all(&mut self.world);
 
         // Drive runtime blueprint lifecycle + tick events after ECS + actor
         // updates. `begin_play` for newly-registered instances is deferred to

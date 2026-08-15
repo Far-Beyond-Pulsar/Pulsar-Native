@@ -101,13 +101,11 @@ mod actors {
         fn begin_play(&mut self, _e: Entity, _w: &mut World) {
             self.0.lock().unwrap().push("begin");
         }
-        // NOTE: `Actor::tick` (from `pulsar_scenedb`) requires
-        // `pulsar_scenedb::GameTime`, not the `GameTime` re-exported by this
-        // crate's prelude (which is `pulsar_core::GameTime`). The two are
-        // structurally identical but nominally distinct types — a leftover
-        // of the SceneDB extraction. Using the fully-qualified path here
-        // rather than the prelude import.
-        fn tick(&mut self, _e: Entity, _w: &mut World, _t: pulsar_scenedb::GameTime) {
+        // `Actor::tick` (from `pulsar_scenedb`) is deliberately time-free as
+        // of the 2026-08-15 rev bump (Pulsar-Native#561 Phase D) -- see that
+        // trait's own doc: per-frame timing is the engine's concern, not
+        // the data layer's. No `GameTime` parameter anymore.
+        fn tick(&mut self, _e: Entity, _w: &mut World) {
             self.0.lock().unwrap().push("tick");
         }
         fn end_play(&mut self, _e: Entity, _w: &mut World) {

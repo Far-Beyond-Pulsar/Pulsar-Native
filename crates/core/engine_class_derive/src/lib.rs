@@ -901,9 +901,23 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
             world: &mut pulsar_scenedb::World,
             entity: pulsar_scenedb::Entity,
         ) -> Option<&mut dyn pulsar_reflection::EngineClass> {
+            // `World::get_mut` returns `Mut<'_, T>` (SceneDB's GPU
+            // dirty-mark guard, not a bare `&mut T`) as of the
+            // pulsar_scenedb rev this workspace pins post-2026-08-15
+            // (Pulsar-Native#561 Phase D). `WorldComponentRegistration.
+            // get_as_engine_class_mut` is a plain `fn` pointer with no room
+            // to carry `Mut`'s guard through it, so `.into_inner()` (added
+            // to `Mut` for exactly this) extracts the raw reference, firing
+            // the guard's GPU dispatch immediately for #self_ty's current
+            // field values first. None of `helio_component`'s
+            // `#[register_world_component]` classes are `#[gpu]`-mirrored
+            // today, so that dispatch is a no-op here either way -- see
+            // `Mut::into_inner`'s own doc for the (currently moot) caveat
+            // that would apply to a future GPU-mirrored class taking this
+            // path.
             world
                 .get_mut::<#self_ty>(entity)
-                .map(|component| component as &mut dyn pulsar_reflection::EngineClass)
+                .map(|component| component.into_inner() as &mut dyn pulsar_reflection::EngineClass)
         }
 
         pulsar_world_registry::inventory::submit! {

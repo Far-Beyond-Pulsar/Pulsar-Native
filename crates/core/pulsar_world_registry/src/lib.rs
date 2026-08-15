@@ -231,7 +231,12 @@ mod tests {
     }
 
     fn test_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
-        world.get_mut::<TestComponent>(entity).map(|c| c as &mut dyn EngineClass)
+        // `World::get_mut` returns `Mut<'_, T>` (SceneDB's GPU dirty-mark
+        // guard) as of the pulsar_scenedb rev this workspace pins post-
+        // 2026-08-15 -- `.into_inner()` extracts the raw reference, same
+        // fix as `engine_class_derive`'s generated `get_as_engine_class_mut`
+        // shim (this hand-written fn mirrors what that macro emits).
+        world.get_mut::<TestComponent>(entity).map(|c| c.into_inner() as &mut dyn EngineClass)
     }
 
     fn test_hydrate(world: &mut World, entity: Entity, data: &Value) -> Result<(), String> {
