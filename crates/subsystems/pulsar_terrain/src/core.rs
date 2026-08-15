@@ -1,11 +1,11 @@
 use crate::edit::EditIndex;
 use crate::mutation::{TerrainMutation, TerrainMutationBase, TerrainOverrideIndex};
 use crate::{
-    CompactedPageRecord, ContentHash, DeterministicGenerator, EditError, EditLog, EditMode, EditOp,
-    HierarchyError, NodeState, PageCodecError, PageKey, PlanetId, SnapshotCodecError,
-    SparseBrickTree, TerrainNodeSummary, TerrainOverrideError, TerrainOverrideLog,
-    TerrainOverrideOp, TerrainOverrideTarget, TerrainRegionClassifier, TerrainSnapshot,
-    TerrainStreamingError, VoxelPage,
+    CellWord, CompactedPageRecord, ContentHash, DeterministicGenerator, EditError, EditLog,
+    EditMode, EditOp, HierarchyError, NodeState, PageCodecError, PageKey, PlanetId,
+    SnapshotCodecError, SparseBrickTree, TerrainNodeSummary, TerrainOverrideError,
+    TerrainOverrideLog, TerrainOverrideOp, TerrainOverrideTarget, TerrainRegionClassifier,
+    TerrainSnapshot, TerrainStreamingError, VoxelPage,
 };
 use std::collections::BTreeMap;
 use thiserror::Error;
@@ -24,6 +24,10 @@ pub struct TerrainCore<G> {
     override_index: TerrainOverrideIndex,
     latest_sequence: u64,
     pages: BTreeMap<PageKey, VoxelPage>,
+    /// Disposable canonical-air pages used only to satisfy extraction halos
+    /// beyond the authoritative hierarchy root. They never enter snapshots
+    /// or mutate the sparse brick tree.
+    exterior_pages: BTreeMap<PageKey, (VoxelPage, CompactedPageRecord)>,
     compacted: BTreeMap<PageKey, CompactedPageRecord>,
     work: TerrainWorkCounters,
 }
@@ -89,6 +93,7 @@ pub struct PageBuildRequest<G> {
     previous_sequence: u64,
     target_sequence: u64,
     operations: Vec<TerrainMutation>,
+    exterior_air: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -101,6 +106,7 @@ pub struct PageBuildResult {
     replayed_edits: usize,
     replayed_overrides: usize,
     reused_resident_page: bool,
+    exterior_air: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -132,7 +138,11 @@ impl<G: DeterministicGenerator> PageBuildRequest<G> {
             .enumerate()
             .rev()
             .find_map(|(index, mutation)| mutation.page_base(self.key).map(|base| (index, base)));
-        let (page, reused_resident_page) = if let Some((index, base)) = reset {
+        let (page, reused_resident_page) = if self.exterior_air {
+            debug_assert!(self.base_page.is_none());
+            debug_assert!(self.operations.is_empty());
+            (VoxelPage::constant(CellWord::AIR), false)
+        } else if let Some((index, base)) = reset {
             let tail = &self.operations[index + 1..];
             match base {
                 TerrainMutationBase::Constant(cell) if tail.is_empty() => {
@@ -171,6 +181,7 @@ impl<G: DeterministicGenerator> PageBuildRequest<G> {
             replayed_edits,
             replayed_overrides,
             reused_resident_page,
+            exterior_air: self.exterior_air,
         })
     }
 }
@@ -207,6 +218,7 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
             ),
             latest_sequence: 0,
             pages: BTreeMap::new(),
+            exterior_pages: BTreeMap::new(),
             compacted: BTreeMap::new(),
             work: TerrainWorkCounters::default(),
         })
@@ -265,6 +277,7 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
             override_index,
             latest_sequence,
             pages: BTreeMap::new(),
+            exterior_pages: BTreeMap::new(),
             compacted,
             work: TerrainWorkCounters::default(),
         })
@@ -422,7 +435,26 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
     where
         G: Clone,
     {
-        let _ = self.hierarchy.resolve(key)?;
+        let exterior_air = match self.hierarchy.resolve(key) {
+            Ok(_) => false,
+            Err(HierarchyError::OutsideRoot(_)) => true,
+            Err(error) => return Err(error.into()),
+        };
+        if exterior_air {
+            if let Some((_, record)) = self.exterior_pages.get(&key) {
+                return Ok(PageBuildPreparation::Current(*record));
+            }
+            return Ok(PageBuildPreparation::Build(PageBuildRequest {
+                key,
+                generator: self.generator.clone(),
+                base_page_id: None,
+                base_page: None,
+                previous_sequence: 0,
+                target_sequence: self.latest_sequence,
+                operations: Vec::new(),
+                exterior_air: true,
+            }));
+        }
         let previous_sequence = self
             .compacted
             .get(&key)
@@ -461,6 +493,7 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
             previous_sequence: replay_from_sequence,
             target_sequence: latest_sequence,
             operations,
+            exterior_air: false,
         }))
     }
 
@@ -473,6 +506,30 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
             return Ok(PageBuildCommitOutcome::Stale {
                 newest_sequence: latest_sequence,
             });
+        }
+        if result.exterior_air {
+            if !matches!(
+                self.hierarchy.resolve(result.key),
+                Err(HierarchyError::OutsideRoot(_))
+            ) {
+                return Err(TerrainCoreError::ExteriorSupportDomainMismatch(result.key));
+            }
+            if result.page.constant_cell() != Some(CellWord::AIR) {
+                return Err(TerrainCoreError::ExteriorSupportNotAir(result.key));
+            }
+            let record = CompactedPageRecord {
+                key: result.key,
+                page_id: result.page.page_id(),
+                compacted_through_sequence: latest_sequence,
+            };
+            let outcome = if self.exterior_pages.contains_key(&result.key) {
+                PageBuildCommitOutcome::Duplicate(record)
+            } else {
+                PageBuildCommitOutcome::Committed(record)
+            };
+            self.exterior_pages
+                .insert(result.key, (result.page, record));
+            return Ok(outcome);
         }
         if let Some(newest_sequence) = self
             .mutations_for_page(result.key, result.target_sequence)
@@ -599,23 +656,26 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
     }
 
     pub fn page(&self, key: PageKey) -> Option<&VoxelPage> {
-        self.pages.get(&key)
+        self.pages
+            .get(&key)
+            .or_else(|| self.exterior_pages.get(&key).map(|(page, _)| page))
     }
 
-    pub fn resident_page_keys(&self) -> impl ExactSizeIterator<Item = PageKey> + '_ {
-        self.pages.keys().copied()
+    pub fn resident_page_keys(&self) -> impl Iterator<Item = PageKey> + '_ {
+        self.pages.keys().chain(self.exterior_pages.keys()).copied()
     }
 
     /// Drop one decompressed page while retaining its authoritative compacted
     /// record and hierarchy entry. A later request rehydrates the exact bytes
     /// from the deterministic generator and ordered edit prefix.
     pub fn evict_resident_page(&mut self, key: PageKey) -> bool {
-        self.pages.remove(&key).is_some()
+        self.pages.remove(&key).is_some() || self.exterior_pages.remove(&key).is_some()
     }
 
     pub fn evict_all_resident_pages(&mut self) -> usize {
-        let count = self.pages.len();
+        let count = self.pages.len() + self.exterior_pages.len();
         self.pages.clear();
+        self.exterior_pages.clear();
         count
     }
 
@@ -661,7 +721,7 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
     }
 
     pub fn resident_page_count(&self) -> usize {
-        self.pages.len()
+        self.pages.len() + self.exterior_pages.len()
     }
 
     pub fn work_counters(&self) -> TerrainWorkCounters {
@@ -678,12 +738,17 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
             override_operations: self.overrides.operations().len(),
             override_attachment_regions: self.override_index.region_count(),
             override_attachment_references: self.override_index.reference_count(),
-            resident_pages: self.pages.len(),
+            resident_pages: self.pages.len() + self.exterior_pages.len(),
             resident_dense_bytes: self
                 .pages
                 .values()
                 .map(VoxelPage::dense_allocation_bytes)
-                .sum(),
+                .sum::<usize>()
+                + self
+                    .exterior_pages
+                    .values()
+                    .map(|(page, _)| page.dense_allocation_bytes())
+                    .sum::<usize>(),
             compacted_page_records: self.compacted.len(),
         }
     }
@@ -941,12 +1006,47 @@ pub enum TerrainCoreError {
     HierarchySummaryBeyondMutationTail { summary: u64, latest: u64 },
     #[error("rehydrated page {0:?} does not match its authoritative content hash")]
     RehydratedPageMismatch(PageKey),
+    #[error("exterior sampling support page {0:?} resolved inside the authoritative root")]
+    ExteriorSupportDomainMismatch(PageKey),
+    #[error("exterior sampling support page {0:?} was not canonical air")]
+    ExteriorSupportNotAir(PageKey),
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{EditMode, EditShape, FixedSphereGenerator};
+
+    #[test]
+    fn exterior_sampling_support_is_disposable_canonical_air() {
+        let generator = FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 100,
+            material: 3,
+        };
+        let mut core = TerrainCore::new(PlanetId([1; 16]), 12, generator).unwrap();
+        let hierarchy_before = core.hierarchy().content_hash();
+        let outside = PageKey::new(11, [-2, -2, -2]);
+        assert!(matches!(
+            core.hierarchy().resolve(outside),
+            Err(HierarchyError::OutsideRoot(key)) if key == outside
+        ));
+
+        let first = core.compact_page(outside).unwrap();
+        assert_eq!(
+            core.page(outside).unwrap().constant_cell(),
+            Some(CellWord::AIR)
+        );
+        assert_eq!(core.hierarchy().content_hash(), hierarchy_before);
+        assert!(core.snapshot().compacted_pages.is_empty());
+
+        assert!(core.evict_resident_page(outside));
+        assert!(core.page(outside).is_none());
+        let rebuilt = core.compact_page(outside).unwrap();
+        assert_eq!(rebuilt.page_id, first.page_id);
+        assert_eq!(core.hierarchy().content_hash(), hierarchy_before);
+        assert!(core.snapshot().compacted_pages.is_empty());
+    }
 
     #[test]
     fn compaction_publishes_a_hashed_page_and_snapshot() {
