@@ -91,7 +91,17 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "43921b0d432e99654161e1de65799fb65fa629f0" }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "697967b5d561fa70454481d2388ae4fcc1902fd9", features = ["gpu"] }
+# Rev bumped 2026-08-15 (Pulsar-Native#561 Phase D): 43921b0 predated
+# `SceneDb`/the GPU-mirror module (`World::attach_gpu_mirror`,
+# `gpu::SceneGpuStore`, `HelioRenderSubsystem`'s dependency surface) by ~114
+# commits -- those only ever built for `helio-scenedb`, which dodged the lag
+# via its own temporary local `path` override straight at `D:\GitHub\SceneDB`
+# (see that crate's Cargo.toml). This bump gives the OUTER workspace
+# (`engine_backend`/`WorldSceneStore`) the same API surface for real, so
+# `SceneDb`-backed wiring compiles here too, not just inside `helio-scenedb`.
+# `features = ["gpu"]` added because the whole `gpu` module is feature-gated
+# (CONTRACTS C0: the SceneDB core stays graphics-free without it).
 # TEMPORARY: pinned to unmerged branch `engineclass-json-roundtrip`
 # (Far-Beyond-Pulsar/Pulsar-Reflection#5, EngineClass::to_json +
 # REGISTRY.create_instance_from_json). Move back to main once merged --

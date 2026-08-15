@@ -45,23 +45,14 @@ proc-macro2 = { workspace = true }
 # compile and run that generated code against this crate's own tests.
 
 [dev-dependencies]
-# TEMPORARY branch pin, not `workspace = true` or a local path: needs the
-# pulsar_scenedb::SceneStore re-export (SceneDB#44, unmerged as of this
-# writing) that scene_store delegation targets -- the git rev this
-# workspace pins predates it. A local path (`D:/GitHub/SceneDB/...`) only
-# resolves on this machine and breaks CI on every runner (confirmed:
-# "failed to read .../D:/GitHub/SceneDB/.../Cargo.toml" on all three CI
-# platforms) -- pointing at the actual pushed branch is CI-safe the same
-# way the root Cargo.toml's Pulsar-Reflection patch already documents for
-# an identical situation. Durable fix: once SceneDB#44 merges and this
-# workspace's `pulsar_scenedb` rev (root Cargo.toml) bumps past it, switch
-# this back to `{ workspace = true }`.
-#
-# `gpu` feature now safe to enable (this workspace's Pulsar-Reflection patch
-# rev was bumped to 4cc82f5, which includes the dyn-method-registry APIs
-# `pulsar_scenedb`'s own `gpu`-gated modules need -- see the patch's own
-# comment in the root Cargo.toml for the version-skew history this closes).
-pulsar_scenedb = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", branch = "engine-class-scenestore-export", features = ["gpu"] }
+# Was a TEMPORARY branch pin (`engine-class-scenestore-export`) while
+# SceneDB#44's `pulsar_scenedb::SceneStore` re-export was unmerged and the
+# root Cargo.toml's rev predated it. SceneDB#44 has since merged to `main`
+# (commit 208cf5a) and the root `pulsar_scenedb` rev was bumped past it
+# (2026-08-15, Pulsar-Native#561 Phase D) -- back to `workspace = true` now,
+# collapsing to the same single copy every other consumer resolves, per the
+# root Cargo.toml's own "unify to one copy" pattern for this exact situation.
+pulsar_scenedb = { workspace = true }
 pulsar_reflection = { workspace = true }
 # `#[engine_class]`'s generated methods call `tracing::warn!` unqualified --
 # every real consumer of this macro already has `tracing` in scope for that
