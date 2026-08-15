@@ -91,21 +91,21 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { path = "D:/GitHub/SceneDB/crates/pulsar_scenedb", features = ["gpu"] }
-# TEMPORARY local path pin (2026-08-15, Pulsar-Native#561 Phase D), same
-# pattern `helio-scenedb`'s own Cargo.toml already uses and documents for
-# this exact situation: the old rev (43921b0) predated `SceneDb`/the
-# GPU-mirror module by ~114 commits, and the fix for the `World::get_mut`
-# API change that bump surfaced (`Mut::into_inner`, added to
-# `D:\GitHub\SceneDB\crates\pulsar_scenedb\src\world.rs`) is a real,
-# necessary SceneDB-side code change that is NOT YET committed/pushed to
-# `origin/main` there -- a git `rev` pin can only resolve to a pushed
-# commit, so a local `path` is what actually picks it up. Durable fix, once
-# that SceneDB change is committed and pushed: switch back to `git`+`rev`
-# pointing at the new commit (same as this session's earlier bump from
-# 43921b0 to 697967b), matching the pattern this workspace already uses
-# everywhere else this situation comes up (see the `[patch]` block below for
-# the identical `pulsar_reflection` history).
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "4895d047a7c70d64814036a099eebe41b9d49c18", features = ["gpu"] }
+# Rev history (2026-08-15, Pulsar-Native#561 Phase D):
+# 43921b0 (this workspace's long-standing pin) -> 697967b (caught up ~114
+# commits: SceneDb/the GPU-mirror module) -> 4895d04 (merged origin/
+# unified-GPU into SceneDB's main: World::attach_change_tracker/
+# SharedChangeTracker -- SceneDB#47's listener-system anchor, actually
+# built -- plus the archetype-graph edge cache and Bundle/WorldQuery work
+# unified-GPU carried; also adds `Mut::into_inner`, needed by
+# `engine_class_derive`'s `get_as_engine_class_mut` shim now that
+# `World::get_mut` returns `Mut<'_, T>` instead of `&mut T`). Pushed to
+# `origin/main` directly (not a `[patch]` override) -- was briefly a local
+# `path` pin while the SceneDB-side merge was still uncommitted; promoted
+# back to a real, CI-safe `git`+`rev` once pushed, matching the pattern
+# this workspace already uses everywhere else this situation comes up (see
+# the `[patch]` block below for the identical `pulsar_reflection` history).
 # `features = ["gpu"]` added because the whole `gpu` module is feature-gated
 # (CONTRACTS C0: the SceneDB core stays graphics-free without it).
 # TEMPORARY: pinned to unmerged branch `engineclass-json-roundtrip`

@@ -163,7 +163,21 @@ pub enum WorldSceneStoreError {
 /// `World`/`Entity`-backed live scene store. See this module's top doc for
 /// the design decisions behind it and what it deliberately doesn't cover yet.
 pub struct WorldSceneStore {
-    world: World,
+    /// `World`, wrapped in a [`pulsar_scenedb::SceneDb`] rather than held
+    /// bare (Pulsar-Native#561 Phase D) -- `SceneDb` is the only supported
+    /// way to drive a `pulsar_scenedb::Subsystem` (`HelioRenderSubsystem`'s
+    /// `simulate_a`/`simulate_b` hooks, `SceneDb::step()`'s phase machine),
+    /// which is what the GPU-native render seam needs. `scene_db.world` is
+    /// still the real, direct `World` -- `SceneDb` is a thin wrapper
+    /// (`{ pub world: World, subsystems, driver }`), so every existing
+    /// `self.scene_db.world.*` call becomes `self.scene_db.world.*`, mechanically,
+    /// with no behavior change for anything that doesn't touch
+    /// subsystems/`step()`. A [`pulsar_scenedb::SharedChangeTracker`] is
+    /// attached at construction (see [`Self::new`]) so a registered
+    /// subsystem's `simulate_b` (which reads `world.change_tracker()`) has
+    /// something to read from day one, not just once a caller remembers to
+    /// attach one.
+    scene_db: pulsar_scenedb::SceneDb,
     /// `StableId` <-> `Entity`, both directions -- the save/load and
     /// cross-reference resolution bridge (Pulsar-Native#553 decision #2).
     /// The forward direction lives here; the reverse direction is just
@@ -204,8 +218,15 @@ pub struct WorldSceneStore {
 
 impl WorldSceneStore {
     pub fn new() -> Self {
+        let mut scene_db = pulsar_scenedb::SceneDb::new();
+        // Attached unconditionally, not lazily on first subsystem
+        // registration -- cheap (one `Arc<Mutex<..>>` allocation) and means
+        // `HelioRenderSubsystem::simulate_b`'s `world.change_tracker()`
+        // check never has to special-case "not attached yet" once a caller
+        // gets around to `register_subsystem`.
+        scene_db.world.attach_change_tracker(pulsar_scenedb::SharedChangeTracker::new());
         Self {
-            world: World::new(),
+            scene_db,
             by_stable_id: HashMap::new(),
             children: HashMap::new(),
             selected: None,
@@ -228,13 +249,22 @@ impl WorldSceneStore {
 
     /// Direct access to the underlying `World`, for callers that need to
     /// `insert`/`get`/`get_mut` real component types (e.g. `helio_component`
-    /// components, once Phase B4/B5 land) beyond this store's own CRUD API.
+    /// components, Phase B4/B5) beyond this store's own CRUD API.
     pub fn world(&self) -> &World {
-        &self.world
+        &self.scene_db.world
     }
 
     pub fn world_mut(&mut self) -> &mut World {
-        &mut self.world
+        &mut self.scene_db.world
+    }
+
+    /// Direct access to the underlying [`pulsar_scenedb::SceneDb`], for
+    /// callers that need `register_subsystem`/`step()` (e.g. wiring
+    /// `helio_scenedb::HelioRenderSubsystem` into the live render sync
+    /// pass, Pulsar-Native#561 Phase D) beyond what [`Self::world`]/
+    /// [`Self::world_mut`] expose.
+    pub fn scene_db_mut(&mut self) -> &mut pulsar_scenedb::SceneDb {
+        &mut self.scene_db
     }
 
     // ── Object creation / deletion ──────────────────────────────────────
@@ -265,20 +295,20 @@ impl WorldSceneStore {
         // path (see `pulsar_scenedb`'s own `bundle.rs` doc) -- an acceptable
         // tradeoff for new, unproven infrastructure; revisit once the pin
         // catches up (tracked at Pulsar-Native#560).
-        let entity = self.world.spawn();
-        self.world.insert(entity, StableId(stable_id.clone()));
-        self.world.insert(entity, Name(name.into()));
-        self.world.insert(entity, Transform::default());
-        self.world.insert(entity, Visibility::default());
+        let entity = self.scene_db.world.spawn();
+        self.scene_db.world.insert(entity, StableId(stable_id.clone()));
+        self.scene_db.world.insert(entity, Name(name.into()));
+        self.scene_db.world.insert(entity, Transform::default());
+        self.scene_db.world.insert(entity, Visibility::default());
         // Defaults to `Empty` (mirroring `SceneEntry`'s own default) --
         // callers that need a real classification call `set_object_type`
         // right after spawning, same two-step shape `SceneDatabase::add_object`
         // already uses for other fields today.
-        self.world.insert(entity, ObjectType::Empty);
-        self.world.insert(entity, RenderProps::default());
+        self.scene_db.world.insert(entity, ObjectType::Empty);
+        self.scene_db.world.insert(entity, RenderProps::default());
 
         if let Some(parent_entity) = parent {
-            self.world.insert(entity, Parent(parent_entity));
+            self.scene_db.world.insert(entity, Parent(parent_entity));
         }
 
         self.by_stable_id.insert(stable_id, entity);
@@ -300,12 +330,12 @@ impl WorldSceneStore {
         }
 
         // Detach from parent's child list.
-        let parent = self.world.get::<Parent>(entity).map(|p| p.0);
+        let parent = self.scene_db.world.get::<Parent>(entity).map(|p| p.0);
         if let Some(siblings) = self.children.get_mut(&parent) {
             siblings.retain(|&e| e != entity);
         }
 
-        if let Some(id) = self.world.get::<StableId>(entity) {
+        if let Some(id) = self.scene_db.world.get::<StableId>(entity) {
             let id = id.0.clone();
             self.by_stable_id.remove(&id);
             self.removed_since_drain.push(id);
@@ -317,7 +347,7 @@ impl WorldSceneStore {
         self.dirty_gen = self.dirty_gen.saturating_add(1);
         self.render_revision = self.render_revision.saturating_add(1);
 
-        self.world.despawn(entity);
+        self.scene_db.world.despawn(entity);
     }
 
     // ── Lookup ───────────────────────────────────────────────────────────
@@ -327,17 +357,17 @@ impl WorldSceneStore {
     }
 
     pub fn stable_id_of(&self, entity: Entity) -> Option<&str> {
-        self.world.get::<StableId>(entity).map(|id| id.0.as_str())
+        self.scene_db.world.get::<StableId>(entity).map(|id| id.0.as_str())
     }
 
     pub fn is_alive(&self, entity: Entity) -> bool {
-        self.world.is_alive(entity)
+        self.scene_db.world.is_alive(entity)
     }
 
     // ── Hierarchy ────────────────────────────────────────────────────────
 
     pub fn parent_of(&self, entity: Entity) -> Option<Entity> {
-        self.world.get::<Parent>(entity).map(|p| p.0)
+        self.scene_db.world.get::<Parent>(entity).map(|p| p.0)
     }
 
     /// Ordered children of `parent`, or root-level entities if `None`.
@@ -379,10 +409,10 @@ impl WorldSceneStore {
 
         match new_parent {
             Some(p) => {
-                self.world.insert(entity, Parent(p));
+                self.scene_db.world.insert(entity, Parent(p));
             }
             None => {
-                self.world.remove::<Parent>(entity);
+                self.scene_db.world.remove::<Parent>(entity);
             }
         }
         self.children.entry(new_parent).or_default().push(entity);
@@ -458,11 +488,11 @@ impl WorldSceneStore {
     // ── Transform / name / visibility ───────────────────────────────────
 
     pub fn transform(&self, entity: Entity) -> Option<Transform> {
-        self.world.get::<Transform>(entity).copied()
+        self.scene_db.world.get::<Transform>(entity).copied()
     }
 
     pub fn set_transform(&mut self, entity: Entity, transform: Transform) -> bool {
-        match self.world.get_mut::<Transform>(entity) {
+        match self.scene_db.world.get_mut::<Transform>(entity) {
             Some(mut t) => {
                 *t = transform;
                 true
@@ -474,11 +504,11 @@ impl WorldSceneStore {
     }
 
     pub fn name(&self, entity: Entity) -> Option<&str> {
-        self.world.get::<Name>(entity).map(|n| n.0.as_str())
+        self.scene_db.world.get::<Name>(entity).map(|n| n.0.as_str())
     }
 
     pub fn set_name(&mut self, entity: Entity, name: impl Into<String>) -> bool {
-        match self.world.get_mut::<Name>(entity) {
+        match self.scene_db.world.get_mut::<Name>(entity) {
             Some(mut n) => {
                 n.0 = name.into();
                 true
@@ -490,11 +520,11 @@ impl WorldSceneStore {
     }
 
     pub fn visibility(&self, entity: Entity) -> Option<Visibility> {
-        self.world.get::<Visibility>(entity).copied()
+        self.scene_db.world.get::<Visibility>(entity).copied()
     }
 
     pub fn set_visibility(&mut self, entity: Entity, visibility: Visibility) -> bool {
-        match self.world.get_mut::<Visibility>(entity) {
+        match self.scene_db.world.get_mut::<Visibility>(entity) {
             Some(mut v) => {
                 *v = visibility;
                 true
@@ -508,7 +538,7 @@ impl WorldSceneStore {
     /// Object classification (Mesh/Light/Folder/...). Defaults to `Empty` at
     /// spawn (mirrors `SceneEntry`'s own default) -- see [`Self::spawn`].
     pub fn object_type(&self, entity: Entity) -> Option<ObjectType> {
-        self.world.get::<ObjectType>(entity).copied()
+        self.scene_db.world.get::<ObjectType>(entity).copied()
     }
 
     /// Set an object's classification. Unlike transform/name/visibility this
@@ -516,7 +546,7 @@ impl WorldSceneStore {
     /// identity is normally fixed for its lifetime), but nothing enforces
     /// that -- it's a plain settable component like the others.
     pub fn set_object_type(&mut self, entity: Entity, object_type: ObjectType) -> bool {
-        match self.world.get_mut::<ObjectType>(entity) {
+        match self.scene_db.world.get_mut::<ObjectType>(entity) {
             Some(mut t) => *t = object_type,
             None => return false,
         };
@@ -532,7 +562,7 @@ impl WorldSceneStore {
     /// a clone. No-op if `id` doesn't resolve.
     pub fn update_render_props(&mut self, id: &str, f: impl FnOnce(&mut RenderProps)) -> bool {
         let Some(entity) = self.entity_for(id) else { return false };
-        match self.world.get_mut::<RenderProps>(entity) {
+        match self.scene_db.world.get_mut::<RenderProps>(entity) {
             Some(mut props) => f(&mut props),
             None => return false,
         }
@@ -543,7 +573,7 @@ impl WorldSceneStore {
     /// Mirrors reading `SceneEntry.meta.props`/`component_instances`.
     pub fn render_props(&self, id: &str) -> Option<RenderProps> {
         let entity = self.entity_for(id)?;
-        self.world.get::<RenderProps>(entity).cloned()
+        self.scene_db.world.get::<RenderProps>(entity).cloned()
     }
 
     // ── Selection ────────────────────────────────────────────────────────
@@ -657,7 +687,7 @@ impl WorldSceneStore {
             transform: self.transform(entity).unwrap_or_default(),
             visibility: self.visibility(entity).unwrap_or_default(),
             object_type: self.object_type(entity).unwrap_or(ObjectType::Empty),
-            render_props: self.world.get::<RenderProps>(entity).cloned().unwrap_or_default(),
+            render_props: self.scene_db.world.get::<RenderProps>(entity).cloned().unwrap_or_default(),
         })
     }
 
@@ -753,7 +783,7 @@ impl WorldSceneStore {
                 transform: self.transform(entity).unwrap_or_default(),
                 visibility: self.visibility(entity).unwrap_or_default(),
                 object_type: self.object_type(entity).unwrap_or(ObjectType::Empty),
-                render_props: self.world.get::<RenderProps>(entity).cloned().unwrap_or_default(),
+                render_props: self.scene_db.world.get::<RenderProps>(entity).cloned().unwrap_or_default(),
             });
             self.collect_snapshots_dfs(Some(entity), out);
         }
