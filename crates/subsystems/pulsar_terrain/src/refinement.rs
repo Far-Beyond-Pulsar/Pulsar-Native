@@ -1,7 +1,8 @@
 use crate::{
-    PageDemand, PageKey, PlanetId, TerrainRenderDeltaError, TerrainRenderDeltaPublisher,
-    TerrainRequestClass, TerrainRequestOutcome, TerrainRuntimeError, TerrainRuntimeHandle,
-    TerrainStreamingPlan,
+    sampling::terrain_frontier_sampling_support, PageDemand, PageKey, PlanetId,
+    TerrainRenderDeltaError, TerrainRenderDeltaPublisher, TerrainRequestClass,
+    TerrainRequestOutcome, TerrainRuntimeError, TerrainRuntimeHandle, TerrainStreamingPlan,
+    TerrainSurfaceSamplingError,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
@@ -11,7 +12,9 @@ use thiserror::Error;
 pub struct TerrainRefinementConfig {
     /// Maximum stable visible/prefetch frontier.
     pub max_active_pages: usize,
-    /// Maximum union of committed and staged pages.
+    /// Maximum union of committed surfaces, their extraction support, and the
+    /// next staged handoff. This bounds canonical and renderer residency while
+    /// a parent-preserving replacement is prepared.
     pub max_transition_pages: usize,
     /// Maximum pages in the first coarse publication.
     pub initial_coarse_pages: usize,
@@ -27,7 +30,7 @@ impl Default for TerrainRefinementConfig {
     fn default() -> Self {
         Self {
             max_active_pages: 2_048,
-            max_transition_pages: 2_112,
+            max_transition_pages: 8_192,
             initial_coarse_pages: 32,
             max_requests_per_reconcile: 8,
             max_commits_per_reconcile: 4,
@@ -92,7 +95,9 @@ pub struct TerrainRefinementReport {
     pub deferred: usize,
     pub evicted: usize,
     pub committed_pages: usize,
+    pub committed_sampling_pages: usize,
     pub staged_pages: usize,
+    pub staged_sampling_pages: usize,
     pub target_pages: usize,
     pub replacements_committed: usize,
     pub visible_set_changed: bool,
@@ -108,6 +113,7 @@ struct TargetFrontier {
 struct StagedReplacement {
     additions: BTreeMap<PageKey, TerrainRequestClass>,
     removals: BTreeSet<PageKey>,
+    sampling_support: BTreeSet<PageKey>,
 }
 
 /// Persistent canonical LOD frontier. Staged pages are never part of
@@ -117,6 +123,7 @@ pub struct TerrainRefinementFrontier {
     planet_id: PlanetId,
     config: TerrainRefinementConfig,
     committed: BTreeMap<PageKey, TerrainRequestClass>,
+    sampling_support: BTreeSet<PageKey>,
     target: Option<TargetFrontier>,
     staged: Option<StagedReplacement>,
     counters: TerrainRefinementCounters,
@@ -131,6 +138,7 @@ impl TerrainRefinementFrontier {
             planet_id,
             config: config.validate()?,
             committed: BTreeMap::new(),
+            sampling_support: BTreeSet::new(),
             target: None,
             staged: None,
             counters: TerrainRefinementCounters::default(),
@@ -159,11 +167,34 @@ impl TerrainRefinementFrontier {
         self.committed.iter().map(|(key, class)| (*key, *class))
     }
 
-    pub fn staged_pages(&self) -> impl Iterator<Item = PageKey> + '_ {
+    pub fn sampling_support_pages(&self) -> impl ExactSizeIterator<Item = PageKey> + '_ {
+        self.sampling_support.iter().copied()
+    }
+
+    pub fn protected_pages(&self) -> impl Iterator<Item = PageKey> + '_ {
+        self.committed
+            .keys()
+            .copied()
+            .chain(self.sampling_support.iter().copied())
+    }
+
+    pub fn staged_surface_pages(&self) -> impl Iterator<Item = PageKey> + '_ {
         self.staged
             .as_ref()
             .into_iter()
             .flat_map(|stage| stage.additions.keys().copied())
+    }
+
+    pub fn staged_sampling_support_pages(&self) -> impl Iterator<Item = PageKey> + '_ {
+        self.staged
+            .as_ref()
+            .into_iter()
+            .flat_map(|stage| stage.sampling_support.iter().copied())
+    }
+
+    pub fn staged_pages(&self) -> impl Iterator<Item = PageKey> + '_ {
+        self.staged_surface_pages()
+            .chain(self.staged_sampling_support_pages())
     }
 
     pub fn is_converged(&self) -> bool {
@@ -235,7 +266,12 @@ impl TerrainRefinementFrontier {
                 stage
                     .additions
                     .into_keys()
-                    .filter(|key| !self.committed.contains_key(key))
+                    .chain(stage.sampling_support)
+                    .filter(|key| {
+                        !self.committed.contains_key(key) && !self.sampling_support.contains(key)
+                    })
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
                     .collect()
             }
         });
@@ -251,19 +287,23 @@ impl TerrainRefinementFrontier {
             .target
             .as_ref()
             .ok_or(TerrainRefinementError::MissingTarget)?;
-        let stage = if self.committed.is_empty() {
+        let mut stage = if self.committed.is_empty() {
             StagedReplacement {
                 additions: coarse_seed(target, self.config.initial_coarse_pages)?,
                 removals: BTreeSet::new(),
+                sampling_support: BTreeSet::new(),
             }
         } else {
             choose_replacement(&self.committed, target)?
                 .ok_or(TerrainRefinementError::NoSafeReplacement)?
         };
+        stage.sampling_support = sampling_support_after(&self.committed, &stage)?;
         let transition_pages = self
             .committed
             .keys()
+            .chain(self.sampling_support.iter())
             .chain(stage.additions.keys())
+            .chain(stage.sampling_support.iter())
             .copied()
             .collect::<BTreeSet<_>>()
             .len();
@@ -285,14 +325,19 @@ impl TerrainRefinementFrontier {
         &mut self,
         resident: &BTreeSet<PageKey>,
     ) -> Result<(Vec<PageKey>, usize), TerrainRefinementError> {
-        let mut retired = Vec::new();
+        let mut retired = BTreeSet::new();
         let mut committed = 0;
         while committed < self.config.max_commits_per_reconcile {
             self.prepare_stage()?;
             let Some(stage) = self.staged.as_ref() else {
                 break;
             };
-            if !stage.additions.keys().all(|key| resident.contains(key)) {
+            if !stage
+                .additions
+                .keys()
+                .chain(stage.sampling_support.iter())
+                .all(|key| resident.contains(key))
+            {
                 break;
             }
             let stage = self.staged.take().expect("the ready stage exists");
@@ -305,14 +350,21 @@ impl TerrainRefinementFrontier {
             if !is_face_balanced(prospective.keys().copied()) {
                 return Err(TerrainRefinementError::UnbalancedCommit);
             }
+            let retained = prospective
+                .keys()
+                .copied()
+                .chain(stage.sampling_support.iter().copied())
+                .collect::<BTreeSet<_>>();
             retired.extend(
                 stage
                     .removals
                     .iter()
-                    .filter(|key| !stage.additions.contains_key(key))
-                    .copied(),
+                    .copied()
+                    .chain(self.sampling_support.iter().copied())
+                    .filter(|key| !retained.contains(key)),
             );
             self.committed = prospective;
+            self.sampling_support = stage.sampling_support;
             committed += 1;
             self.counters.replacements_committed =
                 self.counters.replacements_committed.saturating_add(1);
@@ -324,7 +376,7 @@ impl TerrainRefinementFrontier {
                 break;
             }
         }
-        Ok((retired, committed))
+        Ok((retired.into_iter().collect(), committed))
     }
 }
 
@@ -367,8 +419,20 @@ impl TerrainIncrementalResidencySession {
         self.frontier.committed_demands()
     }
 
+    pub fn sampling_support_pages(&self) -> impl ExactSizeIterator<Item = PageKey> + '_ {
+        self.frontier.sampling_support_pages()
+    }
+
+    pub fn protected_pages(&self) -> impl Iterator<Item = PageKey> + '_ {
+        self.frontier.protected_pages()
+    }
+
     pub fn staged_pages(&self) -> impl Iterator<Item = PageKey> + '_ {
         self.frontier.staged_pages()
+    }
+
+    pub fn staged_surface_pages(&self) -> impl Iterator<Item = PageKey> + '_ {
+        self.frontier.staged_surface_pages()
     }
 
     pub fn is_converged(&self) -> bool {
@@ -403,18 +467,35 @@ impl TerrainIncrementalResidencySession {
         self.frontier.prepare_stage()?;
         let resident = runtime.resident_page_generations(self.planet_id())?;
         let published = publisher.published_resident_pages(self.planet_id(), &resident);
-        let staged = self.frontier.staged.as_ref();
+        let staged_work = self
+            .frontier
+            .staged
+            .as_ref()
+            .into_iter()
+            .flat_map(|stage| {
+                stage
+                    .additions
+                    .iter()
+                    .map(|(key, class)| (*key, *class))
+                    .chain(
+                        stage
+                            .sampling_support
+                            .iter()
+                            .map(|key| (*key, TerrainRequestClass::Visible)),
+                    )
+            })
+            .collect::<Vec<_>>();
         let mut requests = Vec::new();
         let mut bounded_work = 0;
-        for (key, request_class) in staged.into_iter().flat_map(|stage| stage.additions.iter()) {
-            if published.contains(key) {
+        for (key, request_class) in staged_work {
+            if published.contains(&key) {
                 continue;
             }
             if bounded_work == self.frontier.config.max_requests_per_reconcile {
                 break;
             }
-            if let Some(generation) = resident.get(key) {
-                publisher.ensure_resident_upload(self.planet_id(), *key, *generation)?;
+            if let Some(generation) = resident.get(&key) {
+                publisher.ensure_resident_upload(self.planet_id(), key, *generation)?;
                 bounded_work += 1;
                 continue;
             }
@@ -424,7 +505,7 @@ impl TerrainIncrementalResidencySession {
                 | TerrainRequestClass::Collision
                 | TerrainRequestClass::EditResponse => self.frontier.config.visible_deadline_ticks,
             };
-            requests.push((*key, *request_class, tick.saturating_add(deadline)));
+            requests.push((key, request_class, tick.saturating_add(deadline)));
             bounded_work += 1;
         }
         let (outcomes, request_error) = runtime.request_pages_bounded(self.planet_id(), &requests);
@@ -470,11 +551,17 @@ impl TerrainIncrementalResidencySession {
             .pages_evicted
             .saturating_add(report.evicted as u64);
         report.committed_pages = self.frontier.committed.len();
+        report.committed_sampling_pages = self.frontier.sampling_support.len();
         report.staged_pages = self
             .frontier
             .staged
             .as_ref()
             .map_or(0, |stage| stage.additions.len());
+        report.staged_sampling_pages = self
+            .frontier
+            .staged
+            .as_ref()
+            .map_or(0, |stage| stage.sampling_support.len());
         report.converged = self.frontier.is_converged();
         Ok(report)
     }
@@ -492,6 +579,7 @@ fn choose_replacement(
             return Ok(Some(StagedReplacement {
                 additions: BTreeMap::from([(*key, *request_class)]),
                 removals: BTreeSet::from([*key]),
+                sampling_support: BTreeSet::new(),
             }));
         }
     }
@@ -517,6 +605,7 @@ fn choose_replacement(
         let stage = StagedReplacement {
             additions: BTreeMap::from([(parent, target_class)]),
             removals,
+            sampling_support: BTreeSet::new(),
         };
         if replacement_is_safe(committed, &stage) {
             return Ok(Some(stage));
@@ -571,6 +660,7 @@ fn choose_replacement(
         let stage = StagedReplacement {
             additions,
             removals: BTreeSet::from([parent]),
+            sampling_support: BTreeSet::new(),
         };
         if replacement_is_safe(committed, &stage) {
             return Ok(Some(stage));
@@ -723,6 +813,19 @@ fn replacement_is_safe(
     prospective.extend(stage.additions.iter().map(|(key, class)| (*key, *class)));
     validate_non_overlapping(prospective.keys().copied()).is_ok()
         && is_face_balanced(prospective.keys().copied())
+}
+
+fn sampling_support_after(
+    committed: &BTreeMap<PageKey, TerrainRequestClass>,
+    stage: &StagedReplacement,
+) -> Result<BTreeSet<PageKey>, TerrainSurfaceSamplingError> {
+    let mut prospective = committed.clone();
+    for key in &stage.removals {
+        prospective.remove(key);
+    }
+    prospective.extend(stage.additions.iter().map(|(key, class)| (*key, *class)));
+    let masks = transition_masks(prospective.keys().copied());
+    terrain_frontier_sampling_support(prospective.into_keys(), &masks)
 }
 
 pub(crate) fn is_ancestor(ancestor: PageKey, descendant: PageKey) -> bool {
@@ -891,6 +994,8 @@ pub enum TerrainRefinementError {
     EmptyTarget,
     #[error("no target terrain frontier has been submitted")]
     MissingTarget,
+    #[error(transparent)]
+    Sampling(#[from] TerrainSurfaceSamplingError),
     #[error("the target terrain frontier is not 2:1 face balanced")]
     UnbalancedTarget,
     #[error("invalid target terrain frontier: {0}")]
@@ -960,11 +1065,11 @@ mod tests {
             frontier.prepare_stage().unwrap();
             resident.extend(frontier.staged_pages());
             let (retired, committed) = frontier.commit_ready_stages(resident).unwrap();
-            assert_eq!(committed, 1);
+            assert!((1..=frontier.config().max_commits_per_reconcile).contains(&committed));
             for key in retired {
                 resident.remove(&key);
             }
-            commits += 1;
+            commits += committed;
             let pages = frontier.committed_pages().collect::<BTreeSet<_>>();
             validate_non_overlapping(pages.iter().copied()).unwrap();
             assert!(is_face_balanced(pages.iter().copied()));
@@ -990,9 +1095,13 @@ mod tests {
         .unwrap();
         frontier.set_target(&target).unwrap();
         frontier.prepare_stage().unwrap();
-        assert_eq!(frontier.staged_pages().collect::<Vec<_>>(), vec![parent]);
+        assert_eq!(
+            frontier.staged_surface_pages().collect::<Vec<_>>(),
+            vec![parent]
+        );
+        assert_eq!(frontier.staged_sampling_support_pages().count(), 26);
 
-        let resident = BTreeSet::from([parent]);
+        let resident = frontier.staged_pages().collect();
         let (retired, committed) = frontier.commit_ready_stages(&resident).unwrap();
         assert!(retired.is_empty());
         assert_eq!(committed, 1);
@@ -1015,20 +1124,20 @@ mod tests {
         .unwrap();
         frontier.set_target(&target).unwrap();
         frontier.prepare_stage().unwrap();
-        frontier
-            .commit_ready_stages(&BTreeSet::from([parent]))
-            .unwrap();
+        let initial = frontier.staged_pages().collect();
+        frontier.commit_ready_stages(&initial).unwrap();
         frontier.prepare_stage().unwrap();
 
-        let partial = children[..7].iter().copied().collect::<BTreeSet<_>>();
+        let mut partial = frontier.staged_pages().collect::<BTreeSet<_>>();
+        partial.remove(&children[7]);
         let (retired, committed) = frontier.commit_ready_stages(&partial).unwrap();
         assert!(retired.is_empty());
         assert_eq!(committed, 0);
         assert_eq!(frontier.committed_pages().collect::<Vec<_>>(), vec![parent]);
 
-        let ready = children.iter().copied().collect::<BTreeSet<_>>();
+        let ready = frontier.staged_pages().collect::<BTreeSet<_>>();
         let (retired, committed) = frontier.commit_ready_stages(&ready).unwrap();
-        assert_eq!(retired, vec![parent]);
+        assert!(retired.contains(&parent));
         assert_eq!(committed, 1);
         assert_eq!(
             frontier.committed_pages().collect::<BTreeSet<_>>(),
@@ -1053,9 +1162,8 @@ mod tests {
         .unwrap();
         frontier.set_target(&fine).unwrap();
         frontier.prepare_stage().unwrap();
-        frontier
-            .commit_ready_stages(&children.iter().copied().collect())
-            .unwrap();
+        let fine_ready = frontier.staged_pages().collect();
+        frontier.commit_ready_stages(&fine_ready).unwrap();
         assert!(frontier.is_converged());
 
         frontier.set_target(&coarse).unwrap();
@@ -1065,13 +1173,10 @@ mod tests {
         assert_eq!(committed, 0);
         assert_eq!(frontier.committed_pages().count(), 8);
 
-        let (retired, committed) = frontier
-            .commit_ready_stages(&BTreeSet::from([parent]))
-            .unwrap();
-        assert_eq!(
-            retired.into_iter().collect::<BTreeSet<_>>(),
-            children.into_iter().collect()
-        );
+        let coarse_ready = frontier.staged_pages().collect();
+        let (retired, committed) = frontier.commit_ready_stages(&coarse_ready).unwrap();
+        let retired = retired.into_iter().collect::<BTreeSet<_>>();
+        assert!(children.into_iter().all(|child| retired.contains(&child)));
         assert_eq!(committed, 1);
         assert_eq!(frontier.committed_pages().collect::<Vec<_>>(), vec![parent]);
         assert!(frontier.is_converged());
@@ -1113,14 +1218,12 @@ mod tests {
             TerrainRefinementFrontier::new(planet(), TerrainRefinementConfig::default()).unwrap();
         frontier.set_target(&visible).unwrap();
         frontier.prepare_stage().unwrap();
-        frontier
-            .commit_ready_stages(&BTreeSet::from([key]))
-            .unwrap();
+        let ready = frontier.staged_pages().collect();
+        frontier.commit_ready_stages(&ready).unwrap();
 
         frontier.set_target(&prefetch).unwrap();
-        let (retired, committed) = frontier
-            .commit_ready_stages(&BTreeSet::from([key]))
-            .unwrap();
+        let resident = frontier.protected_pages().collect();
+        let (retired, committed) = frontier.commit_ready_stages(&resident).unwrap();
         assert!(retired.is_empty());
         assert_eq!(committed, 1);
         assert_eq!(
@@ -1174,24 +1277,22 @@ mod tests {
         .unwrap();
         frontier.set_target(&first).unwrap();
         frontier.prepare_stage().unwrap();
-        frontier
-            .commit_ready_stages(&BTreeSet::from([parent]))
-            .unwrap();
+        let parent_ready = frontier.staged_pages().collect();
+        frontier.commit_ready_stages(&parent_ready).unwrap();
         frontier.prepare_stage().unwrap();
         assert_eq!(
-            frontier.staged_pages().collect::<BTreeSet<_>>(),
+            frontier.staged_surface_pages().collect::<BTreeSet<_>>(),
             children.iter().copied().collect()
         );
 
         assert!(frontier.set_target(&next).unwrap().is_empty());
         assert_eq!(frontier.counters().stages_cancelled, 0);
         assert_eq!(
-            frontier.staged_pages().collect::<BTreeSet<_>>(),
+            frontier.staged_surface_pages().collect::<BTreeSet<_>>(),
             children.iter().copied().collect()
         );
-        let (_, committed) = frontier
-            .commit_ready_stages(&children.iter().copied().collect())
-            .unwrap();
+        let ready = frontier.staged_pages().collect();
+        let (_, committed) = frontier.commit_ready_stages(&ready).unwrap();
         assert_eq!(committed, 1);
         assert_eq!(
             frontier.committed_pages().collect::<BTreeSet<_>>(),
@@ -1257,7 +1358,7 @@ mod tests {
             planet(),
             TerrainRefinementConfig {
                 max_active_pages: 256,
-                max_transition_pages: 264,
+                max_transition_pages: 2_048,
                 initial_coarse_pages: 8,
                 max_commits_per_reconcile: 1,
                 ..TerrainRefinementConfig::default()
@@ -1266,6 +1367,7 @@ mod tests {
         .unwrap();
         let mut resident = BTreeSet::new();
         converge_frontier(&mut frontier, &target, &mut resident);
+        assert!(frontier.counters().transition_page_high_water <= 2_048);
         assert_eq!(
             frontier.committed_pages().collect::<BTreeSet<_>>(),
             target
@@ -1319,7 +1421,7 @@ mod tests {
             planet(),
             TerrainRefinementConfig {
                 max_active_pages: 64,
-                max_transition_pages: 72,
+                max_transition_pages: 1_024,
                 initial_coarse_pages: 8,
                 max_commits_per_reconcile: 1,
                 ..TerrainRefinementConfig::default()
@@ -1329,6 +1431,7 @@ mod tests {
         let mut resident = BTreeSet::new();
         converge_frontier(&mut frontier, &ground, &mut resident);
         converge_frontier(&mut frontier, &orbit, &mut resident);
+        assert!(frontier.counters().transition_page_high_water <= 1_024);
         assert_eq!(
             frontier.committed_pages().collect::<BTreeSet<_>>(),
             orbit
@@ -1337,5 +1440,72 @@ mod tests {
                 .map(|demand| demand.page_key())
                 .collect()
         );
+    }
+
+    #[test]
+    fn earth_scale_live_frontier_fits_the_bounded_sampling_residency() {
+        let radius_cells = 63_710_000_u64;
+        let definition = PlanetDefinition {
+            planet_id: planet(),
+            center_cell: [0; 3],
+            radius_cells,
+            material: 1,
+            root_lod: 22,
+            max_resident_pages: 2_048,
+        };
+        let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
+            max_pages: 96,
+            ..TerrainStreamingConfig::default()
+        })
+        .unwrap();
+        let camera_cell = i64::try_from(radius_cells).unwrap() + 10;
+        let make_view = |camera_cell, forward| {
+            PlanetView::new(
+                PlanetPosition::from_lod0_cell(camera_cell),
+                forward,
+                [0.0, 1.0, 0.0],
+                60_f64.to_radians(),
+                [1920, 1080],
+                0.1,
+                100_000_000.0,
+                [0.0; 3],
+            )
+            .unwrap()
+        };
+        let ground = planner
+            .plan_fixed_sphere(
+                &definition,
+                make_view([camera_cell, 0, 0], [-1.0, 0.0, 0.0]),
+            )
+            .unwrap();
+        let orbit = planner
+            .plan_fixed_sphere(
+                &definition,
+                make_view([camera_cell + 40_000_000, 0, 0], [-1.0, 0.0, 0.0]),
+            )
+            .unwrap();
+        let antipode = planner
+            .plan_fixed_sphere(
+                &definition,
+                make_view([-camera_cell, 0, 0], [1.0, 0.0, 0.0]),
+            )
+            .unwrap();
+        let mut frontier = TerrainRefinementFrontier::new(
+            planet(),
+            TerrainRefinementConfig {
+                max_active_pages: 96,
+                max_transition_pages: 2_048,
+                initial_coarse_pages: 32,
+                max_commits_per_reconcile: 8,
+                ..TerrainRefinementConfig::default()
+            },
+        )
+        .unwrap();
+        let mut resident = BTreeSet::new();
+        converge_frontier(&mut frontier, &ground, &mut resident);
+        converge_frontier(&mut frontier, &orbit, &mut resident);
+        converge_frontier(&mut frontier, &antipode, &mut resident);
+        assert!(frontier.counters().transition_page_high_water > 512);
+        assert!(frontier.counters().transition_page_high_water <= 2_048);
     }
 }

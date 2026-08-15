@@ -18,6 +18,7 @@ mod planning;
 mod refinement;
 mod render;
 mod runtime;
+mod sampling;
 mod snapshot;
 mod store;
 mod streaming;
@@ -67,6 +68,7 @@ pub use runtime::{
     TerrainRuntimeConfig, TerrainRuntimeCounters, TerrainRuntimeError, TerrainRuntimeEvent,
     TerrainRuntimeHandle, TerrainSubsystem, TERRAIN_SUBSYSTEM_ID,
 };
+pub use sampling::{terrain_surface_required_pages, TerrainSurfaceSamplingError};
 pub use snapshot::{CompactedPageRecord, SnapshotCodecError, TerrainSnapshot};
 pub use store::{SnapshotRecord, TerrainStore, TerrainStoreError};
 pub use streaming::{

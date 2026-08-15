@@ -878,7 +878,7 @@ mod tests {
         }
     }
 
-    fn start() -> TerrainSubsystem {
+    fn start_with_resident_pages(max_resident_pages: usize) -> TerrainSubsystem {
         let mut subsystem = TerrainSubsystem::new(TerrainRuntimeConfig {
             worker_count: 4,
             max_planets: 2,
@@ -887,13 +887,17 @@ mod tests {
             critical_request_reserve: 4,
             completion_capacity: 64,
             event_capacity: 128,
-            max_resident_pages: 64,
-            max_resident_dense_bytes: 64 * DENSE_PAGE_BYTES,
+            max_resident_pages,
+            max_resident_dense_bytes: max_resident_pages * DENSE_PAGE_BYTES,
             max_completions_per_frame: 64,
         })
         .unwrap();
         subsystem.init(&SubsystemContext::new()).unwrap();
         subsystem
+    }
+
+    fn start() -> TerrainSubsystem {
+        start_with_resident_pages(64)
     }
 
     fn wait_for_page_events(
@@ -983,9 +987,10 @@ mod tests {
 
     #[test]
     fn incremental_handoff_keeps_the_coarse_page_visible_until_children_commit() {
-        let mut subsystem = start();
+        let mut subsystem = start_with_resident_pages(128);
         let runtime = subsystem.runtime_handle();
-        let planet = definition(9);
+        let mut planet = definition(9);
+        planet.max_resident_pages = 128;
         runtime.upsert_planet(planet.clone()).unwrap();
         let parent = PageKey::new(2, [0, 0, 0]);
         let base = parent.page_xyz.map(|coordinate| coordinate * 2);
@@ -1023,9 +1028,9 @@ mod tests {
             planet.planet_id,
             TerrainRefinementConfig {
                 max_active_pages: 8,
-                max_transition_pages: 9,
+                max_transition_pages: 128,
                 initial_coarse_pages: 1,
-                max_requests_per_reconcile: 1,
+                max_requests_per_reconcile: 16,
                 max_commits_per_reconcile: 1,
                 ..TerrainRefinementConfig::default()
             },
@@ -1035,7 +1040,7 @@ mod tests {
             max_events_per_delta: 16,
             max_commands_per_delta: 16,
             max_upload_bytes_per_delta: 16 * DENSE_PAGE_BYTES,
-            max_tracked_pages: 16,
+            max_tracked_pages: 128,
             max_visible_pages: 8,
         })
         .unwrap();
@@ -1099,7 +1104,7 @@ mod tests {
                 assert_eq!(visible_keys, committed);
                 if committed == BTreeSet::from([parent]) {
                     saw_parent = true;
-                    saw_parent_while_children_staged |= session.staged_pages().count() == 8;
+                    saw_parent_while_children_staged |= session.staged_surface_pages().count() == 8;
                 }
             }
             if session.is_converged() {

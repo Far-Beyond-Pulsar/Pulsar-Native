@@ -582,14 +582,16 @@ fn translate_page_key(page: pulsar_terrain::PageKey) -> Result<PageKey, AddressE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use helio_pass_planetary_voxel::PlanetaryVoxelGpuConfig;
+    use helio_pass_planetary_voxel::{PlanetarySurfaceRequest, PlanetaryVoxelGpuConfig};
     use helio_planet_voxel_core::{
-        PAGE_CELL_COUNT, PAGE_EDGE as HELIO_PAGE_EDGE, TRANSITION_FACE_MASK, UploadOutcome,
+        PAGE_CELL_COUNT, PAGE_EDGE as HELIO_PAGE_EDGE, PlanetPageKey, SourceGeneration,
+        TRANSITION_FACE_MASK, UploadOutcome,
     };
     use pulsar_terrain::{
         CELL_COUNT, CellWord as TerrainCellWord, LOD0_CELL_SIZE_METERS as TERRAIN_CELL_SIZE_METERS,
         PAGE_EDGE, PageKey as TerrainPageKey, PlanetFrame, PlanetId as TerrainId, PlanetPosition,
         TERRAIN_TRANSITION_FACE_MASK, TerrainRenderDeltaCounters, TerrainVisiblePage,
+        terrain_surface_required_pages,
     };
 
     fn terrain_upload(
@@ -725,6 +727,35 @@ mod tests {
                 AddressError::UnsupportedLod(u8::MAX)
             ))
         ));
+    }
+
+    #[test]
+    fn pulsar_sampling_dependencies_match_helio_exactly() {
+        for (page, transition_mask) in [
+            (TerrainPageKey::new(1, [0, 0, 0]), 0),
+            (TerrainPageKey::new(3, [-17, 4, -9]), 0b00_111111),
+            (
+                TerrainPageKey::new(7, [i32::MAX as i64, -3, 11]),
+                0b00_010101,
+            ),
+        ] {
+            let pulsar = terrain_surface_required_pages(page, transition_mask).unwrap();
+            let helio = PlanetarySurfaceRequest {
+                key: PlanetPageKey::new(
+                    PlanetId([9; 16]),
+                    helio_planet_voxel_core::PageKey::new(page.lod, page.page_xyz),
+                ),
+                generation: SourceGeneration::new(1, 2),
+                transition_mask,
+                dirty_microbricks: u64::MAX,
+            }
+            .required_pages()
+            .unwrap()
+            .into_iter()
+            .map(|key| TerrainPageKey::new(key.page.lod, key.page.page_xyz))
+            .collect::<BTreeSet<_>>();
+            assert_eq!(pulsar, helio);
+        }
     }
 
     #[test]

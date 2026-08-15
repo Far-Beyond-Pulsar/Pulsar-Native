@@ -193,7 +193,7 @@ impl TerrainStreamingController {
             };
             if !state
                 .residency
-                .committed_pages()
+                .protected_pages()
                 .any(|page| page == eviction.page_key)
             {
                 continue;
@@ -231,7 +231,7 @@ impl TerrainStreamingController {
             let resident = self
                 .runtime
                 .resident_page_generations(state.residency.planet_id())?;
-            for page_key in state.residency.committed_pages() {
+            for page_key in state.residency.protected_pages() {
                 if let Some(generation) = resident.get(&page_key) {
                     self.publisher.ensure_resident_upload(
                         state.residency.planet_id(),
@@ -316,7 +316,7 @@ impl TerrainStreamingController {
                 .published_resident_pages(state.residency.planet_id(), &resident);
             if state
                 .residency
-                .committed_pages()
+                .protected_pages()
                 .all(|page| published.contains(&page))
             {
                 frame.visible_sets.push(self.publisher.visible_set(
@@ -397,7 +397,7 @@ mod tests {
             },
             refinement: TerrainRefinementConfig {
                 max_active_pages: 64,
-                max_transition_pages: 80,
+                max_transition_pages: 256,
                 initial_coarse_pages: 8,
                 max_requests_per_reconcile: 32,
                 max_commits_per_reconcile: 8,
@@ -531,11 +531,33 @@ mod tests {
             })
             .unwrap();
         assert!(controller.published_page_count() > 0);
-        frame_index += 1;
-        let restored = controller
-            .process_frame(&[], frame_index, frame_index)
-            .unwrap();
-        assert_eq!(restored.visible_sets.len(), 1);
+        let restored = loop {
+            frame_index += 1;
+            let restored = controller
+                .process_frame(&[], frame_index, frame_index)
+                .unwrap();
+            controller
+                .acknowledge_render_feedback(&TerrainRenderFeedback {
+                    commands: restored
+                        .render_delta
+                        .commands
+                        .iter()
+                        .map(|command| TerrainRenderCommandFeedback {
+                            command: command.id(),
+                            disposition: TerrainRenderCommandDisposition::Applied,
+                        })
+                        .collect(),
+                    cache_evictions: Vec::new(),
+                })
+                .unwrap();
+            if !restored.visible_sets.is_empty() {
+                break restored;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "renderer cache did not republish"
+            );
+        };
         assert!(!restored.visible_sets[0].pages.is_empty());
         subsystem.shutdown().unwrap();
     }

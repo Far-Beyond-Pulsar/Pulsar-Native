@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use engine_subsystems::{Subsystem, SubsystemContext, SubsystemError};
-use helio_pass_planetary_voxel::PlanetaryVoxelRenderConfig;
+use helio_pass_planetary_voxel::{
+    PlanetaryVoxelGpuConfig, PlanetaryVoxelRenderConfig, TransvoxelGpuExtractorConfig,
+    TransvoxelGpuTransitionExtractorConfig,
+};
 use helio_planet_voxel_core::VisibilityOutcome;
 use pulsar_reflection::LiveKeySet;
 use pulsar_terrain::{
@@ -18,8 +21,9 @@ use super::{
 
 const LIVE_MAX_PLANETS: usize = 4;
 const LIVE_ACTIVE_PAGES_PER_PLANET: usize = 96;
-const LIVE_TRANSITION_PAGES_PER_PLANET: usize = 96;
+const LIVE_HANDOFF_PAGES_PER_PLANET: usize = 1_024;
 const LIVE_GPU_VISIBLE_PAGES: usize = 384;
+const LIVE_GPU_RESIDENT_PAGES: usize = LIVE_MAX_PLANETS * LIVE_HANDOFF_PAGES_PER_PLANET;
 
 /// Component identities retained between revisions of Pulsar's current legacy
 /// `engine_backend::scene::SceneDb` snapshot bridge. This is not the external
@@ -135,7 +139,23 @@ impl PlanetTerrainRuntime {
     }
 
     pub fn renderer_config() -> PlanetaryVoxelRenderConfig {
-        PlanetaryVoxelRenderConfig::horizon_demo()
+        PlanetaryVoxelRenderConfig {
+            residency: PlanetaryVoxelGpuConfig::new(
+                LIVE_GPU_RESIDENT_PAGES as u32,
+                16_384,
+                64,
+                192,
+                LIVE_GPU_RESIDENT_PAGES as u32,
+            )
+            .expect("production planet residency configuration is valid"),
+            max_surface_pages: LIVE_GPU_VISIBLE_PAGES as u32,
+            max_pending_surfaces: 192,
+            regular: TransvoxelGpuExtractorConfig::new(8_192, 16_384)
+                .expect("production regular extraction configuration is valid"),
+            transition: TransvoxelGpuTransitionExtractorConfig::new(2_048, 6_144)
+                .expect("production transition extraction configuration is valid"),
+            max_surface_bytes: 512 * 1024 * 1024,
+        }
     }
 
     pub fn component_context_mut(
@@ -240,8 +260,10 @@ fn live_runtime_config() -> TerrainRuntimeConfig {
     TerrainRuntimeConfig {
         max_planets: LIVE_MAX_PLANETS,
         max_component_sources: 16,
-        max_resident_pages: 8_192,
-        max_resident_dense_bytes: 8_192 * CELL_COUNT * core::mem::size_of::<u32>(),
+        max_resident_pages: LIVE_GPU_RESIDENT_PAGES,
+        max_resident_dense_bytes: LIVE_GPU_RESIDENT_PAGES
+            * CELL_COUNT
+            * core::mem::size_of::<u32>(),
         ..TerrainRuntimeConfig::default()
     }
 }
@@ -258,7 +280,7 @@ fn live_controller_config() -> TerrainControllerConfig {
         },
         refinement: TerrainRefinementConfig {
             max_active_pages: LIVE_ACTIVE_PAGES_PER_PLANET,
-            max_transition_pages: LIVE_TRANSITION_PAGES_PER_PLANET,
+            max_transition_pages: LIVE_HANDOFF_PAGES_PER_PLANET,
             initial_coarse_pages: 32,
             max_requests_per_reconcile: 16,
             max_commits_per_reconcile: 8,
