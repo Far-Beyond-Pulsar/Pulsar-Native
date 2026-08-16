@@ -91,7 +91,7 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "42dde7d", features = ["gpu"] }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "411ecd7707140765d99ba576e423d799e6869bbf", features = ["gpu"] }
 # Rev history (2026-08-15, Pulsar-Native#561 Phase D):
 # 43921b0 (this workspace's long-standing pin) -> 697967b (caught up ~114
 # commits: SceneDb/the GPU-mirror module) -> 4895d04 (merged origin/
@@ -195,17 +195,17 @@ plugin_editor_api     = { path = "crates/core/plugin_editor_api"}
 plugin_manager        = { path = "crates/core/plugin_manager" }
 
 # ---------- Helio Renderer (external git dep) ----------
-helio                      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "59b3b284" }
-helio-asset-compat         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "59b3b284" }
-helio-default-graphs       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "59b3b284" }
-helio-planet-voxel-core    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "59b3b284" }
-helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "59b3b284" }
+helio                      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "081b818d222193bc50e366ba5c59687be5db0138" }
+helio-asset-compat         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "081b818d222193bc50e366ba5c59687be5db0138" }
+helio-default-graphs       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "081b818d222193bc50e366ba5c59687be5db0138" }
+helio-planet-voxel-core    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "081b818d222193bc50e366ba5c59687be5db0138" }
+helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "081b818d222193bc50e366ba5c59687be5db0138" }
 # `helio`'s own crate root doesn't re-export ReflectionCaptureShape/Mobility
 # (or other libhelio-only types Phase D's new components need) -- rather
 # than editing the Helio submodule itself (already in a dirty, unrelated
 # state locally; a cross-repo change for a one-line re-export isn't worth
 # the coordination), depend on libhelio directly at the same pinned rev.
-libhelio                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "59b3b284" }
+libhelio                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "081b818d222193bc50e366ba5c59687be5db0138" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------
