@@ -153,17 +153,17 @@ plugin_editor_api     = { path = "crates/core/plugin_editor_api"}
 plugin_manager        = { path = "crates/core/plugin_manager" }
 
 # ---------- Helio Renderer (external git dep) ----------
-helio                      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "535d0732d6560cd8c56d80058febd99b9b15d94c" }
-helio-asset-compat         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "535d0732d6560cd8c56d80058febd99b9b15d94c" }
-helio-default-graphs       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "535d0732d6560cd8c56d80058febd99b9b15d94c" }
-helio-planet-voxel-core    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "535d0732d6560cd8c56d80058febd99b9b15d94c" }
-helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "535d0732d6560cd8c56d80058febd99b9b15d94c" }
+helio                      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "c83d15d4589c6b2ed718110c2af7ad7301ab3d9f" }
+helio-asset-compat         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "c83d15d4589c6b2ed718110c2af7ad7301ab3d9f" }
+helio-default-graphs       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "c83d15d4589c6b2ed718110c2af7ad7301ab3d9f" }
+helio-planet-voxel-core    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "c83d15d4589c6b2ed718110c2af7ad7301ab3d9f" }
+helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "c83d15d4589c6b2ed718110c2af7ad7301ab3d9f" }
 # `helio`'s own crate root doesn't re-export ReflectionCaptureShape/Mobility
 # (or other libhelio-only types Phase D's new components need) -- rather
 # than editing the Helio submodule itself (already in a dirty, unrelated
 # state locally; a cross-repo change for a one-line re-export isn't worth
 # the coordination), depend on libhelio directly at the same pinned rev.
-libhelio                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "535d0732d6560cd8c56d80058febd99b9b15d94c" }
+libhelio                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "c83d15d4589c6b2ed718110c2af7ad7301ab3d9f" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------

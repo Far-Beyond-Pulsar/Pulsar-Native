@@ -8,10 +8,11 @@ use helio_pass_planetary_voxel::{
 use helio_planet_voxel_core::VisibilityOutcome;
 use pulsar_reflection::LiveKeySet;
 use pulsar_terrain::{
-    CELL_COUNT, PlanetId, PlanetPosition, PlanetView, PositionError, TerrainControllerConfig,
+    PlanetId, PlanetPosition, PlanetView, PositionError, TerrainControllerConfig,
     TerrainControllerError, TerrainPlanningConfig, TerrainRefinementConfig,
     TerrainRenderDeltaConfig, TerrainRuntimeConfig, TerrainRuntimeError, TerrainRuntimeHandle,
     TerrainStreamingConfig, TerrainStreamingController, TerrainStreamingError, TerrainSubsystem,
+    CELL_COUNT,
 };
 use thiserror::Error;
 
@@ -23,6 +24,7 @@ const LIVE_MAX_PLANETS: usize = 4;
 const LIVE_ACTIVE_PAGES_PER_PLANET: usize = 96;
 const LIVE_HANDOFF_PAGES_PER_PLANET: usize = 1_024;
 const LIVE_GPU_VISIBLE_PAGES: usize = 384;
+const LIVE_GPU_SURFACE_PAGES: usize = LIVE_GPU_VISIBLE_PAGES + LIVE_ACTIVE_PAGES_PER_PLANET;
 const LIVE_GPU_RESIDENT_PAGES: usize = LIVE_MAX_PLANETS * LIVE_HANDOFF_PAGES_PER_PLANET;
 
 /// Component identities retained between revisions of Pulsar's current legacy
@@ -148,7 +150,9 @@ impl PlanetTerrainRuntime {
                 LIVE_GPU_RESIDENT_PAGES as u32,
             )
             .expect("production planet residency configuration is valid"),
-            max_surface_pages: LIVE_GPU_VISIBLE_PAGES as u32,
+            // The active aggregate remains drawable while one planet's next
+            // bounded frontier is extracted and acknowledged by Helio.
+            max_surface_pages: LIVE_GPU_SURFACE_PAGES as u32,
             max_pending_surfaces: 192,
             regular: TransvoxelGpuExtractorConfig::new(8_192, 16_384)
                 .expect("production regular extraction configuration is valid"),
@@ -335,6 +339,10 @@ mod tests {
                 <= controller.rendering.max_tracked_pages
         );
         assert!(controller.rendering.max_visible_pages <= controller.rendering.max_tracked_pages);
+        assert_eq!(
+            usize::try_from(renderer.max_surface_pages).unwrap(),
+            controller.rendering.max_visible_pages + controller.refinement.max_active_pages
+        );
         renderer.allocation_plan().unwrap();
     }
 }
