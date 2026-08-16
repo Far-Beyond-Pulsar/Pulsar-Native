@@ -21,7 +21,8 @@ pub struct PlanetTerrainComponent {
     pub center_cell_y: i64,
     #[property]
     pub center_cell_z: i64,
-    /// Canonical radius in 10 cm LOD0 cells.
+    /// Canonical radius in 10 cm address cells. This is independent of the
+    /// smooth surface's adaptive rendered sample spacing.
     #[property]
     pub radius_cells: u64,
     #[property]

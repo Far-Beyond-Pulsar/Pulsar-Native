@@ -291,6 +291,10 @@ fn live_controller_config() -> TerrainControllerConfig {
     TerrainControllerConfig {
         planning: TerrainPlanningConfig {
             streaming: TerrainStreamingConfig {
+                // Smooth SDF extraction is screen-error driven and bottoms out
+                // at an 80 cm sample grid. The canonical 10 cm LOD0 quantum is
+                // reserved for precise edits and the separate true block path.
+                finest_surface_lod: 3,
                 max_pages: LIVE_ACTIVE_PAGES_PER_PLANET,
                 ..TerrainStreamingConfig::default()
             },

@@ -150,6 +150,10 @@ impl PlanetView {
 pub struct TerrainStreamingConfig {
     pub interaction_radius_m: f64,
     pub target_projected_error_px: f64,
+    /// Finest LOD the smooth extracted surface may request. LOD0 remains the
+    /// canonical storage/edit quantum; selecting a coarser floor avoids
+    /// treating that quantum as the smooth renderer's required sample size.
+    pub finest_surface_lod: u8,
     pub prediction_seconds: f64,
     pub max_pages: usize,
     pub max_traversal_nodes: usize,
@@ -160,6 +164,7 @@ impl Default for TerrainStreamingConfig {
         Self {
             interaction_radius_m: 64.0,
             target_projected_error_px: 2.0,
+            finest_surface_lod: 0,
             prediction_seconds: 0.75,
             max_pages: 2_048,
             max_traversal_nodes: 262_144,
@@ -177,6 +182,11 @@ impl TerrainStreamingConfig {
         if !self.target_projected_error_px.is_finite() || self.target_projected_error_px <= 0.0 {
             return Err(TerrainStreamingError::InvalidConfig(
                 "projected error target must be finite and positive",
+            ));
+        }
+        if self.finest_surface_lod > 62 {
+            return Err(TerrainStreamingError::InvalidConfig(
+                "finest surface LOD must be at most 62",
             ));
         }
         if !self.prediction_seconds.is_finite() || self.prediction_seconds < 0.0 {
@@ -805,6 +815,7 @@ struct ViewGeometry {
     motion_m: [f64; 3],
     interaction_radius_m: f64,
     target_projected_error_px: f64,
+    finest_surface_lod: u8,
     focal_length_px: f64,
 }
 
@@ -845,6 +856,7 @@ impl ViewGeometry {
             motion_m,
             interaction_radius_m: config.interaction_radius_m,
             target_projected_error_px: config.target_projected_error_px,
+            finest_surface_lod: config.finest_surface_lod,
             focal_length_px,
         })
     }
@@ -884,7 +896,7 @@ impl ViewGeometry {
             request_class,
             projected_error_px,
             distance_m,
-            should_refine: key.lod > 0
+            should_refine: key.lod > self.finest_surface_lod
                 && (current_relevant || predictive_relevant)
                 && (interaction_forced || projected_error_px > self.target_projected_error_px),
             interaction_forced,
@@ -1287,6 +1299,7 @@ mod tests {
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
             interaction_radius_m: 8.0,
             target_projected_error_px: 2.0,
+            finest_surface_lod: 0,
             prediction_seconds: 0.5,
             max_pages: 4_096,
             max_traversal_nodes: 65_536,
@@ -1305,6 +1318,33 @@ mod tests {
             .demands()
             .iter()
             .any(|demand| demand.page_key().lod == 0));
+    }
+
+    #[test]
+    fn smooth_surface_floor_does_not_force_the_canonical_ten_centimeter_grid() {
+        let definition = definition(1_000, 6, 4_096);
+        let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
+            interaction_radius_m: 8.0,
+            target_projected_error_px: 0.25,
+            finest_surface_lod: 3,
+            prediction_seconds: 0.5,
+            max_pages: 4_096,
+            max_traversal_nodes: 65_536,
+        })
+        .unwrap();
+        let plan = planner
+            .plan_fixed_sphere(&definition, view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]))
+            .unwrap();
+
+        assert!(plan.is_face_balanced());
+        assert!(plan
+            .demands()
+            .iter()
+            .all(|demand| demand.page_key().lod >= 3));
+        assert!(plan
+            .demands()
+            .iter()
+            .any(|demand| demand.page_key().lod == 3));
     }
 
     #[test]
@@ -1337,6 +1377,7 @@ mod tests {
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
             interaction_radius_m: 8.0,
             target_projected_error_px: 2.0,
+            finest_surface_lod: 0,
             prediction_seconds: 0.5,
             max_pages: 4_096,
             max_traversal_nodes: 65_536,
@@ -1436,6 +1477,7 @@ mod tests {
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
             interaction_radius_m: 64.0,
             target_projected_error_px: 2.0,
+            finest_surface_lod: 0,
             prediction_seconds: 1.0,
             max_pages: 2_048,
             max_traversal_nodes: 131_072,
@@ -1511,6 +1553,7 @@ mod tests {
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
             interaction_radius_m: 64.0,
             target_projected_error_px: 2.0,
+            finest_surface_lod: 0,
             prediction_seconds: 1.0,
             max_pages: 2_048,
             max_traversal_nodes: 131_072,
@@ -1543,6 +1586,7 @@ mod tests {
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
             interaction_radius_m: 64.0,
             target_projected_error_px: 0.25,
+            finest_surface_lod: 0,
             prediction_seconds: 0.0,
             max_pages: 32,
             max_traversal_nodes: 4_096,
@@ -1563,6 +1607,7 @@ mod tests {
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
             interaction_radius_m: 8.0,
             target_projected_error_px: 4.0,
+            finest_surface_lod: 0,
             prediction_seconds: 1.0,
             max_pages: 4_096,
             max_traversal_nodes: 65_536,
@@ -1584,6 +1629,7 @@ mod tests {
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
             interaction_radius_m: 64.0,
             target_projected_error_px: 0.25,
+            finest_surface_lod: 0,
             prediction_seconds: 0.0,
             max_pages: 4_096,
             max_traversal_nodes: 8,

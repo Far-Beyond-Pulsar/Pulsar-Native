@@ -3,6 +3,9 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub type MaterialId = u8;
+/// Canonical address/edit quantum. This does not require the smooth extracted
+/// surface to render at 10 cm; smooth fidelity is selected independently by
+/// projected error and `TerrainStreamingConfig::finest_surface_lod`.
 pub const LOD0_CELL_SIZE_METERS: f64 = 0.1;
 pub const PAGE_EDGE_CELLS: i64 = 32;
 pub const MILLIMETER_INTERACTION_RADIUS_METERS: f64 = 8_192.0;
@@ -51,7 +54,7 @@ pub enum PlanetIdParseError {
     Hex { offset: usize },
 }
 
-/// Authoritative planet-space position at 10 cm LOD0 resolution.
+/// Authoritative planet-space position using a 10 cm canonical address quantum.
 ///
 /// `lod0_cell` is the persistent integer address. `subcell_m` is private and
 /// normalized to `[0, 0.1)` meters on every axis, including negative world

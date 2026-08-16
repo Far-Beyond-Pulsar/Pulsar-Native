@@ -1328,6 +1328,7 @@ mod tests {
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
             interaction_radius_m: 8.0,
             target_projected_error_px: 2.0,
+            finest_surface_lod: 0,
             prediction_seconds: 0.0,
             max_pages: 256,
             max_traversal_nodes: 4_096,
@@ -1391,6 +1392,7 @@ mod tests {
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
             interaction_radius_m: 8.0,
             target_projected_error_px: 2.0,
+            finest_surface_lod: 0,
             prediction_seconds: 0.0,
             max_pages: 64,
             max_traversal_nodes: 4_096,
