@@ -91,7 +91,7 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "4895d047a7c70d64814036a099eebe41b9d49c18", features = ["gpu"] }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "2ec4929aaa24eec440826c8b731f9c10d768fdfd", features = ["gpu"] }
 # Rev history (2026-08-15, Pulsar-Native#561 Phase D):
 # 43921b0 (this workspace's long-standing pin) -> 697967b (caught up ~114
 # commits: SceneDb/the GPU-mirror module) -> 4895d04 (merged origin/
@@ -100,7 +100,24 @@ pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Puls
 # built -- plus the archetype-graph edge cache and Bundle/WorldQuery work
 # unified-GPU carried; also adds `Mut::into_inner`, needed by
 # `engine_class_derive`'s `get_as_engine_class_mut` shim now that
-# `World::get_mut` returns `Mut<'_, T>` instead of `&mut T`). Pushed to
+# `World::get_mut` returns `Mut<'_, T>` instead of `&mut T`) -> 27b5f01
+# (variable-length `#[gpu]` fields: a plain `Vec<T: Pod>`-typed `#[gpu]`
+# field is now detected by the derive from its Rust type alone -- no new
+# attribute syntax -- and routed to a shared, growable `VarLenGpuPool<T>`
+# with zero impact on existing fixed-size `#[gpu]` fields; this is what
+# lets a component like `StaticMeshComponent` hold its actual mesh
+# payload -- `Vec<PackedVertex>`/`Vec<u32>` -- directly as SceneDB fields
+# instead of an indirect asset-arena handle) -> 096933a (`VarLenGpuPool::
+# read_buffer()`, a `Deref<Target = wgpu::Buffer>` guard alternative to
+# `with_buffer`'s closure, for callers needing a real buffer-shaped
+# struct field) -> 0d27664 (`DynamicGpuBuffer`/`VarLenGpuPool` gain
+# `new_with_usage`, letting a caller request a base buffer usage other
+# than the `STORAGE` default -- e.g. `VERTEX`/`INDEX` -- while every
+# existing caller, including every `#[gpu] Vec<T>` derive field, keeps
+# calling plain `new()` and stays on `STORAGE`, unchanged; this is what
+# lets Helio's `MeshPool` delegate its own vertex/index storage straight
+# to a `VarLenGpuPool` instead of a second, hand-rolled reimplementation
+# of the same grow-and-freelist mechanics). Pushed to
 # `origin/main` directly (not a `[patch]` override) -- was briefly a local
 # `path` pin while the SceneDB-side merge was still uncommitted; promoted
 # back to a real, CI-safe `git`+`rev` once pushed, matching the pattern
@@ -147,6 +164,12 @@ pulsar_physics        = { path = "crates/subsystems/pulsar_physics" }
 # the exact same copies `engine_backend`/`ui_level_editor` use below, for
 # `inventory`-based registry identity.
 helio_component       = { path = "crates/renderer/helio/crates/helio-component" }
+# Same "workspace override" reasoning as `helio_component` above -- the
+# `helio-scenedb <-> SceneDb`/`GpuMirrorHandle`/`HelioRenderSubsystem`
+# identity has to be the exact same copy `engine_backend` uses (Pulsar-
+# Native#561 Phase D), not a second one resolved through Helio's own nested
+# workspace.
+helio-scenedb          = { path = "crates/renderer/helio/crates/helio-scenedb" }
 
 
 # ---------- Editor Crates ----------
@@ -178,17 +201,17 @@ plugin_editor_api     = { path = "crates/core/plugin_editor_api"}
 plugin_manager        = { path = "crates/core/plugin_manager" }
 
 # ---------- Helio Renderer (external git dep) ----------
-helio                      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "70f63a5aa6176485ad9396fac39975bd8835e712" }
-helio-asset-compat         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "70f63a5aa6176485ad9396fac39975bd8835e712" }
-helio-default-graphs       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "70f63a5aa6176485ad9396fac39975bd8835e712" }
-helio-planet-voxel-core    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "70f63a5aa6176485ad9396fac39975bd8835e712" }
-helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "70f63a5aa6176485ad9396fac39975bd8835e712" }
+helio                      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "7c32f0d445091f88e798816dced30dd2beccaec5" }
+helio-asset-compat         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "7c32f0d445091f88e798816dced30dd2beccaec5" }
+helio-default-graphs       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "7c32f0d445091f88e798816dced30dd2beccaec5" }
+helio-planet-voxel-core    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "7c32f0d445091f88e798816dced30dd2beccaec5" }
+helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "7c32f0d445091f88e798816dced30dd2beccaec5" }
 # `helio`'s own crate root doesn't re-export ReflectionCaptureShape/Mobility
 # (or other libhelio-only types Phase D's new components need) -- rather
 # than editing the Helio submodule itself (already in a dirty, unrelated
 # state locally; a cross-repo change for a one-line re-export isn't worth
 # the coordination), depend on libhelio directly at the same pinned rev.
-libhelio                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "70f63a5aa6176485ad9396fac39975bd8835e712" }
+libhelio                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "7c32f0d445091f88e798816dced30dd2beccaec5" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------

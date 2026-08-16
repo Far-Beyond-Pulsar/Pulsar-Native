@@ -760,16 +760,68 @@ pub fn register_runtime_behavior(attr: TokenStream, item: TokenStream) -> TokenS
 /// sibling rather than factored together, since the two attributes are
 /// meant to be readable and removable independently as B5 rolls out one
 /// component at a time.
+/// `#[register_world_component]`'s optional arguments -- currently just
+/// `hydrate = path::to::fn`, an escape hatch for a type that needs to do
+/// more at hydrate time than "deserialize this JSON, `world.insert` it"
+/// (the auto-generated default). The motivating case (Pulsar-Native#561
+/// Phase D): `StaticMeshComponent` owns loading its own mesh file (project-
+/// root-relative path resolution, `engine_state::get_project_path()` --
+/// already globally accessible, no context object needed -- then parsing
+/// the file into vertex/index data) and populating its own `#[gpu]`-mirrored
+/// `Vec<T>` fields with the result, once, at the exact point its data
+/// changes -- not per render frame, and not through any Helio-specific
+/// code (`sync_component`'s dispatch only ever gets `&World`, deliberately
+/// -- see that fn's own doc -- so it structurally can't do this; hydrate is
+/// the one call site that already has `&mut World`).
+///
+/// `path` must name a function with EXACTLY the signature the auto-
+/// generated hydrate would have had: `fn(&mut pulsar_scenedb::World,
+/// pulsar_scenedb::Entity, &serde_json::Value) -> Result<(), String>` --
+/// used directly as the registration's function pointer, no wrapper
+/// generated, so a signature mismatch is a plain, ordinary compile error at
+/// the `WorldComponentRegistration` construction site below, not a
+/// mysterious one inside macro-generated code.
+struct RegisterWorldComponentArgs {
+    custom_hydrate: Option<syn::Path>,
+}
+
+impl syn::parse::Parse for RegisterWorldComponentArgs {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut custom_hydrate = None;
+        while !input.is_empty() {
+            let key: syn::Ident = input.parse()?;
+            match key.to_string().as_str() {
+                "hydrate" => {
+                    let _: syn::Token![=] = input.parse()?;
+                    custom_hydrate = Some(input.parse()?);
+                }
+                other => {
+                    return Err(syn::Error::new(
+                        key.span(),
+                        format!("unknown #[register_world_component] option `{other}` (expected `hydrate`)"),
+                    ))
+                }
+            }
+            if input.peek(syn::Token![,]) {
+                input.parse::<syn::Token![,]>()?;
+            } else {
+                break;
+            }
+        }
+        Ok(RegisterWorldComponentArgs { custom_hydrate })
+    }
+}
+
 #[proc_macro_attribute]
 pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if !attr.is_empty() {
-        return syn::Error::new_spanned(
-            proc_macro2::TokenStream::from(attr),
-            "#[register_world_component] does not accept arguments",
-        )
-        .to_compile_error()
-        .into();
-    }
+    let args = if attr.is_empty() {
+        RegisterWorldComponentArgs { custom_hydrate: None }
+    } else {
+        match syn::parse::<RegisterWorldComponentArgs>(attr) {
+            Ok(args) => args,
+            Err(error) => return error.to_compile_error().into(),
+        }
+    };
 
     let impl_block = parse_macro_input!(item as ItemImpl);
 
@@ -837,19 +889,35 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
     // here: `#[register_runtime_behavior]` keeps ownership of emitting the
     // block; `#[register_world_component]` is written *above* it and must
     // only add new items.
+    // Default auto-generated hydrate, emitted only when no `hydrate = path`
+    // override was given (see `RegisterWorldComponentArgs`'s doc) -- when
+    // one was, the registration below points its `hydrate` field straight
+    // at the caller-named function instead, and this default is skipped
+    // entirely (never generated, so a hand-written hydrate never competes
+    // with an unused generated one under the same name).
+    let (hydrate_fn_def, hydrate_fn_ref) = match &args.custom_hydrate {
+        None => (
+            quote! {
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                fn #hydrate_fn_name(
+                    world: &mut pulsar_scenedb::World,
+                    entity: pulsar_scenedb::Entity,
+                    data: &::serde_json::Value,
+                ) -> ::std::result::Result<(), ::std::string::String> {
+                    let parsed: #self_ty = ::serde_json::from_value(data.clone())
+                        .map_err(|error| error.to_string())?;
+                    world.insert(entity, parsed);
+                    Ok(())
+                }
+            },
+            quote! { #hydrate_fn_name },
+        ),
+        Some(custom) => (quote! {}, quote! { #custom }),
+    };
+
     let output = quote! {
-        #[doc(hidden)]
-        #[allow(non_snake_case)]
-        fn #hydrate_fn_name(
-            world: &mut pulsar_scenedb::World,
-            entity: pulsar_scenedb::Entity,
-            data: &::serde_json::Value,
-        ) -> ::std::result::Result<(), ::std::string::String> {
-            let parsed: #self_ty = ::serde_json::from_value(data.clone())
-                .map_err(|error| error.to_string())?;
-            world.insert(entity, parsed);
-            Ok(())
-        }
+        #hydrate_fn_def
 
         #[doc(hidden)]
         #[allow(non_snake_case)]
@@ -923,7 +991,7 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         pulsar_world_registry::inventory::submit! {
             pulsar_world_registry::WorldComponentRegistration {
                 class_name: <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                hydrate: #hydrate_fn_name,
+                hydrate: #hydrate_fn_ref,
                 remove: #remove_fn_name,
                 dispatch: #dispatch_fn_name,
                 get_as_engine_class: #get_fn_name,
