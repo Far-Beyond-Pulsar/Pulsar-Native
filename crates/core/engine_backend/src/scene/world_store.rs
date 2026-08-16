@@ -259,10 +259,10 @@ impl WorldSceneStore {
     }
 
     /// Direct access to the underlying [`pulsar_scenedb::SceneDb`], for
-    /// callers that need `register_subsystem`/`step()` (e.g. wiring
-    /// `helio_scenedb::HelioRenderSubsystem` into the live render sync
-    /// pass, Pulsar-Native#561 Phase D) beyond what [`Self::world`]/
-    /// [`Self::world_mut`] expose.
+    /// callers that need `register_subsystem`/`step()` beyond what
+    /// [`Self::world`]/[`Self::world_mut`] expose -- `step()`'s per-frame
+    /// GPU-mirror flush (`HelioRenderer::step_scene_db`) being the one live
+    /// caller today.
     pub fn scene_db_mut(&mut self) -> &mut pulsar_scenedb::SceneDb {
         &mut self.scene_db
     }

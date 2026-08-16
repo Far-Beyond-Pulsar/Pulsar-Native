@@ -17,7 +17,10 @@ use pulsar_reflection::{
 };
 use helio_component::{
     components::StaticMeshComponent,
-    subsystems::{apply_portal_pair_action, remove_foliage_handles, FoliageCache, MeshCache, PortalLinkCache},
+    subsystems::{
+        apply_portal_pair_action, remove_foliage_handles, FoliageCache, MeshCache,
+        PortalLinkCache, PostProcessVolumeCache, ReflectionCaptureCache, WaterVolumeCache,
+    },
     PlanetTerrainFrameInput, PlanetTerrainRuntime, PLANET_TERRAIN_CLASS_NAME,
 };
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
@@ -228,6 +231,13 @@ struct HelioInner {
     /// is exactly as correct as the hardcoded-per-mesh-but-identical
     /// material this replaces, minus the redundant re-minting.
     default_static_mesh_material: Option<MaterialId>,
+    /// The first frame must be submitted even when SceneDB has no revision
+    /// change to report. This is separate from scene synchronization state:
+    /// `known_ids` can be populated before Helio has rendered anything.
+    has_rendered_frame: bool,
+    reflection_capture_cache: ReflectionCaptureCache,
+    water_volume_cache: WaterVolumeCache,
+    post_process_volume_cache: PostProcessVolumeCache,
 }
 
 // component_instances_from_snap delegates to pulsar_scene's shared impl.
@@ -413,6 +423,10 @@ impl HelioRenderer {
                 last_scene_revision: 0,
                 known_ids: HashSet::new(),
                 default_static_mesh_material: None,
+                has_rendered_frame: false,
+                reflection_capture_cache: ReflectionCaptureCache::new(),
+                water_volume_cache: WaterVolumeCache::new(),
+                post_process_volume_cache: PostProcessVolumeCache::new(),
             };
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
@@ -550,7 +564,13 @@ impl HelioRenderer {
         // frame on screen.
         let viewport_resized = needs_resize || self.viewport_size != (width, height);
         let scene_revision = self.scene_store.read().render_revision();
-        let has_pending_scene = scene_revision != inner.last_scene_revision;
+        // A newly-created/loaded SceneDB can have revision 0.  The first
+        // renderer frame still needs to perform the full world sync so that
+        // static meshes are read from the SceneDB GPU mirror and the transient
+        // Helio frame buffers are populated.
+        let needs_initial_scene_sync = !inner.has_rendered_frame;
+        let has_pending_scene =
+            needs_initial_scene_sync || scene_revision != inner.last_scene_revision;
         let has_pending_editor = self.pending_deselect.load(Ordering::Acquire)
             || self
                 .pending_gizmo_mode
@@ -732,6 +752,7 @@ impl HelioRenderer {
             }
             Some(inner.queue.submit(std::iter::empty::<wgpu::CommandBuffer>()))
         };
+        inner.has_rendered_frame = true;
         let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
         let frame_ms = frame_start.elapsed().as_secs_f32() * 1_000.0;
 
@@ -1563,6 +1584,9 @@ impl HelioRenderer {
         subsystems.register_ref::<MeshCache>(&mut inner.mesh_cache);
         subsystems.register_ref::<FoliageCache>(&mut inner.foliage_cache);
         subsystems.register_ref::<PortalLinkCache>(&mut inner.portal_link_cache);
+        subsystems.register_ref::<ReflectionCaptureCache>(&mut inner.reflection_capture_cache);
+        subsystems.register_ref::<WaterVolumeCache>(&mut inner.water_volume_cache);
+        subsystems.register_ref::<PostProcessVolumeCache>(&mut inner.post_process_volume_cache);
         if let Some(planet_terrain) = inner.planet_terrain.as_mut() {
             let (runtime, cache) = planet_terrain.component_context_mut();
             subsystems.register_ref(runtime);

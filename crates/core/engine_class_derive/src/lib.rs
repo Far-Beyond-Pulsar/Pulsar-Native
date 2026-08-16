@@ -348,6 +348,28 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     .into()
 }
 
+/// Mirrors `pulsar_scenedb_derive`'s own syntactic `Vec<T>` field-type check
+/// (independently duplicated, not shared -- it's a few lines of pure syntax
+/// matching, not worth a cross-crate dependency for). Used only to decide
+/// whether `scene_store`'s auto-added `Copy` derive (below) would be a hard
+/// compile error: a struct with a `#[gpu]` field whose type is syntactically
+/// `Vec<...>` gets routed through SceneDB's variable-length codegen path
+/// instead of the classic `Pod`/`SceneColumnSet`/`GpuColumnSet` one -- that
+/// path generates none of those impls, so `Copy` is neither required (no
+/// `Pod: Copy` bound ever applies) nor even possible to satisfy (`Vec` is
+/// never `Copy`).
+fn struct_has_gpu_vec_field(fields: &syn::Fields) -> bool {
+    fields.iter().any(|field| {
+        let has_gpu_attr = field.attrs.iter().any(|attr| attr.path().is_ident("gpu"));
+        has_gpu_attr && is_vec_type(&field.ty)
+    })
+}
+
+fn is_vec_type(ty: &syn::Type) -> bool {
+    let syn::Type::Path(type_path) = ty else { return false };
+    type_path.path.segments.last().map(|s| s.ident == "Vec").unwrap_or(false)
+}
+
 #[proc_macro_attribute]
 pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr with Punctuated::<Meta, syn::Token![,]>::parse_terminated);
@@ -459,7 +481,9 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         if !has_scene_store_derive {
             derive_additions.push(quote!(::pulsar_scenedb::SceneStore));
         }
-        if !has_copy_derive {
+        // Skipped for a struct with a `#[gpu] Vec<T>` field -- see
+        // `struct_has_gpu_vec_field`'s doc.
+        if !has_copy_derive && !struct_has_gpu_vec_field(&item_struct.fields) {
             derive_additions.push(quote!(::core::marker::Copy));
         }
     }
