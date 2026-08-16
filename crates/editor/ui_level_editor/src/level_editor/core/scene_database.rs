@@ -148,6 +148,50 @@ impl SceneDatabase {
     /// rebuilds `__component_instances` from `metadata_db`, so the component
     /// must live there — setting it only in `props` would be immediately overwritten.
     pub fn add_object(&self, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
+        // v2 scene objects may carry component instances inline. Preserve
+        // those instances in the metadata store before the normal hydration
+        // pass; otherwise the empty metadata store overwrites the inline list
+        // and World-registered components (notably StaticMeshComponent) never
+        // reach the live World.
+        let mut inline_components = obj
+            .component_instances
+            .as_ref()
+            .and_then(serde_json::Value::as_array)
+            .map(|instances| {
+                instances
+                    .iter()
+                    .filter_map(|instance| {
+                        let object = instance.as_object()?;
+                        Some(ComponentInstance {
+                            class_name: object.get("class_name")?.as_str()?.to_string(),
+                            enabled: object
+                                .get("enabled")
+                                .and_then(serde_json::Value::as_bool)
+                                .unwrap_or(true),
+                            data: object.get("data").cloned().unwrap_or(serde_json::Value::Null),
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        // A few older scene files projected StaticMeshComponent's asset path
+        // into `props` without emitting a component-instances entry. Treat
+        // that as a load-time compatibility form so those scenes also get a
+        // typed World component; current files still use the normal path.
+        if inline_components.is_empty() {
+            if let Some(mesh_asset) = obj
+                .props
+                .get("mesh_asset")
+                .and_then(serde_json::Value::as_str)
+                .filter(|path| !path.trim().is_empty())
+            {
+                inline_components.push(ComponentInstance {
+                    class_name: "StaticMeshComponent".to_string(),
+                    enabled: true,
+                    data: serde_json::json!({ "mesh_asset": mesh_asset }),
+                });
+            }
+        }
         let blueprint_script_path = if obj.object_type == ObjectType::Blueprint {
             Some(find_script_path(
                 &obj.props,
@@ -202,6 +246,10 @@ impl SceneDatabase {
             });
             id
         };
+
+        for component in inline_components {
+            self.metadata_db.add_component_instance(&object_id, component);
+        }
 
         if let Some(script_path) = blueprint_script_path {
             let already_has = self

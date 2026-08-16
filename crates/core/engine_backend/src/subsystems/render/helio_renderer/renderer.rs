@@ -445,6 +445,20 @@ impl HelioRenderer {
                 let mut store_guard = self.scene_store.write();
                 let scene_db = store_guard.scene_db_mut();
                 if !scene_db.world.has_gpu_mirror() {
+                    // The editor scene is populated before the renderer has a
+                    // real wgpu device, so existing GPU-bearing components
+                    // were inserted before their pools were registered. The
+                    // SceneDB contract intentionally does not retroactively
+                    // mirror those writes; capture the typed values now and
+                    // re-insert them immediately after attaching the mirror.
+                    // This does not create Helio mesh state: the component
+                    // remains authoritative in World and the same Vec payload
+                    // is dispatched into the SceneDB-owned pools.
+                    let existing_static_meshes: Vec<_> = scene_db
+                        .world
+                        .query::<&StaticMeshComponent>()
+                        .map(|(entity, component)| (entity, component.clone()))
+                        .collect();
                     let ctx = EngineGpuContext::new(device_arc.clone(), queue_arc.clone());
                     // Minimal, cell-mirror-region config -- this seam only
                     // uses the World-mirror (growable, auto-registering)
@@ -488,6 +502,9 @@ impl HelioRenderer {
 
                     let mirror = GpuMirrorHandle::new(gpu_store, queue_arc.clone());
                     scene_db.world.attach_gpu_mirror(mirror);
+                    for (entity, component) in existing_static_meshes {
+                        scene_db.world.insert(entity, component);
+                    }
                     tracing::info!("[HELIO] SceneDB GPU-native render seam wired");
                 }
             }
@@ -1651,16 +1668,20 @@ impl HelioRenderer {
         });
         let gpu_store = mirror.store();
         let mut inputs = Vec::new();
+        let mut component_count = 0usize;
+        let mut empty_handle_count = 0usize;
 
         for (entity, (_component, transform, visibility)) in store
             .world()
             .query::<(&StaticMeshComponent, &crate::scene::Transform, &crate::scene::Visibility)>()
         {
+            component_count += 1;
             let vertices = StaticMeshComponent::vertices_gpu_handle(gpu_store, entity.index())
                 .unwrap_or_default();
             let indices = StaticMeshComponent::indices_gpu_handle(gpu_store, entity.index())
                 .unwrap_or_default();
             if vertices.count == 0 || indices.count == 0 {
+                empty_handle_count += 1;
                 continue;
             }
 
@@ -1721,6 +1742,15 @@ impl HelioRenderer {
                     instance_count: 0,
                 },
             });
+        }
+
+        if component_count > 0 {
+            tracing::info!(
+                "[HELIO STATIC MESH] components={}, gpu_ready={}, empty_gpu_handles={}",
+                component_count,
+                inputs.len(),
+                empty_handle_count
+            );
         }
 
         inner.renderer.scene_mut().rebuild_static_mesh_instances(&inputs);
