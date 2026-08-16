@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use engine_subsystems::{Subsystem, SubsystemContext, SubsystemError};
 use helio_pass_planetary_voxel::{
-    PlanetaryVoxelGpuConfig, PlanetaryVoxelRenderConfig, TransvoxelGpuExtractorConfig,
-    TransvoxelGpuTransitionExtractorConfig,
+    ExtractionLimits, PlanetaryVoxelGpuConfig, PlanetaryVoxelRenderConfig,
+    TransvoxelGpuExtractorConfig, TransvoxelGpuTransitionExtractorConfig,
 };
 use helio_planet_voxel_core::VisibilityOutcome;
 use pulsar_reflection::LiveKeySet;
@@ -154,10 +154,24 @@ impl PlanetTerrainRuntime {
             // bounded frontier is extracted and acknowledged by Helio.
             max_surface_pages: LIVE_GPU_SURFACE_PAGES as u32,
             max_pending_surfaces: 192,
-            regular: TransvoxelGpuExtractorConfig::new(8_192, 16_384)
-                .expect("production regular extraction configuration is valid"),
-            transition: TransvoxelGpuTransitionExtractorConfig::new(2_048, 6_144)
-                .expect("production transition extraction configuration is valid"),
+            regular: TransvoxelGpuExtractorConfig::default(),
+            transition: TransvoxelGpuTransitionExtractorConfig::default(),
+            regular_arena: ExtractionLimits::new(
+                LIVE_GPU_SURFACE_PAGES as u32,
+                192,
+                7_864_320,
+                15_728_640,
+                250_560,
+            )
+            .expect("production regular arena configuration is valid"),
+            transition_arena: ExtractionLimits::new(
+                LIVE_GPU_SURFACE_PAGES as u32,
+                192,
+                1_966_080,
+                5_898_240,
+                94_080,
+            )
+            .expect("production transition arena configuration is valid"),
             max_surface_bytes: 512 * 1024 * 1024,
         }
     }
