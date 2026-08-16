@@ -992,17 +992,29 @@ mod tests {
                 ))],
                 counters: TerrainRenderDeltaCounters::default(),
             };
+            let after_retirement_id = after_retirement.commands[0].id();
+            let reincarnated = apply_delta_to_test_residency(
+                &mut residency,
+                &device,
+                &queue,
+                after_retirement,
+            )
+            .unwrap();
             assert!(matches!(
-                apply_delta_to_test_residency(
-                    &mut residency,
-                    &device,
-                    &queue,
-                    after_retirement,
-                ),
-                Err(PlanetaryTerrainRenderError::Residency(
-                    GpuResidencyError::MissingPlanetFrame(PlanetId(id))
-                )) if id == [7; 16]
+                reincarnated.uploads.as_slice(),
+                [GpuUploadOutcome::Residency(UploadOutcome::Inserted { .. })]
             ));
+            assert_eq!(
+                reincarnated.feedback.commands,
+                vec![TerrainRenderCommandFeedback {
+                    command: after_retirement_id,
+                    disposition: TerrainRenderCommandDisposition::Applied,
+                }]
+            );
+            assert!(
+                residency.planet_frame(PlanetId([7; 16])).is_none(),
+                "page residency must not implicitly recreate retired frame state"
+            );
         });
     }
 }
