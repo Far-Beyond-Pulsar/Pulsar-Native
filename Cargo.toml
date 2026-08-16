@@ -91,7 +91,7 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "2ec4929aaa24eec440826c8b731f9c10d768fdfd", features = ["gpu"] }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "42dde7d", features = ["gpu"] }
 # Rev history (2026-08-15, Pulsar-Native#561 Phase D):
 # 43921b0 (this workspace's long-standing pin) -> 697967b (caught up ~114
 # commits: SceneDb/the GPU-mirror module) -> 4895d04 (merged origin/
@@ -164,12 +164,6 @@ pulsar_physics        = { path = "crates/subsystems/pulsar_physics" }
 # the exact same copies `engine_backend`/`ui_level_editor` use below, for
 # `inventory`-based registry identity.
 helio_component       = { path = "crates/renderer/helio/crates/helio-component" }
-# Same "workspace override" reasoning as `helio_component` above -- the
-# `helio-scenedb <-> SceneDb`/`GpuMirrorHandle`/`HelioRenderSubsystem`
-# identity has to be the exact same copy `engine_backend` uses (Pulsar-
-# Native#561 Phase D), not a second one resolved through Helio's own nested
-# workspace.
-helio-scenedb          = { path = "crates/renderer/helio/crates/helio-scenedb" }
 
 
 # ---------- Editor Crates ----------
@@ -201,17 +195,17 @@ plugin_editor_api     = { path = "crates/core/plugin_editor_api"}
 plugin_manager        = { path = "crates/core/plugin_manager" }
 
 # ---------- Helio Renderer (external git dep) ----------
-helio                      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "7c32f0d445091f88e798816dced30dd2beccaec5" }
-helio-asset-compat         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "7c32f0d445091f88e798816dced30dd2beccaec5" }
-helio-default-graphs       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "7c32f0d445091f88e798816dced30dd2beccaec5" }
-helio-planet-voxel-core    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "7c32f0d445091f88e798816dced30dd2beccaec5" }
-helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "7c32f0d445091f88e798816dced30dd2beccaec5" }
+helio                      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "59b3b284" }
+helio-asset-compat         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "59b3b284" }
+helio-default-graphs       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "59b3b284" }
+helio-planet-voxel-core    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "59b3b284" }
+helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "59b3b284" }
 # `helio`'s own crate root doesn't re-export ReflectionCaptureShape/Mobility
 # (or other libhelio-only types Phase D's new components need) -- rather
 # than editing the Helio submodule itself (already in a dirty, unrelated
 # state locally; a cross-repo change for a one-line re-export isn't worth
 # the coordination), depend on libhelio directly at the same pinned rev.
-libhelio                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "7c32f0d445091f88e798816dced30dd2beccaec5" }
+libhelio                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "59b3b284" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------

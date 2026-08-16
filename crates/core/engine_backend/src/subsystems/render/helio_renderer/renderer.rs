@@ -1,16 +1,15 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer with built-in editor state.
 
 use glam::{EulerRot, Mat4, Quat, Vec3};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 
 use engine_fs::virtual_fs;
 use helio::{
-    Camera, DebugDrawState, EditorState, GizmoMode, GpuMaterial, GroupId, GroupMask,
-    MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, Renderer,
-    RendererConfig, Scene, SceneActor, SceneActorId, ScenePicker, SkyActor,
+    Camera, EditorState, GizmoMode, GpuMaterial, GroupId, GroupMask, MaterialId,
+    Movability, Renderer, RendererConfig, SceneActor, ScenePicker, SkyActor,
 };
 use pulsar_events::script_registry;
 use pulsar_reflection::{
@@ -18,15 +17,14 @@ use pulsar_reflection::{
     RuntimeComponentOwner, Subsystems,
 };
 use helio_component::{
-    subsystems::{
-        apply_portal_pair_action, load_mesh_upload, remove_foliage_handles, resolve_asset_path,
-        FoliageCache, MeshCache, PortalLinkCache,
-    },
+    components::StaticMeshComponent,
+    subsystems::{apply_portal_pair_action, remove_foliage_handles, FoliageCache, MeshCache, PortalLinkCache},
     PlanetTerrainFrameInput, PlanetTerrainRuntime, PLANET_TERRAIN_CLASS_NAME,
 };
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
-use helio_scenedb::HelioRenderSubsystem;
-use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore};
+use pulsar_scenedb::gpu::{
+    BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
+};
 
 use crate::scene::{ObjectDirtyFlags, ObjectUpdate, SceneDbDelta, WorldSceneStore};
 use parking_lot::RwLock;
@@ -224,6 +222,13 @@ struct HelioInner {
     /// Set of scene-object IDs that have been synced to Helio.
     /// Used by `sync_scene_delta` to distinguish additions from updates.
     known_ids: HashSet<String>,
+    /// Lazily-minted, shared default material for every `StaticMeshComponent`
+    /// object -- the component has no material fields of its own yet
+    /// (per-instance materials are separate, later scope), so there's
+    /// nothing to key a cache by; one shared `MaterialId` for all of them
+    /// is exactly as correct as the hardcoded-per-mesh-but-identical
+    /// material this replaces, minus the redundant re-minting.
+    default_static_mesh_material: Option<MaterialId>,
 }
 
 // component_instances_from_snap delegates to pulsar_scene's shared impl.
@@ -238,6 +243,29 @@ fn component_instances_from_snap(
         &snap.render_props.props,
         snap.render_props.component_instances.as_ref(),
     )
+}
+
+/// Same hardcoded default `StaticMeshComponent::sync_component` used to
+/// mint per-mesh before Pulsar-Native#561 Phase E's cutover -- faithful
+/// carry-over of the same appearance, minted once and shared across every
+/// `StaticMeshComponent` object now instead of once per unique mesh asset
+/// (the component has no material fields of its own yet, so there was
+/// never any real per-mesh variation to preserve).
+fn default_static_mesh_material() -> GpuMaterial {
+    GpuMaterial {
+        base_color: [0.22, 0.15, 0.08, 1.0],
+        emissive: [0.0, 0.0, 0.0, 0.0],
+        roughness_metallic: [0.7, 0.0, 1.5, 0.5],
+        tex_base_color: GpuMaterial::NO_TEXTURE,
+        tex_normal: GpuMaterial::NO_TEXTURE,
+        tex_roughness: GpuMaterial::NO_TEXTURE,
+        tex_emissive: GpuMaterial::NO_TEXTURE,
+        tex_occlusion: GpuMaterial::NO_TEXTURE,
+        workflow: 0,
+        flags: 0,
+        material_class: 0,
+        class_params: [0.0; 4],
+    }
 }
 
 // Hoisted out of `sync_scene` for the same reason as `component_instances_from_snap`
@@ -266,21 +294,6 @@ impl<'a> ComponentRuntimeContext for HelioRuntimeContext<'a> {
             eq.push(message);
         }
     }
-}
-
-/// One entity's worth of GPU-native seam data (Pulsar-Native#561 Phase D),
-/// queued during `sync_snapshot_components`'s read-locked pass and applied
-/// to `World` in a short write-lock afterward -- mirrors the existing
-/// dirty-flag-drain's own read-then-write split (`sync_scene`'s Phase 1/
-/// Phase 2), for the same reason: resolving this data needs `&mut
-/// HelioInner` (mesh cache, renderer) but not `&mut WorldSceneStore`, so
-/// there's no reason to hold a write lock for it.
-struct PendingStaticMeshSeamUpsert {
-    entity: pulsar_scenedb::Entity,
-    mesh: MeshId,
-    material: GpuMaterial,
-    transform: Mat4,
-    bounds: [f32; 4],
 }
 
 impl HelioRenderer {
@@ -400,6 +413,7 @@ impl HelioRenderer {
                 planet_graph_rebuilt: false,
                 last_scene_revision: 0,
                 known_ids: HashSet::new(),
+                default_static_mesh_material: None,
             };
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
@@ -413,7 +427,7 @@ impl HelioRenderer {
             // any earlier than this). Idempotent guard (`has_gpu_mirror`):
             // more than one `HelioRenderer` sharing the same `scene_store`
             // (e.g. multiple viewports) must not clobber an already-wired
-            // mirror/subsystem from an earlier renderer's first frame.
+            // mirror from an earlier renderer's first frame.
             {
                 let mut store_guard = self.scene_store.write();
                 let scene_db = store_guard.scene_db_mut();
@@ -423,22 +437,45 @@ impl HelioRenderer {
                     // uses the World-mirror (growable, auto-registering)
                     // path for StaticMeshComponent/MaterialSlot today, not
                     // SceneGpuStore's fixed-region cell-mirrored buffers, so
-                    // these numbers are placeholder-safe (proven values,
-                    // copied from `helio-scenedb`'s own `tests/support::
-                    // scene_cfg()`), not load-bearing -- revisit once a real
-                    // cell-mirrored consumer exists in the live editor.
+                    // these numbers are placeholder-safe, not load-bearing
+                    // -- revisit once a real cell-mirrored consumer exists
+                    // in the live editor.
                     let gpu_cfg = SceneGpuConfig {
                         classes: vec![RegionClassConfig { capacity: 256, max_resident_cells: 4 }],
                         tombstone_headroom: 8,
                         max_cells_metadata: 16,
                     };
-                    let gpu_store = Arc::new(SceneGpuStore::new(&ctx, gpu_cfg));
+                    let mut gpu_store = SceneGpuStore::new(&ctx, gpu_cfg);
+
+                    // Registers (or, if already registered, adopts) the
+                    // canonical "StaticMeshComponent::vertices"/"...::indices"
+                    // var-len pools -- generic SceneDB storage, driven
+                    // entirely by the component's own `#[gpu] Vec<T>`
+                    // fields, not a bespoke Helio-side "mesh pool" concept.
+                    // 4096/8192 just match `MeshPool`'s own prior static
+                    // defaults (mesh.rs) -- growable, not a hard ceiling.
+                    StaticMeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, &device_arc);
+
+                    let gpu_store = Arc::new(gpu_store);
+
+                    // Point Helio's own mesh storage at the SAME pools --
+                    // the seam that makes the registration above load-bearing
+                    // instead of a second, unread copy: a StaticMeshComponent's
+                    // hydrate-time write and Helio's draw-time read now share
+                    // one buffer, zero translation.
+                    let vertex_pool = gpu_store
+                        .var_len_pool::<helio::PackedVertex>(BufferKey::of("StaticMeshComponent::vertices"))
+                        .expect("register_gpu_columns_growable above must have registered this pool");
+                    let index_pool = gpu_store
+                        .var_len_pool::<u32>(BufferKey::of("StaticMeshComponent::indices"))
+                        .expect("register_gpu_columns_growable above must have registered this pool");
+                    if let Some(inner) = self.inner.as_mut() {
+                        inner.renderer.scene_mut().rebind_static_mesh_pools(vertex_pool, index_pool);
+                    }
+
                     let mirror = GpuMirrorHandle::new(gpu_store, queue_arc.clone());
                     scene_db.world.attach_gpu_mirror(mirror);
-                    scene_db.register_subsystem(HelioRenderSubsystem::new());
-                    tracing::info!(
-                        "[HELIO] SceneDB GPU-native render seam wired (HelioRenderSubsystem registered)"
-                    );
+                    tracing::info!("[HELIO] SceneDB GPU-native render seam wired");
                 }
             }
 
@@ -1306,7 +1343,6 @@ impl HelioRenderer {
         // touched `store` at all, so holding the write lock across all of it
         // was pure incidental scope creep, not a real requirement. Dirty-flag
         // draining now happens in its own short Phase 2 write lock, below.
-        let mut pending_seam_upserts: Vec<PendingStaticMeshSeamUpsert> = Vec::new();
         let (snapshots, mut live_keys) = {
             let store = scene_store.read();
             let t_snap = std::time::Instant::now();
@@ -1333,7 +1369,6 @@ impl HelioRenderer {
                     &project_root,
                     &mut planet_runtime_init_attempted,
                     &mut live_keys,
-                    &mut pending_seam_upserts,
                 );
             }
             (snapshots, live_keys)
@@ -1472,64 +1507,31 @@ impl HelioRenderer {
             for id in live_keys.inner() {
                 let _ = store.take_dirty_flags(id);
             }
-            Self::apply_pending_seam_upserts(&mut store, inner, pending_seam_upserts);
+            Self::step_scene_db(&mut store);
         }
+
+        // Static meshes are rebuilt from the authoritative SceneDB world after
+        // its GPU mirror has advanced. Helio retains only transient frame data.
+        Self::rebuild_static_mesh_frame(inner, &scene_store.read());
     }
 
-    /// Applies every [`PendingStaticMeshSeamUpsert`] queued by
-    /// `sync_snapshot_components`'s read-locked pass -- the one part of that
-    /// pass that genuinely needs `&mut WorldSceneStore`, shared by
-    /// `sync_scene`'s and `sync_scene_delta`'s own Phase 2 write locks
-    /// (same reasoning as the dirty-flag drain each already does there).
-    /// `is_alive` guarded: `World::insert` panics on a dead entity, and the
-    /// entity could in principle have been despawned in the narrow window
-    /// between Phase 1's read lock ending and this write lock starting
-    /// (same accepted race every other cross-phase `store` read/write in
-    /// this file already tolerates).
+    /// Steps `SceneDb` -- advances the `SimulateA`/`SimulateB` phases,
+    /// draining `World`'s change tracker and auto-flushing the GPU mirror
+    /// for every `#[gpu]`-mirrored component touched since the last call
+    /// (`StaticMeshComponent`'s own `vertices`/`indices` fields included,
+    /// Pulsar-Native#561 Phase D). Nothing else to do here: the
+    /// `helio-scenedb` crate (a CPU-side translation of `World`-resident
+    /// render components into Helio's imperative `Scene` API) is gone --
+    /// superseded by components sharing SceneDB-owned buffers directly
+    /// (`StaticMeshComponent`'s `#[gpu]` fields, registered straight into
+    /// the same pool Helio's `MeshPool` draws from, see the lazy-init block
+    /// above) rather than staging a translated copy through an
+    /// intermediate crate.
     ///
-    /// Also drives `SceneDb::step()` + `HelioRenderSubsystem::apply_to`
-    /// (Pulsar-Native#561 Phase D) -- the documented per-frame call sequence
-    /// (`helio-scenedb/src/subsystem.rs`'s module doc) -- every call, not
-    /// just when `pending` is non-empty: `step()`'s `simulate_b` drains
-    /// `World`'s change tracker for ANY `RenderTransform`/`StaticMeshComponent`/
-    /// etc mutation since the last call, not only ones this exact pass's
-    /// `pending` list produced (e.g. a `RenderTransform` touched by some
-    /// other future writer). Called with `store`'s write lock already held
-    /// -- `register_subsystem`/`step` both only need `&mut SceneDb`, which
-    /// is reached the same way `world_mut()` is.
-    fn apply_pending_seam_upserts(
-        store: &mut WorldSceneStore,
-        inner: &mut HelioInner,
-        pending: Vec<PendingStaticMeshSeamUpsert>,
-    ) {
-        {
-            let world = store.world_mut();
-            for upsert in pending {
-                if !world.is_alive(upsert.entity) {
-                    continue;
-                }
-                world.insert(
-                    upsert.entity,
-                    helio_scenedb::StaticMeshComponent::new(upsert.mesh, upsert.material),
-                );
-                world.insert(upsert.entity, helio_scenedb::RenderTransform(upsert.transform));
-                world.insert(upsert.entity, helio_scenedb::RenderBounds(upsert.bounds));
-                world.insert(
-                    upsert.entity,
-                    helio_scenedb::RenderFlags {
-                        flags: 0,
-                        movability: Some(Movability::Movable),
-                        groups: GroupMask::NONE,
-                    },
-                );
-            }
-        }
-
-        let scene_db = store.scene_db_mut();
-        scene_db.step();
-        if let Some(subsystem) = scene_db.subsystem_mut::<HelioRenderSubsystem>() {
-            subsystem.apply_to(inner.renderer.scene_mut());
-        }
+    /// `store`'s write lock must already be held by the caller --
+    /// `scene_db_mut()` needs `&mut WorldSceneStore`.
+    fn step_scene_db(store: &mut WorldSceneStore) {
+        store.scene_db_mut().step();
     }
 
     /// Dispatches one snapshot's components into Helio -- the same
@@ -1548,7 +1550,6 @@ impl HelioRenderer {
         project_root: &Path,
         planet_runtime_init_attempted: &mut bool,
         live_keys: &mut LiveKeySet,
-        pending_seam_upserts: &mut Vec<PendingStaticMeshSeamUpsert>,
     ) {
         let owner = RuntimeComponentOwner {
             scene_object_id: snap.stable_id.as_str(),
@@ -1559,23 +1560,6 @@ impl HelioRenderer {
         };
 
         let component_instances = component_instances_from_snap(snap);
-        // Captured before the dispatch loop below consumes `component_instances`
-        // -- read back out afterward. `Some(None)` means a StaticMeshComponent
-        // instance exists but its `mesh_asset` is empty/missing (surfaces the
-        // same diagnostic `StaticMeshComponent::sync_component` used to,
-        // before its body became a no-op -- Pulsar-Native#561 Phase D
-        // cutover); `Some(Some(path))` is the real case; `None` means no
-        // StaticMeshComponent instance on this object at all.
-        let static_mesh_component_data: Option<Option<String>> = component_instances
-            .iter()
-            .find(|(_, class_name, _)| class_name == "StaticMeshComponent")
-            .map(|(_, _, data)| {
-                data.get("mesh_asset")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .map(str::to_string)
-            });
         let needs_planet_runtime = component_instances.iter().any(|(_, class_name, data)| {
             class_name == PLANET_TERRAIN_CLASS_NAME
                 && data
@@ -1647,170 +1631,98 @@ impl HelioRenderer {
         }
         // `ctx`/`subsystems` (holding `&mut inner.mesh_cache`/`&mut inner.renderer`)
         // are done as of the loop above (NLL already treats this borrow as
-        // ended at its last use inside the loop) -- dropped explicitly so the
-        // direct `inner.mesh_cache`/`inner.renderer` access just below is
-        // unambiguously a fresh borrow, not relying on an implicit
-        // end-of-borrow inference.
+        // ended at its last use inside the loop) -- dropped explicitly for
+        // clarity rather than relying on an implicit end-of-borrow
+        // inference.
         drop(ctx);
 
-        // GPU-native seam (Pulsar-Native#561 Phase D): queue this entity's
-        // StaticMeshComponent data for `World` insertion. The ONLY mesh-
-        // resolution path left as of the Phase D cutover -- `StaticMeshComponent::
-        // sync_component`'s own load-on-miss logic was deleted, not just
-        // shadowed (see that fn's doc) -- so this one loads on a cache miss
-        // itself now, same as that fn used to.
-        match (entity, static_mesh_component_data) {
-            (Some(entity), Some(Some(mesh_asset))) => {
-                Self::queue_static_mesh_seam_upsert(
-                    inner,
-                    entity,
-                    &owner,
-                    &mesh_asset,
-                    project_root,
-                    error_queue,
-                    pending_seam_upserts,
-                );
-            }
-            (_, Some(None)) => {
-                // A StaticMeshComponent instance exists but has no
-                // mesh_asset -- same diagnostic `sync_component` used to
-                // report (deduped the same way, so this doesn't spam every
-                // dirty pass while the object stays meshless).
-                if !Self::already_reported_empty_mesh_asset(snap.stable_id.as_str()) {
-                    let message = format!(
-                        "StaticMeshComponent on '{}' has no mesh_asset",
-                        snap.stable_id
-                    );
-                    tracing::warn!("{message}");
-                    if let Ok(mut errors) = error_queue.lock() {
-                        errors.push(message);
-                    }
-                }
-            }
-            _ => {}
-        }
     }
 
-    /// Same one-report-per-(object,state) de-dup shape
-    /// `StaticMeshComponent::sync_component` used to have internally (a
-    /// `static Mutex<HashMap<...>>`) -- kept local to `engine_backend`
-    /// rather than exposing `helio_component`'s private log, since this is
-    /// now the only place reporting this specific diagnostic.
-    fn already_reported_empty_mesh_asset(scene_object_id: &str) -> bool {
-        static LOG: std::sync::LazyLock<Mutex<HashSet<String>>> =
-            std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
-        let Ok(mut seen) = LOG.lock() else { return false };
-        !seen.insert(scene_object_id.to_string())
-    }
-
-    /// Same hardcoded default `GpuMaterial` `StaticMeshComponent::
-    /// sync_component` used to mint on a cache miss, before its body became
-    /// a no-op (Pulsar-Native#561 Phase D cutover) -- `StaticMeshComponent`
-    /// has no material fields of its own yet (per-instance materials are
-    /// separate, later scope), so this is a faithful, no-behavior-change
-    /// carry-over of what was already rendered, not a new default.
-    fn default_seam_material() -> GpuMaterial {
-        GpuMaterial {
-            base_color: [0.22, 0.15, 0.08, 1.0],
-            emissive: [0.0, 0.0, 0.0, 0.0],
-            roughness_metallic: [0.7, 0.0, 1.5, 0.5],
-            tex_base_color: GpuMaterial::NO_TEXTURE,
-            tex_normal: GpuMaterial::NO_TEXTURE,
-            tex_roughness: GpuMaterial::NO_TEXTURE,
-            tex_emissive: GpuMaterial::NO_TEXTURE,
-            tex_occlusion: GpuMaterial::NO_TEXTURE,
-            workflow: 0,
-            flags: 0,
-            material_class: 0,
-            class_params: [0.0; 4],
-        }
-    }
-
-    /// Resolves `mesh_asset` to a `MeshId` (via `inner.mesh_cache`, loading
-    /// and uploading on a miss -- the ONLY mesh-loading path left as of the
-    /// Phase D cutover, `StaticMeshComponent::sync_component`'s own copy was
-    /// deleted, not just shadowed) and queues a [`PendingStaticMeshSeamUpsert`].
-    /// Still populates `inner.mesh_cache` on a miss (mints a pool `MaterialId`
-    /// too, matching that cache's established `(MeshId, MaterialId)` shape --
-    /// other consumers besides this seam still read it) so a re-sync of the
-    /// same asset path is a cache hit, same caching contract the legacy path
-    /// upheld.
-    fn queue_static_mesh_seam_upsert(
-        inner: &mut HelioInner,
-        entity: pulsar_scenedb::Entity,
-        owner: &RuntimeComponentOwner,
-        mesh_asset: &str,
-        project_root: &Path,
-        error_queue: &Arc<Mutex<Vec<String>>>,
-        pending: &mut Vec<PendingStaticMeshSeamUpsert>,
-    ) {
-        let abs_path = resolve_asset_path(project_root, mesh_asset)
-            .to_string_lossy()
-            .replace('\\', "/");
-
-        let mesh_id = if let Some((mesh_id, _material_id)) = inner.mesh_cache.get(&abs_path) {
-            mesh_id
-        } else {
-            let path = std::path::Path::new(&abs_path);
-            let Some(upload) = load_mesh_upload(path) else {
-                if !Self::already_reported_mesh_load_failure(owner.scene_object_id, &abs_path) {
-                    let message = format!(
-                        "StaticMeshComponent on '{}': failed to load '{}'",
-                        owner.scene_object_id, abs_path
-                    );
-                    tracing::warn!("[SEAM] {message}");
-                    if let Ok(mut errors) = error_queue.lock() {
-                        errors.push(message);
-                    }
-                }
-                return;
-            };
-            let Some(mesh_id) = inner.renderer.scene_mut().insert_actor(SceneActor::mesh(upload)).as_mesh()
-            else {
-                tracing::warn!("[SEAM] insert_actor returned no mesh id for {abs_path}");
-                return;
-            };
-            let material_id = inner.renderer.scene_mut().insert_material(Self::default_seam_material());
-            inner.mesh_cache.insert(abs_path.clone(), (mesh_id, material_id));
-            mesh_id
+    /// Build Helio's transient static-mesh frame buffers directly from the
+    /// authoritative SceneDB world and its mirrored GPU row handles.
+    fn rebuild_static_mesh_frame(inner: &mut HelioInner, store: &WorldSceneStore) {
+        let Some(mirror) = store.world().gpu_mirror() else {
+            inner.renderer.scene_mut().rebuild_static_mesh_instances(&[]);
+            return;
         };
-
-        let q = Quat::from_euler(
-            EulerRot::YXZ,
-            owner.rotation[1].to_radians(),
-            owner.rotation[0].to_radians(),
-            owner.rotation[2].to_radians(),
-        );
-        let transform = Mat4::from_scale_rotation_translation(
-            Vec3::from_array(owner.scale),
-            q,
-            Vec3::from_array(owner.position),
-        );
-        let pos = transform.w_axis.truncate();
-        let radius = Vec3::from_array(owner.scale).length() * 0.5;
-
-        pending.push(PendingStaticMeshSeamUpsert {
-            entity,
-            mesh: mesh_id,
-            material: Self::default_seam_material(),
-            transform,
-            bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
+        let material_id = *inner.default_static_mesh_material.get_or_insert_with(|| {
+            inner.renderer.scene_mut().insert_material(default_static_mesh_material())
         });
-    }
+        let gpu_store = mirror.store();
+        let mut inputs = Vec::new();
 
-    /// Same one-report-per-(object,asset) de-dup shape
-    /// `StaticMeshComponent::sync_component` used to have internally.
-    fn already_reported_mesh_load_failure(scene_object_id: &str, abs_path: &str) -> bool {
-        static LOG: std::sync::LazyLock<Mutex<HashMap<String, String>>> =
-            std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
-        let Ok(mut map) = LOG.lock() else { return false };
-        match map.get(scene_object_id) {
-            Some(prev) if prev == abs_path => true,
-            _ => {
-                map.insert(scene_object_id.to_string(), abs_path.to_string());
-                false
+        for (entity, (_component, transform, visibility)) in store
+            .world()
+            .query::<(&StaticMeshComponent, &crate::scene::Transform, &crate::scene::Visibility)>()
+        {
+            let vertices = StaticMeshComponent::vertices_gpu_handle(gpu_store, entity.index())
+                .unwrap_or_default();
+            let indices = StaticMeshComponent::indices_gpu_handle(gpu_store, entity.index())
+                .unwrap_or_default();
+            if vertices.count == 0 || indices.count == 0 {
+                continue;
             }
+
+            let q = Quat::from_euler(
+                EulerRot::YXZ,
+                transform.rotation[1].to_radians(),
+                transform.rotation[0].to_radians(),
+                transform.rotation[2].to_radians(),
+            );
+            let model = Mat4::from_scale_rotation_translation(
+                Vec3::from_array(transform.scale),
+                q,
+                Vec3::from_array(transform.position),
+            );
+            let position = model.w_axis.truncate();
+            let bounds = [position.x, position.y, position.z, Vec3::from_array(transform.scale).length().max(0.2) * 0.5];
+            let mesh_key = vertices.offset.rotate_left(13) ^ indices.offset.rotate_left(3) ^ vertices.count ^ indices.count;
+            let stable_id = store
+                .stable_id_of(entity)
+                .map(scene_id_to_tag)
+                .unwrap_or(entity.index() as u64);
+            let normal_cols = glam::Mat3::from_mat4(model).inverse().transpose().to_cols_array();
+            inputs.push(helio::StaticMeshRenderInput {
+                mesh_key,
+                material: material_id,
+                groups: if visibility.visible {
+                    GroupMask::NONE
+                } else {
+                    GroupMask::from(GroupId::new(8))
+                },
+                movability: Movability::Movable,
+                user_tag: stable_id,
+                instance: helio::GpuInstanceData {
+                    model: model.to_cols_array(),
+                    normal_mat: [
+                        normal_cols[0], normal_cols[1], normal_cols[2], 0.0,
+                        normal_cols[3], normal_cols[4], normal_cols[5], 0.0,
+                        normal_cols[6], normal_cols[7], normal_cols[8], 0.0,
+                    ],
+                    bounds,
+                    prev_model: model.to_cols_array(),
+                    mesh_id: mesh_key,
+                    material_id: material_id.slot(),
+                    flags: 0,
+                    lightmap_index: 0xFFFFFFFF,
+                },
+                aabb: helio::GpuInstanceAabb {
+                    min: [position.x - bounds[3], position.y - bounds[3], position.z - bounds[3]],
+                    _pad0: 0.0,
+                    max: [position.x + bounds[3], position.y + bounds[3], position.z + bounds[3]],
+                    _pad1: 0.0,
+                },
+                draw: helio::GpuDrawCall {
+                    index_count: indices.count,
+                    first_index: indices.offset,
+                    vertex_offset: vertices.offset as i32,
+                    first_instance: 0,
+                    instance_count: 0,
+                },
+            });
         }
+
+        inner.renderer.scene_mut().rebuild_static_mesh_instances(&inputs);
     }
 
     fn sync_planet_graph(inner: &mut HelioInner, error_queue: &Arc<Mutex<Vec<String>>>) {
@@ -1907,7 +1819,6 @@ impl HelioRenderer {
         let mut added = Vec::new();
         let mut updated = Vec::new();
         let anything_changed = !dirty.is_empty() || !removed.is_empty();
-        let mut pending_seam_upserts: Vec<PendingStaticMeshSeamUpsert> = Vec::new();
 
         // Phase 1: fresh READ lock, only entered if there's actually dirty
         // work -- `dispatch_world_component_for_class` needs `&World` for the
@@ -1943,7 +1854,6 @@ impl HelioRenderer {
                         &project_root,
                         &mut planet_runtime_init_attempted,
                         &mut live_keys,
-                        &mut pending_seam_upserts,
                     );
                 } else if flags.contains(ObjectDirtyFlags::TRANSFORM) {
                     Self::apply_transform_patch(inner, &snap);
@@ -1971,14 +1881,21 @@ impl HelioRenderer {
         } // read guard dropped here -- everything below is lock-free w.r.t. `scene_store`.
 
         // Phase 2: short WRITE lock -- same reasoning as `sync_scene`'s own
-        // Phase 2 (the seam upserts are the only `&mut WorldSceneStore` work
-        // Phase 1 above produced). No-op (lock acquired, immediately
-        // released) when nothing was queued, e.g. no dirty `StaticMeshComponent`
-        // this pass.
-        if !pending_seam_upserts.is_empty() {
+        // Phase 2. Gated on `!dirty.is_empty()` rather than running
+        // unconditionally every delta-sync pass (unlike `sync_scene`'s full-
+        // resync Phase 2): `step_scene_db`'s GPU-mirror flush only has
+        // something to do when a component actually changed this pass, and
+        // `dirty` is exactly that condition (Phase 1 above only ran at all
+        // under the same guard).
+        if !dirty.is_empty() {
             let mut store = scene_store.write();
-            Self::apply_pending_seam_upserts(&mut store, inner, pending_seam_upserts);
+            Self::step_scene_db(&mut store);
         }
+
+        // Always rebuild the transient static-mesh frame from SceneDB. This
+        // also handles component removal and empty/failed mesh hydration
+        // without a Helio-side stale-object sweep or cache.
+        Self::rebuild_static_mesh_frame(inner, &scene_store.read());
 
         // Removed entities: actually tear down their Helio-side actor now,
         // rather than leaving it to linger until the next full resync.
