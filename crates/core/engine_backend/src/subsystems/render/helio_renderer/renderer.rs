@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 
-use engine_fs::virtual_fs;
 use helio::{
     Camera, EditorState, GizmoMode, GpuMaterial, GroupId, GroupMask, MaterialId,
     Movability, Renderer, RendererConfig, SceneActor, ScenePicker, SkyActor,
@@ -1343,7 +1342,7 @@ impl HelioRenderer {
         // touched `store` at all, so holding the write lock across all of it
         // was pure incidental scope creep, not a real requirement. Dirty-flag
         // draining now happens in its own short Phase 2 write lock, below.
-        let (snapshots, mut live_keys) = {
+        let mut live_keys = {
             let store = scene_store.read();
             let t_snap = std::time::Instant::now();
             let snapshots = store.get_all_snapshots();
@@ -1371,7 +1370,7 @@ impl HelioRenderer {
                     &mut live_keys,
                 );
             }
-            (snapshots, live_keys)
+            live_keys
         }; // read guard dropped here -- everything below is lock-free w.r.t. `scene_store`.
 
         // NOTE (Pulsar-Native#561): there used to be a "remove stale scene
@@ -1440,28 +1439,6 @@ impl HelioRenderer {
             .is_some_and(|runtime| !runtime.has_active_components())
         {
             inner.planet_terrain = None;
-        }
-
-        // Apply editor visibility: hidden objects remain in the Helio scene
-        // (for gizmo rendering and selection picking) but are assigned to the
-        // HIDDEN group so they don't render visually.
-        //
-        // `object_by_tag`, not the now-deleted `SceneObjectCache` -- that
-        // cache was never actually populated anywhere in the codebase
-        // (confirmed: no `.insert()` call existed), so this loop was a
-        // silent no-op before this fix, in both this full-sync pass AND
-        // `sync_scene_delta`'s own equivalent (`apply_visibility_patch`,
-        // which uses the same `object_by_tag` resolution for consistency).
-        for snap in &snapshots {
-            let tag = scene_id_to_tag(snap.stable_id.as_str());
-            if let Some(obj_id) = inner.renderer.scene().object_by_tag(tag) {
-                let groups = if snap.visibility.visible {
-                    GroupMask::NONE
-                } else {
-                    GroupMask::from(GroupId::new(8))
-                };
-                let _ = inner.renderer.scene_mut().set_object_groups(obj_id, groups);
-            }
         }
 
         // Cull script registrations for objects no longer in the scene.
@@ -1897,14 +1874,11 @@ impl HelioRenderer {
         // without a Helio-side stale-object sweep or cache.
         Self::rebuild_static_mesh_frame(inner, &scene_store.read());
 
-        // Removed entities: actually tear down their Helio-side actor now,
-        // rather than leaving it to linger until the next full resync.
+        // Removed entities still need to tear down persistent non-mesh actors.
         for id in &removed {
             let tag = scene_id_to_tag(id.as_str());
             let scene = inner.renderer.scene_mut();
-            if let Some(obj_id) = scene.object_by_tag(tag) {
-                let _ = scene.remove_object(obj_id);
-            } else if let Some(light_id) = scene.light_by_tag(tag) {
+            if let Some(light_id) = scene.light_by_tag(tag) {
                 let _ = scene.remove_light(light_id);
             }
             inner.known_ids.remove(id);
@@ -1927,21 +1901,13 @@ impl HelioRenderer {
 
     /// Cheap fast path for a `TRANSFORM`-only change on an entity already
     /// known to Helio -- skips the full per-component re-dispatch
-    /// `sync_snapshot_components` would otherwise do. Uses `object_by_tag`/
-    /// `light_by_tag` -- the now-deleted `SceneObjectCache` was never
-    /// populated anywhere in the codebase, so using it here would have
-    /// made this silently a no-op.
+    /// `sync_snapshot_components` would otherwise do. Static meshes are
+    /// rebuilt from SceneDB below; only persistent light actors use this fast
+    /// path.
     fn apply_transform_patch(inner: &mut HelioInner, snap: &crate::scene::ObjectSnapshot) {
         let tag = scene_id_to_tag(snap.stable_id.as_str());
-        let transform = build_transform_parts(
-            snap.transform.position,
-            snap.transform.rotation,
-            snap.transform.scale,
-        );
         let scene = inner.renderer.scene_mut();
-        if let Some(obj_id) = scene.object_by_tag(tag) {
-            let _ = scene.update_object_transform(obj_id, transform);
-        } else if let Some(light_id) = scene.light_by_tag(tag) {
+        if let Some(light_id) = scene.light_by_tag(tag) {
             // Lights have no dedicated "move" API -- copy-modify-write the
             // position component of the existing GpuLight, same pattern
             // `LightComponent::sync_component`'s full dispatch would end up
@@ -1957,21 +1923,7 @@ impl HelioRenderer {
         }
     }
 
-    /// Cheap fast path for a `VISIBILITY`-only change -- same group-mask
-    /// logic `sync_scene`'s own "apply editor visibility" pass uses. Lights
-    /// have no visibility/group mechanism today (`LightComponent::
-    /// sync_component` doesn't implement one either), so this is a no-op for
-    /// them -- a pre-existing gap, not introduced here.
-    fn apply_visibility_patch(inner: &mut HelioInner, snap: &crate::scene::ObjectSnapshot) {
-        let tag = scene_id_to_tag(snap.stable_id.as_str());
-        let scene = inner.renderer.scene_mut();
-        if let Some(obj_id) = scene.object_by_tag(tag) {
-            let groups = if snap.visibility.visible {
-                GroupMask::NONE
-            } else {
-                GroupMask::from(GroupId::new(8))
-            };
-            let _ = scene.set_object_groups(obj_id, groups);
-        }
-    }
+    /// Visibility is consumed directly by `rebuild_static_mesh_frame`; other
+    /// persistent actor classes currently have no visibility-group path.
+    fn apply_visibility_patch(_inner: &mut HelioInner, _snap: &crate::scene::ObjectSnapshot) {}
 }
