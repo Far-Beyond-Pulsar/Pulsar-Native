@@ -1,5 +1,5 @@
 use crate::{
-    ContentHash, DeterministicGenerator, FixedSphereGenerator, PlanetDefinition, PlanetId,
+    ContentHash, DeterministicGenerator, PlanetDefinition, PlanetId, PlanetSdfGenerator,
     TerrainCore, TerrainPlanningHandle, TerrainRuntimeError, TerrainRuntimeHandle, TerrainSnapshot,
     TerrainStore,
 };
@@ -162,7 +162,9 @@ pub enum TerrainPersistenceError {
     ThreadSpawn,
     #[error("terrain persistence request queue capacity {capacity} is exhausted")]
     RequestBackpressure { capacity: usize },
-    #[error("terrain persistence retained-byte budget {capacity} cannot reserve {requested} bytes")]
+    #[error(
+        "terrain persistence retained-byte budget {capacity} cannot reserve {requested} bytes"
+    )]
     SnapshotByteBackpressure { requested: usize, capacity: usize },
     #[error("planet {planet_id:?} already has an incompatible persistence operation in flight")]
     PlanetBusy { planet_id: PlanetId },
@@ -223,7 +225,7 @@ struct RestoreReady {
     record_generation: u64,
     snapshot_hash: ContentHash,
     retained_bytes: usize,
-    core: Option<TerrainCore<FixedSphereGenerator>>,
+    core: Option<TerrainCore<PlanetSdfGenerator>>,
 }
 
 enum PersistenceWorkerResult {
@@ -844,11 +846,11 @@ fn execute_job(job: &PersistenceJob, max_snapshot_bytes: usize) -> PersistenceWo
                         message: "stored snapshot belongs to a different planet".to_string(),
                     };
                 }
-                let generator = FixedSphereGenerator {
-                    center_cell: job.identity.definition.center_cell,
-                    radius_cells: job.identity.definition.radius_cells,
-                    material: job.identity.definition.material,
-                };
+                let generator = job
+                    .identity
+                    .definition
+                    .generator()
+                    .expect("persistence jobs capture validated planet definitions");
                 if snapshot.generator_hash != generator.hash()
                     || snapshot.hierarchy.root_lod() != job.identity.definition.root_lod
                 {
@@ -914,6 +916,8 @@ mod tests {
             center_cell: [0; 3],
             radius_cells: 100,
             material: id.max(1),
+            lod0_cell_size_mm: 100,
+            sdf: crate::PlanetSdfConfig::zero_relief_test_fixture(),
             root_lod: 12,
             max_resident_pages: 16,
         }
@@ -1095,7 +1099,8 @@ mod tests {
             .submit(
                 definition.planet_id,
                 PlanetView::new(
-                    PlanetPosition::from_lod0_cell([200, 0, 0]),
+                    PlanetPosition::from_lod0_cell([200, 0, 0], definition.lod0_cell_size_mm)
+                        .unwrap(),
                     [-1.0, 0.0, 0.0],
                     [0.0, 1.0, 0.0],
                     60_f64.to_radians(),

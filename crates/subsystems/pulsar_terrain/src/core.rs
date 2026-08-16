@@ -946,15 +946,11 @@ pub enum TerrainCoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EditMode, EditShape, FixedSphereGenerator};
+    use crate::{EditMode, EditShape, PlanetSdfGenerator};
 
     #[test]
     fn compaction_publishes_a_hashed_page_and_snapshot() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 3);
         let mut core = TerrainCore::new(PlanetId([1; 16]), 12, generator).unwrap();
         core.append_edit(EditOp {
             sequence: 1,
@@ -1010,11 +1006,7 @@ mod tests {
 
     #[test]
     fn uniform_compaction_and_high_level_override_remain_sparse() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 3);
         let mut core = TerrainCore::new(PlanetId([2; 16]), 24, generator).unwrap();
         let far_page = PageKey::new(0, [1_000_000, 0, 0]);
         core.compact_page(far_page).unwrap();
@@ -1030,11 +1022,7 @@ mod tests {
 
     #[test]
     fn page_compaction_replays_only_spatially_attached_edit_candidates() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 3);
         let mut core = TerrainCore::new(PlanetId([3; 16]), 24, generator).unwrap();
         for sequence in 1..=64_u64 {
             let page = 1_000 + sequence as i64;
@@ -1070,11 +1058,7 @@ mod tests {
 
     #[test]
     fn stale_off_thread_page_build_cannot_replace_newer_terrain() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 3);
         let mut core = TerrainCore::new(PlanetId([4; 16]), 12, generator).unwrap();
         let key = PageKey::new(0, [0; 3]);
         core.append_edit(EditOp {
@@ -1117,11 +1101,7 @@ mod tests {
 
     #[test]
     fn unrelated_mutation_does_not_stale_an_off_thread_page_build() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 3);
         let mut core = TerrainCore::new(PlanetId([16; 16]), 12, generator).unwrap();
         let key = PageKey::new(0, [0; 3]);
         core.append_edit(EditOp {
@@ -1162,11 +1142,7 @@ mod tests {
 
     #[test]
     fn unrelated_mutation_does_not_rebuild_a_resident_page() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 3);
         let mut core = TerrainCore::new(PlanetId([17; 16]), 12, generator).unwrap();
         let key = PageKey::new(0, [0; 3]);
         core.append_edit(EditOp {
@@ -1201,11 +1177,7 @@ mod tests {
 
     #[test]
     fn duplicate_off_thread_page_build_is_idempotent() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 3);
         let mut core = TerrainCore::new(PlanetId([5; 16]), 12, generator).unwrap();
         let key = PageKey::new(0, [0; 3]);
         core.append_edit(EditOp {
@@ -1243,11 +1215,7 @@ mod tests {
 
     #[test]
     fn evicted_dense_page_rehydrates_to_the_authoritative_hash() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 3);
         let mut core = TerrainCore::new(PlanetId([6; 16]), 12, generator).unwrap();
         let key = PageKey::new(0, [0; 3]);
         core.append_edit(EditOp {
@@ -1278,11 +1246,7 @@ mod tests {
 
     #[test]
     fn evicted_page_full_replay_includes_edits_added_while_absent() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 3);
         let mut core = TerrainCore::new(PlanetId([7; 16]), 12, generator).unwrap();
         let key = PageKey::new(0, [0; 3]);
         core.compact_page(key).unwrap();
@@ -1307,11 +1271,7 @@ mod tests {
 
     #[test]
     fn coarse_compaction_replays_edits_attached_to_fine_descendants() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 10_000,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 10_000, 3);
         let mut core = TerrainCore::new(PlanetId([9; 16]), 12, generator).unwrap();
         core.append_edit(EditOp {
             sequence: 1,
@@ -1335,11 +1295,7 @@ mod tests {
 
     #[test]
     fn root_delete_is_authoritative_across_eviction_and_later_union() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 10_000,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 10_000, 3);
         let mut core = TerrainCore::new(PlanetId([10; 16]), 12, generator).unwrap();
         let key = PageKey::new(0, [-1, 0, 0]);
         core.append_edit(EditOp {
@@ -1389,11 +1345,7 @@ mod tests {
 
     #[test]
     fn fine_descendant_edit_changes_coarse_summary_without_materializing_pages() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 3);
         let mut core = TerrainCore::new(PlanetId([31; 16]), 12, generator).unwrap();
         let coarse = PageKey::new(4, [2, 0, 0]);
         let before = core.node_summary(coarse).unwrap();
@@ -1424,11 +1376,7 @@ mod tests {
 
     #[test]
     fn summaries_survive_compaction_eviction_and_snapshot_rehydration() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 1_000,
-            material: 5,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 1_000, 5);
         let key = PageKey::new(0, [31, 0, 0]);
         let mut core = TerrainCore::new(PlanetId([32; 16]), 12, generator).unwrap();
         core.append_edit(EditOp {
@@ -1460,11 +1408,7 @@ mod tests {
 
     #[test]
     fn root_delete_replaces_the_authoritative_summary_in_constant_work() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 10_000,
-            material: 5,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 10_000, 5);
         let mut core = TerrainCore::new(PlanetId([33; 16]), 24, generator).unwrap();
         core.compact_page(PageKey::new(0, [0; 3])).unwrap();
         assert!(core.hierarchy().node_count() > 1);
@@ -1480,11 +1424,7 @@ mod tests {
 
     #[test]
     fn procedural_root_reset_discards_older_materialized_edits() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 3);
         let mut core = TerrainCore::new(PlanetId([18; 16]), 12, generator).unwrap();
         let key = PageKey::new(0, [1_500, 0, 0]);
         core.append_edit(EditOp {
@@ -1515,11 +1455,7 @@ mod tests {
 
     #[test]
     fn snapshot_restore_rehydrates_deleted_root_to_identical_hash() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 10_000,
-            material: 5,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 10_000, 5);
         let key = PageKey::new(0, [0; 3]);
         let mut core = TerrainCore::new(PlanetId([11; 16]), 12, generator).unwrap();
         core.compact_page(key).unwrap();
@@ -1543,11 +1479,7 @@ mod tests {
 
     #[test]
     fn planning_snapshot_rebuilds_authoritative_summaries_without_page_caches() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 1_000,
-            material: 4,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 1_000, 4);
         let mut core = TerrainCore::new(PlanetId([31; 16]), 12, generator).unwrap();
         core.append_edit(EditOp {
             sequence: 1,
@@ -1584,11 +1516,7 @@ mod tests {
 
     #[test]
     fn snapshot_rejects_hierarchy_summary_from_the_future() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 5,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 5);
         let snapshot = TerrainSnapshot {
             planet_id: PlanetId([34; 16]),
             generator_hash: generator.hash(),
@@ -1613,11 +1541,7 @@ mod tests {
 
     #[test]
     fn signed_region_override_applies_only_inside_aligned_cube() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 10_000,
-            material: 6,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 10_000, 6);
         let mut core = TerrainCore::new(PlanetId([12; 16]), 12, generator).unwrap();
         let region = PageKey::new(2, [-1, -1, -1]);
         core.set_region(region, NodeState::Air).unwrap();
@@ -1646,11 +1570,7 @@ mod tests {
 
     #[test]
     fn override_stale_rejects_pre_delete_worker_result() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 3);
         let mut core = TerrainCore::new(PlanetId([13; 16]), 12, generator).unwrap();
         let key = PageKey::new(0, [0; 3]);
         let result = match core.prepare_page_build(key).unwrap() {
@@ -1667,11 +1587,7 @@ mod tests {
 
     #[test]
     fn edit_and_override_share_one_sequence_and_id_domain() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 3,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 3);
         let mut core = TerrainCore::new(PlanetId([15; 16]), 12, generator).unwrap();
         core.append_override(TerrainOverrideOp {
             sequence: 1,
@@ -1713,11 +1629,7 @@ mod tests {
 
     #[test]
     fn randomized_mutation_replay_matches_snapshot_restore() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 10_000,
-            material: 2,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 10_000, 2);
         let mut core = TerrainCore::new(PlanetId([14; 16]), 12, generator).unwrap();
         let mut random = 0x4d59_5df4_d0f3_3173_u64;
         for sequence in 1..=32_u64 {

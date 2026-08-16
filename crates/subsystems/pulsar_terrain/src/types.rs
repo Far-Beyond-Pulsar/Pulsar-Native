@@ -3,7 +3,8 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub type MaterialId = u8;
-pub const LOD0_CELL_SIZE_METERS: f64 = 0.1;
+pub const SMOOTH_PLANET_DEFAULT_CELL_SIZE_MM: u32 = 1_000;
+pub const CUBIC_VOXEL_CELL_SIZE_MM: u32 = 100;
 pub const PAGE_EDGE_CELLS: i64 = 32;
 pub const MILLIMETER_INTERACTION_RADIUS_METERS: f64 = 8_192.0;
 
@@ -51,16 +52,18 @@ pub enum PlanetIdParseError {
     Hex { offset: usize },
 }
 
-/// Authoritative planet-space position at 10 cm LOD0 resolution.
+/// Authoritative planet-space position at an explicit per-planet LOD0 scale.
 ///
 /// `lod0_cell` is the persistent integer address. `subcell_m` is private and
-/// normalized to `[0, 0.1)` meters on every axis, including negative world
-/// coordinates. Serde deserialization runs the same validation as `new`.
+/// normalized to one LOD0 cell on every axis, including negative world
+/// coordinates. The scale is part of the canonical value so positions from
+/// different planet definitions cannot be mixed accidentally.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "PlanetPositionWire", into = "PlanetPositionWire")]
 pub struct PlanetPosition {
     lod0_cell: [i64; 3],
     subcell_m: [f64; 3],
+    lod0_cell_size_mm: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -68,15 +71,21 @@ pub struct PlanetPosition {
 struct PlanetPositionWire {
     lod0_cell: [i64; 3],
     subcell_m: [f64; 3],
+    lod0_cell_size_mm: u32,
 }
 
 impl PlanetPosition {
-    pub fn new(lod0_cell: [i64; 3], mut subcell_m: [f64; 3]) -> Result<Self, PositionError> {
+    pub fn new(
+        lod0_cell: [i64; 3],
+        mut subcell_m: [f64; 3],
+        lod0_cell_size_mm: u32,
+    ) -> Result<Self, PositionError> {
+        let cell_size_m = cell_size_meters(lod0_cell_size_mm)?;
         for value in &mut subcell_m {
             if !value.is_finite() {
                 return Err(PositionError::NonFinite);
             }
-            if !(0.0..LOD0_CELL_SIZE_METERS).contains(value) {
+            if !(0.0..cell_size_m).contains(value) {
                 return Err(PositionError::SubcellOutOfRange);
             }
             if *value == -0.0 {
@@ -86,19 +95,26 @@ impl PlanetPosition {
         Ok(Self {
             lod0_cell,
             subcell_m,
+            lod0_cell_size_mm,
         })
     }
 
-    pub const fn from_lod0_cell(lod0_cell: [i64; 3]) -> Self {
-        Self {
+    pub fn from_lod0_cell(
+        lod0_cell: [i64; 3],
+        lod0_cell_size_mm: u32,
+    ) -> Result<Self, PositionError> {
+        let _ = cell_size_meters(lod0_cell_size_mm)?;
+        Ok(Self {
             lod0_cell,
             subcell_m: [0.0; 3],
-        }
+            lod0_cell_size_mm,
+        })
     }
 
     /// Convenience conversion for camera/input values. Terrain persistence and
     /// replication should carry the canonical cell-plus-remainder form.
-    pub fn from_meters(meters: [f64; 3]) -> Result<Self, PositionError> {
+    pub fn from_meters(meters: [f64; 3], lod0_cell_size_mm: u32) -> Result<Self, PositionError> {
+        let cell_size_m = cell_size_meters(lod0_cell_size_mm)?;
         let mut cells = [0_i64; 3];
         let mut subcell_m = [0.0_f64; 3];
         for axis in 0..3 {
@@ -106,26 +122,26 @@ impl PlanetPosition {
             if !value.is_finite() {
                 return Err(PositionError::NonFinite);
             }
-            let cell = (value / LOD0_CELL_SIZE_METERS).floor();
+            let cell = (value / cell_size_m).floor();
             if cell < i64::MIN as f64 || cell >= -(i64::MIN as f64) {
                 return Err(PositionError::CoordinateOverflow);
             }
             cells[axis] = cell as i64;
-            let mut remainder = value - cell * LOD0_CELL_SIZE_METERS;
+            let mut remainder = value - cell * cell_size_m;
             if remainder < 0.0 {
                 cells[axis] = cells[axis]
                     .checked_sub(1)
                     .ok_or(PositionError::CoordinateOverflow)?;
-                remainder += LOD0_CELL_SIZE_METERS;
-            } else if remainder >= LOD0_CELL_SIZE_METERS {
+                remainder += cell_size_m;
+            } else if remainder >= cell_size_m {
                 cells[axis] = cells[axis]
                     .checked_add(1)
                     .ok_or(PositionError::CoordinateOverflow)?;
-                remainder -= LOD0_CELL_SIZE_METERS;
+                remainder -= cell_size_m;
             }
             subcell_m[axis] = remainder;
         }
-        Self::new(cells, subcell_m)
+        Self::new(cells, subcell_m, lod0_cell_size_mm)
     }
 
     pub const fn lod0_cell(self) -> [i64; 3] {
@@ -136,15 +152,27 @@ impl PlanetPosition {
         self.subcell_m
     }
 
+    pub const fn lod0_cell_size_mm(self) -> u32 {
+        self.lod0_cell_size_mm
+    }
+
+    pub fn lod0_cell_size_m(self) -> f64 {
+        f64::from(self.lod0_cell_size_mm) / 1_000.0
+    }
+
     /// Computes `self - origin` before any conversion to floating point.
     pub fn relative_meters(self, origin: Self) -> Result<[f64; 3], PositionError> {
+        if self.lod0_cell_size_mm != origin.lod0_cell_size_mm {
+            return Err(PositionError::ScaleMismatch);
+        }
+        let cell_size_m = self.lod0_cell_size_m();
         let mut relative = [0.0_f64; 3];
         for (axis, output) in relative.iter_mut().enumerate() {
             let cell_delta = self.lod0_cell[axis]
                 .checked_sub(origin.lod0_cell[axis])
                 .ok_or(PositionError::CoordinateOverflow)?;
-            *output = cell_delta as f64 * LOD0_CELL_SIZE_METERS
-                + (self.subcell_m[axis] - origin.subcell_m[axis]);
+            *output =
+                cell_delta as f64 * cell_size_m + (self.subcell_m[axis] - origin.subcell_m[axis]);
         }
         Ok(relative)
     }
@@ -153,13 +181,17 @@ impl PlanetPosition {
         self,
         origin_lod0_cell: [i64; 3],
     ) -> Result<[f64; 3], PositionError> {
-        self.relative_meters(Self::from_lod0_cell(origin_lod0_cell))
+        self.relative_meters(Self::from_lod0_cell(
+            origin_lod0_cell,
+            self.lod0_cell_size_mm,
+        )?)
     }
 }
 
 impl Default for PlanetPosition {
     fn default() -> Self {
-        Self::from_lod0_cell([0; 3])
+        Self::from_lod0_cell([0; 3], SMOOTH_PLANET_DEFAULT_CELL_SIZE_MM)
+            .expect("the default smooth-planet scale is valid")
     }
 }
 
@@ -167,7 +199,7 @@ impl TryFrom<PlanetPositionWire> for PlanetPosition {
     type Error = PositionError;
 
     fn try_from(value: PlanetPositionWire) -> Result<Self, Self::Error> {
-        Self::new(value.lod0_cell, value.subcell_m)
+        Self::new(value.lod0_cell, value.subcell_m, value.lod0_cell_size_mm)
     }
 }
 
@@ -176,6 +208,7 @@ impl From<PlanetPosition> for PlanetPositionWire {
         Self {
             lod0_cell: value.lod0_cell,
             subcell_m: value.subcell_m,
+            lod0_cell_size_mm: value.lod0_cell_size_mm,
         }
     }
 }
@@ -233,7 +266,7 @@ impl PlanetFrame {
             origin_words: self.origin_lod0_cell.map(split_i64),
             frame_index_words: split_u64(self.frame_index),
             camera_relative_m: self.camera_relative_m().map(|value| value as f32),
-            lod0_cell_size_m: LOD0_CELL_SIZE_METERS as f32,
+            lod0_cell_size_m: self.camera.lod0_cell_size_m() as f32,
             page_edge_cells: PAGE_EDGE_CELLS as u32,
         }
     }
@@ -301,10 +334,21 @@ impl PlanetFramePayload {
 pub enum PositionError {
     #[error("planet position contains a non-finite value")]
     NonFinite,
-    #[error("planet position sub-cell remainder must be in [0, 0.1) meters")]
+    #[error("planet position sub-cell remainder must be within its LOD0 cell")]
     SubcellOutOfRange,
+    #[error("planet LOD0 cell size must be non-zero")]
+    InvalidCellSize,
+    #[error("planet positions use different LOD0 cell sizes")]
+    ScaleMismatch,
     #[error("planet position coordinate arithmetic overflowed")]
     CoordinateOverflow,
+}
+
+fn cell_size_meters(lod0_cell_size_mm: u32) -> Result<f64, PositionError> {
+    if lod0_cell_size_mm == 0 {
+        return Err(PositionError::InvalidCellSize);
+    }
+    Ok(f64::from(lod0_cell_size_mm) / 1_000.0)
 }
 
 const fn split_u64(value: u64) -> [u32; 2] {
@@ -625,18 +669,18 @@ mod tests {
 
     #[test]
     fn position_serde_is_canonical_and_rejects_invalid_payloads() {
-        let position = PlanetPosition::new([-63_710_001, 7, -1], [0.099, 0.0, -0.0]).unwrap();
+        let position = PlanetPosition::new([-63_710_001, 7, -1], [0.099, 0.0, -0.0], 100).unwrap();
         let json = serde_json::to_string(&position).unwrap();
         assert_eq!(
             json,
-            r#"{"lod0_cell":[-63710001,7,-1],"subcell_m":[0.099,0.0,0.0]}"#
+            r#"{"lod0_cell":[-63710001,7,-1],"subcell_m":[0.099,0.0,0.0],"lod0_cell_size_mm":100}"#
         );
         assert_eq!(
             serde_json::from_str::<PlanetPosition>(&json).unwrap(),
             position
         );
         assert!(serde_json::from_str::<PlanetPosition>(
-            r#"{"lod0_cell":[0,0,0],"subcell_m":[0.1,0.0,0.0]}"#
+            r#"{"lod0_cell":[0,0,0],"subcell_m":[0.1,0.0,0.0],"lod0_cell_size_mm":100}"#
         )
         .is_err());
         assert!(serde_json::from_str::<PlanetPosition>(
@@ -647,7 +691,7 @@ mod tests {
 
     #[test]
     fn negative_meter_coordinates_use_euclidean_cells() {
-        let position = PlanetPosition::from_meters([-0.001, -0.1, -3.201]).unwrap();
+        let position = PlanetPosition::from_meters([-0.001, -0.1, -3.201], 100).unwrap();
         assert_eq!(position.lod0_cell(), [-1, -1, -33]);
         let expected = [0.099, 0.0, 0.099];
         for (actual, expected) in position.subcell_m().into_iter().zip(expected) {
@@ -656,11 +700,29 @@ mod tests {
     }
 
     #[test]
+    fn positions_from_different_planet_scales_cannot_be_mixed() {
+        let smooth = PlanetPosition::from_meters([1.0, 2.0, 3.0], 1_000).unwrap();
+        let cubic = PlanetPosition::from_meters([1.0, 2.0, 3.0], 100).unwrap();
+
+        assert_eq!(smooth.lod0_cell(), [1, 2, 3]);
+        assert_eq!(cubic.lod0_cell(), [10, 20, 30]);
+        assert_eq!(
+            smooth.relative_meters(cubic),
+            Err(PositionError::ScaleMismatch)
+        );
+        assert_eq!(
+            PlanetPosition::from_lod0_cell([0; 3], 0),
+            Err(PositionError::InvalidCellSize)
+        );
+    }
+
+    #[test]
     fn earth_ground_orbit_and_antipode_frames_stay_canonical() {
         let earth_cells = 63_710_000_i64;
-        let ground = PlanetPosition::new([earth_cells, 0, 0], [0.001, 0.099, 0.05]).unwrap();
-        let orbit = PlanetPosition::new([67_710_000, 0, 0], [0.001, 0.099, 0.05]).unwrap();
-        let antipode = PlanetPosition::new([-earth_cells, 0, 0], [0.001, 0.099, 0.05]).unwrap();
+        let ground = PlanetPosition::new([earth_cells, 0, 0], [0.001, 0.099, 0.05], 100).unwrap();
+        let orbit = PlanetPosition::new([67_710_000, 0, 0], [0.001, 0.099, 0.05], 100).unwrap();
+        let antipode =
+            PlanetPosition::new([-earth_cells, 0, 0], [0.001, 0.099, 0.05], 100).unwrap();
         assert_eq!(
             orbit.relative_meters(ground).unwrap(),
             [400_000.0, 0.0, 0.0]
@@ -691,7 +753,7 @@ mod tests {
         ] {
             let frame = PlanetFrame::new(
                 PlanetId([8; 16]),
-                PlanetPosition::from_lod0_cell(camera_cell),
+                PlanetPosition::from_lod0_cell(camera_cell, 100).unwrap(),
                 u64::MAX,
             );
             let payload = frame.renderer_payload();
@@ -704,16 +766,18 @@ mod tests {
     fn renderer_payload_stays_within_one_millimeter_across_a_rebase() {
         let earth_cells = 63_710_000_i64;
         for camera_cell in [earth_cells + 31, earth_cells + 32] {
-            let camera = PlanetPosition::new([camera_cell, -1, 7], [0.037, 0.081, 0.019]).unwrap();
+            let camera =
+                PlanetPosition::new([camera_cell, -1, 7], [0.037, 0.081, 0.019], 100).unwrap();
             let point = PlanetPosition::new(
                 [
                     camera_cell
-                        + (MILLIMETER_INTERACTION_RADIUS_METERS / LOD0_CELL_SIZE_METERS) as i64
+                        + (MILLIMETER_INTERACTION_RADIUS_METERS / camera.lod0_cell_size_m()) as i64
                         - 1,
                     -4,
                     9,
                 ],
                 [0.092, 0.006, 0.071],
+                100,
             )
             .unwrap();
             let frame = PlanetFrame::new(PlanetId([2; 16]), camera, 5);
@@ -724,15 +788,15 @@ mod tests {
             let camera_relative = payload.camera_relative_m();
             let reconstructed = [
                 ((point.lod0_cell()[0] - origin[0]) as f32
-                    + (subcell[0] / LOD0_CELL_SIZE_METERS) as f32)
+                    + (subcell[0] / point.lod0_cell_size_m()) as f32)
                     * payload.lod0_cell_size_m()
                     - camera_relative[0],
                 ((point.lod0_cell()[1] - origin[1]) as f32
-                    + (subcell[1] / LOD0_CELL_SIZE_METERS) as f32)
+                    + (subcell[1] / point.lod0_cell_size_m()) as f32)
                     * payload.lod0_cell_size_m()
                     - camera_relative[1],
                 ((point.lod0_cell()[2] - origin[2]) as f32
-                    + (subcell[2] / LOD0_CELL_SIZE_METERS) as f32)
+                    + (subcell[2] / point.lod0_cell_size_m()) as f32)
                     * payload.lod0_cell_size_m()
                     - camera_relative[2],
             ];

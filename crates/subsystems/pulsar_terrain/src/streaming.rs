@@ -1,6 +1,6 @@
 use crate::{
-    DeterministicGenerator, FixedSphereGenerator, PageKey, PlanetDefinition, PlanetId,
-    PlanetPosition, TerrainNodeSummary, TerrainRequestClass, LOD0_CELL_SIZE_METERS,
+    DeterministicGenerator, PageKey, PlanetDefinition, PlanetId, PlanetPosition,
+    PlanetSdfGenerator, TerrainNodeSummary, TerrainRequestClass,
 };
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet};
@@ -34,7 +34,7 @@ pub trait TerrainRegionClassifier {
     }
 }
 
-impl TerrainRegionClassifier for FixedSphereGenerator {
+impl TerrainRegionClassifier for PlanetSdfGenerator {
     fn summarize_region(&self, key: PageKey) -> Result<TerrainNodeSummary, TerrainStreamingError> {
         Ok(DeterministicGenerator::summarize_region(self, key))
     }
@@ -519,16 +519,14 @@ impl TerrainStreamingPlanner {
         self.config
     }
 
-    pub fn plan_fixed_sphere(
+    pub fn plan_planet(
         &self,
         definition: &PlanetDefinition,
         view: PlanetView,
     ) -> Result<TerrainStreamingPlan, TerrainStreamingError> {
-        let classifier = FixedSphereGenerator {
-            center_cell: definition.center_cell,
-            radius_cells: definition.radius_cells,
-            material: definition.material,
-        };
+        let classifier = definition
+            .generator()
+            .map_err(|error| TerrainStreamingError::TerrainSummary(error.to_string()))?;
         self.plan_with_classifier(definition, view, &classifier)
     }
 
@@ -539,6 +537,11 @@ impl TerrainStreamingPlanner {
         classifier: &C,
     ) -> Result<TerrainStreamingPlan, TerrainStreamingError> {
         validate_planet_root(definition)?;
+        if view.camera().lod0_cell_size_mm() != definition.lod0_cell_size_mm {
+            return Err(TerrainStreamingError::InvalidView(
+                "camera and planet definition must use the same LOD0 cell size",
+            ));
+        }
         let page_budget = self.config.max_pages.min(definition.max_resident_pages);
         let geometry = ViewGeometry::new(view, self.config)?;
         let mut state = PlannerState {
@@ -806,6 +809,7 @@ struct ViewGeometry {
     interaction_radius_m: f64,
     target_projected_error_px: f64,
     focal_length_px: f64,
+    lod0_cell_size_m: f64,
 }
 
 impl ViewGeometry {
@@ -846,6 +850,7 @@ impl ViewGeometry {
             interaction_radius_m: config.interaction_radius_m,
             target_projected_error_px: config.target_projected_error_px,
             focal_length_px,
+            lod0_cell_size_m: view.camera.lod0_cell_size_m(),
         })
     }
 
@@ -872,7 +877,7 @@ impl ViewGeometry {
         } else {
             predicted_distance
         };
-        let geometric_error_m = geometric_error_lod0_cells as f64 * LOD0_CELL_SIZE_METERS;
+        let geometric_error_m = geometric_error_lod0_cells as f64 * self.lod0_cell_size_m;
         let error_distance = current_distance
             .min(predicted_distance)
             .max(geometric_error_m * 0.5)
@@ -945,8 +950,8 @@ impl RelativeAabb {
             let delta = min_cell[axis]
                 .checked_sub(camera_cell[axis])
                 .ok_or(TerrainStreamingError::CoordinateOverflow)?;
-            min[axis] = delta as f64 * LOD0_CELL_SIZE_METERS - camera_subcell[axis];
-            max[axis] = min[axis] + span as f64 * LOD0_CELL_SIZE_METERS;
+            min[axis] = delta as f64 * camera.lod0_cell_size_m() - camera_subcell[axis];
+            max[axis] = min[axis] + span as f64 * camera.lod0_cell_size_m();
         }
         Ok(Self { min, max })
     }
@@ -1227,6 +1232,8 @@ mod tests {
             center_cell: [0; 3],
             radius_cells,
             material: 3,
+            lod0_cell_size_mm: 100,
+            sdf: crate::PlanetSdfConfig::zero_relief_test_fixture(),
             root_lod,
             max_resident_pages: max_pages,
         }
@@ -1234,7 +1241,7 @@ mod tests {
 
     fn view(camera: [i64; 3], forward: [f64; 3], velocity: [f64; 3]) -> PlanetView {
         PlanetView::new(
-            PlanetPosition::from_lod0_cell(camera),
+            PlanetPosition::from_lod0_cell(camera, 100).unwrap(),
             forward,
             [0.0, 1.0, 0.0],
             60_f64.to_radians(),
@@ -1247,12 +1254,8 @@ mod tests {
     }
 
     #[test]
-    fn fixed_sphere_classifier_prunes_uniform_space_conservatively() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 1,
-        };
+    fn zero_relief_sdf_classifier_prunes_uniform_space_conservatively() {
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 1);
         assert_eq!(
             generator
                 .classify_region(PageKey::new(0, [20, 20, 20]))
@@ -1271,10 +1274,11 @@ mod tests {
                 .unwrap(),
             TerrainRegion::Surface
         );
-        let large = FixedSphereGenerator {
-            radius_cells: 10_000,
-            ..generator
-        };
+        let large = PlanetSdfGenerator::zero_relief_test_fixture(
+            generator.center_cell,
+            10_000,
+            generator.material,
+        );
         assert_eq!(
             large.classify_region(PageKey::new(0, [0, 0, 0])).unwrap(),
             TerrainRegion::UniformSolid
@@ -1293,8 +1297,8 @@ mod tests {
         })
         .unwrap();
         let view = view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]);
-        let first = planner.plan_fixed_sphere(&definition, view).unwrap();
-        let second = planner.plan_fixed_sphere(&definition, view).unwrap();
+        let first = planner.plan_planet(&definition, view).unwrap();
+        let second = planner.plan_planet(&definition, view).unwrap();
         assert_eq!(first, second);
         assert!(first.demands().len() <= 4_096);
         assert!(first.counters().traversed_nodes <= 65_536);
@@ -1327,11 +1331,11 @@ mod tests {
         }
 
         let definition = definition(1_000, 6, 4_096);
-        let generator = FixedSphereGenerator {
-            center_cell: definition.center_cell,
-            radius_cells: definition.radius_cells,
-            material: definition.material,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture(
+            definition.center_cell,
+            definition.radius_cells,
+            definition.material,
+        );
         let core =
             crate::TerrainCore::new(definition.planet_id, definition.root_lod, generator).unwrap();
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
@@ -1343,7 +1347,7 @@ mod tests {
         })
         .unwrap();
         let view = view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]);
-        let direct = planner.plan_fixed_sphere(&definition, view).unwrap();
+        let direct = planner.plan_planet(&definition, view).unwrap();
         let authoritative = planner
             .plan_with_classifier(&definition, view, &core)
             .unwrap();
@@ -1365,11 +1369,11 @@ mod tests {
     #[test]
     fn authoritative_planning_sees_fine_edits_outside_the_procedural_surface() {
         let definition = definition(100, 6, 4_096);
-        let generator = FixedSphereGenerator {
-            center_cell: definition.center_cell,
-            radius_cells: definition.radius_cells,
-            material: definition.material,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture(
+            definition.center_cell,
+            definition.radius_cells,
+            definition.material,
+        );
         let mut core =
             crate::TerrainCore::new(definition.planet_id, definition.root_lod, generator).unwrap();
         core.append_edit(crate::EditOp {
@@ -1391,7 +1395,7 @@ mod tests {
         })
         .unwrap();
         let view = view([620, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]);
-        let procedural = planner.plan_fixed_sphere(&definition, view).unwrap();
+        let procedural = planner.plan_planet(&definition, view).unwrap();
         let authoritative = planner
             .plan_with_classifier(&definition, view, &core)
             .unwrap();
@@ -1420,7 +1424,7 @@ mod tests {
         })
         .unwrap();
         let plan = planner
-            .plan_fixed_sphere(&definition, view([-1_000, 0, 0], [1.0, 0.0, 0.0], [0.0; 3]))
+            .plan_planet(&definition, view([-1_000, 0, 0], [1.0, 0.0, 0.0], [0.0; 3]))
             .unwrap();
         assert!(plan.is_face_balanced());
         assert!(plan
@@ -1443,7 +1447,7 @@ mod tests {
         .unwrap();
         let camera = i64::try_from(radius).unwrap() + 40_000_000;
         let plan = planner
-            .plan_fixed_sphere(
+            .plan_planet(
                 &definition,
                 view([camera, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]),
             )
@@ -1460,11 +1464,11 @@ mod tests {
     #[test]
     fn ground_refinement_preserves_complete_coarse_planet_coverage() {
         let definition = definition(1_000, 6, 4_096);
-        let classifier = FixedSphereGenerator {
-            center_cell: definition.center_cell,
-            radius_cells: definition.radius_cells,
-            material: definition.material,
-        };
+        let classifier = PlanetSdfGenerator::zero_relief_test_fixture(
+            definition.center_cell,
+            definition.radius_cells,
+            definition.material,
+        );
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
             interaction_radius_m: 8.0,
             max_pages: 4_096,
@@ -1473,7 +1477,7 @@ mod tests {
         })
         .unwrap();
         let plan = planner
-            .plan_fixed_sphere(&definition, view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]))
+            .plan_planet(&definition, view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]))
             .unwrap();
 
         let root_child_lod = definition.root_lod - 1;
@@ -1505,7 +1509,7 @@ mod tests {
     }
 
     #[test]
-    fn astronomical_view_collapses_to_the_complete_root_shell() {
+    fn astronomical_view_collapses_to_complete_coarse_coverage() {
         let radius = 63_710_000_u64;
         let definition = definition(radius, 22, 2_048);
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
@@ -1518,7 +1522,7 @@ mod tests {
         .unwrap();
         let camera = i64::try_from(radius).unwrap() + 1_500_000_000_000;
         let plan = planner
-            .plan_fixed_sphere(
+            .plan_planet(
                 &definition,
                 view([camera, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]),
             )
@@ -1549,7 +1553,7 @@ mod tests {
         })
         .unwrap();
         let plan = planner
-            .plan_fixed_sphere(&definition, view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]))
+            .plan_planet(&definition, view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]))
             .unwrap();
         assert!(plan.demands().len() <= 32);
         assert!(plan.limits().contains(&TerrainStreamingLimit::PageBudget));
@@ -1569,7 +1573,7 @@ mod tests {
         })
         .unwrap();
         let plan = planner
-            .plan_fixed_sphere(
+            .plan_planet(
                 &definition,
                 view([2_000, 0, 0], [-1.0, 0.0, 0.0], [0.0, 100.0, 0.0]),
             )
@@ -1590,7 +1594,7 @@ mod tests {
         })
         .unwrap();
         let plan = planner
-            .plan_fixed_sphere(&definition, view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]))
+            .plan_planet(&definition, view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]))
             .unwrap();
         assert_eq!(plan.counters().traversed_nodes, 8);
         assert!(plan
@@ -1611,10 +1615,10 @@ mod tests {
         })
         .unwrap();
         let ground = planner
-            .plan_fixed_sphere(&definition, view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]))
+            .plan_planet(&definition, view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]))
             .unwrap();
         let antipode = planner
-            .plan_fixed_sphere(&definition, view([-1_000, 0, 0], [1.0, 0.0, 0.0], [0.0; 3]))
+            .plan_planet(&definition, view([-1_000, 0, 0], [1.0, 0.0, 0.0], [0.0; 3]))
             .unwrap();
         assert!(ground.demands().len() <= 1_024);
         assert!(antipode.demands().len() <= 1_024);
@@ -1627,7 +1631,7 @@ mod tests {
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig::default()).unwrap();
         let too_deep = definition(1, 59, 8_192);
         assert_eq!(
-            planner.plan_fixed_sphere(&too_deep, view([0, 0, 10], [0.0, 0.0, -1.0], [0.0; 3])),
+            planner.plan_planet(&too_deep, view([0, 0, 10], [0.0, 0.0, -1.0], [0.0; 3])),
             Err(TerrainStreamingError::UnsupportedRootLod(59))
         );
 
@@ -1636,7 +1640,7 @@ mod tests {
             ..definition(100, 4, 8_192)
         };
         assert_eq!(
-            planner.plan_fixed_sphere(&outside, view([0, 0, 10], [0.0, 0.0, -1.0], [0.0; 3])),
+            planner.plan_planet(&outside, view([0, 0, 10], [0.0, 0.0, -1.0], [0.0; 3])),
             Err(TerrainStreamingError::PlanetOutsideRoot)
         );
     }

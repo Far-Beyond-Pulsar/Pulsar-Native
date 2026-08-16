@@ -1,7 +1,7 @@
 use crate::{
-    FixedSphereGenerator, PlanetDefinition, PlanetId, PlanetView, TerrainCore,
-    TerrainPlanningSnapshot, TerrainRuntimeError, TerrainRuntimeHandle, TerrainStreamingConfig,
-    TerrainStreamingError, TerrainStreamingPlan, TerrainStreamingPlanner,
+    PlanetDefinition, PlanetId, PlanetView, TerrainCore, TerrainPlanningSnapshot,
+    TerrainRuntimeError, TerrainRuntimeHandle, TerrainStreamingConfig, TerrainStreamingError,
+    TerrainStreamingPlan, TerrainStreamingPlanner,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -530,11 +530,10 @@ fn planning_worker_loop(shared: Arc<PlanningShared>, runtime: TerrainRuntimeHand
             continue;
         };
         let capture_elapsed = capture_started.elapsed();
-        let generator = FixedSphereGenerator {
-            center_cell: capture.definition.center_cell,
-            radius_cells: capture.definition.radius_cells,
-            material: capture.definition.material,
-        };
+        let generator = capture
+            .definition
+            .generator()
+            .expect("planning captures validated planet definitions");
         let started = Instant::now();
         let plan = TerrainCore::from_planning_snapshot(capture.snapshot, generator)
             .map_err(|error| TerrainStreamingError::TerrainSummary(error.to_string()))
@@ -609,6 +608,8 @@ mod tests {
             center_cell: [0; 3],
             radius_cells: 1_000,
             material: id.max(1),
+            lod0_cell_size_mm: 100,
+            sdf: crate::PlanetSdfConfig::zero_relief_test_fixture(),
             root_lod: 8,
             max_resident_pages: 512,
         }
@@ -634,7 +635,7 @@ mod tests {
 
     fn view(camera: [i64; 3], forward: [f64; 3], velocity_mps: [f64; 3]) -> PlanetView {
         PlanetView::new(
-            PlanetPosition::from_lod0_cell(camera),
+            PlanetPosition::from_lod0_cell(camera, 100).unwrap(),
             forward,
             [0.0, 1.0, 0.0],
             60_f64.to_radians(),
@@ -735,7 +736,7 @@ mod tests {
         let result = wait_for_submission(&planning, latest.submission);
         let expected = TerrainStreamingPlanner::new(config.streaming)
             .unwrap()
-            .plan_fixed_sphere(&planet, views[4])
+            .plan_planet(&planet, views[4])
             .unwrap();
         assert_eq!(result.into_plan().unwrap(), expected);
         let counters = planning.counters();

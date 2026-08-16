@@ -401,7 +401,7 @@ pub enum PageCodecError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EditMode, EditShape, FixedSphereGenerator};
+    use crate::{EditMode, EditShape, PlanetSdfGenerator};
 
     #[test]
     fn constant_and_dense_pages_round_trip_with_stable_hashes() {
@@ -494,11 +494,7 @@ mod tests {
 
     #[test]
     fn incremental_edit_tail_matches_full_deterministic_replay() {
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 24,
-            material: 2,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 24, 2);
         let first = EditOp {
             sequence: 1,
             stable_id: [1; 16],
@@ -532,11 +528,7 @@ mod tests {
 
     #[test]
     fn coarse_pages_sample_the_same_canonical_field_in_fixed_work() {
-        let generator = FixedSphereGenerator {
-            center_cell: [-40, 17, 9],
-            radius_cells: 180,
-            material: 6,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([-40, 17, 9], 180, 6);
         let edit = EditOp {
             sequence: 1,
             stable_id: [3; 16],
@@ -564,11 +556,7 @@ mod tests {
 
     #[test]
     fn coincident_samples_match_across_lods_and_negative_page_boundaries() {
-        let generator = FixedSphereGenerator {
-            center_cell: [-20, 10, 5],
-            radius_cells: 90,
-            material: 4,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([-20, 10, 5], 90, 4);
         let edits = EditLog::default();
         let coarse_key = PageKey::new(1, [-1, 0, 0]);
         let fine_key = PageKey::new(0, [-2, 0, 0]);
