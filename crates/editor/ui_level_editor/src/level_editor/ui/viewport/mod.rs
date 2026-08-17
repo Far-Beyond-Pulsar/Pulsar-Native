@@ -381,6 +381,41 @@ impl ViewportPanel {
                             }
                         }
                     }
+
+                    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+                    {
+                        let locked_screen_x = locked_cursor_screen_x.load(Ordering::Relaxed);
+                        let locked_screen_y = locked_cursor_screen_y.load(Ordering::Relaxed);
+
+                        if locked_screen_x > 0 && locked_screen_y > 0 {
+                            if let Some((cx, cy)) = platform::get_cursor_position() {
+                                let dx = cx - locked_screen_x;
+                                let dy = cy - locked_screen_y;
+
+                                if dx != 0 || dy != 0 {
+                                    if !just_activated {
+                                        if let Some(cam) = &camera_input {
+                                            if let Ok(mut input) = cam.lock() {
+                                                if is_rotating {
+                                                    input.accumulate_look_delta(dx as f32, dy as f32);
+                                                } else if is_panning {
+                                                    input.accumulate_pan_delta(dx as f32, dy as f32);
+                                                }
+                                            }
+                                        }
+
+                                        if is_rotating {
+                                            input_state.set_mouse_delta(dx as f32, dy as f32);
+                                        } else if is_panning {
+                                            input_state.set_pan_delta(dx as f32, dy as f32);
+                                        }
+                                    }
+
+                                    platform::set_cursor_position(locked_screen_x, locked_screen_y);
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Track latency

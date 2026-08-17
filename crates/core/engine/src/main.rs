@@ -139,8 +139,6 @@ fn main() {
 
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    gpu_policy::enforce_discrete_gpu_policy_or_exit();
-
     macos_permissions::ensure_accessibility_permission_blocking();
 
     // Name the main thread FIRST
@@ -250,6 +248,9 @@ fn main() {
         tracing::error!("Engine initialization failed: {}", e);
         std::process::exit(1);
     }
+
+    // GPU policy check — runs after logging is initialized so warnings/errors are visible.
+    gpu_policy::enforce_discrete_gpu_policy_or_exit();
 
     // Extract initialized components
     let engine_context = init_ctx

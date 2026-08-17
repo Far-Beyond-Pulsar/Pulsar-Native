@@ -588,6 +588,17 @@ mod x11 {
             value_mask: core::ffi::c_ulong,
             attributes: *const XSetWindowAttributes,
         ) -> core::ffi::c_int;
+        fn XQueryPointer(
+            display: *mut Display,
+            window: Window,
+            root_ret: *mut Window,
+            child_ret: *mut Window,
+            root_x_ret: *mut core::ffi::c_int,
+            root_y_ret: *mut core::ffi::c_int,
+            win_x_ret: *mut core::ffi::c_int,
+            win_y_ret: *mut core::ffi::c_int,
+            mask_ret: *mut core::ffi::c_uint,
+        ) -> core::ffi::c_int;
     }
 
     fn open_display() -> Option<*mut Display> {
@@ -779,15 +790,41 @@ mod x11 {
     pub fn set_cursor_position(screen_x: i32, screen_y: i32) {
         let Some(display) = open_display() else { return };
         let root = unsafe { XDefaultRootWindow(display) };
-        let Some(win) = focused_window(display) else {
-            unsafe { XCloseDisplay(display) };
-            return;
-        };
         unsafe {
             XWarpPointer(display, 0, root, 0, 0, 0, 0, screen_x, screen_y);
             XFlush(display);
         }
-        let _ = win;
+    }
+
+    pub fn get_cursor_position() -> Option<(i32, i32)> {
+        let display = open_display()?;
+        let root = unsafe { XDefaultRootWindow(display) };
+        let mut root_x: core::ffi::c_int = 0;
+        let mut root_y: core::ffi::c_int = 0;
+        let mut win_x: core::ffi::c_int = 0;
+        let mut win_y: core::ffi::c_int = 0;
+        let mut mask: core::ffi::c_uint = 0;
+        let mut root_ret: Window = 0;
+        let mut child_ret: Window = 0;
+        let status = unsafe {
+            XQueryPointer(
+                display,
+                root,
+                &mut root_ret,
+                &mut child_ret,
+                &mut root_x,
+                &mut root_y,
+                &mut win_x,
+                &mut win_y,
+                &mut mask,
+            )
+        };
+        unsafe { XCloseDisplay(display) };
+        if status == 0 {
+            None
+        } else {
+            Some((root_x as i32, root_y as i32))
+        }
     }
 
     pub fn window_to_screen_position(
@@ -836,6 +873,6 @@ mod x11 {
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub use x11::{
-    hide_cursor, lock_cursor_to_point, lock_cursor_to_window, set_cursor_position,
-    show_cursor, unlock_cursor, window_to_screen_position,
+    get_cursor_position, hide_cursor, lock_cursor_to_point, lock_cursor_to_window,
+    set_cursor_position, show_cursor, unlock_cursor, window_to_screen_position,
 };
