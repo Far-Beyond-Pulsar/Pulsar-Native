@@ -30,7 +30,7 @@ use engine_backend::scene::{
 use engine_backend::{ComponentInstance, EditorObjectId, SceneMetadataDb};
 use engine_fs::virtual_fs;
 use parking_lot::RwLock;
-use pulsar_reflection::{apply_scene_props_for_class, registered_scene_props_classes, EngineClass};
+use pulsar_reflection::{apply_scene_props_for_class, registered_scene_props_classes};
 use pulsar_scenedb::Entity;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
