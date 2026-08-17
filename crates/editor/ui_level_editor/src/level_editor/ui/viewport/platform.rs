@@ -662,7 +662,7 @@ mod x11 {
         };
         let x11_window = match raw_handle {
             Ok(handle) => match handle.as_raw() {
-                raw_window_handle::RawWindowHandle::Xlib(h) => h.window.get() as XID,
+                raw_window_handle::RawWindowHandle::Xlib(h) => h.window as XID,
                 raw_window_handle::RawWindowHandle::Xcb(h) => h.window.get() as XID,
                 _ => {
                     tracing::warn!("[VIEWPORT] X11: not an X11 window handle");
@@ -801,7 +801,7 @@ mod x11 {
         };
         let x11_window = match raw_handle {
             Ok(handle) => match handle.as_raw() {
-                raw_window_handle::RawWindowHandle::Xlib(h) => h.window.get() as XID,
+                raw_window_handle::RawWindowHandle::Xlib(h) => h.window as XID,
                 raw_window_handle::RawWindowHandle::Xcb(h) => h.window.get() as XID,
                 _ => {
                     unsafe { XCloseDisplay(display) };
