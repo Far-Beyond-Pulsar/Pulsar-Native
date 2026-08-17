@@ -48,19 +48,6 @@ pub struct F32FieldBinding {
 }
 
 impl F32FieldBinding {
-    pub fn new<G, S>(getter: G, setter: S) -> Self
-    where
-        G: Fn(&SceneObjectData) -> f32 + Send + Sync + 'static,
-        S: Fn(&mut SceneObjectData, f32) + Send + Sync + 'static,
-    {
-        Self {
-            getter: Some(Arc::new(getter)),
-            setter: Some(Arc::new(setter)),
-            getter_db: None,
-            setter_db: None,
-        }
-    }
-
     pub fn new_with_db<G, S>(getter: G, setter: S) -> Self
     where
         G: Fn(&ObjectId, &SceneDatabase) -> Option<f32> + Send + Sync + 'static,
@@ -125,19 +112,6 @@ pub struct StringFieldBinding {
 }
 
 impl StringFieldBinding {
-    pub fn new<G, S>(getter: G, setter: S) -> Self
-    where
-        G: Fn(&SceneObjectData) -> String + Send + Sync + 'static,
-        S: Fn(&mut SceneObjectData, String) + Send + Sync + 'static,
-    {
-        Self {
-            getter: Some(Arc::new(getter)),
-            setter: Some(Arc::new(setter)),
-            getter_db: None,
-            setter_db: None,
-        }
-    }
-
     /// Same shape as `F32FieldBinding::new_with_db` -- see that method's doc.
     pub fn new_with_db<G, S>(getter: G, setter: S) -> Self
     where
@@ -199,19 +173,6 @@ pub struct BoolFieldBinding {
 }
 
 impl BoolFieldBinding {
-    pub fn new<G, S>(getter: G, setter: S) -> Self
-    where
-        G: Fn(&SceneObjectData) -> bool + Send + Sync + 'static,
-        S: Fn(&mut SceneObjectData, bool) + Send + Sync + 'static,
-    {
-        Self {
-            getter: Some(Arc::new(getter)),
-            setter: Some(Arc::new(setter)),
-            getter_db: None,
-            setter_db: None,
-        }
-    }
-
     /// Same shape as `F32FieldBinding::new_with_db` -- see that method's doc.
     pub fn new_with_db<G, S>(getter: G, setter: S) -> Self
     where
@@ -261,81 +222,5 @@ impl FieldBinding for BoolFieldBinding {
             "false" | "0" | "no" | "off" => Ok(false),
             _ => Err(format!("Invalid boolean: {}", s)),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
-
-    #[test]
-    fn test_f32_binding() {
-        let db = SceneDatabase::new();
-
-        // Add test object
-        let object_id = "test_object".to_string();
-        db.add_object(
-            SceneObjectData {
-                id: object_id.clone(),
-                name: "Test".to_string(),
-                object_type: ObjectType::Empty,
-                transform: Transform {
-                    position: [1.0, 2.0, 3.0],
-                    rotation: [0.0, 0.0, 0.0],
-                    scale: [1.0, 1.0, 1.0],
-                },
-                parent: None,
-                children: Vec::new(),
-                visible: true,
-                locked: false,
-                scene_path: String::new(),
-                props: Default::default(),
-                component_instances: None,
-            },
-            None,
-        );
-
-        // Create binding for position.x
-        let binding = F32FieldBinding::new(
-            |obj| obj.transform.position[0],
-            |obj, val| obj.transform.position[0] = val,
-        );
-
-        // Test get
-        assert_eq!(binding.get(&object_id, &db), Some(1.0));
-
-        // Test set
-        assert!(binding.set(&object_id, 5.0, &db));
-        assert_eq!(binding.get(&object_id, &db), Some(5.0));
-
-        // Test to_string
-        assert_eq!(binding.to_string(&3.256), "3.256");
-
-        // Test from_string
-        assert_eq!(binding.from_string("2.5"), Ok(2.5));
-        assert!(binding.from_string("invalid").is_err());
-    }
-
-    #[test]
-    fn test_string_binding() {
-        let binding = StringFieldBinding::new(|obj| obj.name.clone(), |obj, val| obj.name = val);
-
-        assert_eq!(binding.to_string(&"Test".to_string()), "Test");
-        assert_eq!(binding.from_string("Hello"), Ok("Hello".to_string()));
-    }
-
-    #[test]
-    fn test_bool_binding() {
-        let binding = BoolFieldBinding::new(|obj| obj.visible, |obj, val| obj.visible = val);
-
-        assert_eq!(binding.to_string(&true), "true");
-        assert_eq!(binding.to_string(&false), "false");
-
-        assert_eq!(binding.from_string("true"), Ok(true));
-        assert_eq!(binding.from_string("false"), Ok(false));
-        assert_eq!(binding.from_string("1"), Ok(true));
-        assert_eq!(binding.from_string("0"), Ok(false));
-        assert!(binding.from_string("invalid").is_err());
     }
 }

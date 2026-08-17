@@ -1,6 +1,5 @@
 mod actions;
 pub mod bindings;
-pub mod dialogs;
 pub(crate) mod frame_pump;
 pub(crate) mod hierarchy;
 mod panel;
@@ -10,7 +9,6 @@ mod toolbar;
 mod viewport;
 mod world_settings;
 
-pub use dialogs::*;
 pub use hierarchy::HierarchyPanel;
 pub use panel::LevelEditorPanel;
 pub use properties::{
@@ -20,4 +18,4 @@ pub use properties::{
 pub use status_bar_view::StatusBarView;
 pub use toolbar::{ToolbarPanel, ToolbarView};
 pub use viewport::ViewportPanel;
-pub use world_settings::{WorldSettings, WorldSettingsReplicated};
+pub use world_settings::WorldSettingsReplicated;

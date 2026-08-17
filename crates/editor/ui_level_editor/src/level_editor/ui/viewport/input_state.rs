@@ -74,39 +74,6 @@ impl InputState {
             .store((y * 1000.0) as i32, Ordering::Relaxed);
     }
 
-    /// Set zoom delta (converts f32 to i32 * 1000 for atomic storage).
-    pub fn set_zoom_delta(&self, z: f32) {
-        self.zoom_delta
-            .store((z * 1000.0) as i32, Ordering::Relaxed);
-    }
-
-    /// Get forward movement state.
-    pub fn get_forward(&self) -> i32 {
-        self.forward.load(Ordering::Relaxed)
-    }
-
-    /// Get right movement state.
-    pub fn get_right(&self) -> i32 {
-        self.right.load(Ordering::Relaxed)
-    }
-
-    /// Get up movement state.
-    pub fn get_up(&self) -> i32 {
-        self.up.load(Ordering::Relaxed)
-    }
-
-    /// Get boost state.
-    pub fn get_boost(&self) -> bool {
-        self.boost.load(Ordering::Relaxed)
-    }
-
-    /// Get mouse delta and reset it.
-    pub fn take_mouse_delta(&self) -> (f32, f32) {
-        let x = self.mouse_delta_x.swap(0, Ordering::Relaxed) as f32 / 1000.0;
-        let y = self.mouse_delta_y.swap(0, Ordering::Relaxed) as f32 / 1000.0;
-        (x, y)
-    }
-
     /// Get pan delta and reset it.
     pub fn take_pan_delta(&self) -> (f32, f32) {
         let x = self.pan_delta_x.swap(0, Ordering::Relaxed) as f32 / 1000.0;
@@ -147,23 +114,6 @@ impl InputState {
     /// Set boost state.
     pub fn set_boost(&self, value: bool) {
         self.boost.store(value, Ordering::Relaxed);
-    }
-
-    /// Get atomic references for direct access (useful for input threads).
-    pub fn get_forward_atomic(&self) -> Arc<AtomicI32> {
-        self.forward.clone()
-    }
-
-    pub fn get_right_atomic(&self) -> Arc<AtomicI32> {
-        self.right.clone()
-    }
-
-    pub fn get_up_atomic(&self) -> Arc<AtomicI32> {
-        self.up.clone()
-    }
-
-    pub fn get_boost_atomic(&self) -> Arc<AtomicBool> {
-        self.boost.clone()
     }
 }
 

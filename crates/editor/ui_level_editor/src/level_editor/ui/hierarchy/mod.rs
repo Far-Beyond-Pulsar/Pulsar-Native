@@ -1,5 +1,3 @@
-pub mod tree_item_renderer;
-
 use crate::level_editor::scene_database::SceneObjectData;
 use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
 use crate::level_editor::state::{HierarchyDragPayload, LevelEditorState};
