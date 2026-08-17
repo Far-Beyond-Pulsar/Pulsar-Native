@@ -655,15 +655,15 @@ mod x11 {
         unsafe { XCloseDisplay(display); }
     }
 
-    pub fn lock_cursor_to_window(window: &Window) {
+    pub fn lock_cursor_to_window(window: &gpui::Window) {
         let Some(display) = open_display() else { return };
         let raw_handle = unsafe {
             raw_window_handle::HasWindowHandle::window_handle(window)
         };
         let x11_window = match raw_handle {
             Ok(handle) => match handle.as_raw() {
-                raw_window_handle::RawWindowHandle::Xlib(h) => h.window as Window,
-                raw_window_handle::RawWindowHandle::Xcb(h) => h.window as Window,
+                raw_window_handle::RawWindowHandle::Xlib(h) => h.window.get() as XID,
+                raw_window_handle::RawWindowHandle::Xcb(h) => h.window.get() as XID,
                 _ => {
                     tracing::warn!("[VIEWPORT] X11: not an X11 window handle");
                     unsafe { XCloseDisplay(display) };
@@ -791,7 +791,7 @@ mod x11 {
     }
 
     pub fn window_to_screen_position(
-        window: &Window,
+        window: &gpui::Window,
         window_x: f32,
         window_y: f32,
     ) -> Option<(i32, i32)> {
@@ -801,8 +801,8 @@ mod x11 {
         };
         let x11_window = match raw_handle {
             Ok(handle) => match handle.as_raw() {
-                raw_window_handle::RawWindowHandle::Xlib(h) => h.window as Window,
-                raw_window_handle::RawWindowHandle::Xcb(h) => h.window as Window,
+                raw_window_handle::RawWindowHandle::Xlib(h) => h.window.get() as XID,
+                raw_window_handle::RawWindowHandle::Xcb(h) => h.window.get() as XID,
                 _ => {
                     unsafe { XCloseDisplay(display) };
                     return None;
@@ -816,7 +816,7 @@ mod x11 {
         let root = unsafe { XDefaultRootWindow(display) };
         let mut dest_x: core::ffi::c_int = 0;
         let mut dest_y: core::ffi::c_int = 0;
-        let mut child: Window = 0;
+        let mut child: XID = 0;
         unsafe {
             XTranslateCoordinates(
                 display,
