@@ -13,9 +13,9 @@
 
 use engine_backend::scene::ComponentInstance;
 use gpui::{prelude::*, *};
-use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
+use pulsar_reflection::{PropertyMetadata, REGISTRY, RUNTIME_TYPE_REGISTRY};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
 use ui::dropdown::{SearchableList, SearchableListEvent};
@@ -28,6 +28,16 @@ use crate::level_editor::state::LevelEditorState;
 mod category_section;
 mod icon_picker;
 mod property_renderer;
+
+/// Cached property metadata + default instance for a single component class.
+/// Populated lazily on first encounter and reused across frames to avoid the
+/// per-frame `create_instance()` + `get_properties()` allocation.
+pub(super) struct PropertyMetadataCacheEntry {
+    pub properties: Arc<Vec<PropertyMetadata>>,
+    /// Throwaway default instance, kept alive so the getter closures
+    /// (which reference data inside this instance) remain valid.
+    pub _default_instance: Box<dyn pulsar_reflection::EngineClass>,
+}
 
 pub struct ObjectTypeFieldsSection {
     pub(super) object_id: String,
@@ -46,6 +56,16 @@ pub struct ObjectTypeFieldsSection {
     pub(super) collapsed_property_categories: HashSet<(String, String)>,
     /// Categories the user has explicitly expanded, overriding the default-collapsed flag.
     pub(super) expanded_property_categories: HashSet<(String, String)>,
+
+    // ── Performance caches ─────────────────────────────────────────────────
+    /// Per-class property metadata cache.  Populated lazily on first encounter
+    /// and reused across frames — avoids the per-frame `create_instance()`
+    /// + `get_properties()` allocation that was the single biggest cost in the
+    /// property rendering path.
+    pub(super) property_metadata_cache: HashMap<String, Arc<PropertyMetadataCacheEntry>>,
+    /// Number of components from the last render — used to detect structural
+    /// changes without calling `get_components()` (which clones JSON).
+    pub(super) cached_component_count: usize,
 }
 
 impl ObjectTypeFieldsSection {
@@ -109,6 +129,8 @@ impl ObjectTypeFieldsSection {
             icon_asset_picker: None,
             collapsed_property_categories: HashSet::new(),
             expanded_property_categories: HashSet::new(),
+            property_metadata_cache: HashMap::new(),
+            cached_component_count: 0,
         }
     }
 
@@ -194,10 +216,30 @@ impl Render for ObjectTypeFieldsSection {
         use ui::popover::Popover;
         use ui::{IconName, Sizable as _};
 
+        // ── Drain change set (once per frame) ──────────────────────────────
+        let property_changes = self.scene_db.drain_property_changes();
+        let structural = property_changes.components_added_or_removed();
+
+        // ── Detect structural changes without full get_components() ────────
+        let current_count = self.scene_db.component_count(
+            &self.object_id,
+        );
+        let count_changed = current_count != self.cached_component_count;
+        self.cached_component_count = current_count;
+
+        // Clear cached values for structurally-changed objects so stale
+        // entries from removed/renamed components don't persist.
+        if structural || count_changed {
+            self.property_metadata_cache.clear();
+        }
+
         // ── Object icon picker row ─────────────────────────────────────────
         let icon_row = self.render_icon_row(window, cx);
 
         // ── Component hierarchy panel (tree + add-component button) ────────
+        // The hierarchy panel needs the full ComponentInstance list for its
+        // tree view (class names + enabled status).  This is the one place
+        // where get_components() is still required.
         let list = self.component_list.clone();
         let add_popover = Popover::<SearchableList<String>>::new("add-component-picker")
             .anchor(Corner::TopRight)
@@ -210,8 +252,6 @@ impl Render for ObjectTypeFieldsSection {
             .content(move |_window, _cx| list.clone())
             .into_any_element();
 
-        // Fetched once and shared by every consumer below — `get_components`
-        // deep-clones each component's JSON, so one call per frame is the budget.
         let attached = self.scene_db.get_components(&self.object_id);
 
         let component_hierarchy =
@@ -226,7 +266,8 @@ impl Render for ObjectTypeFieldsSection {
         let diag_card = self.render_diag_card(&attached, cx);
 
         // ── Per-component property cards ───────────────────────────────────
-        let component_sections = self.render_component_sections(&attached, window, cx);
+        let component_sections =
+            self.render_component_sections(&attached, &property_changes, window, cx);
 
         v_flex()
             .w_full()

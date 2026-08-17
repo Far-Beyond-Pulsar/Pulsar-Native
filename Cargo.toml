@@ -92,44 +92,6 @@ pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
 pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "411ecd7707140765d99ba576e423d799e6869bbf", features = ["gpu"] }
-# Rev history (2026-08-15, Pulsar-Native#561 Phase D):
-# 43921b0 (this workspace's long-standing pin) -> 697967b (caught up ~114
-# commits: SceneDb/the GPU-mirror module) -> 4895d04 (merged origin/
-# unified-GPU into SceneDB's main: World::attach_change_tracker/
-# SharedChangeTracker -- SceneDB#47's listener-system anchor, actually
-# built -- plus the archetype-graph edge cache and Bundle/WorldQuery work
-# unified-GPU carried; also adds `Mut::into_inner`, needed by
-# `engine_class_derive`'s `get_as_engine_class_mut` shim now that
-# `World::get_mut` returns `Mut<'_, T>` instead of `&mut T`) -> 27b5f01
-# (variable-length `#[gpu]` fields: a plain `Vec<T: Pod>`-typed `#[gpu]`
-# field is now detected by the derive from its Rust type alone -- no new
-# attribute syntax -- and routed to a shared, growable `VarLenGpuPool<T>`
-# with zero impact on existing fixed-size `#[gpu]` fields; this is what
-# lets a component like `StaticMeshComponent` hold its actual mesh
-# payload -- `Vec<PackedVertex>`/`Vec<u32>` -- directly as SceneDB fields
-# instead of an indirect asset-arena handle) -> 096933a (`VarLenGpuPool::
-# read_buffer()`, a `Deref<Target = wgpu::Buffer>` guard alternative to
-# `with_buffer`'s closure, for callers needing a real buffer-shaped
-# struct field) -> 0d27664 (`DynamicGpuBuffer`/`VarLenGpuPool` gain
-# `new_with_usage`, letting a caller request a base buffer usage other
-# than the `STORAGE` default -- e.g. `VERTEX`/`INDEX` -- while every
-# existing caller, including every `#[gpu] Vec<T>` derive field, keeps
-# calling plain `new()` and stays on `STORAGE`, unchanged; this is what
-# lets Helio's `MeshPool` delegate its own vertex/index storage straight
-# to a `VarLenGpuPool` instead of a second, hand-rolled reimplementation
-# of the same grow-and-freelist mechanics). Pushed to
-# `origin/main` directly (not a `[patch]` override) -- was briefly a local
-# `path` pin while the SceneDB-side merge was still uncommitted; promoted
-# back to a real, CI-safe `git`+`rev` once pushed, matching the pattern
-# this workspace already uses everywhere else this situation comes up (see
-# the `[patch]` block below for the identical `pulsar_reflection` history).
-# `features = ["gpu"]` added because the whole `gpu` module is feature-gated
-# (CONTRACTS C0: the SceneDB core stays graphics-free without it).
-# TEMPORARY: pinned to unmerged branch `engineclass-json-roundtrip`
-# (Far-Beyond-Pulsar/Pulsar-Reflection#5, EngineClass::to_json +
-# REGISTRY.create_instance_from_json). Move back to main once merged --
-# tracked on Far-Beyond-Pulsar/Pulsar-Native#560, same pattern as the other
-# temporary pins there.
 pulsar_reflection                  = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "b0d9b957b00e695d005df4ab18becf82b377b740" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
@@ -154,15 +116,6 @@ agent_provider_cohere              = { path = "crates/agent-providers/agent_prov
 
 # ---------- Subsystem Crates ----------
 pulsar_physics        = { path = "crates/subsystems/pulsar_physics" }
-# Formerly `crates/subsystems/pulsar_rendering`, renamed `helio_component` and
-# physically relocated inside the Helio submodule
-# (`crates/renderer/helio/crates/helio-component`) -- see that crate's own
-# Cargo.toml doc comment for why it still declares `package.workspace =
-# "../../../.."` to explicitly stay a member of THIS workspace (not Helio's
-# own nested one) despite living under `crates/renderer/helio/`: it needs
-# `pulsar_scenedb`/`pulsar_reflection`/`pulsar_world_registry` to resolve to
-# the exact same copies `engine_backend`/`ui_level_editor` use below, for
-# `inventory`-based registry identity.
 helio_component       = { path = "crates/renderer/helio/crates/helio-component" }
 
 
@@ -200,11 +153,6 @@ helio-asset-compat         = { git = "https://github.com/Far-Beyond-Pulsar/Helio
 helio-default-graphs       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "081b818d222193bc50e366ba5c59687be5db0138" }
 helio-planet-voxel-core    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "081b818d222193bc50e366ba5c59687be5db0138" }
 helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "081b818d222193bc50e366ba5c59687be5db0138" }
-# `helio`'s own crate root doesn't re-export ReflectionCaptureShape/Mobility
-# (or other libhelio-only types Phase D's new components need) -- rather
-# than editing the Helio submodule itself (already in a dirty, unrelated
-# state locally; a cross-repo change for a one-line re-export isn't worth
-# the coordination), depend on libhelio directly at the same pinned rev.
 libhelio                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "081b818d222193bc50e366ba5c59687be5db0138" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
@@ -353,9 +301,6 @@ engine_state      = { path = "crates/core/engine_state" }
 ui_types_common   = { path = "crates/editor/ui_types_common" }
 pulsar_std_bundle = { path = "crates/core/pulsar_std_bundle" }
 pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
-# Point at the same unified source as the Pulsar-Reflection patch below so every
-# `pulsar_reflection` reference (whichever repo/rev it came from) collapses to a
-# single copy. Uses the double-slash URL alias (see that patch for why).
 pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "b0d9b957b00e695d005df4ab18becf82b377b740" }
 pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "b0d9b957b00e695d005df4ab18becf82b377b740" }
 
@@ -380,49 +325,6 @@ tool_registry_macros = { path = "crates/third-party/toolbelt/crates/tool_registr
 psgc = { path = "crates/third-party/psgc/crates/psgc" }
 wgsl_std = { path = "crates/third-party/psgc/crates/wgsl_std" }
 
-# Unify pulsar_reflection to a single copy. `pulsar_scenedb` (SceneDB) pins its
-# own rev of Pulsar-Reflection, independently of the rest of this workspace,
-# which produces TWO incompatible `pulsar_reflection`/`EngineClass` types in
-# the graph if the two ever drift apart. The editor tolerates drift (it never
-# crosses the two), but a generated game's class code does (it uses
-# `pulsar_scenedb` components *and* `pulsar_reflection` directly), so it fails
-# to compile. Pinning the whole Pulsar-Reflection source to one rev collapses
-# both to a single copy regardless of which side's Cargo.toml is ahead.
-#
-# Rev history: was 9b887f1 (this workspace ahead of SceneDB's then-cf37ed0).
-# SceneDB later repinned itself onto the `dyn-method-registry` branch
-# (Pulsar-Reflection#3, DynMethodRegistry/DYN_METHOD_REGISTRY -- needed by
-# `pulsar_scenedb`'s `gpu`-gated `subsystem`/`scene_db` modules) at b9dd888,
-# a strict DESCENDANT of 9b887f1 -- flipping which side was stale and briefly
-# making this patch itself the outdated pin (SceneDB#39/Pulsar-Native#550
-# Phase A surfaced this: `#[engine_class(scene_store)]`'s `gpu`-feature path
-# wouldn't compile under the old 9b887f1 pin). Then 4cc82f5 (origin/main tip,
-# PR #3 merged, additive-only per that PR) -- a strict descendant of both
-# 9b887f1 and b9dd888, so this collapsed cleanly again either direction.
-#
-# NOW: 4b48937 (Pulsar-Reflection#4, `typed-sync-component`, merged to
-# `main`) -- Phase B2 of the SceneDB/Helio/reflection unification plan
-# (`.claude/plans/eager-plotting-lecun.md`; tracked at Pulsar-Native#561),
-# which types `ComponentRuntimeBehavior::sync_component(component: &Self,
-# ...)` instead of `&serde_json::Value`. This was a breaking trait-signature
-# change (unlike Phase A's purely-additive `scene_store`), so bumping this
-# pin and migrating every real `#[register_runtime_behavior]` impl's
-# signature (`pulsar_rendering`/`pulsar_physics`, ~8 components) had to
-# happen together, in lockstep, in one change (Pulsar-Native#551) -- see
-# that plan's B2 section for why they couldn't land separately. Was
-# temporarily pinned to the pre-merge branch tip (d32ba8d, then ece8e75) for
-# the same reason SceneDB's own local-path pins exist elsewhere in this
-# file -- now that Pulsar-Reflection#4 has merged, this points at the real
-# `main` commit instead. Remaining cleanup (dropping this `[patch]` block
-# entirely) is tracked at Pulsar-Native#560, gated on SceneDB's own
-# `pulsar_reflection` pin catching up too (SceneDB#45).
-#
-# The patch target URL and the replacement URL must be *different* source strings
-# or cargo rejects "points to the same source". The extra slash in
-# `Far-Beyond-Pulsar//Pulsar-Reflection` is a distinct string to cargo but the
-# same repo to git — so this stays a normal git rev (CI-safe), not a local path.
-# Durable fix: bump SceneDB's pulsar_reflection pin to match and cascade the rev,
-# then delete these patches.
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection"]
 pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "b0d9b957b00e695d005df4ab18becf82b377b740" }
 pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "b0d9b957b00e695d005df4ab18becf82b377b740" }

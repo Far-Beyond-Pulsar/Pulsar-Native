@@ -35,7 +35,7 @@ use pulsar_scenedb::Entity;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::any::Any;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -101,6 +101,50 @@ pub struct SceneObjectData {
     pub component_instances: Option<serde_json::Value>,
 }
 
+// ── Property change tracking ─────────────────────────────────────────────
+
+/// Tracks which specific properties have been written since the last drain.
+///
+/// The properties panel drains this once per frame via [`SceneDatabase::drain_property_changes`]
+/// and uses the result to skip World reads for unchanged properties — the
+/// single biggest cost reduction for the panel.
+#[derive(Default, Clone)]
+pub struct PropertyChangeSet {
+    /// `(object_id, class_name, prop_name)` triples written since last drain.
+    changed: HashSet<(String, String, String)>,
+    /// `(object_id, class_name)` pairs where a structural change occurred
+    /// (add/remove/reorder/enable-disable) — the component list itself changed.
+    structural: HashSet<(String, String)>,
+    /// `true` when any component was added or removed on the target object,
+    /// meaning the panel should rebuild its component card list entirely.
+    components_added_or_removed: bool,
+}
+
+impl PropertyChangeSet {
+    /// `true` if *any* property was written since the last drain.
+    pub fn is_empty(&self) -> bool {
+        self.changed.is_empty() && self.structural.is_empty()
+    }
+
+    /// `true` when the component *list* changed (add/remove), not just a
+    /// property value within an existing component.
+    pub fn components_added_or_removed(&self) -> bool {
+        self.components_added_or_removed
+    }
+
+    /// Check if a specific property was written since the last drain.
+    pub fn has_changed(&self, object_id: &str, class_name: &str, prop_name: &str) -> bool {
+        self.changed.contains(&(object_id.to_string(), class_name.to_string(), prop_name.to_string()))
+    }
+
+    /// Check if any property on a given class was written since the last drain.
+    pub fn class_changed(&self, object_id: &str, class_name: &str) -> bool {
+        self.changed
+            .iter()
+            .any(|(oid, cls, _)| oid == object_id && cls == class_name)
+    }
+}
+
 // ── Production Scene Database ──────────────────────────────────────────────
 
 /// Production-ready scene database — the single source of truth for all scene state.
@@ -117,6 +161,12 @@ pub struct SceneDatabase {
     store: Arc<RwLock<WorldSceneStore>>,
     /// Reflection-based component store.
     metadata_db: Arc<SceneMetadataDb>,
+    /// Accumulated property changes since the last drain.
+    /// Wrapped in `parking_lot::Mutex` so mutations can record changes
+    /// while the outer `SceneDatabase` is `&self` (which it always is —
+    /// the `RwLock<WorldSceneStore>` handles interior mutability for the
+    /// World side).
+    property_changes: Arc<parking_lot::Mutex<PropertyChangeSet>>,
 }
 
 impl SceneDatabase {
@@ -124,6 +174,7 @@ impl SceneDatabase {
         Self {
             store: Arc::new(RwLock::new(WorldSceneStore::new())),
             metadata_db: Arc::new(SceneMetadataDb::new()),
+            property_changes: Arc::new(parking_lot::Mutex::new(PropertyChangeSet::default())),
         }
     }
 
@@ -132,7 +183,65 @@ impl SceneDatabase {
         Self {
             store,
             metadata_db: Arc::new(SceneMetadataDb::new()),
+            property_changes: Arc::new(parking_lot::Mutex::new(PropertyChangeSet::default())),
         }
+    }
+
+    // ── Property change tracking ─────────────────────────────────────────
+
+    /// Snapshot and clear the accumulated property changes.  Called exactly
+    /// once per properties-panel render to decide which values need re-reading
+    /// from World.
+    pub fn drain_property_changes(&self) -> PropertyChangeSet {
+        std::mem::take(&mut *self.property_changes.lock())
+    }
+
+    /// Record that a specific property was written.  Called from every
+    /// mutating method that touches a component property.
+    fn record_property_change(&self, object_id: &str, class_name: &str, prop_name: &str) {
+        self.property_changes.lock().changed.insert((
+            object_id.to_string(),
+            class_name.to_string(),
+            prop_name.to_string(),
+        ));
+    }
+
+    /// Record a structural change (add/remove/reorder/enable-disable) on a
+    /// component.
+    fn record_structural_change(&self, object_id: &str, class_name: &str) {
+        let mut changes = self.property_changes.lock();
+        changes
+            .structural
+            .insert((object_id.to_string(), class_name.to_string()));
+        changes.components_added_or_removed = true;
+    }
+
+    /// Lightweight query: return the list of class names attached to
+    /// `object_id`, reading only from `metadata_db` (no JSON clone, no
+    /// `to_json()` serialization).  This replaces `get_components()` in the
+    /// properties-panel hot path where only the class name + order are needed
+    /// to look up cached property metadata.
+    pub fn get_component_class_names(&self, object_id: &EditorObjectId) -> Vec<String> {
+        self.metadata_db
+            .get_components(object_id)
+            .into_iter()
+            .map(|c| c.class_name)
+            .collect()
+    }
+
+    /// Check if the component *list* for an object has changed since the
+    /// given generation, by comparing `metadata_db` length against a stored
+    /// count.  This is O(n) in the number of components but avoids the full
+    /// `get_components()` clone + `to_json()` serialization.
+    pub fn component_list_changed(&self, object_id: &EditorObjectId, known_count: usize) -> bool {
+        let current_count = self.metadata_db.get_components(object_id).len();
+        current_count != known_count
+    }
+
+    /// Cheap component count for `object_id` — avoids the full
+    /// `get_components()` clone + `to_json()` serialization.
+    pub fn component_count(&self, object_id: &EditorObjectId) -> usize {
+        self.metadata_db.get_components(object_id).len()
     }
 
     // ── Object CRUD ───────────────────────────────────────────────────────
@@ -373,6 +482,7 @@ impl SceneDatabase {
                 obj.insert(prop_name.to_string(), new_value);
             }
             self.update_component(object_id, idx, data);
+            self.record_property_change(object_id, class_name, prop_name);
         }
     }
 
@@ -437,6 +547,9 @@ impl SceneDatabase {
                 return Err(new_value);
             };
             (setter)(instance, new_value);
+            // Record the property change for the properties panel's change set
+            // so it can skip re-reading unchanged properties.
+            self.record_property_change(object_id, class_name, prop_name);
             // This was the actual bug behind "the properties panel shows the
             // right value but the light in the scene never changes": mutating
             // the live World component directly (above) is correct and
@@ -516,6 +629,56 @@ impl SceneDatabase {
             entity,
         )?;
         Some((getter)(instance))
+    }
+
+    /// Batch-read every property of a component in one `store.read()`
+    /// acquisition.  Returns `None` if the class isn't World-registered,
+    /// the entity doesn't exist, or the component isn't hydrated.
+    ///
+    /// Takes a pre-built property metadata slice (from the cached metadata)
+    /// so we don't need to call `create_instance` + `get_properties` again.
+    pub fn read_component_properties_batch(
+        &self,
+        object_id: &ObjectId,
+        class_name: &str,
+        properties: &[pulsar_reflection::PropertyMetadata],
+    ) -> Option<Vec<Box<dyn Any>>> {
+        let store = self.store.read();
+        let entity = store.entity_for(object_id)?;
+        let instance = pulsar_world_registry::get_world_component_as_engine_class(
+            class_name,
+            store.world(),
+            entity,
+        )?;
+        Some(
+            properties
+                .iter()
+                .map(|prop| (prop.getter)(instance))
+                .collect(),
+        )
+    }
+
+    /// Run a closure with the live World component reference held under a
+    /// single `store.read()`.  The closure can call property getters
+    /// directly against the component reference without acquiring the lock
+    /// again.
+    ///
+    /// Returns `None` if the class isn't World-registered, the entity
+    /// doesn't exist, or the component isn't hydrated.
+    pub fn with_world_component<T>(
+        &self,
+        object_id: &ObjectId,
+        class_name: &str,
+        f: impl FnOnce(&dyn pulsar_reflection::EngineClass) -> T,
+    ) -> Option<T> {
+        let store = self.store.read();
+        let entity = store.entity_for(object_id)?;
+        let instance = pulsar_world_registry::get_world_component_as_engine_class(
+            class_name,
+            store.world(),
+            entity,
+        )?;
+        Some(f(instance))
     }
 
     /// Clear the entire scene.
@@ -767,21 +930,32 @@ impl SceneDatabase {
         class_name: String,
         data: serde_json::Value,
     ) {
-        self.metadata_db.add_component(object_id, class_name, data);
+        self.metadata_db.add_component(object_id, class_name.clone(), data);
         self.sync_registered_component_props_to_scene_db(object_id);
+        self.record_structural_change(object_id, &class_name);
     }
 
     /// Add a fully specified component instance.
     pub fn add_component_instance(&self, object_id: &EditorObjectId, component: ComponentInstance) {
+        let class_name = component.class_name.clone();
         self.metadata_db
             .add_component_instance(object_id, component);
         self.sync_registered_component_props_to_scene_db(object_id);
+        self.record_structural_change(object_id, &class_name);
     }
 
     pub fn remove_component(&self, object_id: &EditorObjectId, component_index: usize) {
+        let class_name = self
+            .metadata_db
+            .get_components(object_id)
+            .get(component_index)
+            .map(|c| c.class_name.clone());
         self.metadata_db
             .remove_component(object_id, component_index);
         self.sync_registered_component_props_to_scene_db(object_id);
+        if let Some(name) = class_name {
+            self.record_structural_change(object_id, &name);
+        }
     }
 
     /// Enable or disable a component by index.
@@ -791,11 +965,19 @@ impl SceneDatabase {
         component_index: usize,
         enabled: bool,
     ) -> bool {
+        let class_name = self
+            .metadata_db
+            .get_components(object_id)
+            .get(component_index)
+            .map(|c| c.class_name.clone());
         let changed = self
             .metadata_db
             .set_component_enabled(object_id, component_index, enabled);
         if changed {
             self.sync_registered_component_props_to_scene_db(object_id);
+            if let Some(name) = class_name {
+                self.record_structural_change(object_id, &name);
+            }
         }
         changed
     }
@@ -813,9 +995,11 @@ impl SceneDatabase {
 
         let insert_index = component_index.saturating_add(1);
         let component = components.get(component_index)?.clone();
+        let class_name = component.class_name.clone();
         components.insert(insert_index, component);
         self.metadata_db.replace_components(object_id, components);
         self.sync_registered_component_props_to_scene_db(object_id);
+        self.record_structural_change(object_id, &class_name);
         Some(insert_index)
     }
 
@@ -832,9 +1016,11 @@ impl SceneDatabase {
         }
 
         let component = components.remove(from_index);
+        let class_name = component.class_name.clone();
         components.insert(to_index, component);
         self.metadata_db.replace_components(object_id, components);
         self.sync_registered_component_props_to_scene_db(object_id);
+        self.record_structural_change(object_id, &class_name);
     }
 
     /// Every component instance attached to `object_id`, with `data`

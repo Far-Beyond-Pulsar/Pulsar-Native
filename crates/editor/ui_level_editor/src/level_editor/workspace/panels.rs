@@ -100,7 +100,6 @@ pub struct HierarchyPanelWrapper {
     hierarchy: HierarchyPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
-    last_scene_revision: u64,
 }
 
 impl HierarchyPanelWrapper {
@@ -113,7 +112,6 @@ impl HierarchyPanelWrapper {
             hierarchy: HierarchyPanel::new(),
             state,
             focus_handle: cx.focus_handle(),
-            last_scene_revision: 0,
         }
     }
 }
@@ -129,13 +127,10 @@ impl Render for HierarchyPanelWrapper {
 
         let self_entity_id = cx.entity().entity_id();
 
-        let state = self.state.read();
-        let current_revision = state.scene.revision;
-        if current_revision != self.last_scene_revision {
-            self.last_scene_revision = current_revision;
-            cx.notify();
-        }
-        drop(state);
+        // NOTE: The 50ms poller in LevelEditorPanel already watches
+        // `scene.revision` and calls `notify_sub_panels()` which notifies
+        // this entity.  Duplicating that check here caused a double-render
+        // cascade (poller → this render → cx.notify() → re-render).
 
         let state = self.state.read();
         let state_clone = self.state.clone();

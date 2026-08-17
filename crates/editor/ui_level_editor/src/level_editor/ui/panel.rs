@@ -64,10 +64,6 @@ pub struct LevelEditorPanel {
     hierarchy_panel_entity: Option<Entity<crate::level_editor::HierarchyPanelWrapper>>,
     properties_panel_entity: Option<Entity<crate::level_editor::PropertiesPanelWrapper>>,
 
-    // Last scene revision observed by this panel. Used to detect AI-driven changes
-    // that happen outside normal GPUI action handlers.
-    last_observed_scene_revision: u64,
-
     // Play In Editor (issue #243): the Game tab is opened when the game starts
     // and removed on stop. `game_panel` is the live tab entity, if open.
     game_panel: Option<Entity<crate::level_editor::ui::viewport::game_viewport::GameViewport>>,
@@ -362,14 +358,13 @@ impl LevelEditorPanel {
             workspace: None,
             hierarchy_panel_entity: None,
             properties_panel_entity: None,
-            last_observed_scene_revision: 0,
             game_panel: None,
             _scene_revision_poller: poller,
         }
     }
 
-    /// Notify the hierarchy (and, via its observer, the properties panel) so they
-    /// re-render after any scene or selection mutation.
+    /// Notify the hierarchy and properties panels so they re-render after
+    /// any scene or selection mutation.
     fn notify_sub_panels(&self, cx: &mut Context<Self>) {
         if let Some(ref h) = self.hierarchy_panel_entity {
             h.update(cx, |_, cx| cx.notify());
@@ -433,18 +428,13 @@ impl LevelEditorPanel {
                     WorldSettingsPanel::new(shared_state.clone(), window, cx)
                 });
 
-                // Wire up cross-panel notification: whenever the hierarchy is notified (e.g.
-                // after a selection click), the properties panel is also notified so it
-                // re-reads the selected object and updates its sections.
-                {
-                    let hierarchy_for_observe = hierarchy_panel.clone();
-                    properties_panel.update(cx, |_, cx| {
-                        cx.observe(&hierarchy_for_observe, |_, _, cx| {
-                            cx.notify();
-                        })
-                        .detach();
-                    });
-                }
+                // NOTE: The old `cx.observe(&hierarchy)` that notified the
+                // properties panel whenever the hierarchy panel was notified
+                // has been removed.  `notify_sub_panels()` already notifies
+                // both panels on every scene/selection mutation, so the
+                // observe was causing a double-notification cascade:
+                // poller → hierarchy.notify() → observe → properties.notify()
+                // (in addition to the direct poller → properties.notify()).
 
                 // Bottom right: tabs for Properties and World Settings
                 let bottom_tabs = DockItem::tabs(
@@ -1321,13 +1311,11 @@ impl Render for LevelEditorPanel {
         // Open/close the Play-In-Editor Game tab as the game starts/stops.
         self.sync_game_tab(window, cx);
 
-        // Apply external scene mutations (e.g. AI tool calls) to panel UI.
-        let current_revision = self.shared_state.read().scene.revision;
-        if current_revision != self.last_observed_scene_revision {
-            self.last_observed_scene_revision = current_revision;
-            self.notify_sub_panels(cx);
-            cx.notify();
-        }
+        // NOTE: The 50ms poller (spawned in `new`) already watches
+        // `scene.revision` and calls `notify_sub_panels()` + `cx.notify()`
+        // when it changes.  Duplicating that check here caused a
+        // double-notification cascade (poller → render → re-notify →
+        // re-render) that destabilized the frame rate.
 
         // Sync selection and gizmo state to Helio each frame via GpuRenderer API.
         if let Ok(mut engine_guard) = self.gpu_engine.try_lock() {
