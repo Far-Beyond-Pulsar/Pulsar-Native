@@ -229,15 +229,6 @@ impl SceneDatabase {
             .collect()
     }
 
-    /// Check if the component *list* for an object has changed since the
-    /// given generation, by comparing `metadata_db` length against a stored
-    /// count.  This is O(n) in the number of components but avoids the full
-    /// `get_components()` clone + `to_json()` serialization.
-    pub fn component_list_changed(&self, object_id: &EditorObjectId, known_count: usize) -> bool {
-        let current_count = self.metadata_db.get_components(object_id).len();
-        current_count != known_count
-    }
-
     /// Cheap component count for `object_id` — avoids the full
     /// `get_components()` clone + `to_json()` serialization.
     pub fn component_count(&self, object_id: &EditorObjectId) -> usize {
@@ -843,11 +834,6 @@ impl SceneDatabase {
             None => None,
         };
         store.reparent(entity, new_parent_entity).is_ok()
-    }
-
-    /// Alias for `reparent_object` kept for backward compatibility.
-    pub fn set_parent(&self, id: &ObjectId, new_parent: Option<ObjectId>) -> bool {
-        self.reparent_object(id, new_parent)
     }
 
     /// Reorder two sibling objects by swapping their positions.
