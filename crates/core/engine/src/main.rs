@@ -140,6 +140,8 @@ fn main() {
 
     macos_permissions::ensure_accessibility_permission_blocking();
 
+    println!(" If pulsar engine simply exits and you're reading this message note that you must pass a URI indicating where your project is into the engine the project launcher is no longer built into this repo and has been moved to Pulsar-Installer Which bundles in version and project management https://github.com/Far-Beyond-Pulsar/Pulsar-Installer");
+
     // Name the main thread FIRST
     profiling::set_thread_name("Main Thread");
 
