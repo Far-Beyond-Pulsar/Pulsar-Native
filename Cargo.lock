@@ -4175,7 +4175,6 @@ dependencies = [
  "async-task",
  "backtrace",
  "bincode",
- "block2 0.5.1",
  "bytemuck",
  "circular-buffer",
  "core-video",
@@ -4201,7 +4200,6 @@ dependencies = [
  "itertools 0.14.0",
  "js-sys",
  "libc",
- "libloading 0.8.9",
  "log",
  "lyon",
  "num_cpus",
@@ -4245,7 +4243,6 @@ dependencies = [
  "web-sys",
  "web-time",
  "wgpu",
- "windows-sys 0.52.0",
  "winit",
 ]
 
