@@ -121,7 +121,6 @@ helio_component       = { path = "crates/renderer/helio/crates/helio-component" 
 
 # ---------- Editor Crates ----------
 ui_core               = { path = "crates/editor/ui_core" }
-ui_entry              = { path = "crates/editor/ui_entry" }
 ui_level_editor       = { path = "crates/editor/ui_level_editor" }
 ui_settings           = { path = "crates/editor/ui_settings" }
 ui_multiplayer        = { path = "crates/editor/ui_multiplayer" }

@@ -32,7 +32,6 @@
 //!
 //! Each task is profiled with `Engine::Init::{TaskName}` scope.
 
-use std::sync::atomic::Ordering;
 
 // --- Global Allocator Setup ---
 // Only one #[global_allocator] can be registered, so the dhat heap profiler
@@ -155,10 +154,6 @@ fn main() {
     // Parse arguments first (needed for init context)
     let _ = dotenv::dotenv();
     let parsed = args::parse_args();
-
-    if parsed.force_oobe {
-        ui_entry::FORCE_OOBE.store(true, Ordering::Relaxed);
-    }
 
     // Create initialization context
     let mut init_ctx = InitContext::new(parsed.clone());
@@ -316,52 +311,17 @@ fn main() {
             tracing::info!("Opening project splash from URI: {}", path.display());
             open_via_loading_screen(path, cx);
         } else {
-            tracing::info!("Opening main entry window");
-            match engine_context.create_window(
-                WindowRequest::Entry,
-                window_manager::WindowConfig::entry(),
-                move |window, cx| {
-                    use gpui::UpdateGlobal as _;
+            let direct_path = std::env::args()
+                .skip(1)
+                .find(|arg| !arg.starts_with('-'))
+                .map(std::path::PathBuf::from);
 
-                    let project_cb: std::sync::Arc<
-                        dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync,
-                    > = std::sync::Arc::new(|path, cx| open_via_loading_screen(path, cx));
-
-                    let git_cb: std::sync::Arc<
-                        dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync,
-                    > = std::sync::Arc::new(|_path, cx| {
-                        window_manager::WindowRegistry::update_global(cx, |reg, cx| {
-                            reg.open("GitManagerWindow", cx)
-                        });
-                    });
-
-                    let settings_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
-                        std::sync::Arc::new(|cx| {
-                            window_manager::WindowRegistry::update_global(cx, |reg, cx| {
-                                reg.open("SettingsWindow", cx)
-                            });
-                        });
-
-                    let fab_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
-                        std::sync::Arc::new(|cx| {
-                            window_manager::WindowRegistry::update_global(cx, |reg, cx| {
-                                reg.open("FabSearchWindow", cx)
-                            });
-                        });
-
-                    ui_entry::create_entry_component(
-                        window,
-                        cx,
-                        project_cb,
-                        git_cb,
-                        settings_cb,
-                        fab_cb,
-                    )
-                },
-                cx,
-            ) {
-                Ok((wid, _)) => tracing::info!("Entry window opened successfully id={}", wid),
-                Err(e) => tracing::error!("Failed to open entry window: {}", e),
+            if let Some(path) = direct_path.filter(|p| p.exists()) {
+                tracing::info!("Opening project from argument: {}", path.display());
+                open_via_loading_screen(path, cx);
+            } else {
+                tracing::warn!("No project specified. Please launch Pulsar Engine via the Pulsar Hub launcher or specify a project path.");
+                cx.quit();
             }
         }
     });

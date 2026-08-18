@@ -653,11 +653,6 @@ impl Render for PulsarApp {
             analyzer.update_progress_from_thread(cx);
         });
 
-        // Show entry screen if no project is loaded
-        if let Some(screen) = &self.state.entry_screen {
-            return screen.clone().into_any_element();
-        }
-
         let command_palette = if self.state.command_palette_open {
             self.state.command_palette_view.clone()
         } else {
