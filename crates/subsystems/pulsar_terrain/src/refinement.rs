@@ -1221,6 +1221,8 @@ mod tests {
             center_cell: [0; 3],
             radius_cells: 1_000,
             material: 1,
+            lod0_cell_size_mm: 100,
+            sdf: crate::PlanetSdfConfig::zero_relief_test_fixture(),
             root_lod: 6,
             max_resident_pages: 256,
         };
@@ -1233,7 +1235,7 @@ mod tests {
         })
         .unwrap();
         let view = PlanetView::new(
-            PlanetPosition::from_lod0_cell([-1_000, 0, 0]),
+            PlanetPosition::from_lod0_cell([-1_000, 0, 0], 100).unwrap(),
             [1.0, 0.0, 0.0],
             [0.0, 1.0, 0.0],
             60_f64.to_radians(),
@@ -1243,7 +1245,7 @@ mod tests {
             [0.0; 3],
         )
         .unwrap();
-        let target = planner.plan_fixed_sphere(&definition, view).unwrap();
+        let target = planner.plan_planet(&definition, view).unwrap();
         assert!(target
             .demands()
             .iter()
@@ -1283,6 +1285,8 @@ mod tests {
             center_cell: [0; 3],
             radius_cells: 1_000,
             material: 1,
+            lod0_cell_size_mm: 100,
+            sdf: crate::PlanetSdfConfig::zero_relief_test_fixture(),
             root_lod: 6,
             max_resident_pages: 64,
         };
@@ -1296,7 +1300,7 @@ mod tests {
         .unwrap();
         let make_view = |cell, look| {
             PlanetView::new(
-                PlanetPosition::from_lod0_cell(cell),
+                PlanetPosition::from_lod0_cell(cell, 100).unwrap(),
                 look,
                 [0.0, 1.0, 0.0],
                 60_f64.to_radians(),
@@ -1308,10 +1312,10 @@ mod tests {
             .unwrap()
         };
         let ground = planner
-            .plan_fixed_sphere(&definition, make_view([1_000, 0, 0], [-1.0, 0.0, 0.0]))
+            .plan_planet(&definition, make_view([1_000, 0, 0], [-1.0, 0.0, 0.0]))
             .unwrap();
         let orbit = planner
-            .plan_fixed_sphere(&definition, make_view([100_000, 0, 0], [-1.0, 0.0, 0.0]))
+            .plan_planet(&definition, make_view([100_000, 0, 0], [-1.0, 0.0, 0.0]))
             .unwrap();
         assert!(ground.demands().len() > orbit.demands().len());
 

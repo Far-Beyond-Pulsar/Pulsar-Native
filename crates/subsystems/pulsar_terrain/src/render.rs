@@ -873,6 +873,8 @@ mod tests {
             center_cell: [0; 3],
             radius_cells: 1_000,
             material: id.max(1),
+            lod0_cell_size_mm: 100,
+            sdf: crate::PlanetSdfConfig::zero_relief_test_fixture(),
             root_lod: 6,
             max_resident_pages: 64,
         }

@@ -1,14 +1,10 @@
 use pulsar_terrain::{
-    CellWord, DeterministicGenerator, EditLog, EditMode, EditOp, EditShape, FixedSphereGenerator,
-    NodeState, PageKey, PlanetId, SparseBrickTree, TerrainCore, VoxelPage,
+    CellWord, DeterministicGenerator, EditLog, EditMode, EditOp, EditShape, NodeState, PageKey,
+    PlanetId, PlanetSdfGenerator, SparseBrickTree, TerrainCore, VoxelPage,
 };
 
-fn sphere() -> FixedSphereGenerator {
-    FixedSphereGenerator {
-        center_cell: [0; 3],
-        radius_cells: 64,
-        material: 2,
-    }
+fn sphere() -> PlanetSdfGenerator {
+    PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 64, 2)
 }
 
 #[test]

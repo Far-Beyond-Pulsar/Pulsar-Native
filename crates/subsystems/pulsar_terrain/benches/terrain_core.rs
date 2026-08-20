@@ -1,14 +1,30 @@
 use engine_fs::virtual_fs;
 use engine_subsystems::{Subsystem, SubsystemContext};
 use pulsar_terrain::{
-    CellWord, ContentHash, EditMode, EditOp, EditShape, FixedSphereGenerator, NodeState, PageKey,
-    PlanetDefinition, PlanetId, PlanetPosition, PlanetView, SparseBrickTree, TerrainCore,
+    CellWord, ContentHash, EditMode, EditOp, EditShape, NodeState, PageKey, PlanetDefinition,
+    PlanetId, PlanetPosition, PlanetSdfConfig, PlanetView, SparseBrickTree, TerrainCore,
     TerrainIncrementalResidencySession, TerrainPersistenceEvent, TerrainPersistenceHandle,
     TerrainPlanningConfig, TerrainRefinementConfig, TerrainRefinementFrontier,
     TerrainRenderDeltaConfig, TerrainRenderDeltaPublisher, TerrainRuntimeConfig, TerrainStore,
     TerrainStreamingConfig, TerrainStreamingPlanner, TerrainSubsystem,
 };
 use std::time::{Duration, Instant};
+
+const SMOOTH_CELL_SIZE_MM: u32 = 1_000;
+const EARTH_RADIUS_CELLS: u64 = 6_371_000;
+
+fn benchmark_planet(planet_id: PlanetId) -> PlanetDefinition {
+    PlanetDefinition {
+        planet_id,
+        center_cell: [0; 3],
+        radius_cells: EARTH_RADIUS_CELLS,
+        material: 1,
+        lod0_cell_size_mm: SMOOTH_CELL_SIZE_MM,
+        sdf: PlanetSdfConfig::earthlike(0x5eed, SMOOTH_CELL_SIZE_MM).unwrap(),
+        root_lod: 22,
+        max_resident_pages: 2_048,
+    }
+}
 
 fn wait_for_persistence_event(handle: &TerrainPersistenceHandle) -> TerrainPersistenceEvent {
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -46,16 +62,9 @@ fn main() {
     std::hint::black_box(&dense);
     let dense_time = dense_started.elapsed();
 
-    let mut core = TerrainCore::new(
-        PlanetId([1; 16]),
-        24,
-        FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 63_710_000,
-            material: 1,
-        },
-    )
-    .unwrap();
+    let core_planet = benchmark_planet(PlanetId([1; 16]));
+    let mut core =
+        TerrainCore::new(core_planet.planet_id, 24, core_planet.generator().unwrap()).unwrap();
     core.append_edit(EditOp {
         sequence: 1,
         stable_id: [1; 16],
@@ -71,14 +80,11 @@ fn main() {
     let compacted = core.compact_page(PageKey::new(0, [0; 3])).unwrap();
     let edit_time = edit_started.elapsed();
 
+    let coarse_planet = benchmark_planet(PlanetId([3; 16]));
     let mut coarse_core = TerrainCore::new(
-        PlanetId([3; 16]),
+        coarse_planet.planet_id,
         24,
-        FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 63_710_000,
-            material: 1,
-        },
+        coarse_planet.generator().unwrap(),
     )
     .unwrap();
     coarse_core
@@ -99,14 +105,11 @@ fn main() {
     let coarse_work = coarse_core.work_counters();
 
     const DELETE_EDIT_PREFIX: u64 = 10_000;
+    let delete_planet = benchmark_planet(PlanetId([4; 16]));
     let mut delete_core = TerrainCore::new(
-        PlanetId([4; 16]),
+        delete_planet.planet_id,
         24,
-        FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 63_710_000,
-            material: 1,
-        },
+        delete_planet.generator().unwrap(),
     )
     .unwrap();
     for sequence in 1..=DELETE_EDIT_PREFIX {
@@ -156,16 +159,9 @@ fn main() {
     let memory = core.memory_counters();
     let work = core.work_counters();
 
-    let planet = PlanetDefinition {
-        planet_id: PlanetId([2; 16]),
-        center_cell: [0; 3],
-        radius_cells: 63_710_000,
-        material: 1,
-        root_lod: 22,
-        max_resident_pages: 2_048,
-    };
+    let planet = benchmark_planet(PlanetId([2; 16]));
     let view = PlanetView::new(
-        PlanetPosition::from_lod0_cell([103_710_000, 0, 0]),
+        PlanetPosition::from_lod0_cell([10_371_000, 0, 0], planet.lod0_cell_size_mm).unwrap(),
         [-1.0, 0.0, 0.0],
         [0.0, 1.0, 0.0],
         60_f64.to_radians(),
@@ -185,7 +181,7 @@ fn main() {
     let mut latest_plan = None;
     for _ in 0..20 {
         let started = Instant::now();
-        let plan = planner.plan_fixed_sphere(&planet, view).unwrap();
+        let plan = planner.plan_planet(&planet, view).unwrap();
         plan_times.push(started.elapsed());
         latest_plan = Some(plan);
     }
@@ -195,11 +191,7 @@ fn main() {
     let planning_core = TerrainCore::new(
         planet.planet_id,
         planet.root_lod,
-        FixedSphereGenerator {
-            center_cell: planet.center_cell,
-            radius_cells: planet.radius_cells,
-            material: planet.material,
-        },
+        planet.generator().unwrap(),
     )
     .unwrap();
     let mut authoritative_plan_times = Vec::with_capacity(20);
@@ -289,7 +281,11 @@ fn main() {
     let mut active_planning_submit_times = Vec::with_capacity(1_000);
     for tick in 1..=1_000_i64 {
         let moving_view = PlanetView::new(
-            PlanetPosition::from_lod0_cell([103_710_000 + tick * 10, 0, 0]),
+            PlanetPosition::from_lod0_cell(
+                [10_371_000 + tick * 10, 0, 0],
+                planet.lod0_cell_size_mm,
+            )
+            .unwrap(),
             [-1.0, 0.0, 0.0],
             [0.0, 1.0, 0.0],
             60_f64.to_radians(),
@@ -427,7 +423,11 @@ fn main() {
         ..planet.clone()
     };
     let ground_view = PlanetView::new(
-        PlanetPosition::from_lod0_cell([63_710_000, 0, 0]),
+        PlanetPosition::from_lod0_cell(
+            [EARTH_RADIUS_CELLS as i64, 0, 0],
+            ground_planet.lod0_cell_size_mm,
+        )
+        .unwrap(),
         [-1.0, 0.0, 0.0],
         [0.0, 1.0, 0.0],
         60_f64.to_radians(),
@@ -443,7 +443,7 @@ fn main() {
     for _ in 0..10 {
         let started = Instant::now();
         let plan = ground_planner
-            .plan_fixed_sphere(&ground_planet, ground_view)
+            .plan_planet(&ground_planet, ground_view)
             .unwrap();
         ground_times.push(started.elapsed());
         latest_ground_plan = Some(plan);

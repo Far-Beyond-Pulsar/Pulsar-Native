@@ -382,6 +382,8 @@ mod tests {
             center_cell: [0; 3],
             radius_cells: 200,
             material: 3,
+            lod0_cell_size_mm: 100,
+            sdf: crate::PlanetSdfConfig::zero_relief_test_fixture(),
             root_lod: 6,
             max_resident_pages: 256,
         };
@@ -455,7 +457,7 @@ mod tests {
         )
         .unwrap();
         let view = PlanetView::new(
-            PlanetPosition::from_lod0_cell([2_500, 0, 0]),
+            PlanetPosition::from_lod0_cell([2_500, 0, 0], planet.lod0_cell_size_mm).unwrap(),
             [-1.0, 0.0, 0.0],
             [0.0, 1.0, 0.0],
             60_f64.to_radians(),

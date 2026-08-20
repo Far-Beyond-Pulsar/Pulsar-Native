@@ -32,7 +32,9 @@ pub use core::{
     TerrainCoreError, TerrainMemoryCounters, TerrainPlanningSnapshot, TerrainWorkCounters,
 };
 pub use edit::{EditError, EditLog, EditMode, EditOp, EditShape};
-pub use generator::{DeterministicGenerator, FixedSphereGenerator};
+pub use generator::{
+    DeterministicGenerator, PlanetSdfConfig, PlanetSdfConfigError, PlanetSdfGenerator,
+};
 pub use hierarchy::{HierarchyError, SparseBrickTree};
 pub use mutation::{
     TerrainOverrideError, TerrainOverrideLog, TerrainOverrideOp, TerrainOverrideTarget,
@@ -77,5 +79,6 @@ pub use streaming::{
 pub use types::{
     CellWord, ContentHash, MaterialId, NodeState, PageId, PageKey, PlanetFrame, PlanetFramePayload,
     PlanetId, PlanetIdParseError, PlanetPosition, PositionError, TerrainNodeSummary,
-    LOD0_CELL_SIZE_METERS, MILLIMETER_INTERACTION_RADIUS_METERS, PAGE_EDGE_CELLS,
+    CUBIC_VOXEL_CELL_SIZE_MM, MILLIMETER_INTERACTION_RADIUS_METERS, PAGE_EDGE_CELLS,
+    SMOOTH_PLANET_DEFAULT_CELL_SIZE_MM,
 };

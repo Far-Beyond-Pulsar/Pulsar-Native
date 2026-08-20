@@ -221,7 +221,7 @@ pub enum TerrainStoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{FixedSphereGenerator, NodeState, PageKey, PlanetId, TerrainCore};
+    use crate::{NodeState, PageKey, PlanetId, PlanetSdfGenerator, TerrainCore};
 
     #[test]
     fn interrupted_publish_keeps_the_previous_valid_root() {
@@ -272,11 +272,7 @@ mod tests {
         virtual_fs::reset_to_local();
         let temporary = tempfile::tempdir().unwrap();
         let store = TerrainStore::new(temporary.path().join("terrain"));
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 7,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 7);
         let key = PageKey::new(0, [0; 3]);
         let mut core = TerrainCore::new(PlanetId([7; 16]), 12, generator).unwrap();
         core.compact_page(key).unwrap();
@@ -301,11 +297,7 @@ mod tests {
         virtual_fs::reset_to_local();
         let temporary = tempfile::tempdir().unwrap();
         let store = TerrainStore::new(temporary.path().join("terrain"));
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 7,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 7);
         let core = TerrainCore::new(PlanetId([8; 16]), 12, generator).unwrap();
         let expected = core.snapshot();
         let first = store.save_snapshot(&expected).unwrap();
@@ -359,11 +351,7 @@ mod tests {
         virtual_fs::reset_to_local();
         let temporary = tempfile::tempdir().unwrap();
         let store = TerrainStore::new(temporary.path().join("terrain"));
-        let generator = FixedSphereGenerator {
-            center_cell: [0; 3],
-            radius_cells: 100,
-            material: 7,
-        };
+        let generator = PlanetSdfGenerator::zero_relief_test_fixture([0; 3], 100, 7);
         let expected = TerrainCore::new(PlanetId([9; 16]), 12, generator)
             .unwrap()
             .snapshot();

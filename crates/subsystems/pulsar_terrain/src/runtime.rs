@@ -6,9 +6,9 @@ use crate::planning::{
     TerrainPlanningCapture, TerrainPlanningHandle, TerrainPlanningIdentity, TerrainPlanningService,
 };
 use crate::{
-    CELL_COUNT, CompactedPageRecord, EditOp, FixedSphereGenerator, PageBuildCommitOutcome,
-    PageBuildPreparation, PageBuildRequest, PageBuildResult, PageKey, PlanetDefinition, PlanetId,
-    TerrainCore, TerrainCoreError, TerrainOverrideOp, TerrainOverrideTarget,
+    CompactedPageRecord, EditOp, PageBuildCommitOutcome, PageBuildPreparation, PageBuildRequest,
+    PageBuildResult, PageKey, PlanetDefinition, PlanetId, PlanetSdfGenerator, TerrainCore,
+    TerrainCoreError, TerrainOverrideOp, TerrainOverrideTarget, CELL_COUNT,
 };
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use engine_subsystems::{Subsystem, SubsystemContext, SubsystemError, SubsystemId};
@@ -301,7 +301,7 @@ struct ActiveRequest {
 
 struct WorkJob {
     identity: RequestIdentity,
-    request: PageBuildRequest<FixedSphereGenerator>,
+    request: PageBuildRequest<PlanetSdfGenerator>,
     class: TerrainRequestClass,
     deadline_tick: u64,
     order: u64,
@@ -411,17 +411,15 @@ impl WorkQueue {
 struct PlanetRuntime {
     definition: PlanetDefinition,
     generation: u64,
-    core: TerrainCore<FixedSphereGenerator>,
+    core: TerrainCore<PlanetSdfGenerator>,
     page_generations: BTreeMap<PageKey, u64>,
 }
 
 impl PlanetRuntime {
     fn new(definition: PlanetDefinition, generation: u64) -> Result<Self, TerrainCoreError> {
-        let generator = FixedSphereGenerator {
-            center_cell: definition.center_cell,
-            radius_cells: definition.radius_cells,
-            material: definition.material,
-        };
+        let generator = definition
+            .generator()
+            .expect("planet definitions are validated before runtime construction");
         let core = TerrainCore::new(definition.planet_id, definition.root_lod, generator)?;
         Ok(Self {
             definition,
@@ -825,7 +823,7 @@ impl TerrainRuntimeHandle {
         publish: F,
     ) -> Result<(), TerrainRuntimeError>
     where
-        F: FnOnce(&mut TerrainCore<FixedSphereGenerator>) -> Result<(), TerrainCoreError>,
+        F: FnOnce(&mut TerrainCore<PlanetSdfGenerator>) -> Result<(), TerrainCoreError>,
     {
         let bounds = match target {
             TerrainOverrideTarget::Root => None,
@@ -855,7 +853,7 @@ impl TerrainRuntimeHandle {
         publish: F,
     ) -> Result<(), TerrainRuntimeError>
     where
-        F: FnOnce(&mut TerrainCore<FixedSphereGenerator>) -> Result<(), TerrainCoreError>,
+        F: FnOnce(&mut TerrainCore<PlanetSdfGenerator>) -> Result<(), TerrainCoreError>,
     {
         let mut state = lock(&self.shared.state);
         if !state.running {
@@ -1472,6 +1470,13 @@ impl TerrainRuntimeHandle {
             .map(|planet| planet.generation)
     }
 
+    pub fn planet_definition(&self, planet_id: PlanetId) -> Option<PlanetDefinition> {
+        lock(&self.shared.state)
+            .planets
+            .get(&planet_id)
+            .map(|planet| planet.definition.clone())
+    }
+
     pub(crate) fn persistence_identity(
         &self,
         planet_id: PlanetId,
@@ -1516,7 +1521,7 @@ impl TerrainRuntimeHandle {
         definition: PlanetDefinition,
         expected_planet_generation: u64,
         expected_terrain_sequence: u64,
-        restored: &mut Option<TerrainCore<FixedSphereGenerator>>,
+        restored: &mut Option<TerrainCore<PlanetSdfGenerator>>,
     ) -> Result<TerrainPersistenceRestoreCommit, TerrainRuntimeError> {
         let planet_id = definition.planet_id;
         let mut state = lock(&self.shared.state);
@@ -1962,11 +1967,13 @@ fn validate_definition(
     config: &TerrainRuntimeConfig,
 ) -> Result<(), TerrainRuntimeError> {
     if definition.radius_cells == 0
+        || definition.lod0_cell_size_mm == 0
         || definition.material == 0
         || !(1..=62).contains(&definition.root_lod)
         || !definition.fits_centered_root()
         || definition.max_resident_pages == 0
         || definition.max_resident_pages > config.max_resident_pages
+        || definition.sdf.validate().is_err()
     {
         return Err(TerrainRuntimeError::InvalidConfig(
             "planet definition exceeds the runtime contract",
@@ -2047,6 +2054,8 @@ mod tests {
             center_cell: [0; 3],
             radius_cells: 100,
             material: id.max(1),
+            lod0_cell_size_mm: 100,
+            sdf: crate::PlanetSdfConfig::zero_relief_test_fixture(),
             root_lod: 12,
             max_resident_pages: 8,
         }
