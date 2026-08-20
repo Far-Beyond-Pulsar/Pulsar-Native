@@ -315,6 +315,134 @@ pub fn registered_world_component_classes() -> impl Iterator<Item = &'static str
         .map(|r| r.class_name)
 }
 
+// ── Auto-derived GPU mirroring (Pulsar-Native#561) ──────────────────────────
+//
+// `LightGpuData` (`helio_component`) proved the pattern by hand: a second,
+// `#[gpu]`-mirrored SceneDB component holding only a type's render-relevant,
+// `Pod`-safe translation, kept in step by hydrate, so a renderer never has
+// to hand-roll a Helio-side cache/sync-by-diff for that data again. This
+// section is the same pattern generated automatically by `engine_class_
+// derive` for any `#[property]` field marked `#[gpu]` -- see that crate's
+// doc for the packing rules (numeric primitives and fixed-size arrays of
+// them as-is, `bool`/plain enums as `u32`, anything else a compile error
+// unless the `#[gpu]` is removed) and how `#[sub_props]` nesting composes.
+
+/// A type whose `#[gpu]`-marked `#[property]` fields (`engine_class_derive`)
+/// have an automatically-derived, `Pod`, SceneDB-mirrorable translation.
+///
+/// `engine_class_derive` generates an impl of this for EVERY
+/// `#[engine_class(...)]`-processed struct, unconditionally -- including
+/// ones with zero `#[gpu]` fields, which get `GpuMirror = NoGpuMirror` (see
+/// that type's doc for why this uniform generation, rather than only
+/// generating an impl when there's something real to mirror, is what makes
+/// `#[sub_props]` composition possible with no special-casing at each
+/// nesting level: a containing struct's own generated `to_gpu_mirror` reads
+/// `<SubPropsTy as GpuMirrored>::GpuMirror`/`to_gpu_mirror()` for every
+/// `#[sub_props]` field unconditionally, and that has to type-check whether
+/// or not that particular sub-props group happens to contain any `#[gpu]`
+/// leaves this time).
+pub trait GpuMirrored {
+    /// The `Pod` GPU-mirror type. `NoGpuMirror` when there's nothing to
+    /// mirror (no `#[gpu]` fields anywhere in this struct or its
+    /// `#[sub_props]`).
+    type GpuMirror: pulsar_scenedb::Pod + Default + Send + Sync + 'static;
+
+    /// Translate `self`'s current `#[gpu]`-marked fields (and its
+    /// `#[sub_props]` fields' own translations) into `Self::GpuMirror`.
+    fn to_gpu_mirror(&self) -> Self::GpuMirror;
+
+    /// Insert `self`'s current GPU mirror onto `entity` -- a `World::insert`
+    /// away from being SceneDB-mirrored automatically, same as any other
+    /// `#[gpu]` write. A no-op default would be wrong here (every type gets
+    /// SOME impl of this trait, including ones with real fields to mirror),
+    /// so this is a real, non-overridable default method: `#[engine_class]`
+    /// never needs to generate a per-type version of this, only
+    /// `to_gpu_mirror` and the associated type above.
+    fn sync_gpu_mirror(&self, world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+        world.insert(entity, self.to_gpu_mirror());
+    }
+
+    /// Drop `entity`'s mirrored `Self::GpuMirror`, if it has one. Harmless
+    /// (a plain `World::remove` miss) for a type whose `GpuMirror` is
+    /// `NoGpuMirror` and was never actually inserted anywhere -- see
+    /// `sync_gpu_mirror`'s doc for why every type still has an impl to call
+    /// this through.
+    fn remove_gpu_mirror(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+        let _ = world.remove::<Self::GpuMirror>(entity);
+    }
+}
+
+/// The `GpuMirror` for a type with no `#[gpu]`-marked fields anywhere (the
+/// common case -- most components have none). Zero-sized, so a struct that
+/// composes one in via `#[sub_props]` (`engine_class_derive`'s generated
+/// mirror struct embeds `<SubPropsTy as GpuMirrored>::GpuMirror` per
+/// sub-props field, unconditionally) pays nothing for a sub-props group
+/// that happens to contribute no real data this time.
+///
+/// Deliberately a dedicated type, not `()`: `()` is a general-purpose Rust
+/// primitive with its own broader meaning, and giving "nothing to mirror"
+/// its own named type keeps a `GpuMirror = NoGpuMirror` reader unambiguous
+/// about which of the trait's two cases they're looking at.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NoGpuMirror;
+
+unsafe impl pulsar_scenedb::Pod for NoGpuMirror {}
+
+/// The var-len-mirrored counterpart to [`GpuMirrored`], for `#[gpu] Vec<T>`
+/// `#[property]` fields.
+///
+/// Deliberately a SEPARATE trait/companion component, not a second
+/// `Vec`-typed field folded into [`GpuMirrored::GpuMirror`]: SceneDB's own
+/// `#[derive(SceneStore)]` forks a struct onto ONE of two completely
+/// different codegen paths depending on whether it has any `Vec<T>`
+/// `#[gpu]` field -- the packed, one-buffer-per-struct layout `GpuMirror`
+/// relies on is explicitly unsupported on that OTHER path (a `Vec<T>`
+/// field's length varies per row, so "one packed record" has no meaning).
+/// Cramming a list field into the same mirror struct as the scalar leaves
+/// would silently downgrade EVERY scalar field on that component from one
+/// packed buffer + one write back to the classic one-buffer-per-field
+/// split, for the whole struct, just because one field happened to need a
+/// list. Two independently-mirrored companion components (both riding the
+/// SAME entity, exactly like `LightComponent` + `LightGpuData` already do)
+/// keeps the packed half fully packed regardless of whether the list half
+/// is even present.
+///
+/// `engine_class_derive` generates an impl of this for EVERY
+/// `#[engine_class(...)]`-processed struct, unconditionally -- same
+/// "always some impl, `NoGpuMirror` when there's nothing" shape
+/// `GpuMirrored` uses, for the same reason (so a future composition of
+/// list fields through `#[sub_props]` nesting can rely on every struct
+/// having one to ask, the same way scalar composition already does).
+/// `GpuListMirror` reuses [`NoGpuMirror`] for the trivial case too -- it's
+/// equally valid as "nothing to mirror" regardless of which trait is
+/// asking, and a plain (non-`#[gpu]`) `World` component needs no `Pod`-ness
+/// at all, so there's no reason for a second sentinel type.
+pub trait GpuListMirrored {
+    /// The var-len-bearing `#[derive(SceneStore)]` companion type. Note:
+    /// NOT `Pod` (a `Vec<T>`-holding struct never is) -- only
+    /// `Send + Sync + 'static`, same as any ordinary `World` component.
+    type GpuListMirror: Default + Send + Sync + 'static;
+
+    /// Translate `self`'s current `#[gpu] Vec<T>` fields into
+    /// `Self::GpuListMirror`. Reallocates its `Vec`s every call (a fresh
+    /// translation, not an in-place update) -- fine for how this is
+    /// actually invoked (event-driven, on a genuine property edit via
+    /// hydrate, not once per frame).
+    fn to_gpu_list_mirror(&self) -> Self::GpuListMirror;
+
+    /// Insert `self`'s current list mirror onto `entity`. Real, non-
+    /// overridable default -- same reasoning as `GpuMirrored::
+    /// sync_gpu_mirror`.
+    fn sync_gpu_list_mirror(&self, world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+        world.insert(entity, self.to_gpu_list_mirror());
+    }
+
+    /// Drop `entity`'s mirrored `Self::GpuListMirror`, if it has one.
+    fn remove_gpu_list_mirror(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+        let _ = world.remove::<Self::GpuListMirror>(entity);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

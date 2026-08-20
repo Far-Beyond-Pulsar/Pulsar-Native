@@ -54,6 +54,16 @@ proc-macro2 = { workspace = true }
 # root Cargo.toml's own "unify to one copy" pattern for this exact situation.
 pulsar_scenedb = { workspace = true }
 pulsar_reflection = { workspace = true }
+# Every `#[derive(EngineClass)]`-processed struct now also gets a generated
+# `pulsar_world_registry::GpuMirrored` impl (Pulsar-Native#561's auto-derived
+# GPU mirroring, `gpu_mirror_codegen` in src/lib.rs) -- unconditionally, even
+# for a struct with zero `#[gpu]` fields (see that fn's doc for why every
+# struct needs SOME impl, not just ones with real fields to mirror). Needed
+# here for the same reason `pulsar_scenedb`/`pulsar_reflection` are: this
+# crate's own test binaries compile that generated code and need the path to
+# resolve, exactly like every real consumer (`helio_component`,
+# `pulsar_physics`) already does.
+pulsar_world_registry = { workspace = true }
 # `#[engine_class]`'s generated methods call `tracing::warn!` unqualified --
 # every real consumer of this macro already has `tracing` in scope for that
 # reason; the test below is no exception.
