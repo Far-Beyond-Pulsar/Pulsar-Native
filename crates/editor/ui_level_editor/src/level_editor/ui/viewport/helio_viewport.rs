@@ -612,22 +612,19 @@ struct FramePacer {
     next_deadline: Instant,
     /// Consecutive frames that overran their budget.
     late_streak: u32,
-    /// Consecutive frames that met their deadline.
+    /// Consecutive frames that met their deadline at the current target.
     on_time_streak: u32,
 }
 
 impl FramePacer {
     /// Frames in a row that must overrun before dropping the target.
     const LATE_STREAK_TO_DROP: u32 = 8;
-    /// Frames in a row that must meet their deadline before raising it again.
-    /// Reduced from 120 → 30 so recovery is aggressive: after a drop the rate
-    /// climbs back toward the ceiling in ≈0.5 s of stability rather than ≈2 s.
+    /// Frames in a row that must meet their deadline before testing the ceiling
+    /// again. Recovery is a single jump; if the ceiling is unstable, the
+    /// late-frame logic backs it off again instead of slowly curving upward.
     const ON_TIME_STREAK_TO_RAISE: u32 = 30;
-    /// Multiplier applied on each drop / recovery step.
+    /// Multiplier applied on each drop.
     const DROP_FACTOR: f64 = 0.8;
-    /// Recovery multiplier increased from 1.1 → 1.25 so each step reclaims
-    /// more headroom, reaching the ceiling in fewer steps.
-    const RAISE_FACTOR: f64 = 1.25;
 
     fn new(refresh_hz: Option<f64>) -> Self {
         // `PULSAR_VIEWPORT_FPS` overrides the ceiling; `0` disables pacing and
@@ -717,13 +714,12 @@ impl FramePacer {
         } else if self.on_time_streak >= Self::ON_TIME_STREAK_TO_RAISE
             && self.target_hz < self.ceiling_hz
         {
-            let raised = (self.target_hz * Self::RAISE_FACTOR).min(self.ceiling_hz);
             tracing::debug!(
-                "[VIEWPORT PACER] target {:.0} -> {:.0} Hz (sustained headroom)",
+                "[VIEWPORT PACER] target {:.0} -> {:.0} Hz (stability window passed)",
                 self.target_hz,
-                raised
+                self.ceiling_hz
             );
-            self.target_hz = raised;
+            self.target_hz = self.ceiling_hz;
             self.on_time_streak = 0;
         }
     }
@@ -823,9 +819,18 @@ mod pacer_tests {
     }
 
     #[test]
-    fn recovery_is_slower_than_the_drop() {
-        // Otherwise the target oscillates around a rate the renderer can't hold.
+    fn recovery_waits_then_jumps_to_the_ceiling() {
         assert!(FramePacer::ON_TIME_STREAK_TO_RAISE > FramePacer::LATE_STREAK_TO_DROP);
+
+        let mut pacer = FramePacer::with_ceiling(144.0);
+        run_late_frames(&mut pacer, FramePacer::LATE_STREAK_TO_DROP);
+        let dropped = pacer.target_hz;
+
+        run_on_time_frames(&mut pacer, FramePacer::ON_TIME_STREAK_TO_RAISE - 1);
+        assert_eq!(pacer.target_hz, dropped);
+
+        run_on_time_frames(&mut pacer, 1);
+        assert_eq!(pacer.target_hz, 144.0);
     }
 
     #[test]
