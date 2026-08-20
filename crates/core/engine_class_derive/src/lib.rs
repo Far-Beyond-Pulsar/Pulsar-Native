@@ -785,8 +785,8 @@ pub fn register_runtime_behavior(attr: TokenStream, item: TokenStream) -> TokenS
 /// meant to be readable and removable independently as B5 rolls out one
 /// component at a time.
 /// `#[register_world_component]`'s optional arguments -- `hydrate =
-/// path::to::fn` and `on_removed = path::to::fn`. `hydrate` is an escape
-/// hatch for a type that needs to do
+/// path::to::fn`, `remove = path::to::fn`, and `on_removed = path::to::fn`.
+/// `hydrate` is an escape hatch for a type that needs to do
 /// more at hydrate time than "deserialize this JSON, `world.insert` it"
 /// (the auto-generated default). The motivating case (Pulsar-Native#561
 /// Phase D): `StaticMeshComponent` owns loading its own mesh file (project-
@@ -820,12 +820,23 @@ struct RegisterWorldComponentArgs {
     /// tearing down, so a generated no-op is the right default (see
     /// `on_removed_fn_def`/`on_removed_fn_ref` below).
     on_removed: Option<syn::Path>,
+    /// `#[register_world_component(remove = path::to::fn)]` -- an escape
+    /// hatch for a type whose hydrate ALSO populates a companion `World`
+    /// component (e.g. `LightComponent`'s `#[gpu]`-mirrored `LightGpuData`,
+    /// Pulsar-Native#561) that removing just `Self` would leave orphaned.
+    /// `path` must name a function with EXACTLY the signature
+    /// `fn(&mut pulsar_scenedb::World, pulsar_scenedb::Entity)` -- same
+    /// "used directly as the fn pointer, no wrapper" rule as `custom_hydrate`.
+    /// Omitted by default: the generated `world.remove::<Self>(entity)` is
+    /// correct for any class that doesn't hydrate a companion component.
+    custom_remove: Option<syn::Path>,
 }
 
 impl syn::parse::Parse for RegisterWorldComponentArgs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut custom_hydrate = None;
         let mut on_removed = None;
+        let mut custom_remove = None;
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
             match key.to_string().as_str() {
@@ -837,10 +848,14 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
                     let _: syn::Token![=] = input.parse()?;
                     on_removed = Some(input.parse()?);
                 }
+                "remove" => {
+                    let _: syn::Token![=] = input.parse()?;
+                    custom_remove = Some(input.parse()?);
+                }
                 other => {
                     return Err(syn::Error::new(
                         key.span(),
-                        format!("unknown #[register_world_component] option `{other}` (expected `hydrate` or `on_removed`)"),
+                        format!("unknown #[register_world_component] option `{other}` (expected `hydrate`, `remove`, or `on_removed`)"),
                     ))
                 }
             }
@@ -850,14 +865,14 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
                 break;
             }
         }
-        Ok(RegisterWorldComponentArgs { custom_hydrate, on_removed })
+        Ok(RegisterWorldComponentArgs { custom_hydrate, on_removed, custom_remove })
     }
 }
 
 #[proc_macro_attribute]
 pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = if attr.is_empty() {
-        RegisterWorldComponentArgs { custom_hydrate: None, on_removed: None }
+        RegisterWorldComponentArgs { custom_hydrate: None, on_removed: None, custom_remove: None }
     } else {
         match syn::parse::<RegisterWorldComponentArgs>(attr) {
             Ok(args) => args,
@@ -980,15 +995,28 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         Some(custom) => (quote! {}, quote! { #custom }),
     };
 
+    // Same optional-override shape as `hydrate`/`on_removed` above: a
+    // generated `world.remove::<Self>(entity)` when no `remove = path` was
+    // given (correct for any class that doesn't hydrate a companion
+    // component), or the caller-named function used directly otherwise.
+    let (remove_fn_def, remove_fn_ref) = match &args.custom_remove {
+        None => (
+            quote! {
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                fn #remove_fn_name(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+                    let _ = world.remove::<#self_ty>(entity);
+                }
+            },
+            quote! { #remove_fn_name },
+        ),
+        Some(custom) => (quote! {}, quote! { #custom }),
+    };
+
     let output = quote! {
         #hydrate_fn_def
         #on_removed_fn_def
-
-        #[doc(hidden)]
-        #[allow(non_snake_case)]
-        fn #remove_fn_name(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-            let _ = world.remove::<#self_ty>(entity);
-        }
+        #remove_fn_def
 
         #[doc(hidden)]
         #[allow(non_snake_case)]
@@ -1058,7 +1086,7 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
                 class_name: <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
                 component_type: pulsar_scenedb::component_id::<#self_ty>,
                 hydrate: #hydrate_fn_ref,
-                remove: #remove_fn_name,
+                remove: #remove_fn_ref,
                 dispatch: #dispatch_fn_name,
                 get_as_engine_class: #get_fn_name,
                 get_as_engine_class_mut: #get_mut_fn_name,

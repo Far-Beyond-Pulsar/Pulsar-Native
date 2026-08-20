@@ -16,7 +16,7 @@ use pulsar_reflection::{
     RuntimeComponentOwner, Subsystems,
 };
 use helio_component::{
-    components::StaticMeshComponent,
+    components::{LightGpuData, StaticMeshComponent},
     subsystems::{
         apply_portal_pair_action, remove_foliage_handles, FoliageCache, MeshCache,
         PortalLinkCache, PostProcessVolumeCache, ReflectionCaptureCache, WaterVolumeCache,
@@ -1669,9 +1669,64 @@ impl HelioRenderer {
         // are done as of the loop above (NLL already treats this borrow as
         // ended at its last use inside the loop) -- dropped explicitly for
         // clarity rather than relying on an implicit end-of-borrow
-        // inference.
+        // inference (also needed here: `sync_light_gpu_data` below wants
+        // its own `&mut inner.renderer`, which `ctx`'s subsystems are still
+        // holding onto until this drop).
         drop(ctx);
 
+        if let Some(entity) = entity {
+            Self::sync_light_gpu_data(inner, store, entity, snap);
+        }
+    }
+
+    /// Pushes `entity`'s `#[gpu]`-mirrored `LightGpuData`
+    /// (`helio_component::components::light_component::gpu_data`,
+    /// Pulsar-Native#561) into Helio's own light storage, or removes it if
+    /// the entity doesn't currently have one. Called once per full
+    /// component re-dispatch -- the same granularity `LightComponent::
+    /// sync_component` used to fire its (now-removed) direct Helio calls
+    /// at -- NOT every frame: steady-state transform-only moves take
+    /// `apply_transform_patch`'s cheaper copy-modify-write path instead,
+    /// and an object with no light at all does one cheap `get::<LightGpuData>`
+    /// miss here and nothing more.
+    ///
+    /// `position_range`'s xyz is overwritten from `snap.transform.position`
+    /// here -- the mirrored row's own copy is stale by design (a hydrate-
+    /// time placeholder, see `LightGpuData`'s doc); this is the one place
+    /// that combines it with the real, current transform before use.
+    fn sync_light_gpu_data(
+        inner: &mut HelioInner,
+        store: &WorldSceneStore,
+        entity: pulsar_scenedb::Entity,
+        snap: &crate::scene::ObjectSnapshot,
+    ) {
+        let tag = scene_id_to_tag(snap.stable_id.as_str());
+        let scene = inner.renderer.scene_mut();
+        match store.world().get::<LightGpuData>(entity) {
+            Some(gpu_data) => {
+                let mut gpu = gpu_data.row.0;
+                gpu.position_range[0] = snap.transform.position[0];
+                gpu.position_range[1] = snap.transform.position[1];
+                gpu.position_range[2] = snap.transform.position[2];
+                match scene.light_by_tag(tag) {
+                    Some(id) => {
+                        let _ = scene.update_light(id, gpu);
+                    }
+                    None => {
+                        scene.insert_actor(SceneActor::light_with_tag(gpu, tag));
+                    }
+                }
+            }
+            None => {
+                // No mirrored data -- this object never had a light, or
+                // its light is disabled (hydrate already removed
+                // LightGpuData in that case). Drop any stale Helio actor
+                // left over from a previous enabled state.
+                if let Some(id) = scene.light_by_tag(tag) {
+                    let _ = scene.remove_light(id);
+                }
+            }
+        }
     }
 
     /// Dispatch every `pulsar_world_registry::WorldComponentRegistration::
