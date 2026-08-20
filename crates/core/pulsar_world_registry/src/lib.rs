@@ -32,22 +32,28 @@
 //!   GPU actor) can drop it too -- without SceneDB or `World` ever needing
 //!   to know that state, or even the concept of a "class", exists. See
 //!   [`notify_world_component_removed_by_component_id`]'s doc.
+//! - **[`GpuMirrored`]/[`GpuListMirrored`]**: SceneDB-mirrored companion
+//!   components, auto-derived by `engine_class_derive` for any `#[property]`
+//!   field marked `#[gpu]` (`GpuMirrored`, packed/fixed-size) or
+//!   `#[gpu] Vec<T>` (`GpuListMirrored`, var-len -- a separate companion,
+//!   deliberately, see that trait's doc for why). `#[register_world_component
+//!   (gpu_mirror)]` wires both into the generated `hydrate`/`remove` above.
+//!   See [`GpuMirrored`]'s doc for the full design and packing rules.
 //!
 //! ## Why this crate exists instead of extending `pulsar_reflection` directly
 //!
 //! `pulsar_reflection` is a separate repository, also used by non-SceneDB
 //! contexts (the Blueprint and shader editors reuse its property-reflection
-//! machinery), so it deliberately has no dependency on `pulsar_scenedb`.
-//! `pulsar_scenedb` is *also* a separate repository, and Pulsar-Native's pin
-//! of it is currently stuck (Pulsar-Native#560, blocked on
-//! [SceneDB#46](https://github.com/Far-Beyond-Pulsar/SceneDB/issues/46)) --
-//! landing new SceneDB-repo code and getting it pulled into this workspace
-//! is real, avoidable friction right now. Every actual consumer here
-//! (`helio_component`, `pulsar_physics`, `engine_backend`, `ui_level_editor`)
-//! already depends on both `pulsar_scenedb` and `pulsar_reflection` directly,
-//! so a small Pulsar-Native-internal crate sitting alongside them -- itself
-//! depending on both -- is a clean fit with no cross-repo coordination
-//! needed at all.
+//! machinery), so it deliberately has no dependency on `pulsar_scenedb` --
+//! and never will, regardless of how much friction pinning `pulsar_scenedb`
+//! itself does or doesn't have day to day (that pin has moved several times
+//! without incident since this crate was first written; the constraint here
+//! was always about the dependency direction, not about pin friction).
+//! Every actual consumer of this crate (`helio_component`, `pulsar_physics`,
+//! `engine_backend`, `ui_level_editor`) already depends on both
+//! `pulsar_scenedb` and `pulsar_reflection` directly, so a small
+//! Pulsar-Native-internal crate sitting alongside them -- itself depending
+//! on both -- is a clean fit with no cross-repo coordination needed at all.
 //!
 //! ## Why a separate registry from `RuntimeBehaviorRegistration`
 //!

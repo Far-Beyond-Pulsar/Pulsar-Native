@@ -1,7 +1,40 @@
-//! Proc macro for deriving `EngineClass` trait
+//! Proc macros for `#[engine_class(...)]`/`#[derive(EngineClass)]` --
+//! reflection (the properties panel), `World`/SceneDB storage wiring, and
+//! GPU mirroring, all generated off ONE struct definition's own
+//! `#[property]`/`#[sub_props]`/`#[gpu]` field attributes.
 //!
-//! This crate provides the `#[derive(EngineClass)]` macro that automatically
-//! implements the reflection trait for components and other engine types.
+//! # What this crate generates, by attribute
+//!
+//! - `#[property]` (any field): reflection metadata (`EngineClass::
+//!   get_properties`) -- name, category, min/max, a typed getter/setter --
+//!   for the properties panel to render an editor for. See the example
+//!   below.
+//! - `#[sub_props]` (a field whose type is itself `#[engine_class(...,
+//!   no_register)]`): flattens that nested type's own properties into the
+//!   containing struct's property list, AND (independently) composes its
+//!   GPU mirror into the containing struct's, if either has one -- see the
+//!   `#[gpu]` bullet.
+//! - `#[gpu]` (a `#[property]` field, or a `Vec<T>` field): opts the field
+//!   into an auto-generated, `#[derive(pulsar_scenedb::SceneStore)]`-backed
+//!   companion component -- `pulsar_world_registry::GpuMirrored` for a
+//!   fixed-size/packed field (numeric primitives and arrays as-is, `bool`/
+//!   a plain enum cast to `u32`), `GpuListMirrored` for a `Vec<T>` one (a
+//!   SEPARATE companion, deliberately -- see that trait's own doc). Every
+//!   `#[engine_class(...)]`-processed struct gets both impls
+//!   unconditionally, `NoGpuMirror` when there's nothing to mirror, so
+//!   `#[sub_props]` composition never needs special-casing. See
+//!   `gpu_mirror_codegen`'s doc for the full packing rules.
+//! - `scene_store` (a struct-level `#[engine_class(...)]` flag, not a field
+//!   attribute): a DIFFERENT, older mechanism -- routes the WHOLE struct
+//!   through `#[derive(SceneStore)]` directly instead of a companion. The
+//!   right choice when the struct's `Vec<T>` `#[gpu]` field payload itself
+//!   IS the component (`StaticMeshComponent::vertices`/`indices`), not a
+//!   translation of some other editor-facing shape.
+//! - `#[register_world_component(...)]`: wires a `ComponentRuntimeBehavior`
+//!   impl into `pulsar_world_registry`'s `World`-storage bridge --
+//!   `hydrate`/`remove`/`on_removed`/`dispatch`, plus (via the `gpu_mirror`
+//!   bare flag) auto-syncing the `#[gpu]`-derived companions above. See
+//!   that macro's own doc for the full option list.
 //!
 //! # Example
 //!
