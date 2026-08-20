@@ -784,8 +784,9 @@ pub fn register_runtime_behavior(attr: TokenStream, item: TokenStream) -> TokenS
 /// sibling rather than factored together, since the two attributes are
 /// meant to be readable and removable independently as B5 rolls out one
 /// component at a time.
-/// `#[register_world_component]`'s optional arguments -- currently just
-/// `hydrate = path::to::fn`, an escape hatch for a type that needs to do
+/// `#[register_world_component]`'s optional arguments -- `hydrate =
+/// path::to::fn` and `on_removed = path::to::fn`. `hydrate` is an escape
+/// hatch for a type that needs to do
 /// more at hydrate time than "deserialize this JSON, `world.insert` it"
 /// (the auto-generated default). The motivating case (Pulsar-Native#561
 /// Phase D): `StaticMeshComponent` owns loading its own mesh file (project-
@@ -807,11 +808,24 @@ pub fn register_runtime_behavior(attr: TokenStream, item: TokenStream) -> TokenS
 /// mysterious one inside macro-generated code.
 struct RegisterWorldComponentArgs {
     custom_hydrate: Option<syn::Path>,
+    /// `#[register_world_component(on_removed = path::to::fn)]` -- the
+    /// consumer-side teardown counterpart to `hydrate`, called when this
+    /// class's component is removed/disabled/despawned (see
+    /// `WorldComponentRegistration::on_removed`'s doc, `pulsar_world_registry`).
+    /// `path` must name a function with EXACTLY the signature
+    /// `fn(&pulsar_reflection::RuntimeComponentOwner, &mut dyn
+    /// pulsar_reflection::ComponentRuntimeContext)` -- same "used directly as
+    /// the fn pointer, no wrapper" rule as `custom_hydrate` above. Omitted by
+    /// default: most components create nothing outside `World` that needs
+    /// tearing down, so a generated no-op is the right default (see
+    /// `on_removed_fn_def`/`on_removed_fn_ref` below).
+    on_removed: Option<syn::Path>,
 }
 
 impl syn::parse::Parse for RegisterWorldComponentArgs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut custom_hydrate = None;
+        let mut on_removed = None;
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
             match key.to_string().as_str() {
@@ -819,10 +833,14 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
                     let _: syn::Token![=] = input.parse()?;
                     custom_hydrate = Some(input.parse()?);
                 }
+                "on_removed" => {
+                    let _: syn::Token![=] = input.parse()?;
+                    on_removed = Some(input.parse()?);
+                }
                 other => {
                     return Err(syn::Error::new(
                         key.span(),
-                        format!("unknown #[register_world_component] option `{other}` (expected `hydrate`)"),
+                        format!("unknown #[register_world_component] option `{other}` (expected `hydrate` or `on_removed`)"),
                     ))
                 }
             }
@@ -832,14 +850,14 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
                 break;
             }
         }
-        Ok(RegisterWorldComponentArgs { custom_hydrate })
+        Ok(RegisterWorldComponentArgs { custom_hydrate, on_removed })
     }
 }
 
 #[proc_macro_attribute]
 pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = if attr.is_empty() {
-        RegisterWorldComponentArgs { custom_hydrate: None }
+        RegisterWorldComponentArgs { custom_hydrate: None, on_removed: None }
     } else {
         match syn::parse::<RegisterWorldComponentArgs>(attr) {
             Ok(args) => args,
@@ -903,6 +921,7 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
     let get_fn_name = quote::format_ident!("__pulsar_world_get_engine_class_{}", self_ty_ident);
     let get_mut_fn_name =
         quote::format_ident!("__pulsar_world_get_engine_class_mut_{}", self_ty_ident);
+    let on_removed_fn_name = quote::format_ident!("__pulsar_world_on_removed_{}", self_ty_ident);
 
     // Note this macro does NOT emit `#impl_block` -- unlike
     // `#[register_runtime_behavior]`, it's meant to be stacked alongside
@@ -940,8 +959,30 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         Some(custom) => (quote! {}, quote! { #custom }),
     };
 
+    // Same optional-override shape as `hydrate` above: a generated no-op
+    // when no `on_removed = path` was given (the common case -- most
+    // components create nothing outside `World` for `sync_component` to
+    // have to unwind), or the caller-named function used directly as the
+    // registration's fn pointer otherwise.
+    let (on_removed_fn_def, on_removed_fn_ref) = match &args.on_removed {
+        None => (
+            quote! {
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                fn #on_removed_fn_name(
+                    _owner: &pulsar_reflection::RuntimeComponentOwner,
+                    _context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
+                ) {
+                }
+            },
+            quote! { #on_removed_fn_name },
+        ),
+        Some(custom) => (quote! {}, quote! { #custom }),
+    };
+
     let output = quote! {
         #hydrate_fn_def
+        #on_removed_fn_def
 
         #[doc(hidden)]
         #[allow(non_snake_case)]
@@ -1015,11 +1056,13 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         pulsar_world_registry::inventory::submit! {
             pulsar_world_registry::WorldComponentRegistration {
                 class_name: <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
+                component_type: pulsar_scenedb::component_id::<#self_ty>,
                 hydrate: #hydrate_fn_ref,
                 remove: #remove_fn_name,
                 dispatch: #dispatch_fn_name,
                 get_as_engine_class: #get_fn_name,
                 get_as_engine_class_mut: #get_mut_fn_name,
+                on_removed: #on_removed_fn_ref,
             }
         }
 

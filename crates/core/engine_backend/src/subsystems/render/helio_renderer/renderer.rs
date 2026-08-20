@@ -1439,11 +1439,13 @@ impl HelioRenderer {
             remove_foliage_handles(inner.renderer.scene_mut(), &mut inner.foliage_cache, &key);
         }
 
-        // NOTE (Pulsar-Native#561): same story as the object-cache sweep
-        // above -- `LightCache` (since deleted) was never actually
-        // populated (`LightComponent::sync_component` resolves via
-        // `scene.light_by_tag` instead), so this was already a silent
-        // no-op. Same pre-existing gap, same follow-up needed.
+        // NOTE (Pulsar-Native#561): `LightCache` (since deleted) was never
+        // actually populated (`LightComponent::sync_component` resolves via
+        // `scene.light_by_tag` instead), so a sweep keyed off it here was
+        // always a silent no-op -- now genuinely fixed, generically, by
+        // `dispatch_component_removals` below (`LightComponent::on_removed`
+        // tears down its `scene.light_by_tag` entry the same way
+        // `sync_component` does for the still-enabled case).
 
         // Drop stale portal sides (their object deleted, or their
         // PortalComponent removed/disabled while the object stayed —
@@ -1517,17 +1519,33 @@ impl HelioRenderer {
         // dirty flags for objects this pass never actually synced to Helio,
         // which isn't what "full sync completed" should mean) and not
         // something this migration set out to change.
-        {
+        let removed = {
             let mut store = scene_store.write();
             for id in live_keys.inner() {
                 let _ = store.take_dirty_flags(id);
             }
             Self::step_scene_db(&mut store);
-        }
+            store.take_removed_ids()
+        };
 
         // Static meshes are rebuilt from the authoritative SceneDB world after
         // its GPU mirror has advanced. Helio retains only transient frame data.
         Self::rebuild_static_mesh_frame(inner, &scene_store.read());
+
+        // Generic teardown for every removed/disabled component and every
+        // despawned object this pass -- see `dispatch_component_removals`'s
+        // doc. Fixes the two "was already a silent no-op" gaps noted above
+        // (`SceneObjectCache`/`LightCache`, both since deleted): a component
+        // removed while its object stays alive, or a whole object despawned,
+        // now actually tears down whatever Helio-side state it had, instead
+        // of leaking until the next full resync happens to catch it via
+        // some *other* class's own `live_keys`-based sweep (foliage/portal
+        // above) -- this covers every registered class uniformly, not just
+        // the ones that happened to build their own cache.
+        let project_root = engine_state::get_project_path()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+        Self::dispatch_component_removals(inner, &scene_store.read(), error_queue, &project_root, &removed);
     }
 
     /// Steps `SceneDb` -- advances the `SimulateA`/`SimulateB` phases,
@@ -1654,6 +1672,94 @@ impl HelioRenderer {
         // inference.
         drop(ctx);
 
+    }
+
+    /// Dispatch every `pulsar_world_registry::WorldComponentRegistration::
+    /// on_removed` a real removal calls for -- the generic replacement for
+    /// what used to be a hardcoded, light-only teardown block here (see this
+    /// fn's two callers' git history). Two sources, both already-authoritative
+    /// signals nothing here has to rebuild by hand:
+    ///
+    /// - `removed_ids`: whole objects despawned this pass (`WorldSceneStore::
+    ///   take_removed_ids`, captured *before* despawn so the stable-id string
+    ///   is still valid). Their `Entity`/`World` state is already gone by now,
+    ///   so there's no way to know precisely which classes they had --
+    ///   instead every registered class's `on_removed` is called for each,
+    ///   unconditionally. Safe: `on_removed` implementations tear down
+    ///   whatever they find *if* they find it (Light's own is a
+    ///   `scene.light_by_tag(tag)` lookup that's already a no-op when
+    ///   absent, the same shape every other class's should be) -- so calling
+    ///   a class that object never had is a guaranteed no-op, not a bug.
+    /// - `store.world().change_tracker()`'s `component_removals`: a single
+    ///   component removed/disabled off an object that's still alive
+    ///   (`World::remove::<T>`, recorded automatically the moment it
+    ///   happens -- see `pulsar_scenedb::ChangeTracker::component_removals`'s
+    ///   doc). Precise: carries the exact `ComponentId`, so only that one
+    ///   class is notified. Entries whose entity is no longer alive are
+    ///   skipped here (already covered by the `removed_ids` sweep above --
+    ///   `despawn` records one removal per component too, see `World::
+    ///   despawn_inner`, so without this skip every despawned object's
+    ///   components would be double-notified; harmless given the
+    ///   no-op-if-absent contract above, but redundant work every frame).
+    fn dispatch_component_removals(
+        inner: &mut HelioInner,
+        store: &WorldSceneStore,
+        error_queue: &Arc<Mutex<Vec<String>>>,
+        project_root: &Path,
+        removed_ids: &[String],
+    ) {
+        let empty_props = std::collections::HashMap::new();
+        let mut live_keys = LiveKeySet::new();
+        let mut subsystems = Subsystems::new();
+        subsystems.register_ref::<Renderer>(&mut inner.renderer);
+        subsystems.register_ref::<MeshCache>(&mut inner.mesh_cache);
+        subsystems.register_ref::<FoliageCache>(&mut inner.foliage_cache);
+        subsystems.register_ref::<PortalLinkCache>(&mut inner.portal_link_cache);
+        subsystems.register_ref::<ReflectionCaptureCache>(&mut inner.reflection_capture_cache);
+        subsystems.register_ref::<WaterVolumeCache>(&mut inner.water_volume_cache);
+        subsystems.register_ref::<PostProcessVolumeCache>(&mut inner.post_process_volume_cache);
+        subsystems.register_ref::<LiveKeySet>(&mut live_keys);
+        let mut ctx = HelioRuntimeContext {
+            renderer: &mut inner.renderer,
+            subsystems,
+            error_queue,
+            project_root,
+        };
+
+        for id in removed_ids {
+            let owner = RuntimeComponentOwner {
+                scene_object_id: id.as_str(),
+                position: [0.0; 3],
+                rotation: [0.0; 3],
+                scale: [1.0; 3],
+                props: &empty_props,
+            };
+            for class_name in pulsar_world_registry::registered_world_component_classes() {
+                pulsar_world_registry::notify_world_component_removed(class_name, &owner, &mut ctx);
+            }
+        }
+
+        if let Some(tracker) = store.world().change_tracker() {
+            for (entity, component_type) in tracker.drain_component_removals() {
+                let Some(stable_id) = store.stable_id_of(entity) else {
+                    // Already-despawned entity -- covered by the
+                    // `removed_ids` sweep above, see this fn's own doc.
+                    continue;
+                };
+                let owner = RuntimeComponentOwner {
+                    scene_object_id: stable_id,
+                    position: [0.0; 3],
+                    rotation: [0.0; 3],
+                    scale: [1.0; 3],
+                    props: &empty_props,
+                };
+                pulsar_world_registry::notify_world_component_removed_by_component_id(
+                    component_type,
+                    &owner,
+                    &mut ctx,
+                );
+            }
+        }
     }
 
     /// Build Helio's transient static-mesh frame buffers directly from the
@@ -1928,13 +2034,18 @@ impl HelioRenderer {
         // without a Helio-side stale-object sweep or cache.
         Self::rebuild_static_mesh_frame(inner, &scene_store.read());
 
-        // Removed entities still need to tear down persistent non-mesh actors.
+        // Generic teardown for every removed/disabled component and every
+        // despawned object -- see `dispatch_component_removals`'s doc
+        // (Pulsar-Native#561: replaces what used to be a light-only
+        // hardcoded block here). Unconditional, not gated on `!removed.
+        // is_empty()`: a single component can be removed/disabled off a
+        // still-alive object with `removed` staying empty all pass.
+        let project_root = engine_state::get_project_path()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+        Self::dispatch_component_removals(inner, &scene_store.read(), error_queue, &project_root, &removed);
+
         for id in &removed {
-            let tag = scene_id_to_tag(id.as_str());
-            let scene = inner.renderer.scene_mut();
-            if let Some(light_id) = scene.light_by_tag(tag) {
-                let _ = scene.remove_light(light_id);
-            }
             inner.known_ids.remove(id);
         }
         for id in &added {
