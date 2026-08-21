@@ -33,8 +33,11 @@
 //! - `#[register_world_component(...)]`: wires a `ComponentRuntimeBehavior`
 //!   impl into `pulsar_world_registry`'s `World`-storage bridge --
 //!   `hydrate`/`remove`/`on_removed`/`dispatch`, plus (via the `gpu_mirror`
-//!   bare flag) auto-syncing the `#[gpu]`-derived companions above. See
-//!   that macro's own doc for the full option list.
+//!   bare flag) auto-syncing the `#[gpu]`-derived companions above at
+//!   hydrate/remove time AND on every subsequent live properties-panel edit
+//!   (`refresh_gpu_mirror`, overridable for a class like `LightComponent`
+//!   whose mirror's presence is conditional on its own data). See that
+//!   macro's own doc for the full option list.
 //!
 //! # Example
 //!
@@ -1005,6 +1008,23 @@ struct RegisterWorldComponentArgs {
     /// directly from the custom function instead, same as `LightComponent`
     /// does today for its own hand-written (pre-auto-mirror) case.
     gpu_mirror: bool,
+    /// `#[register_world_component(refresh_gpu_mirror = path::to::fn)]` --
+    /// an escape hatch for a class whose `#[gpu]`-mirrored companion's
+    /// presence is conditional on its own data, the same way `remove` is an
+    /// escape hatch for `hydrate`/`remove`'s default bodies. `path` must
+    /// name a function with EXACTLY the signature `fn(&mut pulsar_scenedb::
+    /// World, pulsar_scenedb::Entity)` -- same "used directly as the fn
+    /// pointer, no wrapper" rule as `custom_remove`. Independent of
+    /// `gpu_mirror`: given alone (no bare `gpu_mirror` flag), it still wires
+    /// up `WorldComponentRegistration::refresh_gpu_mirror`, since that field
+    /// is what a live properties-panel edit needs re-run on regardless of
+    /// whether `hydrate`/`remove` also got the generic treatment. Given
+    /// alongside `gpu_mirror`, it replaces that flag's default unconditional
+    /// resync the same way `hydrate = ...` replaces the default hydrate body
+    /// (see `WorldComponentRegistration::refresh_gpu_mirror`'s own doc,
+    /// `pulsar_world_registry`, for why this exists as a distinct hook
+    /// rather than being folded into `dispatch`).
+    refresh_gpu_mirror: Option<syn::Path>,
 }
 
 impl syn::parse::Parse for RegisterWorldComponentArgs {
@@ -1013,6 +1033,7 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
         let mut on_removed = None;
         let mut custom_remove = None;
         let mut gpu_mirror = false;
+        let mut refresh_gpu_mirror = None;
         while !input.is_empty() {
             let key: syn::Ident = input.parse()?;
             match key.to_string().as_str() {
@@ -1031,10 +1052,14 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
                 "gpu_mirror" => {
                     gpu_mirror = true;
                 }
+                "refresh_gpu_mirror" => {
+                    let _: syn::Token![=] = input.parse()?;
+                    refresh_gpu_mirror = Some(input.parse()?);
+                }
                 other => {
                     return Err(syn::Error::new(
                         key.span(),
-                        format!("unknown #[register_world_component] option `{other}` (expected `hydrate`, `remove`, `on_removed`, or `gpu_mirror`)"),
+                        format!("unknown #[register_world_component] option `{other}` (expected `hydrate`, `remove`, `on_removed`, `gpu_mirror`, or `refresh_gpu_mirror`)"),
                     ))
                 }
             }
@@ -1044,7 +1069,13 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
                 break;
             }
         }
-        Ok(RegisterWorldComponentArgs { custom_hydrate, on_removed, custom_remove, gpu_mirror })
+        Ok(RegisterWorldComponentArgs {
+            custom_hydrate,
+            on_removed,
+            custom_remove,
+            gpu_mirror,
+            refresh_gpu_mirror,
+        })
     }
 }
 
@@ -1056,6 +1087,7 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
             on_removed: None,
             custom_remove: None,
             gpu_mirror: false,
+            refresh_gpu_mirror: None,
         }
     } else {
         match syn::parse::<RegisterWorldComponentArgs>(attr) {
@@ -1121,6 +1153,8 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
     let get_mut_fn_name =
         quote::format_ident!("__pulsar_world_get_engine_class_mut_{}", self_ty_ident);
     let on_removed_fn_name = quote::format_ident!("__pulsar_world_on_removed_{}", self_ty_ident);
+    let refresh_gpu_mirror_fn_name =
+        quote::format_ident!("__pulsar_world_refresh_gpu_mirror_{}", self_ty_ident);
 
     // Note this macro does NOT emit `#impl_block` -- unlike
     // `#[register_runtime_behavior]`, it's meant to be stacked alongside
@@ -1213,10 +1247,59 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         Some(custom) => (quote! {}, quote! { #custom }),
     };
 
+    // `WorldComponentRegistration::refresh_gpu_mirror`'s generated body
+    // (`pulsar_world_registry`'s own doc has the full rationale). Three
+    // shapes, same override-beats-flag precedence `hydrate`/`remove` use:
+    //   - `refresh_gpu_mirror = path` given: use directly, no wrapper.
+    //   - bare `gpu_mirror` flag, no override: unconditionally re-sync every
+    //     mirror kind `#self_ty` has one of, re-borrowing `world` once to
+    //     read `Self` and compute the (small, `Pod`/cheap) mirror values,
+    //     THEN inserting them -- can't hold `component: &Self` (itself
+    //     borrowed from `world`) across the `world.insert` calls that need
+    //     `&mut world`, same reason `hydrate`'s default body works off a
+    //     freshly-deserialized, `world`-independent `parsed` instead.
+    //   - neither: a no-op, same shape as `on_removed`'s default.
+    let (refresh_gpu_mirror_fn_def, refresh_gpu_mirror_fn_ref) = match &args.refresh_gpu_mirror {
+        Some(custom) => (quote! {}, quote! { #custom }),
+        None if args.gpu_mirror => (
+            quote! {
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                fn #refresh_gpu_mirror_fn_name(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+                    let Some((gpu_mirror, gpu_list_mirror, gpu_heavy_mirror)) =
+                        world.get::<#self_ty>(entity).map(|component| {
+                            (
+                                <#self_ty as pulsar_world_registry::GpuMirrored>::to_gpu_mirror(component),
+                                <#self_ty as pulsar_world_registry::GpuListMirrored>::to_gpu_list_mirror(component),
+                                <#self_ty as pulsar_world_registry::GpuHeavyMirrored>::to_gpu_heavy_mirror(component),
+                            )
+                        })
+                    else {
+                        return;
+                    };
+                    world.insert(entity, gpu_mirror);
+                    world.insert(entity, gpu_list_mirror);
+                    world.insert(entity, gpu_heavy_mirror);
+                }
+            },
+            quote! { #refresh_gpu_mirror_fn_name },
+        ),
+        None => (
+            quote! {
+                #[doc(hidden)]
+                #[allow(non_snake_case)]
+                fn #refresh_gpu_mirror_fn_name(_world: &mut pulsar_scenedb::World, _entity: pulsar_scenedb::Entity) {
+                }
+            },
+            quote! { #refresh_gpu_mirror_fn_name },
+        ),
+    };
+
     let output = quote! {
         #hydrate_fn_def
         #on_removed_fn_def
         #remove_fn_def
+        #refresh_gpu_mirror_fn_def
 
         #[doc(hidden)]
         #[allow(non_snake_case)]
@@ -1291,6 +1374,7 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
                 get_as_engine_class: #get_fn_name,
                 get_as_engine_class_mut: #get_mut_fn_name,
                 on_removed: #on_removed_fn_ref,
+                refresh_gpu_mirror: #refresh_gpu_mirror_fn_ref,
             }
         }
 

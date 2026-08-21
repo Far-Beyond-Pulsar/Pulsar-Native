@@ -151,6 +151,36 @@ pub struct WorldComponentRegistration {
     /// correct for any class whose `sync_component` never created
     /// consumer-side state that would otherwise leak.
     pub on_removed: fn(&RuntimeComponentOwner, &mut dyn ComponentRuntimeContext),
+    /// Re-derive this class's `#[gpu]`-mirrored companion component(s) --
+    /// `GpuMirrored`/`GpuListMirrored`/`GpuHeavyMirrored`'s associated types
+    /// -- from `entity`'s CURRENT live `World` value of `Self`, and
+    /// re-`World::insert` them.
+    ///
+    /// Closes a real gap `#[register_world_component(gpu_mirror)]` alone
+    /// didn't: that flag's generated `hydrate` calls `sync_gpu_mirror` once,
+    /// at JSON-hydrate time -- but a live properties-panel edit
+    /// (`update_live_component_property`/`get_as_engine_class_mut`, above)
+    /// mutates `Self` directly and never re-hydrates, so nothing else ever
+    /// told the companion mirror a field had changed. Callers invoke this
+    /// once per COMPONENTS/PROPS-dirty entity per sync pass (see
+    /// `HelioRenderer::sync_scene`/`sync_scene_delta`'s own Phase 2 doc,
+    /// `engine_backend`) -- deliberately NOT folded into `dispatch`
+    /// (`ComponentRuntimeBehavior::sync_component`) itself, which only ever
+    /// gets a read-only `&World` (see that field's own doc for why a
+    /// write-locked lock-through-the-whole-pass regression is exactly what
+    /// that read-only contract exists to avoid).
+    ///
+    /// Defaults to a no-op (`register_world_component` generates one when
+    /// neither the bare `gpu_mirror` flag nor an explicit `refresh_gpu_mirror
+    /// = path` override is given) -- correct for the overwhelming majority
+    /// of classes, which have nothing `#[gpu]`-marked to refresh. The bare
+    /// `gpu_mirror` flag alone generates the obvious default: unconditionally
+    /// re-sync every mirror kind `Self` has one of. A class whose mirror's
+    /// presence is conditional on its own data (`LightComponent`: "disabled
+    /// means absent, not present-with-meaningless-values") supplies
+    /// `refresh_gpu_mirror = path` instead, matching `hydrate`'s own
+    /// enabled-check.
+    pub refresh_gpu_mirror: fn(&mut World, Entity),
 }
 
 inventory::collect!(WorldComponentRegistration);
@@ -278,6 +308,26 @@ pub fn dispatch_world_component_for_class(
 ) -> bool {
     match find(class_name) {
         Some(registration) => (registration.dispatch)(world, entity, owner, component_index, context),
+        None => false,
+    }
+}
+
+/// Re-derive `class_name`'s `#[gpu]`-mirrored companion component(s) on
+/// `entity` from its current live `World` value, if that class is
+/// registered here. Returns `false` if `class_name` isn't registered --
+/// callers don't need to check first (see `WorldComponentRegistration::
+/// refresh_gpu_mirror`'s own doc for why every registration has an entry
+/// here regardless, defaulting to a no-op).
+pub fn refresh_world_component_gpu_mirror_for_class(
+    class_name: &str,
+    world: &mut World,
+    entity: Entity,
+) -> bool {
+    match find(class_name) {
+        Some(registration) => {
+            (registration.refresh_gpu_mirror)(world, entity);
+            true
+        }
         None => false,
     }
 }
@@ -752,6 +802,8 @@ mod tests {
         world.get::<TestComponent>(entity).is_some()
     }
 
+    fn test_refresh_gpu_mirror(_world: &mut World, _entity: Entity) {}
+
     inventory::submit! {
         WorldComponentRegistration {
             class_name: "TestComponent",
@@ -762,6 +814,7 @@ mod tests {
             get_as_engine_class: test_get,
             get_as_engine_class_mut: test_get_mut,
             on_removed: test_on_removed,
+            refresh_gpu_mirror: test_refresh_gpu_mirror,
         }
     }
 
@@ -889,6 +942,7 @@ mod tests {
                 get_as_engine_class: test_get,
                 get_as_engine_class_mut: test_get_mut,
                 on_removed: recording_on_removed,
+                refresh_gpu_mirror: test_refresh_gpu_mirror,
             }
         }
 

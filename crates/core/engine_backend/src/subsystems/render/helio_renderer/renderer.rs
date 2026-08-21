@@ -1402,6 +1402,7 @@ impl HelioRenderer {
         // touched `store` at all, so holding the write lock across all of it
         // was pure incidental scope creep, not a real requirement. Dirty-flag
         // draining now happens in its own short Phase 2 write lock, below.
+        let mut pending_gpu_mirror_refresh = Vec::new();
         let mut live_keys = {
             let store = scene_store.read();
             let t_snap = std::time::Instant::now();
@@ -1428,6 +1429,7 @@ impl HelioRenderer {
                     &project_root,
                     &mut planet_runtime_init_attempted,
                     &mut live_keys,
+                    &mut pending_gpu_mirror_refresh,
                 );
             }
             live_keys
@@ -1546,6 +1548,17 @@ impl HelioRenderer {
             for id in live_keys.inner() {
                 let _ = store.take_dirty_flags(id);
             }
+            // See `sync_snapshot_components`'s own doc for why this can't
+            // happen in Phase 1 above: `refresh_gpu_mirror` needs `&mut
+            // World` to re-`insert` a companion component, which Phase 1's
+            // shared read lock deliberately doesn't have.
+            for (entity, class_name) in &pending_gpu_mirror_refresh {
+                pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
+                    class_name.as_str(),
+                    store.world_mut(),
+                    *entity,
+                );
+            }
             Self::step_scene_db(&mut store);
             store.take_removed_ids()
         };
@@ -1599,6 +1612,21 @@ impl HelioRenderer {
     /// fn's own doc). `store` only needs `&self` for the duration of this call
     /// (`entity_for`, `world()`); callers hold whatever lock (read is enough)
     /// gets them that reference.
+    ///
+    /// `pending_gpu_mirror_refresh` collects `(entity, class_name)` for every
+    /// class this call successfully dispatched -- NOT applied here (this fn
+    /// only ever has `&WorldSceneStore`, deliberately: `dispatch_world_
+    /// component_for_class` only needs `&World`, which is what lets both
+    /// callers use a shared read lock across their whole Phase 1 loop
+    /// instead of a write lock held the entire pass -- see `sync_scene`'s
+    /// Phase 1 doc for the freeze bug that fixed). Callers actually apply
+    /// `pulsar_world_registry::refresh_world_component_gpu_mirror_for_class`
+    /// against each collected pair in their own short Phase 2 write lock,
+    /// alongside `step_scene_db` -- the one place that already legitimately
+    /// needs `&mut WorldSceneStore`. Harmless to record a pair whose class
+    /// has nothing to refresh (`WorldComponentRegistration::refresh_gpu_
+    /// mirror` defaults to a no-op); cheaper to always record than to ask
+    /// this read-only fn to know in advance which classes matter.
     fn sync_snapshot_components(
         inner: &mut HelioInner,
         store: &WorldSceneStore,
@@ -1607,6 +1635,7 @@ impl HelioRenderer {
         project_root: &Path,
         planet_runtime_init_attempted: &mut bool,
         live_keys: &mut LiveKeySet,
+        pending_gpu_mirror_refresh: &mut Vec<(pulsar_scenedb::Entity, String)>,
     ) {
         let owner = RuntimeComponentOwner {
             scene_object_id: snap.stable_id.as_str(),
@@ -1678,6 +1707,7 @@ impl HelioRenderer {
                     component_index,
                     &mut ctx,
                 ) {
+                    pending_gpu_mirror_refresh.push((entity, class_name));
                     continue;
                 }
             }
@@ -2042,6 +2072,7 @@ impl HelioRenderer {
 
         let mut added = Vec::new();
         let mut updated = Vec::new();
+        let mut pending_gpu_mirror_refresh = Vec::new();
         let anything_changed = !dirty.is_empty() || !removed.is_empty();
 
         // Phase 1: fresh READ lock, only entered if there's actually dirty
@@ -2078,6 +2109,7 @@ impl HelioRenderer {
                         &project_root,
                         &mut planet_runtime_init_attempted,
                         &mut live_keys,
+                        &mut pending_gpu_mirror_refresh,
                     );
                 }
                 // A TRANSFORM-only change on a static mesh or light needs no
@@ -2120,6 +2152,15 @@ impl HelioRenderer {
         // under the same guard).
         if !dirty.is_empty() {
             let mut store = scene_store.write();
+            // See `sync_snapshot_components`'s own doc for why this can't
+            // happen in Phase 1 above.
+            for (entity, class_name) in &pending_gpu_mirror_refresh {
+                pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
+                    class_name.as_str(),
+                    store.world_mut(),
+                    *entity,
+                );
+            }
             Self::step_scene_db(&mut store);
         }
 

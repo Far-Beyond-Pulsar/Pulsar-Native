@@ -364,6 +364,153 @@ fn register_world_component_gpu_mirror_flag_auto_syncs_through_hydrate_and_remov
     );
 }
 
+/// Pulsar-Native#561 (properties-panel live-edit bug): `hydrate` only ever
+/// runs once, at JSON-hydrate time -- a live edit through `get_mut`/
+/// `get_world_component_as_engine_class_mut` (the properties panel's real
+/// write path, no re-hydrate involved) must still reach the mirror when
+/// `refresh_world_component_gpu_mirror_for_class` is called, with zero
+/// hand-written sync code anywhere in `ThrowawayRegisteredComponent`'s own
+/// definition -- the bare `gpu_mirror` flag's default `refresh_gpu_mirror`
+/// body is what's under test here.
+#[test]
+fn refresh_gpu_mirror_for_class_picks_up_a_live_edit_hydrate_never_saw() {
+    let ctx = test_context();
+    let store = Arc::new(SceneGpuStore::new(&ctx, scene_cfg()));
+
+    let mut world = World::new();
+    world.attach_gpu_mirror(GpuMirrorHandle::new(Arc::clone(&store), Arc::clone(ctx.queue())));
+    let entity = world.spawn();
+
+    pulsar_world_registry::hydrate_world_component_for_class(
+        "ThrowawayRegisteredComponent",
+        &mut world,
+        entity,
+        &serde_json::json!({ "value": 13.0 }),
+    )
+    .unwrap();
+
+    type Mirror = <ThrowawayRegisteredComponent as GpuMirrored>::GpuMirror;
+    assert_eq!(world.get::<Mirror>(entity).map(|m| m.value), Some(GpuRepr(13.0)));
+
+    // The live-edit path: mutate the real `World`-resident value directly,
+    // no JSON, no re-hydrate -- exactly what `update_live_component_property`
+    // (the actual properties-panel write path, `ui_level_editor`) does.
+    world.get_mut::<ThrowawayRegisteredComponent>(entity).unwrap().value = 42.0;
+
+    // Before the refresh call: this is the bug as originally reported --
+    // the live value changed, but the mirror is still whatever hydrate saw.
+    assert_eq!(
+        world.get::<Mirror>(entity).map(|m| m.value),
+        Some(GpuRepr(13.0)),
+        "sanity: a plain live edit must NOT auto-propagate to the mirror by itself"
+    );
+
+    assert!(pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
+        "ThrowawayRegisteredComponent",
+        &mut world,
+        entity,
+    ));
+    assert_eq!(
+        world.get::<Mirror>(entity).map(|m| m.value),
+        Some(GpuRepr(42.0)),
+        "refresh_world_component_gpu_mirror_for_class must re-derive the mirror from the CURRENT live value"
+    );
+}
+
+/// A class whose mirror's presence is conditional on its own data (the
+/// `LightComponent` "disabled means absent" shape) -- proves `refresh_
+/// gpu_mirror = path` overrides the bare flag's unconditional default, and
+/// that the override sees live edits the same way the default does.
+#[engine_class(category = "Test", default, clone, debug, serialize, deserialize, no_register)]
+pub struct ThrowawayConditionalMirrorComponent {
+    #[property]
+    pub enabled: bool,
+    #[property]
+    #[gpu]
+    pub value: f32,
+}
+
+fn throwaway_conditional_refresh(
+    world: &mut pulsar_scenedb::World,
+    entity: pulsar_scenedb::Entity,
+) {
+    let Some(enabled) = world.get::<ThrowawayConditionalMirrorComponent>(entity).map(|c| c.enabled)
+    else {
+        return;
+    };
+    if enabled {
+        let mirror = world
+            .get::<ThrowawayConditionalMirrorComponent>(entity)
+            .map(GpuMirrored::to_gpu_mirror);
+        if let Some(mirror) = mirror {
+            world.insert(entity, mirror);
+        }
+    } else {
+        ThrowawayConditionalMirrorComponent::remove_gpu_mirror(world, entity);
+    }
+}
+
+#[register_world_component(refresh_gpu_mirror = throwaway_conditional_refresh)]
+#[register_runtime_behavior]
+impl ComponentRuntimeBehavior for ThrowawayConditionalMirrorComponent {
+    const CLASS_NAME: &'static str = "ThrowawayConditionalMirrorComponent";
+
+    fn sync_component(
+        _owner: &RuntimeComponentOwner,
+        _component_index: usize,
+        _component: &Self,
+        _context: &mut dyn ComponentRuntimeContext,
+    ) {
+    }
+}
+
+#[test]
+fn refresh_gpu_mirror_override_replaces_the_default_and_still_sees_live_edits() {
+    let ctx = test_context();
+    let store = Arc::new(SceneGpuStore::new(&ctx, scene_cfg()));
+
+    let mut world = World::new();
+    world.attach_gpu_mirror(GpuMirrorHandle::new(Arc::clone(&store), Arc::clone(ctx.queue())));
+    let entity = world.spawn();
+    world.insert(entity, ThrowawayConditionalMirrorComponent { enabled: true, value: 7.0 });
+
+    type Mirror = <ThrowawayConditionalMirrorComponent as GpuMirrored>::GpuMirror;
+    assert!(
+        world.get::<Mirror>(entity).is_none(),
+        "a plain World::insert (no hydrate) must not have a mirror yet"
+    );
+
+    assert!(pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
+        "ThrowawayConditionalMirrorComponent",
+        &mut world,
+        entity,
+    ));
+    assert_eq!(world.get::<Mirror>(entity).map(|m| m.value), Some(GpuRepr(7.0)));
+
+    // Live edit, then refresh again -- the override must see it, same as the default.
+    world.get_mut::<ThrowawayConditionalMirrorComponent>(entity).unwrap().value = 99.0;
+    pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
+        "ThrowawayConditionalMirrorComponent",
+        &mut world,
+        entity,
+    );
+    assert_eq!(world.get::<Mirror>(entity).map(|m| m.value), Some(GpuRepr(99.0)));
+
+    // Disabling and refreshing must remove the mirror, not leave a stale one --
+    // this is exactly the behavior the bare `gpu_mirror` flag's unconditional
+    // default CANNOT express, which is why this override exists.
+    world.get_mut::<ThrowawayConditionalMirrorComponent>(entity).unwrap().enabled = false;
+    pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
+        "ThrowawayConditionalMirrorComponent",
+        &mut world,
+        entity,
+    );
+    assert!(
+        world.get::<Mirror>(entity).is_none(),
+        "disabling must remove the mirror, not leave the last-synced value behind"
+    );
+}
+
 // ── GpuListMirrored: the SEPARATE var-len companion for #[gpu] Vec<T> ──────
 
 /// An already-Pod custom record type -- the same shape `StaticMeshComponent
