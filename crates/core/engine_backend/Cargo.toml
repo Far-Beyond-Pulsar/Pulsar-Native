@@ -7,6 +7,10 @@ version = "0.1.34"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Test-only -- blocks on wgpu's async adapter/device requests in the
+# Transform GPU-mirror test (scene/world_store.rs), same pinned version
+# `helio-component` already uses for the identical purpose.
+pollster = "=0.4.0"
 
 [build-dependencies]
 toml = { workspace = true }
@@ -81,7 +85,15 @@ walkdir = { workspace = true, optional = true }
 
 [features]
 default = ["render", "editor-ui", "pie", "networking", "vcs", "physics"]
-render     = ["dep:helio", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:wgpu", "dep:bytemuck"]
+# Not a real dependency toggle -- exists solely so `#[cfg(feature = "gpu")]`
+# embedded in `pulsar_scenedb_derive`'s generated code (`#[derive(SceneStore)]`
+# on `Transform`, scene/world_store.rs) evaluates true. That `cfg` checks the
+# DERIVING crate's own features, not `pulsar_scenedb`'s -- see `engine_class_
+# derive`/`helio-scenedb`'s own `[features] gpu` for the identical gotcha,
+# documented there first. Implied by `render` (GPU-column registration is
+# meaningless without wgpu anyway), not standalone-selectable.
+gpu        = []
+render     = ["dep:helio", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:wgpu", "dep:bytemuck", "gpu"]
 editor-ui  = ["dep:gpui-ce", "dep:ui", "dep:pulsar_lsp", "dep:lsp-types", "dep:ropey", "dep:flume"]
 pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "dep:wgpu"]
 networking = ["dep:reqwest", "dep:async-tungstenite", "dep:futures"]
