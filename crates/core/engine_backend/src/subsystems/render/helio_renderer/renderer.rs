@@ -483,6 +483,15 @@ impl HelioRenderer {
                     // defaults (mesh.rs) -- growable, not a hard ceiling.
                     StaticMeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, &device_arc);
 
+                    // Registers `Transform`'s packed buffer up front (rather
+                    // than relying on its own lazy auto-registration on
+                    // first `World::insert`), so a stable buffer handle
+                    // exists to hand to `rebind_transform_buffer` below
+                    // immediately, before any entity has necessarily been
+                    // spawned yet -- same reasoning `StaticMeshComponent`'s
+                    // explicit registration above already has.
+                    crate::scene::Transform::register_gpu_columns_growable(&mut gpu_store, 1024, &device_arc);
+
                     let gpu_store = Arc::new(gpu_store);
 
                     // Point Helio's own mesh storage at the SAME pools --
@@ -498,6 +507,19 @@ impl HelioRenderer {
                         .expect("register_gpu_columns_growable above must have registered this pool");
                     if let Some(inner) = self.inner.as_mut() {
                         inner.renderer.scene_mut().rebind_static_mesh_pools(vertex_pool, index_pool);
+                        // Deliberately NOT resolving/rebinding Transform's
+                        // buffer here too: unlike the var-len mesh pools
+                        // above (a stable `Arc<VarLenGpuPool<T>>` wrapper
+                        // that always reflects its OWN current buffer, even
+                        // after it regrows), `resolve_buffer_handle` returns
+                        // a snapshot current only at the moment it's called
+                        // -- see that method's own doc ("never a stale
+                        // snapshot" describes the RETURN VALUE, not a
+                        // promise the caller can cache it forever). Caching
+                        // one Arc<wgpu::Buffer> here, once, would silently
+                        // go stale the first time Transform's packed buffer
+                        // reallocates past its initial capacity. Re-resolved
+                        // every frame instead, in `rebuild_light_frame`.
                     }
 
                     let mirror = GpuMirrorHandle::new(gpu_store, queue_arc.clone());
@@ -1887,6 +1909,21 @@ impl HelioRenderer {
     /// place that combines it with the real, current transform before use,
     /// same split `rebuild_static_mesh_frame` uses for mesh geometry.
     fn rebuild_light_frame(inner: &mut HelioInner, store: &WorldSceneStore) {
+        // Re-resolved every call, deliberately -- see the lazy-init block's
+        // own comment (above, in the `render` command handler) for why a
+        // one-time cached buffer reference would go stale the first time
+        // Transform's packed buffer reallocates. `resolve_buffer_handle` is
+        // a cheap registry lookup + Arc clone, not a GPU operation, so
+        // doing this every frame costs nothing worth avoiding.
+        if let Some(mirror) = store.world().gpu_mirror() {
+            let gpu_store = mirror.store();
+            if let Some(key) = gpu_store.buffer_key_for(crate::scene::Transform::packed_gpu_component_id()) {
+                if let Some(handle) = gpu_store.resolve_buffer_handle(key) {
+                    inner.renderer.scene_mut().rebind_transform_buffer(handle.buffer.into());
+                }
+            }
+        }
+
         let mut inputs = Vec::new();
         for (entity, (mirror, transform)) in store
             .world()
