@@ -1893,6 +1893,13 @@ impl HelioRenderer {
             .query::<(&LightComponentGpuMirror, &crate::scene::Transform)>()
         {
             let mut light = mirror.to_helio_gpu_light();
+            // TRANSITIONAL: still combined here on the CPU, same as before.
+            // `entity_index` below is real and already flows all the way
+            // through to `GpuLightEntityIndexBuffer` (see that type's own
+            // doc, helio-core) -- once the lighting/shadow/cull passes that
+            // need position are updated to read `Transform`'s own GPU
+            // buffer through it, THIS combination becomes redundant and
+            // should be deleted, not kept as a second source of truth.
             light.position_range[0] = transform.position[0];
             light.position_range[1] = transform.position[1];
             light.position_range[2] = transform.position[2];
@@ -1900,7 +1907,7 @@ impl HelioRenderer {
                 .stable_id_of(entity)
                 .map(scene_id_to_tag)
                 .unwrap_or(entity.index() as u64);
-            inputs.push(helio::LightRenderInput { light, user_tag });
+            inputs.push(helio::LightRenderInput { light, user_tag, entity_index: entity.index() });
         }
         inner.renderer.scene_mut().rebuild_light_instances(&inputs);
     }
