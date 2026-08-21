@@ -964,8 +964,9 @@ struct RegisterWorldComponentArgs {
     on_removed: Option<syn::Path>,
     /// `#[register_world_component(remove = path::to::fn)]` -- an escape
     /// hatch for a type whose hydrate ALSO populates a companion `World`
-    /// component (e.g. `LightComponent`'s `#[gpu]`-mirrored `LightGpuData`,
-    /// Pulsar-Native#561) that removing just `Self` would leave orphaned.
+    /// component (e.g. `LightComponent`'s auto-generated `#[gpu]`-mirrored
+    /// `LightComponentGpuMirror`, Pulsar-Native#561) that removing just
+    /// `Self` would leave orphaned.
     /// `path` must name a function with EXACTLY the signature
     /// `fn(&mut pulsar_scenedb::World, pulsar_scenedb::Entity)` -- same
     /// "used directly as the fn pointer, no wrapper" rule as `custom_hydrate`.
@@ -1389,10 +1390,12 @@ fn has_sub_props_attr(field: &Field) -> bool {
 // ── Auto-derived GPU mirroring (Pulsar-Native#561) ──────────────────────────
 //
 // `#[gpu]` on a `#[property]` field opts it into an auto-generated, `Pod`,
-// SceneDB-mirrored companion component -- the same pattern
-// `LightGpuData`/`LightGpuRow` (`helio_component`) proved by hand, now
-// generated here instead of hand-written per component. See
-// `gpu_mirror_codegen`'s doc for the composed-struct shape and
+// SceneDB-mirrored companion component -- the pattern `LightComponent`'s own
+// hand-written `LightGpuData`/`LightGpuRow` companion (`helio_component`)
+// proved out by hand before this generator existed; `LightComponent` itself
+// has since been normalized onto this exact generated path (its
+// `LightComponentGpuMirror`), with no hand-written companion of its own left
+// at all. See `gpu_mirror_codegen`'s doc for the composed-struct shape and
 // `pulsar_world_registry::GpuMirrored`'s doc for the runtime contract this
 // generates an impl of.
 

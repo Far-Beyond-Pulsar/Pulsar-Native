@@ -323,15 +323,19 @@ pub fn registered_world_component_classes() -> impl Iterator<Item = &'static str
 
 // ── Auto-derived GPU mirroring (Pulsar-Native#561) ──────────────────────────
 //
-// `LightGpuData` (`helio_component`) proved the pattern by hand: a second,
+// `LightComponent`'s original hand-written `LightGpuData`/`LightGpuRow`
+// companion (`helio_component`) proved the pattern by hand: a second,
 // `#[gpu]`-mirrored SceneDB component holding only a type's render-relevant,
 // `Pod`-safe translation, kept in step by hydrate, so a renderer never has
 // to hand-roll a Helio-side cache/sync-by-diff for that data again. This
 // section is the same pattern generated automatically by `engine_class_
-// derive` for any `#[property]` field marked `#[gpu]` -- see that crate's
-// doc for the packing rules (numeric primitives and fixed-size arrays of
-// them as-is, `bool`/plain enums as `u32`, anything else a compile error
-// unless the `#[gpu]` is removed) and how `#[sub_props]` nesting composes.
+// derive` for any `#[property]` field marked `#[gpu]` -- `LightComponent`
+// itself has since been normalized onto it (its `LightComponentGpuMirror`),
+// with no hand-written companion left. See `GpuRepr<T>`'s doc below for the
+// (universal -- any `Copy` type mirrors as its own exact bytes, no
+// allowlist/denylist/semantic conversion) packing rule, and `GpuHeavy<T>`'s
+// doc for the separate handle/heavy-element split, and `engine_class_
+// derive`'s own doc for how `#[sub_props]` nesting composes.
 
 /// A type whose `#[gpu]`-marked `#[property]` fields (`engine_class_derive`)
 /// have an automatically-derived, `Pod`, SceneDB-mirrorable translation.
@@ -472,9 +476,10 @@ unsafe impl pulsar_scenedb::Pod for NoGpuMirror {}
 /// packed buffer + one write back to the classic one-buffer-per-field
 /// split, for the whole struct, just because one field happened to need a
 /// list. Two independently-mirrored companion components (both riding the
-/// SAME entity, exactly like `LightComponent` + `LightGpuData` already do)
-/// keeps the packed half fully packed regardless of whether the list half
-/// is even present.
+/// SAME entity -- a component with both a packed scalar `#[gpu]` field and
+/// a `#[gpu] Vec<T>` field gets one of each, `{Name}GpuMirror` and
+/// `{Name}GpuListMirror`, entirely separate types) keeps the packed half
+/// fully packed regardless of whether the list half is even present.
 ///
 /// `engine_class_derive` generates an impl of this for EVERY
 /// `#[engine_class(...)]`-processed struct, unconditionally -- same

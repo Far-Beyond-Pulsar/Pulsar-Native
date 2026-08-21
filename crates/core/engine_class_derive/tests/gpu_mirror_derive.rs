@@ -1,17 +1,19 @@
 //! Proves `#[gpu]` on a `#[property]` field (Pulsar-Native#561's
 //! auto-derived GPU mirroring, `gpu_mirror_codegen` in `src/lib.rs`) works
-//! end to end, in isolation, on throwaway test types -- before any real
-//! primitive (reflection capture, water volume, ...) is pointed at it.
+//! end to end, in isolation, on throwaway test types -- `LightComponent`
+//! (`helio_component`) is the real primitive now pointed at this exact
+//! mechanism (`LightComponentGpuMirror`, no hand-written companion left).
 //!
 //! Covers the universal `pulsar_world_registry::GpuRepr<T>` wrapping (ANY
 //! `Copy` type mirrors as its own exact bytes -- no classification, no
-//! bool/enum-to-u32 conversion, see that type's own doc for why), `#[sub_
-//! props]` composition (a containing struct's mirror embeds its sub-props
-//! groups' own independently-generated mirrors), the `NoGpuMirror` case for
-//! a struct with no `#[gpu]` fields at all, and that the real GPU buffer
-//! ends up holding the actual bytes -- the same "byte-identical, no
-//! translation-layer duplication" proof `LightGpuData` (`helio_component`,
-//! hand-written) and `scene_store_delegation.rs` (`#[engine_class(
+//! bool/enum-to-u32 conversion, see that type's own doc for why), `GpuHeavy
+//! <T>`'s separate handle/heavy-element split, `#[sub_props]` composition (a
+//! containing struct's mirror embeds its sub-props groups' own
+//! independently-generated mirrors), the `NoGpuMirror` case for a struct
+//! with no `#[gpu]` fields at all, and that the real GPU buffer ends up
+//! holding the actual bytes -- the same "byte-identical, no translation-
+//! layer duplication" proof `LightComponentGpuMirror`'s own mirror test
+//! (`helio_component`) and `scene_store_delegation.rs` (`#[engine_class(
 //! scene_store, ...)]`, a different mechanism entirely) each make for their
 //! own mechanism.
 
@@ -224,8 +226,8 @@ fn gpu_mirror_lands_on_the_real_gpu_through_sync_gpu_mirror() {
     // the composed `sub` field), which Rust's own (unspecified, no
     // `#[repr(C)]`) struct layout for `Mirror` has no obligation to match
     // byte-for-byte -- a raw reinterpret cast is only safe when the two
-    // happen to agree, which isn't guaranteed here the way it trivially was
-    // for `LightGpuData`'s single-field case.
+    // happen to agree, which isn't guaranteed here the way it trivially is
+    // for a single-field wrapper.
     type Mirror = <ThrowawayMirroredComponent as GpuMirrored>::GpuMirror;
     const INTENSITY_OFFSET: u64 = 0;
     const SUB_ENABLED_OFFSET: u64 = 4;
@@ -390,8 +392,9 @@ fn gpu_list_mirror_lands_on_the_real_gpu_as_a_var_len_pool() {
     assert_eq!(stored.vertices, vec![GpuRepr(ThrowawayVertex { position: [9.0, 9.0, 9.0], id: 42 })]);
 
     // The `vertices` field's var-len pool is real GPU storage (same
-    // zero-manual-registration guarantee `LightGpuData`'s own mirror test
-    // makes for the packed/fixed half) -- same derive-assigned buffer-key
+    // zero-manual-registration guarantee `LightComponentGpuMirror`'s own
+    // mirror test makes for the packed/fixed half) -- same derive-assigned
+    // buffer-key
     // naming convention (`"{Struct}::{field}"`) `static_mesh_component_
     // gpu_mirror.rs` reads back through for its own var-len fields. The
     // pool's element type is `GpuRepr<ThrowawayVertex>` (the wrapper this
