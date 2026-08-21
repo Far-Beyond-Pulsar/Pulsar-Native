@@ -2923,6 +2923,7 @@ dependencies = [
  "libloading 0.9.0",
  "lsp-types",
  "parking_lot",
+ "pollster 0.4.0",
  "profiling 0.1.0",
  "pulsar_events",
  "pulsar_lsp",
