@@ -2929,7 +2929,7 @@ dependencies = [
  "pulsar_pie_abi",
  "pulsar_reflection",
  "pulsar_scene",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=cce08e082422c809d232412aea461296d9018650)",
  "pulsar_world_registry",
  "rapier3d",
  "reqwest 0.13.4",
@@ -2958,7 +2958,7 @@ dependencies = [
  "pollster 1.0.1",
  "proc-macro2",
  "pulsar_reflection",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=cce08e082422c809d232412aea461296d9018650)",
  "pulsar_world_registry",
  "quote",
  "serde",
@@ -4427,7 +4427,7 @@ dependencies = [
  "meshopt",
  "openxr",
  "pollster 0.4.0",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=5debad1763886de125a2308536541f9b348bfef1)",
  "quark",
  "thiserror 2.0.20",
  "web-time",
@@ -5036,7 +5036,7 @@ dependencies = [
  "pollster 0.4.0",
  "pulsar_events",
  "pulsar_reflection",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=cce08e082422c809d232412aea461296d9018650)",
  "pulsar_terrain",
  "pulsar_world_registry",
  "serde",
@@ -5358,9 +5358,9 @@ checksum = "298459143998310acd25ffe6810ed544932242d3f07083eee1084d83a71bd632"
 
 [[package]]
 name = "icu_provider"
-version = "2.3.0"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92a7ed671a6aad807a8651a2e1782a6598fda9ce5185dd8158549e95a91c6428"
+checksum = "d27bbb9d3abbefac45d55f647c9de1d44aafcd1186eb91879afef17c396c3e73"
 dependencies = [
  "displaydoc",
  "icu_locale_core",
@@ -5943,7 +5943,7 @@ dependencies = [
  "helio_component",
  "pulsar_physics",
  "pulsar_reflection",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=cce08e082422c809d232412aea461296d9018650)",
  "pulsar_world_registry",
  "serde_json",
 ]
@@ -8787,7 +8787,7 @@ dependencies = [
  "pulsar_pie_abi",
  "pulsar_reflection",
  "pulsar_scene",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=cce08e082422c809d232412aea461296d9018650)",
  "pulsar_settings",
  "pulsar_std_bundle",
  "serde",
@@ -8842,7 +8842,7 @@ version = "0.1.0"
 dependencies = [
  "engine_class_derive",
  "pulsar_reflection",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=cce08e082422c809d232412aea461296d9018650)",
  "pulsar_world_registry",
  "serde",
  "serde_json",
@@ -8906,7 +8906,21 @@ dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
  "pulsar_reflection",
- "pulsar_scenedb_derive",
+ "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=5debad1763886de125a2308536541f9b348bfef1)",
+ "serde_json",
+ "tracing",
+ "wgpu",
+]
+
+[[package]]
+name = "pulsar_scenedb"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=cce08e082422c809d232412aea461296d9018650#cce08e082422c809d232412aea461296d9018650"
+dependencies = [
+ "ahash 0.8.12",
+ "profiling 0.1.0",
+ "pulsar_reflection",
+ "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=cce08e082422c809d232412aea461296d9018650)",
  "serde_json",
  "tracing",
  "wgpu",
@@ -8916,6 +8930,16 @@ dependencies = [
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=5debad1763886de125a2308536541f9b348bfef1#5debad1763886de125a2308536541f9b348bfef1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "pulsar_scenedb_derive"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=cce08e082422c809d232412aea461296d9018650#cce08e082422c809d232412aea461296d9018650"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8980,7 +9004,7 @@ version = "0.1.0"
 dependencies = [
  "inventory",
  "pulsar_reflection",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=cce08e082422c809d232412aea461296d9018650)",
  "serde",
  "serde_json",
 ]
@@ -13037,7 +13061,7 @@ dependencies = [
  "pulsar_physics",
  "pulsar_pie_abi",
  "pulsar_reflection",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=cce08e082422c809d232412aea461296d9018650)",
  "pulsar_world_registry",
  "raw-window-handle",
  "rfd",
@@ -15042,9 +15066,9 @@ dependencies = [
 
 [[package]]
 name = "zerovec-derive"
-version = "0.11.5"
+version = "0.11.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f212a141d820099d57ffafb9569be9617a6f27d3dc881fbee8fb56642f917a9"
+checksum = "34df6fc39dbd26ddc9c10e6a2984476e13acce22e64e4487636ef494369225da"
 dependencies = [
  "proc-macro2",
  "quote",

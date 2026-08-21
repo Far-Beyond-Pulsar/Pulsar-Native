@@ -95,7 +95,8 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     };
 
     // Extract direct #[property] fields and optional #[sub_props] flattening fields.
-    let (property_impls, property_fields, sub_props_fields, gpu_leaf_fields, gpu_list_leaf_fields): (
+    let (property_impls, property_fields, sub_props_fields, gpu_leaf_fields, gpu_list_leaf_fields, gpu_heavy_leaf_fields): (
+        Vec<_>,
         Vec<_>,
         Vec<_>,
         Vec<_>,
@@ -108,6 +109,7 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                 let mut sub_props = Vec::new();
                 let mut gpu_fields = Vec::new();
                 let mut gpu_list_fields = Vec::new();
+                let mut gpu_heavy_fields = Vec::new();
                 for field in &fields.named {
                     let has_sub_props = has_sub_props_attr(field);
                     let property_attr = parse_property_attr(field);
@@ -172,44 +174,20 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                     // `#[register_world_component(gpu_mirror)]` is ALSO
                     // used, which such a struct's own custom hydrate
                     // (`hydrate_static_mesh_component`) doesn't.
-                    if is_gpu && !is_vec_type(&field.ty) {
+                    if is_gpu && is_gpu_heavy_type(&field.ty) {
                         let field_ident = field.ident.clone().unwrap();
-                        gpu_fields.push(match classify_gpu_field_type(&field.ty) {
-                            Ok(GpuFieldPacking::Direct) => {
-                                let ty = &field.ty;
-                                Ok(GpuLeafField {
-                                    ident: field_ident.clone(),
-                                    mirror_ty: quote! { #ty },
-                                    to_mirror_expr: quote! { self.#field_ident },
-                                })
-                            }
-                            Ok(GpuFieldPacking::AsU32) => Ok(GpuLeafField {
-                                ident: field_ident.clone(),
-                                mirror_ty: quote! { u32 },
-                                to_mirror_expr: quote! { self.#field_ident as u32 },
-                            }),
-                            Err(message) => Err((field.clone(), message)),
-                        });
+                        let handle_ty = gpu_heavy_inner_type(&field.ty)
+                            .expect("is_gpu_heavy_type confirmed this is GpuHeavy<T>, so T must parse");
+                        gpu_heavy_fields.push(GpuHeavyLeafField { ident: field_ident, handle_ty });
+                    } else if is_gpu && !is_vec_type(&field.ty) {
+                        let field_ident = field.ident.clone().unwrap();
+                        gpu_fields.push(GpuLeafField { ident: field_ident, field_ty: field.ty.clone() });
                     } else if is_gpu {
                         // is_vec_type(&field.ty) == true here.
                         let field_ident = field.ident.clone().unwrap();
                         let elem_ty = vec_elem_type(&field.ty)
                             .expect("is_vec_type confirmed this is Vec<T>, so T must parse");
-                        gpu_list_fields.push(match classify_gpu_list_elem_type(&elem_ty) {
-                            Ok(GpuFieldPacking::Direct) => Ok(GpuListLeafField {
-                                ident: field_ident.clone(),
-                                mirror_ty: quote! { ::std::vec::Vec<#elem_ty> },
-                                to_mirror_expr: quote! { self.#field_ident.clone() },
-                            }),
-                            Ok(GpuFieldPacking::AsU32) => Ok(GpuListLeafField {
-                                ident: field_ident.clone(),
-                                mirror_ty: quote! { ::std::vec::Vec<u32> },
-                                to_mirror_expr: quote! {
-                                    self.#field_ident.iter().map(|v| *v as u32).collect()
-                                },
-                            }),
-                            Err(message) => Err((field.clone(), message)),
-                        });
+                        gpu_list_fields.push(GpuListLeafField { ident: field_ident, elem_ty });
                     }
 
                     if has_sub_props {
@@ -217,7 +195,7 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                     }
                 }
                 let (impls, fields): (Vec<_>, Vec<_>) = props.into_iter().unzip();
-                (impls, fields, sub_props, gpu_fields, gpu_list_fields)
+                (impls, fields, sub_props, gpu_fields, gpu_list_fields, gpu_heavy_fields)
             }
             _ => {
                 return syn::Error::new_spanned(
@@ -235,13 +213,9 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
         }
     };
 
-    let (gpu_mirror_tokens, gpu_field_errors) =
-        gpu_mirror_codegen(name, &gpu_leaf_fields, &sub_props_fields);
-    let (gpu_list_mirror_tokens, gpu_list_field_errors) =
-        gpu_list_mirror_codegen(name, &gpu_list_leaf_fields);
-    if !gpu_field_errors.is_empty() || !gpu_list_field_errors.is_empty() {
-        return quote! { #(#gpu_field_errors)* #(#gpu_list_field_errors)* }.into();
-    }
+    let gpu_mirror_tokens = gpu_mirror_codegen(name, &gpu_leaf_fields, &sub_props_fields);
+    let gpu_list_mirror_tokens = gpu_list_mirror_codegen(name, &gpu_list_leaf_fields);
+    let gpu_heavy_mirror_tokens = gpu_heavy_mirror_codegen(name, &gpu_heavy_leaf_fields);
 
     // Generate auto-property methods (getters and setters)
     let property_method_items = generate_property_method_items(&property_fields, name);
@@ -460,6 +434,7 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
         #(#sub_props_assertions)*
         #gpu_mirror_tokens
         #gpu_list_mirror_tokens
+        #gpu_heavy_mirror_tokens
     }
     .into()
 }
@@ -494,6 +469,37 @@ fn vec_elem_type(ty: &syn::Type) -> Option<syn::Type> {
     let syn::Type::Path(type_path) = ty else { return None };
     let last = type_path.path.segments.last()?;
     if last.ident != "Vec" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &last.arguments else { return None };
+    if args.args.len() != 1 {
+        return None;
+    }
+    match args.args.first()? {
+        syn::GenericArgument::Type(t) => Some(t.clone()),
+        _ => None,
+    }
+}
+
+/// Same syntactic-only check `is_vec_type` makes for `Vec<T>`, for
+/// `pulsar_world_registry::GpuHeavy<T>` -- a proc macro has no way to ask
+/// "does this field's type implement `GpuUploadSource`" (trait resolution
+/// happens after macro expansion, not during it), so `GpuHeavy<T>` being a
+/// distinct, purpose-built wrapper the field's own type signature names is
+/// what makes this field shape detectable at all -- see that type's own
+/// doc for the full rationale.
+fn is_gpu_heavy_type(ty: &syn::Type) -> bool {
+    let syn::Type::Path(type_path) = ty else { return false };
+    type_path.path.segments.last().map(|s| s.ident == "GpuHeavy").unwrap_or(false)
+}
+
+/// Returns `Some(T)` if `ty` is syntactically `GpuHeavy<T>` -- the handle
+/// type to splice, unwrapped, into the generated heavy/handle mirror
+/// (`gpu_heavy_mirror_codegen`).
+fn gpu_heavy_inner_type(ty: &syn::Type) -> Option<syn::Type> {
+    let syn::Type::Path(type_path) = ty else { return None };
+    let last = type_path.path.segments.last()?;
+    if last.ident != "GpuHeavy" {
         return None;
     }
     let syn::PathArguments::AngleBracketed(args) = &last.arguments else { return None };
@@ -970,10 +976,12 @@ struct RegisterWorldComponentArgs {
     /// `custom_remove`'s inverse, no `= path`) that makes the DEFAULT
     /// (non-custom) generated `hydrate`/`remove` also call `Self`'s
     /// `pulsar_world_registry::GpuMirrored::sync_gpu_mirror`/
-    /// `remove_gpu_mirror` AND its `GpuListMirrored::sync_gpu_list_mirror`/
-    /// `remove_gpu_list_mirror` (the packed-scalar and var-len-list
-    /// companions respectively -- see `GpuListMirrored`'s doc for why
-    /// they're separate) -- the auto-derived counterpart to
+    /// `remove_gpu_mirror`, its `GpuListMirrored::sync_gpu_list_mirror`/
+    /// `remove_gpu_list_mirror`, AND its `GpuHeavyMirrored::sync_gpu_heavy_
+    /// mirror`/`remove_gpu_heavy_mirror` (the packed-scalar, var-len-list,
+    /// and heavy/handle-split companions respectively -- see
+    /// `GpuListMirrored`'s/`GpuHeavyMirrored`'s docs for why each is
+    /// separate) -- the auto-derived counterpart to
     /// `LightComponent`'s hand-written `hydrate_light_component`/
     /// `remove_light_component` (Pulsar-Native#561). Explicit opt-in rather
     /// than automatic for every type (`#[engine_class]` already generates a
@@ -1128,6 +1136,7 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         quote! {
             <#self_ty as pulsar_world_registry::GpuMirrored>::sync_gpu_mirror(&parsed, world, entity);
             <#self_ty as pulsar_world_registry::GpuListMirrored>::sync_gpu_list_mirror(&parsed, world, entity);
+            <#self_ty as pulsar_world_registry::GpuHeavyMirrored>::sync_gpu_heavy_mirror(&parsed, world, entity);
         }
     });
     let (hydrate_fn_def, hydrate_fn_ref) = match &args.custom_hydrate {
@@ -1181,6 +1190,7 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         quote! {
             <#self_ty as pulsar_world_registry::GpuMirrored>::remove_gpu_mirror(world, entity);
             <#self_ty as pulsar_world_registry::GpuListMirrored>::remove_gpu_list_mirror(world, entity);
+            <#self_ty as pulsar_world_registry::GpuHeavyMirrored>::remove_gpu_heavy_mirror(world, entity);
         }
     });
     let (remove_fn_def, remove_fn_ref) = match &args.custom_remove {
@@ -1390,164 +1400,33 @@ fn has_gpu_attr(field: &Field) -> bool {
     field.attrs.iter().any(|attr| attr.path().is_ident("gpu"))
 }
 
-/// How a `#[gpu]` field's declared type packs into the generated mirror
-/// struct. Purely syntactic (a proc-macro has no type-resolution access to
-/// what a bare identifier like `LightType` actually IS) -- same limitation,
-/// same accepted tradeoff, `pulsar_scenedb_derive`'s own `#[gpu]` field
-/// parsing already documents for its identical situation (`var_len.rs`'s
-/// `Vec<T>` detection: "a syntactic check, not a real type-resolution one").
-/// A wrong guess here is a plain, immediate compile error at the generated
-/// cast/field-type site -- never a silent miscompile.
-enum GpuFieldPacking {
-    /// The mirror field has the exact same type; copied as-is. Recognized
-    /// `Pod` numeric primitives, and fixed-size arrays of them (`[f32; 3]`,
-    /// `[u32; 4]`, ...) -- covers everything `pulsar_scenedb::page`'s own
-    /// blanket `Pod` impls do.
-    Direct,
-    /// The mirror field is `u32`, produced via `self.field as u32`. Covers
-    /// `bool` (`true as u32 == 1`) and any plain (fieldless) enum -- Rust
-    /// allows a numeric cast on both without needing to know which one this
-    /// is, and rejects the cast outright (a normal compile error) if the
-    /// field's real type turns out to be neither.
-    AsU32,
-}
-
-/// Type names this crate will not even attempt to pack -- heap-allocated or
-/// indirection-carrying shapes where a numeric cast could never be right
-/// (an asset path `String`, a `Vec<T>` list, ...). Checked BEFORE falling
-/// back to [`GpuFieldPacking::AsU32`], so these get a clear, specific
-/// compile error instead of a confusing "non-primitive cast" one from rustc
-/// three steps removed from the field declaration.
-const GPU_FIELD_DENYLIST: &[&str] = &[
-    "String", "str", "Vec", "Option", "HashMap", "BTreeMap", "HashSet", "BTreeSet", "Box", "Arc",
-    "Rc", "RefCell", "Cell",
-];
-
-fn is_pod_primitive_ident(ident: &str) -> bool {
-    matches!(
-        ident,
-        "f32" | "f64" | "u8" | "u16" | "u32" | "u64" | "u128" | "usize" | "i8" | "i16" | "i32" | "i64" | "i128" | "isize"
-    )
-}
-
-/// Classifies a `#[gpu]` field's type, or returns the field-facing error
-/// message for a type this generator refuses to guess at.
-fn classify_gpu_field_type(ty: &Type) -> Result<GpuFieldPacking, String> {
-    match ty {
-        Type::Path(type_path) => {
-            let Some(seg) = type_path.path.segments.last() else {
-                return Err("#[gpu] field has an empty type path".to_string());
-            };
-            let name = seg.ident.to_string();
-            if GPU_FIELD_DENYLIST.contains(&name.as_str()) {
-                return Err(format!(
-                    "#[gpu] does not support `{name}` -- it isn't a fixed-size, \
-                     Pod-representable value. Remove #[gpu] from this field (it \
-                     stays a normal, non-mirrored property)."
-                ));
-            }
-            if is_pod_primitive_ident(&name) {
-                Ok(GpuFieldPacking::Direct)
-            } else {
-                // Not a recognized primitive and not deny-listed -- assumed
-                // to be `bool` or a plain enum; see this fn's own doc for
-                // why that's a safe assumption to emit code for (rustc is
-                // the real backstop, not this classification).
-                Ok(GpuFieldPacking::AsU32)
-            }
-        }
-        Type::Array(array) => match classify_gpu_field_type(&array.elem)? {
-            GpuFieldPacking::Direct => Ok(GpuFieldPacking::Direct),
-            GpuFieldPacking::AsU32 => Err(
-                "#[gpu] does not support an array of bool/enum elements -- only \
-                 arrays of Pod numeric primitives (e.g. [f32; 3]) are supported. \
-                 Remove #[gpu] from this field."
-                    .to_string(),
-            ),
-        },
-        _ => Err(
-            "#[gpu] requires a Pod numeric primitive, bool, plain enum, or a \
-             fixed-size array of one -- this field's type isn't recognized as \
-             any of those. Remove #[gpu] from this field."
-                .to_string(),
-        ),
-    }
-}
-
-/// Same idea as [`classify_gpu_field_type`], for a `#[gpu] Vec<T>` field's
-/// ELEMENT type `T` -- but with a different fallback for an unrecognized
-/// plain path type. A scalar `#[gpu]` field defaults an unrecognized type
-/// to `AsU32` (bool/enum is the overwhelmingly likely case there); a `Vec<T>`
-/// element is at least as likely to be an already-Pod custom record type
-/// (e.g. `StaticMeshComponent::vertices`'s `PackedVertex` -- a real, already-
-/// shipped case, not hypothetical) as it is a plain enum, and casting a
-/// multi-field struct `as u32` is a compile error, not a useful guess. So
-/// this defaults the unrecognized case to `Direct` (pass the element type
-/// through verbatim into the generated `Vec<T>` mirror field) instead --
-/// correct for a Pod struct, and still a plain, clear compile error (via
-/// the generated mirror's own `#[derive(SceneStore)]` needing `T: Pod`) if
-/// the guess is wrong, same "rustc is the real backstop" contract
-/// `classify_gpu_field_type` documents. `bool` itself is still explicitly
-/// `AsU32` (unambiguous either way).
-fn classify_gpu_list_elem_type(ty: &Type) -> Result<GpuFieldPacking, String> {
-    match ty {
-        Type::Path(type_path) => {
-            let Some(seg) = type_path.path.segments.last() else {
-                return Err("#[gpu] Vec<T> field has an empty element type path".to_string());
-            };
-            let name = seg.ident.to_string();
-            if GPU_FIELD_DENYLIST.contains(&name.as_str()) {
-                return Err(format!(
-                    "#[gpu] does not support Vec<{name}> -- `{name}` isn't a fixed-size, \
-                     Pod-representable value. Remove #[gpu] from this field (it stays a \
-                     normal, non-mirrored property)."
-                ));
-            }
-            if name == "bool" {
-                Ok(GpuFieldPacking::AsU32)
-            } else {
-                // Recognized primitive: Direct, correctly. Anything else:
-                // ALSO Direct, on the "likely an already-Pod record type"
-                // assumption above -- not necessarily correct, but the
-                // wrong-guess failure mode is a clear compile error, not a
-                // silent miscompile.
-                Ok(GpuFieldPacking::Direct)
-            }
-        }
-        Type::Array(_) => Ok(GpuFieldPacking::Direct),
-        _ => Err(
-            "#[gpu] Vec<T> requires T to be a Pod-representable element type -- this \
-             element type isn't recognized as one. Remove #[gpu] from this field."
-                .to_string(),
-        ),
-    }
-}
-
 /// One `#[gpu]`-marked leaf field, ready to splice into the generated
-/// mirror struct/conversion.
+/// mirror struct/conversion. Every field is wrapped in `pulsar_world_
+/// registry::GpuRepr<FieldTy>` -- see that type's doc for why this is
+/// universal (any `Copy` type, no per-shape classification) rather than a
+/// hand-maintained list of "recognized" shapes: a `bool` stays 1 byte, an
+/// enum stays whatever bytes its own `#[repr]` gives it, an already-Pod
+/// custom struct passes through unchanged, all via the exact same wrapper.
+/// A field whose type isn't `Copy` fails at the generated struct's own
+/// `derive(Clone, Copy)` / `GpuRepr<T>` bound -- a plain, ordinary rustc
+/// error at the point that's actually wrong, not a hand-rolled one here.
 struct GpuLeafField {
     ident: syn::Ident,
-    /// The mirror struct field's own type (verbatim `field.ty` for
-    /// `Direct`, `u32` for `AsU32`).
-    mirror_ty: proc_macro2::TokenStream,
-    /// The expression (in scope of `self`) producing this field's mirror
-    /// value.
-    to_mirror_expr: proc_macro2::TokenStream,
+    /// The field's own declared type (unwrapped -- `gpu_mirror_codegen`
+    /// wraps it in `GpuRepr<..>` when splicing the mirror struct's field
+    /// definition).
+    field_ty: syn::Type,
 }
 
 /// One `#[gpu] Vec<T>`-marked leaf field for the SEPARATE var-len list
 /// mirror (`gpu_list_mirror_codegen`) -- see [`pulsar_world_registry::
 /// GpuListMirrored`]'s doc for why this is a second companion, not folded
-/// into [`GpuLeafField`]'s packed one.
+/// into [`GpuLeafField`]'s packed one. Same universal `GpuRepr<T>` wrapping
+/// as the scalar case, applied to the `Vec`'s element type.
 struct GpuListLeafField {
     ident: syn::Ident,
-    /// The mirror struct field's own type: `Vec<ElemTy>`, where `ElemTy` is
-    /// `T` verbatim for `Direct` elements, `u32` for `AsU32` ones (`Vec<bool>`,
-    /// `Vec<SomePlainEnum>`).
-    mirror_ty: proc_macro2::TokenStream,
-    /// The expression (in scope of `self`) producing this field's mirror
-    /// `Vec`.
-    to_mirror_expr: proc_macro2::TokenStream,
+    /// `T` in the source field's `Vec<T>`.
+    elem_ty: syn::Type,
 }
 
 /// Generates the composed `#[gpu]` mirror for one `#[engine_class]`-derived
@@ -1562,29 +1441,18 @@ struct GpuListLeafField {
 /// group happens to contribute real fields this time or the zero-sized
 /// `NoGpuMirror`).
 ///
-/// Returns `(mirror_struct_and_impl_tokens, gpu_field_errors)` -- errors are
-/// collected rather than returned as the first one found, so a struct with
-/// several bad `#[gpu]` fields reports all of them in one compile pass
-/// instead of a fix-one-see-the-next loop.
+/// No error return: every `#[gpu]` field is accepted unconditionally (see
+/// [`GpuLeafField`]'s doc) -- a type that genuinely can't work here (not
+/// `Copy`) fails at the generated `GpuRepr<T>` field's own bound, an
+/// ordinary rustc error pointing at the real cause.
 fn gpu_mirror_codegen(
     name: &syn::Ident,
-    gpu_leaf_fields: &[Result<GpuLeafField, (Field, String)>],
+    gpu_leaf_fields: &[GpuLeafField],
     sub_props_fields: &[&Field],
-) -> (proc_macro2::TokenStream, Vec<proc_macro2::TokenStream>) {
-    let mut errors = Vec::new();
-    let mut ok_leaves = Vec::new();
-    for result in gpu_leaf_fields {
-        match result {
-            Ok(leaf) => ok_leaves.push(leaf),
-            Err((field, message)) => {
-                errors.push(syn::Error::new_spanned(field, message).to_compile_error());
-            }
-        }
-    }
-
-    if ok_leaves.is_empty() && sub_props_fields.is_empty() {
+) -> proc_macro2::TokenStream {
+    if gpu_leaf_fields.is_empty() && sub_props_fields.is_empty() {
         // Nothing to mirror -- the trivial, common-case impl.
-        let tokens = quote! {
+        return quote! {
             impl pulsar_world_registry::GpuMirrored for #name {
                 type GpuMirror = pulsar_world_registry::NoGpuMirror;
                 fn to_gpu_mirror(&self) -> pulsar_world_registry::NoGpuMirror {
@@ -1592,20 +1460,18 @@ fn gpu_mirror_codegen(
                 }
             }
         };
-        return (tokens, errors);
     }
 
     let mirror_name = quote::format_ident!("{}GpuMirror", name);
 
-    let leaf_field_defs = ok_leaves.iter().map(|leaf| {
+    let leaf_field_defs = gpu_leaf_fields.iter().map(|leaf| {
         let ident = &leaf.ident;
-        let ty = &leaf.mirror_ty;
-        quote! { #[gpu] pub #ident: #ty }
+        let ty = &leaf.field_ty;
+        quote! { #[gpu] pub #ident: pulsar_world_registry::GpuRepr<#ty> }
     });
-    let leaf_field_inits = ok_leaves.iter().map(|leaf| {
+    let leaf_field_inits = gpu_leaf_fields.iter().map(|leaf| {
         let ident = &leaf.ident;
-        let expr = &leaf.to_mirror_expr;
-        quote! { #ident: #expr }
+        quote! { #ident: pulsar_world_registry::GpuRepr(self.#ident) }
     });
 
     let sub_props_field_defs = sub_props_fields.iter().map(|field| {
@@ -1618,7 +1484,7 @@ fn gpu_mirror_codegen(
         quote! { #ident: pulsar_world_registry::GpuMirrored::to_gpu_mirror(&self.#ident) }
     });
 
-    let tokens = quote! {
+    quote! {
         // `#[repr(C)]` is load-bearing, not cosmetic: this struct's own
         // field order matters not just for ITS packed buffer, but for
         // correctness when a CONTAINING struct's mirror embeds this one as
@@ -1630,7 +1496,13 @@ fn gpu_mirror_codegen(
         // order is deterministic too -- without `#[repr(C)]` here, Rust's
         // default (unspecified) layout is free to reorder these fields,
         // silently corrupting every OUTER struct that nests this one.
-        #[derive(pulsar_scenedb::SceneStore, Clone, Copy, Default)]
+        //
+        // No `Default` in this derive list: every field is `GpuRepr<T>`,
+        // which only derives `Default` if `T: Default` -- an unnecessary
+        // constraint nothing here actually needs (see `pulsar_world_
+        // registry::GpuMirrored`'s trait bound, which dropped it for the
+        // same reason).
+        #[derive(pulsar_scenedb::SceneStore, Clone, Copy)]
         #[gpu(layout = packed)]
         #[repr(C)]
         #[allow(non_snake_case)]
@@ -1648,8 +1520,7 @@ fn gpu_mirror_codegen(
                 }
             }
         }
-    };
-    (tokens, errors)
+    }
 }
 
 /// Generates the SEPARATE var-len list mirror for one `#[engine_class]`-
@@ -1665,21 +1536,10 @@ fn gpu_mirror_codegen(
 /// if/when one does, not a redesign.
 fn gpu_list_mirror_codegen(
     name: &syn::Ident,
-    gpu_list_leaf_fields: &[Result<GpuListLeafField, (Field, String)>],
-) -> (proc_macro2::TokenStream, Vec<proc_macro2::TokenStream>) {
-    let mut errors = Vec::new();
-    let mut ok_leaves = Vec::new();
-    for result in gpu_list_leaf_fields {
-        match result {
-            Ok(leaf) => ok_leaves.push(leaf),
-            Err((field, message)) => {
-                errors.push(syn::Error::new_spanned(field, message).to_compile_error());
-            }
-        }
-    }
-
-    if ok_leaves.is_empty() {
-        let tokens = quote! {
+    gpu_list_leaf_fields: &[GpuListLeafField],
+) -> proc_macro2::TokenStream {
+    if gpu_list_leaf_fields.is_empty() {
+        return quote! {
             impl pulsar_world_registry::GpuListMirrored for #name {
                 type GpuListMirror = pulsar_world_registry::NoGpuMirror;
                 fn to_gpu_list_mirror(&self) -> pulsar_world_registry::NoGpuMirror {
@@ -1687,24 +1547,27 @@ fn gpu_list_mirror_codegen(
                 }
             }
         };
-        return (tokens, errors);
     }
 
     let mirror_name = quote::format_ident!("{}GpuListMirror", name);
 
-    let leaf_field_defs = ok_leaves.iter().map(|leaf| {
+    let leaf_field_defs = gpu_list_leaf_fields.iter().map(|leaf| {
         let ident = &leaf.ident;
-        let ty = &leaf.mirror_ty;
-        quote! { #[gpu] pub #ident: #ty }
+        let ty = &leaf.elem_ty;
+        quote! { #[gpu] pub #ident: ::std::vec::Vec<pulsar_world_registry::GpuRepr<#ty>> }
     });
-    let leaf_field_inits = ok_leaves.iter().map(|leaf| {
+    let leaf_field_inits = gpu_list_leaf_fields.iter().map(|leaf| {
         let ident = &leaf.ident;
-        let expr = &leaf.to_mirror_expr;
-        quote! { #ident: #expr }
+        quote! {
+            #ident: self.#ident.iter().copied().map(pulsar_world_registry::GpuRepr).collect()
+        }
     });
 
-    let tokens = quote! {
-        #[derive(pulsar_scenedb::SceneStore, Clone, Default)]
+    quote! {
+        // No `Default` here either, same reasoning `gpu_mirror_codegen`
+        // documents -- `Vec` is already `Default` regardless, but the
+        // struct-level derive isn't needed by anything that consumes this.
+        #[derive(pulsar_scenedb::SceneStore, Clone)]
         #[allow(non_snake_case)]
         pub struct #mirror_name {
             #(#leaf_field_defs,)*
@@ -1718,8 +1581,83 @@ fn gpu_list_mirror_codegen(
                 }
             }
         }
-    };
-    (tokens, errors)
+    }
+}
+
+/// One `GpuHeavy<T>`-marked leaf field for the SEPARATE heavy/handle-split
+/// mirror (`gpu_heavy_mirror_codegen`) -- see [`pulsar_world_registry::
+/// GpuHeavyMirrored`]'s doc for why this is a third companion, not folded
+/// into either `GpuLeafField`'s packed mirror or `GpuListLeafField`'s var-len
+/// one.
+struct GpuHeavyLeafField {
+    ident: syn::Ident,
+    /// `T` in the source field's `GpuHeavy<T>` -- the lightweight CPU
+    /// handle type itself, unwrapped. SceneDB's `#[gpu(mirror = Once,
+    /// heavy)]` applies directly to the handle field, never to a wrapper
+    /// around it.
+    handle_ty: syn::Type,
+}
+
+/// Generates the SEPARATE heavy/handle-split mirror for one
+/// `#[engine_class]`-derived struct's `GpuHeavy<T>` leaf fields -- see
+/// [`pulsar_world_registry::GpuHeavyMirrored`]'s doc for why this is its own
+/// companion type, and [`pulsar_world_registry::GpuHeavy`]'s doc for why
+/// this field shape needs a type-level marker at all (a proc macro can't
+/// ask "does this field's type implement `GpuUploadSource`").
+///
+/// Never `#[gpu(layout = packed)]` -- SceneDB's own derive rejects a
+/// `heavy` field inside a packed struct outright (a packed buffer's element
+/// is the struct's own interleaved record, not any one field's
+/// `GpuUploadSource::Element`), so every handle field here gets its own
+/// independently-registered buffer instead, through the ordinary fixed,
+/// one-buffer-per-field path -- exactly how SceneDB's `#[gpu(mirror = Once,
+/// heavy)]` has always worked, just reached here with no attribute of its
+/// own to write.
+fn gpu_heavy_mirror_codegen(
+    name: &syn::Ident,
+    gpu_heavy_leaf_fields: &[GpuHeavyLeafField],
+) -> proc_macro2::TokenStream {
+    if gpu_heavy_leaf_fields.is_empty() {
+        return quote! {
+            impl pulsar_world_registry::GpuHeavyMirrored for #name {
+                type GpuHeavyMirror = pulsar_world_registry::NoGpuMirror;
+                fn to_gpu_heavy_mirror(&self) -> pulsar_world_registry::NoGpuMirror {
+                    pulsar_world_registry::NoGpuMirror
+                }
+            }
+        };
+    }
+
+    let mirror_name = quote::format_ident!("{}GpuHeavyMirror", name);
+
+    let leaf_field_defs = gpu_heavy_leaf_fields.iter().map(|leaf| {
+        let ident = &leaf.ident;
+        let ty = &leaf.handle_ty;
+        quote! { #[gpu(mirror = Once, heavy)] pub #ident: #ty }
+    });
+    let leaf_field_inits = gpu_heavy_leaf_fields.iter().map(|leaf| {
+        let ident = &leaf.ident;
+        // `self.#ident` is `GpuHeavy<T>`; `.0` is the plain handle SceneDB's
+        // `heavy` mechanism actually stores/dirty-tracks.
+        quote! { #ident: self.#ident.0 }
+    });
+
+    quote! {
+        #[derive(pulsar_scenedb::SceneStore, Clone, Copy)]
+        #[allow(non_snake_case)]
+        pub struct #mirror_name {
+            #(#leaf_field_defs,)*
+        }
+
+        impl pulsar_world_registry::GpuHeavyMirrored for #name {
+            type GpuHeavyMirror = #mirror_name;
+            fn to_gpu_heavy_mirror(&self) -> #mirror_name {
+                #mirror_name {
+                    #(#leaf_field_inits,)*
+                }
+            }
+        }
+    }
 }
 
 #[derive(Default)]

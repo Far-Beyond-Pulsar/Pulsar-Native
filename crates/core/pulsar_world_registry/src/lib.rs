@@ -351,7 +351,7 @@ pub trait GpuMirrored {
     /// The `Pod` GPU-mirror type. `NoGpuMirror` when there's nothing to
     /// mirror (no `#[gpu]` fields anywhere in this struct or its
     /// `#[sub_props]`).
-    type GpuMirror: pulsar_scenedb::Pod + Default + Send + Sync + 'static;
+    type GpuMirror: pulsar_scenedb::Pod + Send + Sync + 'static;
 
     /// Translate `self`'s current `#[gpu]`-marked fields (and its
     /// `#[sub_props]` fields' own translations) into `Self::GpuMirror`.
@@ -375,6 +375,69 @@ pub trait GpuMirrored {
     /// this through.
     fn remove_gpu_mirror(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
         let _ = world.remove::<Self::GpuMirror>(entity);
+    }
+}
+
+/// Wraps ANY `Copy` type for GPU mirroring, treating its exact Rust memory
+/// representation as the GPU-side bytes -- no classification, no allowlist
+/// of "recognized" types, no semantic conversion (a `bool` stays its own
+/// 1-byte representation; an enum stays whatever bytes its own `#[repr]`
+/// gives it). This is the ONLY thing standing between an arbitrary
+/// `#[gpu]`-marked field and SceneDB's `Pod` bound -- see [`Self`]'s safety
+/// note below for exactly what it does and doesn't guarantee.
+///
+/// # Why this exists (Pulsar-Native#561: the auto-mirror generator's field
+/// support must be universal, not a hand-maintained list of "supported"
+/// shapes)
+///
+/// `pulsar_scenedb::Pod`'s own safety contract is stricter than this needs:
+/// it requires all-zero bytes (and by extension, in how it's actually used
+/// elsewhere in SceneDB, ANY byte pattern) to be a valid value of `T`,
+/// because SOME of its use sites hand out `&[T]` over raw, possibly-
+/// zeroed-or-arbitrary memory and let safe code read it back directly. A
+/// `#[gpu]`-mirrored component field is not that use site: `World::insert`
+/// only ever writes bytes copied out of an ALREADY-VALID, live `T` the
+/// caller is holding -- there is no "hand out uninitialized memory as
+/// `&Self`" step anywhere in that path. What crosses to the GPU is real
+/// data, once; what happens to those bytes after that (a shader reads
+/// them, a compute pass writes new ones back) is the consumer's problem to
+/// interpret correctly, not something the Rust type system can, or needs
+/// to, verify on the way there.
+///
+/// # Safety (for the blanket `unsafe impl Pod for GpuRepr<T>` below)
+///
+/// This is a deliberate, narrower contract than `Pod`'s doc literally
+/// states -- `GpuRepr<T>` is sound to WRITE (copy an existing `T`'s bytes
+/// out) for any `Copy` `T`, unconditionally. It is only sound to READ BACK
+/// arbitrary bytes as a live `T` (e.g. `World::get`, `readback_row` after a
+/// compute shader wrote something) if whatever produced those bytes
+/// produced a valid `T` in the first place -- exactly as true of any GPU
+/// buffer read in any graphics API, and exactly the "bytes are just bytes,
+/// the consumer interprets them" contract this type exists to make
+/// explicit rather than pretend doesn't apply.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct GpuRepr<T: Copy>(pub T);
+
+// SAFETY: see this type's own doc above -- a deliberate, narrower contract
+// than a literal reading of `Pod`'s doc comment, scoped to the write-only
+// GPU-mirror use case this type exists for.
+unsafe impl<T: Copy + Send + Sync + 'static> pulsar_scenedb::Pod for GpuRepr<T> {}
+
+impl<T: Copy> std::ops::Deref for GpuRepr<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+impl<T: Copy> std::ops::DerefMut for GpuRepr<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+impl<T: Copy> From<T> for GpuRepr<T> {
+    fn from(value: T) -> Self {
+        Self(value)
     }
 }
 
@@ -427,7 +490,7 @@ pub trait GpuListMirrored {
     /// The var-len-bearing `#[derive(SceneStore)]` companion type. Note:
     /// NOT `Pod` (a `Vec<T>`-holding struct never is) -- only
     /// `Send + Sync + 'static`, same as any ordinary `World` component.
-    type GpuListMirror: Default + Send + Sync + 'static;
+    type GpuListMirror: Send + Sync + 'static;
 
     /// Translate `self`'s current `#[gpu] Vec<T>` fields into
     /// `Self::GpuListMirror`. Reallocates its `Vec`s every call (a fresh
@@ -446,6 +509,139 @@ pub trait GpuListMirrored {
     /// Drop `entity`'s mirrored `Self::GpuListMirror`, if it has one.
     fn remove_gpu_list_mirror(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
         let _ = world.remove::<Self::GpuListMirror>(entity);
+    }
+}
+
+/// Marks a `#[property]` field as SceneDB's existing handle/heavy-element
+/// split (`pulsar_scenedb::gpu::GpuUploadSource`) -- `T` stays a lightweight
+/// CPU-side handle (an asset ID, typically 4-16 bytes); the actual
+/// GPU-resident payload (`T::Element`, arbitrarily large -- mesh data,
+/// texture data, whatever) lives in its own separately-registered buffer,
+/// produced by `T::upload_element` only when the handle itself changes, not
+/// re-uploaded on every frame.
+///
+/// # Why this exists (as a type, not a macro argument)
+///
+/// SceneDB's own `#[derive(SceneStore)]` has supported this split for a
+/// while, via `#[gpu(mirror = Once, heavy)]` on the handle field -- but
+/// `engine_class_derive`'s higher-level `#[property] #[gpu]` layer had no
+/// way to reach it at all before this type existed, short of teaching it a
+/// THIRD macro argument alongside `#[gpu]` itself. A proc macro can't ask
+/// "does this field's type implement `GpuUploadSource`" (that's a trait-
+/// resolution question, which happens after macro expansion, not during
+/// it) -- so unlike plain scalar/`Vec<T>` `#[gpu]` fields (detected purely
+/// from their own already-existing shape), a heavy field needs SOME
+/// syntactic marker for the derive to pattern-match on, the same way
+/// `Vec<T>` itself is a syntactic marker. Wrapping the handle in its own
+/// type signature (`pub mesh: GpuHeavy<MeshHandle>` -- no attribute at
+/// all) is that marker, detected by `engine_class_derive` the exact same
+/// way `Vec<T>` already is (a field-type shape check, not a new attribute
+/// argument to learn).
+///
+/// # Reflection
+///
+/// `GpuHeavy<T>` is NOT stripped away in the user's own struct (unlike
+/// `GpuRepr<T>`, which only ever appears in an auto-generated companion,
+/// invisible to the source struct) -- it stays the field's real, live type,
+/// so it must itself be usable everywhere a `#[property]` field is: cloned
+/// by the property getter/setter, and `Reflectable` for `type_info()`. Both
+/// delegate straight through to `T` (below) -- the properties panel/editor
+/// treats a `GpuHeavy<T>` field exactly as if it were a plain `T`, matching
+/// `Deref`/`DerefMut`'s existing transparency. `engine_class_derive` unwraps
+/// to the bare handle type `T` when generating the companion mirror struct
+/// (SceneDB's `#[gpu(mirror = Once, heavy)]` applies to the handle itself,
+/// not to any wrapper around it).
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub struct GpuHeavy<T>(pub T);
+
+impl<T> std::ops::Deref for GpuHeavy<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+impl<T> std::ops::DerefMut for GpuHeavy<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+impl<T> From<T> for GpuHeavy<T> {
+    fn from(value: T) -> Self {
+        Self(value)
+    }
+}
+
+// Delegates every operation straight to `T` -- see this type's own doc for
+// why a `GpuHeavy<T>` `#[property]` field should read, in the editor, as
+// nothing more than a plain `T` field. `type_info()` in particular returns
+// `T`'s own registered runtime type info (not a distinct "GpuHeavy<T>"
+// shape) -- `generate_property_metadata`'s generated code (`engine_class_
+// derive`) only ever uses it descriptively (what kind of value/editor is
+// this), never to decide how to downcast a value -- every actual get/set
+// downcasts against the field's own literal declared type (`GpuHeavy<T>`),
+// which stays internally consistent regardless of what `type_info()` says.
+impl<T: pulsar_reflection::Reflectable + Clone> pulsar_reflection::Reflectable for GpuHeavy<T> {
+    fn type_info() -> &'static pulsar_reflection::RuntimeTypeInfo
+    where
+        Self: Sized,
+    {
+        T::type_info()
+    }
+
+    fn serialize(&self, serializer: &mut dyn pulsar_reflection::TypeSerializer) -> pulsar_reflection::ReflectResult<()> {
+        self.0.serialize(serializer)
+    }
+
+    fn deserialize(deserializer: &mut dyn pulsar_reflection::TypeDeserializer) -> pulsar_reflection::ReflectResult<Self>
+    where
+        Self: Sized,
+    {
+        Ok(Self(T::deserialize(deserializer)?))
+    }
+
+    fn clone_any(&self) -> Box<dyn std::any::Any> {
+        Box::new(self.clone())
+    }
+}
+
+/// The heavy/handle-split counterpart to [`GpuMirrored`]/[`GpuListMirrored`],
+/// for `#[gpu] GpuHeavy<T>` `#[property]` fields (`T: pulsar_scenedb::gpu::
+/// GpuUploadSource`).
+///
+/// A third, independently-mirrored companion component -- same reasoning
+/// [`GpuListMirrored`]'s doc gives for why var-len fields aren't folded into
+/// [`GpuMirrored::GpuMirror`]: SceneDB's own derive rejects `#[gpu(heavy)]`
+/// inside a packed struct outright (a packed buffer's element is the
+/// struct's own interleaved record, not any one field's `GpuUploadSource::
+/// Element`), so a heavy field can't share the packed scalar mirror's
+/// struct any more than a `Vec<T>` field can. Unlike the list mirror,
+/// though, `GpuHeavyMirror` IS `Pod` -- it holds the lightweight handle(s)
+/// themselves (SceneDB's fixed, non-packed `#[gpu(mirror = Once, heavy)]`
+/// path), never the heavy `Element` data, which lives in its own
+/// separately-registered buffer entirely.
+pub trait GpuHeavyMirrored {
+    /// The `Pod` handle-holding companion type. `NoGpuMirror` when there's
+    /// no `GpuHeavy<T>` field anywhere in this struct.
+    type GpuHeavyMirror: pulsar_scenedb::Pod + Send + Sync + 'static;
+
+    /// Translate `self`'s current `GpuHeavy<T>`-typed fields into
+    /// `Self::GpuHeavyMirror` -- a plain handle copy, never a call into
+    /// `GpuUploadSource::upload_element` (SceneDB's own `write_gpu_columns_
+    /// at_row` does that, only when the handle's dirty-tracked slot is
+    /// actually written).
+    fn to_gpu_heavy_mirror(&self) -> Self::GpuHeavyMirror;
+
+    /// Insert `self`'s current heavy mirror onto `entity`. Real,
+    /// non-overridable default -- same reasoning as `GpuMirrored::
+    /// sync_gpu_mirror`.
+    fn sync_gpu_heavy_mirror(&self, world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+        world.insert(entity, self.to_gpu_heavy_mirror());
+    }
+
+    /// Drop `entity`'s mirrored `Self::GpuHeavyMirror`, if it has one.
+    fn remove_gpu_heavy_mirror(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+        let _ = world.remove::<Self::GpuHeavyMirror>(entity);
     }
 }
 
