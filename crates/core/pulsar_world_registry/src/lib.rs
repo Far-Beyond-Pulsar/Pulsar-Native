@@ -336,6 +336,38 @@ pub fn registered_world_component_classes() -> impl Iterator<Item = &'static str
 // allowlist/denylist/semantic conversion) packing rule, and `GpuHeavy<T>`'s
 // doc for the separate handle/heavy-element split, and `engine_class_
 // derive`'s own doc for how `#[sub_props]` nesting composes.
+//
+// ## The GPU upload modes this covers, and where field-level transforms fit
+//
+// A `#[gpu]` field's bytes reach a real `wgpu::Buffer` through one of a few
+// SceneDB-level upload modes, chosen by the field's own shape (never
+// something a component author picks by hand):
+//
+// - **`DirtyTracked`** (the default for a scalar `#[gpu]` field): keeps a
+//   full CPU shadow, re-uploads only the rows that actually changed since
+//   the last flush. `to_gpu_mirror()` -- and therefore any `engine_class_
+//   derive::GpuFieldOverride` (`#[gpu(as = .., with = ..)]`) on that field
+//   -- runs once per genuine property edit, never per frame.
+// - **`Once`**: uploaded a single time, at first insert, never re-run
+//   after. Cheaper still, same "not per frame" property.
+// - **Var-len** (`Vec<T>` fields, `GpuListMirrored`): a shared, growable
+//   `VarLenGpuPool<GpuRepr<T>>` suballocated per entity, freed/reallocated
+//   only when the `Vec`'s length actually changes.
+// - **Heavy** (`GpuHeavy<T>`, `GpuUploadSource`): a tiny CPU handle stands
+//   in for an arbitrarily large GPU-resident element, uploaded via
+//   `upload_element` -- the handle/heavy-element split exists for byte
+//   SIZE, a different concern from `as`/`with`'s byte SHAPE.
+//
+// `#[gpu(as = Type, with = path)]` (`engine_class_derive::GpuFieldOverride`)
+// only touches the FIRST of these today (plain scalar `DirtyTracked`/`Once`
+// fields) -- it changes what bytes a field's `to_gpu_mirror()` call
+// produces, not which of these upload paths carries them. Its performance
+// story rides entirely on the mode it's used in: since none of the above
+// modes re-run `to_gpu_mirror` per rendered frame, neither does `with` --
+// its cost is bounded by edit frequency, not frame rate, regardless of
+// which mode the field is on. See `GpuFieldOverride`'s own doc
+// (`engine_class_derive`) for the full design and the one real cost it DOES
+// have (a wider `as` target type costs more GPU storage/bandwidth per row).
 
 /// A type whose `#[gpu]`-marked `#[property]` fields (`engine_class_derive`)
 /// have an automatically-derived, `Pod`, SceneDB-mirrorable translation.

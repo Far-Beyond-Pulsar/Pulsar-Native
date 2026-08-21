@@ -1402,6 +1402,17 @@ fn has_sub_props_attr(field: &Field) -> bool {
 // at all. See `gpu_mirror_codegen`'s doc for the composed-struct shape and
 // `pulsar_world_registry::GpuMirrored`'s doc for the runtime contract this
 // generates an impl of.
+//
+// Bare `#[gpu]` mirrors a field as its own exact bytes (any `Copy` type, via
+// `GpuRepr<T>` -- no classification, see that type's own doc). When the GPU
+// consumer's own protocol genuinely differs from the property's edit-time
+// shape -- different units, an enum value the consumer has no equivalent
+// for -- `#[gpu(as = Type, with = path::to::fn)]` computes that difference
+// ONCE, at mirror-build time, instead of a hand-written function downstream
+// of the mirror. See [`GpuFieldOverride`]'s own doc for the full design,
+// when to reach for it, and the real performance trade it makes (a wider
+// GPU-side type costs more storage/bandwidth per row) against the ones it
+// doesn't (it never runs per rendered frame, in any `#[gpu]` mirror mode).
 
 fn has_gpu_attr(field: &Field) -> bool {
     field.attrs.iter().any(|attr| attr.path().is_ident("gpu"))
@@ -1430,6 +1441,59 @@ fn has_gpu_attr(field: &Field) -> bool {
 /// directly, no closure wrapper needed). Bare `#[gpu]` (the overwhelming
 /// majority of fields) skips this entirely -- the mirror holds the field's
 /// own exact type/bytes unchanged, same as before this existed.
+///
+/// # When to reach for this vs. leaving a field bare `#[gpu]`
+///
+/// Use `as`/`with` when the GPU consumer's own protocol genuinely differs
+/// from the property's edit-time shape: different units (degrees vs.
+/// radians), or a value space the editor exposes that the consumer doesn't
+/// fully support (an enum variant with no equivalent on the other side --
+/// `LightComponent`'s `LightType::Area`, remapped to `Point` for Helio,
+/// which has no area lights). Leave a field bare `#[gpu]` whenever the
+/// property's own type already IS the byte shape the consumer wants --
+/// which is the overwhelming majority of fields; reaching for `with` when
+/// a plain `GpuRepr<T>` copy would do is adding an indirection for nothing.
+///
+/// # Performance, and how it interacts with SceneDB's GPU upload modes
+///
+/// `with` runs exactly once per [`pulsar_world_registry::GpuMirrored::
+/// to_gpu_mirror`] call -- and `to_gpu_mirror` itself only runs when
+/// SOMETHING actually changed: a genuine property edit (hydrate) for a
+/// `DirtyTracked` field (SceneDB's default `#[gpu]` mirror mode), or once
+/// ever, at first insert, for a field mirrored `Once`. Neither mode calls
+/// `to_gpu_mirror` per rendered frame -- a consumer wanting the mirrored
+/// value every frame reads the already-computed `GpuRepr<Type>` straight
+/// out of `World` (a page-column read, not a GPU round trip and not a
+/// re-run of `with`), the same as any other `#[gpu]` field. So: `with`'s
+/// own cost is bounded by EDIT frequency, not FRAME rate -- a `to_radians()`
+/// call or a four-arm `match` is free at that cadence, even during an
+/// editor slider drag firing many edits a second. This is exactly the
+/// "conversion belongs at upload time, not sprinkled through the render
+/// loop" property the whole `#[gpu]` mirror system is built around; `with`
+/// doesn't change that property, it just gives a field a way to land in a
+/// DIFFERENT byte shape at that same upload-time boundary, instead of only
+/// ever being a same-shape copy.
+///
+/// The one real cost worth knowing about: `as`'s target type decides the
+/// mirror field's GPU storage width, and `with` can WIDEN it -- `#[gpu(as =
+/// u32, with = ...)]` on a `bool` source (SceneDB's own `cast_shadows`
+/// encoding) costs 4 bytes of GPU storage/bandwidth per row instead of the
+/// 1 byte a bare `#[gpu] bool` field would (via `GpuRepr<bool>`, `elem_align`
+/// -- see that fn's own doc). That's the right trade when the consumer
+/// needs a `u32` sentinel directly and would otherwise have to widen it
+/// itself on every read; it's a real, non-zero one to be deliberate about,
+/// not an argument against using `with` where it's actually needed.
+///
+/// Not yet wired into the OTHER two `#[gpu]` field shapes: a `Vec<T>`
+/// element (`gpu_list_mirror_codegen`) or a `GpuHeavy<T>` handle
+/// (`gpu_heavy_mirror_codegen`, which already has its own, separate
+/// handle -> heavy-element transform via `pulsar_scenedb::gpu::
+/// GpuUploadSource::upload_element` -- conceptually the same idea, at a
+/// different layer, for a different reason: that split exists for byte
+/// SIZE (a tiny CPU handle standing in for an arbitrarily large GPU
+/// resource), not byte SHAPE). Extending `as`/`with` to list elements is a
+/// bounded future addition if a real field needs it -- nothing about this
+/// design blocks it, it just hasn't had a real caller yet.
 struct GpuFieldOverride {
     target_ty: syn::Type,
     with_path: syn::Path,
