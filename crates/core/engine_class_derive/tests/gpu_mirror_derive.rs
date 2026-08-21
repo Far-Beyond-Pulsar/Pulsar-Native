@@ -149,6 +149,48 @@ fn bool_and_enum_and_array_fields_all_mirror_as_their_own_exact_bytes() {
     assert_eq!(sub_off.to_gpu_mirror().enabled, GpuRepr(false));
 }
 
+/// A plain function (not a closure) -- `#[gpu(with = ...)]` takes a path,
+/// same "no wrapper, used directly as the fn item" convention every other
+/// `path`-taking macro argument in this crate already uses.
+fn throwaway_kind_to_u32(kind: ThrowawayKind) -> u32 {
+    match kind {
+        // Deliberately NOT the discriminant order -- proves this is a real
+        // semantic mapping, not just a disguised `as u32` cast.
+        ThrowawayKind::Alpha => 100,
+        ThrowawayKind::Beta => 200,
+        ThrowawayKind::Gamma => 300,
+    }
+}
+
+#[engine_class(category = "Test", default, clone, debug, no_register)]
+pub struct ThrowawayOverrideComponent {
+    // Upload-time unit conversion -- degrees in the properties panel,
+    // radians in the mirror. `f32::to_radians` used directly as the `with`
+    // path, no wrapper closure.
+    #[property]
+    #[gpu(as = f32, with = f32::to_radians)]
+    pub angle_degrees: f32,
+    // Upload-time semantic remap -- a business-logic enum with no bit-
+    // pattern relationship to the u32 the GPU consumer wants.
+    #[gpu(as = u32, with = throwaway_kind_to_u32)]
+    pub kind: ThrowawayKind,
+}
+
+#[test]
+fn gpu_as_with_computes_the_override_once_at_mirror_build_time() {
+    let value = ThrowawayOverrideComponent { angle_degrees: 180.0, kind: ThrowawayKind::Gamma };
+    let mirror = value.to_gpu_mirror();
+
+    // Field TYPE changed too, not just the value -- `angle_degrees` mirrors
+    // as an f32 (matches `as = f32`), `kind` mirrors as a u32 (matches
+    // `as = u32`), neither as their own source type.
+    let angle_radians: GpuRepr<f32> = mirror.angle_degrees;
+    assert!((angle_radians.0 - std::f32::consts::PI).abs() < 1e-6, "180 degrees must mirror as pi radians, computed by `with`, not stored as 180.0");
+
+    let kind_u32: GpuRepr<u32> = mirror.kind;
+    assert_eq!(kind_u32, GpuRepr(300), "must go through throwaway_kind_to_u32, not a raw discriminant cast");
+}
+
 #[test]
 fn sub_props_composition_embeds_the_nested_mirror() {
     let value = ThrowawayMirroredComponent {

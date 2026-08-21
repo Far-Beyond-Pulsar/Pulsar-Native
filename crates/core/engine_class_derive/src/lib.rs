@@ -181,7 +181,11 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                         gpu_heavy_fields.push(GpuHeavyLeafField { ident: field_ident, handle_ty });
                     } else if is_gpu && !is_vec_type(&field.ty) {
                         let field_ident = field.ident.clone().unwrap();
-                        gpu_fields.push(GpuLeafField { ident: field_ident, field_ty: field.ty.clone() });
+                        let override_ = match parse_gpu_attr(field) {
+                            Ok(o) => o,
+                            Err(err) => return err.to_compile_error().into(),
+                        };
+                        gpu_fields.push(GpuLeafField { ident: field_ident, field_ty: field.ty.clone(), override_ });
                     } else if is_gpu {
                         // is_vec_type(&field.ty) == true here.
                         let field_ident = field.ident.clone().unwrap();
@@ -1403,6 +1407,65 @@ fn has_gpu_attr(field: &Field) -> bool {
     field.attrs.iter().any(|attr| attr.path().is_ident("gpu"))
 }
 
+/// `#[gpu(as = Type, with = path::to::fn)]` -- an OPTIONAL upload-time
+/// transform for a `#[gpu]`-marked leaf field, computed once when the
+/// mirror is built (`to_gpu_mirror`), never at properties-panel-edit time.
+///
+/// Exists so a field's `#[property]`-facing representation (the shape a
+/// human edits -- degrees, a business-logic enum with variants the GPU
+/// consumer doesn't itself have) can differ from its GPU-mirrored one (the
+/// shape the shader/renderer actually wants -- radians, a plain `u32` the
+/// consumer already knows how to interpret) WITHOUT a hand-written, post-
+/// mirror translation function anywhere: the mirror IS already in the
+/// consumer's preferred shape the moment SceneDB builds it. `with` is
+/// called exactly once per `to_gpu_mirror()` call (the same call site every
+/// other `#[gpu]` field already goes through) -- not a second, separate
+/// pass a consumer has to remember to run.
+///
+/// Both arguments are required together: `as` names the mirror field's
+/// resulting type (what `with`'s return type must match -- enforced by
+/// ordinary rustc type-checking on the generated `GpuRepr<Type>(path(self.
+/// field))` expression, not by this parser), `with` is a plain `fn(FieldTy)
+/// -> Type` item path (an inherent method like `f32::to_radians` works
+/// directly, no closure wrapper needed). Bare `#[gpu]` (the overwhelming
+/// majority of fields) skips this entirely -- the mirror holds the field's
+/// own exact type/bytes unchanged, same as before this existed.
+struct GpuFieldOverride {
+    target_ty: syn::Type,
+    with_path: syn::Path,
+}
+
+/// Parses a `#[gpu]` field attribute's arguments, if any -- `None` for bare
+/// `#[gpu]`, `Some(GpuFieldOverride)` for `#[gpu(as = ..., with = ...)]`.
+fn parse_gpu_attr(field: &Field) -> syn::Result<Option<GpuFieldOverride>> {
+    let Some(attr) = field.attrs.iter().find(|a| a.path().is_ident("gpu")) else {
+        return Ok(None);
+    };
+    if matches!(attr.meta, syn::Meta::Path(_)) {
+        return Ok(None); // bare `#[gpu]`, no override
+    }
+    let mut target_ty: Option<syn::Type> = None;
+    let mut with_path: Option<syn::Path> = None;
+    attr.parse_nested_meta(|meta| {
+        if meta.path.is_ident("as") {
+            target_ty = Some(meta.value()?.parse()?);
+            Ok(())
+        } else if meta.path.is_ident("with") {
+            with_path = Some(meta.value()?.parse()?);
+            Ok(())
+        } else {
+            Err(meta.error("unknown #[gpu(...)] argument -- expected `as`/`with`"))
+        }
+    })?;
+    match (target_ty, with_path) {
+        (Some(target_ty), Some(with_path)) => Ok(Some(GpuFieldOverride { target_ty, with_path })),
+        _ => Err(syn::Error::new_spanned(
+            attr,
+            "#[gpu(as = Type, with = path)] requires both `as` and `with` together",
+        )),
+    }
+}
+
 /// One `#[gpu]`-marked leaf field, ready to splice into the generated
 /// mirror struct/conversion. Every field is wrapped in `pulsar_world_
 /// registry::GpuRepr<FieldTy>` -- see that type's doc for why this is
@@ -1417,8 +1480,11 @@ struct GpuLeafField {
     ident: syn::Ident,
     /// The field's own declared type (unwrapped -- `gpu_mirror_codegen`
     /// wraps it in `GpuRepr<..>` when splicing the mirror struct's field
-    /// definition).
+    /// definition). Ignored in favor of `override_.target_ty` when an
+    /// override is present.
     field_ty: syn::Type,
+    /// `Some` for `#[gpu(as = ..., with = ...)]` -- see [`GpuFieldOverride`].
+    override_: Option<GpuFieldOverride>,
 }
 
 /// One `#[gpu] Vec<T>`-marked leaf field for the SEPARATE var-len list
@@ -1469,12 +1535,21 @@ fn gpu_mirror_codegen(
 
     let leaf_field_defs = gpu_leaf_fields.iter().map(|leaf| {
         let ident = &leaf.ident;
-        let ty = &leaf.field_ty;
+        let ty = leaf.override_.as_ref().map(|o| &o.target_ty).unwrap_or(&leaf.field_ty);
         quote! { #[gpu] pub #ident: pulsar_world_registry::GpuRepr<#ty> }
     });
     let leaf_field_inits = gpu_leaf_fields.iter().map(|leaf| {
         let ident = &leaf.ident;
-        quote! { #ident: pulsar_world_registry::GpuRepr(self.#ident) }
+        match &leaf.override_ {
+            // `#[gpu(as = .., with = path)]` -- the transform runs exactly
+            // here, once per `to_gpu_mirror()` call, not in some separate
+            // hand-written pass a consumer has to remember to invoke.
+            Some(o) => {
+                let with_path = &o.with_path;
+                quote! { #ident: pulsar_world_registry::GpuRepr(#with_path(self.#ident)) }
+            }
+            None => quote! { #ident: pulsar_world_registry::GpuRepr(self.#ident) },
+        }
     });
 
     let sub_props_field_defs = sub_props_fields.iter().map(|field| {
