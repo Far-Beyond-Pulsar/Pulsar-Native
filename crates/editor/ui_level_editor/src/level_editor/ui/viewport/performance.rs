@@ -5,6 +5,7 @@
 //! input latency, and UI consistency.
 
 use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 
 /// Maximum number of data points to keep in history for rolling graphs.
 pub const MAX_HISTORY_SIZE: usize = 120;
@@ -223,5 +224,117 @@ impl PerformanceMetrics {
 impl Default for PerformanceMetrics {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Per-frame copy of everything the UI thread reads out of `GpuRenderer`,
+/// gathered with one `try_lock` acquisition so the viewport render path
+/// contends with the Helio render thread's blocking lock once instead of
+/// several times per frame.
+#[derive(Clone, Default)]
+pub struct EngineFrameSnapshot {
+    pub ui_fps: f64,
+    pub helio_fps: f64,
+    pub render_fps: f64,
+    pub memory_mb: f64,
+    pub draw_calls: f64,
+    pub vertices: f64,
+    pub frame_time_ms: f64,
+    pub camera_input: Option<Arc<Mutex<engine_backend::subsystems::render::CameraInput>>>,
+    pub pointer_events:
+        Option<Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>>,
+}
+
+impl EngineFrameSnapshot {
+    /// Gather stats from `GpuRenderer`, pushing the frame-rate-independent
+    /// camera-input settings (move speed, scroll zoom) in the same locked
+    /// pass. Returns `None` if the renderer mutex was busy; callers skip
+    /// their stat updates that frame.
+    pub fn gather(
+        gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+        move_speed: f32,
+        zoom_delta: f32,
+    ) -> Option<Self> {
+        let engine = gpu_engine.try_lock().ok()?;
+        let metrics_opt = engine.get_render_metrics();
+        let (memory_mb, draw_calls, vertices, frame_time_ms) = match metrics_opt {
+            Some(ref m) => (
+                m.memory_usage_mb as f64,
+                m.draw_calls as f64,
+                m.vertices_drawn as f64,
+                m.frame_time_ms as f64,
+            ),
+            None => (0.0, 0.0, 0.0, 0.0),
+        };
+
+        let snapshot = Self {
+            ui_fps: engine.get_fps() as f64,
+            helio_fps: engine.get_helio_fps() as f64,
+            render_fps: engine.get_render_fps() as f64,
+            memory_mb,
+            draw_calls,
+            vertices,
+            frame_time_ms,
+            camera_input: engine.camera_input(),
+            pointer_events: engine.pointer_event_queue(),
+        };
+
+        if let Some(cam) = engine.camera_input() {
+            if let Ok(mut input) = cam.try_lock() {
+                input.move_speed = move_speed;
+                input.zoom_delta = zoom_delta;
+            }
+        }
+
+        Some(snapshot)
+    }
+}
+
+/// Immutable copy of the metric histories plus the headline FPS values the
+/// performance overlay renders, built once per frame while the overlay is
+/// open instead of threading eight separately cloned Vecs through the
+/// element tree.
+pub struct PerformanceSnapshot {
+    pub ui_fps: f64,
+    pub render_fps: f64,
+    pub fps_history: Vec<FpsDataPoint>,
+    pub frame_time_history: Vec<FrameTimeDataPoint>,
+    pub memory_history: Vec<MemoryDataPoint>,
+    pub draw_calls_history: Vec<DrawCallsDataPoint>,
+    pub vertices_history: Vec<VerticesDataPoint>,
+    pub input_latency_history: Vec<InputLatencyDataPoint>,
+}
+
+impl PerformanceSnapshot {
+    pub fn empty() -> Self {
+        Self {
+            ui_fps: 0.0,
+            render_fps: 0.0,
+            fps_history: Vec::new(),
+            frame_time_history: Vec::new(),
+            memory_history: Vec::new(),
+            draw_calls_history: Vec::new(),
+            vertices_history: Vec::new(),
+            input_latency_history: Vec::new(),
+        }
+    }
+
+    pub fn capture(metrics: &PerformanceMetrics, ui_fps: f64, render_fps: f64) -> Self {
+        Self {
+            ui_fps,
+            render_fps,
+            fps_history: metrics.fps_history.iter().cloned().collect(),
+            frame_time_history: metrics.frame_time_history.iter().cloned().collect(),
+            memory_history: metrics.memory_history.iter().cloned().collect(),
+            draw_calls_history: metrics.draw_calls_history.iter().cloned().collect(),
+            vertices_history: metrics.vertices_history.iter().cloned().collect(),
+            input_latency_history: metrics.input_latency_history.iter().cloned().collect(),
+        }
+    }
+}
+
+impl Default for PerformanceSnapshot {
+    fn default() -> Self {
+        Self::empty()
     }
 }

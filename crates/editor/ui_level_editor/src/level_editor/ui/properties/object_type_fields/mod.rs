@@ -252,7 +252,12 @@ impl Render for ObjectTypeFieldsSection {
             .content(move |_window, _cx| list.clone())
             .into_any_element();
 
-        let attached = self.scene_db.get_components(&self.object_id);
+        // Metadata-only read: class names/order/enabled/parent indices for
+        // the tree and diagnostics. Live values are NOT needed here — the
+        // property cards below batch-read straight from World — so paying
+        // `get_components`' per-component `to_json()` serialization on every
+        // render would only make this panel's complexity set the framerate.
+        let attached = self.scene_db.get_components_metadata(&self.object_id);
 
         let component_hierarchy =
             ComponentHierarchyPanel::new(self.object_id.clone(), self.scene_db.clone());

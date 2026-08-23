@@ -7,9 +7,7 @@ use crate::level_editor::ui::{
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::{Corner, *};
-use std::cell::RefCell;
 use std::collections::HashSet;
-use std::rc::Rc;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -96,10 +94,19 @@ impl Panel for WorldSettingsPanel {
 }
 
 /// Hierarchy Panel
+///
+/// Self-refreshing: a frame pump compares a `(store_revision, selected)`
+/// signature every platform frame and notifies this view only when something
+/// the tree actually displays changed. No other panel needs to know this panel
+/// exists — scene mutations from any thread (UI commands, AI tools, the render
+/// thread's gizmo-drag release / click-select) all advance the store revision.
 pub struct HierarchyPanelWrapper {
     hierarchy: HierarchyPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
+    /// `(store_revision, selected)` last seen by the pump/render pair.
+    last_signature: (u64, Option<String>),
+    pump_started: bool,
 }
 
 impl HierarchyPanelWrapper {
@@ -108,11 +115,47 @@ impl HierarchyPanelWrapper {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let last_signature = {
+            let state = state.read();
+            (
+                state.scene.database.store_revision(),
+                state.scene.selected_object(),
+            )
+        };
         Self {
             hierarchy: HierarchyPanel::new(),
             state,
             focus_handle: cx.focus_handle(),
+            last_signature,
+            pump_started: false,
         }
+    }
+
+    fn signature(&self) -> (u64, Option<String>) {
+        let state = self.state.read();
+        (
+            state.scene.database.store_revision(),
+            state.scene.selected_object(),
+        )
+    }
+
+    fn start_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.pump_started {
+            return;
+        }
+        self.pump_started = true;
+
+        crate::level_editor::ui::frame_pump::spawn_frame_pump(
+            &cx.entity(),
+            window,
+            |this, _window, cx| {
+                let signature = this.signature();
+                if signature != this.last_signature {
+                    this.last_signature = signature;
+                    cx.notify();
+                }
+            },
+        );
     }
 }
 
@@ -125,12 +168,12 @@ impl Render for HierarchyPanelWrapper {
         gpui::render_stats::count("hierarchy panel: render");
         let _t = gpui::render_stats::scope("hierarchy panel: render");
 
-        let self_entity_id = cx.entity().entity_id();
+        self.start_pump(_window, cx);
 
-        // NOTE: The 50ms poller in LevelEditorPanel already watches
-        // `scene.revision` and calls `notify_sub_panels()` which notifies
-        // this entity.  Duplicating that check here caused a double-render
-        // cascade (poller → this render → cx.notify() → re-render).
+        // Record what we are about to paint so the pump doesn't immediately
+        // re-notify for a change an explicit notify (e.g. expand toggle, row
+        // click) has already picked up.
+        self.last_signature = self.signature();
 
         let state = self.state.read();
         let state_clone = self.state.clone();
@@ -139,7 +182,7 @@ impl Render for HierarchyPanelWrapper {
             .icon(IconName::Plus)
             .ghost()
             .xsmall()
-            .on_click(move |_, _, cx| {
+            .on_click(move |_, _, _cx| {
                 use crate::level_editor::commands::{execute_command, SceneCommand};
                 use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
 
@@ -164,7 +207,9 @@ impl Render for HierarchyPanelWrapper {
                         parent_id: None,
                     },
                 );
-                cx.notify(self_entity_id);
+                // No cx.notify() here: the command advanced the store revision,
+                // which this panel's frame pump observes and turns into exactly
+                // one invalidate.
             })
             .into_any_element();
 
@@ -195,6 +240,14 @@ impl Panel for HierarchyPanelWrapper {
 }
 
 /// Properties Panel
+///
+/// Like [`HierarchyPanelWrapper`], self-refreshing via its own frame pump: the
+/// pump owns ALL section lifecycle work (building editors on selection change,
+/// pushing refreshed values through them on scene edits) so that `render()` is
+/// a pure function of already-built state. Mutating child entities mid-render
+/// used to be how this panel worked — that both did the work repeatedly on
+/// every spurious invalidate and re-entrantly touched other entities while
+/// GPUI was mid-walk.
 pub struct PropertiesPanelWrapper {
     properties: PropertiesPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -209,8 +262,9 @@ pub struct PropertiesPanelWrapper {
     property_input: Entity<InputState>,
     /// Tracks which sections are collapsed (by section name)
     collapsed_sections: HashSet<String>,
-    /// Last scene revision observed by properties panel.
-    last_scene_revision: u64,
+    /// Store revision the section editors were last synced against.
+    last_store_revision: u64,
+    pump_started: bool,
 }
 
 impl PropertiesPanelWrapper {
@@ -245,7 +299,8 @@ impl PropertiesPanelWrapper {
             editing_property: None,
             property_input,
             collapsed_sections,
-            last_scene_revision: 0,
+            last_store_revision: 0,
+            pump_started: false,
         }
     }
 
@@ -260,6 +315,135 @@ impl PropertiesPanelWrapper {
 
     pub fn is_section_collapsed(&self, section: &str) -> bool {
         self.collapsed_sections.contains(section)
+    }
+
+    fn start_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.pump_started {
+            return;
+        }
+        self.pump_started = true;
+
+        crate::level_editor::ui::frame_pump::spawn_frame_pump(
+            &cx.entity(),
+            window,
+            |this, window, cx| {
+                if this.sync_sections(window, cx) {
+                    cx.notify();
+                }
+            },
+        );
+    }
+
+    /// Bring the section entities in line with the current scene state.
+    ///
+    /// A revision bump means the scene data changed — not that the user
+    /// selected something else. These are deliberately kept apart:
+    ///
+    /// Rebuilding on every revision change used to null `current_object_id`,
+    /// tearing down and recreating all three sections per bump.
+    /// `TransformSection` alone owns 9 `F32BoundField`s, each with its own
+    /// `Entity<InputState>`, so a dozen-odd entities were being destroyed and
+    /// recreated every bump — and gizmo drags bump at input rate. It also
+    /// wiped the user's expanded/collapsed property categories, which live on
+    /// `ObjectTypeFieldsSection`.
+    ///
+    /// Same object with new data only needs the existing editors to re-read
+    /// their values, which is exactly what `refresh()` does — a value push per
+    /// field instead of a rebuild.
+    ///
+    /// Returns `true` when anything changed and the view needs invalidating.
+    fn sync_sections(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let (store_revision, selected_object_id) = {
+            let state = self.state.read();
+            (
+                state.scene.database.store_revision(),
+                state.scene.selected_object(),
+            )
+        };
+
+        let revision_changed = store_revision != self.last_store_revision;
+        let selection_changed = selected_object_id != self.current_object_id
+            || (selected_object_id.is_some() && self.object_type_fields_section.is_none());
+
+        if !revision_changed && !selection_changed {
+            return false;
+        }
+        self.last_store_revision = store_revision;
+
+        if selection_changed {
+            if let Some(ref object_id) = selected_object_id {
+                let scene_db = {
+                    let state = self.state.read();
+                    state.scene.database.clone()
+                };
+                let object_id_clone = object_id.clone();
+
+                self.object_header_section = Some(cx.new(|cx| {
+                    ObjectHeaderSection::new(
+                        object_id_clone.clone(),
+                        scene_db.clone(),
+                        self.state.clone(),
+                        window,
+                        cx,
+                    )
+                }));
+                self.transform_section = Some(cx.new(|cx| {
+                    TransformSection::new(
+                        object_id_clone.clone(),
+                        scene_db.clone(),
+                        self.state.clone(),
+                        window,
+                        cx,
+                    )
+                }));
+                self.object_type_fields_section = Some(cx.new(|cx| {
+                    ObjectTypeFieldsSection::new(
+                        object_id_clone.clone(),
+                        scene_db.clone(),
+                        self.state.clone(),
+                        window,
+                        cx,
+                    )
+                }));
+                self.current_object_id = Some(object_id.clone());
+            } else {
+                self.object_header_section = None;
+                self.transform_section = None;
+                self.object_type_fields_section = None;
+                self.current_object_id = None;
+            }
+        } else if revision_changed {
+            // Scene changed under an unchanged selection — undo/redo, a gizmo
+            // drag, an AI tool edit. Push values into the cached editors
+            // rather than rebuilding them. Header/transform refreshes are
+            // targeted component reads (cheap at bump rate); the component
+            // card list is only re-rendered when a change actually touched
+            // this object's components — transform edits, gizmo drags and
+            // edits to other objects must not rebuild it, or panel complexity
+            // would set the editor's framerate.
+            if let Some(section) = self.object_header_section.clone() {
+                section.update(cx, |section, cx| section.refresh(window, cx));
+            }
+            if let Some(section) = self.transform_section.clone() {
+                section.update(cx, |section, cx| section.refresh(window, cx));
+            }
+            let components_touched = match &self.current_object_id {
+                Some(id) => {
+                    let state = self.state.read();
+                    state.scene.database.has_property_changes_for(id)
+                }
+                None => false,
+            };
+            // `render_property_row_runtime` pushes the current value into each
+            // cached editor as it renders, so this section only needs to be
+            // told to render again.
+            if components_touched {
+                if let Some(section) = self.object_type_fields_section.clone() {
+                    section.update(cx, |_, cx| cx.notify());
+                }
+            }
+        }
+        true
     }
 
     pub fn start_editing(
@@ -330,93 +514,11 @@ impl Render for PropertiesPanelWrapper {
         gpui::render_stats::count("properties panel: render");
         let _t = gpui::render_stats::scope("properties panel: render");
 
-        let state = self.state.read();
-        let collapsed_sections = self.collapsed_sections.clone();
-        let selected_object_id = state.scene.selected_object();
-        let scene_revision = state.scene.revision;
-
-        // A revision bump means the scene data changed — not that the user
-        // selected something else. These are deliberately kept apart:
-        //
-        // This used to null `current_object_id` on any revision change, which
-        // forced the `selection_changed` branch below to tear down and rebuild
-        // all three sections. `TransformSection` alone owns 9 `F32BoundField`s,
-        // each with its own `Entity<InputState>`, so a dozen-odd entities were
-        // being destroyed and recreated every bump — and `execute_command`
-        // bumps on every mutation, so dragging a gizmo did that at input rate.
-        // It also wiped the user's expanded/collapsed property categories,
-        // which live on `ObjectTypeFieldsSection`.
-        //
-        // Same object with new data only needs the existing editors to re-read
-        // their values, which is exactly what `refresh()` does.
-        let revision_changed = scene_revision != self.last_scene_revision;
-        if revision_changed {
-            self.last_scene_revision = scene_revision;
-        }
-
-        let selection_changed = selected_object_id != self.current_object_id
-            || (selected_object_id.is_some() && self.object_type_fields_section.is_none());
-
-        if selection_changed {
-            if let Some(ref object_id) = selected_object_id {
-                let scene_db = state.scene.database.clone();
-                let object_id_clone = object_id.clone();
-
-                self.object_header_section = Some(cx.new(|cx| {
-                    ObjectHeaderSection::new(
-                        object_id_clone.clone(),
-                        scene_db.clone(),
-                        self.state.clone(),
-                        window,
-                        cx,
-                    )
-                }));
-                self.transform_section = Some(cx.new(|cx| {
-                    TransformSection::new(
-                        object_id_clone.clone(),
-                        scene_db.clone(),
-                        self.state.clone(),
-                        window,
-                        cx,
-                    )
-                }));
-                self.object_type_fields_section = Some(cx.new(|cx| {
-                    ObjectTypeFieldsSection::new(
-                        object_id_clone.clone(),
-                        scene_db.clone(),
-                        self.state.clone(),
-                        window,
-                        cx,
-                    )
-                }));
-                self.current_object_id = Some(object_id.clone());
-            } else {
-                self.object_header_section = None;
-                self.transform_section = None;
-                self.object_type_fields_section = None;
-                self.current_object_id = None;
-            }
-        }
-        drop(state);
-
-        // The "explicitly call refresh() when those events occur" path that the
-        // bound fields were always documented to need. Runs only when the scene
-        // changed under an unchanged selection — undo/redo, a gizmo drag, an AI
-        // tool edit — and costs a value push per field instead of a rebuild.
-        if revision_changed && !selection_changed {
-            if let Some(section) = self.object_header_section.clone() {
-                section.update(cx, |section, cx| section.refresh(window, cx));
-            }
-            if let Some(section) = self.transform_section.clone() {
-                section.update(cx, |section, cx| section.refresh(window, cx));
-            }
-            // `render_property_row_runtime` pushes the current value into each
-            // cached editor as it renders, so this section only needs to be told
-            // to render again.
-            if let Some(section) = self.object_type_fields_section.clone() {
-                section.update(cx, |_, cx| cx.notify());
-            }
-        }
+        // Section lifecycle (create on selection change, refresh on scene
+        // edit) lives in the frame pump via `sync_sections`, never here:
+        // by the time a dirty render runs, the pump has already brought the
+        // sections up to date. Render only lays out what exists.
+        self.start_pump(window, cx);
 
         v_flex()
             .size_full()
@@ -426,7 +528,7 @@ impl Render for PropertiesPanelWrapper {
                 self.state.clone(),
                 &self.editing_property,
                 &self.property_input,
-                &collapsed_sections,
+                &self.collapsed_sections.clone(),
                 &self.object_header_section,
                 &self.transform_section,
                 &self.object_type_fields_section,
@@ -465,7 +567,6 @@ impl Panel for PropertiesPanelWrapper {
 pub struct ViewportPanelWrapper {
     viewport_panel: ViewportPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
-    fps_graph_is_line: Rc<RefCell<bool>>,
     gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
     focus_handle: FocusHandle,
 }
@@ -474,14 +575,12 @@ impl ViewportPanelWrapper {
     pub fn new(
         viewport_panel: ViewportPanel,
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
-        fps_graph_is_line: Rc<RefCell<bool>>,
         gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
             viewport_panel,
             state,
-            fps_graph_is_line,
             gpu_engine,
             focus_handle: cx.focus_handle(),
         }
@@ -497,14 +596,9 @@ impl Render for ViewportPanelWrapper {
         gpui::render_stats::count("viewport panel: render");
         let _t = gpui::render_stats::scope("viewport panel: render");
 
-        let mut state = self.state.write();
-        self.viewport_panel.render(
-            &mut state,
-            self.state.clone(),
-            self.fps_graph_is_line.clone(),
-            &self.gpu_engine,
-            cx,
-        )
+        let state = self.state.read();
+        self.viewport_panel
+            .render(&state, self.state.clone(), &self.gpu_engine, cx)
     }
 }
 

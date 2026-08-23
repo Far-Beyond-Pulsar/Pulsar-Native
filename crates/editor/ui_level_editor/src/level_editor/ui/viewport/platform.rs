@@ -144,6 +144,21 @@ pub fn set_cursor_position(screen_x: i32, screen_y: i32) {
     }
 }
 
+#[cfg(target_os = "windows")]
+pub fn get_cursor_position() -> Option<(i32, i32)> {
+    use winapi::shared::windef::POINT;
+    use winapi::um::winuser::GetCursorPos;
+
+    unsafe {
+        let mut point = POINT { x: 0, y: 0 };
+        if GetCursorPos(&mut point) != 0 {
+            Some((point.x, point.y))
+        } else {
+            None
+        }
+    }
+}
+
 /// Convert window-relative coordinates to screen coordinates.
 ///
 /// # Returns
@@ -366,6 +381,11 @@ pub fn take_mouse_delta() -> (f32, f32) {
     }
 
     (delta_x as f32, delta_y as f32)
+}
+
+#[cfg(target_os = "macos")]
+pub fn get_cursor_position() -> Option<(i32, i32)> {
+    None
 }
 
 #[cfg(target_os = "macos")]

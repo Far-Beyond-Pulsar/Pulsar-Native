@@ -91,11 +91,13 @@ impl ObjectTypeFieldsSection {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
-        tracing::debug!(
-            "[ObjectTypeFieldsSection] object_id={} attached={} registry={}",
+        // Deliberately not logged per render: this runs for every row rebuild
+        // of the panel, and `REGISTRY.get_class_names()` alone allocated a
+        // full registry-size Vec each time.
+        tracing::trace!(
+            "[ObjectTypeFieldsSection] object_id={} attached={}",
             self.object_id,
             attached.len(),
-            REGISTRY.get_class_names().len(),
         );
 
         let class_names: Vec<String> = attached.iter().map(|c| c.class_name.clone()).collect();

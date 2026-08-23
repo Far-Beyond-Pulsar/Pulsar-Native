@@ -6,9 +6,9 @@
 //! `LevelEditorPanel`, which is every frame Helio publishes.
 //!
 //! As a cached entity it re-renders only when its [`StatusBarSignature`]
-//! changes. `scene.revision` stands in for the object count and the selected
-//! object's name — both are derived from the scene database, and every mutation
-//! path bumps the revision.
+//! changes. `store_revision` stands in for the object count and the selected
+//! object's name — both are derived from the scene database, whose shared
+//! store bumps the counter on every mutation from any thread.
 
 use std::sync::Arc;
 
@@ -28,8 +28,9 @@ use crate::level_editor::{CameraMode, LevelEditorState, TransformTool};
 #[derive(Clone, PartialEq)]
 struct StatusBarSignature {
     /// Covers the object count and the selected object's name: both are read
-    /// out of the scene database, and every mutation bumps the revision.
-    scene_revision: u64,
+    /// out of the scene database, whose shared store bumps this counter on
+    /// every mutation from any thread.
+    store_revision: u64,
     selected: Option<ObjectId>,
     show_grid: bool,
     camera_mode: CameraMode,
@@ -39,7 +40,7 @@ struct StatusBarSignature {
 impl StatusBarSignature {
     fn of(state: &LevelEditorState) -> Self {
         Self {
-            scene_revision: state.scene.revision,
+            store_revision: state.scene.database.store_revision(),
             selected: state.scene.selected_object(),
             show_grid: state.editor.show_grid,
             camera_mode: state.editor.camera_mode,
@@ -51,6 +52,8 @@ impl StatusBarSignature {
 pub struct StatusBarView {
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     last_signature: StatusBarSignature,
+    /// Root-object count keyed by the store revision it was counted at.
+    cached_root_count: Option<(u64, usize)>,
     pump_started: bool,
 }
 
@@ -60,6 +63,7 @@ impl StatusBarView {
         Self {
             state,
             last_signature,
+            cached_root_count: None,
             pump_started: false,
         }
     }
@@ -98,7 +102,14 @@ impl Render for StatusBarView {
         let state = self.state.read();
         self.last_signature = StatusBarSignature::of(&state);
 
-        let objects_count = state.scene.scene_objects().len();
+        let objects_count = match self.cached_root_count {
+            Some((revision, count)) if revision == state.scene.database.store_revision() => count,
+            _ => {
+                let count = state.scene.database.root_count();
+                self.cached_root_count = Some((state.scene.database.store_revision(), count));
+                count
+            }
+        };
         let selected_name = state
             .scene
             .selected_object()

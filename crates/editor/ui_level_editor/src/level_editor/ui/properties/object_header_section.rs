@@ -35,12 +35,15 @@ impl ObjectHeaderSection {
         // (whole-object overwrite, and -- despite a since-removed comment
         // claiming otherwise -- never actually undo-tracked).
 
-        // Name field
+        // Name field. Getters use the targeted component reads (see
+        // `SceneDatabase::get_object_name`'s doc) — these run on every scene
+        // revision bump while this object is selected, and a whole-object
+        // read per bump scaled the panel's cost with component count.
         let name_field = cx.new(|cx| {
             let state_arc = state_arc.clone();
             StringBoundField::new(
                 StringFieldBinding::new_with_db(
-                    |id, db| db.get_object(id).map(|obj| obj.name),
+                    |id, db| db.get_object_name(id),
                     move |id, name, _db| {
                         execute_command(
                             &mut state_arc.write(),
@@ -62,7 +65,7 @@ impl ObjectHeaderSection {
             let state_arc = state_arc.clone();
             BoolBoundField::new(
                 BoolFieldBinding::new_with_db(
-                    |id, db| db.get_object(id).map(|obj| obj.visible),
+                    |id, db| db.get_object_visibility(id).map(|(visible, _)| visible),
                     move |id, visible, _db| {
                         execute_command(
                             &mut state_arc.write(),
@@ -87,7 +90,7 @@ impl ObjectHeaderSection {
         let locked_field = cx.new(|cx| {
             BoolBoundField::new(
                 BoolFieldBinding::new_with_db(
-                    |id, db| db.get_object(id).map(|obj| obj.locked),
+                    |id, db| db.get_object_visibility(id).map(|(_, locked)| locked),
                     move |id, locked, _db| {
                         execute_command(
                             &mut state_arc.write(),

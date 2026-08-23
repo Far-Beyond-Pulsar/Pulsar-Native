@@ -1,7 +1,5 @@
 //! Compact performance overlay for game development monitoring.
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui::prelude::FluentBuilder;
@@ -69,17 +67,7 @@ where
 pub fn render_performance_overlay<V>(
     state: &LevelEditorState,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-    ui_fps: f64,
-    render_fps: f64,
-    fps_data: Vec<FpsDataPoint>,
-    tps_data: Vec<TpsDataPoint>,
-    frame_time_data: Vec<FrameTimeDataPoint>,
-    memory_data: Vec<MemoryDataPoint>,
-    draw_calls_data: Vec<DrawCallsDataPoint>,
-    vertices_data: Vec<VerticesDataPoint>,
-    input_latency_data: Vec<InputLatencyDataPoint>,
-    ui_consistency_data: Vec<UiConsistencyDataPoint>,
-    _fps_graph_state: Rc<RefCell<bool>>,
+    snapshot: PerformanceSnapshot,
     cx: &mut Context<V>,
 ) -> impl IntoElement
 where
@@ -98,6 +86,18 @@ where
             })
             .into_any_element();
     }
+
+    let PerformanceSnapshot {
+        ui_fps,
+        render_fps,
+        fps_history: fps_data,
+        frame_time_history: frame_time_data,
+        memory_history: memory_data,
+        draw_calls_history: draw_calls_data,
+        vertices_history: vertices_data,
+        input_latency_history: input_latency_data,
+        ..
+    } = snapshot;
 
     let frame_time_ms = frame_time_data
         .last()
