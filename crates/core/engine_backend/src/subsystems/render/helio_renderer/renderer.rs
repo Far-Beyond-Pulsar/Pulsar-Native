@@ -1469,9 +1469,6 @@ impl HelioRenderer {
         // something this migration set out to change.
         {
             let mut store = scene_store.write();
-            for id in live_keys.inner() {
-                let _ = store.take_dirty_flags(id);
-            }
             Self::apply_pending_seam_upserts(&mut store, inner, pending_seam_upserts);
         }
     }
@@ -1525,7 +1522,13 @@ impl HelioRenderer {
             }
         }
 
+        let delta = store.take_last_delta();
         let scene_db = store.scene_db_mut();
+        if let Some(subsystem) = scene_db.subsystem_mut::<HelioRenderSubsystem>() {
+            if let Some(delta) = delta {
+                subsystem.push_delta(delta);
+            }
+        }
         scene_db.step();
         if let Some(subsystem) = scene_db.subsystem_mut::<HelioRenderSubsystem>() {
             subsystem.apply_to(inner.renderer.scene_mut());
@@ -1892,48 +1895,41 @@ impl HelioRenderer {
         inner: &mut HelioInner,
         error_queue: &Arc<Mutex<Vec<String>>>,
     ) -> SceneDbDelta {
-        // Phase 0: short WRITE lock -- draining is the only `&mut WorldSceneStore`
-        // work this function needs. Dropped immediately after, matching
-        // `sync_scene`'s own Phase 1/Phase 2 split (never hold a write lock
-        // across dispatch/GPU work -- see that fn's doc for why).
-        let (revision, dirty, removed) = {
-            let mut store = scene_store.write();
-            let revision = store.dirty_gen();
-            let dirty = store.drain_dirty();
-            let removed = store.take_removed_ids();
-            (revision, dirty, removed)
-        };
+        let mut store_write = scene_store.write();
+        let revision = store_write.dirty_gen();
+        let dirty = store_write.drain_dirty();
+        let removed = store_write.take_removed_ids();
 
         let mut added = Vec::new();
         let mut updated = Vec::new();
         let anything_changed = !dirty.is_empty() || !removed.is_empty();
         let mut pending_seam_upserts: Vec<PendingStaticMeshSeamUpsert> = Vec::new();
 
-        // Phase 1: fresh READ lock, only entered if there's actually dirty
-        // work -- `dispatch_world_component_for_class` needs `&World` for the
-        // call's duration, same precedent as `sync_scene`'s own Phase 1.
+        // Phase 1: downgrade to READ lock atomically. This prevents concurrent
+        // structural modifications (e.g. entities deleted by another thread)
+        // between Phase 0 and Phase 1, eliminating race conditions while
+        // still allowing other systems to read the scene during GPU dispatch.
         if !dirty.is_empty() {
-            let store = scene_store.read();
+            let store = parking_lot::RwLockWriteGuard::downgrade(store_write);
             let project_root = engine_state::get_project_path()
                 .map(PathBuf::from)
                 .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
             let mut planet_runtime_init_attempted = inner.planet_terrain.is_some();
 
-            for (id, flags) in &dirty {
-                let Some(snap) = store.get_object(id) else {
-                    // Drained as dirty, then removed again before this loop
-                    // ran -- the `removed` list (handled below) already
-                    // covers cleanup.
+            for (entity_ref, flags) in &dirty {
+                let entity = *entity_ref;
+                let Some(id_str) = store.stable_id_of(entity) else {
                     continue;
                 };
-                let is_known = inner.known_ids.contains(id);
+                let is_known = inner.known_ids.contains(id_str);
+
+                let transform = store.transform(entity).unwrap_or_default();
+                let visibility = store.visibility(entity).unwrap_or_default();
 
                 if !is_known || flags.intersects(ObjectDirtyFlags::COMPONENTS | ObjectDirtyFlags::PROPS)
                 {
-                    // Full per-component dispatch -- also what makes a newly
-                    // spawned entity (`WorldSceneStore::spawn` publishes
-                    // `ObjectDirtyFlags::all()`) actually appear in
-                    // `helio::Scene` for the first time.
+                    // Full per-component dispatch (heavy path, requires full snapshot)
+                    let Some(snap) = store.get_object(id_str) else { continue; };
                     let mut live_keys = LiveKeySet::new();
                     Self::sync_snapshot_components(
                         inner,
@@ -1945,29 +1941,35 @@ impl HelioRenderer {
                         &mut live_keys,
                         &mut pending_seam_upserts,
                     );
-                } else if flags.contains(ObjectDirtyFlags::TRANSFORM) {
-                    Self::apply_transform_patch(inner, &snap);
-                }
+                } else {
+                    // Fast path: Zero-copy transform/visibility sync.
+                    // Avoids cloning the entire RenderProps payload when only moving objects.
+                    if flags.contains(ObjectDirtyFlags::TRANSFORM) {
+                        Self::apply_transform_patch_direct(inner, id_str, &transform);
+                    }
 
-                if flags.contains(ObjectDirtyFlags::VISIBILITY) {
-                    Self::apply_visibility_patch(inner, &snap);
+                    if flags.contains(ObjectDirtyFlags::VISIBILITY) {
+                        Self::apply_visibility_patch_direct(inner, id_str, &visibility);
+                    }
                 }
 
                 if is_known {
                     updated.push(ObjectUpdate {
-                        id: id.clone(),
+                        id: id_str.to_string(),
                         transform: Some(build_transform_parts(
-                            snap.transform.position,
-                            snap.transform.rotation,
-                            snap.transform.scale,
+                            transform.position,
+                            transform.rotation,
+                            transform.scale,
                         )),
-                        visible: Some(snap.visibility.visible),
+                        visible: Some(visibility.visible),
                         name: None,
                     });
                 } else {
-                    added.push(id.clone());
+                    added.push(id_str.to_string());
                 }
             }
+        } else {
+            drop(store_write);
         } // read guard dropped here -- everything below is lock-free w.r.t. `scene_store`.
 
         // Phase 2: short WRITE lock -- same reasoning as `sync_scene`'s own
@@ -2009,47 +2011,35 @@ impl HelioRenderer {
     }
 
     /// Cheap fast path for a `TRANSFORM`-only change on an entity already
-    /// known to Helio -- skips the full per-component re-dispatch
-    /// `sync_snapshot_components` would otherwise do. Uses `object_by_tag`/
-    /// `light_by_tag` -- the now-deleted `SceneObjectCache` was never
-    /// populated anywhere in the codebase, so using it here would have
-    /// made this silently a no-op.
-    fn apply_transform_patch(inner: &mut HelioInner, snap: &crate::scene::ObjectSnapshot) {
-        let tag = scene_id_to_tag(snap.stable_id.as_str());
-        let transform = build_transform_parts(
-            snap.transform.position,
-            snap.transform.rotation,
-            snap.transform.scale,
+    /// known to Helio -- skips the full per-component re-dispatch.
+    /// Uses zero-copy Transform directly instead of ObjectSnapshot.
+    fn apply_transform_patch_direct(inner: &mut HelioInner, stable_id: &str, transform: &crate::scene::Transform) {
+        let tag = scene_id_to_tag(stable_id);
+        let helio_transform = build_transform_parts(
+            transform.position,
+            transform.rotation,
+            transform.scale,
         );
         let scene = inner.renderer.scene_mut();
         if let Some(obj_id) = scene.object_by_tag(tag) {
-            let _ = scene.update_object_transform(obj_id, transform);
+            let _ = scene.update_object_transform(obj_id, helio_transform);
         } else if let Some(light_id) = scene.light_by_tag(tag) {
-            // Lights have no dedicated "move" API -- copy-modify-write the
-            // position component of the existing GpuLight, same pattern
-            // `LightComponent::sync_component`'s full dispatch would end up
-            // doing via `to_gpu_light`, just without recomputing every other
-            // field (color, cone angles, shadow settings, ...) that a plain
-            // move didn't touch.
             if let Some(mut light) = scene.get_light(light_id) {
-                light.position_range[0] = snap.transform.position[0];
-                light.position_range[1] = snap.transform.position[1];
-                light.position_range[2] = snap.transform.position[2];
+                light.position_range[0] = transform.position[0];
+                light.position_range[1] = transform.position[1];
+                light.position_range[2] = transform.position[2];
                 let _ = scene.update_light(light_id, light);
             }
         }
     }
 
-    /// Cheap fast path for a `VISIBILITY`-only change -- same group-mask
-    /// logic `sync_scene`'s own "apply editor visibility" pass uses. Lights
-    /// have no visibility/group mechanism today (`LightComponent::
-    /// sync_component` doesn't implement one either), so this is a no-op for
-    /// them -- a pre-existing gap, not introduced here.
-    fn apply_visibility_patch(inner: &mut HelioInner, snap: &crate::scene::ObjectSnapshot) {
-        let tag = scene_id_to_tag(snap.stable_id.as_str());
+    /// Cheap fast path for a `VISIBILITY`-only change.
+    /// Uses zero-copy Visibility directly instead of ObjectSnapshot.
+    fn apply_visibility_patch_direct(inner: &mut HelioInner, stable_id: &str, visibility: &crate::scene::Visibility) {
+        let tag = scene_id_to_tag(stable_id);
         let scene = inner.renderer.scene_mut();
         if let Some(obj_id) = scene.object_by_tag(tag) {
-            let groups = if snap.visibility.visible {
+            let groups = if visibility.visible {
                 GroupMask::NONE
             } else {
                 GroupMask::from(GroupId::new(8))

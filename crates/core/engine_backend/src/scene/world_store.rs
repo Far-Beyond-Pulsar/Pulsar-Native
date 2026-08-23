@@ -199,10 +199,8 @@ pub struct WorldSceneStore {
     /// Entity-keyed internally (the real identity); the public API mirrors
     /// `SceneDb`'s stable-id-string-keyed shape (see this module's "What
     /// this deliberately does NOT do yet" doc re: lock-free reads -- this
-    /// whole store is meant to live behind one `RwLock` shared with the
-    /// renderer, not per-field atomics, so a plain `HashMap` here is
-    /// consistent with that design rather than a regression from it).
-    dirty: HashMap<Entity, ObjectDirtyFlags>,
+    /// Consistent with the `ChangeTracker` behavior, the last delta polled during drain_dirty.
+    last_delta: Option<pulsar_scenedb::replication::Delta>,
     /// Monotonic counter, bumped once per [`Self::publish`] call (i.e. once
     /// per mutation that should cause a render-thread resync). Mirrors
     /// `SceneDb::dirty_gen()`.
@@ -231,7 +229,7 @@ impl WorldSceneStore {
             children: HashMap::new(),
             selected: None,
             gizmo_state: GizmoState::default(),
-            dirty: HashMap::new(),
+            last_delta: None,
             dirty_gen: 0,
             removed_since_drain: Vec::new(),
             render_revision: 0,
@@ -241,8 +239,7 @@ impl WorldSceneStore {
     /// Record that `entity` changed in a way the renderer cares about, and
     /// bump both revision counters. Mirrors `SceneDb::publish` -- called from
     /// every mutator below, not something callers invoke directly.
-    fn publish(&mut self, entity: Entity, flags: ObjectDirtyFlags) {
-        self.dirty.entry(entity).or_insert_with(ObjectDirtyFlags::empty).insert(flags);
+    fn publish(&mut self, _entity: Entity, _flags: ObjectDirtyFlags) {
         self.dirty_gen = self.dirty_gen.saturating_add(1);
         self.render_revision = self.render_revision.saturating_add(1);
     }
@@ -340,7 +337,6 @@ impl WorldSceneStore {
             self.by_stable_id.remove(&id);
             self.removed_since_drain.push(id);
         }
-        self.dirty.remove(&entity);
         if self.selected == Some(entity) {
             self.selected = None;
         }
@@ -638,24 +634,51 @@ impl WorldSceneStore {
         }
     }
 
-    /// Mirrors `SceneDb::take_dirty_flags` -- returns and clears the flags
-    /// accumulated for one object since the last call.
-    pub fn take_dirty_flags(&mut self, id: &str) -> ObjectDirtyFlags {
-        match self.entity_for(id) {
-            Some(entity) => self.dirty.remove(&entity).unwrap_or_else(ObjectDirtyFlags::empty),
-            None => ObjectDirtyFlags::empty(),
-        }
-    }
+
 
     /// Mirrors `SceneDb::drain_dirty` -- returns and clears every object's
     /// accumulated dirty flags since the last call.
-    pub fn drain_dirty(&mut self) -> Vec<(String, ObjectDirtyFlags)> {
-        std::mem::take(&mut self.dirty)
-            .into_iter()
-            .filter_map(|(entity, flags)| {
-                self.stable_id_of(entity).map(|id| (id.to_string(), flags))
-            })
-            .collect()
+    pub fn drain_dirty(&mut self) -> Vec<(Entity, ObjectDirtyFlags)> {
+        let mut ecs_dirty: HashMap<Entity, ObjectDirtyFlags> = HashMap::new();
+        
+        if let Some(shared_tracker) = self.scene_db.world.change_tracker() {
+            let delta = shared_tracker.lock().drain_with_world(&self.scene_db.world);
+            
+            let cid_transform = pulsar_scenedb::component::component_id::<crate::scene::Transform>();
+            let cid_visibility = pulsar_scenedb::component::component_id::<crate::scene::Visibility>();
+            let cid_props = pulsar_scenedb::component::component_id::<crate::scene::RenderProps>();
+            let cid_name = pulsar_scenedb::component::component_id::<crate::scene::Name>();
+            let cid_parent = pulsar_scenedb::component::component_id::<crate::scene::Parent>();
+            
+            for &(e, _) in &delta.spawned {
+                ecs_dirty.insert(e, ObjectDirtyFlags::all());
+            }
+            
+            for cd in &delta.component_deltas {
+                let flag = if cd.component_type == cid_transform {
+                    ObjectDirtyFlags::TRANSFORM
+                } else if cd.component_type == cid_visibility {
+                    ObjectDirtyFlags::VISIBILITY
+                } else if cd.component_type == cid_props {
+                    ObjectDirtyFlags::PROPS
+                } else if cd.component_type == cid_name {
+                    ObjectDirtyFlags::NAME
+                } else if cd.component_type == cid_parent {
+                    ObjectDirtyFlags::HIERARCHY
+                } else {
+                    ObjectDirtyFlags::COMPONENTS
+                };
+                ecs_dirty.entry(cd.entity).or_insert(ObjectDirtyFlags::empty()).insert(flag);
+            }
+            
+            self.last_delta = Some(delta);
+        }
+        
+        ecs_dirty.into_iter().collect()
+    }
+
+    pub fn take_last_delta(&mut self) -> Option<pulsar_scenedb::replication::Delta> {
+        self.last_delta.take()
     }
 
     /// Mirrors `SceneDb::take_removed_ids` -- stable ids despawned since the
@@ -1239,24 +1262,26 @@ mod tests {
     #[test]
     fn spawn_marks_the_new_entity_fully_dirty() {
         let mut store = WorldSceneStore::new();
-        store.spawn(Some("obj".into()), "Object", None).unwrap();
+        let e = store.spawn(Some("obj".into()), "Object", None).unwrap();
 
-        assert_eq!(store.take_dirty_flags("obj"), ObjectDirtyFlags::all());
+        let dirty = store.drain_dirty();
+        assert_eq!(dirty.into_iter().find(|(ent, _)| *ent == e).unwrap().1, ObjectDirtyFlags::all());
         // Draining clears it -- a second take is empty.
-        assert_eq!(store.take_dirty_flags("obj"), ObjectDirtyFlags::empty());
+        assert!(store.drain_dirty().is_empty());
     }
 
     #[test]
     fn apply_transform_marks_transform_dirty_and_bumps_revision() {
         let mut store = WorldSceneStore::new();
-        store.spawn(Some("obj".into()), "Object", None).unwrap();
-        store.take_dirty_flags("obj"); // clear the spawn-time dirty flags
+        let e = store.spawn(Some("obj".into()), "Object", None).unwrap();
+        store.drain_dirty(); // clear the spawn-time dirty flags
         let revision_before = store.render_revision();
 
         let ok = store.apply_transform("obj", [1.0, 2.0, 3.0], [0.0; 3], [1.0; 3]);
 
         assert!(ok);
-        assert_eq!(store.take_dirty_flags("obj"), ObjectDirtyFlags::TRANSFORM);
+        let dirty = store.drain_dirty();
+        assert_eq!(dirty.into_iter().find(|(ent, _)| *ent == e).unwrap().1, ObjectDirtyFlags::TRANSFORM);
         assert!(store.render_revision() > revision_before);
         assert_eq!(
             store.get_object("obj").unwrap().transform,
@@ -1276,12 +1301,13 @@ mod tests {
         store.spawn(Some("a".into()), "A", None).unwrap();
         store.spawn(Some("b".into()), "B", None).unwrap();
 
+        let a = store.entity_for("a").unwrap();
+        let b = store.entity_for("b").unwrap();
         let drained = store.drain_dirty();
         let ids: std::collections::HashSet<_> = drained.iter().map(|(id, _)| id.clone()).collect();
-        assert_eq!(ids, ["a".to_string(), "b".to_string()].into_iter().collect());
+        assert_eq!(ids, vec![a, b].into_iter().collect::<std::collections::HashSet<_>>());
 
         assert!(store.drain_dirty().is_empty());
-        assert_eq!(store.take_dirty_flags("a"), ObjectDirtyFlags::empty());
     }
 
     #[test]
@@ -1342,3 +1368,4 @@ mod tests {
         assert_eq!(store.get_all_snapshots(), store.to_snapshots());
     }
 }
+
