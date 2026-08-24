@@ -35,11 +35,21 @@ winit   = { workspace = true }
 wgpu    = { workspace = true }
 glam    = { workspace = true }
 pollster = "1.0"
+# Shared-world store locking (same crate engine_backend's RwLock<WorldSceneStore> uses)
+parking_lot = { workspace = true }
 
 # Scene loading + settings
 pulsar_scene    = { workspace = true }
 engine_state    = { workspace = true }
 pulsar_settings = { workspace = true }
+
+# One-world play-mode scene state (Pulsar-Native#637): RuntimeLevel hydration
+# into WorldSceneStore/SceneDb plus the shared per-frame Helio rebuild bridge.
+# Slim feature set on purpose -- a game runtime must not pull editor-ui/gpui,
+# networking, or PIE-host machinery; `render` brings helio/wgpu (already direct
+# deps above) for the GPU seam. Direct path dep because the workspace table
+# doesn't allow members to opt out of default features.
+engine_backend  = { path = "../engine_backend", default-features = false, features = ["render"] }
 
 [lints]
 workspace = true

@@ -19,15 +19,21 @@
 //! on Helio's renderer.
 
 use std::cell::RefCell;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use helio::{Camera, DebugDrawState, Renderer, RendererConfig, Scene};
+use engine_backend::scene::{
+    attach_gpu_render_seam, rebuild_light_frame, rebuild_static_mesh_frame, step_scene_for_render,
+    LightFrameMaintainer, RuntimeLevel, WorldSceneStore,
+};
+use helio::{Camera, DebugDrawState, MaterialId, Renderer, RendererConfig, Scene};
+use parking_lot::RwLock;
 use pulsar_pie_abi::{
     EngineContext as PieContext, InputEvent, LogFn, INIT_ERR, INIT_OK, LOG_ERROR, LOG_INFO,
     PIE_ABI_VERSION,
 };
 
+use crate::camera_selection::select_world_camera;
 use crate::freecam::FreeCam;
 use crate::tick::TickLoop;
 use pulsar_core::TickMode;
@@ -52,6 +58,18 @@ pub struct EmbeddedGame {
     /// The offscreen render target the editor samples. Recreated on resize.
     out_texture: wgpu::Texture,
     out_view: wgpu::TextureView,
+    /// The one shared world the level hydrated into (Pulsar-Native#637).
+    /// Under ABI v1 this is still guest-owned storage (the host's store is a
+    /// separate instance until the #635 v2 bridge hands us theirs); it is
+    /// already SceneDB-resident and drives rendering through the same
+    /// per-frame rebuild bridge the editor uses, replacing the old
+    /// `pulsar_scene::SceneLoader`-into-Helio path.
+    scene_store: Option<Arc<RwLock<WorldSceneStore>>>,
+    /// Resolved-light-frame maintainer over [`Self::scene_store`]'s world.
+    light_frames: LightFrameMaintainer,
+    /// Lazily-minted shared default material (same cache the editor renderer
+    /// keeps; see `engine_backend::scene::rebuild_static_mesh_frame`).
+    default_static_mesh_material: Option<MaterialId>,
     /// Fallback free-look camera (used until an ECS camera drives the view).
     freecam: FreeCam,
 
@@ -94,26 +112,6 @@ fn make_target(
     });
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     (texture, view)
-}
-
-/// Try to seed the freecam from the `.level` file's saved editor camera so the
-/// first embedded frame matches what the editor was showing.
-fn read_editor_camera(scene_path: &Path) -> Option<FreeCam> {
-    let text = std::fs::read_to_string(scene_path).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
-    let cam = v.get("editor")?.get("camera")?;
-    let pos = cam.get("position")?.as_array()?;
-    if pos.len() < 3 {
-        return None;
-    }
-    let position = glam::Vec3::new(
-        pos[0].as_f64()? as f32,
-        pos[1].as_f64()? as f32,
-        pos[2].as_f64()? as f32,
-    );
-    let yaw = cam.get("yaw").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-    let pitch = cam.get("pitch").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
-    Some(FreeCam::default().place(position, yaw, pitch))
 }
 
 impl EmbeddedGame {
@@ -217,14 +215,33 @@ impl EmbeddedGame {
         renderer.set_editor_mode(false);
         renderer.set_ambient([0.0, 0.0, 0.0], 0.0);
 
-        // ── Load the scene the editor handed us ──────────────────────────────
+        // ── Load the scene the editor handed us (Pulsar-Native#637) ────────
+        // Hydrate into a WorldSceneStore/SceneDb world and render from it
+        // via the shared per-frame rebuild bridge -- no more
+        // pulsar_scene::SceneLoader writing Helio's Scene behind SceneDB's
+        // back. Asset-resolving hydrates (`StaticMeshComponent`) need the
+        // project path in the engine global first.
         let mut freecam = FreeCam::default();
+        let mut scene_store = None;
         if let Some(ref path) = scene_path {
-            match pulsar_scene::SceneLoader::load_file(path, &project_root, &mut renderer) {
-                Ok(()) => {
-                    if let Some(seeded) = read_editor_camera(path) {
-                        freecam = seeded;
+            engine_state::set_project_path(project_root.display().to_string());
+            match RuntimeLevel::load(path) {
+                Ok(level) => {
+                    if let Some(cam) = level.editor_camera() {
+                        freecam = FreeCam::default().place(
+                            glam::Vec3::from_array(cam.position),
+                            cam.yaw,
+                            cam.pitch,
+                        );
                     }
+                    let store = level.store();
+                    attach_gpu_render_seam(
+                        &mut store.write(),
+                        &mut renderer,
+                        device.clone(),
+                        queue.clone(),
+                    );
+                    scene_store = Some(store);
                 }
                 Err(e) => {
                     tracing::warn!(scene = %path.display(), "PiE: failed to load scene: {e}");
@@ -242,6 +259,9 @@ impl EmbeddedGame {
             height,
             out_texture,
             out_view,
+            scene_store,
+            light_frames: LightFrameMaintainer::new(),
+            default_static_mesh_material: None,
             freecam,
             userdata: ctx.userdata,
             log: ctx.log,
@@ -249,14 +269,35 @@ impl EmbeddedGame {
     }
 
     /// Advance simulation and render one frame into the offscreen target.
-    fn tick(&mut self, dt: f32) {
+    fn tick(&mut self) {
         // 1. Game logic — one ECS/blueprint tick.
         self.tick_loop.tick_once();
 
-        // 2. Camera. ECS-driven cameras will supersede this once wired; for now
-        //    the free-look camera seeded from the editor view drives rendering.
-        self.freecam.update(dt);
-        let cam = self.freecam.to_render_camera();
+        // 2. Advance the shared world's render-side state and rebuild the
+        //    frame from it (Pulsar-Native#637): GPU mirror flush +
+        //    subscription-driven light frames under one short write scope,
+        //    then the same static-mesh/light rebuilds the editor renderer
+        //    runs. A runtime-spawned entity or a moved object therefore
+        //    shows up on the very next frame.
+        if let Some(store) = &self.scene_store {
+            step_scene_for_render(&mut store.write(), &mut self.light_frames);
+            let shared = store.read();
+            rebuild_static_mesh_frame(
+                &mut self.renderer,
+                &shared,
+                &mut self.default_static_mesh_material,
+            );
+            rebuild_light_frame(&mut self.renderer, &shared);
+        }
+
+        // 3. Camera. A Camera-typed entity in the shared world drives the
+        //    view when present (#637 -- no more unconditional freecam); the
+        //    freecam seeded from the editor view remains the fallback.
+        let cam = match &self.scene_store {
+            Some(store) => select_world_camera(&store.read())
+                .unwrap_or_else(|| self.freecam.to_render_camera()),
+            None => self.freecam.to_render_camera(),
+        };
         let aspect = self.width as f32 / self.height.max(1) as f32;
         let helio_cam = Camera::perspective_look_at(
             glam::Vec3::from_array(cam.position),
@@ -268,8 +309,9 @@ impl EmbeddedGame {
             cam.far,
         );
 
-        // 3. Render into the offscreen target the editor samples. The game owns
-        //    its world from here on — Unreal-style PIE, no writeback to the editor.
+        // 4. Render into the offscreen target the editor samples. Under ABI
+        //    v1 this is still the guest's own world copy; #635's v2 bridge
+        //    will hand us the host's authoritative store instead.
         if let Err(e) = self.renderer.render(&helio_cam, &self.out_view) {
             tracing::error!("PiE render error: {:?}", e);
         }
@@ -348,10 +390,13 @@ where
 }
 
 /// Advance and render one frame. No-op if not initialized on this thread.
+/// `dt` is retained for ABI stability; the frame's simulation step is the
+/// tick loop's own clocked tick.
 pub fn pie_tick(dt: f32) {
+    let _ = dt;
     GAME.with(|g| {
         if let Some(game) = g.borrow_mut().as_mut() {
-            game.tick(dt);
+            game.tick();
         }
     });
 }

@@ -573,6 +573,20 @@ impl WorldSceneStore {
         true
     }
 
+    /// Entities classified as [`ObjectType::Camera`] -- the play-mode
+    /// camera-selection source (Pulsar-Native#637; there is no dedicated
+    /// `CameraComponent` class yet, so classification + `Transform` IS the
+    /// whole camera contract). Collected into a `Vec` so callers don't hold
+    /// the query borrow.
+    pub fn camera_entities(&self) -> Vec<Entity> {
+        self.scene_db
+            .world
+            .query::<&ObjectType>()
+            .filter(|(_, object_type)| matches!(object_type, ObjectType::Camera))
+            .map(|(entity, _)| entity)
+            .collect()
+    }
+
     // ── Render props (JSON projection channel) ──────────────────────────
 
     /// Mirrors `SceneDb::update_render_data`'s closure shape -- callers

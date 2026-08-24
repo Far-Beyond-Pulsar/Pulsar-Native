@@ -1,16 +1,18 @@
-//! Pulsar scene file format and Helio renderer loader.
+//! Pulsar scene file format and (legacy) Helio renderer loader.
 //!
 //! # Usage (runtime)
 //!
-//! ```rust,ignore
-//! use pulsar_scene::{SceneFile, SceneLoader};
+//! Runtime loading does NOT go through [`SceneLoader`] anymore
+//! (Pulsar-Native#637): standalone games and PIE hydrate the level file
+//! into the shared `WorldSceneStore`/SceneDb world via
+//! `engine_backend::scene::RuntimeLevel`, so renderer and gameplay see ONE
+//! copy of scene state. `SceneLoader` remains for import/legacy conversion.
 //!
-//! // Load a scene into an existing helio::Renderer
-//! let loaded = SceneLoader::load_file(
-//!     &project_root.join("scenes/default_level.json"),
-//!     &project_root,
-//!     &mut renderer,
-//! )?;
+//! ```rust,ignore
+//! use engine_backend::scene::RuntimeLevel;
+//!
+//! let level = RuntimeLevel::load(&project_root.join("scenes/default_level.json"))?;
+//! let store = level.store(); // Arc<RwLock<WorldSceneStore>> -- the one world
 //! ```
 //!
 //! # Usage (editor / save)

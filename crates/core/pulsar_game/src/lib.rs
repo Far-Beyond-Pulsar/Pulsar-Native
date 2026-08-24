@@ -21,6 +21,7 @@ pub use pulsar_scenedb::{
 pub mod blueprint_runtime;
 
 // Window / rendering integration
+pub mod camera_selection;
 pub mod freecam;
 pub mod window;
 pub mod windowed_app;

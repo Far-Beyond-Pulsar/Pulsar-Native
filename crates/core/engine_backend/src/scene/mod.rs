@@ -25,15 +25,30 @@ pub mod metadata_db;
 // rebuild_light_frame's per-frame CPU combine.
 pub mod light_frame;
 
+// Play-mode level bootstrap (Pulsar-Native#637) -- hydrates a `.level` file
+// into WorldSceneStore/SceneDb instead of pulsar_scene::SceneLoader's direct
+// Helio Scene writes.
+pub mod runtime_level;
+
 // World/Entity-backed scene store (Phase B1, Pulsar-Native#553) -- the live
 // authoritative store. See `world_store`'s own doc for the full picture.
 pub mod world_store;
+
+#[cfg(feature = "render")]
+// Shared WorldSceneStore <-> helio::Renderer operations (#637): GPU seam
+// attach + per-frame static-mesh/light frame assembly.
+pub mod helio_bridge;
 
 // Re-export new system types for convenience
 pub use component_db::ComponentDb;
 pub use light_frame::{LightFrameMaintainer, ResolvedLightFrame};
 pub use metadata::{ComponentInstance, EditorObjectId};
 pub use metadata_db::SceneMetadataDb;
+#[cfg(feature = "render")]
+pub use helio_bridge::{
+    attach_gpu_render_seam, rebuild_light_frame, rebuild_static_mesh_frame, step_scene_for_render,
+};
+pub use runtime_level::{EditorCamera, RuntimeLevel, RuntimeLevelError};
 pub use world_store::{
     Name, ObjectSnapshot, Parent, RenderProps, StableId, Transform, Visibility, WorldSceneStore,
     WorldSceneStoreError,
