@@ -3,9 +3,11 @@
 //! Manages the virtual machine, loaded blueprints, and bytecode execution.
 
 use super::byte_arena::ByteArena;
+use super::component_ops::{component_op_handlers, run_with_component_context};
 use super::compiled_bytecode::CompiledBytecode;
 use pbgc::{vm, BpProgram};
 use pulsar_bp_executor::{BpExecutor as NativeExecutor, ExecutorError as NativeExecutorError};
+use pulsar_scenedb::{Entity, World};
 use pulsar_std_bundle::{expected_sha256, extract_to_tempfile};
 use std::collections::HashMap;
 use std::path::Path;
@@ -123,12 +125,13 @@ impl BlueprintExecutor {
     pub fn load_blueprint(&mut self, bytecode: CompiledBytecode) -> Result<(), ExecutorError> {
         let class_name = bytecode.source_class.clone();
 
-        // Patch function pointers for each event program
+        // Patch function pointers for each event program. Component ops are
+        // bound to the live trampolines; std nodes resolve from pulsar_std.
         let mut programs = HashMap::new();
 
         for (event_name, mut program) in bytecode.event_programs.clone() {
             self.native_executor
-                .prepare(&mut program)
+                .prepare_with_component_ops(&mut program, component_op_handlers())
                 .map_err(ExecutorError::Prepare)?;
 
             programs.insert(event_name, program);
@@ -191,6 +194,22 @@ impl BlueprintExecutor {
         event_name: &str,
         arena: &mut ByteArena,
     ) -> Result<(), ExecutorError> {
+        self.execute_event_in_world(class_name, event_name, arena, None)
+    }
+
+    /// Execute an event with an optional world context for component ops.
+    ///
+    /// `Some((world, entity))` lets `comp_*` nodes read and mutate the
+    /// authoritative SceneDB state for `entity` (see
+    /// [`super::component_ops`]); `None` keeps the pre-component behaviour,
+    /// where component ops log errors instead of touching the world.
+    pub fn execute_event_in_world(
+        &self,
+        class_name: &str,
+        event_name: &str,
+        arena: &mut ByteArena,
+        world: Option<(&mut World, Entity)>,
+    ) -> Result<(), ExecutorError> {
         // Get loaded blueprint
         let blueprint = self
             .loaded_blueprints
@@ -207,8 +226,15 @@ impl BlueprintExecutor {
 
         // Execute bytecode
         unsafe {
-            vm::run_with_external_arena(program, arena.as_mut_ptr(), arena.size())
-                .map_err(|e| ExecutorError::Execution(format!("{:?}", e)))?;
+            let result = match world {
+                Some((world, entity)) => {
+                    run_with_component_context(world, Some(entity), || {
+                        vm::run_with_external_arena(program, arena.as_mut_ptr(), arena.size())
+                    })
+                }
+                None => vm::run_with_external_arena(program, arena.as_mut_ptr(), arena.size()),
+            };
+            result.map_err(|e| ExecutorError::Execution(format!("{:?}", e)))?;
         }
 
         Ok(())

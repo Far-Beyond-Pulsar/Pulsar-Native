@@ -182,16 +182,22 @@ impl TickLoop {
         // -- registration happens before the primary window opens, but
         // `tick_once` only runs after `spawn_ecs_thread`, which is called
         // once the window is ready. The dispatcher holds its own instance
-        // state and doesn't touch the World, so no store lock is taken.
+        // state; the world borrow only feeds component ops and is dropped
+        // with the phase.
         if let Some(dispatcher) = &self.blueprint_dispatcher {
             let mut dispatcher = dispatcher.lock().unwrap();
-            dispatcher.dispatch_pending_begin_play();
+            let mut store = self.scene_store.write();
+            let world = store.world_mut();
+            dispatcher.dispatch_pending_begin_play(world);
             let object_ids = dispatcher.instance_ids();
             for object_id in object_ids {
-                let _ = dispatcher.dispatch_event(BlueprintEvent::Tick {
-                    object_id,
-                    delta_time: time.delta.as_secs_f32(),
-                });
+                let _ = dispatcher.dispatch_event(
+                    BlueprintEvent::Tick {
+                        object_id,
+                        delta_time: time.delta.as_secs_f32(),
+                    },
+                    world,
+                );
             }
         }
 
@@ -223,7 +229,11 @@ impl TickLoop {
         // their `end_play` teardown logic, mirroring `ActorRegistry`'s
         // begin_play/end_play contract for native actors.
         if let Some(dispatcher) = &self.blueprint_dispatcher {
-            dispatcher.lock().unwrap().dispatch_end_play_all();
+            let mut store = self.scene_store.write();
+            dispatcher
+                .lock()
+                .unwrap()
+                .dispatch_end_play_all(store.world_mut());
         }
     }
 

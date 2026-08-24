@@ -27,6 +27,7 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 
 # Reflection — for ComponentStore property access
 pulsar_reflection = { workspace = true }
+pulsar_world_registry = { workspace = true }
 
 # Windowed rendering (Helio + winit + wgpu)
 helio   = { workspace = true }

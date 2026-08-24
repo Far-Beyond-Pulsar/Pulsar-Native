@@ -6,6 +6,7 @@
 pub mod byte_arena;
 pub mod bytecode_compiler;
 pub mod compiled_bytecode;
+pub mod component_ops;
 pub mod dispatcher;
 pub mod executor;
 pub mod instance;

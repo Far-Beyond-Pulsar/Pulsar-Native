@@ -5,6 +5,7 @@
 use super::executor::{BlueprintExecutor, ExecutorError};
 use super::instance::BlueprintInstance;
 use super::CompiledBytecode;
+use pulsar_scenedb::{Entity, World};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 use std::path::Path;
@@ -97,7 +98,12 @@ impl BlueprintDispatcher {
     /// Dispatches `begin_play` to every instance registered since the last
     /// call, then clears the queue. Safe to call every tick — it's a no-op
     /// once the queue is empty.
-    pub fn dispatch_pending_begin_play(&mut self) {
+    ///
+    /// `world` backs component ops for the dispatched events. Instances are
+    /// keyed by object id and not yet bound to scene entities (#648 wires
+    /// per-entity instantiation), so until then their component ops refuse
+    /// via liveness checks instead of misaddressing writes.
+    pub fn dispatch_pending_begin_play(&mut self, world: &mut World) {
         if self.pending_begin_play.is_empty() {
             return;
         }
@@ -107,7 +113,7 @@ impl BlueprintDispatcher {
             pending.len()
         );
         for object_id in pending {
-            match self.execute_event(&object_id, "begin_play") {
+            match self.execute_event(&object_id, "begin_play", world) {
                 Ok(()) => {
                     tracing::info!("begin_play executed for VM blueprint instance '{object_id}'")
                 }
@@ -123,30 +129,40 @@ impl BlueprintDispatcher {
     /// Called once as the tick loop shuts down so blueprints can release
     /// resources and run teardown logic, mirroring `ActorRegistry`'s
     /// lifecycle contract.
-    pub fn dispatch_end_play_all(&mut self) {
+    pub fn dispatch_end_play_all(&mut self, world: &mut World) {
         let object_ids = self.instance_ids();
         for object_id in object_ids {
-            if let Err(e) = self.execute_event(&object_id, "end_play") {
+            if let Err(e) = self.execute_event(&object_id, "end_play", world) {
                 tracing::warn!("end_play failed for VM blueprint instance '{object_id}': {e}");
             }
         }
     }
 
-    pub fn dispatch_event(&mut self, event: BlueprintEvent) -> Result<(), ExecutorError> {
+    pub fn dispatch_event(&mut self, event: BlueprintEvent, world: &mut World) -> Result<(), ExecutorError> {
         match event {
-            BlueprintEvent::BeginPlay { object_id } => self.execute_event(&object_id, "begin_play"),
+            BlueprintEvent::BeginPlay { object_id } => self.execute_event(&object_id, "begin_play", world),
             BlueprintEvent::Tick {
                 object_id,
                 delta_time,
             } => {
                 let _ = delta_time;
-                self.execute_event(&object_id, "tick")
+                self.execute_event(&object_id, "tick", world)
             }
-            BlueprintEvent::EndPlay { object_id } => self.execute_event(&object_id, "end_play"),
+            BlueprintEvent::EndPlay { object_id } => self.execute_event(&object_id, "end_play", world),
         }
     }
 
-    fn execute_event(&mut self, object_id: &str, event_name: &str) -> Result<(), ExecutorError> {
+    fn execute_event(
+        &mut self,
+        object_id: &str,
+        event_name: &str,
+        world: &mut World,
+    ) -> Result<(), ExecutorError> {
+        // Instances are keyed by object id and not yet entity-bound; until
+        // #648 lands they run with no component-op target. Passing a
+        // dangling entity keeps types honest — component ops refuse it via
+        // liveness checks instead of misaddressing writes.
+        let entity = Entity::DANGLING;
         let instance = self.instances.get_mut(object_id).ok_or_else(|| {
             ExecutorError::Execution(format!("Blueprint instance not found: {}", object_id))
         })?;
@@ -156,6 +172,7 @@ impl BlueprintDispatcher {
             .state_arena_mut()
             .ok_or_else(|| ExecutorError::Execution("No arena in bytecode instance".to_string()))?;
 
-        self.executor.execute_event(&class_name, event_name, arena)
+        self.executor
+            .execute_event_in_world(&class_name, event_name, arena, Some((world, entity)))
     }
 }
