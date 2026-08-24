@@ -830,3 +830,39 @@ Tests: 27 integration in `pbgc/tests/bytecode_tests.rs` (encoding
 round-trips, chaining, output elision, serde, stub execution of all
 three kinds incl. cross-instruction value flow), plus CompiledBytecode
 v2 assertions in pulsar_game. Full pbgc suite green.
+
+### D2 — VM execution context (#647) — LANDED
+
+Commits: pbgc `fccd2d9` (submodule: call blobs stage argc), parent
+`37a7a9b0`.
+
+- `pulsar_bp_executor`: `ComponentOpHandlers { get, set, call }` +
+  `prepare_with_component_ops(program, handlers)`. comp_-prefixed calls
+  bypass whitelist AND dlsym; plain `prepare()` now returns new error
+  variant `ComponentOpsNotBound { node_type }` for them.
+- `pulsar_game::blueprint_runtime::component_ops` (NEW module, ~320
+  lines): thread-local `{*mut World, Option<Entity>}` context installed
+  by `run_with_component_context(world, entity, f)` (RAII-cleared,
+  nested install panics). Trampolines parse staged operands and route
+  through `pulsar_world_registry::dispatch::*` — ONE dispatch path.
+  comp_call converts JSON args to declared types via C2's
+  `marshal::json_to_any` before dispatch (strict ArgumentCount/Type
+  validation preserved). All failures LOG + degrade to null; no unwind
+  across extern "C". Error surfacing into graph results = #648 scope.
+- Call name blobs now stage argc (`{class}\0{method}\0{n}\0`,
+  pbgc `encode_call_name_blob`) — the handler needs operand count with
+  no out-of-band length.
+- Executor: `execute_event_in_world(class, event, arena,
+  Option<(&mut World, Entity)>)`; legacy `execute_event` delegates with
+  None. Dispatcher dispatch methods take `&mut World`; TickLoop phase 3
+  + shutdown now hold the store write lock while dispatching.
+- Handlers obtained via `component_op_handlers()` fn — fn-ptr-to-int
+  casts are rejected in const eval.
+
+TESTS (pulsar_game lib, 4 passing): set writes live property; get reads
+live value back out of reserved blob; comp_call dispatches through
+reflection with typed args and return; no-context runs refuse without
+panic. Workspace check green; clippy clean on touched files.
+
+D3 entry point: dispatcher currently passes `Entity::DANGLING` for all
+instances — replace with real per-entity binding + lifecycle events.
