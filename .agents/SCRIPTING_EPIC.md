@@ -889,8 +889,68 @@ Commits: `df8081f3` (world_registry marshal helpers), `fa900ee2`
   domain (D1/D2) which covers graph-level usage. Editor make/break-
   struct nodes do not exist yet — node-library work, belongs with F.
 
-REMAINING IN PHASE D: #648 (per-entity dispatcher instances + borrow/
-lifecycle redesign), #650 (level.json bindings format + editor UX),
+### D3 — dispatcher ↔ world integration (#648) — LANDED
+
+Commit: one parent-repo commit (branch `scripting-epic`), pulsar_game only.
+52/52 lib tests.
+
+- **Binding model**: `BlueprintInstance.entity: Option<Entity>` (private +
+  accessors). Instances start unbound; `BlueprintDispatcher::
+  spawn_instance_for_entity(id, path, entity, overrides)` registers AND
+  binds atomically (gameplay-driven spawning), `bind_instance`/
+  `unbind_instance`/`instance_entity` cover late binding and respawn
+  rebinding. Multiple instances of one class coexist — map is keyed by
+  object id, each entry owns arena + binding. `register_bytecode` is the
+  in-memory core all registration funnels through, and it SHORT-CIRCUITS
+  class preparation when the class is already loaded (spawning N enemies
+  prepares once; deliberate swaps go through reload).
+- **Dispatch**: `execute_event_in_world` now takes
+  `Option<EventWorld>` (`EventWorld { world: &mut World,
+  entity: Option<Entity> }`, ctors `bound`/`unbound`) instead of the old
+  `Option<(&mut World, Entity)>`; the DANGLING-entity hack is deleted.
+  Unbound instances run graphs with component ops refusing (accurate log),
+  bound instances address their own entity. New bulk
+  `dispatch_tick_all(world, delta)` replaces the TickLoop's per-frame
+  key-snapshot loop (phase-3 write lock unchanged). New typed error
+  `ExecutorError::InstanceNotRegistered`.
+- **Lifecycle**: begin_play queue unchanged (drains on first tick);
+  tick + end_play dispatch per instance against the shared world.
+  Despawned entities are NOT auto-unbound — component ops refuse via
+  liveness checks per event (tested: sibling keeps ticking).
+- **Hot reload wired at runtime level**: `BlueprintDispatcher::
+  reload_blueprint(bytecode)` = executor program swap PLUS
+  `BlueprintInstance::rehydrate_after_reload` for every affected instance —
+  fresh arena from the new layout, carrying over ONLY variables whose
+  `(name, data_type, offset, size)` match exactly (sentinel-tested: drifted
+  layouts can never alias old bytes). This IS the PIE-recompile entry the
+  editor must call; wiring it into the vendored blueprint_editor's recompile
+  flow is #650/editor work (plugin changes were out of scope here).
+- **Arena sizing fix (latent bug found)**: instance arenas were sized from
+  variable extent only; any program whose scratch exceeds that failed with
+  VM `InsufficientArena` AT RUNTIME. `required_arena_size` now takes
+  max(variables, every event program's `arena_size`) at creation AND on
+  reload. Real editor output with comp-op JSON blobs (4 KiB reservations)
+  would have hit this on first real graph.
+- **Acceptance test** (`tests::blueprint_instances`): two entities sharing
+  one class, full TickLoop phase-3 path — independent charges (7 vs 52),
+  per-entity begin_play, distinct arenas (override vs default); plus
+  despawn-isolation, late-bind, and hot-reload preservation tests.
+
+NOT DONE HERE (by scope): level.json object→class bindings (#650 calls
+`bind_instance`/`spawn_instance_for_entity` at load), self-reference `self`
+ActorRef pin convention (needs pbgc node/variable work with F — the bound
+entity is available to hosts via `instance_entity`, so a `self` variable can
+be injected by whoever wires node support), delta-time into programs
+(`execute_tick` reserves the parameter).
+
+Notes for E/F: `EventWorld` replaces tuple contexts in any host code you
+write; `dispatch_tick_all`/`dispatch_pending_begin_play` under a store write
+lock is THE lifecycle contract; `instance_variable_bytes` is the tooling seam
+for inspectors. Pre-existing crate clippy blockers (untouched files):
+`bytecode_compiler.rs` never_loop (deny) + approx_constant — first person
+touching that file should fix both.
+
+REMAINING IN PHASE D: #650 (level.json bindings format + editor UX),
 then phases E (#651-653) and F (#654-656). Subagent provider was
 returning "Endpoint is unavailable" for long implementer sessions
 during this phase — A/B/C ran fine earlier; retry subagents before
