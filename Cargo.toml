@@ -91,7 +91,7 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "de0e524e01789003fc0108f18239d7a6575f269f", features = ["gpu"] }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "c761890789b3e3c16b362a91769570bd587e5ac6", features = ["gpu"] }
 pulsar_reflection                  = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "745ee787cc63288463c170aafb778672db8e85ac" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
@@ -327,3 +327,15 @@ wgsl_std = { path = "crates/third-party/psgc/crates/wgsl_std" }
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection"]
 pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "745ee787cc63288463c170aafb778672db8e85ac" }
 pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "745ee787cc63288463c170aafb778672db8e85ac" }
+
+# SceneDB's World-level subscription system (SceneDB#47, merged at c761890)
+# is what the properties panel's cache-until-signaled rework
+# (Pulsar-Native#575) consumes. Patched -- not merely pinned -- because the
+# Helio git dep / submodule still pins an older SceneDB rev internally; a
+# second, differing `pulsar_scenedb` in the graph would split the
+# `World`/`ComponentId` types exchanged across the Helio seam. Same shape as
+# the Pulsar-Reflection patches above (including the `//` URL spelling,
+# which is what lets a patch point at a different rev of the "same" source).
+# Drop this section once Helio repins.
+[patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
+pulsar_scenedb = { git = "https://github.com/Far-Beyond-Pulsar//SceneDB", rev = "c761890789b3e3c16b362a91769570bd587e5ac6" }

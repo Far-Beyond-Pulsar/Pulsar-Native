@@ -204,6 +204,18 @@ fn find_by_component_id(component_type: ComponentId) -> Option<&'static WorldCom
         .find(|r| (r.component_type)() == component_type)
 }
 
+/// Resolve a registered class's `pulsar_scenedb::ComponentId` -- the erased
+/// identity `World` subscriptions are keyed by (SceneDB#47's
+/// `World::subscribe_id`). This is the subscribe-path counterpart to
+/// [`find_by_component_id`] (the drain-path lookup): an editor caller that
+/// only knows a class NAME (the properties panel's reflection metadata) can
+/// arm a subscription without ever naming the Rust type. Returns `None` for
+/// classes not registered here -- those have no live `World` representation,
+/// so there is nothing to subscribe to.
+pub fn component_id_for_class(class_name: &str) -> Option<ComponentId> {
+    find(class_name).map(|r| (r.component_type)())
+}
+
 /// Hydrate `class_name`'s typed component from `data` onto `entity`. Returns
 /// `Ok(false)` if `class_name` isn't registered here (not migrated yet, or
 /// not a real component class) -- not an error, it just means the JSON

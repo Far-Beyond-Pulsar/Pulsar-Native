@@ -14,7 +14,9 @@
 use engine_backend::scene::ComponentInstance;
 use gpui::{prelude::*, *};
 use pulsar_reflection::{PropertyMetadata, REGISTRY, RUNTIME_TYPE_REGISTRY};
+use pulsar_scenedb::SubscriptionId;
 use serde_json::Value;
+use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
@@ -66,6 +68,37 @@ pub struct ObjectTypeFieldsSection {
     /// Number of components from the last render — used to detect structural
     /// changes without calling `get_components()` (which clones JSON).
     pub(super) cached_component_count: usize,
+
+    // ── Live-value subscription caches (Pulsar-Native#575, SceneDB#47) ────
+    //
+    // Before subscriptions existed, every render pass re-pulled every
+    // property of every mounted card straight from `World`, unconditionally,
+    // because nothing could say whether the underlying data had moved. Now:
+    // each mounted card arms ONE World subscription (per `(entity, class)`
+    // pair), keeps its latest pulled values here, and re-pulls only when a
+    // signal fires -- a subscription event for its own card, a legacy JSON-
+    // path write recorded in the property change set, or a structural /
+    // store-swap invalidation.
+    /// Latest known live values per mounted component card, keyed by class
+    /// name. Borrowed during row building, never consumed -- rows only read.
+    pub(super) world_value_cache: HashMap<String, Vec<Box<dyn Any>>>,
+    /// Classes whose cached values are stale and must be re-pulled on the
+    /// next render pass.
+    pub(super) dirty_classes: HashSet<String>,
+    /// Armed World subscriptions per mounted card (`class -> SubscriptionId`).
+    /// Events arrive tagged with this id; this map is also what `Drop` uses
+    /// to disarm everything when the section is torn down (selection change).
+    pub(super) world_subs: HashMap<String, SubscriptionId>,
+    /// Classes with no `World`-registered component id at all (the legacy
+    /// JSON-only classes). Permanently un-subscribable until the card set
+    /// structurally changes; remembered so the registry lookup isn't paid
+    /// every render for a card that can never have a live value.
+    pub(super) unsubscribable_classes: HashSet<String>,
+    /// Store-generation (`SceneDatabase::subscriptions_epoch`) these
+    /// subscriptions were armed in. Undo/redo swaps the whole `World`,
+    /// killing every outstanding subscription without any event ever firing;
+    /// an epoch mismatch means drop everything and re-arm from scratch.
+    pub(super) subs_epoch: u64,
 }
 
 impl ObjectTypeFieldsSection {
@@ -131,7 +164,33 @@ impl ObjectTypeFieldsSection {
             expanded_property_categories: HashSet::new(),
             property_metadata_cache: HashMap::new(),
             cached_component_count: 0,
+            world_value_cache: HashMap::new(),
+            dirty_classes: HashSet::new(),
+            world_subs: HashMap::new(),
+            unsubscribable_classes: HashSet::new(),
+            subs_epoch: 0, // corrected against the live epoch on first render
         }
+    }
+
+    /// Disarm every World subscription this section armed. Called from
+    /// `Drop` (section teardown on selection change) and from the
+    /// structural/store-swap invalidation paths.
+    fn release_world_subscriptions(&mut self) {
+        for (_, sub) in self.world_subs.drain() {
+            self.scene_db.unsubscribe_component(sub);
+        }
+    }
+
+    /// Invalidate ALL per-card subscription state -- next render re-arms and
+    /// re-pulls everything. For undo/redo's wholesale `World` swap (whose
+    /// outstanding subscriptions die silently, no events) and structural
+    /// card-set changes.
+    fn reset_world_subscription_state(&mut self) {
+        self.release_world_subscriptions();
+        self.world_value_cache.clear();
+        self.dirty_classes.clear();
+        self.unsubscribable_classes.clear();
+        self.subs_epoch = self.scene_db.subscriptions_epoch();
     }
 
     fn add_component(
@@ -210,6 +269,15 @@ impl ObjectTypeFieldsSection {
     }
 }
 
+impl Drop for ObjectTypeFieldsSection {
+    fn drop(&mut self) {
+        // Selection changed / panel closed: stop watching this object's
+        // components so a long-lived editor doesn't accumulate dead
+        // subscriptions for every object that was ever inspected.
+        self.release_world_subscriptions();
+    }
+}
+
 impl Render for ObjectTypeFieldsSection {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use super::ComponentHierarchyPanel;
@@ -231,6 +299,18 @@ impl Render for ObjectTypeFieldsSection {
         // entries from removed/renamed components don't persist.
         if structural || count_changed {
             self.property_metadata_cache.clear();
+            // The card set itself changed: every subscription/cache entry is
+            // suspect (a removed card's sub must be disarmed; a re-added one
+            // needs a fresh arm against the possibly-new entity).
+            self.reset_world_subscription_state();
+        }
+
+        // Undo/redo swapped the whole `World` out from under us: every
+        // outstanding subscription died without an event ever firing. The
+        // epoch check is the only signal -- see
+        // `SceneDatabase::subscriptions_epoch`.
+        if self.subs_epoch != self.scene_db.subscriptions_epoch() {
+            self.reset_world_subscription_state();
         }
 
         // ── Object icon picker row ─────────────────────────────────────────
@@ -271,8 +351,49 @@ impl Render for ObjectTypeFieldsSection {
         let diag_card = self.render_diag_card(&attached, cx);
 
         // ── Per-component property cards ───────────────────────────────────
+        //
+        // Mark cards dirty from the two signals that can have fired since
+        // last render, BEFORE building them:
+        //
+        // 1. World subscription events (SceneDB#47) -- the push signal for
+        //    every World-registered card: real inserts/mutations/removals of
+        //    exactly the `(entity, component)` pairs these cards display,
+        //    whether the write came from this panel, an AI tool, or a
+        //    renderer-side sync. Events are matched back to their card by
+        //    SubscriptionId.
+        // 2. The legacy JSON change set -- covers the handful of
+        //    not-World-registered classes whose only write path still goes
+        //    through `metadata_db` (they can never fire a World event).
+        //
+        // SINGLE-DRAINER CONTRACT: `take_world_component_events` empties a
+        // queue shared by every subscriber in the process; this section is
+        // the one consumer today. See
+        // `SceneDatabase::take_world_component_events`'s doc before adding a
+        // second drainer.
+        //
+        // Guarded on having armed at least one subscription: draining takes
+        // the store's WRITE lock, and an all-legacy-cards panel (nothing
+        // subscribable) must not pay that on every render pass. SceneDB's
+        // own cap bounds the undrained queue meanwhile.
+        if !self.world_subs.is_empty() {
+            for event in self.scene_db.take_world_component_events() {
+                for (class, sub) in &self.world_subs {
+                    if *sub == event.subscription {
+                        self.dirty_classes.insert(class.clone());
+                    }
+                }
+            }
+        }
+        if !property_changes.is_empty() {
+            for comp in &attached {
+                if property_changes.class_changed(&self.object_id, &comp.class_name) {
+                    self.dirty_classes.insert(comp.class_name.clone());
+                }
+            }
+        }
+
         let component_sections =
-            self.render_component_sections(&attached, &property_changes, window, cx);
+            self.render_component_sections(&attached, window, cx);
 
         v_flex()
             .w_full()

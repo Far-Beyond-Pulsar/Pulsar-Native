@@ -290,6 +290,70 @@ impl SceneDatabase {
         std::mem::take(&mut *self.property_changes.lock())
     }
 
+    // ── World subscriptions (Pulsar-Native#575, SceneDB#47) ────────────────
+
+    /// Store-swap generation the current `World` belongs to. Subscriptions
+    /// live inside the `World` itself, so [`Self::restore_history_snapshot`]
+    /// (undo/redo -- the one wholesale `*self.store.write() = new_store`
+    /// site, whose epoch bump this reads straight out of `RevisionTracker`)
+    /// silently kills every outstanding [`pulsar_scenedb::SubscriptionId`].
+    /// A subscriber that caches snapshots against subscriptions MUST compare
+    /// this value per frame and re-arm from scratch when it moves; within a
+    /// stable epoch subscriptions stay valid forever (or until their entity
+    /// despawns).
+    pub fn subscriptions_epoch(&self) -> u64 {
+        self.revision_tracker
+            .epoch
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Arm a World-level change subscription for `(object_id, class_name)`'s
+    /// live component -- the properties panel's subscribe-once-per-card
+    /// replacement for poll-every-render. The returned
+    /// [`pulsar_scenedb::SubscriptionId`] is what
+    /// [`Self::take_world_component_events`] events are tagged with; drop it
+    /// with [`Self::unsubscribe_component`] when the card unmounts.
+    ///
+    /// `None` when `class_name` has no `World`-registered component id (the
+    /// legacy JSON-only classes), the object has no live entity yet, or the
+    /// entity is dead -- all "nothing to subscribe to", not errors; callers
+    /// keep polling those cards exactly as they did before.
+    pub fn subscribe_component(
+        &self,
+        object_id: &ObjectId,
+        class_name: &str,
+    ) -> Option<pulsar_scenedb::SubscriptionId> {
+        let cid = pulsar_world_registry::component_id_for_class(class_name)?;
+        let mut store = self.store.write();
+        let entity = store.entity_for(object_id)?;
+        store.world_mut().subscribe_id(entity, cid)
+    }
+
+    /// Disarm a previously armed subscription. Idempotent no-op if it is
+    /// already gone (unsubscribed, or its whole `World` was swapped out from
+    /// under it by undo/redo).
+    pub fn unsubscribe_component(&self, sub: pulsar_scenedb::SubscriptionId) {
+        self.store.write().world_mut().unsubscribe(sub);
+    }
+
+    /// Drain every pending World component-change event (SceneDB#47's
+    /// batched delivery). Call once per frame at your frame boundary --
+    /// between drains the queue accumulates, bounded by SceneDB's own cap.
+    ///
+    /// SINGLE-DRAINER CONTRACT: like [`Self::drain_property_changes`], this
+    /// empties a shared queue -- today exactly one consumer per frame does
+    /// the draining and routes to whoever asked (the properties panel's
+    /// component-card host). If a second live-UI subscriber ever appears,
+    /// this needs to grow per-consumer fanout before both can coexist;
+    /// events discarded by the wrong drainer would strand the other
+    /// consumer's cache stale until something else touched it.
+    pub fn take_world_component_events(&self) -> Vec<pulsar_scenedb::ComponentChangeEvent> {
+        self.store
+            .write()
+            .world_mut()
+            .take_component_change_events()
+    }
+
     /// Record that a specific property was written.  Called from every
     /// mutating method that touches a component property.
     fn record_property_change(&self, object_id: &str, class_name: &str, prop_name: &str) {
@@ -2384,4 +2448,105 @@ mod world_component_hydration_tests {
             .is_some());
     }
 
+    // ── World subscriptions (Pulsar-Native#575, SceneDB#47) ────────────────
+
+    /// The properties panel's core contract: arm once per card, edit the
+    /// live value through the real write path, and the subscription delivers
+    /// exactly one event tagged with that card's id. A drain empties; an
+    /// unsubscribed card hears nothing further.
+    #[test]
+    fn subscribe_component_delivers_events_for_live_edits_to_that_card_only() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Cube"), None);
+        db.add_component(
+            &id,
+            "StaticMeshComponent".to_string(),
+            serde_json::json!({"mesh_asset": "meshes/primitives/SM_Cube.fbx"}),
+        );
+
+        let sub = db
+            .subscribe_component(&id, "StaticMeshComponent")
+            .expect("registered class with a live entity subscribes");
+        assert!(
+            db.take_world_component_events().is_empty(),
+            "arming alone must deliver nothing"
+        );
+        // Drain is emptying, not peeking: a second drain is empty too.
+        assert!(db.take_world_component_events().is_empty());
+
+        // Real mutation through the same typed path the panel's setter
+        // closures ride (World::get_mut -> Mut guard -> into_inner).
+        {
+            let mut store = db.store.write();
+            let entity = store.entity_for(&id).unwrap();
+            let instance = pulsar_world_registry::get_world_component_as_engine_class_mut(
+                "StaticMeshComponent",
+                store.world_mut(),
+                entity,
+            )
+            .unwrap();
+            let concrete = instance
+                .as_any_mut()
+                .downcast_mut::<StaticMeshComponent>()
+                .unwrap();
+            concrete.mesh_asset = "meshes/primitives/SM_Sphere.fbx".into();
+        }
+
+        let events: Vec<_> = db
+            .take_world_component_events()
+            .into_iter()
+            .filter(|e| e.subscription == sub)
+            .collect();
+        assert_eq!(events.len(), 1, "one real mutation = exactly one event");
+        assert_eq!(events[0].kind, pulsar_scenedb::ComponentChangeKind::Mutated);
+        assert!(db.take_world_component_events().is_empty());
+
+        // After unsubscribe, the same kind of write stays silent.
+        db.unsubscribe_component(sub);
+        {
+            let mut store = db.store.write();
+            let entity = store.entity_for(&id).unwrap();
+            let instance = pulsar_world_registry::get_world_component_as_engine_class_mut(
+                "StaticMeshComponent",
+                store.world_mut(),
+                entity,
+            )
+            .unwrap();
+            let concrete = instance
+                .as_any_mut()
+                .downcast_mut::<StaticMeshComponent>()
+                .unwrap();
+            concrete.mesh_asset = "meshes/primitives/SM_Cone.fbx".into();
+        }
+        assert!(db.take_world_component_events().is_empty());
+    }
+
+    /// Unregistered classes have no live `World` representation -- there is
+    /// nothing to subscribe to, and `None` (not an error) is the answer.
+    #[test]
+    fn subscribing_an_unregistered_class_is_none() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Cube"), None);
+        assert!(db.subscribe_component(&id, "NoSuchComponentClass").is_none());
+    }
+
+    /// Undo/redo swaps the whole `World` out from under any outstanding
+    /// subscriptions (they live inside it) without firing events. The epoch
+    /// is the only signal that this happened, so it MUST advance across a
+    /// restore even when the snapshot content is identical.
+    #[test]
+    fn restore_history_snapshot_bumps_the_subscriptions_epoch() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Cube"), None);
+
+        let before = db.subscriptions_epoch();
+        let snapshot = db.capture_history_snapshot();
+
+        db.restore_history_snapshot(&snapshot).unwrap();
+        assert_ne!(
+            db.subscriptions_epoch(),
+            before,
+            "a store swap must invalidate every outstanding subscription"
+        );
+    }
 }
