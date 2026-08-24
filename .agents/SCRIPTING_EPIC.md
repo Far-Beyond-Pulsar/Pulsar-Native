@@ -299,3 +299,266 @@ If something fails on your first run, check whether the failing symbol is one
 of A's (`ResolvedLightFrame`, `ResolvedMeshFrame`, `RuntimeLevel`,
 `helio_bridge`, `scene_store`, ABI v2 fields) before suspecting drift —
 everything above is committed and self-consistent.
+
+## Handoff: B
+
+Branch `scripting-epic`, one commit per issue, helio submodule pointer and
+the user's in-flight `Cargo.toml`/`Cargo.lock` handle-ledger WIP excluded
+from all of them (my lock/manifest lines were staged surgically; their WIP
+hunks remain uncommitted exactly as found):
+
+| Commit | Issue | Summary |
+|---|---|---|
+| `72940e41` | #640 | script object model — ActorRef/ComponentRef handles with per-access liveness |
+| `de4c3106` | #641 | invalid-handle contract — debug misuse asserts, churn property tests, handle-semantics page |
+| `1ad584b3` | #639 | StableId <-> Entity resolution — script references survive save/load |
+| `f902cbae` | #642 | identity types ride reflection — registry shims, Reflectable refs, dyn-dispatch demo |
+
+### The one crate everything downstream calls
+
+**`crates/core/pulsar_script_object_model`** (workspace dep name
+`pulsar_script_object_model`). C, D, E, F: import identity handling from
+here — never re-derive Entity/StableId/class-name plumbing elsewhere.
+Dependency direction: scenedb + reflection + world_registry only; NO editor,
+renderer, or engine_backend deps (so game-project crates and VM guests can
+link it). `engine_backend` depends on it (one-way) and implements its two
+host traits for `WorldSceneStore`.
+
+### Exact public API surface (signatures)
+
+```rust
+// ── refs.rs ── value types (Copy/Clone-friendly; ComponentRef is Clone+Eq+Hash)
+pub struct ActorRef(pub Entity);
+impl ActorRef {
+    pub fn new(entity: Entity) -> Self;
+    pub fn entity(self) -> Entity;
+    pub fn is_alive(self, world: &World) -> bool;
+    pub fn validate(self, world: &World) -> Result<(), ScriptRefError>;
+    pub fn component(self, class_name: impl Into<String>, component_index: u32) -> ComponentRef;
+    pub fn despawn(self, world: &mut World) -> bool;
+}
+impl From<Entity> for ActorRef {}
+
+pub struct ComponentRef { pub entity: Entity, pub class_name: String, pub component_index: u32 }
+impl ComponentRef {
+    pub fn live(actor: ActorRef, class_name: impl Into<String>) -> Self;   // index-0 shorthand
+    pub fn actor(&self) -> ActorRef;
+    pub fn validate(&self, world: &World) -> Result<(), ScriptRefError>;   // liveness + registration
+    pub fn is_valid(&self, world: &World) -> bool;
+
+    // Property access (#640). JSON surface per issue text; live-typed path only.
+    pub fn get_property(&self, world: &World, property: &str)
+        -> Result<serde_json::Value, ScriptRefError>;
+    pub fn set_property(&self, world: &mut World, property: &str, value: serde_json::Value)
+        -> Result<(), ScriptRefError>;
+    // Full panel-parity routing: non-live indexes go through store's records.
+    pub fn get_property_with_instances(&self, world: &World,
+        store: Option<&dyn ComponentInstanceStore>, property: &str)
+        -> Result<serde_json::Value, ScriptRefError>;
+    pub fn set_property_with_instances(&self, world: &mut World,
+        store: Option<&mut dyn ComponentInstanceStore>, property: &str, value: serde_json::Value)
+        -> Result<(), ScriptRefError>;
+    // Method dispatch through MethodMetadata.caller (C1 supersedes internals,
+    // NOT this signature). Always targets the live-typed value.
+    pub fn call_method(&self, world: &mut World, method: &str, args: MethodArgs)
+        -> Result<MethodReturnValue, ScriptRefError>;
+}
+
+// ── errors.rs ── the #641 taxonomy (thiserror Display, Clone+Eq)
+pub enum ScriptRefError {
+    ReferenceDespawned { entity_bits: u64 },      // dead/recycled/never-existed
+    ComponentMissing { entity: Entity, class_name: String },
+    ClassMismatch { expected: String, found: String, component_index: u32, entity: Entity },
+    InstanceMissing { entity: Entity, class_name: String, component_index: u32 },
+    UnregisteredClass(String),
+    ClassNotBridged(String),                      // registration bug, surfaced not guessed
+    UnknownProperty { class_name: String, property: String },
+    UnknownMethod { class_name: String, method: String },
+    Marshalling { context: String, message: String },
+}
+
+// ── instances.rs ── duplicate-instance storage seam (hosts implement)
+pub struct InstanceRecord { pub class_name: String, pub enabled: bool, pub data: serde_json::Value }
+pub trait ComponentInstanceStore {
+    fn live_component_index(&self, entity: Entity, class_name: &str) -> Option<u32>;
+    fn instance_record(&self, entity: Entity, index: u32) -> Option<InstanceRecord>;
+    fn set_instance_data(&mut self, entity: Entity, index: u32, data: serde_json::Value) -> bool;
+}
+
+// ── subscribe.rs ── SceneDB#47 helpers
+pub fn subscribe_component(world: &mut World, r: &ComponentRef) -> Option<SubscriptionId>;
+pub fn take_change_events_for(world: &mut World, subscription: SubscriptionId)
+    -> Vec<ComponentChangeEvent>;
+
+// ── resolution.rs ── #639 save/load identity
+pub trait StableIdResolver {                 // implemented for WorldSceneStore (engine_backend)
+    fn entity_for_stable_id(&self, stable_id: &str) -> Option<Entity>;
+    fn stable_id_for_entity(&self, entity: Entity) -> Option<String>;
+    fn is_entity_alive(&self, entity: Entity) -> bool;
+}
+pub struct SerializedComponentRef            // THE serialized ref format ({stable_id,class_name,component_index})
+    { pub stable_id: String, pub class_name: String, pub component_index: u32 }  // Serialize+Deserialize
+pub enum ResolveRefError { ReferenceLost { stable_id: String }, Unidentified { entity: Entity } }
+impl SerializedComponentRef { pub fn resolve<R: StableIdResolver + ?Sized>(&self, resolver: &R)
+    -> Result<ComponentRef, ResolveRefError>; }
+impl ComponentRef { pub fn to_serialized<R: StableIdResolver + ?Sized>(&self, resolver: &R)
+    -> Result<SerializedComponentRef, ResolveRefError>; }
+
+// ── reflect.rs ── #642 reflection integration
+pub fn entity_type_info() -> &'static RuntimeTypeInfo;        // Primitive, color "#56D364"
+pub fn actor_ref_type_info() -> &'static RuntimeTypeInfo;     // Wrapper(Custom "ActorRef"), "#F0883E"
+pub fn component_ref_type_info() -> &'static RuntimeTypeInfo; // Struct{entity,class_name,component_index}, "#58A6FF"
+impl Reflectable for ActorRef {}          // JSON: packed-bits number
+impl Reflectable for ComponentRef {}      // JSON: {"entity":bits,"class_name":str,"component_index":n}
+// Registry shims (hand-submitted RuntimeTypeRegistration, see upstream notes): Entity, u32,
+// ActorRef, ComponentRef -- so serialize_json_for_any/deserialize_json_for_type work for all four.
+
+// ── dispatch.rs ── #642 end-to-end dyn-dispatch demo (receiver = the World itself)
+pub const RECEIVER_NAME: &str = "scene_object_model";
+// DYN_METHOD_REGISTRY methods registered: "normalize_ref"(ComponentRef)->ComponentRef,
+// "describe_ref"(ComponentRef)->String. Invalid/stale inputs => Ok(None)+warn, NEVER panic.
+
+// ── contract.rs ── docs-only module: the handle-semantics page for script authors
+```
+
+### engine_backend additions (additive to handoff-A surface)
+
+- New file `crates/core/engine_backend/src/scene/script_ref_bridge.rs`:
+  `impl StableIdResolver for WorldSceneStore` and
+  `impl ComponentInstanceStore for WorldSceneStore`. No new storage — the
+  resolver reads the existing `by_stable_id` map / `StableId` components;
+  the instance store reads/writes `RenderProps.component_instances` JSON
+  with `pulsar_scene::component_instances_from_props`' exact index rule
+  (explicit `"index"` field wins, else array position; missing `enabled`
+  means enabled).
+- Integration test `crates/core/engine_backend/tests/script_ref_survival.rs`
+  (4 tests): the #639 acceptance — save → load → resolved ref writes the
+  intended component and ONLY it; deleted target ⇒ typed `ReferenceLost`;
+  reparenting between sessions doesn't disturb references; freezing a
+  despawned target is typed.
+
+### What landed per issue
+
+**B1 / #640.** Value-type handles above, plus panel-parity routing
+(`routing.rs`): the index IS the identity — routing picks live-vs-duplicate
+storage BEFORE any presence check, so a stale index can never land an edit
+elsewhere (#519 discipline). Live-typed reads/writes go through
+`pulsar_world_registry`'s EngineClass bridges (no JSON on the hot path;
+`Mut` guards fire subscription/GPU events exactly like panel edits);
+duplicates hydrate into a throwaway World from THEIR OWN record, edit, and
+serialize back into that same record (#561's nesting-correct mechanism).
+Live writes also persist the full new shape back into the instance record
+when a store is supplied (#561 Bug B parity). Acceptance test: two entities
+with the same class, refs held across despawn, per-target writes observed
+through subscriptions — no panics, correct targets.
+
+**B3 / #641.** Typed-error taxonomy above; every accessor validates before
+touching storage. Debug-build misuse assertion on exactly ONE input:
+`Entity::DANGLING` reaching an accessor (sentinel crossing a boundary =
+raw-id abuse). Ordinary staleness (despawned, recycled generation,
+out-of-range slot after a world rebuild) NEVER asserts — those are expected
+`Err`s. Property tests (`property_tests.rs`, deterministic xorshift, 3
+seeds × 2000 ops): spawn/despawn/slot-reuse churn under held refs proves no
+cross-object write ever occurs and retired refs report clean staleness
+forever; plus a targeted recycled-slot test. `contract.rs` is the
+script-author documentation page (boundary marshalling table included).
+Audit note: VM opcodes (D) and generated code (E) don't exist yet — they
+MUST route every component op through this crate's accessors/errors (that
+is the downstream promise); PIE v2 raw-u64 crossing converts at glue and
+treats first accessor validation as the trust boundary.
+
+**B2 / #639.** Serialized reference format
+`{stable_id, class_name, component_index}` (+ `ActorRef` equivalent not
+needed yet — actors resolve via the same resolver directly). Resolution is
+LAZY (per access against the current table), which is what makes reload/
+undo-redo/reparenting survival automatic; deletion reports typed
+`ReferenceLost`, never silent rebinding (exact-match-only fallback policy,
+documented in `resolution.rs`). Editor UX affordance (human-readable pin
+names) is F's consumption of `describe_ref` + stable ids — deferred there.
+
+**B4 / #642.** Identity types ride reflection end-to-end: registry entries
+keyed by TypeId for `Entity` + gap-filling `u32`; full manual `Reflectable`
+impls for `ActorRef`/`ComponentRef` (struct shape with real FieldInfo
+offsets via `offset_of!`); distinct declared pin colors so F can color/
+filter object-reference pins as their own type. Demo wired through the REAL
+global `DYN_METHOD_REGISTRY`: receiver `"scene_object_model"` (the receiver
+is the `World` itself — `World: Any+Send+Sync` slots into `&mut dyn Any`),
+methods take a `ComponentRef` arg and return one back, refusing stale
+inputs with warn+None instead of panicking. Marshalling rules table lives
+in `reflect.rs`'s module doc and `contract.rs`.
+
+### Shimmed vs upstream-blocked (upstream asks recorded, nothing edited)
+
+- **`Reflectable for pulsar_scenedb::Entity`**: orphan rule forbids it
+  (foreign trait × foreign type). Landed as a hand-written
+  `RuntimeTypeRegistration` inventory submit keyed by `TypeId::of::<Entity>()`
+  — the entire registry/marshalling path works off those fn pointers, so
+  end-to-end JSON round-trip holds without the trait impl. UPSTREAM ASK
+  (SceneDB): move the registration upstream (or into reflection's prims) so
+  Entity gains the real trait impl, and consider `{slot, generation}`
+  structure instead of opaque bits if pins ever display generations.
+- **`u32`** has no entry in reflection's prim set (only i32/i64/u64...):
+  same shim treatment locally; upstream ask to add it to prims.
+- **`#[pulsar_type]` alias trick does NOT work cross-crate**: it generates
+  `impl ForeignTrait for ForeignType` (E0117 outside pulsar_reflection),
+  which is why the shims are hand-written submissions instead.
+- **DEADLOCK TRAP discovered** (documented in reflect.rs): the runtime type
+  registry calls every submitted `type_info()` fn during ITS OWN Lazy init,
+  so descriptor construction must never touch `RUNTIME_TYPE_REGISTRY`
+  (re-entrant access hangs forever). Our descriptors are plain statics; a
+  local unregistered `String` field descriptor routes by TypeId through
+  upstream's entry. Whoever adds more identity registrations must keep this
+  property.
+
+### Deviations from issue text
+
+- `class_name: SmolStr` → `String`: the workspace has no smol_str dep and
+  every adjacent identity type (`StableId`, `Name`) is plain `String`.
+- Issue B1's `get_property(name) -> Result<Value>` is the live-typed pair
+  (`get_property`/`set_property`); duplicate routing needs an instance
+  store, so the routed variants are spelled `*_with_instances` (bare `None`
+  for `Option<&mut dyn Trait>` doesn't infer — this keeps everyday call
+  sites clean).
+- B4's "wire one #[method]" landed as DYN_METHOD_REGISTRY methods rather
+  than an EngineClass `#[method]`: component-method metadata callers take
+  `&mut dyn EngineClass` receivers with NO world context, so a method
+  needing liveness validation can't be expressed there today. The dyn
+  registry's `&mut dyn Any` receiver accepts the World itself. C1 may want
+  to note that context-injection gap when building the unified dispatcher.
+- B2's editor UX scope item (human-readable pickers) belongs to F; the data
+  it needs (stable ids + Name components + `describe_ref`) exists.
+
+### Verification status
+
+At each commit: affected-crate tests green (object model 38/38 incl. 5-seed
+churn property tests; engine_backend lib 77/77 incl. 5 new bridge unit
+tests + 4/4 new integration tests), touched-file clippy clean. Final sweep:
+`cargo check --workspace` OK. Pre-existing failures untouched (two
+toggle_button.rs doctests; workspace clippy warnings on unrelated files;
+SceneDB-local warnings from the user's local-tree override).
+
+CAVEAT (same as A's): the user's `[patch]` still points
+`pulsar_scenedb` at their LOCAL tree (`D:\GitHub\SceneDB`, handle_ledger
+WIP — purely additive diff vs pinned `c761890`; I verified every API I use
+exists identically at the pin). Workspace-wide results are only as stable
+as that override; my code compiles against BOTH the pinned rev's API and
+the local tree.
+
+### Notes for C/D/E/F
+
+1. **Funnel through this crate.** C's `invoke_component_method` should
+   reuse `ComponentRef::{validate, call_method}`'s semantics (and ideally
+   delegate to them) rather than re-implementing dispatch against raw
+   `(entity, ComponentId)` pairs; D's `comp_*` opcodes and E's generated
+   code must return `ScriptRefError` variants across their boundaries.
+2. **Marshalling (C2):** identity values cross reflection boundaries boxed
+   as the concrete types (`Box::new(component_ref)`); cross FFI as
+   `Entity::bits()` u64 only. The shims make both directions registry-
+   serializable already.
+3. **Pins (F):** `actor_ref_type_info()`/`component_ref_type_info()` carry
+   declared colors; `describe_ref` produces the human-readable label.
+   Persisted pins serialize `SerializedComponentRef`.
+4. **Locking:** accessors are lock-scope-agnostic — pass `store.read().world()`
+   / `.write().world_mut()` per call, keep write scopes short (A's contract
+   unchanged). Never hold a store guard across script callbacks that might
+   re-enter the store.
