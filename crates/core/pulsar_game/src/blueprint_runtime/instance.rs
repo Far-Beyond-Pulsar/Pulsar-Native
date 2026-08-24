@@ -216,6 +216,14 @@ impl BlueprintInstance {
     /// Serialize a JSON value to bytes based on data type.
     ///
     /// This is used for variable overrides from prefabs.
+    ///
+    /// Primitive types keep their native little-endian fast paths. Every
+    /// other type resolves through the reflection registry
+    /// (`RUNTIME_TYPE_REGISTRY.get_by_name`) and marshals to the VM blob
+    /// encoding (`pulsar_world_registry::marshal`) — `[u64 len][payload]`
+    /// for strings/vectors, JSON for compound registered types — matching
+    /// what component ops and `bytes_to_any` speak. Types unknown to both
+    /// paths are typed errors, never silently zeroed.
     fn serialize_json_to_bytes(json: &JsonValue, data_type: &str) -> Result<Vec<u8>, String> {
         match data_type {
             "i32" | "I32" => {
@@ -250,15 +258,8 @@ impl BlueprintInstance {
                     .ok_or_else(|| format!("Expected boolean for bool, got {:?}", json))?;
                 Ok(vec![if value { 1 } else { 0 }])
             }
-            _ => {
-                // For complex types, return zero bytes
-                // In a production system, we'd implement proper serialization for String, Vec, etc.
-                tracing::warn!(
-                    "Unsupported variable type for JSON serialization: {}",
-                    data_type
-                );
-                Err(format!("Unsupported type: {}", data_type))
-            }
+            data_type => pulsar_world_registry::marshal::serialize_named_json(data_type, json)
+                .map_err(|e| e.to_string()),
         }
     }
 }
@@ -407,5 +408,49 @@ mod tests {
         let bytes =
             BlueprintInstance::serialize_json_to_bytes(&JsonValue::from(false), "bool").unwrap();
         assert_eq!(bytes, vec![0]);
+    }
+}
+
+#[cfg(test)]
+mod override_marshalling_tests {
+    //! #649: compound variable overrides marshal through the reflection
+    //! registry into VM blob encodings instead of failing with
+    /// "Unsupported type".
+
+    use super::*;
+
+    #[test]
+    fn string_overrides_marshal_to_blob_encoding() {
+        let bytes =
+            BlueprintInstance::serialize_json_to_bytes(&serde_json::json!("hello"), "String")
+                .expect("String overrides must marshal");
+        // [u64 len][utf8] — the encoding any host reader (bytes_to_any,
+        // deserialize_named_bytes) speaks.
+        assert_eq!(&bytes[..8], &5_u64.to_le_bytes());
+        assert_eq!(&bytes[8..], b"hello");
+    }
+
+    #[test]
+    fn vector_overrides_marshal_to_blob_encoding() {
+        let json = serde_json::json!([1.0f32, 2.0, 3.0]);
+        let bytes = BlueprintInstance::serialize_json_to_bytes(&json, "Vec<f32>")
+            .expect("Vec overrides must marshal");
+        let count = usize::try_from(u64::from_le_bytes(bytes[..8].try_into().unwrap()))
+            .expect("count fits");
+        assert_eq!(count, 3, "[u64 elem_count][elems] for Vector kind");
+        assert_eq!(bytes.len(), 8 + count * 4);
+    }
+
+    #[test]
+    fn unknown_types_are_typed_errors_not_zeroed() {
+        let err = BlueprintInstance::serialize_json_to_bytes(
+            &serde_json::json!({}),
+            "DefinitelyNotARealType",
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("not registered"),
+            "error should name the registry miss: {err}"
+        );
     }
 }
