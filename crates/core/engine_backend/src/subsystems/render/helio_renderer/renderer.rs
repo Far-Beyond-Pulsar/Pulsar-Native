@@ -25,7 +25,8 @@ use helio_component::{
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
 
 use crate::scene::{
-    LightFrameMaintainer, ObjectDirtyFlags, ObjectUpdate, SceneDbDelta, WorldSceneStore,
+    LightFrameMaintainer, MeshFrameMaintainer, ObjectDirtyFlags, ObjectUpdate, SceneDbDelta,
+    WorldSceneStore,
 };
 use parking_lot::RwLock;
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
@@ -242,6 +243,10 @@ struct HelioInner {
     /// frame. Renderer-owned bookkeeping (which subscriptions are armed);
     /// the resolved state itself is SceneDB-resident.
     light_frames: LightFrameMaintainer,
+    /// Same pattern for static-mesh instance frames (#638): the transform-
+    /// derived half of each instance, maintained from change subscriptions
+    /// and read by `rebuild_static_mesh_frame`.
+    mesh_frames: MeshFrameMaintainer,
 }
 
 // component_instances_from_snap delegates to pulsar_scene's shared impl.
@@ -409,6 +414,7 @@ impl HelioRenderer {
                 water_volume_cache: WaterVolumeCache::new(),
                 post_process_volume_cache: PostProcessVolumeCache::new(),
                 light_frames: LightFrameMaintainer::new(),
+                mesh_frames: MeshFrameMaintainer::new(),
             };
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
@@ -573,6 +579,7 @@ impl HelioRenderer {
             // that method's logic inlined (see its comment above for why it
             // can't just call the method here).
             inner.light_frames.reset();
+            inner.mesh_frames.reset();
         }
 
         // ── Early out when idle ─────────────────────────────────────────────────
@@ -920,6 +927,7 @@ impl HelioRenderer {
             // were armed on; a wholesale store swap invalidates them all.
             // The next sync pass re-arms + reseeds from scratch.
             inner.light_frames.reset();
+            inner.mesh_frames.reset();
         }
     }
 
@@ -1479,6 +1487,7 @@ impl HelioRenderer {
             // `WorldSceneStore`'s dirty flags, and those edits must reach
             // the rendered frame within this same pass.
             inner.light_frames.maintain(store.world_mut());
+            inner.mesh_frames.maintain(store.world_mut());
             store.take_removed_ids()
         };
 
@@ -1953,6 +1962,7 @@ impl HelioRenderer {
         {
             let mut store = scene_store.write();
             inner.light_frames.maintain(store.world_mut());
+            inner.mesh_frames.maintain(store.world_mut());
         }
 
         // Always rebuild the transient static-mesh and light frames from

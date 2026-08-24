@@ -1,5 +1,5 @@
 //! The one-world bridge between [`WorldSceneStore`] and any `helio::Renderer`
-//! (Pulsar-Native#637).
+//! (#637).
 //!
 //! Everything here is renderer-agnostic on purpose: the editor's
 //! `HelioRenderer` and the play-mode paths (standalone windows, PIE guest)
@@ -16,10 +16,31 @@
 //! Callers drive these with whatever locking discipline suits them: both
 //! rebuild fns take `&WorldSceneStore` (a read lock suffices); only the
 //! attach step needs `&mut`.
+//!
+//! ## Ownership + invalidation protocol vs Helio#231 (#638)
+//!
+//! Agreed split between Pulsar-Native's World and the renderer-side residency
+//! stages, recorded here because this module is the seam both sides meet at:
+//!
+//! - **Geometry** (vertex/index bytes): owned by SceneDB's var-len pools
+//!   (`StaticMeshComponent`'s `#[gpu]` fields); Helio borrows the pools via
+//!   `rebind_static_mesh_pools`. Invalidation: pool regrow changes offsets,
+//!   which is why mesh keys / draw params are derived fresh each pass from
+//!   handles and never cached.
+//! - **Per-instance state** (model/normal matrices, bounds, cull group):
+//!   owned by the World as [`ResolvedMeshFrame`] rows (#638), maintained by
+//!   [`MeshFrameMaintainer`] from component-change subscriptions. Helio holds
+//!   no persistent per-instance record -- its transient instance list is
+//!   rebuilt from these rows every pass.
+//! - **Materials**: records are renderer-side (Helio#231 owns the material
+//!   table and slot allocation). Until a `MaterialComponent` exists in the
+//!   World to bind instances by stable id, every instance references ONE
+//!   shared default minted per renderer (`default_material` cache). When
+//!   that component lands, invalidation rides the same subscription
+//!   mechanism as everything above.
 
 use std::sync::Arc;
 
-use glam::{EulerRot, Mat4, Quat, Vec3};
 use helio::{GroupId, GroupMask, MaterialId, Movability, Renderer};
 use helio_component::components::StaticMeshComponent;
 use pulsar_reflection::scene_id_to_tag;
@@ -27,21 +48,28 @@ use pulsar_scenedb::gpu::{
     BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
 
-use crate::scene::{LightFrameMaintainer, ResolvedLightFrame, Visibility, WorldSceneStore};
+use crate::scene::{
+    LightFrameMaintainer, MeshFrameMaintainer, ResolvedLightFrame, ResolvedMeshFrame,
+    WorldSceneStore,
+};
 
 /// Advance the store by one render-side sync pass: flush the GPU mirror
-/// (`SceneDb::step`) and refresh the `ResolvedLightFrame` rows from World
-/// change events. Shared by play-mode render loops (Pulsar-Native#637) --
-/// this is exactly what the editor's sync passes do between their phases,
-/// minus editor-only bookkeeping (dirty-flag drains, component dispatch).
+/// (`SceneDb::step`) and refresh the subscription-maintained resolved rows
+/// (lights #636, mesh instances #638) from World change events. Shared by
+/// play-mode render loops (#637) -- the editor's sync passes do the same
+/// between their phases.
 ///
 /// Run under whatever lock yields `&mut WorldSceneStore`, immediately
-/// before [`rebuild_static_mesh_frame`]/[`rebuild_light_frame`] with a read
-/// guard; keep the write scope this short so concurrent readers never wait
-/// on it.
-pub fn step_scene_for_render(store: &mut WorldSceneStore, lights: &mut LightFrameMaintainer) {
+/// before the rebuild fns with a read guard; keep the write scope this
+/// short so concurrent readers never wait on it.
+pub fn step_scene_for_render(
+    store: &mut WorldSceneStore,
+    lights: &mut LightFrameMaintainer,
+    meshes: &mut MeshFrameMaintainer,
+) {
     store.scene_db_mut().step();
     lights.maintain(store.world_mut());
+    meshes.maintain(store.world_mut());
 }
 
 /// One-time wiring of the SceneDB GPU-native render seam (Pulsar-Native#561
@@ -118,16 +146,22 @@ pub fn attach_gpu_render_seam(
     true
 }
 
-/// Assemble Helio's transient static-mesh instance list straight from the
-/// authoritative World rows (`StaticMeshComponent` + `Transform` +
-/// `Visibility`) and its mirrored GPU row handles. Shared by the editor and
-/// play-mode renderers (Pulsar-Native#637).
+/// Assemble Helio's transient static-mesh instance list from the
+/// authoritative World rows. Shared by the editor and play-mode renderers
+/// (Pulsar-Native#637).
 ///
-/// Geometry itself is NOT touched here: it lives in the SceneDB-owned
-/// var-len pools the renderer already rebinding-reads (see
-/// [`attach_gpu_render_seam`]); this only derives per-frame instance state
-/// from current component values. An entity whose mirror handles are empty
-/// (mesh failed to hydrate) is skipped, exactly like before.
+/// Pulsar-Native#638: the transform-derived half of each instance (model /
+/// normal matrices, position, bounding radius, cull flag) is READ from the
+/// subscription-maintained [`ResolvedMeshFrame`] rows instead of being
+/// re-derived for every entity every pass. The GPU-pool-keyed half (mesh
+/// key, draw counts/offsets) is still taken fresh from the var-len handles
+/// here -- pool offsets legitimately shift on regrow, so that part must
+/// never be cached.
+///
+/// Material binding: every instance references the shared default material,
+/// minted once per renderer (`default_material` cache). Per-instance
+/// materials by stable id are Helio#231's renderer-side stage -- see this
+/// module's ownership-protocol doc for the agreed split.
 pub fn rebuild_static_mesh_frame(
     renderer: &mut Renderer,
     store: &WorldSceneStore,
@@ -145,10 +179,9 @@ pub fn rebuild_static_mesh_frame(
     let mut component_count = 0usize;
     let mut empty_handle_count = 0usize;
 
-    for (entity, (_component, transform, visibility)) in store
-        .world()
-        .query::<(&StaticMeshComponent, &crate::scene::Transform, &Visibility)>()
-    {
+    // One query over resolved rows only -- no Transform/Visibility join, no
+    // matrix math in this loop anymore (#638).
+    for (entity, frame) in store.world().query::<&ResolvedMeshFrame>() {
         component_count += 1;
         let vertices = StaticMeshComponent::vertices_gpu_handle(gpu_store, entity.index())
             .unwrap_or_default();
@@ -159,29 +192,18 @@ pub fn rebuild_static_mesh_frame(
             continue;
         }
 
-        let q = Quat::from_euler(
-            EulerRot::YXZ,
-            transform.rotation[1].to_radians(),
-            transform.rotation[0].to_radians(),
-            transform.rotation[2].to_radians(),
-        );
-        let model = Mat4::from_scale_rotation_translation(
-            Vec3::from_array(transform.scale),
-            q,
-            Vec3::from_array(transform.position),
-        );
-        let position = model.w_axis.truncate();
-        let bounds = [position.x, position.y, position.z, Vec3::from_array(transform.scale).length().max(0.2) * 0.5];
-        let mesh_key = vertices.offset.rotate_left(13) ^ indices.offset.rotate_left(3) ^ vertices.count ^ indices.count;
+        let mesh_key = vertices.offset.rotate_left(13)
+            ^ indices.offset.rotate_left(3)
+            ^ vertices.count
+            ^ indices.count;
         let stable_id = store
             .stable_id_of(entity)
             .map(scene_id_to_tag)
             .unwrap_or(entity.index() as u64);
-        let normal_cols = glam::Mat3::from_mat4(model).inverse().transpose().to_cols_array();
         inputs.push(helio::StaticMeshRenderInput {
             mesh_key,
             material: material_id,
-            groups: if visibility.visible {
+            groups: if frame.visible {
                 GroupMask::NONE
             } else {
                 GroupMask::from(GroupId::new(8))
@@ -189,25 +211,21 @@ pub fn rebuild_static_mesh_frame(
             movability: Movability::Movable,
             user_tag: stable_id,
             instance: helio::GpuInstanceData {
-                model: model.to_cols_array(),
-                normal_mat: [
-                    normal_cols[0], normal_cols[1], normal_cols[2], 0.0,
-                    normal_cols[3], normal_cols[4], normal_cols[5], 0.0,
-                    normal_cols[6], normal_cols[7], normal_cols[8], 0.0,
+                model: frame.model,
+                normal_mat: frame.normal_mat,
+                bounds: [
+                    frame.position[0],
+                    frame.position[1],
+                    frame.position[2],
+                    frame.bound_radius,
                 ],
-                bounds,
-                prev_model: model.to_cols_array(),
+                prev_model: frame.model,
                 mesh_id: mesh_key,
                 material_id: material_id.slot(),
                 flags: 0,
                 lightmap_index: 0xFFFFFFFF,
             },
-            aabb: helio::GpuInstanceAabb {
-                min: [position.x - bounds[3], position.y - bounds[3], position.z - bounds[3]],
-                _pad0: 0.0,
-                max: [position.x + bounds[3], position.y + bounds[3], position.z + bounds[3]],
-                _pad1: 0.0,
-            },
+            aabb: frame.aabb(),
             draw: helio::GpuDrawCall {
                 index_count: indices.count,
                 first_index: indices.offset,

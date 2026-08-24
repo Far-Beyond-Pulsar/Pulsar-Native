@@ -20,7 +20,7 @@ use winit::{
 
 use engine_backend::scene::{
     attach_gpu_render_seam, rebuild_light_frame, rebuild_static_mesh_frame, step_scene_for_render,
-    LightFrameMaintainer, RuntimeLevel, WorldSceneStore,
+    LightFrameMaintainer, MeshFrameMaintainer, RuntimeLevel, WorldSceneStore,
 };
 use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
@@ -325,6 +325,8 @@ pub struct PulsarApp {
     /// frames (#636) -- one per world, stepped by
     /// [`step_scene_for_render`] before each frame's rebuilds.
     light_frames: LightFrameMaintainer,
+    /// Same for static-mesh instance frames (#638).
+    mesh_frames: MeshFrameMaintainer,
 
     /// Which window currently owns the cursor (receives mouse-look).
     focused_window: Option<WindowHandle>,
@@ -357,6 +359,7 @@ impl PulsarApp {
             default_scene,
             scene_store,
             light_frames: LightFrameMaintainer::new(),
+            mesh_frames: MeshFrameMaintainer::new(),
             focused_window: None,
             cursor_captured: false,
             last_frame: Instant::now(),
@@ -650,7 +653,11 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 // this window's transient frame lists from it
                 // (Pulsar-Native#637 -- the same per-frame path the editor
                 // renderer runs, never SceneLoader's one-shot writes).
-                step_scene_for_render(&mut self.scene_store.write(), &mut self.light_frames);
+                step_scene_for_render(
+                    &mut self.scene_store.write(),
+                    &mut self.light_frames,
+                    &mut self.mesh_frames,
+                );
                 let shared = self.scene_store.read();
                 if let Some(gw) = self.windows.get_mut(&handle) {
                     rebuild_static_mesh_frame(

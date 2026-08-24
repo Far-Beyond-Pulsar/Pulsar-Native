@@ -25,6 +25,11 @@ pub mod metadata_db;
 // rebuild_light_frame's per-frame CPU combine.
 pub mod light_frame;
 
+// Resolved per-instance mesh frames (Pulsar-Native#638) -- the transform-
+// derived half of each static-mesh instance, same subscription-maintained
+// pattern as light_frame.
+pub mod mesh_frame;
+
 // Play-mode level bootstrap (Pulsar-Native#637) -- hydrates a `.level` file
 // into WorldSceneStore/SceneDb instead of pulsar_scene::SceneLoader's direct
 // Helio Scene writes.
@@ -42,6 +47,7 @@ pub mod helio_bridge;
 // Re-export new system types for convenience
 pub use component_db::ComponentDb;
 pub use light_frame::{LightFrameMaintainer, ResolvedLightFrame};
+pub use mesh_frame::{MeshFrameMaintainer, ResolvedMeshFrame};
 pub use metadata::{ComponentInstance, EditorObjectId};
 pub use metadata_db::SceneMetadataDb;
 #[cfg(feature = "render")]

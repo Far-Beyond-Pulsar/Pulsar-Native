@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex};
 
 use engine_backend::scene::{
     attach_gpu_render_seam, rebuild_light_frame, rebuild_static_mesh_frame, step_scene_for_render,
-    LightFrameMaintainer, WorldSceneStore,
+    LightFrameMaintainer, MeshFrameMaintainer, WorldSceneStore,
 };
 use helio::{Camera, DebugDrawState, MaterialId, Renderer, RendererConfig, Scene};
 use parking_lot::RwLock;
@@ -66,6 +66,8 @@ pub struct EmbeddedGame {
     scene_store: Arc<RwLock<WorldSceneStore>>,
     /// Resolved-light-frame maintainer over [`Self::scene_store`]'s world.
     light_frames: LightFrameMaintainer,
+    /// Same for static-mesh instance frames (#638).
+    mesh_frames: MeshFrameMaintainer,
     /// Lazily-minted shared default material (same cache the editor renderer
     /// keeps; see `engine_backend::scene::rebuild_static_mesh_frame`).
     default_static_mesh_material: Option<MaterialId>,
@@ -268,6 +270,7 @@ impl EmbeddedGame {
             out_view,
             scene_store,
             light_frames: LightFrameMaintainer::new(),
+            mesh_frames: MeshFrameMaintainer::new(),
             default_static_mesh_material: None,
             freecam,
             userdata: ctx.userdata,
@@ -295,7 +298,11 @@ impl EmbeddedGame {
         //    then the same static-mesh/light rebuilds the editor renderer
         //    runs. A runtime-spawned entity or a moved object therefore
         //    shows up on the very next frame.
-        step_scene_for_render(&mut self.scene_store.write(), &mut self.light_frames);
+        step_scene_for_render(
+            &mut self.scene_store.write(),
+            &mut self.light_frames,
+            &mut self.mesh_frames,
+        );
         {
             let shared = self.scene_store.read();
             rebuild_static_mesh_frame(
