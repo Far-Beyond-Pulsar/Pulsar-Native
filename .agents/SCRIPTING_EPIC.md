@@ -121,3 +121,181 @@ Environment notes for agents:
   fail on clean main; workspace clippy warns on many untouched files.
 - The helio submodule shows as modified (`2d7960e9`) — that is the USER's
   intentional change. Leave it out of every commit.
+
+## Handoff: A
+
+Branch `scripting-epic`, commits in order (one per issue, helio submodule
+pointer excluded from all of them):
+
+| Commit | Issue | Summary |
+|---|---|---|
+| `cba933d8` | #636 | Light world-transform folded into SceneDB-resolved frames |
+| `06e1ccb4` | #637 | Play-mode scene bootstrap hydrates into WorldSceneStore/SceneDb |
+| `8f9d9ceb` | #634 | TickLoop mutates the shared store; parallel World deleted |
+| `25e17c8d` | #635 | PIE ABI v2: shared-world token + lock-witness protocol |
+| `a0da33d8` | #638 | Mesh instance frames subscription-maintained; material protocol documented |
+
+### What landed per issue
+
+**A5 / #636 — light residency.** New module
+`crates/core/engine_backend/src/scene/light_frame.rs`:
+`ResolvedLightFrame { gpu_light: GpuLight }` is a World component carrying the
+fully-combined per-light GPU state (mirror translated via
+`to_helio_gpu_light()` + live `Transform` position folded into
+`position_range[0..3]`). `LightFrameMaintainer` arms SceneDB#47 subscriptions
+on `(entity, LightComponentGpuMirror)` and `(entity, Transform)` for every
+mirrored light, prunes on mirror-row disappearance, seeds new lights, and
+re-resolves only changed entities. `HelioRenderer::rebuild_light_frame`
+(`engine_backend/src/subsystems/render/helio_renderer/renderer.rs`) now reads
+those rows only; the TRANSITIONAL per-frame CPU combine is deleted.
+Absence semantics preserved: light renders iff it has BOTH a mirror row AND a
+Transform.
+
+**A1 / #637 — play-mode bootstrap.** New modules in
+`engine_backend/src/scene/`: `runtime_level.rs`
+(`RuntimeLevel::load`/`load_into`/`from_scene_file`,
+`RuntimeLevelError`, `EditorCamera`; parses the canonical
+`pulsar_scene::format::SceneFile`, maps objects to `ObjectSnapshot`s, inserts
+via `WorldSceneStore::insert_snapshots`, hydrates registered classes via
+`pulsar_world_registry::hydrate_world_component_for_class` — persisted
+top-level `components` map authoritative over inline `component_instances`,
+unregistered classes stay JSON in `RenderProps`) and `helio_bridge.rs`
+(`attach_gpu_render_seam`, `rebuild_static_mesh_frame`, `rebuild_light_frame`,
+`step_scene_for_render` — the World↔renderer operations extracted OUT of
+`HelioRenderer` so editor and play modes run identical code).
+`pulsar_scene::SceneLoader` is `#[deprecated]` (import/legacy conversion
+only); both former runtime callers converted. Camera selection:
+`pulsar_game::camera_selection::select_world_camera` renders from
+`ObjectType::Camera` entities' Transforms in the shared world (precedence:
+WindowBridge camera > world Camera entity > freecam). Callers must set
+`engine_state::set_project_path` BEFORE hydration so mesh assets resolve.
+
+**A2 / #634 — one tick loop.** `TickLoop.world` (owned empty
+`pulsar_scenedb::World`) is DELETED; replaced by
+`TickLoop.scene_store: Arc<RwLock<WorldSceneStore>>` (`pulsar_game/src/tick.rs`).
+`tick_once` takes the write lock once per phase (schedule → actors →
+blueprint events), dropping it between phases; blueprint dispatch touches no
+World. The GameTime dual-type conversion is now a named, documented seam:
+`to_scenedb_time()` (orphan rule forbids `From`; pulsar_core deliberately has
+no scenedb dep). `WorldSceneStore::insert_snapshots` = additive snapshot
+insertion into a LIVE store (extracted from `load_from_snapshots`);
+`RuntimeLevel::load_into` uses it so setup-time actors survive level load.
+`core_project_builder.rs`'s generated `engine_main.rs` now emits
+`game.actors.register(actor, &mut game.scene_store.write().world());`.
+Gameplay path grep-clean of `World::new()` (unit tests excepted).
+
+**A3 / #635 — PIE ABI v2.** `PIE_ABI_VERSION` bumped to **2**.
+`EngineContext` gained (appended): `shared_world: *const c_void` (the host's
+Arc-backed `RwLock<WorldSceneStore>`), `lock_shared_world`/`unlock_shared_world`
+callbacks taking the context's userdata. Locking protocol + FFI safety
+DECISION are stated in `pulsar_pie_abi`'s module doc: direct exclusive
+reference under a non-reentrancy witness (null on double-lock), command queue
+documented as escape hatch if a future guest breaks single-threaded slices.
+Host: `PieWorldBridge` (`engine_backend/src/services/pie_host.rs`) implements
+the callbacks via a slot-held `'static` guard backed by an owned Arc clone;
+`PieHost::load` now takes `shared_world: Arc<RwLock<WorldSceneStore>>`
+(`game_viewport.rs` passes `SceneDatabase::shared_store()` — NEW accessor),
+transfers ONE count to the guest via `into_raw`, reclaims it if init fails,
+drops the bridge after shutdown. Guest (`pulsar_game/src/embed.rs`): reclaims
+with exactly one `Arc::from_raw`, builds `TickLoop::with_scene_store(...)`
+(NEW constructor), SKIPS level-file hydration (world comes pre-hydrated) and
+skips freecam seeding (world-camera preferred). Two host-side tests cover the
+witness + aliasing.
+
+**A4 / #638 — mesh instance frames.** New module
+`engine_backend/src/scene/mesh_frame.rs`: `ResolvedMeshFrame { model,
+normal_mat, position, bound_radius, visible }` + `MeshFrameMaintainer` —
+identical pattern to lights, subscriptions on
+`(StaticMeshComponent, Transform, Visibility)`; missing row == not rendered
+(preserves the old join). `helio_bridge::rebuild_static_mesh_frame` reads
+resolved rows and combines them with FRESH pool handles (mesh_key/draw params
+are never cached — pool regrow shifts offsets). `step_scene_for_render` now
+maintains both maintainers; `HelioInner` carries both.
+The #638/Helio#231 ownership+invalidation protocol is written into
+`helio_bridge.rs`'s module doc: geometry = SceneDB pools (Helio borrows);
+per-instance state = World resolved rows; materials = renderer-owned table
+(Helio#231), World binding component deferred (below).
+
+### Downstream contracts (B–F code against these)
+
+1. **ONE world handle**: `Arc<RwLock<WorldSceneStore>>`
+   (`engine_backend::scene::WorldSceneStore`, wrapping `pulsar_scenedb::
+   SceneDb`). Clone it to share; readers `.read().world()`, writers
+   `.write().world_mut()`. Keep write scopes SHORT (render thread contends);
+   never hold across frames or phases. The tick loop owns the canonical
+   handle in play mode; the editor's `SceneDatabase::shared_store()` returns
+   the same instance in edit mode.
+2. **Derived render state lives in the World** as components maintained by
+   subscription-driven maintainers: `ResolvedLightFrame` (#636),
+   `ResolvedMeshFrame` (#638). If B–F add components that feed rendering,
+   extend those maintainers rather than adding per-frame queries.
+3. **Component identity/hydration**: class-name keyed via
+   `pulsar_world_registry::{hydrate_world_component_for_class,
+   remove_world_component_for_class, registered_world_component_classes,
+   component_id_for_class}`. Level files carry FULL serialized component
+   JSON (hydrates deserialize real structs — sparse JSON fails).
+4. **Runtime scene loading**: `RuntimeLevel::load_into(path, &mut store)` —
+   additive, actor-preserving. Never construct a second world for a level.
+5. **Time**: convert at `pulsar_game::tick::to_scenedb_time` only.
+6. **PIE**: guests adopt the host world via ABI v2 token +
+   `TickLoop::with_scene_store`; do not reintroduce guest-owned worlds.
+
+### Stubbed / left open
+
+- **#637/#635 acceptance "runtime-spawned entity renders same frame"**:
+  architecturally complete (shared store + rebuild path), but END-TO-END
+  manual verification inside a running editor/game was NOT possible from this
+  agent (no display/GPU session); unit + compile gates are green.
+- **#635 checklist**: editor Play flow still writes the temp `.level` and the
+  host still passes its path (advisory under v2). Once v1 guests are
+  irrelevant, drop the export entirely. Witness-mediated locking for guests
+  OUTSIDE the single-workspace Rust universe would need a lock abstraction in
+  `TickLoop` — deferred to whoever finalizes B's object-model handles.
+- **#638 scope item 2**: per-instance materials by stable id REQUIRE a
+  `MaterialComponent` in the World and Helio#231's material table stages;
+  `StaticMeshComponent` (read-only submodule) currently has no material field
+  at all. Pulsar-Native-side contract + shared-default transitional binding
+  documented in `helio_bridge.rs`. When upstream lands, bind via the existing
+  subscription mechanism.
+- **Template-Blank** (`src/engine_main.rs`) still shows the pre-A2 generated
+  shape; it regenerates automatically on next editor blueprint compile
+  (generator fixed here). E may want to refresh the template proactively.
+
+### Upstream changes needed (recorded, not made)
+
+- None blocking. (Helio#231 owns the renderer-side material table + instance-
+  residency stages; the World-side contract it can code against is
+  `ResolvedMeshFrame` + `helio_bridge`.)
+- NOTE: during this phase the user's uncommitted submodule WIP referenced
+  `pulsar_scenedb::handle_ledger`, which does not exist at the pinned rev
+  `c761890` — when that work matures, either pin-bump SceneDB (workspace
+  root, incl. the `[patch]` sections with the `//` URL spelling) or shim
+  locally first.
+
+### Deviations from issue text
+
+- A5 said "fold world-transform into the GPU mirror" — done as a DERIVED
+  COMPONENT (`ResolvedLightFrame`) instead, because the mirror type is
+  auto-generated in the read-only submodule and cannot gain fields. The issue
+  text explicitly allowed "(or a derived component)".
+- A2's "delete `TickLoop.world`" is interpreted as "delete the owned private
+  World"; the public surface keeps a world-shaped accessor path
+  (`scene_store.write().world()`) because generated game projects depend on
+  it — changing that API belongs to B's object-model contract.
+- A3 landed as design + version gate + working host bridge + adopted-guest
+  path; end-to-end dylib round-trip needs a running editor session (above).
+
+### Verification status
+
+At each commit: affected-crate `cargo test -p <crate>` green
+(engine_backend 72, pulsar_game 39, pulsar_scene, pulsar_pie_abi),
+`cargo check -p pulsar_engine` green, touched-file clippy clean. Final sweep
+after `a0da33d8`: engine_backend 72/72, pulsar_game 39/39,
+`cargo check -p pulsar_engine` OK, and a full `cargo check --workspace` OK.
+CAVEAT: the user was concurrently editing the helio submodule AND their local
+SceneDB tree (root `[patch]` temporarily repointed to `D:\GitHub\SceneDB`)
+during this phase; workspace-wide results are only as stable as that WIP.
+If something fails on your first run, check whether the failing symbol is one
+of A's (`ResolvedLightFrame`, `ResolvedMeshFrame`, `RuntimeLevel`,
+`helio_bridge`, `scene_store`, ABI v2 fields) before suspecting drift —
+everything above is committed and self-consistent.
