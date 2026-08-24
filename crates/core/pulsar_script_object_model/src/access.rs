@@ -27,7 +27,7 @@ use pulsar_scenedb::World;
 
 use crate::errors::ScriptRefError;
 use crate::instances::ComponentInstanceStore;
-use crate::refs::{ensure_live_entity, ComponentRef};
+use crate::refs::ComponentRef;
 use crate::routing::{deserialize_property, route, serialize_property, Route};
 
 impl ComponentRef {
@@ -139,29 +139,27 @@ impl ComponentRef {
     /// Invoke one blueprint-callable method on the referenced component's
     /// live-typed value.
     ///
-    /// Dispatch uses the same `MethodMetadata.caller` closures every other
-    /// Blueprint caller uses today; C1's unified dispatcher supersedes the
-    /// internals without changing this signature. Duplicate instances share
-    /// their class's behavior, so this always runs against the live-typed
-    /// value regardless of `component_index`.
+    /// DELEGATES to `pulsar_world_registry::invoke_component_method` -- the
+    /// one unified dispatcher (#643): same `MethodMetadata.caller` closures
+    /// every other Blueprint caller uses, plus argument arity/type
+    /// validation that reports typed errors where the raw generated callers
+    /// would panic. Duplicate instances share their class's behavior, so
+    /// this always runs against the live-typed value regardless of
+    /// `component_index`.
     pub fn call_method(
         &self,
         world: &mut World,
         method: &str,
         args: MethodArgs,
     ) -> Result<MethodReturnValue, ScriptRefError> {
-        ensure_live_entity(world, self.entity)?;
-        if pulsar_world_registry::component_id_for_class(&self.class_name).is_none() {
-            return Err(ScriptRefError::UnregisteredClass(self.class_name.clone()));
-        }
-        let meta = REGISTRY
-            .get_method(&self.class_name, method)
-            .ok_or_else(|| ScriptRefError::UnknownMethod {
-                class_name: self.class_name.clone(),
-                method: method.to_string(),
-            })?;
-        let instance = self.live_instance_mut(world)?;
-        Ok((meta.caller)(&mut *instance, args))
+        pulsar_world_registry::invoke_component_method(
+            world,
+            self.entity,
+            &self.class_name,
+            self.component_index,
+            method,
+            args,
+        )
     }
 
     // ── shared lookup helpers ───────────────────────────────────────────

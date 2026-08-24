@@ -9,6 +9,7 @@ pulsar_scenedb    = { workspace = true }
 pulsar_reflection = { workspace = true }
 serde_json        = { workspace = true }
 inventory         = { workspace = true }
+thiserror         = { workspace = true }
 
 [dev-dependencies]
 serde = { workspace = true, features = ["derive"] }

@@ -71,6 +71,23 @@
 // same pattern `pulsar_reflection` already uses for `RuntimeBehaviorRegistration`.
 pub use inventory;
 
+pub mod dispatch;
+pub mod errors;
+pub mod marshal;
+
+// The unified reflection dispatcher (#643) and its property accessors --
+// THE entry points every scripting backend (VM opcodes, generated code,
+// graph nodes) uses to touch live World components. No bespoke dispatch
+// downstream.
+pub use dispatch::{
+    get_component_property, get_component_property_boxed, invoke_component_method,
+    set_component_property, set_component_property_boxed,
+};
+// The one script-facing error taxonomy (#641/#643). Canonical home is this
+// crate (next to the dispatcher whose failures these are);
+// `pulsar_script_object_model::errors` re-exports it unchanged.
+pub use errors::ScriptRefError;
+
 use pulsar_reflection::{ComponentRuntimeContext, EngineClass, RuntimeComponentOwner};
 use pulsar_scenedb::{ComponentId, Entity, World};
 use serde_json::Value;
@@ -930,7 +947,7 @@ mod tests {
         // `on_removed` deliberately takes no `World`/`Entity` at all (see its
         // doc) -- the only way to observe it fired is a side channel.
         thread_local! {
-            static FIRED: std::cell::Cell<bool> = std::cell::Cell::new(false);
+            static FIRED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
         }
         fn recording_on_removed(_owner: &RuntimeComponentOwner, _context: &mut dyn ComponentRuntimeContext) {
             FIRED.with(|f| f.set(true));
