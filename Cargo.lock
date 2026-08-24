@@ -8928,12 +8928,14 @@ dependencies = [
 name = "pulsar_script_object_model"
 version = "0.1.0"
 dependencies = [
+ "inventory",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_world_registry",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+ "tracing",
 ]
 
 [[package]]

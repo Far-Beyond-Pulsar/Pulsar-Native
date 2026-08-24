@@ -42,14 +42,18 @@
 //! | [`access`] | property/method accessors |
 //! | [`subscribe`] | change-notification helpers over SceneDB#47 subscriptions |
 //! | [`resolution`] | StableId <-> Entity serialization + resolution (#639) |
+//! | [`reflect`] | identity types through reflection registries (#642) |
+//! | [`dispatch`] | demo dynamic-dispatch methods taking/returning refs (#642) |
 //! | [`contract`] | handle semantics, one page, for script authors (#641) |
 
 pub use resolution::{ResolveRefError, SerializedComponentRef, StableIdResolver};
 
 pub mod access;
 pub mod contract;
+pub mod dispatch;
 pub mod errors;
 pub mod instances;
+pub mod reflect;
 pub mod refs;
 pub mod resolution;
 pub mod routing;
