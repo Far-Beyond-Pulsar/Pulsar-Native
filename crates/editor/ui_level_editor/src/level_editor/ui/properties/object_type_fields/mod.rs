@@ -79,16 +79,20 @@ pub struct ObjectTypeFieldsSection {
     // signal fires -- a subscription event for its own card, a legacy JSON-
     // path write recorded in the property change set, or a structural /
     // store-swap invalidation.
-    /// Latest known live values per mounted component card, keyed by class
-    /// name. Borrowed during row building, never consumed -- rows only read.
-    pub(super) world_value_cache: HashMap<String, Vec<Box<dyn Any>>>,
-    /// Classes whose cached values are stale and must be re-pulled on the
+    /// Latest known live values per mounted component card, keyed by
+    /// `(class_name, component_index)` -- the index is what keeps N
+    /// instances of the same class distinct (Pulsar-Native#519). Borrowed
+    /// during row building, never consumed -- rows only read.
+    pub(super) world_value_cache: HashMap<(String, usize), Vec<Box<dyn Any>>>,
+    /// Cards whose cached values are stale and must be re-pulled on the
     /// next render pass.
-    pub(super) dirty_classes: HashSet<String>,
-    /// Armed World subscriptions per mounted card (`class -> SubscriptionId`).
-    /// Events arrive tagged with this id; this map is also what `Drop` uses
-    /// to disarm everything when the section is torn down (selection change).
-    pub(super) world_subs: HashMap<String, SubscriptionId>,
+    pub(super) dirty_classes: HashSet<(String, usize)>,
+    /// Armed World subscriptions per mounted card
+    /// (`(class_name, component_index) -> SubscriptionId`). Only the
+    /// live-typed instance of a class gets one. Events arrive tagged with
+    /// this id; this map is also what `Drop` uses to disarm everything when
+    /// the section is torn down (selection change).
+    pub(super) world_subs: HashMap<(String, usize), SubscriptionId>,
     /// Classes with no `World`-registered component id at all (the legacy
     /// JSON-only classes). Permanently un-subscribable until the card set
     /// structurally changes; remembered so the registry lookup isn't paid
@@ -377,17 +381,21 @@ impl Render for ObjectTypeFieldsSection {
         // own cap bounds the undrained queue meanwhile.
         if !self.world_subs.is_empty() {
             for event in self.scene_db.take_world_component_events() {
-                for (class, sub) in &self.world_subs {
+                for (card, sub) in &self.world_subs {
                     if *sub == event.subscription {
-                        self.dirty_classes.insert(class.clone());
+                        self.dirty_classes.insert(card.clone());
                     }
                 }
             }
         }
         if !property_changes.is_empty() {
-            for comp in &attached {
+            // Legacy JSON-path writes are recorded per (object, class,
+            // property) without an instance index -- mark every card of a
+            // touched class dirty; each re-pulls from its OWN source, so
+            // over-invalidation costs a read, never a wrong value.
+            for (idx, comp) in attached.iter().enumerate() {
                 if property_changes.class_changed(&self.object_id, &comp.class_name) {
-                    self.dirty_classes.insert(comp.class_name.clone());
+                    self.dirty_classes.insert((comp.class_name.clone(), idx));
                 }
             }
         }

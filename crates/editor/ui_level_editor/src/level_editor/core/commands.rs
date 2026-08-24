@@ -90,9 +90,17 @@ pub enum SceneCommand {
     /// `SceneDatabase::update_live_component_property`/
     /// `update_component_property` directly from UI code, so every such
     /// edit is undo-tracked and goes through exactly one code path.
+    ///
+    /// `component_index` identifies WHICH instance of `class_name` is being
+    /// edited (Pulsar-Native#519): an object can carry several instances of
+    /// the same class, each with its own field values, and they are
+    /// addressed by their index in the object's component list -- the same
+    /// identity `remove_component`/`set_component_enabled`/
+    /// `reorder_component` already use.
     SetComponentProperty {
         id: String,
         class_name: String,
+        component_index: usize,
         prop_name: String,
         value: Box<dyn Any + Send>,
     },
@@ -143,10 +151,11 @@ impl std::fmt::Debug for SceneCommand {
                 .field("visible", visible)
                 .field("locked", locked)
                 .finish(),
-            Self::SetComponentProperty { id, class_name, prop_name, value } => f
+            Self::SetComponentProperty { id, class_name, component_index, prop_name, value } => f
                 .debug_struct("SetComponentProperty")
                 .field("id", id)
                 .field("class_name", class_name)
+                .field("component_index", component_index)
                 .field("prop_name", prop_name)
                 .field("value_type", &value.type_id())
                 .finish(),
@@ -351,22 +360,24 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             }
         }
 
-        SceneCommand::SetComponentProperty { ref id, ref class_name, ref prop_name, value } => {
+        SceneCommand::SetComponentProperty { ref id, ref class_name, component_index, ref prop_name, value } => {
             // Typed path first -- `update_live_component_property` writes
             // `value` straight onto the live `World` component via its
             // reflected setter closure, no JSON anywhere (Pulsar-Native#561).
-            // Only on `Err` (the class isn't `World`-registered at all --
-            // the handful of props-only classes with no
-            // `ComponentRuntimeBehavior`, e.g. `LODComponent`/
-            // `MaterialOverrideComponent`, see `update_component_property`'s
-            // own doc) do we serialize to JSON, and only then, to feed
-            // `metadata_db`'s legacy flat-JSON storage -- the one
-            // representation those specific classes actually have. Every
-            // migrated component's live edit never touches JSON at all.
+            //
+            // `component_index` targets the exact instance being edited
+            // (Pulsar-Native#519): only the object's first enabled instance
+            // of a World-registered class is live-typed in `World` (one
+            // storage slot per `(entity, type)`), so that instance takes the
+            // typed path and every OTHER instance -- plus classes with no
+            // World registration at all (`LODComponent`/
+            // `MaterialOverrideComponent`) -- is handled inside as an
+            // indexed metadata_db JSON write, so each duplicate keeps its
+            // own field values instead of every edit landing in instance 0.
             match state
                 .scene
                 .database
-                .update_live_component_property(id, class_name, prop_name, value)
+                .update_live_component_property(id, class_name, component_index, prop_name, value)
             {
                 Ok(()) => {
                     state.scene.bump_revision(true);
@@ -574,6 +585,7 @@ mod undo_redo_tests {
             SceneCommand::SetComponentProperty {
                 id: id.clone(),
                 class_name: "LightComponent".to_string(),
+                component_index: 0,
                 prop_name: "intensity".to_string(),
                 value: Box::new(4242.0_f32),
             },

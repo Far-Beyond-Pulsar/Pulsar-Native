@@ -59,6 +59,34 @@ fn read_property_from_world(
         .unwrap_or_else(|| (prop.getter)(default_instance))
 }
 
+/// Pull a card's value snapshot from its OWN metadata JSON blob (falling
+/// back to the default instance for absent/null fields) -- the source of
+/// truth for every NON-live-typed instance card. A duplicate instance has no
+/// `World` presence (`World` holds one typed value per `(entity, type)`), so
+/// reading "the" live value here would silently show another instance's
+/// fields -- exactly Pulsar-Native#519's bug, on the read side.
+fn read_card_values_from_metadata(
+    component: &ComponentInstance,
+    properties: &[PropertyMetadata],
+    default_instance: &dyn pulsar_reflection::EngineClass,
+) -> Vec<Box<dyn Any>> {
+    properties
+        .iter()
+        .map(|prop| {
+            component
+                .data
+                .get(prop.name)
+                .filter(|json| !json.is_null())
+                .and_then(|json| {
+                    RUNTIME_TYPE_REGISTRY
+                        .deserialize_json_for_type(prop.type_info, json.clone())
+                        .ok()
+                })
+                .unwrap_or_else(|| (prop.getter)(default_instance))
+        })
+        .collect()
+}
+
 /// Pull a card's full value snapshot fresh from the live sources: one
 /// batched `World` read when the entity/component is hydrated, otherwise
 /// per-property fallback reads (live miss → JSON → default instance). This
@@ -168,28 +196,43 @@ impl ObjectTypeFieldsSection {
                     .get(class_name.as_str())?
                     ._default_instance;
 
+                // ── Per-instance identity (Pulsar-Native#519) ──────────────
+                //
+                // An object can carry several instances of the SAME class;
+                // `idx` (the component-list index -- the same identity
+                // remove/enable/reorder already use) is what makes each card
+                // its own value store, its own editor state, and its own
+                // subscription, instead of every duplicate collapsing onto
+                // the first.
+                let card_key = (class_name.clone(), idx);
+                let editor_key = format!("{class_name}#{idx}");
+
+                // Which instance of this class is the live-typed one? Only
+                // that card reads (and subscribes to) `World`; every OTHER
+                // instance reads and writes its own metadata JSON blob --
+                // `World` physically holds one typed value per
+                // `(entity, ComponentId)`, so duplicates cannot share it.
+                let live_idx = scene_db.live_typed_component_index(&object_id, class_name);
+
                 // ── Cache-until-signaled value fetch (Pulsar-Native#575) ──
                 //
                 // Clean card + cached snapshot: lend the cached values to the
                 // row builder below, zero `World` traffic. Dirty or never-
-                // pulled card: arm its World subscription (once per mounted
-                // card) and pull fresh values.
-                let card_dirty = self.dirty_classes.remove(class_name.as_str());
+                // pulled card: arm its World subscription (live cards, once
+                // per mounted card) and pull fresh values from whichever
+                // source backs THIS instance.
+                let card_dirty = self.dirty_classes.remove(&card_key);
                 let mut values = if card_dirty {
                     None
                 } else {
                     // Take out of the cache rather than borrow: the row loop
                     // below needs `&mut self` for widget state, and the vec
                     // goes straight back in afterwards.
-                    self.world_value_cache.remove(class_name.as_str())
+                    self.world_value_cache.remove(&card_key)
                 };
                 if values.is_none() {
-                    // Arm once per mounted card. Classes with no World
-                    // registration are remembered as permanently
-                    // un-subscribable (they ride the legacy JSON fallback
-                    // forever); a live-entity miss is NOT remembered -- the
-                    // entity may hydrate any moment, so retry next render.
-                    if !self.world_subs.contains_key(class_name.as_str())
+                    if live_idx == Some(idx)
+                        && !self.world_subs.contains_key(&card_key)
                         && !self.unsubscribable_classes.contains(class_name.as_str())
                     {
                         if pulsar_world_registry::component_id_for_class(class_name).is_none() {
@@ -197,17 +240,21 @@ impl ObjectTypeFieldsSection {
                         } else if let Some(sub) =
                             scene_db.subscribe_component(&object_id, class_name)
                         {
-                            self.world_subs.insert(class_name.clone(), sub);
+                            self.world_subs.insert(card_key.clone(), sub);
                         }
                     }
-                    values = Some(read_card_values_fresh(
-                        &scene_db,
-                        &object_id,
-                        class_name,
-                        &properties,
-                        component,
-                        default_inst,
-                    ));
+                    values = Some(if live_idx == Some(idx) {
+                        read_card_values_fresh(
+                            &scene_db,
+                            &object_id,
+                            class_name,
+                            &properties,
+                            component,
+                            default_inst,
+                        )
+                    } else {
+                        read_card_values_from_metadata(component, &properties, default_inst)
+                    });
                 }
                 let values = values.expect("fresh pull or cache hit fills this");
 
@@ -228,6 +275,7 @@ impl ObjectTypeFieldsSection {
                         let state_arc = self.state_arc.clone();
                         let oid = object_id.clone();
                         let cls = class_name.clone();
+                        let ci = idx;
                         let pn = prop.name.to_string();
                         Arc::new(
                             move |new_val: Box<dyn Any + Send>,
@@ -238,6 +286,7 @@ impl ObjectTypeFieldsSection {
                                     SceneCommand::SetComponentProperty {
                                         id: oid.clone(),
                                         class_name: cls.clone(),
+                                        component_index: ci,
                                         prop_name: pn.clone(),
                                         value: new_val,
                                     },
@@ -249,6 +298,11 @@ impl ObjectTypeFieldsSection {
                     let row = ui_common::render_property_row_runtime(
                         &mut self.property_state,
                         "level",
+                        // Per-INSTANCE editor identity (Pulsar-Native#519):
+                        // two cards of one class must never share widget
+                        // state, or every keystroke would land in whichever
+                        // card rendered first.
+                        &editor_key,
                         class_name,
                         &prop.display_name,
                         prop.name,
@@ -270,7 +324,7 @@ impl ObjectTypeFieldsSection {
 
                 // Hand the snapshot back -- next render lends it out again
                 // unless a signal marked this card dirty.
-                self.world_value_cache.insert(class_name.clone(), values);
+                self.world_value_cache.insert(card_key, values);
 
                 let (mut uncategorized, categorized) = group_rows_by_category(row_data);
                 let category_elements =
