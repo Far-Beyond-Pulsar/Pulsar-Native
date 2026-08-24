@@ -866,3 +866,28 @@ panic. Workspace check green; clippy clean on touched files.
 
 D3 entry point: dispatcher currently passes `Entity::DANGLING` for all
 instances — replace with real per-entity binding + lifecycle events.
+
+### D4 — value types through the VM (#649) — CORE LANDED
+
+Commits: `df8081f3` (world_registry marshal helpers), `fa900ee2`
+(instance override marshalling). 46/46 pulsar_game lib tests.
+
+- Variable overrides: primitives keep LE fast paths; String / Vec<T> /
+  registered structs resolve via new
+  `marshal::{serialize_named_json, deserialize_named_bytes}` and emit
+  the VM blob encoding. Unknown names = typed errors (never zeroed).
+- Alias resolution added to marshal: editors say `Vec<f32>` /
+  `Option<i32>`, wrappers register as `alloc::vec::…` / `core::option::…`
+  — both directions probed empirically and covered.
+- KNOWN LIMIT (design note for later): in-graph heap-typed VARIABLES
+  (StoreVar/LoadVar of a real Rust String) would need ownership-aware
+  arena slots; today compound values flow through component ops' JSON
+  domain (D1/D2) which covers graph-level usage. Editor make/break-
+  struct nodes do not exist yet — node-library work, belongs with F.
+
+REMAINING IN PHASE D: #648 (per-entity dispatcher instances + borrow/
+lifecycle redesign), #650 (level.json bindings format + editor UX),
+then phases E (#651-653) and F (#654-656). Subagent provider was
+returning "Endpoint is unavailable" for long implementer sessions
+during this phase — A/B/C ran fine earlier; retry subagents before
+assuming inline work is required.
