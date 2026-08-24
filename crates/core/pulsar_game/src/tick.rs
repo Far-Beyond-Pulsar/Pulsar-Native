@@ -1,4 +1,4 @@
-use crate::blueprint_runtime::{BlueprintDispatcher, BlueprintEvent};
+use crate::blueprint_runtime::BlueprintDispatcher;
 use crate::window::{WindowBridge, WindowCommand, WindowDescriptor, WindowHandle, WindowManager};
 use engine_backend::scene::WorldSceneStore;
 use parking_lot::RwLock;
@@ -181,24 +181,16 @@ impl TickLoop {
         // level setup) so it observes a fully-initialised window/world/scene
         // -- registration happens before the primary window opens, but
         // `tick_once` only runs after `spawn_ecs_thread`, which is called
-        // once the window is ready. The dispatcher holds its own instance
-        // state; the world borrow only feeds component ops and is dropped
+        // once the window is ready. Each instance dispatches on its own
+        // state arena with component ops addressed at its bound entity
+        // (#648); the world borrow only feeds component ops and is dropped
         // with the phase.
         if let Some(dispatcher) = &self.blueprint_dispatcher {
             let mut dispatcher = dispatcher.lock().unwrap();
             let mut store = self.scene_store.write();
             let world = store.world_mut();
             dispatcher.dispatch_pending_begin_play(world);
-            let object_ids = dispatcher.instance_ids();
-            for object_id in object_ids {
-                let _ = dispatcher.dispatch_event(
-                    BlueprintEvent::Tick {
-                        object_id,
-                        delta_time: time.delta.as_secs_f32(),
-                    },
-                    world,
-                );
-            }
+            dispatcher.dispatch_tick_all(world, time.delta.as_secs_f32());
         }
 
         time

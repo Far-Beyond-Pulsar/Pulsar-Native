@@ -15,5 +15,5 @@ pub use byte_arena::ByteArena;
 pub use bytecode_compiler::BytecodeCompiler;
 pub use compiled_bytecode::{CompiledBytecode, VariableDescriptor};
 pub use dispatcher::{BlueprintDispatcher, BlueprintEvent, ExecutionMode};
-pub use executor::BlueprintExecutor;
+pub use executor::{BlueprintExecutor, EventWorld, ExecutorError};
 pub use instance::{BlueprintExecutionMode, BlueprintInstance};

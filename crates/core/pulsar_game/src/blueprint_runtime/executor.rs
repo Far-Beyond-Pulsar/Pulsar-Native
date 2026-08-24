@@ -28,6 +28,9 @@ pub enum ExecutorError {
     /// Blueprint not loaded
     BlueprintNotLoaded(String),
 
+    /// No instance registered under the requested object id (#648).
+    InstanceNotRegistered(String),
+
     /// IO error
     Io(std::io::Error),
 
@@ -42,6 +45,9 @@ impl std::fmt::Display for ExecutorError {
             ExecutorError::Prepare(e) => write!(f, "Prepare error: {}", e),
             ExecutorError::Execution(e) => write!(f, "Execution error: {}", e),
             ExecutorError::BlueprintNotLoaded(name) => write!(f, "Blueprint not loaded: {}", name),
+            ExecutorError::InstanceNotRegistered(id) => {
+                write!(f, "Blueprint instance not registered: {}", id)
+            }
             ExecutorError::Io(e) => write!(f, "IO error: {}", e),
             ExecutorError::Serialization(e) => write!(f, "Serialization error: {}", e),
         }
@@ -90,6 +96,36 @@ pub struct BlueprintExecutor {
 
     /// Temp file handle (keep alive for library lifetime)
     _temp_lib: pulsar_std_bundle::TempLib,
+}
+
+/// The world slice one blueprint event executes against (#648).
+///
+/// `comp_*` nodes read and mutate authoritative SceneDB state through this:
+/// `world` is the exclusive borrow held for the duration of the event (the
+/// tick loop's phase-3 write lock), and `entity` is the scene object the
+/// running instance is bound to. An instance that is registered but not yet
+/// bound executes with `entity: None` — graphs run, component ops refuse
+/// with a logged error rather than misaddressing writes.
+pub struct EventWorld<'w> {
+    /// Exclusive world access for the event's duration.
+    pub world: &'w mut World,
+    /// Scene entity the executing instance is bound to, if any.
+    pub entity: Option<Entity>,
+}
+
+impl<'w> EventWorld<'w> {
+    /// World access for a bound instance: component ops address `entity`.
+    pub fn bound(world: &'w mut World, entity: Entity) -> Self {
+        Self {
+            world,
+            entity: Some(entity),
+        }
+    }
+
+    /// World access for an unbound instance: component ops refuse.
+    pub fn unbound(world: &'w mut World) -> Self {
+        Self { world, entity: None }
+    }
 }
 
 impl BlueprintExecutor {
@@ -154,7 +190,14 @@ impl BlueprintExecutor {
     /// Reload a blueprint with new bytecode (for hot-reload).
     ///
     /// This replaces the existing loaded blueprint with new bytecode,
-    /// preserving the class name.
+    /// preserving the class name. Existing instances keep running against
+    /// the swapped programs on their next event — identities and bindings
+    /// are untouched, which is what makes PIE recompile hot-swap logic
+    /// without respawning entities.
+    ///
+    /// Prefer [`BlueprintDispatcher::reload_blueprint`] (same module tree)
+    /// as the entry point: it additionally rebuilds each affected instance's
+    /// state arena so a changed variable layout can never alias old bytes.
     pub fn reload_blueprint(&mut self, bytecode: CompiledBytecode) -> Result<(), ExecutorError> {
         let class_name = bytecode.source_class.clone();
 
@@ -199,8 +242,8 @@ impl BlueprintExecutor {
 
     /// Execute an event with an optional world context for component ops.
     ///
-    /// `Some((world, entity))` lets `comp_*` nodes read and mutate the
-    /// authoritative SceneDB state for `entity` (see
+    /// `Some(context)` lets `comp_*` nodes read and mutate the authoritative
+    /// SceneDB state for the instance's bound entity (see
     /// [`super::component_ops`]); `None` keeps the pre-component behaviour,
     /// where component ops log errors instead of touching the world.
     pub fn execute_event_in_world(
@@ -208,7 +251,7 @@ impl BlueprintExecutor {
         class_name: &str,
         event_name: &str,
         arena: &mut ByteArena,
-        world: Option<(&mut World, Entity)>,
+        context: Option<EventWorld<'_>>,
     ) -> Result<(), ExecutorError> {
         // Get loaded blueprint
         let blueprint = self
@@ -226,9 +269,9 @@ impl BlueprintExecutor {
 
         // Execute bytecode
         unsafe {
-            let result = match world {
-                Some((world, entity)) => {
-                    run_with_component_context(world, Some(entity), || {
+            let result = match context {
+                Some(EventWorld { world, entity }) => {
+                    run_with_component_context(world, entity, || {
                         vm::run_with_external_arena(program, arena.as_mut_ptr(), arena.size())
                     })
                 }

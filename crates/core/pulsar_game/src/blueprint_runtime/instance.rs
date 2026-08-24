@@ -6,9 +6,9 @@
 use super::byte_arena::ByteArena;
 use super::compiled_bytecode::{CompiledBytecode, VariableDescriptor};
 use super::executor::LoadedBlueprint;
+use pulsar_scenedb::Entity;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
-use std::sync::Arc;
 use uuid::Uuid;
 
 /// Execution mode for a blueprint instance.
@@ -32,6 +32,15 @@ pub struct BlueprintInstance {
 
     /// Blueprint class name (e.g., "Enemy_Goblin")
     pub class_name: String,
+
+    /// Scene entity this instance is bound to (#648).
+    ///
+    /// `None` until bound — either atomically at spawn time
+    /// (`BlueprintDispatcher::spawn_instance_for_entity`) or later via
+    /// `BlueprintDispatcher::bind_instance` once level entities exist.
+    /// Unbound instances run their graphs normally; only `comp_*` nodes
+    /// refuse (logged, null output), so pure-logic graphs are unaffected.
+    entity: Option<Entity>,
 
     /// Execution mode
     pub execution_mode: BlueprintExecutionMode,
@@ -61,8 +70,13 @@ impl BlueprintInstance {
         let class_name = loaded_blueprint.class_name.clone();
         let variables = loaded_blueprint.bytecode.variables.clone();
 
-        // Calculate arena size from variables
-        let arena_size = loaded_blueprint.bytecode.arena_size;
+        // Allocate arena. The size must cover the variable layout AND every
+        // event program's scratch requirements — the VM executes programs
+        // against THIS buffer and refuses to run when it is smaller than a
+        // program's `arena_size` (typed error, event skipped). Older
+        // bytecode files record only the variable extent here, so take the
+        // max instead of trusting one source.
+        let arena_size = Self::required_arena_size(&loaded_blueprint.bytecode);
 
         // Allocate arena
         let mut state = ByteArena::new(arena_size);
@@ -88,10 +102,83 @@ impl BlueprintInstance {
             instance_id: Uuid::new_v4(),
             object_id,
             class_name,
+            entity: None,
             execution_mode: BlueprintExecutionMode::Bytecode,
             bytecode_state: Some(state),
             variables,
         }
+    }
+
+    /// Smallest arena that can run every event of `bytecode` plus hold its
+    /// variable layout.
+    ///
+    /// Invariant: an instance arena is always ≥ its bytecode's declared
+    /// extent AND ≥ each event program's scratch requirement; the VM's
+    /// size check never fires for arenas built through this type.
+    fn required_arena_size(bytecode: &CompiledBytecode) -> usize {
+        bytecode
+            .event_programs
+            .values()
+            .map(|program| program.arena_size)
+            .max()
+            .unwrap_or(0)
+            .max(bytecode.arena_size)
+    }
+
+    /// Bind this instance to a scene entity, returning the previous binding
+    /// if there was one.
+    ///
+    /// Rebinding to a different live entity is allowed (respawn flows);
+    /// component ops address the NEW entity from the next dispatched event
+    /// on. Callers are responsible for liveness — binding does not validate
+    /// against a world because instances outlive no particular borrow.
+    pub fn bind_entity(&mut self, entity: Entity) -> Option<Entity> {
+        self.entity.replace(entity)
+    }
+
+    /// Detach this instance from its scene entity, returning the removed
+    /// binding. Component ops refuse until it is bound again.
+    pub fn unbind_entity(&mut self) -> Option<Entity> {
+        self.entity.take()
+    }
+
+    /// The scene entity this instance's component ops address, if bound.
+    pub fn bound_entity(&self) -> Option<Entity> {
+        self.entity
+    }
+
+    /// Rebuild this instance's state arena against freshly-reloaded bytecode
+    /// (hot-reload, #648).
+    ///
+    /// Variables whose `(name, data_type, offset, size)` all match the new
+    /// layout carry their old bytes over; everything else resets to the new
+    /// defaults. Exact-match-only preservation means layout drift can never
+    /// alias old data into a differently-typed slot — safety beats state.
+    pub fn rehydrate_after_reload(&mut self, loaded: &LoadedBlueprint) {
+        let mut new_state = ByteArena::new(Self::required_arena_size(&loaded.bytecode));
+        for var in &loaded.bytecode.variables {
+            let carried = self
+                .variables
+                .iter()
+                .find(|old| {
+                    old.name == var.name
+                        && old.data_type == var.data_type
+                        && old.offset == var.offset
+                        && old.size == var.size
+                })
+                .and_then(|old| {
+                    let state = self.bytecode_state.as_ref()?;
+                    // SAFETY: `old` came from this instance's descriptor list,
+                    // so (offset, size) is inside the live arena.
+                    Some(unsafe { state.read_bytes(old.offset, old.size) })
+                });
+            let value = carried.unwrap_or_else(|| var.default_value.clone());
+            // SAFETY: `var` describes `loaded`'s own layout, which
+            // `required_arena_size` sized this arena for.
+            unsafe { new_state.write_bytes_at(var.offset, &value) };
+        }
+        self.variables = loaded.bytecode.variables.clone();
+        self.bytecode_state = Some(new_state);
     }
 
     /// Get a variable's value as bytes.
@@ -279,7 +366,6 @@ impl Drop for BlueprintInstance {
 mod tests {
     use super::*;
     use crate::blueprint_runtime::compiled_bytecode::CompiledBytecode;
-    use pbgc::BpProgram;
     use std::collections::HashMap;
 
     fn create_test_loaded_blueprint() -> LoadedBlueprint {
@@ -389,6 +475,68 @@ mod tests {
     }
 
     #[test]
+    fn entity_binding_round_trips() {
+        let loaded = create_test_loaded_blueprint();
+        let mut instance = BlueprintInstance::new_bytecode("obj_001".to_string(), &loaded, None);
+        assert_eq!(instance.bound_entity(), None, "instances start unbound");
+
+        let mut world = pulsar_scenedb::World::new();
+        let entity = world.spawn();
+        assert_eq!(instance.bind_entity(entity), None);
+        assert_eq!(instance.bound_entity(), Some(entity));
+
+        // Respawn flows rebind; the old binding is returned.
+        let next = world.spawn();
+        assert_eq!(instance.bind_entity(next), Some(entity));
+        assert_eq!(instance.unbind_entity(), Some(next));
+        assert_eq!(instance.bound_entity(), None);
+    }
+
+    /// #648 hot-reload: exact-match variables carry across a reload;
+    /// changed layouts reset instead of aliasing old bytes.
+    #[test]
+    fn rehydrate_after_reload_preserves_matching_layout_only() {
+        let loaded = create_test_loaded_blueprint();
+        let mut overrides = HashMap::new();
+        overrides.insert("speed".to_string(), JsonValue::from(7.5));
+        let mut instance =
+            BlueprintInstance::new_bytecode("obj_001".to_string(), &loaded, Some(overrides));
+
+        // Same layout: speed survives, untouched health resets to default.
+        let same_layout = create_test_loaded_blueprint();
+        instance.rehydrate_after_reload(&same_layout);
+        unsafe {
+            assert_eq!(instance.get_variable::<f32>("speed"), Some(7.5));
+            assert_eq!(instance.get_variable::<i32>("health"), Some(100));
+            assert_eq!(instance.get_variable::<u8>("is_active"), Some(1));
+        }
+
+        // Drifted layout (health moved): old bytes must NOT appear at the
+        // new slot. Plant a sentinel in the OLD health slot first — if
+        // preservation were byte-blind, the sentinel would leak into the
+        // reload.
+        unsafe { assert!(instance.set_variable("health", 999_i32)) };
+        let mut drifted = CompiledBytecode::new("TestBlueprint".to_string());
+        drifted.add_variable(VariableDescriptor::f32("speed", 0, 5.0));
+        drifted.add_variable(VariableDescriptor::i32("health", 16, 100));
+        drifted.calculate_arena_size();
+        let drifted_loaded = LoadedBlueprint {
+            class_name: "TestBlueprint".to_string(),
+            bytecode: drifted,
+            programs: HashMap::new(),
+        };
+        instance.rehydrate_after_reload(&drifted_loaded);
+        unsafe {
+            assert_eq!(instance.get_variable::<f32>("speed"), Some(7.5));
+            assert_eq!(
+                instance.get_variable::<i32>("health"),
+                Some(100),
+                "moved variable resets to default instead of aliasing old bytes"
+            );
+        }
+    }
+
+    #[test]
     fn test_json_to_bytes_serialization() {
         // Test i32
         let bytes =
@@ -396,9 +544,12 @@ mod tests {
         assert_eq!(bytes, 42_i32.to_le_bytes().to_vec());
 
         // Test f32
-        let bytes =
-            BlueprintInstance::serialize_json_to_bytes(&JsonValue::from(3.14), "f32").unwrap();
-        assert_eq!(bytes, 3.14_f32.to_le_bytes().to_vec());
+        let bytes = BlueprintInstance::serialize_json_to_bytes(
+            &JsonValue::from(std::f32::consts::PI),
+            "f32",
+        )
+        .unwrap();
+        assert_eq!(bytes, std::f32::consts::PI.to_le_bytes().to_vec());
 
         // Test bool
         let bytes =
@@ -415,7 +566,7 @@ mod tests {
 mod override_marshalling_tests {
     //! #649: compound variable overrides marshal through the reflection
     //! registry into VM blob encodings instead of failing with
-    /// "Unsupported type".
+    //! "Unsupported type".
 
     use super::*;
 

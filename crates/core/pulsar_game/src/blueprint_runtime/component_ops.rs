@@ -23,10 +23,11 @@
 //! * Trampolines are `extern "C"` — they must not unwind. Every failure
 //!   (no context, unbound instance, despawned entity, unknown class,
 //!   bad arguments) is logged and degrades to a null output rather than
-//!   aborting. Surfacing typed errors to graphs arrives with per-entity
-//!   event results (#648).
-//! * An unbound instance (`None` entity) skips component ops with an error
-//!   log; graphs without component nodes are unaffected.
+//!   aborting. Graph-visible failure outputs remain future work; the
+//!   log carries the typed `ScriptRefError` display.
+//! * An instance that is registered but not yet bound to a scene entity
+//!   (`entity: None` in the context, #648's binding model) skips component
+//!   ops with an error log; graphs without component nodes are unaffected.
 
 use pbgc::bytecode::comp_ops::{json_blob_len, write_json_blob};
 use pulsar_bp_executor::{ComponentOpHandlers, CompOpKind};
@@ -39,7 +40,6 @@ use pulsar_world_registry::marshal::{any_to_json, json_to_any};
 use serde_json::Value as JsonValue;
 use std::cell::RefCell;
 
-/// Handler addresses handed to `BpExecutor::prepare_with_component_ops`.
 /// Handler addresses handed to `BpExecutor::prepare_with_component_ops`.
 ///
 /// A function rather than a `const`: function-pointer-to-usize casts are
@@ -419,8 +419,6 @@ mod tests {
         let _ = world.remove::<VmProbe>(entity);
     }
 
-    fn vm_probe_noop() {}
-
     pulsar_world_registry::inventory::submit! {
         WorldComponentRegistration {
             class_name: "VmProbe",
@@ -532,7 +530,7 @@ mod tests {
         });
         bind_handlers(&mut prog);
 
-        let mut arena = vec![0u64; (prog.arena_size + 7) / 8];
+        let mut arena = vec![0u64; prog.arena_size.div_ceil(8)];
         let base = arena.as_mut_ptr() as *mut u8;
         run_with_component_context(&mut world, Some(entity), || {
             unsafe {
