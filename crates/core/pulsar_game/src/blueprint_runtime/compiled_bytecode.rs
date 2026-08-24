@@ -11,7 +11,8 @@ use std::collections::HashMap;
 /// descriptors, and metadata.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CompiledBytecode {
-    /// Format version for backward compatibility
+    /// Format version. 2 adds [`Self::components`]; v1 files deserialize with
+    /// an empty list (serde default).
     pub version: u32,
 
     /// Source blueprint class name
@@ -27,6 +28,13 @@ pub struct CompiledBytecode {
 
     /// Total arena size needed for instance state (in bytes)
     pub arena_size: usize,
+
+    /// Component operations referenced by any program (`comp_*` node ABI,
+    /// see `pbgc::bytecode::comp_ops`). Empty in v1 files. The executor uses
+    /// these to validate availability and pre-resolve reflection metadata
+    /// before running events; unknown classes fail preparation, not ticks.
+    #[serde(default)]
+    pub components: Vec<pbgc::ComponentOpRef>,
 }
 
 /// Descriptor for a blueprint variable.
@@ -58,11 +66,12 @@ impl CompiledBytecode {
     /// Create a new empty compiled bytecode structure.
     pub fn new(source_class: impl Into<String>) -> Self {
         Self {
-            version: 1,
+            version: 2,
             source_class: source_class.into(),
             variables: Vec::new(),
             event_programs: HashMap::new(),
             arena_size: 0,
+            components: Vec::new(),
         }
     }
 
