@@ -562,3 +562,232 @@ the local tree.
    / `.write().world_mut()` per call, keep write scopes short (A's contract
    unchanged). Never hold a store guard across script callbacks that might
    re-enter the store.
+
+## Handoff: C
+
+Branch `scripting-epic`, one commit per issue, helio submodule pointer and
+the user's `Cargo.toml`/`Cargo.lock` handle-ledger WIP excluded from all of
+them (the ONE lock line C1 required — `thiserror` added to
+`pulsar_world_registry`'s dep list — was staged surgically via
+`git apply --cached`; their WIP hunks remain uncommitted exactly as found):
+
+| Commit | Issue | Summary |
+|---|---|---|
+| `b7d5f711` | #643 | unified reflection dispatcher -- invoke_component_method + property accessors over live World components |
+| `95d8a72a` | #644 | unified marshalling -- JSON/Any/arena-bytes conversions with versioned VM TypeSlot encoding spec |
+| `25d9d044` | #645 | reflection metadata audit -- overload policy, purity requirement, title-cased display names, golden registry snapshot |
+
+### The keystone: exact public API (D and E call THESE)
+
+All in `pulsar_world_registry` (`crates/core/pulsar_world_registry`).
+Dependency direction unchanged: scenedb + reflection + serde_json +
+inventory + thiserror. `pulsar_script_object_model` still depends on it
+(one-way), so game crates and VM guests get everything transitively.
+
+```rust
+// ── dispatch.rs (#643) ──────────────────────────────────────────────────
+pub fn invoke_component_method(
+    world: &mut World,
+    entity: pulsar_scenedb::Entity,
+    class_name: &str,
+    component_index: u32,
+    method: &str,
+    args: pulsar_reflection::MethodArgs,            // Vec<Box<dyn Any>>
+) -> Result<pulsar_reflection::MethodReturnValue,   // Option<Box<dyn Any>>
+            ScriptRefError>;
+
+pub fn get_component_property(world: &World, entity: Entity,
+    class_name: &str, component_index: u32, property: &str)
+    -> Result<serde_json::Value, ScriptRefError>;   // editor/metadata path
+
+pub fn set_component_property(world: &mut World, entity: Entity,
+    class_name: &str, component_index: u32, property: &str,
+    value: serde_json::Value) -> Result<(), ScriptRefError>;
+
+pub fn get_component_property_boxed(..same ids..)   // NO-JSON hot path (#D4)
+    -> Result<Box<dyn Any>, ScriptRefError>;
+pub fn set_component_property_boxed(..same ids.., value: Box<dyn Any>)
+    -> Result<(), ScriptRefError>;
+```
+
+Resolution order in `invoke_component_method` (every step a typed error,
+NEVER a panic): liveness → `UnregisteredClass` → `UnknownMethod` →
+argument arity/`TypeId` validation (**performed here** because the derive-
+generated caller closures panic on missing/wrong args; the dispatcher
+refuses first with `ArgumentCount`/`ArgumentType`) → presence of the live-
+typed value (`ComponentMissing`) → `caller(args)` on `&mut dyn EngineClass`
+through `get_world_component_as_engine_class_mut`. Mutations ride the real
+World storage, so SceneDB `Mut` guards fire subscription/GPU events exactly
+like panel edits.
+
+Index semantics (mirrors B exactly): PROPERTIES at this layer address only
+index 0 (live-typed); other indexes are `InstanceMissing` — duplicate
+records stay behind the object-model crate's `ComponentInstanceStore`.
+METHODS execute against the live-typed value regardless of index (class-
+level behavior; B's `ComponentRef::call_method` semantics, which now
+DELEGATES to this dispatcher — one dispatch path total).
+
+```rust
+// ── errors.rs — THE taxonomy, moved + extended (#643) ───────────────────
+// Canonical home is now pulsar_world_registry::errors (next to the
+// dispatcher). pulsar_script_object_model::errors re-exports it, so every
+// pre-existing path is byte-identical. New variants for #643:
+pub enum ScriptRefError {
+    // ...all #641 variants unchanged (ReferenceDespawned, ComponentMissing,
+    // ClassMismatch, InstanceMissing, UnregisteredClass, ClassNotBridged,
+    // UnknownProperty, UnknownMethod, Marshalling)...
+    ArgumentCount { class_name: String, method: String,
+                    expected: usize, got: usize },
+    ArgumentType  { class_name: String, method: String, index: usize,
+                    param: &'static str, expected: &'static str,
+                    found: String },   // found = registered type_name or raw TypeId debug
+}
+impl ScriptRefError { pub fn despawned(entity: Entity) -> Self }  // now pub (cross-crate)
+```
+
+```rust
+// ── marshal.rs (#644) ───────────────────────────────────────────────────
+pub fn any_to_json(context: &str, value: &dyn Any) -> Result<Value, ScriptRefError>;
+pub fn json_to_any(context: &str, type_info: &'static RuntimeTypeInfo,
+                   value: Value) -> Result<Box<dyn Any>, ScriptRefError>;
+pub fn any_to_bytes(type_info: &'static RuntimeTypeInfo, value: &dyn Any,
+                    out: &mut Vec<u8>) -> Result<(), ScriptRefError>;
+pub fn bytes_to_any(type_info: &'static RuntimeTypeInfo, bytes: &[u8])
+    -> Result<Box<dyn Any>, ScriptRefError>;
+```
+
+Exactness invariant both directions: the box holds EXACTLY
+`type_info.type_id`'s type or it's an `Err`. All failures are
+`ScriptRefError::Marshalling { context, message }`.
+
+### TypeSlot encoding spec (Phase D consumes directly)
+
+**Location: `pulsar_world_registry/src/vm_abi.rs`** — module doc IS the
+spec; `TYPE_SLOT_ENCODING_VERSION = 1`. Summary:
+
+- `VmTypeSlot` (repr(C), 24 bytes): `{ size: u64, align: u64, kind: u32,
+  reserved: u32 (=0) }`. First 16 bytes ARE a `pulsar_std::TypeSlot`
+  (legacy-prefix compatible; `slot_for(info)` / `.legacy_prefix()` build
+  the bridge). Readers must refuse unknown kinds/non-zero reserved.
+- Per-kind value layouts (NATIVE endian — in-process calling convention,
+  NOT portable serialization): `Direct=0` inline native bytes (numeric
+  prims ≤ 8B, bool as 1 byte, Entity as packed bits-u64);
+  `Utf8String=1` `[u64 len][utf8]`; `Vector=2` `[u64 count][count × Direct
+  elems]`; `JsonEncoded=3` `[u64 len][utf8 JSON]` — universal fallback for
+  every REGISTERED type. `classify(type_info)` is the single decision both
+  encode/decode drive from.
+- Fast paths are the ONLY hardcoded type lists (issue-compliant); the
+  closed Direct set lives in `marshal::is_direct_type`. Everything else
+  routes by classification; unregistered types are refused, never guessed.
+- Performance note for #D4: hot sets compose
+  `set_component_property_boxed` + `any_to_bytes`/`bytes_to_any` — no JSON
+  for Direct/String/Vector kinds. JSON is editor/metadata-only.
+- `type_shims.rs`: upstream registers Vec<T>/Option<T> LAZILY but never in
+  the inventory registry, so registry-level JSON legs refused them; shimmed
+  locally (Vec<f32/f64/i32/u64/String>, Option<bool/i32/f32/String>) using
+  upstream's own Reflectable impls. Add instantiations there as components
+  demand them.
+
+### Audit results (#645)
+
+Sweep coverage: every `#[engine_class]` class linked in Pulsar-Native-proper
+— `RigidbodyComponent`, `PhysicsComponent` (+ their `#[sub_props]` groups),
+engine_class_derive test fixtures, object-model TestGizmo — plus the
+helio-component classes READ-ONLY (same generator, same conclusions).
+Findings:
+
+1. **Purity**: correct today by construction — the only generated methods
+   are property accessors (getters `Pure`, setters `Fn`); zero hand-written
+   `#[method]`s existed workspace-wide. Landmine removed: `#[method]` now
+   REQUIRES explicit `type = Pure|Fn|ControlFlow` (compile error otherwise;
+   silent default was Pure, and rust_codegen inlines Pure bodies).
+2. **Overload policy**: DISALLOWED, two layers. Compile-time:
+   duplicate `#[method]` names within one impl block are a compile error
+   (name-keyed `REGISTRY.get_method` would shadow). Link/test-time:
+   `pulsar_world_registry::find_overloaded_methods() -> Vec<MetadataAuditError>`
+   sweeps all classes across registrations; asserted empty in CI.
+3. **Display names/categories**: all generated display names now title-case
+   each word ("Linear Damping", "Add Charges"); auto get_/set_ accessor
+   methods inherit their FIELD's category instead of landing ungrouped.
+   No code string-matches display names (verified by grep) — labels are
+   render-safe to change.
+4. **Golden snapshot**: `pulsar_physics/src/golden_metadata.rs` (unit-test
+   module ON PURPOSE — integration binaries linker-GC arbitrary inventory
+   statics; observed classes-without-methods) diffs
+   `metadata_snapshot_json()` against
+   `tests/expected_registry_snapshot.json` (77 properties captured, fully
+   sorted/deterministic). Regen: `PULSAR_UPDATE_SNAPSHOT=1 cargo test -p
+   pulsar_physics golden_metadata`. Reusable everywhere: any crate linking
+   real classes can drop the same two tests in.
+5. **Gap recorded, not fixed**: top-level components whose fields are ALL
+   `#[sub_props]` (both physics components) expose ZERO reflected METHODS —
+   accessors generate per direct `#[property]` field only. Properties
+   remain fully reachable via nesting + C1's property API, so scripts lose
+   nothing today; generating nested accessors is macro surgery deferred
+   until a consumer demands it.
+6. **Doc-comment→tooltip**: `MethodMetadata` has no docs field (upstream
+   type) — follow-up filed under upstream asks below.
+
+### Upstream asks (recorded, nothing edited; pulsar_reflection @ 745ee78)
+
+1. **Reflectable derive bug (blocks derived structs with String/Vec)**:
+   generated `deserialize` does `*value.downcast_ref::<FieldTy>()?` — a
+   MOVE out of a shared reference; fails E0507 for ANY non-Copy field.
+   Should `.clone()` (fields already bound `Clone`). Worked around via
+   hand-written impl in marshal tests; helio/engine structs wanting
+   `#[derive(Reflectable)]` with strings will hit this.
+2. Register common wrapper instantiations (`Vec<T>`, `Option<T>`) in the
+   inventory registry (or add a lazy fallback) so `type_shims.rs` can
+   shrink to nothing — same protocol as B's Entity/u32 asks.
+3. `MethodMetadata`/`PropertyMetadata`: consider a docs/tooltip string
+   (doc-comment capture needs derive support too) — feeds #645's tooltip
+   pipeline item for F.
+4. `capitalize_first`'s single-word output was replaced by `title_case`
+   inside engine_class_derive (Pulsar-Native-side); no upstream change
+   needed — listed only because helio-component's GENERATED labels change
+   with the next recompile (no submodule edit involved).
+
+### Deviations from issue text
+
+- #643 named `InvokeError`; the shared taxonomy WON instead — dispatcher
+  returns `ScriptRefError` directly (guidance: reuse, don't fork). The
+  issue's `ArgumentMismatch` landed as two precise variants
+  (`ArgumentCount`/`ArgumentType`) rather than one message-shaped enum.
+- #643's "validate index (live-typed vs duplicate routing)" resolves at
+  THIS layer as: properties reject non-zero indexes (`InstanceMissing`),
+  methods ignore index (documented class-level semantics, mirroring B).
+  Duplicate-aware METHOD routing stays impossible here because instance
+  records live behind the object-model store seam, not world_registry.
+- #644's "arena bytes" for compounds is length-prefixed staging owned by
+  the caller (spec'd in vm_abi) rather than fixed-size slots — primitives
+  are the zero-copy inline case; strings/vecs/structs cannot be honestly
+  zero-copy into a slot ABI without ownership hazards. Documented as
+  allocation cases per the issue.
+- Golden test lives in `src/golden_metadata.rs` (cfg(test)) instead of
+  `tests/` — see linkage note above; determinism beats convention here.
+
+### Verification status
+
+Per commit: affected-crate tests green (final sweep: world_registry 23 lib
++ 10 integration, object_model 36, engine_class_derive 21 incl. its own
+suites, physics 2 golden + existing suites untouched-green), touched-file
+clippy clean (remaining warnings are SceneDB local-tree + pre-existing
+physics import warnings, none in touched files),
+`cargo check --workspace` OK. Same CAVEAT as A/B: user's `[patch]` points
+scenedb at their local tree; everything above compiles against BOTH that
+and the pinned rev's APIs I touch.
+
+### Notes for D/E/F
+
+1. Call `invoke_component_method` / `*_component_property_boxed` — never
+   `REGISTRY.get_method` + caller yourself (you'd re-introduce the panic
+   paths the dispatcher guards).
+2. VM glue: read `vm_abi.rs` FIRST; encode args with `any_to_bytes`,
+   decode returns with `bytes_to_any`, build slots with `slot_for`.
+   Version-gate on `TYPE_SLOT_ENCODING_VERSION`.
+3. Errors crossing your boundaries are `ScriptRefError` (re-exported from
+   `pulsar_script_object_model`, canonical in `pulsar_world_registry`) —
+   keep matching on variants, never on Display strings.
+4. F: palette grouping now gets categories on accessor nodes + stable
+   title-cased labels; golden snapshots exist for physics and are cheap to
+   clone for helio-side classes when they become editable.

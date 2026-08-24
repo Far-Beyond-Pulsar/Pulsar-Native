@@ -672,7 +672,7 @@ mod tests {
     }
 
     /// Compare two erased boxes known to be of `type_info`'s type.
-    fn assert_same_value(type_info: &RuntimeTypeInfo, got: &Box<dyn Any>, want: &(dyn Any)) {
+    fn assert_same_value(type_info: &RuntimeTypeInfo, got: &Box<dyn Any>, want: &dyn Any) {
         macro_rules! cmp {
             ($t:ty) => {
                 if type_info.type_id == TypeId::of::<$t>() {
