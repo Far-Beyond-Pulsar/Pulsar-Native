@@ -41,13 +41,17 @@
 //! | [`routing`] | live-typed-vs-duplicate routing internals |
 //! | [`access`] | property/method accessors |
 //! | [`subscribe`] | change-notification helpers over SceneDB#47 subscriptions |
+//! | [`resolution`] | StableId <-> Entity serialization + resolution (#639) |
 //! | [`contract`] | handle semantics, one page, for script authors (#641) |
+
+pub use resolution::{ResolveRefError, SerializedComponentRef, StableIdResolver};
 
 pub mod access;
 pub mod contract;
 pub mod errors;
 pub mod instances;
 pub mod refs;
+pub mod resolution;
 pub mod routing;
 pub mod subscribe;
 

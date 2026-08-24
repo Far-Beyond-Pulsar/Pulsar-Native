@@ -8,6 +8,7 @@ description = "Script-facing object model: ActorRef/ComponentRef handles that ad
 pulsar_scenedb        = { workspace = true }
 pulsar_reflection     = { workspace = true }
 pulsar_world_registry = { workspace = true }
+serde                 = { workspace = true, features = ["derive"] }
 serde_json            = { workspace = true }
 thiserror             = { workspace = true }
 

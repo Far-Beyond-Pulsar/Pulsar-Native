@@ -2931,6 +2931,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scene",
  "pulsar_scenedb",
+ "pulsar_script_object_model",
  "pulsar_world_registry",
  "rapier3d",
  "reqwest 0.13.4",

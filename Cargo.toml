@@ -96,6 +96,7 @@ pulsar_reflection                  = { git = "https://github.com/Far-Beyond-Puls
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
 pulsar_world_registry              = { path = "crates/core/pulsar_world_registry" }
+pulsar_script_object_model         = { path = "crates/core/pulsar_script_object_model" }
 pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
 pulsar_terrain                     = { path = "crates/subsystems/pulsar_terrain" }
 

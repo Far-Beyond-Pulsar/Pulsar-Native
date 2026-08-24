@@ -39,6 +39,11 @@ pub mod runtime_level;
 // authoritative store. See `world_store`'s own doc for the full picture.
 pub mod world_store;
 
+// Script object model bridge (Pulsar-Native#639) -- `WorldSceneStore` as
+// the StableId⇄Entity resolver + duplicate-instance store the script-facing
+// handles route through. Impls only; no new storage.
+pub mod script_ref_bridge;
+
 #[cfg(feature = "render")]
 // Shared WorldSceneStore <-> helio::Renderer operations (#637): GPU seam
 // attach + per-frame static-mesh/light frame assembly.
