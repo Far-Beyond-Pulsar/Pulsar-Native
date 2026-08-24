@@ -154,6 +154,8 @@ impl ImportConfigurator {
         render_property_row_runtime(
             &mut self.property_state,
             "import",
+            // One flat config panel -- the key IS the unique per-card identity.
+            &field.key,
             &field.key,
             &field.label,
             &field.key,

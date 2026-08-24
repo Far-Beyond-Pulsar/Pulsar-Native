@@ -658,41 +658,101 @@ impl SceneDatabase {
         }
     }
 
-    /// Edit a single property on the **live `World`-resident component**
-    /// directly, correctly handling `#[sub_props]` nesting -- no JSON
-    /// involved anywhere in this path (Pulsar-Native#561).
+    /// Which instance of `class_name` on `object_id` is the **live-typed**
+    /// one -- the single instance whose value actually lives in `World`.
+    ///
+    /// `World` stores one value per `(entity, ComponentId)`, so of N
+    /// instances of the same class on one entity exactly ONE can be
+    /// live-typed: the first ENABLED one (the same instance
+    /// [`Self::sync_registered_component_props_to_scene_db`] hydrates).
+    /// Every other instance exists only as its own JSON blob in
+    /// `metadata_db`. `None` when the class isn't `World`-registered at all,
+    /// or no enabled instance of it is attached.
+    ///
+    /// This is Pulsar-Native#519's identity anchor: the properties panel
+    /// uses it to decide, per card, whether values come from `World` (live
+    /// card, subscribable) or from that card's own metadata JSON.
+    pub fn live_typed_component_index(
+        &self,
+        object_id: &ObjectId,
+        class_name: &str,
+    ) -> Option<usize> {
+        if pulsar_world_registry::component_id_for_class(class_name).is_none() {
+            return None;
+        }
+        self.get_components(object_id)
+            .iter()
+            .enumerate()
+            .find(|(_, c)| c.class_name == class_name && c.enabled)
+            .map(|(idx, _)| idx)
+    }
+
+    /// Edit a single property on ONE specific component instance,
+    /// correctly handling `#[sub_props]` nesting (Pulsar-Native#561) and
+    /// per-instance field values (Pulsar-Native#519).
+    ///
+    /// `component_index` addresses the exact instance in the object's
+    /// component list -- the same identity `remove_component`/
+    /// `set_component_enabled`/`reorder_component` already use. An object
+    /// can carry several instances of the same class, each with independent
+    /// field values; routing edits by class name alone (the pre-#519
+    /// behavior) made every such edit land in whichever instance sorted
+    /// first.
+    ///
+    /// Routing by instance:
+    /// - **The live-typed instance** ([`Self::live_typed_component_index`]):
+    ///   the setter closure runs straight against the `World`-resident
+    ///   typed value -- no JSON anywhere on this path -- then the full new
+    ///   shape is persisted back into that instance's `metadata_db` JSON so
+    ///   the two never diverge (Pulsar-Native#561, Bug B).
+    /// - **Every other instance** (duplicate duplicates, disabled
+    ///   representatives, and classes with no `World` registration): the
+    ///   value is serialized once and merged into THAT instance's own JSON
+    ///   blob. There is no `World` presence to keep in sync; if the
+    ///   instance ever becomes the live-typed one (an earlier duplicate is
+    ///   removed or disabled), re-hydration reads exactly this JSON.
     ///
     /// `class_name`/`prop_name` come from [`pulsar_reflection::PropertyMetadata`]
     /// (the same reflection metadata the properties panel already reads to
-    /// render the row). The setter closure used to apply `new_value` is
-    /// looked up fresh from a throwaway `REGISTRY.create_instance` -- that
-    /// instance's own field values are discarded immediately; only its
-    /// *type-bound* getter/setter closures are used, applied straight to
-    /// the one real component already in `World`.
+    /// render the row). The setter closure is looked up fresh from a
+    /// throwaway `REGISTRY.create_instance` -- that instance's own field
+    /// values are discarded immediately; only its *type-bound*
+    /// getter/setter closures are used.
     ///
-    /// `Err(new_value)` -- handing the value straight back, since the
-    /// setter never ran -- if `class_name` isn't `World`-registered,
-    /// `object_id` has no live entity, or the entity doesn't have this
-    /// component hydrated yet. Callers should fall back to
-    /// [`Self::update_component_property`] in that case (this happens only
-    /// for the handful of props-only classes with no `ComponentRuntimeBehavior`
-    /// at all; every real, migrated component always has a live value once
-    /// its object is loaded).
+    /// `Err(new_value)` -- handing the value straight back, since nothing
+    /// was written -- when the index/class pair doesn't match the object's
+    /// actual component list, or the class has no reflection metadata here
+    /// at all (plugin-only classes; the command layer's legacy flat-JSON
+    /// fallback covers those).
     pub fn update_live_component_property(
         &self,
         object_id: &ObjectId,
         class_name: &str,
+        component_index: usize,
         prop_name: &str,
         new_value: Box<dyn Any + Send>,
     ) -> Result<(), Box<dyn Any + Send>> {
-        let Some(setter) = pulsar_reflection::REGISTRY
+        // The index IS the identity: a stale or mismatched one must never
+        // land an edit into some OTHER instance's storage.
+        let components = self.get_components(object_id);
+        let Some(target) = components.get(component_index) else {
+            return Err(new_value);
+        };
+        if target.class_name != class_name {
+            tracing::warn!(
+                "[LIVE_PROPERTY_EDIT] index {component_index} holds '{}' not '{class_name}' -- edit refused",
+                target.class_name
+            );
+            return Err(new_value);
+        }
+
+        let Some(prop_meta) = pulsar_reflection::REGISTRY
             .create_instance(class_name)
             .and_then(|instance| {
                 instance
                     .get_properties()
                     .into_iter()
                     .find(|p| p.name == prop_name)
-                    .map(|p| p.setter)
             })
         else {
             tracing::warn!(
@@ -700,6 +760,53 @@ impl SceneDatabase {
             );
             return Err(new_value);
         };
+
+        // Non-live instances: apply the edit through the real typed
+        // machinery against a THROWAWAY World seeded from this instance's
+        // own JSON, then persist the full result back to that same blob. A
+        // flat `{prop_name: value}` merge here would be wrong for any
+        // `#[sub_props]`-nested leaf (Pulsar-Native#561's corruption class:
+        // bare scalar landing where a nested group lives), and duplicates
+        // deserve the same nesting-correct write the live card gets --
+        // that's the whole point of #519.
+        let is_live = self.live_typed_component_index(object_id, class_name)
+            == Some(component_index);
+        if !is_live {
+            let mut scratch = pulsar_scenedb::World::new();
+            let scratch_entity = scratch.spawn();
+            let hydrated = pulsar_world_registry::hydrate_world_component_for_class(
+                class_name,
+                &mut scratch,
+                scratch_entity,
+                &target.data,
+            );
+            if hydrated.is_err() {
+                // This instance's stored JSON doesn't deserialize for its
+                // own class -- refuse the edit rather than guess.
+                return Err(new_value);
+            }
+            let Some(instance) = pulsar_world_registry::get_world_component_as_engine_class_mut(
+                class_name,
+                &mut scratch,
+                scratch_entity,
+            ) else {
+                // Hydrate was a no-op: this class has no `World` bridge at
+                // all (plugin-only). Hand the value back untouched so the
+                // command layer's legacy flat-JSON fallback can take it.
+                return Err(new_value);
+            };
+            (prop_meta.setter)(instance, new_value);
+            let Ok(value_json) = instance.to_json() else {
+                return Err(Box::new(()));
+            };
+            self.metadata_db
+                .components()
+                .update_component(object_id, component_index, value_json);
+            self.record_property_change(object_id, class_name, prop_name);
+            return Ok(());
+        }
+
+        let setter = prop_meta.setter;
 
         // Scoped so the `store` write-guard is dropped before the
         // `metadata_db` persistence step below -- that step goes through
@@ -753,16 +860,13 @@ impl SceneDatabase {
         // which re-hydrates every `World`-registered component from
         // `metadata_db`'s JSON -- silently reverting this write. Writing
         // through here closes that gap: `metadata_db` and `World` never
-        // diverge for longer than this one call.
+        // diverge for longer than this one call. Persisted to the EXACT
+        // edited instance (`component_index`), not "first with this class"
+        // -- with duplicates those are different blobs (Pulsar-Native#519).
         if let Some(json) = persisted_json {
-            if let Some((idx, _)) = self
-                .get_components(object_id)
-                .into_iter()
-                .enumerate()
-                .find(|(_, c)| c.class_name == class_name)
-            {
-                self.metadata_db.components().update_component(object_id, idx, json);
-            }
+            self.metadata_db
+                .components()
+                .update_component(object_id, component_index, json);
         }
 
         Ok(())
@@ -1291,7 +1395,28 @@ impl SceneDatabase {
         let Some(entity) = store.entity_for(object_id) else {
             return components;
         };
-        for component in &mut components {
+        // Overlay ONLY onto each class's one live-typed instance
+        // (Pulsar-Native#519): `World` holds a single typed value per
+        // `(entity, ComponentId)` -- the first enabled instance -- so
+        // stamping it onto EVERY instance of the class used to clobber the
+        // other duplicates' own stored field values on every read. A
+        // duplicate's `data` is its own blob; if it becomes the live-typed
+        // one later, re-hydration adopts exactly that blob.
+        let mut live_index_of_class: HashMap<String, usize> = HashMap::new();
+        for (idx, component) in components.iter().enumerate() {
+            if !component.enabled {
+                continue;
+            }
+            if pulsar_world_registry::component_id_for_class(&component.class_name).is_some() {
+                live_index_of_class
+                    .entry(component.class_name.clone())
+                    .or_insert(idx);
+            }
+        }
+        for (idx, component) in components.iter_mut().enumerate() {
+            if live_index_of_class.get(component.class_name.as_str()) != Some(&idx) {
+                continue;
+            }
             if let Some(live) = pulsar_world_registry::get_world_component_as_engine_class(
                 component.class_name.as_str(),
                 store.world(),
@@ -2170,6 +2295,7 @@ mod world_component_hydration_tests {
         let applied = db.update_live_component_property(
             &id,
             "LightComponent",
+            0,
             "intensity",
             Box::new(500.0_f32) as Box<dyn Any + Send>,
         );
@@ -2182,6 +2308,7 @@ mod world_component_hydration_tests {
         let applied = db.update_live_component_property(
             &id,
             "LightComponent",
+            0,
             "color",
             Box::new([0.25_f32, 0.5, 0.75, 1.0]) as Box<dyn Any + Send>,
         );
@@ -2247,6 +2374,7 @@ mod world_component_hydration_tests {
         db.update_live_component_property(
             &id,
             "LightComponent",
+            0,
             "intensity",
             Box::new(1000.0_f32) as Box<dyn Any + Send>,
         )
@@ -2290,6 +2418,7 @@ mod world_component_hydration_tests {
         db.update_live_component_property(
             &id,
             "LightComponent",
+            0,
             "intensity",
             Box::new(750.0_f32) as Box<dyn Any + Send>,
         )
@@ -2334,6 +2463,7 @@ mod world_component_hydration_tests {
         db.update_live_component_property(
             &id,
             "LightComponent",
+            0,
             "intensity",
             Box::new(750.0_f32) as Box<dyn Any + Send>,
         )
@@ -2449,6 +2579,142 @@ mod world_component_hydration_tests {
     }
 
     // ── World subscriptions (Pulsar-Native#575, SceneDB#47) ────────────────
+
+    /// Pulsar-Native#519: two instances of the SAME class on one object are
+    /// two independent value stores. `World` can hold only the first
+    /// enabled instance typed; the duplicate keeps its OWN metadata JSON,
+    /// and edits route by index -- editing instance 1 must never touch
+    /// instance 0 (or the reverse), on either the read or write side.
+    #[test]
+    fn duplicate_class_instances_hold_independent_field_values() {
+        use helio_component::LightComponent;
+        use std::any::Any;
+
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Light"), None);
+        let default_json = serde_json::to_value(LightComponent::default()).unwrap();
+        db.add_component(&id, "LightComponent".to_string(), default_json.clone());
+        db.add_component(&id, "LightComponent".to_string(), default_json);
+
+        // Exactly one live-typed representative, and it's instance 0.
+        assert_eq!(
+            db.live_typed_component_index(&id, "LightComponent"),
+            Some(0),
+            "of N duplicates, only the first enabled one is World-typed"
+        );
+
+        // Distinct edits to each instance, by index.
+        db.update_live_component_property(
+            &id,
+            "LightComponent",
+            1,
+            "intensity",
+            Box::new(111.0_f32) as Box<dyn Any + Send>,
+        )
+        .expect("duplicate-instance edit routes by index");
+        db.update_live_component_property(
+            &id,
+            "LightComponent",
+            0,
+            "intensity",
+            Box::new(222.0_f32) as Box<dyn Any + Send>,
+        )
+        .expect("live-typed edit applies");
+
+        // Write side stayed per-instance: the World-typed value (and its
+        // metadata mirror at index 0) carries ONLY instance 0's edit;
+        // instance 1's blob carries only its own.
+        let components = db.get_components(&id);
+        assert_eq!(
+            components[0].data.pointer("/intensity/intensity"),
+            Some(&serde_json::json!(222.0)),
+        );
+        assert_eq!(
+            components[1].data.pointer("/intensity/intensity"),
+            Some(&serde_json::json!(111.0)),
+            "instance 1's stored value must be its own -- neither the World \
+             overlay nor instance 0's edit may clobber it"
+        );
+        let store = db.store.read();
+        let entity = store.entity_for(&id).unwrap();
+        let hydrated = store.world().get::<LightComponent>(entity).unwrap();
+        assert_eq!(hydrated.intensity.intensity, 222.0);
+    }
+
+    /// Pulsar-Native#519 follow-through: when the current live-typed
+    /// instance goes away (removed), the NEXT duplicate becomes the
+    /// representative and is re-hydrated from ITS OWN edited JSON -- not
+    /// from anything instance 0 left behind.
+    #[test]
+    fn removing_the_live_instance_promotes_the_duplicate_from_its_own_json() {
+        use helio_component::LightComponent;
+        use std::any::Any;
+
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Light"), None);
+        let default_json = serde_json::to_value(LightComponent::default()).unwrap();
+        db.add_component(&id, "LightComponent".to_string(), default_json.clone());
+        db.add_component(&id, "LightComponent".to_string(), default_json);
+
+        // Give each instance a distinct intensity BEFORE any removal.
+        db.update_live_component_property(
+            &id,
+            "LightComponent",
+            1,
+            "intensity",
+            Box::new(111.0_f32) as Box<dyn Any + Send>,
+        )
+        .unwrap();
+
+        // Remove instance 0; instance 1 (intensity 111.0) is now first.
+        db.remove_component(&id, 0);
+
+        assert_eq!(
+            db.live_typed_component_index(&id, "LightComponent"),
+            Some(0),
+            "the surviving duplicate is now the class's live-typed instance"
+        );
+        let components = db.get_components(&id);
+        assert_eq!(
+            components[0].data.pointer("/intensity/intensity"),
+            Some(&serde_json::json!(111.0)),
+            "promotion must adopt the duplicate's OWN field values"
+        );
+    }
+
+    /// The index is a hard identity check, not advisory: a stale index
+    /// pointing at a different class must refuse the edit rather than land
+    /// it in some other instance.
+    #[test]
+    fn update_live_component_property_refuses_a_mismatched_component_index() {
+        use helio_component::{LightComponent, StaticMeshComponent};
+        use std::any::Any;
+
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Thing"), None);
+        db.add_component(
+            &id,
+            "StaticMeshComponent".to_string(),
+            serde_json::json!({"mesh_asset": "meshes/primitives/SM_Cube.fbx"}),
+        );
+        db.add_component(
+            &id,
+            "LightComponent".to_string(),
+            serde_json::to_value(LightComponent::default()).unwrap(),
+        );
+
+        // Index 0 is the StaticMeshComponent; claiming it for a Light edit
+        // must bounce the value straight back, unmodified.
+        let value = Box::new(500.0_f32) as Box<dyn Any + Send>;
+        let result = db.update_live_component_property(
+            &id,
+            "LightComponent",
+            0,
+            "intensity",
+            value,
+        );
+        assert!(result.is_err(), "class/index mismatch must refuse");
+    }
 
     /// The properties panel's core contract: arm once per card, edit the
     /// live value through the real write path, and the subscription delivers
