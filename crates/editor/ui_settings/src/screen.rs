@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use gpui::{
@@ -35,6 +35,14 @@ impl ModernSettingsScreen {
             project_path,
             has_pending_changes: false,
         }
+    }
+
+    /// The project directory this settings session is scoped to, if any.
+    ///
+    /// `Some` means the "Project" page edits `<project>/.pulsar` TOML files;
+    /// `None` means only global editor settings are available.
+    pub fn project_path(&self) -> Option<&Path> {
+        self.project_path.as_deref()
     }
 
     fn setting_pages(&self, _window: &mut Window, cx: &mut Context<Self>) -> Vec<SettingPage> {

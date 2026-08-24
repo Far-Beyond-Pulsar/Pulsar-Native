@@ -270,6 +270,14 @@ fn main() {
 
         cx.activate(true);
 
+        // Installed before any init: window crates self-register into
+        // WindowRegistry during their own init (e.g. SettingsWindow::init).
+        {
+            use window_manager::{WindowManager, WindowRegistry};
+            cx.set_global(WindowManager::new());
+            cx.set_global(WindowRegistry::new());
+        }
+
         let t = std::time::Instant::now();
         ui::init(cx);
         tracing::info!("[GPUI startup] ui::init {}ms", t.elapsed().as_millis());
@@ -284,12 +292,6 @@ fn main() {
         let t = std::time::Instant::now();
         ui_core::init(cx);
         tracing::info!("[GPUI startup] ui_core::init {}ms", t.elapsed().as_millis());
-
-        {
-            use window_manager::{WindowManager, WindowRegistry};
-            cx.set_global(WindowManager::new());
-            cx.set_global(WindowRegistry::new());
-        }
 
         // Runs every inventory::submit! registrant from all linked crates automatically.
         let t = std::time::Instant::now();
@@ -318,12 +320,26 @@ fn main() {
                 .find(|arg| !arg.starts_with('-'))
                 .map(std::path::PathBuf::from);
 
-            if let Some(path) = direct_path.filter(|p| p.exists()) {
-                tracing::info!("Opening project from argument: {}", path.display());
-                open_via_loading_screen(path, cx);
-            } else {
-                tracing::warn!("No project specified. Please launch Pulsar Engine via the Pulsar Hub launcher or specify a project path.");
-                cx.quit();
+            match direct_path.filter(|p| p.is_dir()) {
+                Some(path) => {
+                    tracing::info!("Opening project from argument: {}", path.display());
+                    open_via_loading_screen(path, cx);
+                }
+                Some(path) if path.exists() => {
+                    tracing::error!(
+                        "Project path is not a directory: {}",
+                        path.display()
+                    );
+                    cx.quit();
+                }
+                Some(path) => {
+                    tracing::error!("Project path does not exist: {}", path.display());
+                    cx.quit();
+                }
+                None => {
+                    tracing::warn!("No project specified. Pass a project directory as an argument or launch via Pulsar Hub.");
+                    cx.quit();
+                }
             }
         }
     });

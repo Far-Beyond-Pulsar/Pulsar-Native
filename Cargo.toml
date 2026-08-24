@@ -43,17 +43,15 @@ keywords = ["game-engine", "editor"]
 ###################################
 
 [profile.release]
-# Hardened release profile:
-# - debug=false:          no debug symbols embedded in release binary
-# - strip="symbols":      strip all symbol names (function/struct names)
-# - lto="fat":            link-time optimization (faster binary, harder to RE)
-# - codegen-units=1:      better LLVM optimization across crate boundaries
-# - panic="abort":        abort on panic instead of unwinding (smaller, faster)
+# The commented-out hardening keys below were deliberate anti-RE choices, but
+# panic="abort" also removes catch_unwind fault isolation, so they stay off
+# until that tradeoff is revisited deliberately.
 # debug = false
 # strip = "symbols"
 # lto = "fat"
-# codegen-units = 1
 # panic = "abort"
+lto = "thin"
+codegen-units = 1
 
 [profile.dev]
 codegen-units = 16

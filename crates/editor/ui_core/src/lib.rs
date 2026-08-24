@@ -76,6 +76,12 @@ pub fn init(cx: &mut gpui::App) {
     // File-browser shortcuts (Ctrl/Cmd + C/X/V/A), scoped to the file manager focus.
     ui_file_manager::init(cx);
 
+    // Parameterised windows (non-`()` Params) are not auto-registered by the
+    // `#[register_window]` macro — register their name-openers so
+    // `WindowRegistry::open("…")` keeps working for menus and embedders.
+    ui_settings::SettingsWindow::init(cx);
+    ui_git_manager::GitManagerWindow::init(cx);
+
     cx.on_action(|_: &Settings, cx| {
         tracing::debug!("[MENU] Settings");
         window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
