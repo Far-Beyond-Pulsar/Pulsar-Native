@@ -76,12 +76,16 @@ the previous handoffs before starting.
 4. **Tests**: every new module gets unit tests next to it; integration tests
    for cross-crate contracts listed in each issue's acceptance criteria.
    Regression tests reference their issue number in the test name/doc.
-5. **Verification before handoff**: `just check` clean; `just test` no NEW
-   failures (pre-existing: two `toggle_button.rs` doctests fail on main;
-   workspace clippy has pre-existing warnings — do not fix unrelated ones,
-   but touched files must be warning-clean).
+5. **Verification before handoff (SCOPED — user directive, Aug 2026)**:
+   verify only what you touch: `cargo check -p <crate>` / `cargo test -p
+   <crate>` for each crate you modify, plus clippy on your files. Do NOT
+   gate on full-workspace builds; vendored/plugin/submodule code failing
+   for reasons outside your diff is out of scope — never fix compilers you
+   didn't break. Cross-repo resolution (submodule pointer pushes, pin
+   bumps, generated-template refreshes) happens ONCE at epic-end
+   validation.
 6. **Commits**: one commit per issue (`#NNN: imperative-mood summary`),
-   on branch `scripting-epic`. Never push. Leave the tree green.
+   on branch `scripting-epic`. Never push. Leave YOUR touched crates green.
 7. **Honesty**: if an issue cannot be completed, stop cleanly, mark the
    remaining checklist items clearly, and document why in the handoff —
    a smaller finished slice beats a sprawling half-broken one.
