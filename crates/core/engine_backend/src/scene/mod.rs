@@ -20,12 +20,18 @@ pub mod component_db;
 pub mod metadata;
 pub mod metadata_db;
 
+// Resolved per-light GPU frames (Pulsar-Native#636) -- transform-folded
+// light state maintained at change time from World subscriptions, replacing
+// rebuild_light_frame's per-frame CPU combine.
+pub mod light_frame;
+
 // World/Entity-backed scene store (Phase B1, Pulsar-Native#553) -- the live
 // authoritative store. See `world_store`'s own doc for the full picture.
 pub mod world_store;
 
 // Re-export new system types for convenience
 pub use component_db::ComponentDb;
+pub use light_frame::{LightFrameMaintainer, ResolvedLightFrame};
 pub use metadata::{ComponentInstance, EditorObjectId};
 pub use metadata_db::SceneMetadataDb;
 pub use world_store::{

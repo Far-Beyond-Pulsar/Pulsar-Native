@@ -16,7 +16,7 @@ use pulsar_reflection::{
     RuntimeComponentOwner, Subsystems,
 };
 use helio_component::{
-    components::{LightComponentGpuMirror, StaticMeshComponent},
+    components::StaticMeshComponent,
     subsystems::{
         apply_portal_pair_action, remove_foliage_handles, FoliageCache, MeshCache,
         PortalLinkCache, PostProcessVolumeCache, ReflectionCaptureCache, WaterVolumeCache,
@@ -28,7 +28,10 @@ use pulsar_scenedb::gpu::{
     BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
 
-use crate::scene::{ObjectDirtyFlags, ObjectUpdate, SceneDbDelta, WorldSceneStore};
+use crate::scene::{
+    LightFrameMaintainer, ObjectDirtyFlags, ObjectUpdate, ResolvedLightFrame, SceneDbDelta,
+    WorldSceneStore,
+};
 use parking_lot::RwLock;
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 
@@ -238,6 +241,12 @@ struct HelioInner {
     reflection_capture_cache: ReflectionCaptureCache,
     water_volume_cache: WaterVolumeCache,
     post_process_volume_cache: PostProcessVolumeCache,
+    /// Subscription-backed maintainer for the World's `ResolvedLightFrame`
+    /// rows (Pulsar-Native#636) -- what `rebuild_light_frame` reads instead
+    /// of re-combining every light's position from its `Transform` every
+    /// frame. Renderer-owned bookkeeping (which subscriptions are armed);
+    /// the resolved state itself is SceneDB-resident.
+    light_frames: LightFrameMaintainer,
 }
 
 // component_instances_from_snap delegates to pulsar_scene's shared impl.
@@ -427,6 +436,7 @@ impl HelioRenderer {
                 reflection_capture_cache: ReflectionCaptureCache::new(),
                 water_volume_cache: WaterVolumeCache::new(),
                 post_process_volume_cache: PostProcessVolumeCache::new(),
+                light_frames: LightFrameMaintainer::new(),
             };
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
@@ -665,6 +675,10 @@ impl HelioRenderer {
         {
             inner.last_scene_revision = 0;
             inner.known_ids.clear();
+            // Same store-swap invalidation as `force_full_resync` -- this is
+            // that method's logic inlined (see its comment above for why it
+            // can't just call the method here).
+            inner.light_frames.reset();
         }
 
         // ── Early out when idle ─────────────────────────────────────────────────
@@ -1008,6 +1022,10 @@ impl HelioRenderer {
         if let Some(inner) = &mut self.inner {
             inner.last_scene_revision = 0;
             inner.known_ids.clear();
+            // Subscription ids are only meaningful against the `World` they
+            // were armed on; a wholesale store swap invalidates them all.
+            // The next sync pass re-arms + reseeds from scratch.
+            inner.light_frames.reset();
         }
     }
 
@@ -1560,6 +1578,13 @@ impl HelioRenderer {
                 );
             }
             Self::step_scene_db(&mut store);
+            // Refresh the resolved light frames from this pass's World
+            // change events (Pulsar-Native#636). Runs unconditionally, not
+            // gated on any dirty set: a scripted/runtime write goes straight
+            // through `World`'s `Mut` hooks and never touches
+            // `WorldSceneStore`'s dirty flags, and those edits must reach
+            // the rendered frame within this same pass.
+            inner.light_frames.maintain(store.world_mut());
             store.take_removed_ids()
         };
 
@@ -1917,27 +1942,23 @@ impl HelioRenderer {
         inner.renderer.scene_mut().rebuild_static_mesh_instances(&inputs);
     }
 
-    /// Build Helio's transient light frame directly from the authoritative
-    /// SceneDB world and its `#[gpu]`-mirrored `LightComponentGpuMirror`
-    /// rows -- the light equivalent of [`Self::rebuild_static_mesh_frame`]
-    /// (Pulsar-Native#561: `LightComponent` fully normalized onto SceneDB's
-    /// `#[gpu]` auto-mirror system; no more per-entity `insert_light`/
-    /// `update_light`/`remove_light`/tag-lookup dance, no more `sync_light_
-    /// gpu_data`, no more `apply_transform_patch` light fast-path -- this
-    /// single per-frame rebuild replaces all three).
+    /// Build Helio's transient light frame from the authoritative SceneDB
+    /// world's `ResolvedLightFrame` rows (`crate::scene::light_frame`) --
+    /// the light equivalent of [`Self::rebuild_static_mesh_frame`].
+    ///
+    /// Pulsar-Native#636: each row is the entity's `#[gpu]`-mirrored
+    /// `LightComponentGpuMirror` translated through `to_helio_gpu_light`
+    /// with its live `Transform` position already folded into
+    /// `position_range[0..3]` -- maintained at change time by
+    /// `LightFrameMaintainer` (see this pass's caller) rather than
+    /// recombined here for every light on every frame. What used to be a
+    /// per-frame `(mirror, Transform)` whole-world query plus CPU combine is
+    /// now a straight copy of precomputed state.
     ///
     /// No light-side entity data is retained by Helio between calls (see
-    /// `Scene::rebuild_light_instances`'s own doc): a disabled light's
-    /// hydrate already skipped `sync_gpu_mirror`, so it simply has no
-    /// `LightComponentGpuMirror` row to be picked up by this query at all --
-    /// absence here IS the removal signal, same as `rebuild_static_mesh_
-    /// frame`'s empty-handle skip.
-    ///
-    /// `position_range`'s xyz is overwritten from the live `Transform` here
-    /// -- the mirrored row's own copy is a zeroed placeholder by design (see
-    /// `LightComponentGpuMirror::to_helio_gpu_light`'s doc); this is the one
-    /// place that combines it with the real, current transform before use,
-    /// same split `rebuild_static_mesh_frame` uses for mesh geometry.
+    /// `Scene::rebuild_light_instances`'s own doc): absence IS the removal
+    /// signal, same as before -- a disabled/removed/despawned light simply
+    /// has no resolved row to be picked up here.
     fn rebuild_light_frame(inner: &mut HelioInner, store: &WorldSceneStore) {
         // Re-resolved every call, deliberately -- see the lazy-init block's
         // own comment (above, in the `render` command handler) for why a
@@ -1955,26 +1976,16 @@ impl HelioRenderer {
         }
 
         let mut inputs = Vec::new();
-        for (entity, (mirror, transform)) in store
-            .world()
-            .query::<(&LightComponentGpuMirror, &crate::scene::Transform)>()
-        {
-            let mut light = mirror.to_helio_gpu_light();
-            // TRANSITIONAL: still combined here on the CPU, same as before.
-            // `entity_index` below is real and already flows all the way
-            // through to `GpuLightEntityIndexBuffer` (see that type's own
-            // doc, helio-core) -- once the lighting/shadow/cull passes that
-            // need position are updated to read `Transform`'s own GPU
-            // buffer through it, THIS combination becomes redundant and
-            // should be deleted, not kept as a second source of truth.
-            light.position_range[0] = transform.position[0];
-            light.position_range[1] = transform.position[1];
-            light.position_range[2] = transform.position[2];
+        for (entity, frame) in store.world().query::<&ResolvedLightFrame>() {
             let user_tag = store
                 .stable_id_of(entity)
                 .map(scene_id_to_tag)
                 .unwrap_or(entity.index() as u64);
-            inputs.push(helio::LightRenderInput { light, user_tag, entity_index: entity.index() });
+            inputs.push(helio::LightRenderInput {
+                light: frame.light,
+                user_tag,
+                entity_index: entity.index(),
+            });
         }
         inner.renderer.scene_mut().rebuild_light_instances(&inputs);
     }
@@ -2113,10 +2124,12 @@ impl HelioRenderer {
                     );
                 }
                 // A TRANSFORM-only change on a static mesh or light needs no
-                // patch here at all: `rebuild_static_mesh_frame`/`rebuild_
-                // light_frame` below rebuild BOTH straight from SceneDB's
-                // live Transform every pass, unconditionally -- there's
-                // nothing left to fast-path around (this used to be `else
+                // patch here at all: `rebuild_static_mesh_frame` rebuilds
+                // meshes straight from SceneDB's live Transform every pass,
+                // and lights flow through their subscription-maintained
+                // `ResolvedLightFrame` rows (Pulsar-Native#636, refreshed
+                // below before `rebuild_light_frame`) -- there's nothing
+                // left to fast-path around (this used to be `else
                 // if flags.contains(TRANSFORM) { apply_transform_patch }`,
                 // a light-only copy-modify-write of a persistent Helio-side
                 // actor; that actor no longer exists between frames at all,
@@ -2162,6 +2175,16 @@ impl HelioRenderer {
                 );
             }
             Self::step_scene_db(&mut store);
+        }
+
+        // Resolved light frames (Pulsar-Native#636): maintained from World
+        // change subscriptions under their own short write lock, NOT gated
+        // on `dirty` -- a scripted/runtime transform write bypasses
+        // `WorldSceneStore`'s dirty flags entirely and must still reach the
+        // rendered frame this pass.
+        {
+            let mut store = scene_store.write();
+            inner.light_frames.maintain(store.world_mut());
         }
 
         // Always rebuild the transient static-mesh and light frames from
