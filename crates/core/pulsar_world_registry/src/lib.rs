@@ -74,6 +74,8 @@ pub use inventory;
 pub mod dispatch;
 pub mod errors;
 pub mod marshal;
+pub mod type_shims;
+pub mod vm_abi;
 
 // The unified reflection dispatcher (#643) and its property accessors --
 // THE entry points every scripting backend (VM opcodes, generated code,
@@ -87,6 +89,13 @@ pub use dispatch::{
 // crate (next to the dispatcher whose failures these are);
 // `pulsar_script_object_model::errors` re-exports it unchanged.
 pub use errors::ScriptRefError;
+// Unified marshalling (#644): JSON ⇄ Box<dyn Any> ⇄ arena bytes, plus the
+// versioned VM TypeSlot encoding spec Phase D builds against.
+pub use marshal::{any_to_bytes, any_to_json, bytes_to_any, json_to_any};
+pub use vm_abi::{
+    classify as classify_vm_value_kind, slot_for, TYPE_SLOT_ENCODING_VERSION, VmTypeSlot,
+    VmValueKind,
+};
 
 use pulsar_reflection::{ComponentRuntimeContext, EngineClass, RuntimeComponentOwner};
 use pulsar_scenedb::{ComponentId, Entity, World};
