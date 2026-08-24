@@ -22,7 +22,10 @@
 //!   when used; storing refs freely is safe and supported. Staleness is an
 //!   ordinary, expected result (`ReferenceDespawned`), not misuse.
 //! - **Never panics on bad handles.** Every accessor returns `Err` for dead,
-//!   missing, or mismatched targets.
+//!   missing, or mismatched targets ([`errors`]). Debug builds additionally
+//!   assert loudly on the one never-valid id, the `Entity::DANGLING`
+//!   sentinel reaching an accessor -- raw-id abuse across a boundary; see
+//!   [`contract`] for the full handle-semantics page (#641).
 //! - **Panel-parity routing.** Property reads/writes route exactly like the
 //!   properties panel (#519/#575): the first enabled instance of a class is
 //!   the *live-typed* value in `World`; every other index lives as JSON in
@@ -38,13 +41,18 @@
 //! | [`routing`] | live-typed-vs-duplicate routing internals |
 //! | [`access`] | property/method accessors |
 //! | [`subscribe`] | change-notification helpers over SceneDB#47 subscriptions |
+//! | [`contract`] | handle semantics, one page, for script authors (#641) |
 
 pub mod access;
+pub mod contract;
 pub mod errors;
 pub mod instances;
 pub mod refs;
 pub mod routing;
 pub mod subscribe;
+
+#[cfg(test)]
+mod property_tests;
 
 #[cfg(test)]
 pub(crate) mod test_support;

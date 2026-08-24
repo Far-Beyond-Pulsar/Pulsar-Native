@@ -134,12 +134,24 @@ impl ComponentRef {
     }
 }
 
-/// Shared liveness gate behind every accessor (#641): typed errors always;
-/// debug-build asserts ONLY for ids that were never valid in this world
-/// (`DANGLING` sentinel, out-of-range slot -- fabricated or foreign-world
-/// ids), because those indicate raw-id misuse at the call site, not ordinary
-/// staleness.
+/// Shared liveness gate behind every accessor (#641): typed errors always,
+/// in every build -- ordinary staleness (despawned, recycled generation,
+/// out-of-range slot after a world rebuild) NEVER panics or asserts.
+///
+/// The one exception: [`Entity::DANGLING`] is never a valid entity of any
+/// world, so seeing it here means raw-id misuse upstream of this crate
+/// (FFI glue handing a sentinel through as if it were a live handle).
+/// Debug builds trip an assert right at the call site; release builds
+/// return the same typed error either way.
 pub(crate) fn ensure_live_entity(world: &World, entity: Entity) -> Result<(), ScriptRefError> {
+    if entity == Entity::DANGLING {
+        debug_assert!(
+            false,
+            "script object model misuse: Entity::DANGLING reached a liveness-checked accessor \
+             (raw-id abuse across a language boundary, not ordinary staleness)"
+        );
+        return Err(ScriptRefError::despawned(entity));
+    }
     if !world.is_alive(entity) {
         return Err(ScriptRefError::despawned(entity));
     }
@@ -176,21 +188,28 @@ mod tests {
         assert!(!actor.despawn(&mut world));
     }
 
-    /// #641: `Entity::DANGLING` and out-of-range slots are rejected with the
-    /// same typed error as ordinary staleness (release semantics; the debug
-    /// assert fires only in dev builds).
+    /// #641: `Entity::DANGLING` and fabricated ids are rejected with the
+    /// same typed error as ordinary staleness. The DANGLING case also trips
+    /// a debug-build misuse assert (it can only mean raw-id abuse), so this
+    /// test tolerates the panic in debug builds while still pinning the
+    /// release-build `Err` path.
     #[test]
     fn dangling_and_foreign_ids_are_typed_errors_not_panics() {
         let (world, _alive) = world_with_actor();
 
-        let dangling = ActorRef::new(Entity::DANGLING);
-        assert_eq!(
-            dangling.validate(&world),
-            Err(ScriptRefError::despawned(Entity::DANGLING))
-        );
-
-        let fabricated = ActorRef::new(Entity::from_bits((999_999u64) << 32));
+        // Fabricated out-of-range id: ordinary staleness, no assert anywhere.
+        let fabricated = ActorRef::new(Entity::from_bits(999_999u64 << 32));
         assert_eq!(fabricated.validate(&world), Err(ScriptRefError::despawned(fabricated.0)));
+
+        // DANGLING sentinel: typed error in release; loud debug assert in
+        // dev builds (by design).
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ActorRef::new(Entity::DANGLING).validate(&world)
+        }));
+        match result {
+            Ok(err) => assert_eq!(err, Err(ScriptRefError::despawned(Entity::DANGLING))),
+            Err(_) => assert!(cfg!(debug_assertions), "assert fired outside a debug build"),
+        }
     }
 
     /// #640: `component()` composes the full panel identity; `live()` is the
