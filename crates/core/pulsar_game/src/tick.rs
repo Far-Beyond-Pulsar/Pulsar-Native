@@ -6,7 +6,6 @@ use pulsar_core::{Clock, GameTime, TaskPool, TickMode};
 use pulsar_scenedb::{ActorRegistry, Schedule};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 /// Convert [`pulsar_core::GameTime`] into [`pulsar_scenedb::GameTime`].
 ///
@@ -96,6 +95,35 @@ impl TickLoop {
         let running = Arc::new(AtomicBool::new(false));
         Self {
             scene_store: Arc::new(RwLock::new(WorldSceneStore::new())),
+            schedule: Schedule::new(),
+            actors: ActorRegistry::new(),
+            tasks: Arc::new(TaskPool::new(task_threads)),
+            blueprint_dispatcher: None,
+            window_manager: None,
+            clock: Clock::new(max_delta),
+            mode,
+            running: running.clone(),
+            running_flag: running,
+        }
+    }
+
+    /// Build a `TickLoop` over an EXISTING shared store -- the ABI v2 PIE
+    /// path (#635): the guest adopts the HOST's authoritative world instead
+    /// of constructing its own, so editor edits and gameplay mutations hit
+    /// one world. The handle must be the same `Arc` the host transferred;
+    /// see `pulsar_pie_abi`'s module doc for the single-count transfer rule.
+    pub fn with_scene_store(
+        scene_store: Arc<RwLock<WorldSceneStore>>,
+        mode: TickMode,
+        task_threads: usize,
+    ) -> Self {
+        let max_delta = match mode {
+            TickMode::Fixed { dt } => dt * 5,
+            TickMode::Variable { max_delta } => max_delta,
+        };
+        let running = Arc::new(AtomicBool::new(false));
+        Self {
+            scene_store,
             schedule: Schedule::new(),
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),

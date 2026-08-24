@@ -25,11 +25,97 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use libloading::Library;
+use parking_lot::{RwLock, RwLockWriteGuard};
 use pulsar_pie_abi::{
     EngineContext as PieContext, FnAbiVersion, FnInit, FnInput, FnResize, FnShutdown, FnTick,
     InputEvent, INIT_OK, LOG_DEBUG, LOG_ERROR, LOG_INFO, LOG_TRACE, LOG_WARN, PIE_ABI_VERSION,
     SYM_ABI_VERSION, SYM_INIT, SYM_INPUT, SYM_RESIZE, SYM_SHUTDOWN, SYM_TICK,
 };
+
+use crate::scene::WorldSceneStore;
+
+/// The host-side half of the ABI v2 shared-world contract (#635).
+///
+/// Owns a strong count of the editor's world handle and implements the
+/// phase-boundary lock callbacks handed to the guest. The guard produced by
+/// [`Self::lock`] is stored in [`Self::slice`] until [`Self::unlock`]: this is
+/// what lets the returned `*mut WorldSceneStore` outlive the callback call
+/// while remaining soundly borrowed -- the borrow's backing allocation (the
+/// `Arc`) lives in this struct, which itself outlives the whole PIE session.
+///
+/// Not `Send`/`Sync`-restricted on purpose: the PIE threading contract keeps
+/// every entry point on the editor's render thread (`pulsar_game::embed`'s
+/// `thread_local!`), so plain fields are sufficient and cheaper than locks we
+/// would never contend on.
+pub(crate) struct PieWorldBridge {
+    /// The editor's authoritative world. One strong count belongs to this
+    /// bridge for the session; a second count is transferred to the guest
+    /// via `Arc::into_raw` at load time (the guest reclaims it with
+    /// `Arc::from_raw` -- exactly once, per #635's single-transfer rule).
+    store: Arc<RwLock<WorldSceneStore>>,
+    /// The open slice, if any. Occupied == locked: the non-reentrancy
+    /// witness is "slot already holds a guard", checked before locking.
+    slice: Option<SliceGuard>,
+}
+
+/// A held exclusive slice. Owns an `Arc` clone so the `'static` guard borrow
+/// is backed by memory this type provably keeps alive (see [`Self::lock`]).
+struct SliceGuard {
+    _keep_alive: Arc<RwLock<WorldSceneStore>>,
+    // Invariant: `_keep_alive`'s heap allocation is stable, so borrowing
+    // through its address for `'static` is sound while `_keep_alive` lives.
+    // Never read after construction -- the field exists to be DROPPED at
+    // unlock (dropping a write guard is what releases the lock).
+    #[allow(dead_code)]
+    guard: RwLockWriteGuard<'static, WorldSceneStore>,
+}
+
+impl PieWorldBridge {
+    pub(crate) fn new(store: Arc<RwLock<WorldSceneStore>>) -> Self {
+        Self { store, slice: None }
+    }
+
+    /// The lock callback body ([`pulsar_pie_abi::LockWorldFn`]). Returns an
+    /// exclusive raw pointer valid until [`Self::unlock`], or null when a
+    /// slice is already open -- the protocol-violation signal.
+    fn lock(&mut self) -> *mut c_void {
+        if self.slice.is_some() {
+            tracing::error!("PiE: guest opened a second shared-world slice; returning null");
+            return std::ptr::null_mut();
+        }
+        // Soundness of the 'static borrow: `SliceGuard::_keep_alive` holds a
+        // clone of the Arc for as long as the guard lives, and Arc's
+        // allocation address never moves, so borrowing the allocation through
+        // its pointer cannot dangle while the guard is stored here.
+        let keep_alive = Arc::clone(&self.store);
+        let static_lock: &'static RwLock<WorldSceneStore> =
+            unsafe { &*Arc::as_ptr(&keep_alive) };
+        let mut guard = static_lock.write();
+        let ptr = &mut *guard as *mut WorldSceneStore as *mut c_void;
+        self.slice = Some(SliceGuard { _keep_alive: keep_alive, guard });
+        ptr
+    }
+
+    /// The unlock callback body ([`pulsar_pie_abi::UnlockWorldFn`]).
+    /// Idempotent: closing an un-opened slice is a no-op (lets early-error
+    /// paths in the guest unwind their state without wedging the host).
+    fn unlock(&mut self) {
+        self.slice = None;
+    }
+}
+
+extern "C" fn pie_lock_world(userdata: *mut c_void) -> *mut c_void {
+    // SAFETY: `userdata` is the `*mut PieWorldBridge` the host boxed at load
+    // time and handed to the guest; it outlives the session and the guest
+    // contract forbids writing through it.
+    let bridge = unsafe { &mut *(userdata as *mut PieWorldBridge) };
+    bridge.lock()
+}
+
+extern "C" fn pie_unlock_world(userdata: *mut c_void) {
+    let bridge = unsafe { &mut *(userdata as *mut PieWorldBridge) };
+    bridge.unlock();
+}
 
 /// A loaded, running embedded game.
 pub struct PieHost {
@@ -42,6 +128,10 @@ pub struct PieHost {
     ctx: Box<PieContext>,
     /// `*const wgpu::Texture` the game renders into; set by `init`.
     out_texture: *const c_void,
+
+    /// The shared-world lock-callback state (#635). Boxed so its address is
+    /// stable; its pointer is the `userdata` the lock callbacks receive.
+    world_bridge: Option<Box<PieWorldBridge>>,
 
     /// Held for the session; `ctx.device`/`ctx.queue` point into these.
     _device: Arc<wgpu::Device>,
@@ -76,8 +166,13 @@ impl PieHost {
     /// Load a freshly-built game `cdylib` and initialize the embedded game.
     ///
     /// `device`/`queue` are the editor's (GPUI's) handles; the game clones them
-    /// so it shares the same GPU device. `scene_path` is a `.level` file the
-    /// editor wrote from its current `SceneDb`.
+    /// so it shares the same GPU device. `shared_world` is the editor's
+    /// authoritative scene store (#635, ABI v2): one count stays with the host
+    /// for the session and one is transferred to the guest via `Arc::into_raw`
+    /// (the single-count transfer rule -- the guest reclaims it exactly once).
+    /// `scene_path` is a `.level` file the editor wrote from its current scene;
+    /// under v2 it is advisory only (the guest adopts the already-hydrated
+    /// shared world instead of loading it), kept for logging/legacy guests.
     ///
     /// # Safety
     /// `device`/`queue` must be valid and outlive the call; the loaded library
@@ -93,6 +188,7 @@ impl PieHost {
         height: u32,
         project_root: &Path,
         scene_path: Option<&Path>,
+        shared_world: Arc<RwLock<WorldSceneStore>>,
     ) -> Result<Self, String> {
         if !dylib_path.exists() {
             return Err(format!("Game library not found: {}", dylib_path.display()));
@@ -127,10 +223,18 @@ impl PieHost {
             .map_err(|e| format!("Missing symbol {}: {e}", sym_name(SYM_ABI_VERSION)))?;
         let lib_abi = abi_version();
         if lib_abi != PIE_ABI_VERSION {
-            return Err(format!(
-                "Game was built against PiE ABI v{lib_abi}, editor expects v{PIE_ABI_VERSION}. \
-                 Rebuild the project (Build Core)."
-            ));
+            return Err(if lib_abi < PIE_ABI_VERSION {
+                format!(
+                    "Game was built against PiE ABI v{lib_abi}, editor expects v{PIE_ABI_VERSION}. \
+                     v1 games predate the shared-world bridge (#635) and cannot adopt this \
+                     session's world -- rebuild the project (Build Core)."
+                )
+            } else {
+                format!(
+                    "Game was built against PiE ABI v{lib_abi}, editor expects v{PIE_ABI_VERSION}. \
+                     Update Pulsar (the game library is newer than this editor)."
+                )
+            });
         }
 
         // ── Resolve the rest of the entry points ─────────────────────────────
@@ -161,6 +265,16 @@ impl PieHost {
         let project_root_s = project_root.to_string_lossy().into_owned();
         let scene_path_s = scene_path.map(|p| p.to_string_lossy().into_owned());
 
+        // ── Shared-world bridge (#635, ABI v2) ───────────────────────────────
+        // One Arc count stays with the bridge for the session; a SECOND count
+        // is transferred to the guest via into_raw (guest reclaims it with
+        // exactly one from_raw). The bridge is boxed so its address is stable
+        // -- the guest's lock callbacks receive it as userdata.
+        let mut world_bridge = Box::new(PieWorldBridge::new(Arc::clone(&shared_world)));
+        let shared_world_ptr =
+            Arc::into_raw(Arc::clone(&shared_world)) as *const c_void;
+        let userdata: *mut c_void = &mut *world_bridge as *mut PieWorldBridge as *mut c_void;
+
         let mut ctx = Box::new(PieContext {
             abi_version: PIE_ABI_VERSION,
             device: Arc::as_ptr(&device) as *const c_void,
@@ -172,9 +286,12 @@ impl PieHost {
             project_root_len: project_root_s.len(),
             scene_path_ptr: scene_path_s.as_ref().map(|s| s.as_ptr()).unwrap_or(std::ptr::null()),
             scene_path_len: scene_path_s.as_ref().map(|s| s.len()).unwrap_or(0),
-            userdata: std::ptr::null_mut(),
+            userdata,
             log: log_cb,
             out_texture: std::ptr::null(),
+            shared_world: shared_world_ptr,
+            lock_shared_world: pie_lock_world,
+            unlock_shared_world: pie_unlock_world,
         });
 
         let ok = init(&mut *ctx as *mut PieContext);
@@ -183,6 +300,8 @@ impl PieHost {
         drop(scene_path_s);
 
         if ok != INIT_OK {
+            // Give the transferred count back so the world can drop normally.
+            drop(Arc::from_raw(shared_world_ptr as *const RwLock<WorldSceneStore>));
             return Err("Game init returned failure (see log for details)".to_string());
         }
 
@@ -195,6 +314,7 @@ impl PieHost {
             shutdown,
             ctx,
             out_texture,
+            world_bridge: Some(world_bridge),
             _device: device,
             _queue: queue,
             started: true,
@@ -243,6 +363,11 @@ impl PieHost {
             unsafe { (self.shutdown)() };
             self.started = false;
         }
+        // Tear down the shared-world bridge only AFTER shutdown returned --
+        // the guest's tick slices borrow through it for the whole session.
+        // If a misbehaving guest left a slice open, dropping the bridge here
+        // releases that lock with the session anyway.
+        self.world_bridge = None;
         // Drop the library (dlclose / FreeLibrary) before removing the temp copy.
         self.lib = None;
         if let Some(path) = self.temp_copy.take() {
@@ -297,4 +422,60 @@ fn format_to_u32(format: wgpu::TextureFormat) -> Option<u32> {
         F::Bgra8UnormSrgb => 3,
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// #635 locking protocol, host side: lock hands out an exclusive slice,
+    /// a second concurrent lock is refused (the non-reentrancy witness), and
+    /// unlock closes the slice so the next one can open. Idempotent unlock.
+    #[test]
+    fn world_bridge_hands_out_one_exclusive_slice_at_a_time() {
+        let bridge = PieWorldBridge::new(Arc::new(RwLock::new(WorldSceneStore::new())));
+        let userdata = &bridge as *const PieWorldBridge as *mut c_void;
+
+        // SAFETY (test): userdata points at `bridge`, alive for this scope.
+        let first = unsafe { pie_lock_world(userdata) };
+        assert!(!first.is_null(), "first slice must be granted");
+
+        let second = unsafe { pie_lock_world(userdata) };
+        assert!(
+            second.is_null(),
+            "a second slice while one is open must be REFUSED, not granted"
+        );
+
+        unsafe { pie_unlock_world(userdata) };
+        let third = unsafe { pie_lock_world(userdata) };
+        assert!(!third.is_null(), "after unlock a new slice must be grantable");
+        unsafe { pie_unlock_world(userdata) };
+
+        // Idempotent unlock: no panic / no wedge.
+        unsafe { pie_unlock_world(userdata) };
+        let fourth = unsafe { pie_lock_world(userdata) };
+        assert!(!fourth.is_null());
+        unsafe { pie_unlock_world(userdata) };
+    }
+
+    /// #635: writes made through the handed-out pointer are visible through
+    /// the editor's own handle afterwards -- same allocation, not a copy.
+    #[test]
+    fn slice_mutations_land_in_the_host_store() {
+        let store = Arc::new(RwLock::new(WorldSceneStore::new()));
+        let expected = {
+            let mut s = store.write();
+            s.spawn(Some("probe".into()), "Probe", None).unwrap()
+        };
+        let mut bridge = PieWorldBridge::new(Arc::clone(&store));
+        let userdata = &bridge as *const PieWorldBridge as *mut c_void;
+
+        let ptr = bridge.lock() as *mut WorldSceneStore;
+        assert!(!ptr.is_null());
+        // The guest would write here; reading the spawned entity through the
+        // raw pointer proves it aliases the host's store.
+        let name = unsafe { (*ptr).name(expected).map(str::to_string) };
+        assert_eq!(name.as_deref(), Some("Probe"));
+        bridge.unlock();
+    }
 }

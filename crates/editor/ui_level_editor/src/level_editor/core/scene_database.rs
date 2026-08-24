@@ -281,6 +281,14 @@ impl SceneDatabase {
         }
     }
 
+    /// The underlying shared store handle -- for consumers that must hold the
+    /// same world the editor mutates (the PIE host handing its world to the
+    /// guest, #635; renderer construction, #637). Cloning is cheap; readers
+    /// take `.read()`, writers `.write()`.
+    pub fn shared_store(&self) -> Arc<RwLock<WorldSceneStore>> {
+        Arc::clone(&self.store)
+    }
+
     // ── Property change tracking ─────────────────────────────────────────
 
     /// Snapshot and clear the accumulated property changes.  Called exactly

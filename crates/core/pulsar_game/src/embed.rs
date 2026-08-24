@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex};
 
 use engine_backend::scene::{
     attach_gpu_render_seam, rebuild_light_frame, rebuild_static_mesh_frame, step_scene_for_render,
-    LightFrameMaintainer, RuntimeLevel, WorldSceneStore,
+    LightFrameMaintainer, WorldSceneStore,
 };
 use helio::{Camera, DebugDrawState, MaterialId, Renderer, RendererConfig, Scene};
 use parking_lot::RwLock;
@@ -164,7 +164,29 @@ impl EmbeddedGame {
         let threads = std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(4);
-        let mut tick_loop = TickLoop::new(TickMode::default(), threads);
+
+        // ABI v2 (#635): when the host hands us its shared-world token, we
+        // ADOPT the host's authoritative world as our own via the documented
+        // single-count Arc transfer (host did `Arc::into_raw` on a clone; our
+        // `from_raw` here reclaims exactly that count, and it drops with the
+        // embedded game at shutdown). Everything downstream -- setup()'s
+        // actor registration, per-tick schedule/actor phases -- then
+        // operates on the editor's live world, so editor edits are visible
+        // to gameplay the same frame gameplay runs, and vice versa.
+        let tick_loop = if ctx.shared_world.is_null() {
+            return Err(
+                "PiE: v2 context carries no shared_world token (host too old?)".to_string(),
+            );
+        } else {
+            let host_store = unsafe {
+                Arc::from_raw(ctx.shared_world as *const RwLock<WorldSceneStore>)
+            };
+            TickLoop::with_scene_store(host_store, TickMode::default(), threads)
+        };
+        let mut tick_loop = tick_loop;
+        // NOTE: `setup()` deliberately runs AFTER adoption so project actors
+        // register against the host's world. The scene file is NOT loaded:
+        // under v2 the shared world already holds the hydrated level.
         setup(&mut tick_loop).map_err(|e| format!("Project setup failed: {e}"))?;
 
         // ── Offscreen Helio renderer (external device) ───────────────────────
@@ -214,31 +236,18 @@ impl EmbeddedGame {
         renderer.set_editor_mode(false);
         renderer.set_ambient([0.0, 0.0, 0.0], 0.0);
 
-        // ── Load the scene the editor handed us (Pulsar-Native#637/#634) ───
-        // Hydrate INTO the tick loop's own shared store and render from it
-        // via the per-frame rebuild bridge -- no more pulsar_scene::
-        // SceneLoader writing Helio's Scene behind SceneDB's back, and no
-        // second world: actors registered by `setup()` above live in the
-        // same store the level merges into. Asset-resolving hydrates
-        // (`StaticMeshComponent`) need the project path in the engine
-        // global first.
-        let mut freecam = FreeCam::default();
+        // ── Renderer seam onto the shared world (#637/#634) ──────────────────
+        // The world already holds the level (the host hydrated it before Play,
+        // and under v2 we adopted that very store), so there is nothing left
+        // to load -- only the GPU seam to wire for THIS renderer. When the
+        // editor's own viewport already wired the mirror, the attach is a
+        // no-op that still rebinds this renderer's scene to the shared pools.
+        // Under v2 the world comes pre-hydrated by the host, so the old
+        // editor-camera file seeding is gone too -- camera selection prefers
+        // Camera-typed entities from the shared world instead.
+        let freecam = FreeCam::default();
         engine_state::set_project_path(project_root.display().to_string());
-        if let Some(ref path) = scene_path {
-            match RuntimeLevel::load_into(path, &mut tick_loop.scene_store.write()) {
-                Ok(Some(cam)) => {
-                    freecam = FreeCam::default().place(
-                        glam::Vec3::from_array(cam.position),
-                        cam.yaw,
-                        cam.pitch,
-                    );
-                }
-                Ok(None) => {}
-                Err(e) => {
-                    tracing::warn!(scene = %path.display(), "PiE: failed to load scene: {e}");
-                }
-            }
-        }
+        drop(scene_path); // advisory-only under v2 (world comes pre-hydrated)
         let scene_store = Arc::clone(&tick_loop.scene_store);
         attach_gpu_render_seam(
             &mut scene_store.write(),
@@ -269,6 +278,15 @@ impl EmbeddedGame {
     /// Advance simulation and render one frame into the offscreen target.
     fn tick(&mut self) {
         // 1. Game logic — one ECS/blueprint tick.
+        //
+        // Locking note (ABI v2, #635): under PIE this whole call IS the
+        // guest's tick slice -- it runs on the editor's render thread inside
+        // SYM_TICK, and `TickLoop::tick_once` acquires the shared world's
+        // write lock once per phase, dropping it between phases. The
+        // reference guest locks through the same parking_lot instance via
+        // the transferred Arc (identical by single-workspace builds); the
+        // host's lock callbacks remain the policy/witness surface for
+        // guests that don't share that universe.
         self.tick_loop.tick_once();
 
         // 2. Advance the shared world's render-side state and rebuild the

@@ -186,6 +186,11 @@ impl GameViewport {
         }
 
         if let Some(req) = pending {
+            // ABI v2 (#635): hand the guest THE editor's world -- one count is
+            // transferred for the session; the editor keeps its own. The
+            // guest adopts it, so mid-session edits and gameplay mutations
+            // meet in one world.
+            let shared_world = self.shared_state.read().scene.database.shared_store();
             let loaded = unsafe {
                 PieHost::load(
                     &req.dylib_path,
@@ -196,6 +201,7 @@ impl GameViewport {
                     h,
                     &req.project_root,
                     Some(&req.scene_path),
+                    shared_world,
                 )
             };
             match loaded {
