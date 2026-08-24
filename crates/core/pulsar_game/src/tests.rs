@@ -117,13 +117,41 @@ mod actors {
     fn lifecycle_order() {
         let log = Arc::new(Mutex::new(Vec::new()));
         let mut tick_loop = TickLoop::new(TickMode::default(), 0);
-        let entity = tick_loop
-            .actors
-            .register(Counter(log.clone()), &mut tick_loop.world);
+        // #634: actors register into the loop's SHARED scene store (the one
+        // renderers read), not a private world.
+        let entity = {
+            let mut store = tick_loop.scene_store.write();
+            tick_loop.actors.register(Counter(log.clone()), store.world_mut())
+        };
         tick_loop.tick_once();
-        tick_loop.actors.deregister(entity, &mut tick_loop.world);
+        {
+            let mut store = tick_loop.scene_store.write();
+            tick_loop.actors.deregister(entity, store.world_mut());
+        }
         let events = log.lock().unwrap().clone();
         assert_eq!(events, vec!["begin", "tick", "end"]);
+    }
+
+    /// #634: a mutation an actor/system makes through the shared store is
+    /// visible to any other holder of the same handle (e.g. the renderer)
+    /// -- there is exactly one world, and the tick loop mutates it.
+    #[test]
+    fn actor_mutations_land_in_the_shared_store() {
+        let mut tick_loop = TickLoop::new(TickMode::default(), 0);
+
+        let entity = {
+            let mut store = tick_loop.scene_store.write();
+            let e = store.spawn(None, "Runtime", None).unwrap();
+            tick_loop.actors.register(Counter(Arc::new(Mutex::new(Vec::new()))), store.world_mut());
+            e
+        };
+
+        tick_loop.tick_once();
+
+        // Another handle-holder (what the renderer is) sees the spawned
+        // object and its components.
+        let store = tick_loop.scene_store.read();
+        assert_eq!(store.name(entity), Some("Runtime"));
     }
 }
 

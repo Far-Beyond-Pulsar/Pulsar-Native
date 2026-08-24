@@ -58,13 +58,12 @@ pub struct EmbeddedGame {
     /// The offscreen render target the editor samples. Recreated on resize.
     out_texture: wgpu::Texture,
     out_view: wgpu::TextureView,
-    /// The one shared world the level hydrated into (Pulsar-Native#637).
-    /// Under ABI v1 this is still guest-owned storage (the host's store is a
+    /// The tick loop's shared world (Pulsar-Native#634): the same store
+    /// gameplay mutates, rendered through the per-frame rebuild bridge.
+    /// Under ABI v1 this store is still guest-owned (the host's is a
     /// separate instance until the #635 v2 bridge hands us theirs); it is
-    /// already SceneDB-resident and drives rendering through the same
-    /// per-frame rebuild bridge the editor uses, replacing the old
-    /// `pulsar_scene::SceneLoader`-into-Helio path.
-    scene_store: Option<Arc<RwLock<WorldSceneStore>>>,
+    /// SceneDB-resident either way.
+    scene_store: Arc<RwLock<WorldSceneStore>>,
     /// Resolved-light-frame maintainer over [`Self::scene_store`]'s world.
     light_frames: LightFrameMaintainer,
     /// Lazily-minted shared default material (same cache the editor renderer
@@ -215,39 +214,38 @@ impl EmbeddedGame {
         renderer.set_editor_mode(false);
         renderer.set_ambient([0.0, 0.0, 0.0], 0.0);
 
-        // ── Load the scene the editor handed us (Pulsar-Native#637) ────────
-        // Hydrate into a WorldSceneStore/SceneDb world and render from it
-        // via the shared per-frame rebuild bridge -- no more
-        // pulsar_scene::SceneLoader writing Helio's Scene behind SceneDB's
-        // back. Asset-resolving hydrates (`StaticMeshComponent`) need the
-        // project path in the engine global first.
+        // ── Load the scene the editor handed us (Pulsar-Native#637/#634) ───
+        // Hydrate INTO the tick loop's own shared store and render from it
+        // via the per-frame rebuild bridge -- no more pulsar_scene::
+        // SceneLoader writing Helio's Scene behind SceneDB's back, and no
+        // second world: actors registered by `setup()` above live in the
+        // same store the level merges into. Asset-resolving hydrates
+        // (`StaticMeshComponent`) need the project path in the engine
+        // global first.
         let mut freecam = FreeCam::default();
-        let mut scene_store = None;
+        engine_state::set_project_path(project_root.display().to_string());
         if let Some(ref path) = scene_path {
-            engine_state::set_project_path(project_root.display().to_string());
-            match RuntimeLevel::load(path) {
-                Ok(level) => {
-                    if let Some(cam) = level.editor_camera() {
-                        freecam = FreeCam::default().place(
-                            glam::Vec3::from_array(cam.position),
-                            cam.yaw,
-                            cam.pitch,
-                        );
-                    }
-                    let store = level.store();
-                    attach_gpu_render_seam(
-                        &mut store.write(),
-                        &mut renderer,
-                        device.clone(),
-                        queue.clone(),
+            match RuntimeLevel::load_into(path, &mut tick_loop.scene_store.write()) {
+                Ok(Some(cam)) => {
+                    freecam = FreeCam::default().place(
+                        glam::Vec3::from_array(cam.position),
+                        cam.yaw,
+                        cam.pitch,
                     );
-                    scene_store = Some(store);
                 }
+                Ok(None) => {}
                 Err(e) => {
                     tracing::warn!(scene = %path.display(), "PiE: failed to load scene: {e}");
                 }
             }
         }
+        let scene_store = Arc::clone(&tick_loop.scene_store);
+        attach_gpu_render_seam(
+            &mut scene_store.write(),
+            &mut renderer,
+            device.clone(),
+            queue.clone(),
+        );
 
         Ok(Self {
             tick_loop,
@@ -279,9 +277,9 @@ impl EmbeddedGame {
         //    then the same static-mesh/light rebuilds the editor renderer
         //    runs. A runtime-spawned entity or a moved object therefore
         //    shows up on the very next frame.
-        if let Some(store) = &self.scene_store {
-            step_scene_for_render(&mut store.write(), &mut self.light_frames);
-            let shared = store.read();
+        step_scene_for_render(&mut self.scene_store.write(), &mut self.light_frames);
+        {
+            let shared = self.scene_store.read();
             rebuild_static_mesh_frame(
                 &mut self.renderer,
                 &shared,
@@ -293,11 +291,8 @@ impl EmbeddedGame {
         // 3. Camera. A Camera-typed entity in the shared world drives the
         //    view when present (#637 -- no more unconditional freecam); the
         //    freecam seeded from the editor view remains the fallback.
-        let cam = match &self.scene_store {
-            Some(store) => select_world_camera(&store.read())
-                .unwrap_or_else(|| self.freecam.to_render_camera()),
-            None => self.freecam.to_render_camera(),
-        };
+        let cam = select_world_camera(&self.scene_store.read())
+            .unwrap_or_else(|| self.freecam.to_render_camera());
         let aspect = self.width as f32 / self.height.max(1) as f32;
         let helio_cam = Camera::perspective_look_at(
             glam::Vec3::from_array(cam.position),

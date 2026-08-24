@@ -464,7 +464,9 @@ pub extern "C" fn pulsar_pie_shutdown() {
 ///
 /// Produces a `pub fn setup(game: &mut TickLoop)` function that:
 /// 1. Spawns native actor classes declared in `Pulsar/level.json` into the
-///    `TickLoop`'s `ActorRegistry` and `World` so they receive `tick` every frame.
+///    `TickLoop`'s `ActorRegistry` and shared scene store so they receive
+///    `tick` every frame (the store is the ONE SceneDB world, also read by
+///    renderers -- Pulsar-Native#634).
 /// 2. Scans `src/classes/*/events/.build/bytecode.json` for VM-compiled blueprints,
 ///    loads them into a `BlueprintDispatcher`, and wires the dispatcher into the
 ///    `TickLoop`. `setup()` runs before the primary window/scene exist, so
@@ -493,7 +495,8 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
         LevelConfig::default()
     };
 
-    // Build native actor spawn statements — actors go directly into game.actors.
+    // Build native actor spawn statements — actors go directly into
+    // game.actors, registered against the shared scene store's World.
     let spawn_stmts: String = level_config
         .prefabs
         .iter()
@@ -509,7 +512,7 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
                 format!(
                     "    {{\n        tracing::info!(\"Spawning {class}{note}\");\n        \
                      let actor = classes::{class}::new();\n        \
-                     game.actors.register(actor, &mut game.world);\n    }}\n"
+                     game.actors.register(actor, &mut game.scene_store.write().world());\n    }}\n"
                 )
             })
         })

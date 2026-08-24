@@ -89,9 +89,54 @@ impl RuntimeLevel {
         Self::from_scene_file(file)
     }
 
-    /// Hydrate from an already-parsed [`SceneFile`] (import/legacy callers
-    /// that get their JSON from somewhere other than disk).
+    /// Load a level file and hydrate it into an EXISTING store -- the
+    /// one-world play-mode path (Pulsar-Native#637/#634): the tick loop's
+    /// shared store is authoritative, so the level merges INTO it
+    /// (additively; setup-time-registered actors survive) instead of the
+    /// level constructing its own store. Duplicate stable ids between the
+    /// file and live state are errors, never silent re-spawns.
+    ///
+    /// Returns the editor camera saved in the file, if any. Call
+    /// `engine_state::set_project_path` first so asset-resolving hydrates
+    /// (`StaticMeshComponent`) can find project files.
+    pub fn load_into(
+        path: &Path,
+        store: &mut WorldSceneStore,
+    ) -> Result<Option<EditorCamera>, RuntimeLevelError> {
+        let path_display = path.display().to_string();
+        let bytes = std::fs::read(path).map_err(|e| RuntimeLevelError::Io {
+            path: path_display.clone(),
+            message: e.to_string(),
+        })?;
+        let text = String::from_utf8(bytes).map_err(|e| RuntimeLevelError::Io {
+            path: path_display.clone(),
+            message: e.to_string(),
+        })?;
+        let file: SceneFile = serde_json::from_str(&text).map_err(|e| {
+            RuntimeLevelError::Parse { path: path_display.clone(), message: e.to_string() }
+        })?;
+        // Camera state is extracted before `file` moves into hydration.
+        let editor_camera = editor_camera(&file.editor);
+        Self::hydrate_scene_file(file, store)?;
+        Ok(editor_camera)
+    }
+
+    /// Hydrate from an already-parsed [`SceneFile`] into a fresh store
+    /// (import/legacy callers that get their JSON from somewhere other than
+    /// disk).
     pub fn from_scene_file(file: SceneFile) -> Result<Self, RuntimeLevelError> {
+        let editor_camera = editor_camera(&file.editor);
+        let mut store = WorldSceneStore::new();
+        Self::hydrate_scene_file(file, &mut store)?;
+        Ok(Self { store: Arc::new(RwLock::new(store)), editor_camera })
+    }
+
+    /// Shared hydration core: version gate + objects + components into
+    /// `store`.
+    fn hydrate_scene_file(
+        file: SceneFile,
+        store: &mut WorldSceneStore,
+    ) -> Result<(), RuntimeLevelError> {
         let version = version_string(&file.version);
         // Same accepted set as the editor's own loader: 1.x and 2.x.
         if !version.starts_with("1.") && !version.starts_with("2.") && version != "1" {
@@ -99,13 +144,13 @@ impl RuntimeLevel {
         }
 
         // Parent-before-child order is the format's own DFS guarantee (see
-        // `SceneFile::objects`' doc), which is exactly what
-        // `load_from_snapshots` requires.
+        // `SceneFile::objects`' doc), which is exactly what insert_snapshots
+        // requires.
         let snapshots: Vec<ObjectSnapshot> = file.objects.iter().map(object_snapshot).collect();
-        let mut store =
-            WorldSceneStore::load_from_snapshots(&snapshots).map_err(|error| {
-                RuntimeLevelError::Parse { path: String::new(), message: error.to_string() }
-            })?;
+        store.insert_snapshots(&snapshots).map_err(|error| RuntimeLevelError::Parse {
+            path: String::new(),
+            message: error.to_string(),
+        })?;
 
         let persisted = persisted_components(&file.components);
         for obj in &file.objects {
@@ -125,10 +170,9 @@ impl RuntimeLevel {
                 })
                 .collect(),
             };
-            hydrate_components(&mut store, entity, &obj.id, &instances);
+            hydrate_components(store, entity, &obj.id, &instances);
         }
-
-        Ok(Self { store: Arc::new(RwLock::new(store)), editor_camera: editor_camera(&file.editor) })
+        Ok(())
     }
 
     /// The shared, authoritative scene store. Renderers and (once A2 lands)

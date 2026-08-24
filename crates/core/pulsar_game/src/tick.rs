@@ -1,10 +1,30 @@
 use crate::blueprint_runtime::{BlueprintDispatcher, BlueprintEvent};
 use crate::window::{WindowBridge, WindowCommand, WindowDescriptor, WindowHandle, WindowManager};
+use engine_backend::scene::WorldSceneStore;
+use parking_lot::RwLock;
 use pulsar_core::{Clock, GameTime, TaskPool, TickMode};
-use pulsar_scenedb::{ActorRegistry, Schedule, World};
+use pulsar_scenedb::{ActorRegistry, Schedule};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+/// Convert [`pulsar_core::GameTime`] into [`pulsar_scenedb::GameTime`].
+///
+/// These are two structurally-identical types by design, not accident to
+/// paper over: pulsar_scenedb lives in its own repo and deliberately does
+/// not depend on pulsar_core (SceneDB is a standalone storage layer), while
+/// pulsar_core predates the extraction and owns the gameplay-facing type.
+/// Neither crate can impl `From` across the boundary (orphan rule), so the
+/// conversion is a deliberate API seam -- THIS function is its single,
+/// tested definition. New call sites must convert here, not re-inline
+/// field copies (Pulsar-Native#634).
+fn to_scenedb_time(time: GameTime) -> pulsar_scenedb::GameTime {
+    pulsar_scenedb::GameTime {
+        elapsed: time.elapsed,
+        delta: time.delta,
+        tick: time.tick,
+    }
+}
 
 /// The main game loop.
 ///
@@ -12,6 +32,20 @@ use std::time::Duration;
 /// 1. A `Schedule` — ordered set of ECS systems.
 /// 2. An `ActorRegistry` — object lifecycle callbacks.
 /// 3. A `TaskPool` — background async tasks.
+///
+/// All three run against ONE authoritative world state:
+/// `scene_store`, an `Arc<RwLock<WorldSceneStore>>` wrapping SceneDB --
+/// the same store renderers read (Pulsar-Native#634). A mutation made by a
+/// system or actor is visible to the renderer's next frame rebuild, and a
+/// level hydrated into the store after `setup()` is visible to gameplay on
+/// its next tick; there is no second world copy anywhere.
+///
+/// ## Locking protocol
+///
+/// `tick_once` acquires the store's write lock ONCE PER PHASE (schedule →
+/// actors → blueprint events), dropping it between phases so render/editor
+/// threads are never blocked for a whole tick. Phase code must never stash
+/// the guard: borrow it, mutate, let it drop.
 ///
 /// ## Headless (no window)
 /// ```rust,ignore
@@ -24,7 +58,11 @@ use std::time::Duration;
 /// game.run_with_windows(event_loop);   // blocks on main thread
 /// ```
 pub struct TickLoop {
-    pub world: World,
+    /// THE authoritative scene state: SceneDB-backed, shared with every
+    /// renderer and editor surface that holds the same handle. Systems and
+    /// actors receive `&mut World` borrows of `scene_store.write().world`
+    /// per phase; anything they spawn/mutate is globally visible.
+    pub scene_store: Arc<RwLock<WorldSceneStore>>,
     pub schedule: Schedule,
     pub actors: ActorRegistry,
     pub tasks: Arc<TaskPool>,
@@ -40,10 +78,16 @@ pub struct TickLoop {
 }
 
 impl TickLoop {
-    /// Build a new `TickLoop`.
+    /// Build a new `TickLoop` with its own fresh scene store.
     ///
     /// - `mode` — tick timing strategy.
     /// - `task_threads` — number of background threads in the `TaskPool`.
+    ///
+    /// The store starts empty; levels hydrate into it later via
+    /// `engine_backend::scene::RuntimeLevel::load_into` (play mode), or
+    /// actors register into it during `setup()`. To share this exact store
+    /// with a renderer, clone [`Self::scene_store`] before handing the loop
+    /// to a runner.
     pub fn new(mode: TickMode, task_threads: usize) -> Self {
         let max_delta = match mode {
             TickMode::Fixed { dt } => dt * 5,
@@ -51,7 +95,7 @@ impl TickLoop {
         };
         let running = Arc::new(AtomicBool::new(false));
         Self {
-            world: World::new(),
+            scene_store: Arc::new(RwLock::new(WorldSceneStore::new())),
             schedule: Schedule::new(),
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
@@ -64,7 +108,7 @@ impl TickLoop {
         }
     }
 
-    /// Execute one logical tick.
+    /// Execute one logical tick against the shared world.
     ///
     /// Returns the `GameTime` snapshot for this tick.
     pub fn tick_once(&mut self) -> GameTime {
@@ -82,31 +126,35 @@ impl TickLoop {
         };
 
         profiling::profile_scope!("TickLoop::tick");
-        // `pulsar_core::GameTime` and `pulsar_scenedb::GameTime` are two
-        // independent, structurally-identical types — a byproduct of the
-        // SceneDB extraction (pulsar_scenedb now lives in its own repo and
-        // carries its own copy of `GameTime` rather than depending on
-        // pulsar_core). This is a type-identity artifact, not a wgpu 30
-        // change; converting at this single call site is the minimal fix
-        // that avoids touching either crate's source.
-        let scenedb_time = pulsar_scenedb::GameTime {
-            elapsed: time.elapsed,
-            delta: time.delta,
-            tick: time.tick,
-        };
-        self.schedule.run(&mut self.world, scenedb_time);
-        // `Actor::tick` is deliberately time-free (see `pulsar_scenedb::actor`'s
-        // trait doc, post-2026-08-15 rev bump) -- `tick_all` dropped its
-        // `GameTime` parameter accordingly; actors needing time read it from
-        // wherever the engine already publishes it, not from this call.
-        self.actors.tick_all(&mut self.world);
+        let scenedb_time = to_scenedb_time(time);
 
-        // Drive runtime blueprint lifecycle + tick events after ECS + actor
-        // updates. `begin_play` for newly-registered instances is deferred to
-        // here (rather than fired at registration time during level setup) so
-        // it observes a fully-initialised window/world/scene — registration
-        // happens before the primary window opens, but `tick_once` only runs
-        // after `spawn_ecs_thread`, which is called once the window is ready.
+        // Phase 1: ECS systems. Short write scope -- the renderer takes this
+        // same lock every frame to rebuild its draw lists (see
+        // HelioRenderer::sync_scene_delta's phase docs), so nothing here may
+        // hold it across phases.
+        {
+            let mut store = self.scene_store.write();
+            self.schedule.run(store.world_mut(), scenedb_time);
+        }
+
+        // Phase 2: actor lifecycle ticks (`Actor::tick` is deliberately
+        // time-free -- see `pulsar_scenedb::actor`'s trait doc). Separate
+        // lock acquisition from phase 1 on purpose: a system that queued
+        // work for actors can't starve the render thread for two phases'
+        // worth of mutation, and vice versa.
+        {
+            let mut store = self.scene_store.write();
+            self.actors.tick_all(store.world_mut());
+        }
+
+        // Phase 3: runtime blueprint lifecycle + tick events, AFTER ECS +
+        // actor updates. `begin_play` for newly-registered instances is
+        // deferred to here (rather than fired at registration time during
+        // level setup) so it observes a fully-initialised window/world/scene
+        // -- registration happens before the primary window opens, but
+        // `tick_once` only runs after `spawn_ecs_thread`, which is called
+        // once the window is ready. The dispatcher holds its own instance
+        // state and doesn't touch the World, so no store lock is taken.
         if let Some(dispatcher) = &self.blueprint_dispatcher {
             let mut dispatcher = dispatcher.lock().unwrap();
             dispatcher.dispatch_pending_begin_play();
@@ -281,7 +329,9 @@ impl TickLoop {
         engine_ctx.clone().set_global();
 
         // PulsarApp owns the TickLoop; it spawns the ECS thread in `resumed()`
-        // *after* all initial windows are open.
+        // *after* all initial windows are open. The renderer shares THIS
+        // loop's scene store (cloned handle) -- one world for gameplay and
+        // rendering (Pulsar-Native#634).
         let display = event_loop.owned_display_handle();
         let mut app = PulsarApp::new(
             bridge,

@@ -316,11 +316,11 @@ pub struct PulsarApp {
     windows: HashMap<WindowHandle, GameWindow>,
     project_root: PathBuf,
     default_scene: Option<PathBuf>,
-    /// The one shared, SceneDB-owned world the loaded level hydrates into
-    /// (Pulsar-Native#637). All windows render FROM this store; once A2
-    /// lands the tick loop shares the same handle. `None` until a level
-    /// loads (or when no scene was requested).
-    scene_store: Option<Arc<RwLock<WorldSceneStore>>>,
+    /// The ONE shared, SceneDB-owned world (Pulsar-Native#634): cloned out
+    /// of the TickLoop, hydrated with the requested level, and read by every
+    /// window's per-frame rebuild. Gameplay mutations land here too, so an
+    /// actor-spawned entity renders on the next frame.
+    scene_store: Arc<RwLock<WorldSceneStore>>,
     /// Subscription-backed maintainer for the shared world's resolved light
     /// frames (#636) -- one per world, stepped by
     /// [`step_scene_for_render`] before each frame's rebuilds.
@@ -343,6 +343,9 @@ impl PulsarApp {
         default_scene: Option<PathBuf>,
         display: winit::event_loop::OwnedDisplayHandle,
     ) -> Self {
+        // The tick loop's store handle is cloned BEFORE the loop moves into
+        // `self.tick_loop` -- renderer and gameplay then share one world.
+        let scene_store = tick_loop.scene_store.clone();
         Self {
             bridge,
             gpu: GpuContext::new(display),
@@ -352,7 +355,7 @@ impl PulsarApp {
             windows: HashMap::new(),
             project_root,
             default_scene,
-            scene_store: None,
+            scene_store,
             light_frames: LightFrameMaintainer::new(),
             focused_window: None,
             cursor_captured: false,
@@ -441,32 +444,33 @@ impl PulsarApp {
 
         self.winit_to_handle.insert(winit_id, handle);
 
-        // Load the scene into the shared world + this window's renderer if
-        // one was requested (Pulsar-Native#637: hydrate into the one
-        // WorldSceneStore/SceneDb, then let the renderer consume it via the
-        // per-frame rebuild bridge -- NOT pulsar_scene::SceneLoader's direct
-        // Helio-Scene writes, which kept a second copy of scene state).
+        // Load the scene into the SHARED world + wire this window's renderer
+        // to it (Pulsar-Native#637/#634). The store already exists (the tick
+        // loop's), so the level merges INTO it -- setup-time-registered
+        // actors survive; no pulsar_scene::SceneLoader's second world.
         if let Some(ref path) = scene_path {
             tracing::info!(scene = %path.display(), window = handle.id(), "Loading scene into shared world");
             // Asset-resolving hydrates (`StaticMeshComponent`'s mesh load)
             // read the project path from the engine global -- must be set
             // before hydration, not after.
             engine_state::set_project_path(self.project_root.display().to_string());
-            match RuntimeLevel::load(path) {
-                Ok(level) => {
-                    let store = level.store();
+            let load_result = {
+                let mut store = self.scene_store.write();
+                RuntimeLevel::load_into(path, &mut store)
+            };
+            match load_result {
+                Ok(editor_camera) => {
                     attach_gpu_render_seam(
-                        &mut store.write(),
+                        &mut self.scene_store.write(),
                         &mut game_window.renderer,
                         game_window.device.clone(),
                         game_window.queue.clone(),
                     );
-                    self.scene_store = Some(store);
 
                     // Seed the freecam from the editor camera saved in the
                     // level file, if present, so the first frame matches the
                     // editor view.
-                    if let Some(cam) = level.editor_camera() {
+                    if let Some(cam) = editor_camera {
                         game_window.freecam = FreeCam::default().place(
                             glam::Vec3::from_array(cam.position),
                             cam.yaw,
@@ -646,30 +650,26 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 // this window's transient frame lists from it
                 // (Pulsar-Native#637 -- the same per-frame path the editor
                 // renderer runs, never SceneLoader's one-shot writes).
-                if let Some(store) = &self.scene_store {
-                    step_scene_for_render(&mut store.write(), &mut self.light_frames);
-                    let shared = store.read();
-                    if let Some(gw) = self.windows.get_mut(&handle) {
-                        rebuild_static_mesh_frame(
-                            &mut gw.renderer,
-                            &shared,
-                            &mut gw.default_static_mesh_material,
-                        );
-                        rebuild_light_frame(&mut gw.renderer, &shared);
-                    }
+                step_scene_for_render(&mut self.scene_store.write(), &mut self.light_frames);
+                let shared = self.scene_store.read();
+                if let Some(gw) = self.windows.get_mut(&handle) {
+                    rebuild_static_mesh_frame(
+                        &mut gw.renderer,
+                        &shared,
+                        &mut gw.default_static_mesh_material,
+                    );
+                    rebuild_light_frame(&mut gw.renderer, &shared);
                 }
 
                 // Camera precedence: a gameplay-pushed bridge camera wins,
                 // then a Camera-typed entity in the SHARED world (#637 --
                 // moving that entity moves the view next frame), then the
                 // freecam.
-                let ecs_camera = match self.bridge.camera(handle) {
-                    Some(cam) => Some(cam),
-                    None => self
-                        .scene_store
-                        .as_ref()
-                        .and_then(|store| select_world_camera(&store.read())),
-                };
+                let ecs_camera =
+                    match self.bridge.camera(handle) {
+                        Some(cam) => Some(cam),
+                        None => select_world_camera(&self.scene_store.read()),
+                    };
                 if let Some(gw) = self.windows.get_mut(&handle) {
                     gw.render(ecs_camera);
                 }
