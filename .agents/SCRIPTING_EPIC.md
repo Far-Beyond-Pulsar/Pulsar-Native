@@ -791,3 +791,42 @@ and the pinned rev's APIs I touch.
 4. F: palette grouping now gets categories on accessor nodes + stable
    title-cased labels; golden snapshots exist for physics and are cheap to
    clone for helio-side classes when they become editable.
+
+## Handoff: D (in progress)
+
+### D1 — component-op bytecode ABI (#646) — LANDED
+
+Commits: pbgc `e2fe3c1` (submodule-internal), parent `09576490`
+(CompiledBytecode v2). NOTE: `crates/third-party/pbgc` is a SUBMODULE —
+its changes are committed inside it; the user must push/bump pointers
+(same protocol as plugins/vendor/*).
+
+Encoding (spec module: `pbgc/src/bytecode/comp_ops.rs` — module doc IS
+the contract):
+
+- All three kinds compile to plain `Instruction::Call`; routing key is
+  the full `comp_*::Class::Member` string retained in `node_type`.
+- `input_offsets[0]` = name blob `{class}\0{member}\0` (dedup per event).
+  Values = JSON blobs `[u64 LE len][utf8]`. Constants stage exact bytes;
+  runtime outputs reserve `JSON_BLOB_CAPACITY` (4 KiB).
+- GetProp is emitted from BOTH exec chains (defensive) and the pure
+  dependency path (`ensure_connected_output`) — it produces arena values
+  like any pure node.
+- Native-source value inputs are a COMPILE ERROR for now ("#647 adds
+  live conversion"). Constants, defaults (JSON null), and get→set/call
+  chains work.
+- `compile_graph_to_bytecode_full() -> BytecodeCompilation { programs,
+  components }` reports deduplicated ComponentOpRefs; old fns delegate.
+- CompiledBytecode / editor BytecodeFileOutput: version bumped to 2,
+  new `components: Vec<pbgc::ComponentOpRef>` field with serde default
+  (v1 files deserialize fine).
+
+Executor hook surface for D2 (what the stubs proved): patch comp_-
+prefixed Calls' fn_ptr to handlers with signature DispatchFn; handler
+reads name blob by scanning two NULs; get writes its JSON into `ret`
+(reserved capacity); call's ret is null when void.
+
+Tests: 27 integration in `pbgc/tests/bytecode_tests.rs` (encoding
+round-trips, chaining, output elision, serde, stub execution of all
+three kinds incl. cross-instruction value flow), plus CompiledBytecode
+v2 assertions in pulsar_game. Full pbgc suite green.
