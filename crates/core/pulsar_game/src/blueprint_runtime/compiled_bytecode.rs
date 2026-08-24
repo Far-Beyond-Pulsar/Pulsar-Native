@@ -164,9 +164,10 @@ mod tests {
         let mut bytecode = CompiledBytecode::new("TestBlueprint");
 
         assert_eq!(bytecode.source_class, "TestBlueprint");
-        assert_eq!(bytecode.version, 1);
+        assert_eq!(bytecode.version, 2);
         assert!(bytecode.variables.is_empty());
         assert!(bytecode.event_programs.is_empty());
+        assert!(bytecode.components.is_empty());
     }
 
     #[test]
