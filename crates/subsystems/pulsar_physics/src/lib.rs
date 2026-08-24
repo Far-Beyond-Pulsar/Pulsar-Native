@@ -6,3 +6,6 @@
 pub mod components;
 
 pub use components::*;
+
+#[cfg(test)]
+mod golden_metadata;

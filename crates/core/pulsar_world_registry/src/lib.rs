@@ -71,6 +71,7 @@
 // same pattern `pulsar_reflection` already uses for `RuntimeBehaviorRegistration`.
 pub use inventory;
 
+pub mod audit;
 pub mod dispatch;
 pub mod errors;
 pub mod marshal;
@@ -96,6 +97,9 @@ pub use vm_abi::{
     classify as classify_vm_value_kind, slot_for, TYPE_SLOT_ENCODING_VERSION, VmTypeSlot,
     VmValueKind,
 };
+// Metadata audit (#645): overload sweep + the deterministic registry
+// snapshot CI golden tests diff against.
+pub use audit::{find_overloaded_methods, metadata_snapshot_json, MetadataAuditError};
 
 use pulsar_reflection::{ComponentRuntimeContext, EngineClass, RuntimeComponentOwner};
 use pulsar_scenedb::{ComponentId, Entity, World};

@@ -55,7 +55,9 @@
 //! ```
 
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::quote;
+use std::collections::HashMap;
 use syn::{
     Attribute, Data, DeriveInput, Expr, Field, Fields, FnArg, ImplItem, ItemImpl, ItemStruct, Lit,
     Meta, MetaNameValue, Pat, PatType, ReturnType, Type,
@@ -161,7 +163,6 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                             field,
                         ));
                     }
-
                     // A `#[gpu] Vec<T>` field either belongs to the SEPARATE
                     // var-len list mirror (below) or -- for a struct that
                     // ALSO uses `#[engine_class(..., scene_store)]` on
@@ -224,8 +225,15 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     let gpu_list_mirror_tokens = gpu_list_mirror_codegen(name, &gpu_list_leaf_fields);
     let gpu_heavy_mirror_tokens = gpu_heavy_mirror_codegen(name, &gpu_heavy_leaf_fields);
 
-    // Generate auto-property methods (getters and setters)
-    let property_method_items = generate_property_method_items(&property_fields, name);
+    // Generate auto-property methods (getters and setters). Their metadata
+    // rides the property's own category so blueprint palette grouping keeps
+    // accessors next to the properties they expose (#645).
+    let accessor_categories: Vec<Option<String>> = property_fields
+        .iter()
+        .map(|field| parse_property_attr(field).category)
+        .collect();
+    let property_method_items =
+        generate_property_method_items(&property_fields, &accessor_categories, name);
     let category_order_arms: Vec<_> = property_categories
         .iter()
         .map(|decl| {
@@ -643,11 +651,11 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! { #[derive(#(#derive_additions),*)] }
     };
 
-    let category_attr = if category.is_some() && !has_engine_class_category_attr {
-        let cat = category.unwrap();
-        quote! { #[engine_class_category(#cat)] }
-    } else {
-        quote! {}
+    let category_attr = match category.as_ref() {
+        Some(cat) if !has_engine_class_category_attr => {
+            quote! { #[engine_class_category(#cat)] }
+        }
+        _ => quote! {},
     };
 
     let no_register_attr = if no_register {
@@ -2067,7 +2075,9 @@ fn generate_property_metadata(
 ) -> proc_macro2::TokenStream {
     let field_name = field.ident.as_ref().unwrap();
     let field_name_str = field_name.to_string();
-    let display_name = capitalize_first(&field_name_str);
+    // Title-cased, space-separated label (#645): "linear_damping" renders
+    // as "Linear Damping", consistent with method display names.
+    let display_name = title_case(&field_name_str.replace('_', " "));
     let field_type = &field.ty;
 
     // Generate category option
@@ -2156,6 +2166,17 @@ fn capitalize_first(s: &str) -> String {
     }
 }
 
+/// Title-case every whitespace-separated word -- "add charges" -> "Add
+/// Charges". Node display names are palette/search surfaces (#645): mixed
+/// casing ("Set linear damping" vs "Add Charges") reads as inconsistency,
+/// so every generated display name goes through this.
+fn title_case(s: &str) -> String {
+    s.split_whitespace()
+        .map(capitalize_first)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[proc_macro_attribute]
 pub fn component_methods(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let impl_block = parse_macro_input!(item as ItemImpl);
@@ -2180,6 +2201,41 @@ pub fn component_methods(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let type_name_str = type_name.to_string();
 
+    // ── #645 overload policy: compile-time refusal ────────────────────────
+    // Reflected dispatch is NAME-keyed (`REGISTRY.get_method` returns the
+    // first match), so two `#[method]`s with the same Rust name on one type
+    // would silently shadow each other. Overloads are disallowed outright;
+    // this is the compile-time half (one impl block). Cross-registration
+    // collisions are swept at test time by
+    // `pulsar_world_registry::audit`.
+    {
+        let mut seen: HashMap<String, Span> = HashMap::new();
+        for item in &impl_block.items {
+            if let ImplItem::Fn(method) = item {
+                let has_method_attr =
+                    method.attrs.iter().any(|attr| attr.path().is_ident("method"));
+                if !has_method_attr {
+                    continue;
+                }
+                let name = method.sig.ident.to_string();
+                if let Some(first_span) = seen.get(&name) {
+                    return syn::Error::new(
+                        method.sig.ident.span(),
+                        format!(
+                            "overload policy (#645): method '{name}' is already declared for \
+                             {type_name}; reflected dispatch is name-keyed, so overloads are \
+                             disallowed -- rename one of them (first declared here: line {})",
+                            first_span.start().line
+                        ),
+                    )
+                    .to_compile_error()
+                    .into();
+                }
+                seen.insert(name, method.sig.ident.span());
+            }
+        }
+    }
+
     // Find all methods marked with #[method]
     let mut method_metadata_items = Vec::new();
 
@@ -2195,10 +2251,13 @@ pub fn component_methods(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 // Parse the method
                 let method_ident = &method.sig.ident;
                 let method_name_str = method_ident.to_string();
-                let display_name = capitalize_first(&method_name_str.replace('_', " "));
+                let display_name = title_case(&method_name_str.replace('_', " "));
 
                 // Extract method type and category from attribute
-                let (method_type, category) = parse_method_attribute(attr);
+                let (method_type, category) = match parse_method_attribute(attr) {
+                    Ok(parsed) => parsed,
+                    Err(err) => return err.to_compile_error().into(),
+                };
 
                 // Extract parameters (skip &self / &mut self)
                 let mut params = Vec::new();
@@ -2345,9 +2404,25 @@ pub fn component_methods(_attr: TokenStream, item: TokenStream) -> TokenStream {
     output.into()
 }
 
-/// Parse #[method(...)] attribute to extract type and category
-fn parse_method_attribute(attr: &Attribute) -> (proc_macro2::TokenStream, Option<String>) {
-    let mut method_type = quote! { pulsar_reflection::MethodType::Pure };
+/// Parse #[method(...)] attribute to extract type and category.
+///
+/// #645 purity policy: the blueprint type is REQUIRED. `MethodType` is
+/// load-bearing metadata -- rust_codegen inlines `Pure` call bodies -- so a
+/// silent default of `Pure` would let side-effecting methods get illegally
+/// inlined. The author must declare Pure / Fn / ControlFlow explicitly;
+/// omitting it is a compile error spelling out why.
+fn parse_method_attribute(attr: &Attribute) -> syn::Result<(proc_macro2::TokenStream, Option<String>)> {
+    let method_type_error = || {
+        syn::Error::new_spanned(
+            attr,
+            "#[method] must declare its blueprint type explicitly, e.g. \
+             #[method(type = Fn)] with one of Pure | Fn | ControlFlow. Purity is load-bearing: \
+             Pure methods may be inlined by codegen, so side effects must never hide behind a \
+             default (#645).",
+        )
+    };
+
+    let mut method_type: Option<proc_macro2::TokenStream> = None;
     let mut category = None;
 
     if let Meta::List(meta_list) = &attr.meta {
@@ -2356,13 +2431,14 @@ fn parse_method_attribute(attr: &Attribute) -> (proc_macro2::TokenStream, Option
         // Parse type
         if tokens_str.contains("type") {
             if tokens_str.contains("MethodType :: Pure") || tokens_str.contains("Pure") {
-                method_type = quote! { pulsar_reflection::MethodType::Pure };
+                method_type =
+                    Some(quote! { pulsar_reflection::MethodType::Pure });
             } else if tokens_str.contains("MethodType :: Fn") || tokens_str.contains("Fn") {
-                method_type = quote! { pulsar_reflection::MethodType::Fn };
+                method_type = Some(quote! { pulsar_reflection::MethodType::Fn });
             } else if tokens_str.contains("MethodType :: ControlFlow")
                 || tokens_str.contains("ControlFlow")
             {
-                method_type = quote! { pulsar_reflection::MethodType::ControlFlow };
+                method_type = Some(quote! { pulsar_reflection::MethodType::ControlFlow });
             }
         }
 
@@ -2377,30 +2453,42 @@ fn parse_method_attribute(attr: &Attribute) -> (proc_macro2::TokenStream, Option
         }
     }
 
-    (method_type, category)
+    match method_type {
+        Some(method_type) => Ok((method_type, category)),
+        None => Err(method_type_error()),
+    }
 }
 
-/// Generate getter and setter method metadata items for properties
+/// Generate getter and setter method metadata items for properties.
+///
+/// `field_categories[i]` parallels `fields[i]`: the property's resolved
+/// category, so generated accessors group with their field in the palette
+/// instead of landing as ungrouped strays (#645).
 fn generate_property_method_items(
     fields: &[&Field],
+    field_categories: &[Option<String>],
     struct_name: &syn::Ident,
 ) -> Vec<proc_macro2::TokenStream> {
     let mut method_items = Vec::new();
 
-    for field in fields {
+    for (index, field) in fields.iter().enumerate() {
         let field_name = field.ident.as_ref().unwrap();
         let field_name_str = field_name.to_string();
         let getter_name = format!("get_{}", field_name_str);
         let setter_name = format!("set_{}", field_name_str);
-        let getter_display = capitalize_first(&format!("Get {}", field_name_str));
-        let setter_display = capitalize_first(&format!("Set {}", field_name_str));
+        let getter_display = title_case(&format!("Get {}", field_name_str));
+        let setter_display = title_case(&format!("Set {}", field_name_str));
+        let category_expr = match field_categories.get(index).and_then(|c| c.as_deref()) {
+            Some(cat) => quote! { Some(#cat) },
+            None => quote! { None },
+        };
         let field_type = &field.ty;
 
         method_items.push(quote! {
             pulsar_reflection::MethodMetadata {
                 name: #getter_name,
                 display_name: #getter_display.to_string(),
-                category: None,
+                category: #category_expr,
                 params: vec![],
                 return_type: Some(pulsar_reflection::MethodReturnType {
                     type_info: <#field_type as pulsar_reflection::Reflectable>::type_info(),
@@ -2418,7 +2506,7 @@ fn generate_property_method_items(
             pulsar_reflection::MethodMetadata {
                 name: #setter_name,
                 display_name: #setter_display.to_string(),
-                category: None,
+                category: #category_expr,
                 params: vec![
                     pulsar_reflection::MethodParameter {
                         name: "value",
