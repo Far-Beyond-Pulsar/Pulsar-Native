@@ -718,3 +718,58 @@ mod tests {
         panic!("no comparison arm for {}", type_info.type_name);
     }
 }
+
+/// Resolve a type string to its registration, tolerating the naming
+/// mismatch between editor-facing aliases (`Vec<f32>`, `Option<i32>`) and
+/// the fully-qualified `std::any::type_name` forms wrappers register under
+/// (`alloc::vec::Vec<f32>`, `core::option::Option<i32>`). Exact matches
+/// always win; unknown names yield the first candidate miss as an error.
+fn lookup_registered_type(type_name: &str) -> Result<&'static RuntimeTypeInfo, ScriptRefError> {
+    const WRAPPER_ALIASES: [(&str, &str); 2] =
+        [("alloc::vec::", "Vec<"), ("core::option::", "Option<")];
+
+    let mut candidates = vec![type_name.to_string()];
+    for (qualified, alias) in WRAPPER_ALIASES {
+        if type_name.starts_with(alias) {
+            // `Vec<f32>` -> also try `alloc::vec::Vec<f32>`.
+            candidates.push(format!("{qualified}{type_name}"));
+        } else if type_name.starts_with(qualified) {
+            // `alloc::vec::Vec<f32>` -> also try `Vec<f32>`.
+            candidates.push(format!("{alias}{}", &type_name[qualified.len()..]));
+        }
+    }
+
+    let mut first_miss = None;
+    for candidate in &candidates {
+        match RUNTIME_TYPE_REGISTRY.get_by_name(candidate) {
+            Some(type_info) => return Ok(type_info),
+            None => first_miss.get_or_insert_with(|| ScriptRefError::Marshalling {
+                context: format!("type lookup for {type_name}"),
+                message: "type is not registered".to_string(),
+            }),
+        };
+    }
+    Err(first_miss.expect("at least one candidate"))
+}
+
+/// Resolve `type_name` through the runtime registry and serialize `value`
+/// into the VM blob encoding ([`any_to_bytes`]).
+///
+/// The variable-override entry point: blueprint variables are named by type
+/// string, not by Rust type, so the registry lookup happens here. Unknown
+/// type names and value/type mismatches are typed errors.
+pub fn serialize_named_json(type_name: &str, value: &Value) -> Result<Vec<u8>, ScriptRefError> {
+    let type_info = lookup_registered_type(type_name)?;
+    let boxed = json_to_any("variable override", type_info, value.clone())?;
+    let mut out = Vec::new();
+    any_to_bytes(type_info, boxed.as_ref(), &mut out)?;
+    Ok(out)
+}
+
+/// Inverse of [`serialize_named_json`]: decode a blob previously written
+/// with a registered type's encoding back into JSON for host inspection.
+pub fn deserialize_named_bytes(type_name: &str, bytes: &[u8]) -> Result<Value, ScriptRefError> {
+    let type_info = lookup_registered_type(type_name)?;
+    let boxed = bytes_to_any(type_info, bytes)?;
+    any_to_json("variable read", boxed.as_ref())
+}
