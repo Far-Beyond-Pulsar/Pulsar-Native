@@ -261,6 +261,24 @@ impl RevisionTracker {
     }
 }
 
+/// A `StaticMeshComponent` data payload carrying every texture slot the
+/// current class requires (Helio#237). Older scenes predate the slots; the
+/// legacy `props.mesh_asset` projection and tests must emit all of them or
+/// hydration's deserialization rejects the instance outright. Empty paths
+/// mean "slot unassigned", which hydrate treats as zero-semantics.
+fn static_mesh_component_json(mesh_asset: &str) -> serde_json::Value {
+    serde_json::json!({
+        "mesh_asset": mesh_asset,
+        "base_color_asset": "",
+        "normal_asset": "",
+        "roughness_metallic_asset": "",
+        "emissive_asset": "",
+        "occlusion_asset": "",
+        "specular_color_asset": "",
+        "specular_weight_asset": ""
+    })
+}
+
 impl SceneDatabase {
     pub fn new() -> Self {
         Self {
@@ -477,7 +495,7 @@ impl SceneDatabase {
                 inline_components.push(ComponentInstance {
                     class_name: "StaticMeshComponent".to_string(),
                     enabled: true,
-                    data: serde_json::json!({ "mesh_asset": mesh_asset }),
+                    data: static_mesh_component_json(mesh_asset),
                 });
             }
         }
@@ -2181,7 +2199,7 @@ mod world_component_hydration_tests {
         db.add_component(
             &id,
             "StaticMeshComponent".to_string(),
-            serde_json::json!({"mesh_asset": "meshes/primitives/SM_Cube.fbx"}),
+            static_mesh_component_json("meshes/primitives/SM_Cube.fbx"),
         );
 
         let store = db.store.read();
@@ -2197,7 +2215,7 @@ mod world_component_hydration_tests {
         db.add_component(
             &id,
             "StaticMeshComponent".to_string(),
-            serde_json::json!({"mesh_asset": "meshes/primitives/SM_Cube.fbx"}),
+            static_mesh_component_json("meshes/primitives/SM_Cube.fbx"),
         );
 
         db.update_component_property(
@@ -2220,7 +2238,7 @@ mod world_component_hydration_tests {
         db.add_component(
             &id,
             "StaticMeshComponent".to_string(),
-            serde_json::json!({"mesh_asset": "meshes/primitives/SM_Cube.fbx"}),
+            static_mesh_component_json("meshes/primitives/SM_Cube.fbx"),
         );
         {
             let store = db.store.read();
@@ -2242,7 +2260,7 @@ mod world_component_hydration_tests {
         db.add_component(
             &id,
             "StaticMeshComponent".to_string(),
-            serde_json::json!({"mesh_asset": "meshes/primitives/SM_Cube.fbx"}),
+            static_mesh_component_json("meshes/primitives/SM_Cube.fbx"),
         );
 
         db.set_component_enabled(&id, 0, false);
@@ -2720,7 +2738,7 @@ mod world_component_hydration_tests {
         db.add_component(
             &id,
             "StaticMeshComponent".to_string(),
-            serde_json::json!({"mesh_asset": "meshes/primitives/SM_Cube.fbx"}),
+            static_mesh_component_json("meshes/primitives/SM_Cube.fbx"),
         );
         db.add_component(
             &id,
@@ -2752,7 +2770,7 @@ mod world_component_hydration_tests {
         db.add_component(
             &id,
             "StaticMeshComponent".to_string(),
-            serde_json::json!({"mesh_asset": "meshes/primitives/SM_Cube.fbx"}),
+            static_mesh_component_json("meshes/primitives/SM_Cube.fbx"),
         );
 
         let sub = db
