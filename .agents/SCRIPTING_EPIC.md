@@ -1414,7 +1414,7 @@ bytecode_compiler.rs blockers D3 documented (untouched here).
 4. Orphaned-entity cleanup policy after class removal (currently: entity
    survives, logged).
 
-## Handoff: F (in progress)
+## Handoff: F
 
 ### Handoff: F1
 
@@ -1612,3 +1612,204 @@ the contract, now versioned ABI v2)**
    ActorRef resolve through `RUNTIME_TYPE_REGISTRY.get_by_name` already, so
    palette compatibility checks work off the canonical type system with no
    new plumbing.
+
+### Handoff: F2
+
+Branch `scripting-epic`, submodule commit blueprint_editor `e639dbc` (on top
+of F1's `c8996be`; parent gitlink deliberately NOT bumped — same protocol as
+D/E/F1, the user pushes/bumps pointers). compiler.rs user WIP untouched (not
+needed for this issue). Issue #655. STATUS: COMPLETE — every scope bullet +
+acceptance criterion landed.
+
+**Status table**
+
+| Scope item | Status |
+|---|---|
+| Bidirectional drag: input-pin drags open the palette filtered on nodes whose *output* pins match; `ConnectionDrag` learns direction | LANDED |
+| Delete or adopt `build_compatible_palette_items` | BOTH: its intent ADOPTED into the live filter (generalized to both directions); the dead duplicate DELETED |
+| Object-reference pins filter to resolver nodes (#F1 kinds) | LANDED — falls out of the shared compatibility rule (exact registered-TypeId match), no special-casing |
+| Implicit conversion policy via graphy registries or explicitly none | DECIDED: explicitly NONE — see rationale below; enforced end-to-end by #656's validation stage |
+
+**What landed**
+
+1. `ConnectionDrag` gained `direction: ConnectionDragDirection`
+   (`FromOutput` / `FromInput`). `start_connection_drag_from_pin` infers it
+   from where the pin lives; ALL input pins are now drag sources (previously
+   only the special `__return__`/`__fn_ptr__` header pins were).
+2. Completion is direction-aware through ONE shared commit path:
+   `resolve_drop_endpoints` / `resolve_new_node_endpoints` reduce any
+   interaction into final source→target endpoints, and `commit_connection`
+   applies the compatibility check, single-connection replacement rules,
+   undo command, and reroute type propagation exactly once
+   (`connections/operations.rs`). The old ~60-line duplicate in
+   `complete_connection_to_new_node` is deleted.
+3. Palette filtering reads the direction:
+   `PaletteFilterOrigin::{FromOutput, FromInput}` drives the surviving
+   `filter_compatible_palette_items` — output drags offer consumers, input
+   drags offer producers. Dynamic categories (component methods, local
+   macros) keep appearing because filtering still runs over the live list.
+4. Drag-wire preview anchors on the origin side (input-origin drags anchor
+   at their input pin), and mouse-up drop targeting picks the opposite side
+   with a new `hit_output_pin_for_input` mirroring the existing
+   compatibility-first input search.
+5. **Conversion policy (#655 scope item 4) — explicitly NONE between
+   distinct registered types.** Compatibility = exec↔exec, wildcard
+   (`?`/`_`) against anything, otherwise same `RuntimeTypeInfo` TypeId
+   (name-resolved through `RUNTIME_TYPE_REGISTRY`, exact-string fallback for
+   unregistered names — byte-parity with the editor's own
+   `PinDataType::is_compatible_with`, so validation can never flag a wire
+   the canvas allowed). Rationale: neither backend can EMIT a conversion —
+   Rust sourcegen and VM bytecode stage values under their exact declared
+   type (C2 marshalling strict; pbgc's `serialize_const` has no widening).
+   Adopting graphy's default numeric-widening `CoercionRegistry` would
+   validate graphs that then fail codegen or truncate at runtime — a silent
+   half-implementation. Flip-later recipe (documented in
+   `features/validation/mod.rs` module docs): teach BOTH backends to emit
+   coercions first, then widen the single `checks::types_compatible`.
+
+**Modules changed**: `features/connections/operations.rs` (direction,
+endpoint resolvers, shared commit), `rendering/input.rs` (any-pin drag
+start, per-direction drop targets, `hit_output_pin_for_input`),
+`rendering/graph.rs` (drag-wire anchor side), `ui_components/node_library.rs`
+(PaletteFilterOrigin; dead helper deleted), `ui_components/palette_view.rs`
+(direction-aware filter call), `features/nodes/operations.rs`
+(complete_connection_to_new_node delegates to the shared path).
+
+### Handoff: F3
+
+Branch `scripting-epic`; submodule commit blueprint_editor `bb75405` + parent
+commit `b150acbb` (ui_level_editor + its Cargo.toml line + the ONE staged
+Cargo.lock dependency edge). Parent gitlink NOT bumped; compiler.rs user WIP
+byte-preserved (staged surgically via HEAD-blob reconstruction — worktree
+still shows their 13+/7- diff and nothing else). Issue #656. STATUS:
+COMPLETE — all four scope bullets + acceptance criteria landed.
+
+**Status table**
+
+| Scope item | Status |
+|---|---|
+| Validation stage between graph load and codegen: type-check connections, exec-chain sanity, unknown node kinds WITH node ids + human messages | LANDED |
+| Target-specific preflight: bytecode graphs vs supported opcode set at editor time; component references validated against scene state where possible (#F1 reuse) | LANDED |
+| Diagnostics UX: Problems list panel (node → click focuses it), error/warning severities, compile blocking on errors | LANDED |
+| Wire into both `compile_async` modes + PIE entry so bad graphs can't reach runtime | LANDED |
+
+**Validation-stage flow**
+
+```
+compile_async (both modes)                    Play button (ui_level_editor)
+        │                                             │ begin_pie → build_pie_dylib
+        ▼                                             ▼
+run_validation_stage(target)              validate_project_classes(root)
+  build_graphy_description()                for each src/classes/*:
+  (macro-expanded graph —                     artifact present?
+   node ids = editor ids)                       bytecode.json → VM target
+        │                                       events.rs    → Rust target
+        ▼                                       neither      → skip
+validate_graph(&graph, ctx)                           │
+  1 check_node_kinds      unknown kinds → ERROR       ▼
+  2 check_connections     missing endpoints,    validate_saved_class
+                          role mismatches,        saved ui-graph → SAME pbgc
+                          type policy violations  converter as codegen
+  3 check_component_ops   unregistered class,         │
+                          unknown property/method,    ▼
+                          stale object_ref_literal  validate_graph (same checks;
+  4 check_exec_chains     no event entry (ERROR),   scene checks skipped: no
+                          exec fan-in >1 (ERROR),   live scene)
+                          unreachable nodes (WARN)    │
+  5 check_vm_constants    String/etc constant on          ▼
+      (VM target only)    unconnected input (ERROR)  errors ⇒ Err summary →
+        │                                          PiE build refused with the
+        ▼                                          existing last_error UX
+errors ⇒ status Error + history "validate" entry,
+         Problems panel populated, codegen NEVER runs
+warnings ⇒ compile proceeds; clean graph ⇒ zero diagnostics shown
+```
+
+Checks 2's type rule IS #F2's policy implementation (single function,
+`checks::types_compatible`, mirrored from `PinDataType::is_compatible_with`).
+Check 3 validates comp-op classes/properties/methods against
+`pulsar_reflection::REGISTRY` (the exact failures that used to surface as
+late `NodeNotFound`/runtime refusals) and warns when an
+`object_ref_literal`'s stable_id is absent from a FRESH host scene snapshot
+(`scene_object_source` re-query — #F1 reuse); without a snapshot the check
+skips silently. Check 1 IS the opcode-set preflight: every recognized kind
+(comp-op table incl. #F1 identity ops, pulsar_std metadata, variable
+accessors, structural specials) maps to a real backend emitter, so anything
+else is rejected before codegen. Check 5 front-runs pbgc
+`serialize_const`'s hard error ("VM target cannot embed a '<ty>'
+constant").
+
+**Diagnostics currency**: graphy `Diagnostic`/`Severity`/`SourceLocation`
+(node_id+pin_id) — the SAME types graphy passes emit, so future pass output
+can interleave unchanged. New dock tab **Problems** (right sidebar next to
+Compiler): severity-colored rows with message/pass/node-id; clicking selects
+the node and pans the active canvas (`animate_pan_to_node`); macro-inlined
+ids that don't resolve degrade to selection-only. Errors block both compile
+modes BEFORE codegen; warnings never block.
+
+**PIE entry**: `build_pie_dylib` calls
+`blueprint_editor_plugin::validation::validate_project_classes(root)` before
+any cargo work; failures return the per-class human summary into the
+existing `play.pie.last_error` notification path. Classes with no compiled
+artifact are skipped — they cannot reach the runtime.
+
+**Modules changed per repo**
+
+- blueprint_editor (`bb75405`): NEW `features/validation/{mod.rs (policy +
+  API + panel integration), checks.rs (5 passes), panel.rs (ProblemsRenderer),
+  saved_graphs.rs (PIE preflight)}`; `editor/panel.rs` (+validation_problems,
+  scroll handles); `editor/workspace_panels.rs` (+ProblemsPanel);
+  `editor/workspace.rs` (+dock registration); `features/mod.rs`, `lib.rs`
+  (module re-export); NEW tests `{blueprint_validation_tests.rs (14),
+  blueprint_pie_preflight_tests.rs (3)}`; `compiler.rs` (SURGICAL: converter
+  + build_graphy_description made pub(crate), validation block in
+  compile_async).
+- Pulsar-Native (`b150acbb`): `ui_level_editor/Cargo.toml`
+  (+blueprint_editor_plugin path dep), `level_editor/ui/panel.rs`
+  (preflight call in build_pie_dylib), `Cargo.lock` (ONE edge staged
+  surgically past user WIP).
+
+**Verification (scoped, rule 5)**: blueprint_editor_plugin 24/24 integration
+tests green through the parent workspace (14 core-check + 3 PIE-disk + 7
+pre-existing io_formats); ui_core cargo check green (embedding site);
+ui_level_editor lib 50/50 + check green; clippy clean on all touched files
+(plugin baseline warnings elsewhere untouched). NOTE: plugin [lib] has
+`test = false` (standalone-example collisions), so new plugin tests live
+under `tests/` as integration targets — they link the rlib and run under the
+parent workspace like everything else.
+
+**Surprises / deviations**
+
+- graphy's stock `TypeChecker` was NOT adopted for connection checking: it
+  resolves pin types through its best-effort string parser and SILENTLY
+  SKIPS pairs it cannot parse — custom engine types would go unchecked, and
+  alias spellings would false-error against the registry-based rule the
+  canvas actually uses. Reused instead: graphy's diagnostics infrastructure
+  (types, severities, locations) around a precise reflection-backed loop.
+  Deviation recorded per issue text "(reuse/extend)".
+- Running cargo INSIDE the plugin directory resolves deps from GIT pins and
+  fails (F1 documented this); I hit it once more while running the new test
+  target — recovered by deleting the stray Cargo.lock and re-running through
+  the parent workspace.
+- Staging compiler.rs surgically beat hunk-filtering this time: the file's
+  non-ASCII characters (✗, ──, —) plus CRLF churn make patch files brittle,
+  so the index blob was reconstructed deterministically from HEAD + my edits
+  and verified by diff before committing.
+
+**Epic completion notes (#633/#516, phases A–F)**
+
+All six phases have landed their scoped slices. Deliberately-open threads
+for post-epic follow-up (none block the epic's acceptance):
+
+1. Submodule pointer bumps + pushes (pbgc, blueprint_editor) remain user
+   actions; parent gitlinks intentionally stale throughout D/E/F per
+   protocol.
+2. Graph-visible failure pins (reserved sentinel / per-op success flags in
+   the comp-op ABI v3) — design-before-UI constraint from F1 still stands.
+3. Variables of reference type await D4's heap-typed variable design.
+4. `find_object_by_tag` needs an ObjectTag component (level format +
+   hydration) first; then it mirrors find_object_by_name.
+5. Conversion-policy flip (numeric widening etc.) requires backend coercion
+   emission FIRST — recipe in `features/validation/mod.rs`.
+6. Drag-from-outliner (level hierarchy → canvas literal) remains a small
+   host-side follow-up using `create_object_ref_literal_node`.
