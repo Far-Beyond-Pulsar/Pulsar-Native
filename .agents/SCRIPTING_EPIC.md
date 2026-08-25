@@ -1413,3 +1413,202 @@ bytecode_compiler.rs blockers D3 documented (untouched here).
    bootstrap, or manually per E1's temp-crate recipe.
 4. Orphaned-entity cleanup policy after class removal (currently: entity
    survives, logged).
+
+## Handoff: F (in progress)
+
+### Handoff: F1
+
+Branch `scripting-epic`, parent commit `ceff4185` + submodule commits pbgc
+`8739ed4` and blueprint_editor `c8996be` (both inside their checkouts on top
+of D/E commits; parent gitlinks deliberately NOT bumped — same protocol as
+D/E, the user pushes/bumps pointers). blueprint_editor's compiler.rs user
+WIP preserved byte-identical (staged surgically around it; worktree still
+shows the same 13+/7- diff). Issue #654. STATUS: COMPLETE as a scoped slice
+— every scope bullet landed except drag-from-outliner (see Deviations).
+
+**What landed per scope item**
+
+1. **Pin/type layer.** Object-reference pins are now backed by B4's
+   registered identity types: comp_* nodes' synthetic `component_ref` pins
+   and the reference nodes' outputs carry type names `"ComponentRef"` /
+   `"ActorRef"` (B4 colors apply through the registry). New pure resolver
+   nodes in the palette ("Object References" category):
+   `find_object_by_stable_id`, `find_object_by_name` (String needle →
+   ActorRef). Per-class `get_component_ref::{Class}::0` palette nodes are
+   generated from prefab components ("Get {Class} Reference"), with an
+   optional `actor` input pin: unconnected = self, wired = another object.
+2. **Stop stripping.** Both graph converters in the editor compiler no
+   longer drop `get_component_ref::` nodes or the `component_ref` pins.
+   pbgc routes five NEW node kinds through its comp-op table:
+   `get_component_ref::{Class}::{Index}`, `find_object_by_stable_id`,
+   `find_object_by_name`, `object_ref_literal` (drag/picker literal), and
+   treats a CONNECTED component_ref pin on get/set/call as a pin-targeted
+   op. Rust target: emission calls `pulsar_game::script_refs::*` then C's
+   dispatcher (`resolve_pin_target` → `(entity, index)` → set/get/invoke).
+   VM target: same helpers called from new trampolines.
+3. **Resolution semantics/errors per #B3.** ALL resolution is lazy at
+   runtime against the live world (#639): literals stage `{stable_id,
+   class_name, component_index}` and re-resolve per execution; resolvers
+   query StableId/Name world components; stale/lost/mismatched targets log
+   the TYPED error (`ReferenceLost`, `ScriptRefError::ClassMismatch`,
+   `UnregisteredClass`, marshalling) and degrade to JSON null / skipped
+   write — no panics anywhere, `Entity::DANGLING` bits are screened before
+   they can reach B's debug-asserted accessors. #519 discipline: a pin
+   ref whose class_name ≠ the op's class refuses (`ClassMismatch`), so
+   instance 2 addressing via `(class, index)` can never land elsewhere.
+4. **Duplicate-class instances:** refs carry `(class_name,
+   component_index)` end to end; pin-targeted ops dispatch with the REF's
+   index (methods stay class-level per C's semantics; properties route at
+   index 0 live-typed, other indexes remain instance-record territory).
+5. **Editor affordances:** toolbar "Add Object Reference" button opens a
+   searchable reference-picker dialog (floating overlay, dismiss on
+   click-out); picks are RE-VALIDATED against a fresh host snapshot before
+   a literal node is minted. Hosts feed it via
+   `BlueprintEditorPanel::set_scene_object_source(Box<dyn Fn() ->
+   Vec<SceneObjectCandidate>>)`; `GraphCanvasPanel::
+   create_object_ref_literal_node(stable_id, name, class, index, pos)` is
+   the shared minting path (also the landing spot for future drags).
+
+**Reference-resolution flow (both targets)**
+
+```
+graph value domain (JSON blobs)
+  find_object_by_stable_id/name ──query StableId/Name──▶ ActorRef json!(bits)
+  object_ref_literal ──stable_id→entity at RUNTIME────────▶ ComponentRef json
+  get_component_ref::{C}::{N} ─(optional actor operand)───▶ ComponentRef json
+                    │
+                    ▼ (component_ref pin)
+  comp_get/set/call  [name blob w/ target field][ref operand][values]
+        │ script_refs::resolve_pin_target(world, ref, expected_class)
+        │   parse → class-match (#519) → liveness (typed errors, logged)
+        ▼
+  pulsar_world_registry::dispatch::{get,set}_component_property / invoke
+        │ (Mut guards fire subscription/GPU events like panel edits)
+        ▼
+  SceneDB World  ◀── failures degrade to null/skip + tracing::error
+```
+
+**ABI changes (spec module `pbgc/src/bytecode/comp_ops.rs` — module doc IS
+the contract, now versioned ABI v2)**
+
+- `CompOpKind` += `GetRef | FindByStableId | FindByName | ObjectLiteral`;
+  `parse_node_type` recognizes their node-type strings (identity ops return
+  empty class/member; `uses_name_blob()` distinguishes the families).
+- Name blobs gain an ALWAYS-EMITTED trailing target field:
+  get/set/ref stage `{class}\0{member}\0{self|pin}\0`; call stages
+  `{class}\0{method}\0{argc}\0{target}\0`. Fixed field counts mean the VM
+  reader scans without any length side-channel (the reason legacy shapes
+  are NOT emitted anymore; decoders still accept them for hand-built
+  programs). Pre-#654 compiled bytecode files fail loudly at op decode
+  (log) until recompiled by the editor — same transient-artifact policy as
+  D1/D2's call-blob argc addition.
+- Pin-targeted ops insert ONE extra JSON-blob operand between the name blob
+  and the values holding the reference in its #642 shape (ComponentRef
+  object or ActorRef packed-bits number).
+- Identity ops have no name blob: one staged JSON operand in (needle /
+  literal), reserved `JSON_BLOB_CAPACITY` output slot out.
+
+**Modules changed per repo**
+
+- **pbgc** (`8739ed4`): `bytecode/comp_ops.rs` (kinds, targeted blobs +
+  count-based decoders, doc/ABI table), `codegen/bytecode_codegen.rs`
+  (emit paths for all kinds, pin-target detection, identity operands in the
+  pure-dependency closure, blob-producer acceptance for value inputs),
+  `codegen/rust_codegen.rs` (`identity_producer_expr`, pin-target match
+  wrappers around get/set/call, component_ref-aware pin selection),
+  `tests/bytecode_tests.rs` (+6 tests incl. emission drift guard).
+- **blueprint_editor** (`c8996be`): compiler.rs (de-strip both converters),
+  definitions.rs (pin retypes, resolver defs, per-class ref defs),
+  prefabs/mod.rs (getter node reshaped, literal creator), features/
+  references.rs (NEW picker dialog + panel hooks), panel.rs (+2 fields),
+  panel_render.rs (picker overlay), toolbar.rs (button), features/mod.rs.
+- **pulsar_bp_executor**: `ComponentOpHandlers` += 4 handler slots
+  (`get_ref`, `find_by_stable_id`, `find_by_name`, `object_literal`);
+  plain `prepare()` automatically refuses the new kinds too.
+- **engine_backend**: scene/script_ref_bridge.rs += world-level lookups
+  `entity_with_stable_id` / `first_entity_named` (plain-&World queries over
+  StableId/Name components — the ONE implementation of graph-time identity
+  lookup; the store map stays authoritative for save/load), re-exported
+  from scene/mod.rs.
+- **pulsar_game**: Cargo.toml (+pulsar_script_object_model dep — the ONE
+  Cargo.lock line staged, surgically), NEW `script_refs.rs` module (shared
+  resolution API: component_ref_json / find_* / object_literal_json /
+  resolve_pin_target, JSON-domain in/out, typed-error logging, parity test
+  vs B4 registry serializers), component_ops split into component_ops/
+  {mod.rs context+registry, trampolines.rs 7 handlers, tests.rs}, tests.rs
+  fixture updated to ABI v2 blobs, lib.rs (+script_refs module,
+  +blueprint_ref_codegen test module).
+
+**Test evidence (scoped, rule 5)**
+
+- pbgc: 21 lib + 33 integration + 2 doctests green (new: pin-targeted set
+  staging, cross-object chain compile, rust-emission-through-script_refs,
+  explicit-self encoding, pin-targeted call staging, legacy decode unit
+  tests in comp_ops).
+- engine_backend lib 85/85 (new: world-level identity lookups incl.
+  despawn-stops-resolving).
+- pulsar_game lib 81/81 (new: script_refs unit suite; VM cross-object
+  acceptance chain find→ref→set writing the FOUND entity while self stays
+  untouched; object-literal runtime resolution; stale/class-mismatch
+  degrade; sourcegen twin executing identical steps with identical outcome
+  + pbgc emission drift guard).
+- blueprint_editor_plugin + ui_core cargo check green through the PARENT
+  workspace (standalone plugin checks resolve git deps at pre-epic revs —
+  see Surprises).
+- clippy clean on every touched file (pbgc all-targets, pulsar_game
+  lib+tests, engine_backend lib).
+
+**Deviations / honest gaps**
+
+- **Drag-from-outliner not landed**: the level editor's hierarchy lives in
+  ui_level_editor, which the vendored plugin cannot see, and bridging it
+  means either a shared drag-payload contract or a plugin_editor_api channel
+  — that file currently carries USER WIP I was told not to touch. The
+  picker + literal-minting API cover the authoring need; wiring the source
+  is a small follow-up (register a `scene_object_source` closure reading
+  `SceneDatabase::store`, plus optional outliner drag emitting candidates).
+- **Tag lookup** deferred: no user-facing Tag component exists in the
+  engine (ScriptTag is E3's reload bookkeeping). Adding `ObjectTag(String)`
+  + hydration would expand scope into the level format; when it lands,
+  `find_object_by_tag` is a 10-line clone of the name resolver.
+- The picker's candidate list comes only from the host hook (no manual
+  stable-id entry yet) — deliberate, keeps one validation path.
+
+**Surprises**
+
+- Standalone `cargo check -p blueprint_editor_plugin` (inside the plugin
+  dir) resolves pbgc/graphy/reflection from GIT at pre-epic revs — its own
+  Cargo.toml has no `[patch]` sections, so the user's own D1-era compiler.rs
+  WIP cannot compile standalone either. All verification must run through
+  the parent workspace (whose [patch] redirects to in-tree crates). Also:
+  running cargo inside the plugin dir creates an untracked Cargo.lock there
+  — deleted after my check.
+- let-else with an `unsafe {}` scrutinee fails to parse on this toolchain
+  ("right curly brace before else") — bind first, then let-else the binding.
+- The RefCell-based thread-local context could NOT be consulted re-entrantly
+  from trampoline bodies (borrow_mut held across the closure) — replaced
+  with `context_snapshot()` which copies `(*mut World, Option<Entity>)` out;
+  aliasing safety argument unchanged (one event per thread under the
+  installation contract).
+
+**Notes for #655/#656**
+
+1. Feed the picker: `panel.set_scene_object_source(...)` from wherever the
+   level editor embeds the blueprint panel — snapshot from
+   `SceneDatabase::store.read()`: iterate StableId+Name components into
+   `SceneObjectCandidate`s. Re-query per call; validation depends on it.
+2. Graph-visible failure pins (issue's "execution-path failure pins") are
+   still future work: today typed failures log + degrade. A `failed` exec
+   output needs a convention for "op produced nothing" in the blob domain —
+   consider reserving a sentinel or adding per-op success flags to the ABI
+   (v3) BEFORE building UI, so both adapters share it.
+3. Variables of ref type: graph variables holding ComponentRef would close
+   the loop for store-once-use-many patterns; blocked on D4's heap-typed
+   variable design, NOT on anything here (JSON domain already covers
+   in-graph flows).
+4. `find_object_by_tag`: add the component first (level format + hydration
+   in pulsar_scene/engine_backend), then mirror `find_object_by_name`.
+5. Editor quick-palette filtering by pin type (F checklist): ComponentRef/
+   ActorRef resolve through `RUNTIME_TYPE_REGISTRY.get_by_name` already, so
+   palette compatibility checks work off the canonical type system with no
+   new plumbing.
