@@ -17,8 +17,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use gpui::{
-    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Window,
+    AnyElement, App, Bounds, Element, ElementArenaScope, ElementId, GlobalElementId,
+    InspectorElementId, IntoElement, LayoutId, Pixels, Window,
 };
 use ui::dock::PanelView;
 
@@ -289,6 +289,23 @@ impl<H: EditorHandle> Clone for EditorElement<H> {
 ///
 /// Each frame, [`Element::request_layout`] calls [`EditorHandle::render_frame`]
 /// to obtain the child element tree, then delegates layout/prepaint/paint to it.
+///
+/// # DLL boundary: element arena
+///
+/// `EditorElement<H>` is monomorphized inside the plugin DLL (since `H` is the
+/// plugin's own concrete handle type), so everything `render_frame` builds —
+/// every `div()`, every `AnyElement::new` — runs through this crate's own
+/// statically-linked copy of `gpui`, with its own separate copy of the
+/// `CURRENT_ELEMENT_ARENA` thread-local. The host's per-frame
+/// `ElementArenaScope::enter` (in `Window::draw`) only ever sets the *host's*
+/// copy, so without the `enter` call below, every element a plugin
+/// constructs silently falls back to `gpui`'s private, per-DLL,
+/// never-reset `ELEMENT_ARENA` — a real, unbounded leak (one freshly grown
+/// 1 MiB chunk per frame's worth of elements, forever). Entering the scope
+/// here, using the `App` reference already crossing the FFI boundary, points
+/// this DLL's thread-local at the *same* arena the host resets every frame
+/// instead. See Pulsar-Native issue #261 and the `plugin-leak-demo` repro
+/// for the full writeup and before/after measurements.
 impl<H: EditorHandle> Element for EditorElement<H> {
     type RequestLayoutState = AnyElement;
     type PrepaintState = ();
@@ -308,6 +325,12 @@ impl<H: EditorHandle> Element for EditorElement<H> {
         window: &mut Window,
         cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
+        // Fix for #261: point this DLL's element-arena thread-local at the
+        // host's real, per-frame-reset arena before building or laying out
+        // anything. See this impl's doc comment above for why this is
+        // needed at all.
+        let _arena_scope = ElementArenaScope::enter(cx.element_arena());
+
         let mut ctx = EditorFrameCtx { window, cx };
         let mut element = self.handle.render_frame(&mut ctx).into_any_element();
         let layout_id = element.request_layout(ctx.window, ctx.cx);
@@ -323,6 +346,12 @@ impl<H: EditorHandle> Element for EditorElement<H> {
         window: &mut Window,
         cx: &mut App,
     ) {
+        // request_layout's `_arena_scope` guard is dropped by the time
+        // prepaint runs — a separate, later call from the framework's
+        // traversal. Re-enter here too: if this plugin's element tree
+        // allocates anything new during prepaint (e.g. lazy/virtualized
+        // content), it needs the host's arena, not this DLL's fallback.
+        let _arena_scope = ElementArenaScope::enter(cx.element_arena());
         element.prepaint(window, cx);
     }
 
@@ -336,6 +365,8 @@ impl<H: EditorHandle> Element for EditorElement<H> {
         window: &mut Window,
         cx: &mut App,
     ) {
+        // Same reasoning as `prepaint` above.
+        let _arena_scope = ElementArenaScope::enter(cx.element_arena());
         element.paint(window, cx);
     }
 }

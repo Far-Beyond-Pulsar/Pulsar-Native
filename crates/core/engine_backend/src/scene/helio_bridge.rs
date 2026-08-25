@@ -155,11 +155,53 @@ pub fn attach_gpu_render_seam(
         .clone();
     renderer.scene_mut().rebind_static_mesh_pools(vertex_pool, index_pool);
 
+    // ── Texel-streaming tier configuration (Helio#238 §5) ────────────────────
+    // The ONE consumer configuration call (SceneDB#61 §4 contract): translate
+    // the canonical `project/streaming.*` keys into a TierConfig and install
+    // it once, here where the store exists and before any frame can touch
+    // tiers. Idempotent upstream; re-running this whole seam is already
+    // guarded by `has_gpu_mirror` above.
+    //
+    // No MaterializationSpecs yet: SceneDB-owned texture materialization gets
+    // a bind path in S3; the budget + demand verbs are live from S2 on.
+    {
+        let streaming = |key: &str| -> Option<engine_state::settings::ConfigValue> {
+            engine_state::settings::global_config()
+                .get(engine_state::settings::NS_PROJECT, "streaming", key)
+                .ok()
+        };
+        let int_of = |v: Option<engine_state::settings::ConfigValue>| -> Option<i64> {
+            match v {
+                Some(engine_state::settings::ConfigValue::Int(i)) => Some(i),
+                _ => None,
+            }
+        };
+        let pool_bytes = int_of(streaming("texture_stream_pool_mb"))
+            .unwrap_or(512)
+            .clamp(64, 16384) as u64
+            * 1024
+            * 1024;
+        match gpu_store.configure_tiers(
+            pulsar_scenedb::gpu::TierConfig {
+                vram_budget_bytes: pool_bytes,
+                ram_budget_bytes: pool_bytes.max(256 * 1024 * 1024),
+            },
+            &[],
+        ) {
+            Ok(()) => tracing::info!(
+                "SceneDB tiers configured (Helio#238): VRAM budget {} MiB from project/streaming",
+                pool_bytes / 1024 / 1024
+            ),
+            Err(e) => tracing::warn!("configure_tiers failed (streaming stays off): {e}"),
+        }
+    }
+
     let mirror = GpuMirrorHandle::new(gpu_store, queue);
     scene_db.world.attach_gpu_mirror(mirror);
     for (entity, component) in existing_static_meshes {
         scene_db.world.insert(entity, component);
     }
+
     tracing::info!("SceneDB GPU-native render seam wired");
     true
 }

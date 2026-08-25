@@ -83,18 +83,9 @@ pub fn register(cfg: &'static ConfigManager) {
                 })
                 .validator(Validator::int_range(1, 32)),
         )
-        .setting(
-            "texture_streaming_pool_mb",
-            SchemaEntry::new("GPU texture streaming pool size in megabytes", 512_i64)
-                .label("Texture Pool (MB)")
-                .page("Performance")
-                .field_type(FieldType::NumberInput {
-                    min: Some(64.0),
-                    max: Some(16384.0),
-                    step: Some(64.0),
-                })
-                .validator(Validator::int_range(64, 16384)),
-        )
+        // "texture_streaming_pool_mb" was deleted here (Helio#238): it
+        // duplicated the CANONICAL `project/streaming.texture_stream_pool_mb`.
+        // No code ever read this copy; the streaming namespace owns the key.
         .setting(
             "enable_gpu_crash_diagnostics",
             SchemaEntry::new(
