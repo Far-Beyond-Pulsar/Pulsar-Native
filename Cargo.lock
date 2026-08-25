@@ -5033,6 +5033,7 @@ dependencies = [
  "helio-asset-compat",
  "helio-pass-planetary-voxel",
  "helio-planet-voxel-core",
+ "image",
  "libhelio",
  "plugin_editor_api",
  "pollster 0.4.0",
@@ -5045,6 +5046,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tracing",
+ "twox-hash",
  "ui",
  "ui_common",
  "wgpu",
@@ -8910,7 +8912,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar//SceneDB?rev=c761890789b3e3c16b362a91769570bd587e5ac6#c761890789b3e3c16b362a91769570bd587e5ac6"
+source = "git+https://github.com/Far-Beyond-Pulsar//SceneDB?rev=72291d0f211dc8826eb70339aeb0409be4270ad5#72291d0f211dc8826eb70339aeb0409be4270ad5"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -8924,7 +8926,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar//SceneDB?rev=c761890789b3e3c16b362a91769570bd587e5ac6#c761890789b3e3c16b362a91769570bd587e5ac6"
+source = "git+https://github.com/Far-Beyond-Pulsar//SceneDB?rev=72291d0f211dc8826eb70339aeb0409be4270ad5#72291d0f211dc8826eb70339aeb0409be4270ad5"
 dependencies = [
  "proc-macro2",
  "quote",

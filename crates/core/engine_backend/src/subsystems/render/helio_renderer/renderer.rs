@@ -383,11 +383,48 @@ impl HelioRenderer {
             let device_arc = Arc::new(_device.clone());
             let queue_arc = Arc::new(_queue.clone());
             let config = RendererConfig::new(width, height, format);
-            let r = helio::RendererBuilder::new(config)
+            // ── project/streaming → renderer translation (Helio#238 §5) ────
+            // The canonical keys live in pulsar_settings' streaming schema;
+            // this is the only place the engine hands them to Helio. The
+            // matching SceneDB budget lands in attach_gpu_render_seam's ONE
+            // configure_tiers call below.
+            let streaming_int = |key: &str| -> Option<i64> {
+                match engine_state::settings::global_config().get(
+                    engine_state::settings::NS_PROJECT,
+                    "streaming",
+                    key,
+                ) {
+                    Ok(engine_state::settings::ConfigValue::Int(i)) => Some(i),
+                    _ => None,
+                }
+            };
+            let vt_enabled = matches!(
+                engine_state::settings::global_config().get(
+                    engine_state::settings::NS_PROJECT,
+                    "streaming",
+                    "virtual_texturing_enabled",
+                ),
+                Ok(engine_state::settings::ConfigValue::Bool(true))
+            );
+            let pool_mb = streaming_int("texture_stream_pool_mb")
+                .unwrap_or(512)
+                .clamp(64, 16384) as u32;
+            let tile_px = streaming_int("virtual_texture_tile_size")
+                .and_then(|s| u32::try_from(s).ok())
+                .unwrap_or(128)
+                .max(16);
+            // Streaming stays OFF unless the canonical toggle says otherwise:
+            // defaults must preserve today's behavior exactly.
+            let mut builder = helio::RendererBuilder::new(config)
                 .with_external_device()
                 .with_editor_mode(true)
                 .with_clear_color([0.15, 0.18, 0.25, 1.0])
                 .with_ambient([0.0, 0.0, 0.0], 0.0)
+                .with_vt_tile_size(tile_px);
+            if vt_enabled {
+                builder = builder.with_texture_streaming(pool_mb);
+            }
+            let r = builder
                 .with_graph(Box::new(|d, q, s, c, ds, cb, csb| {
                     helio_default_graphs::build_default_graph_external(
                         d, q, s, c, ds, cb, csb, None,
