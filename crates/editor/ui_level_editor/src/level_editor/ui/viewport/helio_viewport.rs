@@ -64,6 +64,10 @@ pub struct HelioViewport {
     /// Published frames since this view last actually rendered. Drives the
     /// periodic real notify that keeps surface bounds tracking its element.
     frames_since_full_render: u32,
+    /// Window viewport size at the last full render. A change means the
+    /// element's bounds are likely stale, so the next pump tick promotes a
+    /// real notify instead of waiting out the frame interval.
+    viewport_size_at_last_full_render: Option<Size<Pixels>>,
     /// Whether the `on_next_frame` pump has been started (once per view).
     pump_started: bool,
     last_spike_report: Instant,
@@ -92,6 +96,7 @@ impl HelioViewport {
             last_published_frame: 0,
             awaiting_render: false,
             frames_since_full_render: 0,
+            viewport_size_at_last_full_render: None,
             pump_started: false,
             last_spike_report: Instant::now(),
             slow_frames_since_report: 0,
@@ -473,18 +478,27 @@ impl HelioViewport {
                 // A published texture changes no element state, so the frame
                 // only needs compositing — `refresh_buffers` marks the window
                 // dirty without marking any view dirty, and every cached view
-                // replays instead of rebuilding.
+                // replays instead of rebuilding. Scene content (gizmo drags,
+                // camera moves) reaches the texture through that path alone;
+                // it never needs a view rebuild.
                 //
                 // But a view that never prepaints never observes new bounds,
                 // and `WgpuSurface::prepaint` is what resizes the surface to
-                // match its element. Left purely on buffer refreshes the
-                // viewport would stay at its creation size forever. So a real
-                // notify is still issued periodically: often enough that a
-                // resize is picked up imperceptibly, rare enough that the
-                // ancestor-chain rebuild it triggers stops dominating the
-                // frame — roughly six per second rather than one per frame.
+                // match its element. So a real notify is issued when the
+                // window viewport size changed since the last full render
+                // (window resize / maximize), or once per
+                // `FULL_RENDER_INTERVAL` published frames as the fallback for
+                // geometry changes with no size signal — panel splits and
+                // undocks. That bounds their pickup latency without letting
+                // the ancestor-chain rebuild dominate idle frames.
                 this.frames_since_full_render += 1;
-                if this.frames_since_full_render >= FULL_RENDER_INTERVAL || this.awaiting_render {
+                let viewport_resized = Some(window.viewport_size())
+                    != this.viewport_size_at_last_full_render;
+                if this.frames_since_full_render >= FULL_RENDER_INTERVAL
+                    || this.awaiting_render
+                    || viewport_resized
+                {
+                    this.viewport_size_at_last_full_render = Some(window.viewport_size());
                     this.awaiting_render = true;
                     cx.notify();
                 } else {
@@ -576,14 +590,18 @@ fn wait_for_frame_consumed(
 /// Published frames between full re-renders of the viewport view.
 ///
 /// Between these the pump uses `Window::refresh_buffers`, which composites the
-/// new texture without invalidating any view. This one exists solely so
-/// `WgpuSurface::prepaint` runs often enough to keep the surface sized to its
-/// element — a purely buffer-refreshed viewport never observes new bounds.
+/// new texture without invalidating any view. The periodic full render exists
+/// solely so `WgpuSurface::prepaint` runs often enough to keep the surface
+/// sized to its element — a purely buffer-refreshed viewport never observes
+/// new bounds. Window-level resizes bypass the wait entirely (the pump
+/// compares `Window::viewport_size` against the last full render), so this
+/// interval only governs geometry changes with no size signal, such as panel
+/// splits.
 ///
-/// At ~85 FPS this is roughly six full renders per second; a resize is picked
-/// up within ~170ms, which reads as immediate, while the ancestor-chain rebuild
-/// each one triggers stops being a per-frame cost.
-const FULL_RENDER_INTERVAL: u32 = 15;
+/// At ~60-85 FPS this is roughly one ancestor-chain rebuild every 2 seconds
+/// instead of ~six per second; those rebuilds were a measurable share of the
+/// editor's frame cost during notify storms.
+const FULL_RENDER_INTERVAL: u32 = 150;
 
 /// Fallback target when the platform doesn't report a refresh rate.
 const FALLBACK_REFRESH_HZ: f64 = 60.0;
@@ -1088,6 +1106,7 @@ impl Render for HelioViewport {
             // periodic-full-render counter restarts here.
             self.awaiting_render = false;
             self.frames_since_full_render = 0;
+            self.viewport_size_at_last_full_render = Some(window.viewport_size());
             self.last_published_frame = self.frames_published.load(Ordering::Acquire);
 
             wgpu_surface(surface)

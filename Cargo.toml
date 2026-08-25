@@ -43,17 +43,15 @@ keywords = ["game-engine", "editor"]
 ###################################
 
 [profile.release]
-# Hardened release profile:
-# - debug=false:          no debug symbols embedded in release binary
-# - strip="symbols":      strip all symbol names (function/struct names)
-# - lto="fat":            link-time optimization (faster binary, harder to RE)
-# - codegen-units=1:      better LLVM optimization across crate boundaries
-# - panic="abort":        abort on panic instead of unwinding (smaller, faster)
+# The commented-out hardening keys below were deliberate anti-RE choices, but
+# panic="abort" also removes catch_unwind fault isolation, so they stay off
+# until that tradeoff is revisited deliberately.
 # debug = false
 # strip = "symbols"
 # lto = "fat"
-# codegen-units = 1
 # panic = "abort"
+lto = "thin"
+codegen-units = 1
 
 [profile.dev]
 codegen-units = 16
@@ -78,7 +76,14 @@ ui           = { path = "crates/ui/wgpui-component/crates/ui", features = ["insp
 ui-macros    = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 
 # ---------- Core Engine ----------
-profiling                          = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling", rev = "12424a5f75166332f9f1d2741281f6fc4847b44d" }
+# Profiling - instrumentation-based
+profiling                          = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling", rev = "12424a5f75166332f9f1d2741281f6fc4847b44d", default-features = false }
+# Tracy frontend: crates.io `profiling` v1, kept separate from the custom
+# collector above so both can coexist. Because gpui-ce depends on the same
+# crates.io package, enabling any crate's tracy feature feature-unifies the
+# whole graph onto one backend, lighting up every `profiling::scope!` in
+# wgpui as well.
+profiling-v1                       = { package = "profiling", version = "1", default-features = false }
 engine_fs                          = { path = "crates/core/engine_fs", default-features = false }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }
@@ -148,12 +153,12 @@ plugin_editor_api     = { path = "crates/core/plugin_editor_api"}
 plugin_manager        = { path = "crates/core/plugin_manager" }
 
 # ---------- Helio Renderer (external git dep) ----------
-helio                      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "9bab4b6513a8fc6c7e85aa876b335d9d87b99d9f" }
-helio-asset-compat         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "9bab4b6513a8fc6c7e85aa876b335d9d87b99d9f" }
-helio-default-graphs       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "9bab4b6513a8fc6c7e85aa876b335d9d87b99d9f" }
-helio-planet-voxel-core    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "9bab4b6513a8fc6c7e85aa876b335d9d87b99d9f" }
-helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "9bab4b6513a8fc6c7e85aa876b335d9d87b99d9f" }
-libhelio                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "9bab4b6513a8fc6c7e85aa876b335d9d87b99d9f" }
+helio                      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6fb248c921fdce8adbc01d0eef8c18a9a98f2308" }
+helio-asset-compat         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6fb248c921fdce8adbc01d0eef8c18a9a98f2308" }
+helio-default-graphs       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6fb248c921fdce8adbc01d0eef8c18a9a98f2308" }
+helio-planet-voxel-core    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6fb248c921fdce8adbc01d0eef8c18a9a98f2308" }
+helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6fb248c921fdce8adbc01d0eef8c18a9a98f2308" }
+libhelio                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6fb248c921fdce8adbc01d0eef8c18a9a98f2308" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------

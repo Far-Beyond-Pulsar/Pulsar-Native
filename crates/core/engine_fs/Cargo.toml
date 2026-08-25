@@ -49,7 +49,7 @@ pulsar-multiplayer-core = { path = "../pulsar-multiplayer-core", optional = true
 
 [dev-dependencies]
 tempfile = { workspace = true }
-async-trait = "=0.1.91"
+async-trait = "=0.1.92"
 tokio = { workspace = true, features = ["rt", "macros"] }
 toml = { workspace = true }
 

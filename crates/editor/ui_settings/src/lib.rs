@@ -5,4 +5,4 @@ pub mod utils;
 pub mod window;
 
 pub use screen::ModernSettingsScreen;
-pub use window::SettingsWindow;
+pub use window::{SettingsParams, SettingsWindow};

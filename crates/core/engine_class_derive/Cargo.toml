@@ -69,7 +69,7 @@ pulsar_world_registry = { workspace = true }
 # reason; the test below is no exception.
 tracing = { workspace = true }
 wgpu = { workspace = true }
-pollster = "1.0"
+pollster = "=1.0.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 

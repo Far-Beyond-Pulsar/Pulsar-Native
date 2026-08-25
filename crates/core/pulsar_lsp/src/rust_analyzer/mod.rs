@@ -50,6 +50,16 @@ enum ProgressUpdate {
     Diagnostics(Vec<Diagnostic>),
 }
 
+/// Minimum wall time between emitted `IndexingProgress` events. Raw updates
+/// arrive far faster than a subscriber can usefully repaint, and each emission
+/// costs a full notify up the ancestor chain.
+const PROGRESS_EMIT_MIN_INTERVAL: Duration = Duration::from_millis(100);
+
+/// An emission bypasses the time window whenever progress crosses a multiple
+/// of this percentage, so the reported value stays within one visible step of
+/// reality even during slow indexing.
+const PROGRESS_EMIT_MILESTONE_STEP: f32 = 5.0;
+
 pub struct RustAnalyzerManager {
     /// Path to rust-analyzer executable
     analyzer_path: PathBuf,
@@ -77,6 +87,12 @@ pub struct RustAnalyzerManager {
     first_diagnostics_time: Option<Instant>,
     /// Whether initial analysis has been marked as complete
     initial_analysis_complete: bool,
+    /// Time of the last emitted `IndexingProgress`, for coalescing.
+    last_progress_emit: Option<Instant>,
+    /// Progress percentage last emitted to subscribers; milestone crossings
+    /// are detected against this so suppressed updates can still end at an
+    /// observable final value.
+    last_emitted_progress: Option<f32>,
 }
 
 impl EventEmitter<AnalyzerEvent> for RustAnalyzerManager {}
@@ -102,6 +118,8 @@ impl RustAnalyzerManager {
             install_attempted: false,
             first_diagnostics_time: None,
             initial_analysis_complete: false,
+            last_progress_emit: None,
+            last_emitted_progress: None,
         }
     }
 
@@ -678,6 +696,8 @@ impl RustAnalyzerManager {
                             progress: 0.0,
                             message: "Initializing...".to_string(),
                         });
+                        manager.last_progress_emit = Some(Instant::now());
+                        manager.last_emitted_progress = Some(0.0);
                         cx.notify();
                     });
                 }
@@ -1706,12 +1726,44 @@ impl RustAnalyzerManager {
                 if last_update.elapsed() > Duration::from_secs(3)
                     && matches!(self.status, AnalyzerStatus::Indexing { .. })
                 {
+                    self.flush_coalesced_progress(cx);
                     self.initial_analysis_complete = true;
                     self.status = AnalyzerStatus::Ready;
                     tracing::debug!("✅ Initial analysis complete (timeout - no updates for 3s)");
                     cx.emit(AnalyzerEvent::Ready);
                     cx.notify();
                 }
+            }
+        }
+    }
+
+    /// Whether a progress update at `progress` should be emitted now, or held
+    /// back by the coalescing window. `self.status` always carries the latest
+    /// values either way, so suppressed updates are only ever invisible to
+    /// subscribers until the next emission or completion flush.
+    fn should_emit_progress(&self, progress: f32) -> bool {
+        let interval_elapsed = self.last_progress_emit.map_or(true, |last| {
+            Instant::now().duration_since(last) >= PROGRESS_EMIT_MIN_INTERVAL
+        });
+        let milestone_crossed = self.last_emitted_progress.map_or(true, |last| {
+            Self::progress_milestone(progress) > Self::progress_milestone(last)
+        });
+        interval_elapsed || milestone_crossed
+    }
+
+    fn progress_milestone(progress: f32) -> u32 {
+        ((progress.clamp(0.0, 100.0)) / PROGRESS_EMIT_MILESTONE_STEP) as u32
+    }
+
+    /// Emit any progress suppressed by coalescing so subscribers observe a
+    /// final `IndexingProgress` before a Ready/Error transition. A no-op when
+    /// the latest status was already emitted or is not an indexing state.
+    fn flush_coalesced_progress(&mut self, cx: &mut Context<Self>) {
+        if let AnalyzerStatus::Indexing { progress, message } = self.status.clone() {
+            if self.last_emitted_progress != Some(progress) {
+                self.last_progress_emit = Some(Instant::now());
+                self.last_emitted_progress = Some(progress);
+                cx.emit(AnalyzerEvent::IndexingProgress { progress, message });
             }
         }
     }
@@ -1724,11 +1776,16 @@ impl RustAnalyzerManager {
                     message: message.clone(),
                 };
                 self.last_update = Some(Instant::now());
-                cx.emit(AnalyzerEvent::IndexingProgress { progress, message });
-                cx.notify();
+                if self.should_emit_progress(progress) {
+                    self.last_progress_emit = Some(Instant::now());
+                    self.last_emitted_progress = Some(progress);
+                    cx.emit(AnalyzerEvent::IndexingProgress { progress, message });
+                    cx.notify();
+                }
             }
             ProgressUpdate::Ready => {
                 if !self.initial_analysis_complete {
+                    self.flush_coalesced_progress(cx);
                     self.initial_analysis_complete = true;
                     self.status = AnalyzerStatus::Ready;
                     tracing::debug!("✅ Initial analysis marked as complete");
@@ -1737,11 +1794,13 @@ impl RustAnalyzerManager {
                 }
             }
             ProgressUpdate::Error(e) => {
+                self.flush_coalesced_progress(cx);
                 self.status = AnalyzerStatus::Error(e.clone());
                 cx.emit(AnalyzerEvent::Error(e));
                 cx.notify();
             }
             ProgressUpdate::ProcessExited(status) => {
+                self.flush_coalesced_progress(cx);
                 let error_msg = if status.success() {
                     "rust-analyzer exited normally".to_string()
                 } else {
