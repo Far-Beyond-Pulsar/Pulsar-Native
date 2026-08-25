@@ -64,4 +64,8 @@ pub struct PieStartRequest {
     pub project_root: PathBuf,
     /// Path to the `.level` written from the editor's current `SceneDb`.
     pub scene_path: PathBuf,
+    /// True when this load replaces a STILL-RUNNING game (#653): the shared
+    /// world keeps its entities/components, and the guest re-binds actor
+    /// registrations instead of spawning duplicates (native hot reload).
+    pub reload: bool,
 }

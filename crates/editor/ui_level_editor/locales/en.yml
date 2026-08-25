@@ -2,6 +2,7 @@
 
 LevelEditor.Toolbar.StartSimulation: "Start Simulation (F5)"
 LevelEditor.Toolbar.SimulationRunning: "Simulation Running"
+LevelEditor.Toolbar.ReloadSimulation: "Reload Simulation — recompile scripts, keep world state (F5)"
 LevelEditor.Toolbar.PauseSimulation: "Pause Simulation (F6)"
 LevelEditor.Toolbar.StopSimulation: "Stop Simulation (Shift+F5)"
 LevelEditor.Toolbar.NotPlaying: "Not Playing"

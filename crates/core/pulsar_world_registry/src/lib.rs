@@ -71,6 +71,36 @@
 // same pattern `pulsar_reflection` already uses for `RuntimeBehaviorRegistration`.
 pub use inventory;
 
+pub mod audit;
+pub mod dispatch;
+pub mod errors;
+pub mod marshal;
+pub mod type_shims;
+pub mod vm_abi;
+
+// The unified reflection dispatcher (#643) and its property accessors --
+// THE entry points every scripting backend (VM opcodes, generated code,
+// graph nodes) uses to touch live World components. No bespoke dispatch
+// downstream.
+pub use dispatch::{
+    get_component_property, get_component_property_boxed, invoke_component_method,
+    set_component_property, set_component_property_boxed,
+};
+// The one script-facing error taxonomy (#641/#643). Canonical home is this
+// crate (next to the dispatcher whose failures these are);
+// `pulsar_script_object_model::errors` re-exports it unchanged.
+pub use errors::ScriptRefError;
+// Unified marshalling (#644): JSON ⇄ Box<dyn Any> ⇄ arena bytes, plus the
+// versioned VM TypeSlot encoding spec Phase D builds against.
+pub use marshal::{any_to_bytes, any_to_json, bytes_to_any, json_to_any};
+pub use vm_abi::{
+    classify as classify_vm_value_kind, slot_for, TYPE_SLOT_ENCODING_VERSION, VmTypeSlot,
+    VmValueKind,
+};
+// Metadata audit (#645): overload sweep + the deterministic registry
+// snapshot CI golden tests diff against.
+pub use audit::{find_overloaded_methods, metadata_snapshot_json, MetadataAuditError};
+
 use pulsar_reflection::{ComponentRuntimeContext, EngineClass, RuntimeComponentOwner};
 use pulsar_scenedb::{ComponentId, Entity, World};
 use serde_json::Value;
@@ -231,6 +261,20 @@ pub fn hydrate_world_component_for_class(
         Some(registration) => (registration.hydrate)(world, entity, data).map(|()| true),
         None => Ok(false),
     }
+}
+
+/// Whether `entity` currently carries a live-typed component of `class_name`
+/// in the `World`. Unregistered classes report `false` (they have no live
+/// representation at all).
+///
+/// This is the idempotence gate scripted hydration needs: generated actors
+/// seed prefab defaults ONLY when the scene hasn't already hydrated the
+/// component onto the entity, so per-instance scene values always win
+/// (#651). Read-only by construction -- it borrows through the same bridge
+/// the properties panel's read path uses.
+pub fn world_component_present_for_class(class_name: &str, world: &World, entity: Entity) -> bool {
+    find(class_name)
+        .is_some_and(|registration| (registration.get_as_engine_class)(world, entity).is_some())
 }
 
 /// Remove `class_name`'s typed component from `entity`, if that class is
@@ -930,7 +974,7 @@ mod tests {
         // `on_removed` deliberately takes no `World`/`Entity` at all (see its
         // doc) -- the only way to observe it fired is a side channel.
         thread_local! {
-            static FIRED: std::cell::Cell<bool> = std::cell::Cell::new(false);
+            static FIRED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
         }
         fn recording_on_removed(_owner: &RuntimeComponentOwner, _context: &mut dyn ComponentRuntimeContext) {
             FIRED.with(|f| f.set(true));

@@ -41,6 +41,8 @@ engine_state.workspace = true
 # SceneMetadataDb/ComponentDb in `src/scene/`. See `src/scene/world_store.rs`.
 pulsar_scenedb.workspace = true
 pulsar_world_registry.workspace = true
+# Script object model bridge (#639): StableIdResolver + ComponentInstanceStore impls.
+pulsar_script_object_model.workspace = true
 
 # Shared scene loading — canonical implementation used by both engine and game
 pulsar_scene.workspace = true

@@ -3,6 +3,8 @@ use std::path::Path;
 use engine_fs::virtual_fs;
 use engine_state::{register_default_settings, ProjectSettings};
 
+use super::native_scripts::{discover_script_crates, ScriptCrate};
+
 /// Helio revision selected by the Pulsar workspace.
 ///
 /// The build script derives this from `[workspace.dependencies]` and rejects
@@ -96,6 +98,11 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
         license_spdx
     };
 
+    // Gameplay script crates (#653): every `scripts/*` crate becomes a path
+    // dependency of the game, so one build compiles user gameplay code into
+    // the same dylib the editor embeds.
+    let script_crates = discover_script_crates(project_root);
+
     let cargo_toml_path = project_root.join("Cargo.toml");
     let should_write_cargo = if cargo_toml_path.exists() {
         let existing = String::from_utf8(
@@ -144,20 +151,23 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
 
     // A `[lib]` `cdylib` target is emitted alongside the default binary so the
     // editor can build the project as a dynamic library and embed it for
-    // Play-In-Editor (issue #243). `rlib` is kept so anything that wants to link
-    // the project as a normal Rust lib still can. `src/lib.rs` (generated below)
+    // Play-In-Editor (issue #243). `rlib` is kept so anything that wants to
+    // link the project as a normal Rust lib still can. `src/lib.rs` (generated below)
     // exports the `pulsar_pie_*` C-ABI symbols the editor loads.
     //
     // The `[dependencies]` + `[patch]` blocks come from `GAME_MANIFEST_DEPS`,
     // baked from the engine's own workspace at build time so the game resolves
-    // the exact same crate versions/sources as the editor.
+    // the exact same crate versions/sources as the editor. Script-crate path
+    // deps are spliced into that `[dependencies]` table (before its first
+    // `[patch.*]` table) because TOML forbids reopening a table.
     let cargo_content = format!(
         "{package}\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n\
-{deps}\n[profile.dev]\nopt-level = {opt}\ndebug = {debug}\n",
+{deps}\n[profile.dev]\nopt-level = {opt}\ndebug = {debug}\n{workspace_block}",
         package = package_lines.join("\n"),
-        deps = GAME_MANIFEST_DEPS,
+        deps = splice_script_dependencies(GAME_MANIFEST_DEPS, &script_crates),
         opt = profile_opt,
         debug = profile_debug,
+        workspace_block = workspace_block(&script_crates),
     );
 
     virtual_fs::write_file(&cargo_toml_path, cargo_content.as_bytes())
@@ -170,6 +180,10 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
 ///
 /// This is engine-owned project wiring. PBGC should only emit class files.
 pub fn ensure_core_bootstrap(project_root: &Path) -> Result<(), String> {
+    // ── scripts/ — user gameplay script crates (#653) ────────────────────────
+    // Must run BEFORE manifest/engine_main generation so both can wire it.
+    ensure_scripts_crate(project_root)?;
+
     ensure_core_cargo_toml(project_root)?;
 
     let src_dir = project_root.join("src");
@@ -342,6 +356,205 @@ fn ensure_engine_primitives(project_root: &Path) {
     }
 }
 
+// ── scripts/ — user gameplay script crates (#653) ────────────────────────────
+
+/// Insert script-crate path dependencies into the baked manifest text.
+///
+/// `GAME_MANIFEST_DEPS` is `[dependencies] … [patch.*] …`; TOML forbids
+/// reopening a table, so the entries are spliced in just before the FIRST
+/// `[patch.` table header (or appended when there is none). The absolute
+/// engine-checkout path matches the baked `pulsar_game` spec exactly, so
+/// cargo unifies both references to one build.
+fn splice_script_dependencies(manifest_deps: &str, crates: &[ScriptCrate]) -> String {
+    if crates.is_empty() {
+        return manifest_deps.to_string();
+    }
+    let mut lines = String::from(
+        "\n# Gameplay script crates (#653): user-authored Rust gameplay code,\n\
+         # compiled into this project's dylib automatically.\n",
+    );
+    for krate in crates {
+        let dir = krate.dir_name.replace('\\', "/");
+        lines.push_str(&format!(
+            "{name} = {{ path = \"scripts/{dir}\" }}\n",
+            name = krate.name
+        ));
+    }
+
+    let splice_at = manifest_deps.find("\n[patch.").unwrap_or(manifest_deps.len());
+    let mut out = String::with_capacity(manifest_deps.len() + lines.len());
+    out.push_str(&manifest_deps[..splice_at]);
+    out.push_str(&lines);
+    out.push_str(&manifest_deps[splice_at..]);
+    out
+}
+
+/// The `[workspace]` table making the project package the workspace root with
+/// every script crate as a member, so one `cargo build` compiles them all.
+/// Empty (no output) when there is nothing to list.
+fn workspace_block(crates: &[ScriptCrate]) -> String {
+    if crates.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from(
+        "\n# The project package roots the workspace; gameplay script crates\n\
+         # under scripts/ are members too (#653).\n[workspace]\nmembers = [\n",
+    );
+    for krate in crates {
+        let dir = krate.dir_name.replace('\\', "/");
+        out.push_str(&format!("    \"scripts/{dir}\",\n"));
+    }
+    out.push_str("]\n");
+    out
+}
+
+/// Ensure the `scripts/` directory exists and contains at least one gameplay
+/// script crate, scaffolding a starter (`<game>_scripts`) when none do.
+///
+/// NEVER overwrites existing files: the starter is only written when its
+/// target files don't exist, so users own everything inside their crate after
+/// first creation. Re-running on a project that already has script crates is
+/// a no-op beyond creating the directory itself.
+fn ensure_scripts_crate(project_root: &Path) -> Result<(), String> {
+    let scripts_dir = project_root.join("scripts");
+    virtual_fs::create_dir_all(&scripts_dir)
+        .map_err(|e| format!("Failed to create scripts directory: {e}"))?;
+
+    if !discover_script_crates(project_root).is_empty() {
+        return Ok(());
+    }
+
+    // Derive the crate name from the project's own safe name so two projects
+    // scaffolded side by side never collide on a shared dependency graph.
+    let game_fallback = project_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("pulsar_project");
+    let crate_dir = format!("{}_scripts", cargo_safe_name(game_fallback));
+    let crate_root = scripts_dir.join(&crate_dir);
+
+    let src_dir = crate_root.join("src");
+    virtual_fs::create_dir_all(&src_dir)
+        .map_err(|e| format!("Failed to create scripts crate directory: {e}"))?;
+
+    let pulsar_game_path = engine_checkout_path("crates/core/pulsar_game");
+    let manifest = format!(
+        "# User gameplay scripts for this Pulsar project. Generated once by the\n\
+         # Core Project Builder (#653); you own every line after that.\n\
+         [package]\n\
+         name = \"{crate_dir}\"\n\
+         version = \"0.1.0\"\n\
+         edition = \"2021\"\n\
+         publish = false\n\n\
+         [dependencies]\n\
+         # Same absolute path the generated game manifest uses for `pulsar_game`,\n\
+         # so both unify to ONE compiled copy of the engine runtime.\n\
+         pulsar_game = {{ path = \"{pulsar_game_path}\" }}\n"
+    );
+    virtual_fs::write_file(&crate_root.join("Cargo.toml"), manifest.as_bytes())
+        .map_err(|e| format!("Failed to write scripts Cargo.toml: {e}"))?;
+
+    virtual_fs::write_file(&src_dir.join("lib.rs"), starter_lib_rs().as_bytes())
+        .map_err(|e| format!("Failed to write scripts lib.rs: {e}"))?;
+    tracing::info!(crate = %crate_dir, "Scaffolded starter gameplay script crate");
+
+    Ok(())
+}
+
+/// Resolve a path relative to the ENGINE checkout this editor binary was built
+/// from (same compile-time anchor as `ensure_engine_primitives`). Used for the
+/// script crate's `pulsar_game` path dep; forward slashes keep the emitted
+/// manifest portable across Windows/Unix checkouts.
+fn engine_checkout_path(rel: &str) -> String {
+    // CARGO_MANIFEST_DIR = <engine>/crates/core/engine_backend → ../../../ =
+    // <engine> (same walk as build.rs's `workspace_root`).
+    let resolved = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../")
+        .join(rel);
+    let text = match std::fs::canonicalize(&resolved) {
+        Ok(abs) => abs.to_string_lossy().into_owned(),
+        Err(_) => resolved.to_string_lossy().into_owned(),
+    };
+    strip_windows_prefix(&text)
+}
+
+/// Windows `canonicalize()` returns an extended-length `\\?\` path, which
+/// cargo rejects ("invalid path url") — same stripping rule as
+/// `engine_backend/build.rs::absolute_path` (#652).
+fn strip_windows_prefix(text: &str) -> String {
+    let unified = text.replace('\\', "/");
+    match unified.strip_prefix("//?/") {
+        Some(stripped) => stripped.to_string(),
+        None => unified,
+    }
+}
+
+/// The starter `lib.rs`: one documented example actor + THE registration
+/// entry point generated `engine_main.rs` calls. Doubles as the authoring
+/// contract: register every actor type here via `register_actor::<T>`, which
+/// is also what makes the type discoverable by the editor's add-object flow.
+fn starter_lib_rs() -> String {
+    r#"//! <project>_scripts — your gameplay code, hot-reloadable in Play-In-Editor.
+//!
+//! Register every actor type in [`register_scripts`] via
+//! `game.register_actor::<Type>(...)`. That call stamps the entity with the
+//! type identity PIE hot reload matches on (#653): press Play again while a
+//! game runs and your actors re-bind to their existing entities instead of
+//! spawning duplicates.
+
+use pulsar_game::scene::{MeshAssetPath, StaticMeshComponent, Transform};
+use pulsar_game::tick::TickLoop;
+// Re-exports: script crates need no direct scenedb dependency — everything
+// gameplay-facing rides on `pulsar_game`.
+use pulsar_game::{Actor, Entity, World};
+
+/// Rotates a cube forever. Spawned at the world origin on Play.
+///
+/// `begin_play` gives the entity something visible (absent-only: scene-provided
+/// components always win), and `tick` mutates the LIVE `Transform` component —
+/// the same row the renderer reads, so edits show next frame and survive reload.
+pub struct Spinner {
+    degrees_per_second: f32,
+}
+
+impl Actor for Spinner {
+    fn begin_play(&mut self, entity: Entity, world: &mut World) {
+        if world.get::<StaticMeshComponent>(entity).is_none() {
+            world.insert(
+                entity,
+                StaticMeshComponent {
+                    mesh_asset: MeshAssetPath::new("meshes/primitives/SM_Cube.fbx"),
+                    ..Default::default()
+                },
+            );
+        }
+        if world.get::<Transform>(entity).is_none() {
+            world.insert(entity, Transform::default());
+        }
+    }
+
+    fn tick(&mut self, entity: Entity, world: &mut World) {
+        // Fixed-step approximation; see the tutorial for a time-driven variant.
+        if let Some(mut transform) = world.get_mut::<Transform>(entity) {
+            transform.rotation[1] += self.degrees_per_second * 0.016;
+        }
+    }
+}
+
+/// Called by generated `engine_main.rs` on every build/play.
+///
+/// The explicit turbofish is REQUIRED by convention: it is the marker the
+/// level editor scans to offer your types in the add-object flow.
+pub fn register_scripts(game: &mut TickLoop) -> Result<(), String> {
+    game.register_actor::<Spinner>(Spinner {
+        degrees_per_second: 45.0,
+    });
+    Ok(())
+}
+"#
+    .to_string()
+}
+
 // ── engine_main.rs ────────────────────────────────────────────────────────────
 
 /// Level prefab entry deserialized from `Pulsar/level.json`.
@@ -464,7 +677,9 @@ pub extern "C" fn pulsar_pie_shutdown() {
 ///
 /// Produces a `pub fn setup(game: &mut TickLoop)` function that:
 /// 1. Spawns native actor classes declared in `Pulsar/level.json` into the
-///    `TickLoop`'s `ActorRegistry` and `World` so they receive `tick` every frame.
+///    `TickLoop`'s `ActorRegistry` and shared scene store so they receive
+///    `tick` every frame (the store is the ONE SceneDB world, also read by
+///    renderers -- Pulsar-Native#634).
 /// 2. Scans `src/classes/*/events/.build/bytecode.json` for VM-compiled blueprints,
 ///    loads them into a `BlueprintDispatcher`, and wires the dispatcher into the
 ///    `TickLoop`. `setup()` runs before the primary window/scene exist, so
@@ -493,7 +708,8 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
         LevelConfig::default()
     };
 
-    // Build native actor spawn statements — actors go directly into game.actors.
+    // Build native actor spawn statements — actors go directly into
+    // game.actors, registered against the shared scene store's World.
     let spawn_stmts: String = level_config
         .prefabs
         .iter()
@@ -508,8 +724,12 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
                 };
                 format!(
                     "    {{\n        tracing::info!(\"Spawning {class}{note}\");\n        \
-                     let actor = classes::{class}::new();\n        \
-                     game.actors.register(actor, &mut game.world);\n    }}\n"
+                     // Registered through `register_actor` (#653): the entity is\n        \
+                     // stamped with the class's type identity, so a PIE hot reload\n        \
+                     // re-binds THIS class to its existing entities instead of\n        \
+                     // spawning duplicates. begin_play hydrates declared components\n        \
+                     // absent-only, so scene-provided values always win.\n        \
+                     game.register_actor(classes::{class}::new());\n    }}\n"
                 )
             })
         })
@@ -521,6 +741,31 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
         spawn_stmts
     };
 
+    // One registration line per gameplay script crate under scripts/ (#653).
+    // `?` propagates into setup()'s Result so a broken crate fails Play loudly
+    // instead of silently missing actors.
+    let script_calls: String = discover_script_crates(project_root)
+        .iter()
+        .map(|krate| {
+            format!(
+                "    // User gameplay crate `scripts/{dir}`:\n    \
+                 {name}::register_scripts(game)?;\n",
+                dir = krate.dir_name,
+                name = krate.name
+            )
+        })
+        .collect();
+    let script_section = if script_calls.is_empty() {
+        "    // No gameplay script crates yet — add one under scripts/ (see docs).\n"
+            .to_string()
+    } else {
+        format!(
+            "    // ── Gameplay script crates (scripts/) ──────────────────────────────\n\
+             // Each crate registers its actors through TickLoop::register_actor,\n\
+             // which stamps entity identities PIE hot reload re-binds to (#653).\n{script_calls}"
+        )
+    };
+
     let content = format!(
         r#"//! engine_main — level bootstrap.  @generated-by-pulsar-engine_main
 //!
@@ -528,21 +773,26 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
 //! To prevent regeneration, remove the `@generated-by-pulsar-engine_main` marker.
 //!
 //! Native prefabs are controlled by `Pulsar/level.json`.
+//! Gameplay script crates under `scripts/` are auto-discovered (#653).
 //! VM blueprints are auto-discovered from `src/classes/*/events/.build/bytecode.json`.
 
 use pulsar_game::prelude::*;
 use pulsar_game::blueprint_runtime::BlueprintDispatcher;
 use std::sync::{{Arc, Mutex}};
 
-/// Set up the level: spawn native actors and load VM-compiled blueprints.
+/// Set up the level: spawn native actors, register gameplay script crates and
+/// load VM-compiled blueprints.
 ///
 /// Called once from `main()` before `game.run_blocking()`.
-/// - Native actors are registered into `game.actors` and receive `tick` every frame.
+/// - Native actors + script-crate actors are registered into the tick loop's
+///   shared world and receive `tick` every frame (via `register_actor`, which
+///   also makes them hot-reload-safe in Play-In-Editor).
 /// - VM blueprints are loaded into `game.blueprint_dispatcher`; the `TickLoop`
 ///   dispatches `BlueprintEvent::Tick` to each instance after every frame.
 pub fn setup(game: &mut TickLoop) -> Result<(), String> {{
     // ── Native actors (from Pulsar/level.json) ────────────────────────────────
 {native_spawn_body}
+{script_section}
     // ── VM blueprint discovery ────────────────────────────────────────────────
     //
     // Scan src/classes/*/events/.build/bytecode.json.
@@ -651,7 +901,11 @@ fn ensure_level_json(project_root: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ensure_core_cargo_toml, HELIO_GIT_REVISION};
+    use super::{
+        cargo_safe_name, ensure_core_cargo_toml, ensure_scripts_crate, splice_script_dependencies,
+        workspace_block, HELIO_GIT_REVISION,
+    };
+    use super::super::native_scripts::{discover_script_crates, discover_script_actors};
 
     #[test]
     fn generated_project_pins_the_workspace_helio_revision() {
@@ -666,5 +920,95 @@ mod tests {
         assert!(!manifest
             .lines()
             .any(|line| { line.starts_with("helio = ") && !line.contains("rev = ") }));
+    }
+
+    /// #653 scaffolding: a fresh project gets a starter scripts crate whose
+    /// manifest points at THIS engine checkout's pulsar_game; a second run
+    /// must never clobber user edits inside an existing crate.
+    #[test]
+    fn scripts_crate_is_scaffolded_once_and_never_overwritten() {
+        let outer = tempfile::tempdir().unwrap();
+        // Deterministic project dir name: the scaffolded crate derives its
+        // name from the project folder.
+        let project = outer.path().join("My Game");
+        std::fs::create_dir_all(&project).unwrap();
+
+        ensure_scripts_crate(&project).unwrap();
+        let dir_name = format!("{}_scripts", cargo_safe_name("My Game"));
+        let crate_root = project.join("scripts").join(&dir_name);
+        let lib_rs = crate_root.join("src").join("lib.rs");
+
+        assert!(crate_root.join("Cargo.toml").exists(), "manifest written");
+        assert!(lib_rs.exists(), "starter lib.rs written");
+        assert_eq!(
+            discover_script_crates(&project).len(),
+            1,
+            "scaffolded crate is discoverable"
+        );
+        assert!(
+            discover_script_actors(&project)
+                .iter()
+                .any(|a| a.type_name == "Spinner"),
+            "the starter registers its example actor via the scannable convention"
+        );
+
+        // Simulate the user editing their crate, then re-run bootstrap.
+        std::fs::write(&lib_rs, "// my precious edit\n").unwrap();
+        ensure_scripts_crate(&project).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&lib_rs).unwrap(),
+            "// my precious edit\n",
+            "user code must survive regeneration"
+        );
+    }
+
+    /// With a scripts crate present, the generated game manifest gains: the
+    /// path dependency INSIDE [dependencies] (before any [patch.*] table) and
+    /// a [workspace] block listing the member.
+    #[test]
+    fn manifest_wires_script_crates_into_dependencies_and_workspace() {
+        let outer = tempfile::tempdir().unwrap();
+        let project = outer.path().join("pulsar_project");
+        std::fs::create_dir_all(&project).unwrap();
+        ensure_scripts_crate(&project).unwrap();
+        ensure_core_cargo_toml(&project).unwrap();
+
+        let manifest = std::fs::read_to_string(project.join("Cargo.toml")).unwrap();
+        let deps_pos = manifest.find("[dependencies]").expect("[dependencies]");
+        let patch_pos = manifest.find("[patch.").expect("baked patch tables");
+        let dep_line = manifest
+            .lines()
+            .find(|l| l.starts_with("pulsar_project_scripts = "))
+            .expect("script crate path dependency emitted");
+        assert!(
+            manifest.rfind(dep_line).unwrap() > deps_pos
+                && manifest.rfind(dep_line).unwrap() < patch_pos,
+            "dep line must sit inside the baked [dependencies] table"
+        );
+        let workspace_pos = manifest.find("[workspace]").expect("[workspace]");
+        assert!(workspace_pos > patch_pos, "workspace table comes last");
+        assert!(manifest.contains("\"scripts/pulsar_project_scripts\""));
+    }
+
+    /// Splice placement unit test: entries land before the first patch table,
+    /// never after it (TOML forbids reopening a table).
+    #[test]
+    fn splice_puts_script_deps_inside_the_dependencies_table() {
+        let baked = "[dependencies]\npulsar_game = { path = \"x\" }\n\n[patch.\"u\"]\nfoo = {}\n";
+        let out = splice_script_dependencies(
+            baked,
+            &[super::ScriptCrate {
+                name: "my_scripts".into(),
+                dir_name: "my_scripts".into(),
+            }],
+        );
+        let dep = out.find("my_scripts = ").unwrap();
+        let deps_table = out.find("[dependencies]").unwrap();
+        let patch = out.find("[patch.").unwrap();
+        assert!(deps_table < dep && dep < patch);
+
+        // No crates → byte-identical passthrough.
+        assert_eq!(splice_script_dependencies(baked, &[]), baked);
+        assert!(workspace_block(&[]).is_empty());
     }
 }

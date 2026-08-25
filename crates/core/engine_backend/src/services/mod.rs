@@ -10,6 +10,7 @@ pub mod core_project_builder;
 pub mod gpu_renderer;
 #[cfg(feature = "editor-ui")]
 pub mod lsp_completion_provider;
+pub mod native_scripts;
 #[cfg(feature = "physics")]
 pub mod physics_query_service;
 #[cfg(feature = "pie")]
