@@ -1050,6 +1050,165 @@ only MY single `ui_level_editor → pulsar_scene` lock line staged (surgical
 
 ## Handoff: E (in progress)
 
+### Handoff: E1
+
+Branch `scripting-epic`, commit `4518f212` (parent repo) + pbgc submodule
+commit `c4aefa2` (inside `crates/third-party/pbgc`, on top of E2's
+`bc9929d`; parent gitlink deliberately NOT bumped — same protocol as D/E2,
+the user pushes/bumps pointers). Issue #651. STATUS: COMPLETE.
+
+**What landed**
+
+1. **Baked-store routing deleted outright** (no flag, per issue preference).
+   Generated actors are now ALWAYS `pub struct {Ty} {}` — no
+   `Arc<pulsar_game::ComponentStore>` field, no `__bp_set_comp_ctx`/
+   `__bp_clear_comp_ctx` around logic, no `gamma_core` remnants. pbgc's
+   `rust_codegen.rs` comp_* emission routes through C's dispatcher against
+   the `(entity, world)` pair every Actor callback receives:
+
+   ```
+   BEFORE:  pulsar_game::__bp_with_comp(|__store| { __store.set_property_json(
+                "Light", "intensity", serde_json::to_value(X).unwrap_or(..)); });
+            // private Arc<ComponentStore> hydrated from compile-time JSON;
+            // Actor impl ignored its (_entity, _world); logic fns took ().
+
+   AFTER:   if let Err(__e) = pulsar_world_registry::dispatch::set_component_property(
+                _world, _entity, "Light", 0, "intensity",
+                serde_json::to_value(X).unwrap_or(serde_json::Value::Null)) {
+                tracing::error!("comp_set_prop::Light::intensity failed: {__e}");
+            }
+            // comp_get_prop -> dispatch::get_component_property(..).unwrap_or(Null)
+            // comp_call     -> dispatch::json_args_to_method_args(..) then
+            //                  dispatch::invoke_component_method(..), return
+            //                  marshalled back to JSON via marshal::any_to_json
+   ```
+
+   One dispatch layer, two adapters: the VM trampolines and generated Rust
+   now share `dispatch::json_args_to_method_args` (NEW in world_registry)
+   for the JSON→declared-type conversion — component_ops.rs' inline copy was
+   deleted in favor of it. Failures log-and-degrade-to-null identically on
+   both paths.
+
+2. **Logic functions carry the live world.** Every generated event fn
+   (`begin_play`/`tick`/`on_*`) ends with
+   `_entity: pulsar_game::Entity, _world: &mut pulsar_game::World` (fully
+   qualified so vars/pulsar_std globs can never shadow), and the template
+   forwards `_entity, _world` at each call site. The Actor-callback
+   signatures themselves are UNCHANGED (E2's pinned-trait guards still pass
+   byte-identical).
+
+3. **Prefab components hydrate REAL entities, absent-only.**
+   `{Ty}::__init_components(entity, world)` (now a self-free assoc fn) gates
+   each enabled prefab component on NEW
+   `pulsar_world_registry::world_component_present_for_class`, hydrating
+   baked defaults only when the scene hasn't already provided the component
+   — per-instance scene values always win (#651 scope item 3).
+   `__run_component_begin_plays` re-routes through
+   `dispatch::invoke_component_method` (UnknownMethod = class has no
+   begin_play = silent skip).
+
+4. **core_project_builder**: spawn/registration flow itself needed NO
+   functional change (post-A2 it already registers into the shared store;
+   hydration happens inside begin_play with the register-supplied world) —
+   the emitted spawn statement gained a comment documenting the live-world
+   contract. `LevelPrefabEntry.variable_overrides` remains parsed-but-unused
+   for NATIVE actors (they have no instance variables; pre-existing).
+
+5. **pulsar_game lib surface**: the SceneDB baked-store helpers
+   (`__bp_with_comp`, `__bp_set_comp_ctx/clear`, `ComponentStore`) are no
+   longer re-exported from `pulsar_game`/its prelude (still available from
+   `pulsar_scenedb` itself; grep-verified zero remaining consumers in-tree,
+   vendored plugins clean).
+
+6. **Template-Blank refreshed** (`src/classes/MyBP/events/events.rs` ONLY)
+   through the real pipeline (graph → compile_graph →
+   generate_blueprint_actor_source_with_components with the prefab.json
+   LightComponent) via a throwaway cargo script in %TEMP% — post-E2/#651
+   shape: time-free tick, empty struct, dispatcher routing. The old file's
+   inert custom-event stubs (`#[pulsar_event] struct D0f87…`,
+   `on_d0f876aa…()`) are gone — they came from a macro/custom-event node
+   that is never called by anything; the live begin_play→branch(false)→
+   println chain is preserved byte-equivalently. NOTHING ELSE in that repo
+   touched (it is full of user WIP); NOT committed there (no protocol for
+   that repo; user reviews alongside their WIP). engine_main.rs there was
+   already current-shape.
+
+**Acceptance evidence (#651 criterion)**
+
+Full light e2e needs a GPU/display session (same caveat as A5/#635), so per
+the issue's sanctioned fallback, the registered-probe pattern proves
+live-world mutation through GENERATED-SHAPE code:
+`pulsar_game::blueprint_live_dispatch` (NEW lib-test module):
+- `LiveDispatchReference` hand-writes the exact post-#651 emission twin
+  (empty struct + assoc helpers + dispatcher set calls in begin_play/tick)
+  against a registered `LiveDispatchProbe` class (VmProbe-style manual
+  EngineClass + WorldComponentRegistration submissions).
+- Test 1 drives registration → begin_play through the real
+  `ActorRegistry::register` path (42.0 lands in the shared store), arms a
+  SceneDB#47 subscription, runs a real `TickLoop::tick_once` phase-2 tick
+  (77.0 visible through the store) and asserts the `Mutated`
+  ComponentChangeEvent fires for (actor entity, probe cid) — "visible in
+  SceneDB subscriptions during standalone play".
+- Test 2: hydration gate — absent component seeds baked default (10.0);
+  present scene value (99.0) survives untouched.
+- Test 3 ties twin to generator: PBGC output for the same class must contain
+  the very calls the twin makes and none of the retired routing.
+- Plus textual assertions where the emission is produced:
+  `pbgc` integration test `rust_emission_routes_comp_ops_through_the_live_dispatcher`
+  (dispatcher calls present; `__bp_with_comp`/`ComponentStore`/`gamma_core`
+  absent) and updated drift-guard/probe emission tests.
+
+**The e2e guard caught one real bug mid-flight** (this is why rule-5
+scoped verification matters): my first template change made the Actor impl
+forward `(_entity, _world)` while `tests/generated_project_compiles` fed
+HAND-WRITTEN zero-arg logic into `CompiledBlueprint::new` → E0061 in the
+generated project. Contract settled: `CompiledBlueprint` wraps ALREADY-
+COMPILED PBGC logic, which since #651 carries the params — so the e2e test
+and the drift guard now build a real graph and run `pbgc::compile_graph`
+first (higher fidelity anyway: they exercise the true editor chain), and
+pbgc's own test fixtures use param-bearing raw sources.
+
+**Verification (scoped, rule 5)**: pbgc 18 lib + 28 integration + 2 doctests;
+pulsar_world_registry 23 lib + 10 integration; pulsar_game lib 68/68 (3 new
+probe tests) + e2e `generated_project_compiles --ignored` exit 0 (freshly
+generated project with the new emission cargo-checks green against current
+pins, ~11 s warm); engine_backend lib 78/78; clippy clean on every touched
+file (remaining warnings pre-existing in untouched files). Cargo.lock user
+WIP (twox-hash + scenedb-source lines) excluded via surgical staging; helio
+pointer untouched; blueprint_editor submodule (user compiler.rs WIP) NOT
+touched and needs no changes — pbgc's public API signatures it calls are
+unchanged.
+
+**Notes for #653 / F**
+
+- `pulsar_game::time::to_scenedb_time` unchanged and still THE time seam;
+  nothing here consumes GameTime.
+- Generated code now names `pulsar_world_registry::{dispatch,marshal}`,
+  `serde_json`, `tracing`, `pulsar_reflection` — all already in
+  GAME_DEPENDENCIES; if you add more direct crate references to emission,
+  extend that list in the SAME commit (E2's rule, re-proven here).
+- For F's node UX: comp_call outputs arrive as JSON in the graph domain
+  (`any_to_json` of the boxed return); get/set likewise. A graph-side typed-
+  value story would need the D4 known-limit design (heap-typed variables),
+  not new dispatch work.
+- Template regeneration recipe (for future template refreshes): temp crate
+  depending on pbgc by path, build GraphDescription, `compile_graph` →
+  `generate_blueprint_actor_source[_with_components]`. Do NOT feed raw
+  hand-written event fns into `CompiledBlueprint::new` expecting them to
+  pair with the template — compiled-logic contract, see surprise above.
+
+**Surprises / deviations**
+
+- Issue said "update core_project_builder.rs:508-512" — those line numbers
+  predate phase A; the flow was already correct post-A2, so the builder
+  change reduced to documentation. Honest no-op, verified by the e2e check.
+- The retired thread-local helpers themselves live in PINNED scenedb
+  (`component_store.rs`) and cannot be deleted from here; deletion stopped
+  at "no users + no re-export" (grep-verified).
+- `has_custom_events` scaffolding kept as-is (comment-only `__init_events`);
+  dead but harmless, and removing it belongs with F's real custom-event
+  design (needs an actual bus crate — see E2's gamma_core note).
+
 ### Handoff: E2
 
 Branch `scripting-epic`, commit `a5ad5f44` (parent repo) + pbgc submodule
