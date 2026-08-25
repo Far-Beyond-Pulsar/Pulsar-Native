@@ -1047,3 +1047,99 @@ pulsar_game clippy deny in bytecode_compiler.rs untouched, see D3 note;
 wgpui/gpui-ce warnings unrelated). Cargo.toml/Cargo.lock user WIP excluded;
 only MY single `ui_level_editor → pulsar_scene` lock line staged (surgical
 `git apply --cached`, same protocol as C/D3).
+
+## Handoff: E (in progress)
+
+### Handoff: E2
+
+Branch `scripting-epic`, commit `a5ad5f44` (parent repo) + pbgc submodule
+commit `bc9929d` (inside `crates/third-party/pbgc`, on top of D's `fccd2d9`;
+parent gitlink deliberately NOT bumped — same protocol as phase D, the user
+pushes/bumps pointers). Issue #652.
+
+**What landed**
+
+1. **Emission aligned with the pinned trait.** pbgc's `gen_blueprint_actor`
+   now emits `fn tick(&mut self, _entity: Entity, _world: &mut World)` —
+   byte-identical to pinned SceneDB's deliberately time-free `Actor::tick`
+   (verified equal at pin `201d35e0` AND the old `c761890`; the trait doc
+   states timing is the engine's concern). The stale "fully-qualify GameTime"
+   emission comment is replaced by a pointer to the drift guards.
+2. **Phantom crate removed from emission.** Every generated actor struct
+   carried `pub events: gamma_core::EventBus` — but NO crate named
+   `gamma_core` exists anywhere in the graph (no lockfile entry, no EventBus
+   type anywhere), so every generated project failed to compile on ANY class.
+   Field deleted (zero consumers; custom events emit empty `__init_events`
+   bodies today). Reintroduce only against a crate that actually ships an
+   event bus.
+3. **GameTime bridge made explicit.** The conversion moved out of tick.rs into
+   `pulsar_game::time` (`pub fn to_scenedb_time`, field-verbatim, unit
+   tested). This is THE seam — A's downstream contract #5 path is now real
+   and public at `pulsar_game::time::to_scenedb_time`. True unification
+   (single type) needs an upstream move (scenedb aliasing core or vice
+   versa); orphan rule forbids local From impls, so explicit bridge it is.
+4. **Drift guard, layer 1 (always-on)**:
+   `pulsar_game::blueprint_codegen_drift` — (a) a hand-written REFERENCE
+   actor mirroring PBGC's emitted shape compiled against the REAL pinned
+   trait + driven through the real TickLoop (trait change ⇒ this stops
+   compiling); (b) runtime assertions that generated output contains
+   byte-identical signature constants and names no phantom crate (`GameTime`,
+   `gamma_core`); (c) layout contract test for the class-tree files.
+5. **Drift guard, layer 2 (end-to-end, `#[ignore]`)**:
+   `cargo test -p pulsar_game --test generated_project_compiles -- --ignored`
+   (= `just ci-drift-check`; fast probes = `just ci-drift-probe`). Generates a
+   COMPLETE game project via `core_project_builder::ensure_core_bootstrap` +
+   pbgc's public API into a temp dir and runs `cargo check` with a shared
+   incremental target dir (`%TEMP%\pulsar_drift_check_target`). First run ≈
+   70–90 s warm-deps, minutes cold; later runs seconds.
+
+**The checks caught real rot on their first true run — fixed here:**
+- engine_backend/build.rs baked Windows `\\?\` canonicalize prefixes into
+  path deps → cargo `invalid path url` on EVERY freshly generated project
+  manifest. Prefix now stripped (`absolute_path`).
+- Generated-game manifests lacked `pulsar_world_registry`, which the
+  EngineClass derive's generated code references since phase C ⇒ E0433 in
+  every generated class. Added to GAME_DEPENDENCIES.
+
+**Vendored-pbgc ↔ pinned-rev update procedure** (also in pbgc project.rs
+module doc): upstream PBGC change → pull INTO the vendored copy → adjust
+emission in the SAME change as any SceneDB rev bump → run BOTH guards
+(`just ci-drift-probe && just ci-drift-check`) → user pushes submodule +
+bumps parent gitlink. Codegen and pins move together; forgetting fails CI.
+
+**Deviations / surprises for the record**
+- The ideal always-compiled probe (build-script codegen + include!) was
+  attempted and REJECTED: making pbgc a build-dependency of pulsar_game
+  double-builds its pulsar_std chain as host+target units which collide on
+  host==target (Windows) — E0460/E0463 chaos. Fallback design per issue text
+  instead. Do NOT add pbgc as a build-dep of anything linking pulsar_std.
+- Mid-session the user landed `330fa154` (SceneDB patch bump to `201d35e0` +
+  Helio submodule) — my e2e check was re-run cold against the NEW pin and
+  passes; the old local-path `[patch]` override caveat is gone, so generated
+  manifests are CI-resolvable again.
+- HEAD's Cargo.lock still lists `pulsar_scenedb` at source rev `c761890`
+  while the committed manifest pins `201d35e0` (unstaged worktree hunks fix
+  it) — pre-existing, left for the user, but `--locked` builds will fail
+  until they stage those lines.
+- Staged surgically: Cargo.lock carries ONLY the pulsar_game dependency block
+  (+5 lines incl. predecessors' previously-unstaged-but-required regular
+  deps), NOT the user's `twox-hash` hunk or scenedb-source-line hunks.
+
+**Verification (scoped, rule 5):** pbgc 16 lib + 27 integration + 2 doctests,
+pulsar_game lib 65/65, engine_backend lib 78/78, e2e generated-project cargo
+check exit 0 (cold target dir); clippy clean on all touched files (remaining
+pbgc/pulsar_game warnings are in untouched pre-existing code).
+
+**Notes for #651 / #653**
+- #651 (templates): Template-Blank still holds PRE-E2 generated shapes
+  (three-param tick, gamma_core bus field, old engine_main register call).
+  Regenerating via the editor fixes them; if templates contain HAND-written
+  actors, update their tick signatures manually. Generated manifests now need
+  nothing manual (path-url + world_registry fixes are in the builder).
+- #653: `pulsar_game::time::to_scenedb_time` is the public seam; script-crate
+  authoring UX should funnel any time conversion through it. The reference
+  actor in `blueprint_codegen_drift` doubles as a live example of minimal
+  generated-actor shape (struct + Default + Actor impl) for docs/samples.
+- If a future EngineClass derive gains more direct crate references, extend
+  GAME_DEPENDENCIES in engine_backend/build.rs IN THE SAME COMMIT — the e2e
+  check will catch it otherwise (that is how this one was found).
