@@ -573,6 +573,20 @@ impl WorldSceneStore {
         true
     }
 
+    /// Entities classified as [`ObjectType::Camera`] -- the play-mode
+    /// camera-selection source (Pulsar-Native#637; there is no dedicated
+    /// `CameraComponent` class yet, so classification + `Transform` IS the
+    /// whole camera contract). Collected into a `Vec` so callers don't hold
+    /// the query borrow.
+    pub fn camera_entities(&self) -> Vec<Entity> {
+        self.scene_db
+            .world
+            .query::<&ObjectType>()
+            .filter(|(_, object_type)| matches!(object_type, ObjectType::Camera))
+            .map(|(entity, _)| entity)
+            .collect()
+    }
+
     // ── Render props (JSON projection channel) ──────────────────────────
 
     /// Mirrors `SceneDb::update_render_data`'s closure shape -- callers
@@ -766,21 +780,37 @@ impl WorldSceneStore {
         snapshots: &[ObjectSnapshot],
     ) -> Result<Self, WorldSceneStoreError> {
         let mut store = Self::new();
+        store.insert_snapshots(snapshots)?;
+        Ok(store)
+    }
+
+    /// Insert snapshots into an EXISTING store, additively -- the same
+    /// per-snapshot work [`Self::load_from_snapshots`] does, without
+    /// constructing (and therefore without wiping) the store. This is what
+    /// play-mode level bootstrap uses (Pulsar-Native#637/#634): the tick
+    /// loop's shared store already exists (and may already hold
+    /// setup-time-registered actors), so a level hydrates INTO it rather
+    /// than replacing it. Same parent-before-child order requirement;
+    /// duplicate stable ids are errors, not silent re-spawns.
+    pub fn insert_snapshots(
+        &mut self,
+        snapshots: &[ObjectSnapshot],
+    ) -> Result<(), WorldSceneStoreError> {
         for snap in snapshots {
             let parent = match &snap.parent {
-                Some(parent_id) => Some(store.entity_for(parent_id).ok_or_else(|| {
+                Some(parent_id) => Some(self.entity_for(parent_id).ok_or_else(|| {
                     WorldSceneStoreError::UnknownParent(parent_id.clone(), snap.stable_id.clone())
                 })?),
                 None => None,
             };
-            let entity = store.spawn(Some(snap.stable_id.clone()), snap.name.clone(), parent)?;
-            store.set_transform(entity, snap.transform);
-            store.set_visibility(entity, snap.visibility);
-            store.set_object_type(entity, snap.object_type);
+            let entity = self.spawn(Some(snap.stable_id.clone()), snap.name.clone(), parent)?;
+            self.set_transform(entity, snap.transform);
+            self.set_visibility(entity, snap.visibility);
+            self.set_object_type(entity, snap.object_type);
             let render_props = snap.render_props.clone();
-            store.update_render_props(&snap.stable_id, |p| *p = render_props);
+            self.update_render_props(&snap.stable_id, |p| *p = render_props);
         }
-        Ok(store)
+        Ok(())
     }
 
     /// Serialize back out to the same flat shape, depth-first with parents

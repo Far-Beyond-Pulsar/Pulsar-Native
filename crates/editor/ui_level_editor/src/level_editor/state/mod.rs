@@ -29,6 +29,7 @@
 pub mod build;
 pub mod editor;
 pub mod hierarchy;
+pub mod native_scripts;
 pub mod overlays;
 pub mod play;
 pub mod scene;

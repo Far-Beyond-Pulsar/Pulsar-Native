@@ -161,7 +161,7 @@ Menu.Selection.ExpandSelection: Expand Selection
 Menu.Selection.ShrinkSelection: Shrink Selection
 Menu.Selection.AddCursorAbove: Add Cursor Above
 Menu.Selection.AddCursorBelow: Add Cursor Below
-Menu.Selection.AddCursorLineEnds: Add Cursor at Line Ends
+Menu.Selection.AddCursorLineEnds: Add Cursor at Line End(s)
 Menu.Selection.SelectAllOccurrences: Select All Occurrences
 Menu.Selection.SelectNextOccurrence: Select Next Occurrence
 Menu.Selection.SkipOccurrence: Skip Occurrence
@@ -203,7 +203,7 @@ Menu.Project.PackageSettings: Package Settings
 Menu.Project.Dependencies: Dependencies
 Menu.Project.AddDependency: Add Dependency
 Menu.Project.UpdateDependencies: Update Dependencies
-Menu.Project.RemoveUnused: Remove Unused
+Menu.Project.RemoveUnused: Remove Unused Dependencies
 Menu.Project.OpenCargoToml: Cargo.toml
 Menu.Project.GenerateDocs: Generate Documentation
 Menu.Project.RunCargoCheck: Run Cargo Check

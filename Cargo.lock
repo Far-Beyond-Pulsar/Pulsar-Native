@@ -2931,6 +2931,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scene",
  "pulsar_scenedb",
+ "pulsar_script_object_model",
  "pulsar_world_registry",
  "rapier3d",
  "reqwest 0.13.4",
@@ -8806,10 +8807,14 @@ dependencies = [
 name = "pulsar_game"
 version = "0.1.0"
 dependencies = [
+ "engine_backend",
+ "engine_class_derive",
  "engine_state",
  "glam 0.33.5",
  "helio",
  "helio-default-graphs",
+ "helio_component",
+ "parking_lot",
  "pbgc",
  "pollster 1.0.1",
  "profiling 0.1.0",
@@ -8819,10 +8824,13 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scene",
  "pulsar_scenedb",
+ "pulsar_script_object_model",
  "pulsar_settings",
  "pulsar_std_bundle",
+ "pulsar_world_registry",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
  "ui",
  "uuid",
@@ -8954,6 +8962,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_script_object_model"
+version = "0.1.0"
+dependencies = [
+ "inventory",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
 name = "pulsar_settings"
 version = "0.1.0"
 dependencies = [
@@ -9014,6 +9036,7 @@ dependencies = [
  "pulsar_scenedb",
  "serde",
  "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -13067,6 +13090,7 @@ name = "ui_level_editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "blueprint_editor_plugin",
  "chrono",
  "core-foundation-sys",
  "core-graphics2 0.6.1",
@@ -13089,6 +13113,7 @@ dependencies = [
  "pulsar_physics",
  "pulsar_pie_abi",
  "pulsar_reflection",
+ "pulsar_scene",
  "pulsar_scenedb",
  "pulsar_world_registry",
  "raw-window-handle",

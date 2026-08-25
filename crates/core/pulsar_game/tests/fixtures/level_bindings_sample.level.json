@@ -1,0 +1,43 @@
+{
+  "version": "2.1",
+  "_comment": "#650 schema example: two scene objects bound to ONE blueprint class with DIFFERENT per-instance variable overrides. Keys are StableIds (object ids), never names. Each binding becomes one dispatcher instance at play-mode load; overrides seed that instance's state arena. Consumed by pulsar_game::blueprint_runtime::level_bindings::apply_blueprint_bindings.",
+  "objects": [
+    {
+      "id": "lever_a",
+      "name": "Lever A",
+      "object_type": { "Mesh": "Cube" },
+      "transform": { "position": [-2.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0] },
+      "parent": null,
+      "visible": true,
+      "locked": false,
+      "props": {}
+    },
+    {
+      "id": "lever_b",
+      "name": "Lever B",
+      "object_type": { "Mesh": "Cube" },
+      "transform": { "position": [2.0, 0.0, 0.0], "rotation": [0.0, 0.0, 45.0], "scale": [1.0, 1.0, 1.0] },
+      "parent": null,
+      "visible": true,
+      "locked": false,
+      "props": {}
+    }
+  ],
+  "components": {},
+  "metadata": {},
+  "editor": {},
+  "blueprint_bindings": {
+    "lever_a": [
+      {
+        "class_name": "TickProbe",
+        "overrides": { "speed": 2.5 }
+      }
+    ],
+    "lever_b": [
+      {
+        "class_name": "TickProbe",
+        "overrides": { "speed": 9.0 }
+      }
+    ]
+  }
+}

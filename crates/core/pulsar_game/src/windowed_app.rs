@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
 
 use winit::{
@@ -18,11 +18,18 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
+use engine_backend::scene::{
+    attach_gpu_render_seam, rebuild_light_frame, rebuild_static_mesh_frame, step_scene_for_render,
+    LightFrameMaintainer, MeshFrameMaintainer, RuntimeLevel, WorldSceneStore,
+};
 use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
-    Renderer, RendererConfig,
+    MaterialId, Renderer, RendererConfig,
 };
+use parking_lot::RwLock;
 
+use crate::camera_selection::select_world_camera;
+use crate::blueprint_runtime::level_bindings;
 use crate::freecam::FreeCam;
 use crate::window::{RenderCamera, WindowBridge, WindowCommand, WindowDescriptor, WindowHandle};
 
@@ -37,6 +44,10 @@ struct GameWindow {
     /// wgpu 30 moved `SurfaceTexture::present()` to `Queue::present()`.
     queue: Arc<wgpu::Queue>,
     renderer: Renderer,
+    /// Lazily-minted shared default material for `StaticMeshComponent`
+    /// objects -- the same cache the editor renderer keeps (see
+    /// `engine_backend::scene::rebuild_static_mesh_frame`).
+    default_static_mesh_material: Option<MaterialId>,
     /// Built-in free-look camera — active when no ECS camera has been set.
     freecam: FreeCam,
     /// Time of last `render` — used to advance the per-frame wind clock.
@@ -86,7 +97,7 @@ impl GameWindow {
         // constructor with the owning-device default.
         let render_config =
             RendererConfig::new(surface_config.width, surface_config.height, surface_format);
-        let mut renderer = helio::RendererBuilder::new(render_config)
+        let renderer = helio::RendererBuilder::new(render_config)
             .with_editor_mode(desc.editor_mode)
             // Kill the default helio ambient ([0.05, 0.05, 0.08] @ 1.0).
             // All illumination comes from lights in the scene file — same as editor.
@@ -106,6 +117,7 @@ impl GameWindow {
             device,
             queue,
             renderer,
+            default_static_mesh_material: None,
             freecam: FreeCam::default(),
             last_frame: Instant::now(),
         }
@@ -305,6 +317,17 @@ pub struct PulsarApp {
     windows: HashMap<WindowHandle, GameWindow>,
     project_root: PathBuf,
     default_scene: Option<PathBuf>,
+    /// The ONE shared, SceneDB-owned world (Pulsar-Native#634): cloned out
+    /// of the TickLoop, hydrated with the requested level, and read by every
+    /// window's per-frame rebuild. Gameplay mutations land here too, so an
+    /// actor-spawned entity renders on the next frame.
+    scene_store: Arc<RwLock<WorldSceneStore>>,
+    /// Subscription-backed maintainer for the shared world's resolved light
+    /// frames (#636) -- one per world, stepped by
+    /// [`step_scene_for_render`] before each frame's rebuilds.
+    light_frames: LightFrameMaintainer,
+    /// Same for static-mesh instance frames (#638).
+    mesh_frames: MeshFrameMaintainer,
 
     /// Which window currently owns the cursor (receives mouse-look).
     focused_window: Option<WindowHandle>,
@@ -323,6 +346,9 @@ impl PulsarApp {
         default_scene: Option<PathBuf>,
         display: winit::event_loop::OwnedDisplayHandle,
     ) -> Self {
+        // The tick loop's store handle is cloned BEFORE the loop moves into
+        // `self.tick_loop` -- renderer and gameplay then share one world.
+        let scene_store = tick_loop.scene_store.clone();
         Self {
             bridge,
             gpu: GpuContext::new(display),
@@ -332,6 +358,9 @@ impl PulsarApp {
             windows: HashMap::new(),
             project_root,
             default_scene,
+            scene_store,
+            light_frames: LightFrameMaintainer::new(),
+            mesh_frames: MeshFrameMaintainer::new(),
             focused_window: None,
             cursor_captured: false,
             last_frame: Instant::now(),
@@ -419,31 +448,86 @@ impl PulsarApp {
 
         self.winit_to_handle.insert(winit_id, handle);
 
-        // Load the scene into this window's renderer if one was requested.
+        // Load the scene into the SHARED world + wire this window's renderer
+        // to it (Pulsar-Native#637/#634). The store already exists (the tick
+        // loop's), so the level merges INTO it -- setup-time-registered
+        // actors survive; no pulsar_scene::SceneLoader's second world.
         if let Some(ref path) = scene_path {
-            tracing::info!(scene = %path.display(), window = handle.id(), "Loading scene into window");
-            match pulsar_scene::SceneLoader::load_file(
-                path,
-                &self.project_root,
-                &mut game_window.renderer,
-            ) {
-                Ok(()) => {
-                    tracing::info!(
-                        window = handle.id(),
-                        scene = %path.display(),
-                        "Scene loaded into window"
+            tracing::info!(scene = %path.display(), window = handle.id(), "Loading scene into shared world");
+            // Asset-resolving hydrates (`StaticMeshComponent`'s mesh load)
+            // read the project path from the engine global -- must be set
+            // before hydration, not after.
+            engine_state::set_project_path(self.project_root.display().to_string());
+            let load_result = {
+                let mut store = self.scene_store.write();
+                RuntimeLevel::load_into(path, &mut store)
+            };
+            match load_result {
+                Ok(extras) => {
+                    attach_gpu_render_seam(
+                        &mut self.scene_store.write(),
+                        &mut game_window.renderer,
+                        game_window.device.clone(),
+                        game_window.queue.clone(),
                     );
 
-                    // Seed the freecam from the editor camera stored in the
-                    // scene file, if present, so the first frame matches the
+                    // Seed the freecam from the editor camera saved in the
+                    // level file, if present, so the first frame matches the
                     // editor view.
-                    if let Ok(cam) = editor_camera_from_file(path) {
-                        game_window.freecam = cam;
+                    if let Some(cam) = extras.editor_camera {
+                        game_window.freecam = FreeCam::default().place(
+                            glam::Vec3::from_array(cam.position),
+                            cam.yaw,
+                            cam.pitch,
+                        );
                         tracing::info!(
                             window = handle.id(),
                             "FreeCam seeded from scene editor camera"
                         );
                     }
+
+                    // Spawn the level's Blueprint class bindings (#650): one
+                    // bound VM instance per (object, class) pair, addressed
+                    // at its own hydrated entity. Per-binding failures are
+                    // logged + collected — one stale entry never blocks play.
+                    if !extras.blueprint_bindings.is_empty() {
+                        if let Some(tick_loop) = self.tick_loop.as_mut() {
+                            if let Some(dispatcher) = &tick_loop.blueprint_dispatcher {
+                                // Same lock order as TickLoop phase 3:
+                                // dispatcher mutex, then store write.
+                                let mut dispatcher =
+                                    dispatcher.lock().expect("blueprint dispatcher mutex");
+                                let report = {
+                                    let store = self.scene_store.write();
+                                    level_bindings::apply_blueprint_bindings(
+                                        &mut dispatcher,
+                                        &store,
+                                        &self.project_root,
+                                        &extras.blueprint_bindings,
+                                    )
+                                };
+                                for applied in &report.applied {
+                                    tracing::info!(
+                                        object = %applied.stable_id,
+                                        class = %applied.class_name,
+                                        instance = %applied.instance_id,
+                                        "Level blueprint binding spawned"
+                                    );
+                                }
+                                tracing::info!(
+                                    applied = report.applied.len(),
+                                    failed = report.failures.len(),
+                                    "Applied level blueprint bindings"
+                                );
+                            }
+                        }
+                    }
+
+                    tracing::info!(
+                        window = handle.id(),
+                        scene = %path.display(),
+                        "Scene hydrated into shared world"
+                    );
                 }
                 Err(e) => tracing::warn!(
                     window = handle.id(),
@@ -573,8 +657,6 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             WindowEvent::KeyboardInput {
                 event: key_event, ..
             } => {
-                use winit::keyboard::Key;
-
                 let pressed = key_event.state == ElementState::Pressed;
 
                 // Escape releases the cursor.
@@ -605,8 +687,35 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
 
             // ── Render ────────────────────────────────────────────────────────
             WindowEvent::RedrawRequested => {
-                // ECS camera takes priority; freecam is the fallback.
-                let ecs_camera = self.bridge.camera(handle);
+                // Advance the shared world's render-side state (GPU mirror
+                // flush + subscription-driven light frames), then rebuild
+                // this window's transient frame lists from it
+                // (Pulsar-Native#637 -- the same per-frame path the editor
+                // renderer runs, never SceneLoader's one-shot writes).
+                step_scene_for_render(
+                    &mut self.scene_store.write(),
+                    &mut self.light_frames,
+                    &mut self.mesh_frames,
+                );
+                let shared = self.scene_store.read();
+                if let Some(gw) = self.windows.get_mut(&handle) {
+                    rebuild_static_mesh_frame(
+                        &mut gw.renderer,
+                        &shared,
+                        &mut gw.default_static_mesh_material,
+                    );
+                    rebuild_light_frame(&mut gw.renderer, &shared);
+                }
+
+                // Camera precedence: a gameplay-pushed bridge camera wins,
+                // then a Camera-typed entity in the SHARED world (#637 --
+                // moving that entity moves the view next frame), then the
+                // freecam.
+                let ecs_camera =
+                    match self.bridge.camera(handle) {
+                        Some(cam) => Some(cam),
+                        None => select_world_camera(&self.scene_store.read()),
+                    };
                 if let Some(gw) = self.windows.get_mut(&handle) {
                     gw.render(ecs_camera);
                 }
@@ -630,41 +739,3 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-/// Try to extract the editor camera from a scene file and return a [`FreeCam`]
-/// seeded with that position + orientation.
-fn editor_camera_from_file(path: &std::path::Path) -> Result<FreeCam, ()> {
-    let text = std::fs::read_to_string(path).map_err(|_| ())?;
-    let v: serde_json::Value = serde_json::from_str(&text).map_err(|_| ())?;
-
-    let cam = v.get("editor").and_then(|e| e.get("camera")).ok_or(())?;
-
-    let pos = cam
-        .get("position")
-        .and_then(|p| p.as_array())
-        .and_then(|a| {
-            if a.len() >= 3 {
-                Some(glam::Vec3::new(
-                    a[0].as_f64()? as f32,
-                    a[1].as_f64()? as f32,
-                    a[2].as_f64()? as f32,
-                ))
-            } else {
-                None
-            }
-        })
-        .ok_or(())?;
-
-    let yaw = cam
-        .get("yaw")
-        .and_then(|v| v.as_f64())
-        .map(|v| v as f32)
-        .unwrap_or(0.0);
-    let pitch = cam
-        .get("pitch")
-        .and_then(|v| v.as_f64())
-        .map(|v| v as f32)
-        .unwrap_or(0.0);
-
-    Ok(FreeCam::default().place(pos, yaw, pitch))
-}

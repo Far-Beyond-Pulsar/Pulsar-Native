@@ -3,8 +3,47 @@
 /// `BpExecutor::prepare` resolves every `__bp_dispatch_<name>` symbol from the
 /// loaded library and patches the address directly into `Instruction::Call::fn_ptr`
 /// inside the program. After that, `pbgc::vm::run(&program)` executes with zero
-/// table lookups — each Call is one `transmute` + one direct function call.
+/// table lookups - each Call is one `transmute` + one direct function call.
 pub use libloading;
+
+pub use pbgc::bytecode::comp_ops::{parse_node_type, CompOpKind};
+
+use pbgc::Instruction;
+
+/// Addresses of the host-provided component-op handlers, one per
+/// [`CompOpKind`]. The handlers implement the arena ABI documented in
+/// `pbgc::bytecode::comp_ops`; Pulsar-Native's live implementation is
+/// `pulsar_game::blueprint_runtime::component_ops::COMPONENT_OP_HANDLERS`.
+///
+/// #654 adds the identity-reference kinds: `get_ref` produces a
+/// `ComponentRef` for a class/index (optionally on another actor),
+/// `find_by_stable_id` / `find_by_name` resolve scene objects, and
+/// `object_literal` re-resolves an authored reference literal.
+#[derive(Debug, Clone, Copy)]
+pub struct ComponentOpHandlers {
+    pub get: u64,
+    pub set: u64,
+    pub call: u64,
+    pub get_ref: u64,
+    pub find_by_stable_id: u64,
+    pub find_by_name: u64,
+    pub object_literal: u64,
+}
+
+impl ComponentOpHandlers {
+    fn handler_for(self, kind: CompOpKind) -> u64 {
+        match kind {
+            CompOpKind::GetProp => self.get,
+            CompOpKind::SetProp => self.set,
+            CompOpKind::Call => self.call,
+            CompOpKind::GetRef => self.get_ref,
+            CompOpKind::FindByStableId => self.find_by_stable_id,
+            CompOpKind::FindByName => self.find_by_name,
+            CompOpKind::ObjectLiteral => self.object_literal,
+        }
+    }
+}
+
 use sha2::{Digest, Sha256};
 
 // ── Safe DLL search path (Windows) ─────────────────────────────────────────────
@@ -39,6 +78,11 @@ pub enum ExecutorError {
     Dylib(libloading::Error),
     MissingSymbol(String),
 
+    /// A component-op call (`comp_*::…`) was prepared without host handlers.
+    /// Use `prepare_with_component_ops`; plain `prepare` refuses these
+    /// because they have no pulsar_std symbol to resolve.
+    ComponentOpsNotBound { node_type: String },
+
     /// The library file could not be read for hash verification.
     Io(std::io::Error),
 
@@ -56,6 +100,10 @@ impl std::fmt::Display for ExecutorError {
         match self {
             ExecutorError::Dylib(e) => write!(f, "dylib error: {}", e),
             ExecutorError::MissingSymbol(s) => write!(f, "missing symbol: {}", s),
+            ExecutorError::ComponentOpsNotBound { node_type } => write!(
+                f,
+                "component op '{node_type}' requires prepare_with_component_ops"
+            ),
             ExecutorError::Io(e) => write!(f, "I/O error during hash verification: {}", e),
             ExecutorError::HashMismatch { expected, actual } => {
                 let exp_hex = expected
@@ -363,34 +411,81 @@ impl BpExecutor {
     /// undefined behaviour. Keep the executor alive at least until the program
     /// finishes executing.
     pub fn prepare(&self, program: &mut pbgc::BpProgram) -> Result<(), ExecutorError> {
-        use pbgc::Instruction;
         for instr in &mut program.instructions {
             if let Instruction::Call {
                 fn_ptr, node_type, ..
             } = instr
             {
-                // Whitelist check: only allow known blueprint node names.
-                // (Matched against the bare `node_type` — dispatch symbols
-                // are named `__bp_dispatch_<node_type>` with no category
-                // infix, so the whitelist patterns mirror that convention.)
-                if !Self::is_allowed_node(node_type) {
-                    return Err(ExecutorError::MissingSymbol(format!(
-                        "Dispatch '__bp_dispatch_{}' is not on the allowed whitelist. \
-                         Only whitelisted blueprint node types can be executed.",
-                        node_type
-                    )));
+                // Component ops never resolve through dlsym; they need the
+                // host-supplied handlers. Fail loudly instead of silently
+                // degrading to whitelist errors.
+                let kind = Self::component_op_kind(node_type);
+                if kind.is_some() {
+                    *fn_ptr = 0;
+                    return Err(ExecutorError::ComponentOpsNotBound {
+                        node_type: node_type.clone(),
+                    });
                 }
+                self.patch_std_call(node_type, fn_ptr)?;
+            }
+        }
+        Ok(())
+    }
 
-                // Build a NUL-terminated key for libloading, but keep a clean
-                // copy without the NUL for use in error messages.
-                let display_name = format!("__bp_dispatch_{}", node_type);
-                let lookup_key = format!("{}\0", display_name);
-                let ptr: libloading::Symbol<pbgc::DispatchFn> = unsafe {
-                    self._lib
-                        .get(lookup_key.as_bytes())
-                        .map_err(|_| ExecutorError::MissingSymbol(display_name))?
-                };
-                *fn_ptr = *ptr as usize as u64;
+    /// Resolve `__bp_dispatch_<node_type>` from the native lib and write its
+    /// address into `fn_ptr`.
+    fn patch_std_call(&self, node_type: &str, fn_ptr: &mut u64) -> Result<(), ExecutorError> {
+        // Whitelist check: only allow known blueprint node names.
+        // (Matched against the bare `node_type` — dispatch symbols
+        // are named `__bp_dispatch_<node_type>` with no category
+        // infix, so the whitelist patterns mirror that convention.)
+        if !Self::is_allowed_node(node_type) {
+            return Err(ExecutorError::MissingSymbol(format!(
+                "Dispatch '__bp_dispatch_{}' is not on the allowed whitelist. \
+                 Only whitelisted blueprint node types can be executed.",
+                node_type
+            )));
+        }
+
+        // Build a NUL-terminated key for libloading, but keep a clean
+        // copy without the NUL for use in error messages.
+        let display_name = format!("__bp_dispatch_{}", node_type);
+        let lookup_key = format!("{}\0", display_name);
+        let ptr: libloading::Symbol<pbgc::DispatchFn> = unsafe {
+            self._lib
+                .get(lookup_key.as_bytes())
+                .map_err(|_| ExecutorError::MissingSymbol(display_name))?
+        };
+        *fn_ptr = *ptr as usize as u64;
+        Ok(())
+    }
+
+    /// Classifies `node_type` as a component op, if it is one.
+    fn component_op_kind(node_type: &str) -> Option<CompOpKind> {
+        parse_node_type(node_type).map(|(kind, _, _)| kind)
+    }
+
+    /// Like [`Self::prepare`], but component-op calls are patched to the
+    /// host-supplied [`ComponentOpHandlers`] instead of being rejected.
+    ///
+    /// Component ops bypass both the whitelist and dlsym resolution: they
+    /// have no pulsar_std symbols and route through the handlers' own
+    /// reflection dispatch at execution time. All other nodes follow the
+    /// standard path.
+    pub fn prepare_with_component_ops(
+        &self,
+        program: &mut pbgc::BpProgram,
+        handlers: ComponentOpHandlers,
+    ) -> Result<(), ExecutorError> {
+        for instr in &mut program.instructions {
+            if let Instruction::Call {
+                fn_ptr, node_type, ..
+            } = instr
+            {
+                match Self::component_op_kind(node_type) {
+                    Some(kind) => *fn_ptr = handlers.handler_for(kind),
+                    None => self.patch_std_call(node_type, fn_ptr)?,
+                }
             }
         }
         Ok(())
