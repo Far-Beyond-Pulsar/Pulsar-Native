@@ -512,6 +512,9 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
                 format!(
                     "    {{\n        tracing::info!(\"Spawning {class}{note}\");\n        \
                      let actor = classes::{class}::new();\n        \
+                     // begin_play hydrates the class's declared components onto its own\n        \
+                     // entity in THIS shared world; graph logic mutates it through the\n        \
+                     // reflection dispatcher — no private component copies (Pulsar-Native#651).\n        \
                      game.actors.register(actor, &mut game.scene_store.write().world());\n    }}\n"
                 )
             })

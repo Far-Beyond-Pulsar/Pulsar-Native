@@ -263,6 +263,20 @@ pub fn hydrate_world_component_for_class(
     }
 }
 
+/// Whether `entity` currently carries a live-typed component of `class_name`
+/// in the `World`. Unregistered classes report `false` (they have no live
+/// representation at all).
+///
+/// This is the idempotence gate scripted hydration needs: generated actors
+/// seed prefab defaults ONLY when the scene hasn't already hydrated the
+/// component onto the entity, so per-instance scene values always win
+/// (#651). Read-only by construction -- it borrows through the same bridge
+/// the properties panel's read path uses.
+pub fn world_component_present_for_class(class_name: &str, world: &World, entity: Entity) -> bool {
+    find(class_name)
+        .is_some_and(|registration| (registration.get_as_engine_class)(world, entity).is_some())
+}
+
 /// Remove `class_name`'s typed component from `entity`, if that class is
 /// registered here. Returns `false` if `class_name` isn't registered.
 pub fn remove_world_component_for_class(class_name: &str, world: &mut World, entity: Entity) -> bool {

@@ -95,17 +95,22 @@ mod tests {
 
     use super::{REFERENCE_BEGIN_PLAY_SIGNATURE, REFERENCE_TICK_SIGNATURE};
 
-    /// Generate one class exactly the way the Blueprint Editor does.
+    /// Generate one class exactly the way the Blueprint Editor does:
+    /// graph → compiled logic → actor file. (#651: raw hand-written logic
+    /// would NOT carry the live-world parameters the Actor impl forwards,
+    /// so the probe must run the real compiler like every real consumer.)
     fn emit_minimal_actor() -> String {
-        let bp = CompiledBlueprint::new(
-            "drift_probe",
-            r#"pub fn begin_play() {}
+        let mut graph = pbgc::GraphDescription::new("drift_probes");
+        let mut begin =
+            pbgc::NodeInstance::new("begin", "begin_play", pbgc::Position { x: 0.0, y: 0.0 });
+        begin.outputs.push(pbgc::PinInstance::new(
+            "begin_exec",
+            pbgc::Pin::new("begin_exec", "Body", pbgc::DataType::Exec, pbgc::PinType::Output),
+        ));
+        graph.add_node(begin);
+        let logic = pbgc::compile_graph(&graph).expect("logic compilation");
 
-            pub fn tick() {}
-            "#,
-        )
-        .with_tick(true)
-        .with_begin_play(true);
+        let bp = CompiledBlueprint::new("drift_probe", logic).with_begin_play(true);
         let spec = ProjectSpec::new("drift_probes").add_blueprint(bp);
         let project = pbgc::generate_project(&spec);
         project.files["src/classes/drift_probe/events/events.rs"].clone()
@@ -140,9 +145,11 @@ mod tests {
     }
 
     /// The component-bearing emission shape keeps compiling against current
-    /// pins: Arc'd ComponentStore field, Default constructor, reflection
-    /// imports, and the `__init_components` helper all typecheck textually
-    /// here and for real in the end-to-end cargo check.
+    /// pins: empty actor struct, Default constructor, live-world hydration
+    /// helpers, and reflection imports all typecheck textually here and for
+    /// real in the end-to-end cargo check. The baked-store routing this used
+    /// to assert (`Arc<pulsar_game::ComponentStore>`) was retired by #651 —
+    /// its absence is now part of the contract.
     #[test]
     fn component_bearing_emission_keeps_its_contracted_shape() {
         let bp = CompiledBlueprint::new("component_probe", "pub fn tick() {}").with_tick(true);
@@ -155,9 +162,15 @@ mod tests {
         let project = pbgc::generate_project(&spec);
         let actor = &project.files["src/classes/component_probe/events/events.rs"];
 
-        assert!(actor.contains("pub struct ComponentProbe"));
-        assert!(actor.contains("__init_components"));
-        assert!(actor.contains("pulsar_game::ComponentStore"));
+        assert!(actor.contains("pub struct ComponentProbe {}"));
+        assert!(actor.contains("__init_components(entity: Entity, world: &mut World)"));
+        assert!(actor.contains("hydrate_world_component_for_class("));
+        for retired in ["__bp_with_comp", "__bp_set_comp_ctx", "pulsar_game::ComponentStore"] {
+            assert!(
+                !actor.contains(retired),
+                "retired baked-store routing `{retired}` reappeared in the emission"
+            );
+        }
         assert!(!actor.contains("gamma_core"));
     }
 

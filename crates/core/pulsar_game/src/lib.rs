@@ -11,10 +11,14 @@
 //! - **Game time** — `GameTime` and `DeltaTime`.
 
 pub use pulsar_core::{EventBuffer, EventReader, EventWriter, GameTime, TaskPool, TickMode};
+// NOTE (#651): the SceneDB baked-store helpers (`__bp_with_comp` /
+// `__bp_set_comp_ctx` / `__bp_clear_comp_ctx` / `ComponentStore`) are
+// deliberately NOT re-exported anymore — generated actors address the live
+// world through `pulsar_world_registry`'s dispatcher. They remain available
+// from `pulsar_scenedb` itself for legacy callers.
 pub use pulsar_scenedb::{
-    __bp_clear_comp_ctx, __bp_set_comp_ctx, __bp_with_comp, Actor, ActorRegistry, Archetype,
-    ArchetypeId, ArchetypeKey, Component, ComponentStore, Entity, QueryIter, Schedule, World,
-    WorldQuery,
+    Actor, ActorRegistry, Archetype, ArchetypeId, ArchetypeKey, Component, Entity, QueryIter,
+    Schedule, World, WorldQuery,
 };
 
 // Blueprint runtime system
@@ -39,6 +43,10 @@ pub mod time;
 #[cfg(test)]
 mod blueprint_codegen_drift;
 
+// #651 acceptance probe: generated-actor shapes mutate the live world
+#[cfg(test)]
+mod blueprint_live_dispatch;
+
 #[cfg(test)]
 mod tests;
 
@@ -56,7 +64,6 @@ pub mod prelude {
     };
     pub use pulsar_core::{EventReader, EventWriter, GameTime, TaskPool, TickMode};
     pub use pulsar_scenedb::{
-        Actor, ActorRegistry, Component, ComponentStore, Entity, QueryIter, Schedule, World,
-        WorldQuery,
+        Actor, ActorRegistry, Component, Entity, QueryIter, Schedule, World, WorldQuery,
     };
 }

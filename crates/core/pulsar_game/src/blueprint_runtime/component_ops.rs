@@ -31,12 +31,12 @@
 
 use pbgc::bytecode::comp_ops::{json_blob_len, write_json_blob};
 use pulsar_bp_executor::{ComponentOpHandlers, CompOpKind};
-use pulsar_reflection::{MethodArgs, REGISTRY};
 use pulsar_scenedb::{Entity, World};
 use pulsar_world_registry::dispatch::{
-    get_component_property, invoke_component_method, set_component_property,
+    get_component_property, invoke_component_method, json_args_to_method_args,
+    set_component_property,
 };
-use pulsar_world_registry::marshal::{any_to_json, json_to_any};
+use pulsar_world_registry::marshal::any_to_json;
 use serde_json::Value as JsonValue;
 use std::cell::RefCell;
 
@@ -245,30 +245,15 @@ pub unsafe extern "C" fn comp_op_call_trampoline(
         }
     }
 
-    // Convert JSON arguments to their declared types before dispatching so
-    // the shared dispatcher can validate strictly (#643's guarantee).
-    let converted: Option<MethodArgs> = REGISTRY.get_method(class_name, method_name).map(|meta| {
-        meta.params
-            .iter()
-            .zip(arg_values)
-            .map(|(param, value)| json_to_any("blueprint call argument", param.type_info, value))
-            .collect::<Result<Vec<_>, _>>()
-    }).and_then(|result| match result {
-        Ok(args) => Some(args),
+    // Convert JSON arguments to their declared types through the shared
+    // dispatcher helper (#643's guarantee, one policy for both adapters —
+    // the generated Rust actors call the exact same function).
+    let method_args = match json_args_to_method_args(class_name, method_name, arg_values) {
+        Ok(args) => args,
         Err(error) => {
             log_failure(CompOpKind::Call, class_name, method_name, error);
-            None
+            return;
         }
-    });
-    let Some(method_args) = converted else {
-        // Unknown class/method also lands here — already logged only in the
-        // marshal branch, so cover the missing-metadata case explicitly.
-        if REGISTRY.get_method(class_name, method_name).is_none() {
-            tracing::error!(
-                "blueprint call::{class_name}::{method_name}: no reflected method metadata"
-            );
-        }
-        return;
     };
 
     let outcome = with_context(CompOpKind::Call, class_name, method_name, |world, entity| {

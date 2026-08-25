@@ -35,18 +35,21 @@ fn generated_project_compiles_against_current_pins() {
     engine_backend::services::ensure_core_bootstrap(project.path())
         .expect("bootstrap files for the generated project");
 
-    // 2. One blueprint class through the vendored generator's public API —
-    //    the same output the Blueprint Editor writes when compiling a class.
-    let spec = pbgc::ProjectSpec::new("drift_sample").add_blueprint(
-        pbgc::CompiledBlueprint::new(
-            "drift_probe",
-            r#"pub fn begin_play() {}
+    // 2. One blueprint class through the vendored generator's public pipeline —
+    //    graph → compiled logic → actor file, the exact chain the Blueprint
+    //    Editor runs. (#651: compiled logic functions receive the live-world
+    //    slice, and the actor impl forwards its `(entity, world)` to them.)
+    let mut graph = pbgc::GraphDescription::new("drift_sample");
+    let mut begin = pbgc::NodeInstance::new("begin", "begin_play", pbgc::Position { x: 0.0, y: 0.0 });
+    begin.outputs.push(pbgc::PinInstance::new(
+        "begin_exec",
+        pbgc::Pin::new("begin_exec", "Body", pbgc::DataType::Exec, pbgc::PinType::Output),
+    ));
+    graph.add_node(begin);
+    let logic = pbgc::compile_graph(&graph).expect("logic compilation");
 
-            pub fn tick() {}
-            "#,
-        )
-        .with_tick(true)
-        .with_begin_play(true),
+    let spec = pbgc::ProjectSpec::new("drift_sample").add_blueprint(
+        pbgc::CompiledBlueprint::new("drift_probe", logic).with_begin_play(true),
     );
     let generated = pbgc::generate_project(&spec);
     generated

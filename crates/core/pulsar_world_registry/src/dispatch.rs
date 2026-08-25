@@ -155,6 +155,49 @@ pub fn set_component_property_boxed(
     set_typed(world, entity, class_name, component_index, meta, value)
 }
 
+/// Convert graph-domain JSON argument values into a method's declared
+/// parameter types, driven by reflection metadata.
+///
+/// The shared front half of [`invoke_component_method`] for callers whose
+/// values start as JSON — the VM's comp_call trampoline and PBGC's generated
+/// actors both stage arguments this way, so both cross into typed dispatch
+/// identically. Arity is validated here ([`ScriptRefError::ArgumentCount`]);
+/// each value deserializes against its parameter's reflected type
+/// ([`ScriptRefError::Marshalling`] on mismatch, nothing partially
+/// converted). Unknown methods are [`ScriptRefError::UnknownMethod`], never a
+/// silent empty arg list.
+pub fn json_args_to_method_args(
+    class_name: &str,
+    method: &str,
+    values: Vec<Value>,
+) -> Result<MethodArgs, ScriptRefError> {
+    let meta = REGISTRY.get_method(class_name, method).ok_or_else(|| {
+        ScriptRefError::UnknownMethod {
+            class_name: class_name.to_string(),
+            method: method.to_string(),
+        }
+    })?;
+    if values.len() != meta.params.len() {
+        return Err(ScriptRefError::ArgumentCount {
+            class_name: class_name.to_string(),
+            method: meta.name.to_string(),
+            expected: meta.params.len(),
+            got: values.len(),
+        });
+    }
+    meta.params
+        .iter()
+        .zip(values)
+        .map(|(param, value)| {
+            crate::marshal::json_to_any(
+                &format!("{class_name}.{} (arg {})", meta.name, param.name),
+                param.type_info,
+                value,
+            )
+        })
+        .collect()
+}
+
 // ── shared internals ───────────────────────────────────────────────────────
 
 fn property_context(class_name: &str, property: &str) -> String {
