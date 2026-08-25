@@ -22,11 +22,14 @@
 //! Agreed split between Pulsar-Native's World and the renderer-side residency
 //! stages, recorded here because this module is the seam both sides meet at:
 //!
-//! - **Geometry** (vertex/index bytes): owned by SceneDB's var-len pools
-//!   (`StaticMeshComponent`'s `#[gpu]` fields); Helio borrows the pools via
-//!   `rebind_static_mesh_pools`. Invalidation: pool regrow changes offsets,
-//!   which is why mesh keys / draw params are derived fresh each pass from
-//!   handles and never cached.
+//! - **Geometry** (vertex/index bytes): owned by SceneDB's content-id-
+//!   interned var-len pools (`StaticMeshComponent`'s `#[gpu(content_id =
+//!   "mesh_asset")]` fields, Pulsar-Native#632) -- entities naming the same
+//!   `mesh_asset` share ONE allocation; Helio borrows each pool's
+//!   underlying buffer via `rebind_static_mesh_pools`, unaware interning
+//!   exists on top. Invalidation: pool regrow changes offsets, which is why
+//!   mesh keys / draw params are derived fresh each pass from handles and
+//!   never cached.
 //! - **Per-instance state** (model/normal matrices, bounds, cull group):
 //!   owned by the World as [`ResolvedMeshFrame`] rows (#638), maintained by
 //!   [`MeshFrameMaintainer`] from component-change subscriptions. Helio holds
@@ -76,11 +79,14 @@ pub fn step_scene_for_render(
 /// Phase D) between `store` and `renderer`, shared by the editor and
 /// play-mode renderers via #637.
 ///
-/// Registers the canonical `StaticMeshComponent::vertices`/`indices` var-len
-/// pools plus `Transform`'s packed buffer into a fresh `SceneGpuStore`,
-/// points Helio's own mesh storage at those SAME pools (hydrate-time writes
-/// and draw-time reads then share one buffer, zero translation), and attaches
-/// the mirror so future component inserts auto-mirror their `#[gpu]` fields.
+/// Registers the canonical `StaticMeshComponent::vertices`/`indices`
+/// content-id-interned var-len pools (Pulsar-Native#632: entities naming the
+/// same `mesh_asset` share ONE GPU-resident allocation, refcounted, freed
+/// automatically at zero) plus `Transform`'s packed buffer into a fresh
+/// `SceneGpuStore`, points Helio's own mesh storage at those SAME pools'
+/// underlying buffers (hydrate-time writes and draw-time reads then share
+/// one buffer, zero translation), and attaches the mirror so future
+/// component inserts auto-mirror their `#[gpu]` fields.
 ///
 /// Components inserted BEFORE this call were written with no mirror attached,
 /// and SceneDB deliberately does not retroactively mirror those writes -- so
@@ -129,12 +135,24 @@ pub fn attach_gpu_render_seam(
     crate::scene::Transform::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     let gpu_store = Arc::new(gpu_store);
 
+    // `StaticMeshComponent::vertices`/`indices` are content-id-interned
+    // (Pulsar-Native#632/#659, `#[gpu(content_id = "mesh_asset")]`), so
+    // they register through `interned_var_len_pool`, not the plain
+    // `var_len_pool` this call used before. `.underlying()` hands back the
+    // SAME `Arc<VarLenGpuPool<T>>` shape `rebind_static_mesh_pools` always
+    // took -- Helio's own buffer binding is completely unaware interning
+    // exists on top; it just draws whatever range each entity's row-indexed
+    // handle names, shared or not.
     let vertex_pool = gpu_store
-        .var_len_pool::<helio::PackedVertex>(BufferKey::of("StaticMeshComponent::vertices"))
-        .expect("register_gpu_columns_growable above must have registered this pool");
+        .interned_var_len_pool::<helio::PackedVertex>(BufferKey::of("StaticMeshComponent::vertices"))
+        .expect("register_gpu_columns_growable above must have registered this pool")
+        .underlying()
+        .clone();
     let index_pool = gpu_store
-        .var_len_pool::<u32>(BufferKey::of("StaticMeshComponent::indices"))
-        .expect("register_gpu_columns_growable above must have registered this pool");
+        .interned_var_len_pool::<u32>(BufferKey::of("StaticMeshComponent::indices"))
+        .expect("register_gpu_columns_growable above must have registered this pool")
+        .underlying()
+        .clone();
     renderer.scene_mut().rebind_static_mesh_pools(vertex_pool, index_pool);
 
     let mirror = GpuMirrorHandle::new(gpu_store, queue);

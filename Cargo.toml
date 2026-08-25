@@ -227,6 +227,11 @@ uuid = { version = "1.4", features = ["v4"] }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive", "env"] }
 sha2 = "0.11"
+# XXH3-128 content hashing for content-addressed asset identity
+# (helio-component's ContentId). Already in the dep tree transitively;
+# pinned here explicitly with a minimal feature set (no RNG/serde) so the
+# engine only compiles the 128-bit hasher itself.
+twox-hash = { version = "2.1", default-features = false, features = ["std", "xxhash3_128"] }
 dirs = "6.0"
 winapi = { version = "0.3", features = ["winuser"] }
 ui_gen_macros = { path = "crates/core/ui_gen_macros" }
@@ -338,5 +343,12 @@ pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar
 # the Pulsar-Reflection patches above (including the `//` URL spelling,
 # which is what lets a patch point at a different rev of the "same" source).
 # Drop this section once Helio repins.
+#
+# Repointed to the `content-dedup-arc-semantics` branch (Pulsar-Native#632:
+# counted-handle capability + content-id-interned var-len GPU pools) --
+# still a feature branch, not `main`, so this stays a `[patch]` override
+# rather than a plain version bump until that branch is reviewed/merged
+# upstream. Update this rev (and the matching Helio submodule pointer) once
+# it is.
 [patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
-pulsar_scenedb = { git = "https://github.com/Far-Beyond-Pulsar//SceneDB", rev = "c761890789b3e3c16b362a91769570bd587e5ac6" }
+pulsar_scenedb = { git = "https://github.com/Far-Beyond-Pulsar//SceneDB", rev = "201d35e0fdefee2e3f8d83a3f9b68fb970a5c915" }
