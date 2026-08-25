@@ -8777,10 +8777,13 @@ dependencies = [
 name = "pulsar_game"
 version = "0.1.0"
 dependencies = [
+ "engine_backend",
+ "engine_class_derive",
  "engine_state",
  "glam 0.33.5",
  "helio",
  "helio-default-graphs",
+ "parking_lot",
  "pbgc",
  "pollster 1.0.1",
  "profiling 0.1.0",
@@ -8792,8 +8795,10 @@ dependencies = [
  "pulsar_scenedb",
  "pulsar_settings",
  "pulsar_std_bundle",
+ "pulsar_world_registry",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
  "ui",
  "uuid",

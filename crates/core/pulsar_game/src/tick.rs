@@ -1,4 +1,5 @@
 use crate::blueprint_runtime::BlueprintDispatcher;
+use crate::time::to_scenedb_time;
 use crate::window::{WindowBridge, WindowCommand, WindowDescriptor, WindowHandle, WindowManager};
 use engine_backend::scene::WorldSceneStore;
 use parking_lot::RwLock;
@@ -6,24 +7,6 @@ use pulsar_core::{Clock, GameTime, TaskPool, TickMode};
 use pulsar_scenedb::{ActorRegistry, Schedule};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-
-/// Convert [`pulsar_core::GameTime`] into [`pulsar_scenedb::GameTime`].
-///
-/// These are two structurally-identical types by design, not accident to
-/// paper over: pulsar_scenedb lives in its own repo and deliberately does
-/// not depend on pulsar_core (SceneDB is a standalone storage layer), while
-/// pulsar_core predates the extraction and owns the gameplay-facing type.
-/// Neither crate can impl `From` across the boundary (orphan rule), so the
-/// conversion is a deliberate API seam -- THIS function is its single,
-/// tested definition. New call sites must convert here, not re-inline
-/// field copies (Pulsar-Native#634).
-fn to_scenedb_time(time: GameTime) -> pulsar_scenedb::GameTime {
-    pulsar_scenedb::GameTime {
-        elapsed: time.elapsed,
-        delta: time.delta,
-        tick: time.tick,
-    }
-}
 
 /// The main game loop.
 ///

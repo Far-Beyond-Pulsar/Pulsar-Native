@@ -32,6 +32,13 @@ pub mod embed;
 // Legacy tick loop (uses extracted primitives)
 pub mod tick;
 
+// The one pulsar_core::GameTime <-> pulsar_scenedb::GameTime seam (#652)
+pub mod time;
+
+// Compile-time drift guard: PBGC-generated actors must match pinned crates
+#[cfg(test)]
+mod blueprint_codegen_drift;
+
 #[cfg(test)]
 mod tests;
 

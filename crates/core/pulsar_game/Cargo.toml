@@ -54,3 +54,10 @@ engine_backend  = { path = "../engine_backend", default-features = false, featur
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Drift guard (#652): the reference actor mirrors PBGC's emitted shape and
+# must keep compiling against the pinned crates; tempfile serves the
+# end-to-end generated-project cargo check (tests/generated_project_compiles).
+engine_class_derive = { workspace = true }
+tempfile = { workspace = true }
