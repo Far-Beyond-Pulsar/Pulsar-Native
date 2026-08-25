@@ -13039,6 +13039,7 @@ name = "ui_level_editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "blueprint_editor_plugin",
  "chrono",
  "core-foundation-sys",
  "core-graphics2 0.6.1",

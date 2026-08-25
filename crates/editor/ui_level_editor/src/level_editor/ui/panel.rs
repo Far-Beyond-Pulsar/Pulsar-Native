@@ -1612,6 +1612,14 @@ fn build_pie_dylib(root: &Path, scene_path: &Path, reload: bool) -> Result<PieSt
     // `cargo build --release` / `cargo run --release` produce).
     let release = true;
 
+    // Blueprint preflight (#656): validate saved class graphs against the
+    // compiled artifacts PIE would load. Bad graphs stop Play here instead of
+    // surfacing as runtime failures inside the embedded game.
+    if let Err(summary) = blueprint_editor_plugin::validation::validate_project_classes(root) {
+        tracing::error!("PiE blocked by blueprint validation:\n{summary}");
+        return Err(summary);
+    }
+
     // Fastpath — reuse the existing artifact when nothing changed. Needs the
     // crate name, which needs a manifest; if it's missing we fall through to a
     // full build that generates it.
