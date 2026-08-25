@@ -8783,6 +8783,7 @@ dependencies = [
  "glam 0.33.5",
  "helio",
  "helio-default-graphs",
+ "helio_component",
  "parking_lot",
  "pbgc",
  "pollster 1.0.1",

@@ -1547,12 +1547,20 @@ pub(crate) fn begin_pie(
         return;
     }
 
-    {
+    // Native hot reload (#653): pressing Play while a game runs rebuilds
+    // and swaps the library WITHOUT dropping the world — the viewport stops
+    // the old host only once the new build is in hand.
+    let reload = {
         let mut st = shared_state.write();
         st.play.pie.building = true;
         st.play.pie.stop_requested = false;
         st.play.pie.last_error = None;
         st.play.pie.pending_start = None;
+        st.play.pie.active
+    };
+
+    if reload {
+        tracing::info!("PiE: game already running — this Play is a NATIVE HOT RELOAD");
     }
 
     window.push_notification(
@@ -1565,7 +1573,7 @@ pub(crate) fn begin_pie(
     let _ = std::thread::Builder::new()
         .name("pie-build".into())
         .spawn(move || {
-            let result = build_pie_dylib(&root, &scene_path);
+            let result = build_pie_dylib(&root, &scene_path, reload);
             let mut st = shared.write();
             st.play.pie.building = false;
             match result {
@@ -1592,10 +1600,14 @@ pub(crate) fn end_pie(shared_state: Arc<parking_lot::RwLock<LevelEditorState>>) 
 /// Regenerate the project scaffolding and build it as a `cdylib`, returning what
 /// the viewport needs to load the embedded game. Runs on a background thread.
 ///
+/// `reload` marks a native hot reload (#653): an earlier session is still
+/// running and its world state must survive the swap. The flag only rides the
+/// request — a failed rebuild leaves the old game untouched either way.
+///
 /// Fastpath: if a release library already exists and no `.rs`/`.toml` under the
 /// project is newer than it, skip regeneration + `cargo build` entirely and reuse
 /// the last-built artifact — pressing Play with no source changes is instant.
-fn build_pie_dylib(root: &Path, scene_path: &Path) -> Result<PieStartRequest, String> {
+fn build_pie_dylib(root: &Path, scene_path: &Path, reload: bool) -> Result<PieStartRequest, String> {
     // PiE uses the release library (faster at runtime, and matches the artifact
     // `cargo build --release` / `cargo run --release` produce).
     let release = true;
@@ -1615,6 +1627,7 @@ fn build_pie_dylib(root: &Path, scene_path: &Path) -> Result<PieStartRequest, St
                 dylib_path,
                 project_root: root.to_path_buf(),
                 scene_path: scene_path.to_path_buf(),
+                reload,
             });
         }
     }
@@ -1651,6 +1664,7 @@ fn build_pie_dylib(root: &Path, scene_path: &Path) -> Result<PieStartRequest, St
         dylib_path,
         project_root: root.to_path_buf(),
         scene_path: scene_path.to_path_buf(),
+        reload,
     })
 }
 

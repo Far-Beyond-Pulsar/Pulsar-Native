@@ -186,6 +186,18 @@ impl GameViewport {
         }
 
         if let Some(req) = pending {
+            // Native hot reload (#653): a pending start while a game is
+            // already running means "swap the library". Stop the OLD host
+            // first — its actors die with it, but the world survives because
+            // it lives HERE, in the editor's shared store — then load the new
+            // build against that same store. The guest's RELOAD session flag
+            // makes project setup re-bind actor registrations to their
+            // existing entities instead of spawning duplicates.
+            let was_running = self.pie_host.is_some();
+            if let Some(mut old) = self.pie_host.take() {
+                old.stop();
+            }
+
             // ABI v2 (#635): hand the guest THE editor's world -- one count is
             // transferred for the session; the editor keeps its own. The
             // guest adopts it, so mid-session edits and gameplay mutations
@@ -202,6 +214,7 @@ impl GameViewport {
                     &req.project_root,
                     Some(&req.scene_path),
                     shared_world,
+                    req.reload,
                 )
             };
             match loaded {
@@ -214,7 +227,15 @@ impl GameViewport {
                 }
                 Err(e) => {
                     tracing::error!("PiE load failed: {e}");
-                    self.shared_state.write().play.pie.last_error = Some(e);
+                    // On a failed reload the previous game is already gone;
+                    // surface why instead of leaving a dead viewport silent.
+                    let mut st = self.shared_state.write();
+                    st.play.pie.active = false;
+                    st.play.pie.last_error = Some(if was_running {
+                        format!("Hot reload failed — game stopped. {e}")
+                    } else {
+                        e
+                    });
                 }
             }
         }

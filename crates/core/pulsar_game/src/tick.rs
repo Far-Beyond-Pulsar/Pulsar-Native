@@ -57,6 +57,15 @@ pub struct TickLoop {
     running: Arc<AtomicBool>,
     /// Shared running flag — lets external code stop the loop.
     pub running_flag: Arc<AtomicBool>,
+    // ── Native hot-reload bookkeeping (#653, see scripts.rs) ────────────────
+    /// Surviving [`ScriptTag`]s collected by `begin_script_reload`, consumed
+    /// one-per-registration until empty.
+    pub(crate) pending_rebinds: Vec<crate::scripts::RebindTarget>,
+    /// Actor shells rebound onto existing entities this session; ticked right
+    /// after the registry phase.
+    pub(crate) rebinding: Vec<crate::scripts::ReboundActor>,
+    /// Set once a reload has been armed, even after every tag is claimed.
+    pub(crate) reload_armed: bool,
 }
 
 impl TickLoop {
@@ -87,6 +96,9 @@ impl TickLoop {
             mode,
             running: running.clone(),
             running_flag: running,
+            pending_rebinds: Vec::new(),
+            rebinding: Vec::new(),
+            reload_armed: false,
         }
     }
 
@@ -116,6 +128,9 @@ impl TickLoop {
             mode,
             running: running.clone(),
             running_flag: running,
+            pending_rebinds: Vec::new(),
+            rebinding: Vec::new(),
+            reload_armed: false,
         }
     }
 
@@ -152,10 +167,15 @@ impl TickLoop {
         // time-free -- see `pulsar_scenedb::actor`'s trait doc). Separate
         // lock acquisition from phase 1 on purpose: a system that queued
         // work for actors can't starve the render thread for two phases'
-        // worth of mutation, and vice versa.
+        // worth of mutation, and vice versa. Hot-reload-rebound shells
+        // (#653) tick in the same phase and scope, right after the registry
+        // — same callbacks, same world, one lock acquisition.
         {
             let mut store = self.scene_store.write();
             self.actors.tick_all(store.world_mut());
+            for shell in &mut self.rebinding {
+                shell.tick(store.world_mut());
+            }
         }
 
         // Phase 3: runtime blueprint lifecycle + tick events, AFTER ECS +

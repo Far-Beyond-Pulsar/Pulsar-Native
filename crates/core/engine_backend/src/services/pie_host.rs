@@ -173,6 +173,10 @@ impl PieHost {
     /// `scene_path` is a `.level` file the editor wrote from its current scene;
     /// under v2 it is advisory only (the guest adopts the already-hydrated
     /// shared world instead of loading it), kept for logging/legacy guests.
+    /// `reload` marks a NATIVE HOT RELOAD (#653): an earlier session's world
+    /// state is still in `shared_world`, so the guest re-binds actor
+    /// registrations to their existing entities instead of spawning duplicates
+    /// (the flag rides `EngineContext::session_flags`; see ABI v3).
     ///
     /// # Safety
     /// `device`/`queue` must be valid and outlive the call; the loaded library
@@ -189,6 +193,7 @@ impl PieHost {
         project_root: &Path,
         scene_path: Option<&Path>,
         shared_world: Arc<RwLock<WorldSceneStore>>,
+        reload: bool,
     ) -> Result<Self, String> {
         if !dylib_path.exists() {
             return Err(format!("Game library not found: {}", dylib_path.display()));
@@ -292,6 +297,11 @@ impl PieHost {
             shared_world: shared_world_ptr,
             lock_shared_world: pie_lock_world,
             unlock_shared_world: pie_unlock_world,
+            session_flags: if reload {
+                pulsar_pie_abi::session_flags::RELOAD
+            } else {
+                0
+            },
         });
 
         let ok = init(&mut *ctx as *mut PieContext);

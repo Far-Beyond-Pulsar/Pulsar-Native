@@ -186,6 +186,18 @@ impl EmbeddedGame {
             TickLoop::with_scene_store(host_store, TickMode::default(), threads)
         };
         let mut tick_loop = tick_loop;
+        // Native hot reload (#653): when the host stopped a still-running
+        // game to swap in this fresh build, the shared world carries the
+        // previous session's entities. Arm rebinding BEFORE project setup so
+        // `TickLoop::register_actor` re-binds script actors to their existing
+        // entities instead of spawning duplicates — the native equivalent of
+        // D3's `reload_blueprint` for VM instances.
+        if ctx.session_flags & pulsar_pie_abi::session_flags::RELOAD != 0 {
+            tick_loop.begin_script_reload();
+            let msg =
+                "PiE hot reload: actor registrations will re-bind to existing entities";
+            (ctx.log)(ctx.userdata, LOG_INFO, msg.as_ptr(), msg.len());
+        }
         // NOTE: `setup()` deliberately runs AFTER adoption so project actors
         // register against the host's world. The scene file is NOT loaded:
         // under v2 the shared world already holds the hydrated level.

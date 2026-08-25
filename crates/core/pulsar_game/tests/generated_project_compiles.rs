@@ -63,12 +63,48 @@ fn generated_project_compiles_against_current_pins() {
         .expect("classes/mod.rs regeneration after writing the class tree");
 
     // 4. Verify generation actually produced a compilable crate before
-    //    invoking cargo (guards against silent virtual-fs no-ops).
+    //    invoking cargo (guards against silent virtual-fs no-ops). The
+    //    scripts/ crate (#653) is part of that contract: it must exist AND
+    //    its path dependencies must resolve to real manifests (a wrong
+    //    engine-checkout anchor otherwise surfaces only as cargo ENOENT).
     for required in ["Cargo.toml", "src/main.rs", "src/lib.rs", "src/classes/mod.rs",
                     "src/classes/drift_probe/events/events.rs"] {
         assert!(
             project.path().join(required).exists(),
             "generated project is missing {required}"
+        );
+    }
+    let script_manifest = std::fs::read_dir(project.path().join("scripts"))
+        .ok()
+        .and_then(|entries| {
+            entries
+                .flatten()
+                .find(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        })
+        .map(|e| e.path().join("Cargo.toml"))
+        .expect("scripts/ crate scaffolded");
+    assert!(
+        script_manifest.exists(),
+        "scaffolded script crate manifest missing: {}",
+        script_manifest.display()
+    );
+    let script_text =
+        std::fs::read_to_string(&script_manifest).expect("script crate manifest readable");
+    const PATH_KEY: &str = "path = \"";
+    for line in script_text.lines() {
+        let Some(start) = line.find(PATH_KEY) else { continue };
+        let rest = &line[start + PATH_KEY.len()..];
+        let Some(end) = rest.find('"') else { continue };
+        let dep_path = &rest[..end];
+        let resolved = if Path::new(dep_path).is_absolute() {
+            std::path::PathBuf::from(dep_path)
+        } else {
+            script_manifest.parent().unwrap().join(dep_path)
+        };
+        assert!(
+            resolved.join("Cargo.toml").exists(),
+            "script crate path dep does not resolve: {dep_path} -> {}",
+            resolved.display()
         );
     }
 

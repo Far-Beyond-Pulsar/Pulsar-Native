@@ -102,7 +102,24 @@ use core::ffi::c_void;
 /// one-way texture out, explicitly no writeback). v2 (#635) adds the
 /// shared-world token + lock callbacks below and changes ownership of scene
 /// state to the host; the wire structs changed shape, hence the bump.
-pub const PIE_ABI_VERSION: u64 = 2;
+/// v3 (#653) appends [`EngineContext::session_flags`] so the host can tell a
+/// hot-reload session (same world, actors re-bound to their existing entities)
+/// apart from a fresh play session.
+pub const PIE_ABI_VERSION: u64 = 3;
+
+/// Bit flags carried in [`EngineContext::session_flags`].
+///
+/// Kept in one module so future additions read as a single list; unknown bits
+/// must be ignored by the guest (forward compatibility within v3).
+pub mod session_flags {
+    /// The loaded session is a NATIVE HOT RELOAD (#653): the shared world
+    /// already holds this game's entities/components from the previous
+    /// session. Project setup must re-bind script/actor registrations to
+    /// their existing entities (`TickLoop::register_actor` does the matching)
+    /// instead of spawning duplicates. The host sets this when it stops a
+    /// still-running game before loading the freshly built library.
+    pub const RELOAD: u64 = 1 << 0;
+}
 
 // ── Log levels (match `tracing`) ────────────────────────────────────────────
 
@@ -203,6 +220,14 @@ pub struct EngineContext {
     pub lock_shared_world: LockWorldFn,
     /// Release the slice. See [`UnlockWorldFn`].
     pub unlock_shared_world: UnlockWorldFn,
+
+    // ── ABI v3 additions (#653): session kind ──────────────────────────────
+    /// Bit set of [`session_flags`] describing what kind of session this is.
+    /// Zero = a fresh play session (the shared world starts empty or with
+    /// whatever the host hydrated). `session_flags::RELOAD` = native
+    /// hot-reload: the world carries this project's entities from a previous
+    /// session and actor registration must re-bind, not re-spawn.
+    pub session_flags: u64,
 }
 
 // ── Input (host → game) ─────────────────────────────────────────────────────

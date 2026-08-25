@@ -39,6 +39,25 @@ pub mod tick;
 // The one pulsar_core::GameTime <-> pulsar_scenedb::GameTime seam (#652)
 pub mod time;
 
+// Gameplay script-crate actors: identity-tagged registration + native hot
+// reload (#653). Generated projects and scripts/ crates register through
+// `TickLoop::register_actor`.
+pub mod scripts;
+
+/// Component vocabulary gameplay scripts attach most often (#653).
+///
+/// User script crates depend only on `pulsar_game`; this module is their
+/// single import surface for making entities visible — a mesh plus its
+/// placement. Re-exports, not wrappers: these are the SAME types the
+/// renderer's maintainers subscribe to, so mutations made through them are
+/// visible on the next frame exactly like editor edits.
+pub mod scene {
+    pub use engine_backend::scene::{Name, Transform, Visibility};
+    pub use helio_component::components::{
+        LightComponent, MeshAssetPath, StaticMeshComponent,
+    };
+}
+
 // Compile-time drift guard: PBGC-generated actors must match pinned crates
 #[cfg(test)]
 mod blueprint_codegen_drift;
