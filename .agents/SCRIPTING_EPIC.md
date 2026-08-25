@@ -955,3 +955,95 @@ then phases E (#651-653) and F (#654-656). Subagent provider was
 returning "Endpoint is unavailable" for long implementer sessions
 during this phase — A/B/C ran fine earlier; retry subagents before
 assuming inline work is required.
+
+### D5 — level-format blueprint class bindings (#650) — LANDED
+
+One parent-repo commit `76dc0fdf` (branch `scripting-epic`). Touched crates:
+pulsar_scene, engine_backend, pulsar_game, ui_level_editor (format round-trip
+preservation only). The vendored blueprint_editor was NOT touched — it had
+uncommitted user WIP in `src/features/compilation/compiler.rs`; see Editor
+UX below for what F builds.
+
+- **Format** (`pulsar_scene::format`): new additive top-level section on
+  `SceneFile`: `blueprint_bindings: BlueprintBindings` (= `BTreeMap<String,
+  Vec<BlueprintBinding>>`, object **StableId** → class bindings).
+  `BlueprintBinding { class_name, overrides: HashMap<String, Value> }`.
+  BTreeMap so load order is deterministic; `skip_serializing_if` empty so
+  pre-#650 writers stay byte-compatible; old files deserialize empty
+  (serde default). Multiple classes per object = multiple vec entries.
+  Overrides are variable-name → natural-JSON-value, consumed by D3/D4's
+  existing override marshalling unchanged.
+- **Loader** (`pulsar_game::blueprint_runtime::level_bindings`, NEW module):
+  `apply_blueprint_bindings(dispatcher, &store, project_root, &bindings) ->
+  ApplyReport` resolves each StableId via the hydrated store, locates
+  bytecode at `<root>/src/classes/<class>/events/.build/bytecode.json`
+  (`bytecode_path_for_class` — byte-identical to generated engine_main
+  discovery), and spawns through `BlueprintDispatcher::
+  spawn_instance_for_entity`. Instance ids are deterministic:
+  `{stable_id}::{class_name}` (`instance_id_for`). Per-binding failures are
+  typed (`BindingError::{UnknownObject, DuplicateClass, BytecodeMissing,
+  Io, Serialization, Executor}`), collected + logged — one stale entry never
+  blocks play mode. Runtime add/remove for gameplay-driven scripted objects:
+  `bind_object_class` / `unbind_object_class`.
+  Play-mode wiring: `PulsarApp::open_window_with_scene` applies the level's
+  bindings right after hydration (dispatcher mutex THEN store write — same
+  lock order as TickLoop phase 3).
+- **API change (engine_backend)**: `RuntimeLevel::load_into` now returns
+  `Result<LevelExtras, _>` where `LevelExtras { editor_camera,
+  blueprint_bindings }` (was bare `Option<EditorCamera>`); owned-store paths
+  expose `.extras()`. Sole caller updated. Bindings deliberately do NOT
+  auto-spawn inside hydration — dispatcher ownership stays gameplay-side.
+- **Editor save-path preservation** (`ui_level_editor::scene_database`):
+  its parallel `LevelFile` type gained the same-typed field, preserved on
+  save by reading the existing file back (mirrors `preserved_editor`) — an
+  ordinary editor re-save can no longer destroy authored bindings even
+  though no binding UI exists yet.
+- **Migration decision**: helio's `ScriptComponent`/`SCRIPT_REGISTRY` path is
+  documented as superseded-but-functional (module doc of level_bindings.rs).
+  NOT auto-converted: ScriptComponent stores a blueprint *directory*
+  (`graph_save.json`), not a compiled class name — directory→class mapping
+  is editor policy, so conversion belongs to F's inspector UX (offer
+  binding authoring when a ScriptComponent is present).
+
+Schema example (committed fixture, used by the acceptance test):
+`crates/core/pulsar_game/tests/fixtures/level_bindings_sample.level.json`
+— two objects (`lever_a`, `lever_b`) bound to ONE class (`TickProbe`) with
+DIFFERENT overrides (`speed: 2.5` vs `9.0`).
+
+Acceptance tests (pulsar_game lib): fixture parses + hydrates → two
+instances on distinct entities, independent charges through real dispatch,
+distinct override bytes per arena; removing a binding unregisters cleanly
+and the sibling keeps ticking; duplicate/stale bindings fail individually
+never fatally. Plus format round-trip/additivity tests (pulsar_scene),
+extras tests (engine_backend), and editor save/load preservation tests
+(ui_level_editor).
+
+For F (editor UX checklist):
+1. Inspector/outliner assign-unassign UI writes `SceneFile.blueprint_
+   bindings` through the editor save path (field already round-trips);
+   key by `obj.id` (StableId), one vec entry per class.
+2. Override editing: read variable names/types from compiled bytecode
+   (`CompiledBytecode.variables`); write JSON values into `overrides`;
+   `instance_variable_bytes` / `rehydrate_after_reload` are the live-
+   debugger seams.
+3. PIE gap (deliberate): the ABI-v2 guest skips level hydration entirely,
+   so PIE does not spawn level-bound instances yet — the HOST side must
+   apply extras' bindings after its hydrate (same function, needs the
+   guest's dispatcher handle wired host-side first).
+4. When a ScriptComponent exists on an object, offer "convert to level
+   binding" (resolve directory → class name) rather than silent dual paths.
+
+Surprises/deviations: (a) the editor saves levels through its OWN LevelFile
+type, not pulsar_scene's SceneFile — any future additive section MUST land
+in both or be silently dropped on save; handled here, worth remembering.
+(b) `load_into` signature change was unavoidable (bindings must reach the
+host without re-parsing the file). (c) ByteArena panics on size 0 — empty
+test bytecode needs at least one variable.
+
+Verification status: scoped per quality bar rule 5 — pulsar_scene 4/4,
+engine_backend lib 78/78, pulsar_game lib 59/59 (7 new), ui_level_editor
+lib 46/46 (2 new); clippy clean on every touched file (pre-existing
+pulsar_game clippy deny in bytecode_compiler.rs untouched, see D3 note;
+wgpui/gpui-ce warnings unrelated). Cargo.toml/Cargo.lock user WIP excluded;
+only MY single `ui_level_editor → pulsar_scene` lock line staged (surgical
+`git apply --cached`, same protocol as C/D3).
