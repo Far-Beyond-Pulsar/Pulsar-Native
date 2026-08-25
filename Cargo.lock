@@ -13054,6 +13054,7 @@ dependencies = [
  "pulsar_physics",
  "pulsar_pie_abi",
  "pulsar_reflection",
+ "pulsar_scene",
  "pulsar_scenedb",
  "pulsar_world_registry",
  "raw-window-handle",

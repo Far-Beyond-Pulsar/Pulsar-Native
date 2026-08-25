@@ -23,6 +23,9 @@ pulsar_world_registry = { workspace = true }
 # Engine
 engine_state.workspace = true
 engine_backend.workspace = true
+# Level file format types shared with the runtime loader (SceneFile's
+# BlueprintBindings, #650) so editor saves round-trip the section.
+pulsar_scene.workspace = true
 # Play-In-Editor input ABI (game tab forwards InputEvent to the embedded game)
 pulsar_pie_abi.workspace = true
 # M3-alpha Task 2 (audit follow-up): `prims-gpui` is required here —

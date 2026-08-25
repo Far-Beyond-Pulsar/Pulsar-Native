@@ -33,7 +33,7 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 use pulsar_scene::component_instances_from_props;
-use pulsar_scene::format::{ObjectType as FileObjectType, SceneFile};
+use pulsar_scene::format::{BlueprintBindings, ObjectType as FileObjectType, SceneFile};
 use serde_json::Value;
 
 use crate::scene::{
@@ -62,11 +62,26 @@ pub struct EditorCamera {
     pub pitch: f32,
 }
 
+/// What a level load reports beyond hydration itself (#650): the editor
+/// camera seed and the file's Blueprint class bindings. Hosts apply the
+/// bindings through `pulsar_game::blueprint_runtime::level_bindings`, which
+/// resolves each StableId against the hydrated store and spawns one bound
+/// dispatcher instance per (object, class) pair.
+#[derive(Clone, Debug, Default)]
+pub struct LevelExtras {
+    /// The camera saved under `editor.camera`, if any.
+    pub editor_camera: Option<EditorCamera>,
+    /// Object → Blueprint class bindings keyed by StableId; empty for
+    /// pre-#650 files.
+    pub blueprint_bindings: BlueprintBindings,
+}
+
 /// A scene loaded for runtime use: one shared, SceneDB-owned store plus
-/// the level-file extras gameplay cares about (editor camera seed).
+/// the level-file extras gameplay cares about (editor camera seed, Blueprint
+/// class bindings).
 pub struct RuntimeLevel {
     store: Arc<RwLock<WorldSceneStore>>,
-    editor_camera: Option<EditorCamera>,
+    extras: LevelExtras,
 }
 
 impl RuntimeLevel {
@@ -96,13 +111,14 @@ impl RuntimeLevel {
     /// level constructing its own store. Duplicate stable ids between the
     /// file and live state are errors, never silent re-spawns.
     ///
-    /// Returns the editor camera saved in the file, if any. Call
-    /// `engine_state::set_project_path` first so asset-resolving hydrates
-    /// (`StaticMeshComponent`) can find project files.
+    /// Returns the file's extras ([`LevelExtras`]: editor camera + Blueprint
+    /// class bindings). Call `engine_state::set_project_path` first so
+    /// asset-resolving hydrates (`StaticMeshComponent`) can find project
+    /// files.
     pub fn load_into(
         path: &Path,
         store: &mut WorldSceneStore,
-    ) -> Result<Option<EditorCamera>, RuntimeLevelError> {
+    ) -> Result<LevelExtras, RuntimeLevelError> {
         let path_display = path.display().to_string();
         let bytes = std::fs::read(path).map_err(|e| RuntimeLevelError::Io {
             path: path_display.clone(),
@@ -115,20 +131,26 @@ impl RuntimeLevel {
         let file: SceneFile = serde_json::from_str(&text).map_err(|e| {
             RuntimeLevelError::Parse { path: path_display.clone(), message: e.to_string() }
         })?;
-        // Camera state is extracted before `file` moves into hydration.
-        let editor_camera = editor_camera(&file.editor);
+        // Extras are extracted before `file` moves into hydration.
+        let extras = LevelExtras {
+            editor_camera: editor_camera(&file.editor),
+            blueprint_bindings: file.blueprint_bindings.clone(),
+        };
         Self::hydrate_scene_file(file, store)?;
-        Ok(editor_camera)
+        Ok(extras)
     }
 
     /// Hydrate from an already-parsed [`SceneFile`] into a fresh store
     /// (import/legacy callers that get their JSON from somewhere other than
     /// disk).
     pub fn from_scene_file(file: SceneFile) -> Result<Self, RuntimeLevelError> {
-        let editor_camera = editor_camera(&file.editor);
+        let extras = LevelExtras {
+            editor_camera: editor_camera(&file.editor),
+            blueprint_bindings: file.blueprint_bindings.clone(),
+        };
         let mut store = WorldSceneStore::new();
         Self::hydrate_scene_file(file, &mut store)?;
-        Ok(Self { store: Arc::new(RwLock::new(store)), editor_camera })
+        Ok(Self { store: Arc::new(RwLock::new(store)), extras })
     }
 
     /// Shared hydration core: version gate + objects + components into
@@ -181,9 +203,17 @@ impl RuntimeLevel {
         Arc::clone(&self.store)
     }
 
+    /// The level's extras: editor camera seed + Blueprint class bindings
+    /// (#650). Bindings are NOT applied by hydration itself — hosts apply
+    /// them through `pulsar_game::blueprint_runtime::level_bindings` so the
+    /// dispatcher stays a gameplay-side concern.
+    pub fn extras(&self) -> &LevelExtras {
+        &self.extras
+    }
+
     /// Editor camera saved with the level, if any.
     pub fn editor_camera(&self) -> Option<EditorCamera> {
-        self.editor_camera
+        self.extras.editor_camera
     }
 }
 
@@ -505,5 +535,30 @@ mod tests {
         let store = store.read();
         let cube = store.entity_for("cube").unwrap();
         assert_eq!(store.world().get::<StableId>(cube).map(|s| s.0.clone()), Some("cube".into()));
+    }
+
+    /// #650 additive guarantee: files without `blueprint_bindings` load with
+    /// empty extras, and an authored bindings section rides along unharmed
+    /// (hydration itself never applies it — hosts do, via
+    /// `pulsar_game::blueprint_runtime::level_bindings`).
+    #[test]
+    fn blueprint_bindings_are_additive_extras() {
+        let old: SceneFile = serde_json::from_str(SAMPLE_LEVEL).expect("sample parses");
+        let level = RuntimeLevel::from_scene_file(old).expect("old shape hydrates");
+        assert!(level.extras().blueprint_bindings.is_empty());
+        assert!(level.editor_camera().is_some(), "camera extras unchanged");
+
+        let mut file: SceneFile = serde_json::from_str(SAMPLE_LEVEL).expect("sample parses");
+        file.blueprint_bindings.insert(
+            "cube".to_string(),
+            vec![pulsar_scene::BlueprintBinding {
+                class_name: "TickProbe".to_string(),
+                overrides: std::collections::HashMap::new(),
+            }],
+        );
+        let level = RuntimeLevel::from_scene_file(file).expect("bound shape hydrates");
+        let bound = &level.extras().blueprint_bindings["cube"];
+        assert_eq!(bound.len(), 1);
+        assert_eq!(bound[0].class_name, "TickProbe");
     }
 }

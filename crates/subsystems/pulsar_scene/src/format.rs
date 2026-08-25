@@ -17,7 +17,7 @@ use engine_fs::virtual_fs;
 use pulsar_reflection::apply_scene_props_for_class;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 // ── Top-level file ─────────────────────────────────────────────────────────────
 
@@ -39,6 +39,17 @@ pub struct SceneFile {
     pub metadata: Value,
     #[serde(default, skip_serializing)]
     pub editor: Value,
+
+    // ── Blueprint class bindings (#650) ───────────────────────────────────
+    /// Per-object Blueprint class bindings keyed by the object's **StableId**
+    /// (`SceneObject::id`), never its display name — so renaming an object
+    /// never orphans a binding. Multiple classes may bind to one object.
+    ///
+    /// Additive extension: older level files lack the key entirely and
+    /// deserialize to an empty map; files without bindings serialize without
+    /// it, staying byte-compatible with the pre-#650 format.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub blueprint_bindings: BlueprintBindings,
 }
 
 fn default_version_value() -> Value {
@@ -73,6 +84,36 @@ impl SceneFile {
         virtual_fs::write_file(path, text.as_bytes()).map_err(|e| SceneLoadError::Io(e.to_string()))
     }
 }
+
+// ── Blueprint class bindings (#650) ───────────────────────────────────────────
+
+/// One compiled-Blueprint class bound to one scene object (#650).
+///
+/// At play-mode load each binding becomes exactly one dispatcher instance
+/// whose component ops address the bound object's entity. The class must
+/// exist as compiled bytecode at
+/// `<project>/src/classes/<class_name>/events/.build/bytecode.json` — the
+/// same layout the generated `engine_main` auto-discovers.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlueprintBinding {
+    /// Compiled Blueprint class name — matches the bytecode's
+    /// `source_class` and the class directory under `<project>/src/classes/`.
+    pub class_name: String,
+
+    /// Per-instance variable overrides: variable name → JSON value in the
+    /// variable's natural JSON form (`7.5`, `"hello"`, `[1.0, 2.0]`, …).
+    /// Applied to this instance's state arena at spawn; variables not listed
+    /// keep their graph-authored defaults. Unknown names are ignored by the
+    /// dispatcher (the variable layout is the authority).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub overrides: HashMap<String, Value>,
+}
+
+/// A whole file's bindings: object StableId → that object's class bindings.
+///
+/// A `BTreeMap` so load-time spawning order is deterministic regardless of
+/// the JSON key order on disk.
+pub type BlueprintBindings = BTreeMap<String, Vec<BlueprintBinding>>;
 
 // ── Transform (nested, v2.x format) ───────────────────────────────────────────
 
@@ -522,5 +563,68 @@ impl SceneObject {
             .and_then(|v| v.as_f64())
             .map(|v| v as f32)
             .unwrap_or(default)
+    }
+}
+
+#[cfg(test)]
+mod blueprint_binding_tests {
+    //! #650 — the additive level-format extension for Blueprint class
+    //! bindings: old files load unchanged, new sections round-trip.
+
+    use super::*;
+
+    /// The additive guarantee: a pre-#650 file (no `blueprint_bindings` key)
+    /// deserializes with empty bindings.
+    #[test]
+    fn old_files_without_bindings_load_unchanged() {
+        let json = r#"{
+            "version": "2.1",
+            "objects": [
+                { "id": "cube", "name": "Cube", "object_type": {"Mesh": "Cube"}, "props": {} }
+            ]
+        }"#;
+        let file: SceneFile = serde_json::from_str(json).expect("old file parses");
+        assert!(file.blueprint_bindings.is_empty());
+    }
+
+    /// A bindings section round-trips, keyed by StableId with per-instance
+    /// overrides; re-serializing drops the key when empty.
+    #[test]
+    fn bindings_round_trip_and_skip_serializing_when_empty() {
+        let json = r#"{
+            "version": "2.1",
+            "objects": [],
+            "blueprint_bindings": {
+                "lever_a": [
+                    { "class_name": "Lever", "overrides": { "speed": 7.5 } },
+                    { "class_name": "Alarm" }
+                ]
+            }
+        }"#;
+        let file: SceneFile = serde_json::from_str(json).expect("bindings parse");
+        let lever = &file.blueprint_bindings["lever_a"];
+        assert_eq!(lever.len(), 2, "multiple classes may bind to one object");
+        assert_eq!(lever[0].class_name, "Lever");
+        assert_eq!(lever[0].overrides.get("speed").and_then(Value::as_f64), Some(7.5));
+        assert!(lever[1].overrides.is_empty(), "missing overrides means defaults");
+
+        let rewritten = serde_json::to_string(&file).expect("serialize");
+        assert!(rewritten.contains("blueprint_bindings"), "non-empty section is written");
+        assert!(rewritten.contains(r#""overrides":{"speed":7.5}"#), "overrides survive");
+
+        let empty: SceneFile = serde_json::from_str(r#"{ "version": 1 }"#).unwrap();
+        assert!(
+            !serde_json::to_string(&empty).unwrap().contains("blueprint_bindings"),
+            "empty section stays out of the file (byte-compat with pre-#650 writers)"
+        );
+    }
+
+    /// Bindings reference objects by StableId only — the type has no
+    /// name field to drift out of sync (#B2 identity rule).
+    #[test]
+    fn binding_type_carries_no_object_name() {
+        let binding: BlueprintBinding =
+            serde_json::from_str(r#"{ "class_name": "Enemy", "overrides": {} }"#).unwrap();
+        assert_eq!(binding.class_name, "Enemy");
     }
 }

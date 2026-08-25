@@ -29,6 +29,7 @@ use helio::{
 use parking_lot::RwLock;
 
 use crate::camera_selection::select_world_camera;
+use crate::blueprint_runtime::level_bindings;
 use crate::freecam::FreeCam;
 use crate::window::{RenderCamera, WindowBridge, WindowCommand, WindowDescriptor, WindowHandle};
 
@@ -462,7 +463,7 @@ impl PulsarApp {
                 RuntimeLevel::load_into(path, &mut store)
             };
             match load_result {
-                Ok(editor_camera) => {
+                Ok(extras) => {
                     attach_gpu_render_seam(
                         &mut self.scene_store.write(),
                         &mut game_window.renderer,
@@ -473,7 +474,7 @@ impl PulsarApp {
                     // Seed the freecam from the editor camera saved in the
                     // level file, if present, so the first frame matches the
                     // editor view.
-                    if let Some(cam) = editor_camera {
+                    if let Some(cam) = extras.editor_camera {
                         game_window.freecam = FreeCam::default().place(
                             glam::Vec3::from_array(cam.position),
                             cam.yaw,
@@ -484,6 +485,44 @@ impl PulsarApp {
                             "FreeCam seeded from scene editor camera"
                         );
                     }
+
+                    // Spawn the level's Blueprint class bindings (#650): one
+                    // bound VM instance per (object, class) pair, addressed
+                    // at its own hydrated entity. Per-binding failures are
+                    // logged + collected — one stale entry never blocks play.
+                    if !extras.blueprint_bindings.is_empty() {
+                        if let Some(tick_loop) = self.tick_loop.as_mut() {
+                            if let Some(dispatcher) = &tick_loop.blueprint_dispatcher {
+                                // Same lock order as TickLoop phase 3:
+                                // dispatcher mutex, then store write.
+                                let mut dispatcher =
+                                    dispatcher.lock().expect("blueprint dispatcher mutex");
+                                let report = {
+                                    let store = self.scene_store.write();
+                                    level_bindings::apply_blueprint_bindings(
+                                        &mut dispatcher,
+                                        &store,
+                                        &self.project_root,
+                                        &extras.blueprint_bindings,
+                                    )
+                                };
+                                for applied in &report.applied {
+                                    tracing::info!(
+                                        object = %applied.stable_id,
+                                        class = %applied.class_name,
+                                        instance = %applied.instance_id,
+                                        "Level blueprint binding spawned"
+                                    );
+                                }
+                                tracing::info!(
+                                    applied = report.applied.len(),
+                                    failed = report.failures.len(),
+                                    "Applied level blueprint bindings"
+                                );
+                            }
+                        }
+                    }
+
                     tracing::info!(
                         window = handle.id(),
                         scene = %path.display(),

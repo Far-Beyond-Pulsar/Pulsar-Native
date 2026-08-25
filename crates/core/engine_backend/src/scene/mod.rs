@@ -59,7 +59,7 @@ pub use metadata_db::SceneMetadataDb;
 pub use helio_bridge::{
     attach_gpu_render_seam, rebuild_light_frame, rebuild_static_mesh_frame, step_scene_for_render,
 };
-pub use runtime_level::{EditorCamera, RuntimeLevel, RuntimeLevelError};
+pub use runtime_level::{EditorCamera, LevelExtras, RuntimeLevel, RuntimeLevelError};
 pub use world_store::{
     Name, ObjectSnapshot, Parent, RenderProps, StableId, Transform, Visibility, WorldSceneStore,
     WorldSceneStoreError,
