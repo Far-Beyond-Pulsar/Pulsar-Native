@@ -76,7 +76,14 @@ ui           = { path = "crates/ui/wgpui-component/crates/ui", features = ["insp
 ui-macros    = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 
 # ---------- Core Engine ----------
-profiling                          = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling", rev = "12424a5f75166332f9f1d2741281f6fc4847b44d" }
+# Profiling - instrumentation-based
+profiling                          = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling", rev = "12424a5f75166332f9f1d2741281f6fc4847b44d", default-features = false }
+# Tracy frontend: crates.io `profiling` v1, kept separate from the custom
+# collector above so both can coexist. Because gpui-ce depends on the same
+# crates.io package, enabling any crate's tracy feature feature-unifies the
+# whole graph onto one backend, lighting up every `profiling::scope!` in
+# wgpui as well.
+profiling-v1                       = { package = "profiling", version = "1", default-features = false }
 engine_fs                          = { path = "crates/core/engine_fs", default-features = false }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }

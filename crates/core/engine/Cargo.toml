@@ -24,6 +24,10 @@ engine_state.workspace = true
 pulsar_auth.workspace = true
 # Profiling - instrumentation-based
 profiling = { workspace = true }
+# Tracy frontend (crates.io `profiling` v1). Feature-unifies with gpui-ce's
+# own copy, so `--features profile-tracy` also enables every
+# `wgpui: ...` zone inside the gpui render path.
+profiling-v1 = { workspace = true }
 
 # UI crates - commented out to avoid circular dependency during build
 # The UI crates depend on engine, so we can't have engine depend on them
@@ -59,6 +63,13 @@ dhat = { version = "0.3", optional = true }
 
 [features]
 dhat-heap = ["dep:dhat"]
+# Tracy CPU profiling. Also switches gpui-ce (wgpui) to Tracy via feature
+# unification on the shared crates.io `profiling` package, so the render
+# path's `wgpui: ...` zones appear in the same capture.
+profile-tracy = [
+    "profiling-v1/profile-with-tracy",
+    "gpui-ce/profile-tracy",
+]
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = ["Win32_System_Diagnostics_Debug"] }

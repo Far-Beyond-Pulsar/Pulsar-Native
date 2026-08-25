@@ -241,9 +241,12 @@ fn main() {
     // (disabled — handled by the OS on first launch)
 
     // Execute the initialization graph
-    if let Err(e) = graph.execute(&mut init_ctx) {
-        tracing::error!("Engine initialization failed: {}", e);
-        std::process::exit(1);
+    {
+        profiling_v1::scope!("pulsar: init graph execute");
+        if let Err(e) = graph.execute(&mut init_ctx) {
+            tracing::error!("Engine initialization failed: {}", e);
+            std::process::exit(1);
+        }
     }
 
     // GPU policy check — runs after logging is initialized so warnings/errors are visible.
@@ -265,6 +268,7 @@ fn main() {
     .with_assets(Assets);
 
     gpui_app.run(move |cx: &mut gpui::App| {
+        profiling_v1::scope!("pulsar: gpui app run");
         let t_gpui = std::time::Instant::now();
         tracing::info!("[GPUI startup] begin");
 
