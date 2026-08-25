@@ -76,6 +76,7 @@ use syn::{
         engine_class_no_register,
         engine_class_serialize,
         engine_class_deserialize,
+        engine_class_scene_store,
         gpu
     )
 )]
@@ -98,6 +99,17 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     } else {
         quote! { None }
     };
+
+    // GPU ownership boundary signal (see the field-scan comment below): the
+    // attribute macro stamps `#[engine_class_scene_store]` when the
+    // `scene_store` flag routed this struct's GPU storage to SceneDB's own
+    // `#[derive(SceneStore)]`. Same mechanism/limitation as the serialize /
+    // deserialize markers further down -- a derive never sees the derive
+    // list, only these stamped markers.
+    let scene_store_routed = input
+        .attrs
+        .iter()
+        .any(|a| a.path().is_ident("engine_class_scene_store"));
 
     // Extract direct #[property] fields and optional #[sub_props] flattening fields.
     let (property_impls, property_fields, sub_props_fields, gpu_leaf_fields): (
@@ -159,23 +171,50 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                             field,
                         ));
                     }
-                    // GPU storage is SceneDB's domain, exclusively: a
-                    // `#[gpu]` field's storage shape (packed / var-len /
-                    // heavy) is decided entirely by that struct's own
-                    // `#[derive(pulsar_scenedb::SceneStore)]` -- requested
-                    // via the `scene_store` flag (`StaticMeshComponent`'s
-                    // `vertices`/`indices`, Pulsar-Native#561 Phase D).
-                    // This derive contributes only the packed-scalar
-                    // reflection companion below; it deliberately does not
-                    // classify Vec or GpuHeavy fields (see the engine-class
-                    // GPU de-duplication audit).
-                    if is_gpu && !is_vec_type(&field.ty) {
-                        let field_ident = field.ident.clone().unwrap();
-                        let override_ = match parse_gpu_attr(field) {
-                            Ok(o) => o,
-                            Err(err) => return err.to_compile_error().into(),
-                        };
-                        gpu_fields.push(GpuLeafField { ident: field_ident, field_ty: field.ty.clone(), override_ });
+                    // GPU ownership boundary (engine-class GPU de-duplication
+                    // audit): packed-scalar `#[gpu]` fields are THIS derive's
+                    // only storage concern. Var-len (`Vec<T>`) and heavy
+                    // (`GpuHeavy<T>`) shapes belong exclusively to SceneDB's
+                    // own `#[derive(SceneStore)]` -- a struct declares that
+                    // routing via the `scene_store` flag, which the attribute
+                    // macro stamps as an `#[engine_class_scene_store]` marker
+                    // (the derive can never see the derive list itself).
+                    // Unrouted misuse is a compile error, not silent
+                    // inertness.
+                    if is_gpu {
+                        if is_gpu_heavy_shape(&field.ty) {
+                            if !scene_store_routed {
+                                return syn::Error::new_spanned(
+                                    field,
+                                    "#[gpu] GpuHeavy<T> fields use SceneDB's heavy/handle-split \
+                                     storage, owned by this struct's own \
+                                     #[derive(pulsar_scenedb::SceneStore)] -- add the \
+                                     `scene_store` flag to #[engine_class]. This derive \
+                                     generates packed-scalar companions only.",
+                                )
+                                .to_compile_error()
+                                .into();
+                            }
+                        } else if is_vec_type(&field.ty) {
+                            if !scene_store_routed {
+                                return syn::Error::new_spanned(
+                                    field,
+                                    "#[gpu] Vec<T> fields store through this struct's own \
+                                     #[derive(pulsar_scenedb::SceneStore)] (add the \
+                                     `scene_store` flag to #[engine_class]). This derive \
+                                     generates packed-scalar companions only.",
+                                )
+                                .to_compile_error()
+                                .into();
+                            }
+                        } else {
+                            let field_ident = field.ident.clone().unwrap();
+                            let override_ = match parse_gpu_attr(field) {
+                                Ok(o) => o,
+                                Err(err) => return err.to_compile_error().into(),
+                            };
+                            gpu_fields.push(GpuLeafField { ident: field_ident, field_ty: field.ty.clone(), override_ });
+                        }
                     }
 
                     if has_sub_props {
@@ -452,6 +491,14 @@ fn is_vec_type(ty: &syn::Type) -> bool {
     type_path.path.segments.last().map(|s| s.ident == "Vec").unwrap_or(false)
 }
 
+/// Syntactic-only check that `ty` is `pulsar_world_registry::GpuHeavy<T>` --
+/// same last-segment style as `is_vec_type`. Used solely by the GPU ownership
+/// boundary errors; heavy storage itself is SceneDB's SceneStore concern.
+fn is_gpu_heavy_shape(ty: &syn::Type) -> bool {
+    let syn::Type::Path(type_path) = ty else { return false };
+    type_path.path.segments.last().map(|s| s.ident == "GpuHeavy").unwrap_or(false)
+}
+
 #[proc_macro_attribute]
 pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr with Punctuated::<Meta, syn::Token![,]>::parse_terminated);
@@ -607,6 +654,17 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     } else {
         quote! {}
     };
+    // Same marker-attribute mechanism, for the GPU ownership boundary: a
+    // `scene_store` struct's `#[gpu] Vec<T>`/`GpuHeavy<T>` fields are
+    // SceneDB's own `#[derive(SceneStore)]` storage (var-len / handle-split
+    // paths), NOT this derive's packed companions. The marker is how
+    // `derive_engine_class` -- which can never see the derive list --
+    // distinguishes "routed to SceneDB, skip" from "misuse, reject".
+    let scene_store_marker_attr = if add_scene_store || has_scene_store_derive {
+        quote! { #[engine_class_scene_store] }
+    } else {
+        quote! {}
+    };
 
     let sub_props_marker_impl = if no_register {
         let name = &item_struct.ident;
@@ -690,6 +748,7 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         #no_register_attr
         #serialize_marker_attr
         #deserialize_marker_attr
+        #scene_store_marker_attr
         #item_struct
         #sub_props_marker_impl
         #runtime_registration
