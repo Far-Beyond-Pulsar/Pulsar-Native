@@ -263,7 +263,14 @@
           "index": 2,
           "class_name": "StaticMeshComponent",
           "data": {
-            "mesh_asset": "meshes/primitives/SM_Sphere.fbx"
+            "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+            "base_color_asset": "",
+            "normal_asset": "",
+            "roughness_metallic_asset": "",
+            "emissive_asset": "",
+            "occlusion_asset": "",
+            "specular_color_asset": "",
+            "specular_weight_asset": ""
           }
         },
         {
@@ -773,7 +780,14 @@
           "index": 0,
           "class_name": "StaticMeshComponent",
           "data": {
-            "mesh_asset": "meshes/primitives/SM_Cube.fbx"
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "base_color_asset": "",
+            "normal_asset": "",
+            "roughness_metallic_asset": "",
+            "emissive_asset": "",
+            "occlusion_asset": "",
+            "specular_color_asset": "",
+            "specular_weight_asset": ""
           }
         }
       ]
@@ -814,7 +828,14 @@
           "index": 0,
           "class_name": "StaticMeshComponent",
           "data": {
-            "mesh_asset": "monkey.fbx"
+            "mesh_asset": "monkey.fbx",
+            "base_color_asset": "",
+            "normal_asset": "",
+            "roughness_metallic_asset": "",
+            "emissive_asset": "",
+            "occlusion_asset": "",
+            "specular_color_asset": "",
+            "specular_weight_asset": ""
           }
         }
       ]
@@ -856,7 +877,14 @@
           "index": 0,
           "class_name": "StaticMeshComponent",
           "data": {
-            "mesh_asset": "meshes/primitives/SM_Cube.fbx"
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "base_color_asset": "",
+            "normal_asset": "",
+            "roughness_metallic_asset": "",
+            "emissive_asset": "",
+            "occlusion_asset": "",
+            "specular_color_asset": "",
+            "specular_weight_asset": ""
           }
         }
       ]
@@ -897,7 +925,14 @@
           "index": 0,
           "class_name": "StaticMeshComponent",
           "data": {
-            "mesh_asset": "monkey.fbx"
+            "mesh_asset": "monkey.fbx",
+            "base_color_asset": "",
+            "normal_asset": "",
+            "roughness_metallic_asset": "",
+            "emissive_asset": "",
+            "occlusion_asset": "",
+            "specular_color_asset": "",
+            "specular_weight_asset": ""
           }
         }
       ]
@@ -1404,7 +1439,14 @@
           "index": 0,
           "class_name": "StaticMeshComponent",
           "data": {
-            "mesh_asset": "meshes/primitives/SM_Cube.fbx"
+            "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+            "base_color_asset": "",
+            "normal_asset": "",
+            "roughness_metallic_asset": "",
+            "emissive_asset": "",
+            "occlusion_asset": "",
+            "specular_color_asset": "",
+            "specular_weight_asset": ""
           }
         }
       ]
@@ -1417,7 +1459,14 @@
         "class_name": "StaticMeshComponent",
         "enabled": true,
         "data": {
-          "mesh_asset": "monkey.fbx"
+          "mesh_asset": "monkey.fbx",
+          "base_color_asset": "",
+          "normal_asset": "",
+          "roughness_metallic_asset": "",
+          "emissive_asset": "",
+          "occlusion_asset": "",
+          "specular_color_asset": "",
+          "specular_weight_asset": ""
         }
       }
     ],
@@ -1622,7 +1671,14 @@
         "class_name": "StaticMeshComponent",
         "enabled": true,
         "data": {
-          "mesh_asset": "meshes/primitives/SM_Sphere.fbx"
+          "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+          "base_color_asset": "",
+          "normal_asset": "",
+          "roughness_metallic_asset": "",
+          "emissive_asset": "",
+          "occlusion_asset": "",
+          "specular_color_asset": "",
+          "specular_weight_asset": ""
         }
       },
       {
@@ -1708,7 +1764,14 @@
         "class_name": "StaticMeshComponent",
         "enabled": true,
         "data": {
-          "mesh_asset": "meshes/primitives/SM_Cube.fbx"
+          "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+          "base_color_asset": "",
+          "normal_asset": "",
+          "roughness_metallic_asset": "",
+          "emissive_asset": "",
+          "occlusion_asset": "",
+          "specular_color_asset": "",
+          "specular_weight_asset": ""
         }
       }
     ],
@@ -1821,7 +1884,14 @@
         "class_name": "StaticMeshComponent",
         "enabled": true,
         "data": {
-          "mesh_asset": "meshes/primitives/SM_Cube.fbx"
+          "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+          "base_color_asset": "",
+          "normal_asset": "",
+          "roughness_metallic_asset": "",
+          "emissive_asset": "",
+          "occlusion_asset": "",
+          "specular_color_asset": "",
+          "specular_weight_asset": ""
         }
       }
     ],
@@ -1830,7 +1900,14 @@
         "class_name": "StaticMeshComponent",
         "enabled": true,
         "data": {
-          "mesh_asset": "meshes/primitives/SM_Cube.fbx"
+          "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+          "base_color_asset": "",
+          "normal_asset": "",
+          "roughness_metallic_asset": "",
+          "emissive_asset": "",
+          "occlusion_asset": "",
+          "specular_color_asset": "",
+          "specular_weight_asset": ""
         }
       }
     ],
@@ -2027,7 +2104,14 @@
         "class_name": "StaticMeshComponent",
         "enabled": true,
         "data": {
-          "mesh_asset": "monkey.fbx"
+          "mesh_asset": "monkey.fbx",
+          "base_color_asset": "",
+          "normal_asset": "",
+          "roughness_metallic_asset": "",
+          "emissive_asset": "",
+          "occlusion_asset": "",
+          "specular_color_asset": "",
+          "specular_weight_asset": ""
         }
       }
     ],
