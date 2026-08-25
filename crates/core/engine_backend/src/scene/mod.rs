@@ -43,6 +43,7 @@ pub mod world_store;
 // the StableId⇄Entity resolver + duplicate-instance store the script-facing
 // handles route through. Impls only; no new storage.
 pub mod script_ref_bridge;
+pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 
 #[cfg(feature = "render")]
 // Shared WorldSceneStore <-> helio::Renderer operations (#637): GPU seam

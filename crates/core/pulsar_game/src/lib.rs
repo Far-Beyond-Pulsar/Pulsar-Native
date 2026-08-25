@@ -44,6 +44,10 @@ pub mod time;
 // `TickLoop::register_actor`.
 pub mod scripts;
 
+// Cross-object reference resolution for blueprint graphs (#654): the one
+// implementation BOTH compile targets call (VM trampolines + generated Rust).
+pub mod script_refs;
+
 /// Component vocabulary gameplay scripts attach most often (#653).
 ///
 /// User script crates depend only on `pulsar_game`; this module is their
@@ -65,6 +69,11 @@ mod blueprint_codegen_drift;
 // #651 acceptance probe: generated-actor shapes mutate the live world
 #[cfg(test)]
 mod blueprint_live_dispatch;
+
+// #654 acceptance: cross-object reference graphs behave identically through
+// the sourcegen path (generated-shape twin + emission drift guard)
+#[cfg(test)]
+mod blueprint_ref_codegen;
 
 #[cfg(test)]
 mod tests;

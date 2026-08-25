@@ -208,9 +208,10 @@ mod blueprint_instances {
 
     use crate::blueprint_runtime::{BlueprintDispatcher, CompiledBytecode, ExecutorError, VariableDescriptor};
     use crate::prelude::*;
-    use pbgc::bytecode::comp_ops::{
-        encode_call_name_blob, encode_json_blob, encode_name_blob, JSON_BLOB_CAPACITY,
-    };
+use pbgc::bytecode::comp_ops::{
+    encode_json_blob, encode_targeted_call_name_blob, encode_targeted_name_blob,
+    JSON_BLOB_CAPACITY,
+};
     use pbgc::{BpProgram, Instruction};
     use pulsar_reflection::{
         ComponentMethodRegistration, EngineClass, EngineClassRegistration, MethodMetadata,
@@ -385,9 +386,19 @@ mod blueprint_instances {
         bytecode.add_variable(VariableDescriptor::f32("speed", 0, 1.0));
         bytecode.calculate_arena_size();
 
+        // Name blobs carry the trailing `self` target field (ABI v2, #654):
+        // self-targeted addressing is explicit so the VM reader scans fixed
+        // field counts.
         let mut begin_play = BpProgram::new("begin_play");
         begin_play.instructions = vec![
-            Instruction::InitBytes { offset: NAME_OFF, bytes: encode_name_blob("TickProbe", "played") },
+            Instruction::InitBytes {
+                offset: NAME_OFF,
+                bytes: encode_targeted_name_blob(
+                    "TickProbe",
+                    "played",
+                    pbgc::bytecode::comp_ops::RefTarget::SelfActor,
+                ),
+            },
             Instruction::InitBytes { offset: ARG_OFF, bytes: encode_json_blob("true") },
             Instruction::Call {
                 fn_ptr: 0,
@@ -406,7 +417,12 @@ mod blueprint_instances {
         tick.instructions = vec![
             Instruction::InitBytes {
                 offset: NAME_OFF,
-                bytes: encode_call_name_blob("TickProbe", "add_charges", 1),
+                bytes: encode_targeted_call_name_blob(
+                    "TickProbe",
+                    "add_charges",
+                    1,
+                    pbgc::bytecode::comp_ops::RefTarget::SelfActor,
+                ),
             },
             Instruction::InitBytes { offset: ARG_OFF, bytes: encode_json_blob("1") },
             Instruction::Call {

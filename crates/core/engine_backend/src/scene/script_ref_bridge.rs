@@ -22,7 +22,7 @@ use pulsar_scenedb::Entity;
 use pulsar_script_object_model::{ComponentInstanceStore, InstanceRecord, StableIdResolver};
 use serde_json::Value;
 
-use crate::scene::{RenderProps, WorldSceneStore};
+use crate::scene::{Name, RenderProps, StableId, WorldSceneStore};
 
 impl StableIdResolver for WorldSceneStore {
     fn entity_for_stable_id(&self, stable_id: &str) -> Option<Entity> {
@@ -102,6 +102,42 @@ impl WorldSceneStore {
             })
             .collect()
     }
+}
+
+// ── World-level identity lookups (#654) ─────────────────────────────────────
+//
+// Script references resolve LAZILY against whatever world they land in
+// (#639), and graph reference nodes run in contexts that hold only a plain
+// `&World` — VM trampolines mid-event and generated actors inside their
+// tick callbacks — where no `WorldSceneStore` (and therefore no
+// `StableIdResolver` impl) exists. Both questions below are answerable from
+// the world alone because `StableId`/`Name` ARE world components; these
+// free functions are the one shared implementation of that lookup for every
+// scripting backend.
+
+/// The live entity carrying `stable_id`, if any.
+///
+/// First match wins. Entities spawned outside [`WorldSceneStore`] (bare
+/// gameplay spawns) carry no `StableId` component and are invisible to this
+/// lookup — exactly the "cannot be referenced across sessions" rule of
+/// `resolution.rs`.
+pub fn entity_with_stable_id(world: &pulsar_scenedb::World, stable_id: &str) -> Option<Entity> {
+    world
+        .query::<&StableId>()
+        .find(|(_, id)| id.0 == stable_id)
+        .map(|(entity, _)| entity)
+}
+
+/// The first live entity whose display `Name` equals `name`.
+///
+/// First match in archetype iteration order — name collisions are an authoring
+/// hazard, not a resolution ambiguity this function pretends to solve;
+/// callers needing disambiguation should prefer stable ids (#639 policy).
+pub fn first_entity_named(world: &pulsar_scenedb::World, name: &str) -> Option<Entity> {
+    world
+        .query::<&Name>()
+        .find(|(_, n)| n.0 == name)
+        .map(|(entity, _)| entity)
 }
 
 /// An entry's resolved index: its explicit `"index"` field, else its array
@@ -221,5 +257,30 @@ mod tests {
         assert_eq!(StableIdResolver::entity_for_stable_id(&store, "door"), Some(door));
         assert!(StableIdResolver::is_entity_alive(&store, door));
         assert_eq!(StableIdResolver::entity_for_stable_id(&store, "nope"), None);
+    }
+
+    /// #654: the plain-world lookups find hydrated objects by their StableId
+    /// and Name components — the exact queries the graph reference nodes
+    /// resolve through at runtime.
+    #[test]
+    fn world_level_identity_lookups_find_hydrated_objects() {
+        let mut store =
+            WorldSceneStore::load_from_snapshots(&[
+                ObjectSnapshot { name: "Front Door".into(), ..snap("door") },
+                snap("chest"),
+            ])
+            .unwrap();
+        let world = store.world();
+
+        let door = entity_with_stable_id(world, "door").expect("by stable id");
+        assert_eq!(store.entity_for("door"), Some(door));
+        assert_eq!(first_entity_named(world, "Front Door"), Some(door));
+        assert_eq!(entity_with_stable_id(world, "chest"), store.entity_for("chest"));
+        assert_eq!(first_entity_named(world, "no such object"), None);
+
+        // Despawned targets stop resolving immediately (lazy resolution).
+        store.world_mut().despawn(door);
+        let world = store.world();
+        assert_eq!(first_entity_named(world, "Front Door"), None);
     }
 }

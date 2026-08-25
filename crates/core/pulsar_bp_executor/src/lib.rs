@@ -14,11 +14,20 @@ use pbgc::Instruction;
 /// [`CompOpKind`]. The handlers implement the arena ABI documented in
 /// `pbgc::bytecode::comp_ops`; Pulsar-Native's live implementation is
 /// `pulsar_game::blueprint_runtime::component_ops::COMPONENT_OP_HANDLERS`.
+///
+/// #654 adds the identity-reference kinds: `get_ref` produces a
+/// `ComponentRef` for a class/index (optionally on another actor),
+/// `find_by_stable_id` / `find_by_name` resolve scene objects, and
+/// `object_literal` re-resolves an authored reference literal.
 #[derive(Debug, Clone, Copy)]
 pub struct ComponentOpHandlers {
     pub get: u64,
     pub set: u64,
     pub call: u64,
+    pub get_ref: u64,
+    pub find_by_stable_id: u64,
+    pub find_by_name: u64,
+    pub object_literal: u64,
 }
 
 impl ComponentOpHandlers {
@@ -27,6 +36,10 @@ impl ComponentOpHandlers {
             CompOpKind::GetProp => self.get,
             CompOpKind::SetProp => self.set,
             CompOpKind::Call => self.call,
+            CompOpKind::GetRef => self.get_ref,
+            CompOpKind::FindByStableId => self.find_by_stable_id,
+            CompOpKind::FindByName => self.find_by_name,
+            CompOpKind::ObjectLiteral => self.object_literal,
         }
     }
 }
