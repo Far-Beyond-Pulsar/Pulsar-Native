@@ -1048,7 +1048,7 @@ wgpui/gpui-ce warnings unrelated). Cargo.toml/Cargo.lock user WIP excluded;
 only MY single `ui_level_editor → pulsar_scene` lock line staged (surgical
 `git apply --cached`, same protocol as C/D3).
 
-## Handoff: E (in progress)
+## Handoff: E
 
 ### Handoff: E1
 
@@ -1302,3 +1302,114 @@ pbgc/pulsar_game warnings are in untouched pre-existing code).
 - If a future EngineClass derive gains more direct crate references, extend
   GAME_DEPENDENCIES in engine_backend/build.rs IN THE SAME COMMIT — the e2e
   check will catch it otherwise (that is how this one was found).
+
+### Handoff: E3
+
+Branch `scripting-epic`, one parent-repo commit (issue #653). STATUS: COMPLETE
+as a scoped slice; follow-ups listed at the end. Touched crates:
+`pulsar_pie_abi`, `pulsar_game`, `engine_backend`, `ui_level_editor` (+ docs).
+helio submodule pointer untouched; pbgc untouched this phase; blueprint_editor
+untouched.
+
+**What landed per scope item**
+
+1. **Project scaffolding — LANDED.** `core_project_builder::ensure_scripts_
+   crate` scaffolds `scripts/<game>_scripts` on first bootstrap (starter
+   Cargo.toml + lib.rs with a documented Spinner example + `register_scripts`
+   entry point; NEVER overwrites existing files, no-op when crates already
+   exist). Manifest wiring: script crates become path deps spliced INTO the
+   baked `[dependencies]` table (TOML forbids reopening a table — splice goes
+   before the first `[patch.` header) and the project manifest gains a
+   `[workspace]` block listing them as members, so ONE build compiles user
+   gameplay code into the game dylib. The scaffold's `pulsar_game` path dep
+   uses the same absolute engine-checkout anchor as the baked manifest →
+   single unified copy. `engine_main.rs` emission now: (a) registers every
+   discovered script crate (`<name>::register_scripts(game)?;`), (b) spawns
+   level.json prefabs through `game.register_actor(classes::X::new())`
+   instead of bare `actors.register` so prefabs are reload-safe too.
+2. **Editor-visible registration — LANDED at data-model level.** New
+   `services/native_scripts.rs`: discovers script crates under `scripts/` and
+   actor TYPES via the documented authoring convention (turbofish
+   `register_actor::<Type>(...)` textual scan). New
+   `ui_level_editor::state::native_scripts.rs`: rust-mode `ScriptComponent`
+   instance record `{mode:"rust",script_crate,actor_type}` + reader/writer +
+   ready-to-add SceneObjectData builder. Deliberately NO menu chrome yet (see
+   follow-ups); helpers carry `#[allow(dead_code)]` with F-consumption notes.
+3. **Native hot-reload v1 — LANDED.** PIE ABI v3 appends
+   `EngineContext::session_flags` (`session_flags::RELOAD`). Host flow:
+   Play while active ⇒ rebuild in background; viewport stops the old host
+   ONLY when the new build is in hand, then loads against the SAME shared
+   store with RELOAD set. World survives by construction (it lives host-side);
+   guest arms `TickLoop::begin_script_reload()` BEFORE setup, and
+   `TickLoop::register_actor<A>()` (new THE registration entry for generated
+   projects + scripts) matches surviving entities via a `ScriptTag { type_path
+   }` component stamped at first registration — exact type-path match first,
+   `::Type` suffix match second; tags consumed once each; matched actors
+   re-bind WITHOUT spawning (begin_play refires on the same entity; E1's
+   absent-only hydration gate prevents component duplication); unmatched tags
+   orphan their entity (logged, never despawned); new types spawn fresh.
+   Rebound shells tick in tick-loop phase 2 right after the registry (same
+   lock scope). This is D3 `reload_blueprint`'s native twin. Toolbar play
+   button becomes the reload trigger while playing (en locale gained
+   `ReloadSimulation`; other locales fall back to en).
+4. **Compile-failure UX — LANDED (existing seam, verified).** Build failures
+   already surface via `play.pie.last_error` → error notification carrying the
+   cargo stderr tail (rustc file/line spans included); tracing carries the
+   full log. Improvement this phase: a failed LOAD during reload now stops the
+   dead session explicitly and prefixes the error ("Hot reload failed — game
+   stopped") instead of leaving a silent corpse viewport. No new UI framework,
+   per issue text.
+5. **Docs — LANDED.** `docs/rust-gameplay-scripting.md`: create script crate →
+   spawn actor → mutate live Transform → see it render → edit logic → hot
+   reload preserving state; includes code map + conventions + limits.
+
+**Supporting changes**
+
+- `pulsar_game::scene` NEW public module: re-exports the script-facing
+  component vocabulary (`Transform`, `Visibility`, `Name`, `StaticMeshComp-
+  onent`, `LightComponent`, `MeshAssetPath`) so script crates depend on
+  NOTHING but pulsar_game. Required adding `helio_component` as a direct dep
+  of pulsar_game (was transitive-only) — the ONE new Cargo.lock edge (staged
+  surgically; user WIP hunks excluded as always).
+- `pulsar_pie_abi` version 2→3: appended field, history note updated. Host
+  fills flags; guest ignores unknown bits (forward-compat rule stated).
+
+**Verification (scoped, rule 5)**: pulsar_game lib 72/72 (4 new scripts
+tests incl. THE acceptance contract: reload rebinds to the same entity with
+component state preserved and the new shell ticking); engine_backend lib
+84/84 (3 discovery + 3 scaffolding/manifest-splice tests); ui_level_editor
+lib 50/50 (4 data-model tests); pie_abi clean check. E2E drift guard
+(`cargo test -p pulsar_game --test generated_project_compiles -- --ignored`)
+GREEN — freshly generated project now includes the scaffolded scripts crate
+and cargo-checks against current pins (~33 s warm). Clippy clean on every
+touched file; remaining pulsar_game clippy errors are the PRE-EXISTING
+bytecode_compiler.rs blockers D3 documented (untouched here).
+
+**Surprises / deviations**
+
+- e2e caught TWO real bugs pre-commit (rule-5 verification pays again):
+  (1) `engine_checkout_path` walked TWO levels up from engine_backend
+  instead of three → scaffolded manifests pointed at `<repo>/crates/crates/…`
+  → cargo ENOENT on the workspace member; the e2e test now asserts every
+  path-dep in the scaffolded manifest resolves to a real manifest so this
+  class of rot fails fast and locally. (2) emitted `&mut game` where `game`
+  is already `&mut TickLoop` (E0596) — emission passes `game` directly.
+- ScriptComponent itself is UNTOUCHED (read-only helio submodule): "Rust mode"
+  is a documented SHAPE of its instance-record JSON, exactly how D5 treated
+  blueprint bindings.
+- VM blueprint instances are NOT re-bound across a native reload session;
+  their own reload path exists (#648) but wiring it into PIE was already
+  D5/#650 editor work — unchanged scope, listed below.
+
+**Follow-ups recorded for F / later (skipped deliberately to avoid sprawl)**
+
+1. Add-object menu UI listing discovered Rust actor types (data model +
+   discovery shipped in `state/native_scripts.rs`; menu chrome is F's).
+2. Per-object actor BINDINGS driving play-time spawning: needs a level-format
+   section mirroring #650's `blueprint_bindings` (rust-mode record is written
+   and round-trips today) plus F inspector authoring.
+3. Template-Blank regeneration (E1 recipe) — its engine_main predates the
+   `register_actor` emission change; regenerates automatically via the editor
+   bootstrap, or manually per E1's temp-crate recipe.
+4. Orphaned-entity cleanup policy after class removal (currently: entity
+   survives, logged).
