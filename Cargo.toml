@@ -351,4 +351,20 @@ pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar
 # upstream. Update this rev (and the matching Helio submodule pointer) once
 # it is.
 [patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
-pulsar_scenedb = { git = "https://github.com/Far-Beyond-Pulsar//SceneDB", rev = "201d35e0fdefee2e3f8d83a3f9b68fb970a5c915" }
+# Repointed to the `content-dedup-arc-semantics` branch (Pulsar-Native#632:
+# counted-handle capability + content-id-interned var-len GPU pools) --
+# still a feature branch, not `main`, so this stays a `[patch]` override
+# rather than a plain version bump until that branch is reviewed/merged
+# upstream. Update this rev (and the matching Helio submodule pointer) once
+# it is.
+#
+# HELIO#237 REPONT (Pulsar-Native#632 -> SceneDB#61): bumped again to
+# 72291d0f211dc8826eb70339aeb0409be4270ad5 -- the tier-storage substrate
+# (`register_segment_layout`, `configure_tiers`/`touch_tier`/`release_tier`,
+# `tier_audit`) that Helio#237's texel-streaming S1 codes against. THAT REV
+# IS ON AN UNPUSHED LOCAL BRANCH of the SceneDB checkout until SceneDB#61
+# lands upstream: fetching it will fail until the branch is pushed, which is
+# exactly why this stays a loud `[patch]` override rather than a plain pin.
+# Local dev against the checkout uses a session-local PATH patch instead
+# (see Helio#237's final report); do NOT reintroduce one here.
+pulsar_scenedb = { git = "https://github.com/Far-Beyond-Pulsar//SceneDB", rev = "72291d0f211dc8826eb70339aeb0409be4270ad5" }
