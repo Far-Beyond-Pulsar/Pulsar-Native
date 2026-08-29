@@ -5,6 +5,7 @@
 //!   2. Each frame: `back_view_with_size()` → render → `swap_buffers()`.
 //!   3. Return `wgpu_surface(handle)` in the element tree so GPUI composits it.
 
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -303,111 +304,133 @@ impl HelioViewport {
             .spawn(move || {
                 profiling::set_thread_name("Helio Render");
 
-                // Start at the display's refresh rate and drop from there only
-                // if the renderer can't keep up. The old `sleep(16ms)` ran *in
-                // addition to* the render, so the real period was 16ms + render
-                // time: a scene taking 6ms to draw capped out around 45 FPS
-                // with the GPU idle most of the frame, and on a 144 Hz display
-                // it was leaving more than half the refresh rate on the table.
-                let mut pacer = FramePacer::new(refresh_hz);
-                tracing::info!(
-                    "[VIEWPORT PACER] starting at {:.0} Hz{}",
-                    pacer.target_hz,
-                    if refresh_hz.is_some() {
-                        " (display refresh)"
-                    } else {
-                        " (no refresh rate reported, using fallback)"
-                    }
-                );
-
-                loop {
-                    if stop.load(Ordering::Acquire) {
-                        break;
-                    }
-
-                    pacer.wait_for_next_frame();
-
-                    // Backpressure: don't produce a frame the compositor hasn't
-                    // asked for yet.
-                    //
-                    // The triple buffer holds exactly one `ready` frame. Publishing
-                    // a second before the first is composited recycles the
-                    // unconsumed buffer as the next render target — those pixels
-                    // are thrown away, so rendering faster than the compositor
-                    // consumes can never raise the displayed frame rate. What it
-                    // does do is keep issuing GPU submissions and per-frame
-                    // allocations that nothing retires at the same rate, which is
-                    // what makes an uncapped render thread climb in memory until
-                    // the process stalls.
-                    //
-                    // Waiting here instead makes the producer self-pace to the
-                    // consumer's actual rate. The wait is bounded: the fast-blit
-                    // presentation path never advances the composited generation,
-                    // so an unbounded wait there would stall the viewport for good.
-                    if !wait_for_frame_consumed(&surface, &stop, CONSUMER_WAIT_TIMEOUT) {
-                        continue;
-                    }
-
-                    // Permission to submit on the shared device. Held across
-                    // render + present so a window resize (which reconfigures the
-                    // swapchain and requires an idle queue) cannot race our submit.
-                    // This is a read guard: other surfaces' render threads hold
-                    // theirs concurrently, so frame pacing stays independent.
-                    let _frame = gpui::render_stats::scope("helio: FRAME TOTAL");
-                    gpui::render_stats::count("helio frames rendered");
-                    let submit_guard = surface.submit_guard();
-
-                    let Some((view, (width, height))) = surface.back_view_with_size() else {
-                        gpui::render_stats::count("helio: no back buffer (skipped)");
-                        continue;
-                    };
-
-                    let device = surface.device();
-                    let queue = surface.queue();
-                    let format = surface.format();
-
-                    let submission_index = {
-                        let lock_start = Instant::now();
-                        let locked = engine.lock();
-                        gpui::render_stats::record(
-                            "helio: wait for engine lock",
-                            lock_start.elapsed(),
-                        );
-
-                        match locked {
-                            Ok(mut engine) => {
-                                if tab_activated.swap(false, Ordering::AcqRel) {
-                                    engine.reset_taa();
-                                }
-                                let _t = gpui::render_stats::scope(
-                                    "helio: render_frame_to_surface",
-                                );
-                                engine.render_frame_to_surface(
-                                    device, queue, &view, width, height, format,
-                                )
-                            }
-                            Err(_) => None,
+                let panic_result = catch_unwind(AssertUnwindSafe(|| {
+                    // Start at the display's refresh rate and drop from there only
+                    // if the renderer can't keep up. The old `sleep(16ms)` ran *in
+                    // addition to* the render, so the real period was 16ms + render
+                    // time: a scene taking 6ms to draw capped out around 45 FPS
+                    // with the GPU idle most of the frame, and on a 144 Hz display
+                    // it was leaving more than half the refresh rate on the table.
+                    let mut pacer = FramePacer::new(refresh_hz);
+                    tracing::info!(
+                        "[VIEWPORT PACER] starting at {:.0} Hz{}",
+                        pacer.target_hz,
+                        if refresh_hz.is_some() {
+                            " (display refresh)"
+                        } else {
+                            " (no refresh rate reported, using fallback)"
                         }
-                    };
+                    );
 
-                    drop(view);
+                    loop {
+                        if stop.load(Ordering::Acquire) {
+                            break;
+                        }
 
-                    if let Some(idx) = submission_index {
-                        // Silent present: publish the frame for the compositor but do
-                        // NOT request a window redraw from this thread. Driving
-                        // repaints from here would fire a winit `RedrawRequested` per
-                        // frame, and each one that misses the fast-blit path forces a
-                        // full `window.refresh()` of the entire editor UI.
+                        pacer.wait_for_next_frame();
+
+                        // Backpressure: don't produce a frame the compositor hasn't
+                        // asked for yet.
                         //
-                        // Instead we bump `frames_published`; the UI-thread frame pump
-                        // sees the change and repaints just this view. Release ordering
-                        // pairs with the pump's acquire load so the swapped buffer is
-                        // visible before the counter is.
-                        surface.present_synced_silent(idx);
-                        frames_published.fetch_add(1, Ordering::Release);
-                    }
+                        // The triple buffer holds exactly one `ready` frame. Publishing
+                        // a second before the first is composited recycles the
+                        // unconsumed buffer as the next render target — those pixels
+                        // are thrown away, so rendering faster than the compositor
+                        // consumes can never raise the displayed frame rate. What it
+                        // does do is keep issuing GPU submissions and per-frame
+                        // allocations that nothing retires at the same rate, which is
+                        // what makes an uncapped render thread climb in memory until
+                        // the process stalls.
+                        //
+                        // Waiting here instead makes the producer self-pace to the
+                        // consumer's actual rate. The wait is bounded: the fast-blit
+                        // presentation path never advances the composited generation,
+                        // so an unbounded wait there would stall the viewport for good.
+                        if !wait_for_frame_consumed(&surface, &stop, CONSUMER_WAIT_TIMEOUT) {
+                            continue;
+                        }
 
-                    drop(submit_guard);
+                        // Permission to submit on the shared device. Held across
+                        // render + present so a window resize (which reconfigures the
+                        // swapchain and requires an idle queue) cannot race our submit.
+                        // This is a read guard: other surfaces' render threads hold
+                        // theirs concurrently, so frame pacing stays independent.
+                        let _frame = gpui::render_stats::scope("helio: FRAME TOTAL");
+                        gpui::render_stats::count("helio frames rendered");
+                        let submit_guard = surface.submit_guard();
+
+                        let Some((view, (width, height))) = surface.back_view_with_size() else {
+                            gpui::render_stats::count("helio: no back buffer (skipped)");
+                            continue;
+                        };
+
+                        let device = surface.device();
+                        let queue = surface.queue();
+                        let format = surface.format();
+
+                        let submission_index = {
+                            let lock_start = Instant::now();
+                            let locked = engine.lock();
+                            gpui::render_stats::record(
+                                "helio: wait for engine lock",
+                                lock_start.elapsed(),
+                            );
+
+                            let mut engine = match locked {
+                                Ok(engine) => engine,
+                                Err(poisoned) => {
+                                    tracing::error!(
+                                        "[HELIO-VIEWPORT] renderer mutex was poisoned; recovering"
+                                    );
+                                    poisoned.into_inner()
+                                }
+                            };
+                            if tab_activated.swap(false, Ordering::AcqRel) {
+                                engine.reset_taa();
+                            }
+                            let _t = gpui::render_stats::scope("helio: render_frame_to_surface");
+                            engine.render_frame_to_surface(
+                                device, queue, &view, width, height, format,
+                            )
+                        };
+
+                        drop(view);
+
+                        if let Some(idx) = submission_index {
+                            // Silent present: publish the frame for the compositor but do
+                            // NOT request a window redraw from this thread. Driving
+                            // repaints from here would fire a winit `RedrawRequested` per
+                            // frame, and each one that misses the fast-blit path forces a
+                            // full `window.refresh()` of the entire editor UI.
+                            //
+                            // Instead we bump `frames_published`; the UI-thread frame pump
+                            // sees the change and repaints just this view. Release ordering
+                            // pairs with the pump's acquire load so the swapped buffer is
+                            // visible before the counter is.
+                            surface.present_synced_silent(idx);
+                            frames_published.fetch_add(1, Ordering::Release);
+                        }
+
+                        drop(submit_guard);
+                    }
+                }));
+
+                if let Err(payload) = panic_result {
+                    let message = if let Some(message) = payload.downcast_ref::<&str>() {
+                        (*message).to_string()
+                    } else if let Some(message) = payload.downcast_ref::<String>() {
+                        message.clone()
+                    } else {
+                        "non-string panic payload".to_string()
+                    };
+                    let backtrace = std::backtrace::Backtrace::force_capture();
+                    let report =
+                        format!("Helio render thread panicked: {message}\nBacktrace:\n{backtrace}");
+
+                    // This is intentionally unconditional: a logging filter must
+                    // not hide the fact that the renderer thread has terminated.
+                    eprintln!("[HELIO RENDER THREAD PANIC] {report}");
+                    tracing::error!("[HELIO RENDER THREAD PANIC] {report}");
                 }
             });
 
@@ -589,22 +612,19 @@ struct FramePacer {
     next_deadline: Instant,
     /// Consecutive frames that overran their budget.
     late_streak: u32,
-    /// Consecutive frames that met their deadline.
+    /// Consecutive frames that met their deadline at the current target.
     on_time_streak: u32,
 }
 
 impl FramePacer {
     /// Frames in a row that must overrun before dropping the target.
     const LATE_STREAK_TO_DROP: u32 = 8;
-    /// Frames in a row that must meet their deadline before raising it again.
-    /// Reduced from 120 → 30 so recovery is aggressive: after a drop the rate
-    /// climbs back toward the ceiling in ≈0.5 s of stability rather than ≈2 s.
+    /// Frames in a row that must meet their deadline before testing the ceiling
+    /// again. Recovery is a single jump; if the ceiling is unstable, the
+    /// late-frame logic backs it off again instead of slowly curving upward.
     const ON_TIME_STREAK_TO_RAISE: u32 = 30;
-    /// Multiplier applied on each drop / recovery step.
+    /// Multiplier applied on each drop.
     const DROP_FACTOR: f64 = 0.8;
-    /// Recovery multiplier increased from 1.1 → 1.25 so each step reclaims
-    /// more headroom, reaching the ceiling in fewer steps.
-    const RAISE_FACTOR: f64 = 1.25;
 
     fn new(refresh_hz: Option<f64>) -> Self {
         // `PULSAR_VIEWPORT_FPS` overrides the ceiling; `0` disables pacing and
@@ -694,13 +714,12 @@ impl FramePacer {
         } else if self.on_time_streak >= Self::ON_TIME_STREAK_TO_RAISE
             && self.target_hz < self.ceiling_hz
         {
-            let raised = (self.target_hz * Self::RAISE_FACTOR).min(self.ceiling_hz);
             tracing::debug!(
-                "[VIEWPORT PACER] target {:.0} -> {:.0} Hz (sustained headroom)",
+                "[VIEWPORT PACER] target {:.0} -> {:.0} Hz (stability window passed)",
                 self.target_hz,
-                raised
+                self.ceiling_hz
             );
-            self.target_hz = raised;
+            self.target_hz = self.ceiling_hz;
             self.on_time_streak = 0;
         }
     }
@@ -708,7 +727,7 @@ impl FramePacer {
 
 #[cfg(test)]
 mod pacer_tests {
-    use super::{FramePacer, FALLBACK_REFRESH_HZ, MIN_TARGET_HZ};
+    use super::{FALLBACK_REFRESH_HZ, FramePacer, MIN_TARGET_HZ};
 
     /// Drive `adapt` as if `n` frames in a row missed their deadline.
     fn run_late_frames(pacer: &mut FramePacer, n: u32) {
@@ -800,9 +819,18 @@ mod pacer_tests {
     }
 
     #[test]
-    fn recovery_is_slower_than_the_drop() {
-        // Otherwise the target oscillates around a rate the renderer can't hold.
+    fn recovery_waits_then_jumps_to_the_ceiling() {
         assert!(FramePacer::ON_TIME_STREAK_TO_RAISE > FramePacer::LATE_STREAK_TO_DROP);
+
+        let mut pacer = FramePacer::with_ceiling(144.0);
+        run_late_frames(&mut pacer, FramePacer::LATE_STREAK_TO_DROP);
+        let dropped = pacer.target_hz;
+
+        run_on_time_frames(&mut pacer, FramePacer::ON_TIME_STREAK_TO_RAISE - 1);
+        assert_eq!(pacer.target_hz, dropped);
+
+        run_on_time_frames(&mut pacer, 1);
+        assert_eq!(pacer.target_hz, 144.0);
     }
 
     #[test]
@@ -1027,14 +1055,17 @@ impl Render for HelioViewport {
 
         // Capture a project thumbnail if a save just requested one.
         // This must happen synchronously since it reads back GPU data.
-        let capture_path = self.shared_state.write().build.pending_thumbnail_capture.take();
+        let capture_path = self
+            .shared_state
+            .write()
+            .build
+            .pending_thumbnail_capture
+            .take();
         if let Some(path) = capture_path {
             if let Some(ref surface) = self.surface {
                 if let Some((view, (w, h))) = surface.back_view_with_size() {
                     if let Ok(mut engine) = self.gpu_engine.try_lock() {
-                        capture_viewport_thumbnail(
-                            &mut engine, surface, w, h, format, &path,
-                        );
+                        capture_viewport_thumbnail(&mut engine, surface, w, h, format, &path);
                     }
                 }
             }

@@ -184,16 +184,6 @@ impl WorldSettingsData {
             self.time_scale
         );
     }
-
-    /// Serialize to JSON for network transmission
-    pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string(self)
-    }
-
-    /// Deserialize from JSON
-    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
-    }
 }
 
 /// Convert HSLA color to RGBA array for storage
@@ -201,36 +191,4 @@ fn hsla_to_rgba(hsla: Hsla) -> [f32; 4] {
     // For simplicity, store as HSLA values directly
     // TODO: Convert to actual RGBA if needed by renderer
     [hsla.h / 360.0, hsla.s, hsla.l, hsla.a]
-}
-
-/// Convert RGBA array back to HSLA color
-pub fn rgba_to_hsla(rgba: [f32; 4]) -> Hsla {
-    Hsla {
-        h: rgba[0] * 360.0,
-        s: rgba[1],
-        l: rgba[2],
-        a: rgba[3],
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_serialization() {
-        let settings = WorldSettingsData::default();
-        let json = settings.to_json().unwrap();
-        let deserialized = WorldSettingsData::from_json(&json).unwrap();
-
-        assert_eq!(settings.sky_intensity, deserialized.sky_intensity);
-        assert_eq!(settings.enable_fog, deserialized.enable_fog);
-    }
-
-    #[test]
-    fn test_enum_display() {
-        assert_eq!(GIMode::Baked.to_string(), "Baked");
-        assert_eq!(FogMode::Exponential.to_string(), "Exponential");
-        assert_eq!(ReverbPreset::Hall.to_string(), "Hall");
-    }
 }

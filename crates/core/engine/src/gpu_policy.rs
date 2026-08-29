@@ -12,6 +12,20 @@ struct GpuPolicyProbe {
     selected_gpu_name: Option<String>,
 }
 
+/// Detect if running under WSL (Windows Subsystem for Linux).
+fn is_wsl() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::fs::read_to_string("/proc/version")
+            .map(|v| v.to_lowercase().contains("microsoft"))
+            .unwrap_or(false)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
+}
+
 /// Probe the system for available GPUs and detect if a discrete GPU is present
 fn probe_gpu_policy() -> GpuPolicyProbe {
     let instance = Instance::new(InstanceDescriptor {
@@ -42,9 +56,26 @@ fn probe_gpu_policy() -> GpuPolicyProbe {
     }
 }
 
-/// Prompt the user whether to continue without a discrete GPU
+/// Prompt the user whether to continue without a discrete GPU.
+///
+/// On headless systems (WSL without WSLg, SSH sessions), the dialog cannot
+/// display — fall back to a stderr warning and continue automatically.
 fn prompt_continue_without_discrete_gpu() -> bool {
     let description = "No discrete GPU was detected.\n\nPulsar is configured to prefer dGPU for best performance.\n\nContinue anyway using the available GPU?";
+
+    // On headless Linux/WSL without a display server, rfd cannot show a dialog.
+    // Check for DISPLAY/WAYLAND_DISPLAY before attempting the GUI prompt.
+    #[cfg(target_os = "linux")]
+    {
+        let has_display = std::env::var("DISPLAY").is_ok()
+            || std::env::var("WAYLAND_DISPLAY").is_ok()
+            || std::env::var("WLR_RDP_BACKENDS").is_ok();
+
+        if !has_display {
+            eprintln!("[gpu_policy] No display server detected (headless/WSL). Continuing with available GPU.");
+            return true;
+        }
+    }
 
     let choice = rfd::MessageDialog::new()
         .set_title("No Discrete GPU Detected")
@@ -68,6 +99,13 @@ pub fn enforce_discrete_gpu_policy_or_exit() {
     // and the WGPU driver handles power management natively — skip the check.
     if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         tracing::info!("Apple Silicon detected; skipping discrete GPU policy check");
+        return;
+    }
+
+    // WSL provides GPU passthrough or virtualized rendering — discrete GPU
+    // detection is irrelevant and the prompt dialog cannot display without WSLg.
+    if is_wsl() {
+        tracing::info!("WSL detected; skipping discrete GPU policy check");
         return;
     }
 

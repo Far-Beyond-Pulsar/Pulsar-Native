@@ -13,7 +13,6 @@ ui.workspace = true
 ui_common.workspace = true
 ui_types_common.workspace = true
 ui_level_editor.workspace = true
-ui_entry.workspace = true
 ui_multiplayer.workspace = true
 ui_problems.workspace = true
 ui_flamegraph.workspace = true

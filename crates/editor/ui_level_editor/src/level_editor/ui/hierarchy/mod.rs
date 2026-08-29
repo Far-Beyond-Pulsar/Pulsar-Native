@@ -1,10 +1,9 @@
-pub mod tree_item_renderer;
-
 use crate::level_editor::scene_database::SceneObjectData;
 use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
 use crate::level_editor::state::{HierarchyDragPayload, LevelEditorState};
 use gpui::{prelude::*, *};
 use rust_i18n::t;
+use std::rc::Rc;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -36,7 +35,7 @@ impl Render for HierarchyDragPayload {
 
 #[derive(Clone)]
 struct SceneObjectItem {
-    object: SceneObjectData,
+    object: Rc<SceneObjectData>,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     is_selected: bool,
     is_folder: bool,
@@ -237,35 +236,63 @@ impl HierarchyItem for SceneObjectItem {
 }
 
 /// Hierarchy Panel - Scene outliner showing all objects in a tree structure
-pub struct HierarchyPanel;
+pub struct HierarchyPanel {
+    /// `(store_revision, selected)` the cached items were built from. Keyed on
+    /// the shared store's own mutation counter (`SceneDatabase::store_revision`)
+    /// rather than `scene.revision`: the render thread writes gizmo-drag
+    /// results and click-selects straight into the store without ever touching
+    /// the UI-side revision counter.
+    cache_key: Option<(u64, Option<String>)>,
+    cached_items: Vec<SceneObjectItem>,
+    cached_root_ids: Vec<String>,
+}
 
 impl HierarchyPanel {
     pub fn new() -> Self {
-        Self
+        Self {
+            cache_key: None,
+            cached_items: Vec::new(),
+            cached_root_ids: Vec::new(),
+        }
     }
 
-    fn build_items(
-        all_objects: &[SceneObjectData],
-        selected_object: Option<&String>,
+    fn refresh_cache(
+        &mut self,
+        state: &LevelEditorState,
         state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
-    ) -> Vec<SceneObjectItem> {
-        all_objects
-            .iter()
+    ) {
+        let selected = state.scene.selected_object();
+        let key = (state.scene.database.store_revision(), selected.clone());
+        if self.cache_key.as_ref() == Some(&key) {
+            return;
+        }
+
+        let all_objects = state.scene.database.get_all_objects();
+        self.cached_items = all_objects
+            .into_iter()
             .map(|obj| {
-                let is_selected = selected_object == Some(&obj.id);
+                let is_selected = selected.as_deref() == Some(obj.id.as_str());
                 let is_folder = matches!(obj.object_type, ObjectType::Folder);
                 SceneObjectItem {
-                    object: obj.clone(),
+                    object: Rc::new(obj),
                     state_arc: state_arc.clone(),
                     is_selected,
                     is_folder,
                 }
             })
-            .collect()
+            .collect();
+        self.cached_root_ids = state
+            .scene
+            .database
+            .get_root_objects()
+            .iter()
+            .map(|obj| obj.id.clone())
+            .collect();
+        self.cache_key = Some(key);
     }
 
     pub fn render<V>(
-        &self,
+        &mut self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         wrapper_entity: WeakEntity<V>,
@@ -275,20 +302,11 @@ impl HierarchyPanel {
     where
         V: 'static + EventEmitter<PanelEvent> + Render,
     {
-        let all_objects = state.scene.database.get_all_objects();
-        let items = Self::build_items(
-            &all_objects,
-            state.scene.selected_object().as_ref(),
-            &state_arc,
-        );
+        self.refresh_cache(state, &state_arc);
+        let items = self.cached_items.clone();
 
         // Root-level objects (those without parents)
-        let root_ids: Vec<String> = state
-            .scene
-            .scene_objects()
-            .iter()
-            .map(|obj| obj.id.clone())
-            .collect();
+        let root_ids = self.cached_root_ids.clone();
 
         let state_arc_for_expand = state_arc.clone();
         let state_arc_for_toggle = state_arc.clone();
@@ -452,13 +470,15 @@ impl HierarchyPanel {
                                 },
                             );
                         } else if mods.alt {
-                            // Reorder doesn't fit a SceneCommand variant yet — call directly and
-                            // bump revision so the polling task propagates the change.
+                            // Reorder doesn't fit a SceneCommand variant yet — call
+                            // directly. The store's own mutation counter
+                            // (`store_revision`) advances, so the hierarchy panel's
+                            // frame pump picks the change up without any manual
+                            // revision bookkeeping here.
                             state
                                 .scene
                                 .database
                                 .reorder_object_siblings(&object_id, &target_id);
-                            state.scene.revision = state.scene.revision.saturating_add(1);
                         } else {
                             let result = execute_command(
                                 &mut state,

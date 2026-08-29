@@ -60,10 +60,6 @@ impl HierarchyDomain {
         self.expanded_objects.contains(object_id)
     }
 
-    pub fn expand_all(&mut self) {
-        // This is a convenience stub — the caller should pass root objects.
-    }
-
     pub fn collapse_all(&mut self) {
         self.expanded_objects.clear();
     }

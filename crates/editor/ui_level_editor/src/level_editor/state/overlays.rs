@@ -210,8 +210,4 @@ impl OverlayDomain {
         self.state.show_viewport_options = show;
     }
 
-    pub fn set_show_grid(&mut self, show: bool) {
-        // Grid is in EditorDomain, not here — so this method remains
-        // for callers that pass state generically.
-    }
 }

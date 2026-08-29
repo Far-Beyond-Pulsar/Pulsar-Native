@@ -30,12 +30,12 @@ use engine_backend::scene::{
 use engine_backend::{ComponentInstance, EditorObjectId, SceneMetadataDb};
 use engine_fs::virtual_fs;
 use parking_lot::RwLock;
-use pulsar_reflection::{apply_scene_props_for_class, registered_scene_props_classes, EngineClass};
+use pulsar_reflection::{apply_scene_props_for_class, registered_scene_props_classes};
 use pulsar_scenedb::Entity;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::any::Any;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -101,6 +101,65 @@ pub struct SceneObjectData {
     pub component_instances: Option<serde_json::Value>,
 }
 
+// ── Property change tracking ─────────────────────────────────────────────
+
+/// Soft cap on the accumulated change set (see `record_property_change`).
+const MAX_PROPERTY_CHANGE_SET: usize = 16_384;
+
+/// Tracks which specific properties have been written since the last drain.
+///
+/// The properties panel drains this once per frame via [`SceneDatabase::drain_property_changes`]
+/// and uses the result to skip World reads for unchanged properties — the
+/// single biggest cost reduction for the panel.
+#[derive(Default, Clone)]
+pub struct PropertyChangeSet {
+    /// `(object_id, class_name, prop_name)` triples written since last drain.
+    changed: HashSet<(String, String, String)>,
+    /// `(object_id, class_name)` pairs where a structural change occurred
+    /// (add/remove/reorder/enable-disable) — the component list itself changed.
+    structural: HashSet<(String, String)>,
+    /// `true` when any component was added or removed on the target object,
+    /// meaning the panel should rebuild its component card list entirely.
+    components_added_or_removed: bool,
+}
+
+impl PropertyChangeSet {
+    /// `true` if *any* property was written since the last drain.
+    pub fn is_empty(&self) -> bool {
+        self.changed.is_empty() && self.structural.is_empty()
+    }
+
+    /// `true` when the component *list* changed (add/remove), not just a
+    /// property value within an existing component.
+    pub fn components_added_or_removed(&self) -> bool {
+        self.components_added_or_removed
+    }
+
+    /// Check if a specific property was written since the last drain.
+    pub fn has_changed(&self, object_id: &str, class_name: &str, prop_name: &str) -> bool {
+        self.changed.contains(&(object_id.to_string(), class_name.to_string(), prop_name.to_string()))
+    }
+
+    /// Check if any property on a given class was written since the last drain.
+    pub fn class_changed(&self, object_id: &str, class_name: &str) -> bool {
+        self.changed
+            .iter()
+            .any(|(oid, cls, _)| oid == object_id && cls == class_name)
+    }
+
+    /// Non-consuming relevance check for one object: did anything touching
+    /// `object_id`'s components change since the last drain?
+    ///
+    /// The properties panel's pump uses this to decide whether a scene
+    /// revision bump needs the (expensive) component-card re-render at all —
+    /// transform edits, gizmo drags and edits to *other* objects must not.
+    fn touches_object(&self, object_id: &str) -> bool {
+        self.components_added_or_removed
+            || self.changed.iter().any(|(oid, _, _)| oid == object_id)
+            || self.structural.iter().any(|(oid, _)| oid == object_id)
+    }
+}
+
 // ── Production Scene Database ──────────────────────────────────────────────
 
 /// Production-ready scene database — the single source of truth for all scene state.
@@ -117,6 +176,89 @@ pub struct SceneDatabase {
     store: Arc<RwLock<WorldSceneStore>>,
     /// Reflection-based component store.
     metadata_db: Arc<SceneMetadataDb>,
+    /// Accumulated property changes since the last drain.
+    /// Wrapped in `parking_lot::Mutex` so mutations can record changes
+    /// while the outer `SceneDatabase` is `&self` (which it always is —
+    /// the `RwLock<WorldSceneStore>` handles interior mutability for the
+    /// World side).
+    property_changes: Arc<parking_lot::Mutex<PropertyChangeSet>>,
+    /// Folds the raw per-store `render_revision` into a value that is
+    /// monotonic even across `restore_history_snapshot`'s wholesale store
+    /// swap (undo/redo), which resets the raw counter to a fresh,
+    /// deterministic value. Shared by every clone, like `store`.
+    revision_tracker: Arc<RevisionTracker>,
+}
+
+/// Monotonicizer for [`SceneDatabase::store_revision`].
+///
+/// The raw counter lives on the current `WorldSceneStore`, and undo/redo
+/// replaces that store with a freshly built one whose counter restarts at a
+/// deterministic value (5 publishes per restored object). Comparing raw
+/// values across a swap can therefore see "equal" or even "lower" without
+/// anything being unchanged — e.g. undo then redo between two states with
+/// the same object count lands on exactly the same number both times, and a
+/// naive equality check silently misses the entire restore.
+///
+/// [`Self::note_swap`] is called at the one swap site, giving each store
+/// generation its own epoch; within an epoch raw deltas accumulate verbatim,
+/// and an epoch change itself counts as exactly one guaranteed change
+/// regardless of what the new raw value is.
+#[derive(Default)]
+struct RevisionTracker {
+    /// Store-swap generation; bumped by [`Self::note_swap`].
+    epoch: std::sync::atomic::AtomicU64,
+    last_epoch: std::sync::atomic::AtomicU64,
+    last_raw: std::sync::atomic::AtomicU64,
+    out: std::sync::atomic::AtomicU64,
+}
+
+impl RevisionTracker {
+    fn note_swap(&self) {
+        use std::sync::atomic::Ordering;
+        self.epoch.fetch_add(1, Ordering::Relaxed);
+    }
+
+    fn fold(&self, epoch: u64, raw: u64) -> u64 {
+        use std::sync::atomic::Ordering;
+        loop {
+            let le = self.last_epoch.load(Ordering::Relaxed);
+            let lr = self.last_raw.load(Ordering::Relaxed);
+            let delta = if epoch != le {
+                // Store was swapped: one guaranteed change no matter what the
+                // fresh counter reads (it may be equal to or lower than the
+                // baseline — that carries no information across epochs).
+                1
+            } else if raw > lr {
+                raw - lr
+            } else {
+                0
+            };
+
+            if delta == 0 {
+                // Nothing changed; just keep the baseline current (best
+                // effort — a racing fold re-derives the same conclusion).
+                let _ = self.last_raw.compare_exchange(lr, raw, Ordering::Relaxed, Ordering::Relaxed);
+                return self.out.load(Ordering::Relaxed);
+            }
+
+            if epoch != le {
+                // Claim the epoch transition so the swap's guaranteed delta
+                // is applied by exactly one caller.
+                match self.last_epoch.compare_exchange(le, epoch, Ordering::Relaxed, Ordering::Relaxed) {
+                    Err(_) => continue,
+                    Ok(_) => {}
+                }
+            }
+            // Claim the raw transition so intra-epoch growth is counted once.
+            match self.last_raw.compare_exchange(lr, raw, Ordering::Relaxed, Ordering::Relaxed) {
+                Ok(_) => {
+                    let prev = self.out.fetch_add(delta, Ordering::Relaxed);
+                    return prev + delta;
+                }
+                Err(_) => continue,
+            }
+        }
+    }
 }
 
 impl SceneDatabase {
@@ -124,6 +266,8 @@ impl SceneDatabase {
         Self {
             store: Arc::new(RwLock::new(WorldSceneStore::new())),
             metadata_db: Arc::new(SceneMetadataDb::new()),
+            property_changes: Arc::new(parking_lot::Mutex::new(PropertyChangeSet::default())),
+            revision_tracker: Arc::new(RevisionTracker::default()),
         }
     }
 
@@ -132,7 +276,80 @@ impl SceneDatabase {
         Self {
             store,
             metadata_db: Arc::new(SceneMetadataDb::new()),
+            property_changes: Arc::new(parking_lot::Mutex::new(PropertyChangeSet::default())),
+            revision_tracker: Arc::new(RevisionTracker::default()),
         }
+    }
+
+    // ── Property change tracking ─────────────────────────────────────────
+
+    /// Snapshot and clear the accumulated property changes.  Called exactly
+    /// once per properties-panel render to decide which values need re-reading
+    /// from World.
+    pub fn drain_property_changes(&self) -> PropertyChangeSet {
+        std::mem::take(&mut *self.property_changes.lock())
+    }
+
+    /// Record that a specific property was written.  Called from every
+    /// mutating method that touches a component property.
+    fn record_property_change(&self, object_id: &str, class_name: &str, prop_name: &str) {
+        let mut changes = self.property_changes.lock();
+        // Soft cap: with relevance-gated rendering the set can go several
+        // drains' worth of edits without being emptied (nothing forces a
+        // component-card render for, say, transform-only edits). Dropping
+        // the history past this point is always *safe* — an empty set just
+        // makes the panel fall back to reading values it might have skipped.
+        if changes.changed.len() >= MAX_PROPERTY_CHANGE_SET {
+            *changes = PropertyChangeSet::default();
+        }
+        changes.changed.insert((
+            object_id.to_string(),
+            class_name.to_string(),
+            prop_name.to_string(),
+        ));
+    }
+
+    /// Record a structural change (add/remove/reorder/enable-disable) on a
+    /// component.
+    fn record_structural_change(&self, object_id: &str, class_name: &str) {
+        let mut changes = self.property_changes.lock();
+        if changes.changed.len() >= MAX_PROPERTY_CHANGE_SET {
+            *changes = PropertyChangeSet::default();
+        }
+        changes
+            .structural
+            .insert((object_id.to_string(), class_name.to_string()));
+        changes.components_added_or_removed = true;
+    }
+
+    /// Non-consuming check: has anything touching `object_id`'s components
+    /// been written since the last [`Self::drain_property_changes`]?
+    ///
+    /// This is the properties panel's relevance gate — see
+    /// `PropertiesPanelWrapper::sync_sections`. Peeking (rather than
+    /// draining) keeps the drain contract where it is today: the section's
+    /// own render remains the single consumer.
+    pub fn has_property_changes_for(&self, object_id: &str) -> bool {
+        self.property_changes.lock().touches_object(object_id)
+    }
+
+    /// Lightweight query: return the list of class names attached to
+    /// `object_id`, reading only from `metadata_db` (no JSON clone, no
+    /// `to_json()` serialization).  This replaces `get_components()` in the
+    /// properties-panel hot path where only the class name + order are needed
+    /// to look up cached property metadata.
+    pub fn get_component_class_names(&self, object_id: &EditorObjectId) -> Vec<String> {
+        self.metadata_db
+            .get_components(object_id)
+            .into_iter()
+            .map(|c| c.class_name)
+            .collect()
+    }
+
+    /// Cheap component count for `object_id` — avoids the full
+    /// `get_components()` clone + `to_json()` serialization.
+    pub fn component_count(&self, object_id: &EditorObjectId) -> usize {
+        self.metadata_db.get_components(object_id).len()
     }
 
     // ── Object CRUD ───────────────────────────────────────────────────────
@@ -148,6 +365,50 @@ impl SceneDatabase {
     /// rebuilds `__component_instances` from `metadata_db`, so the component
     /// must live there — setting it only in `props` would be immediately overwritten.
     pub fn add_object(&self, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
+        // v2 scene objects may carry component instances inline. Preserve
+        // those instances in the metadata store before the normal hydration
+        // pass; otherwise the empty metadata store overwrites the inline list
+        // and World-registered components (notably StaticMeshComponent) never
+        // reach the live World.
+        let mut inline_components = obj
+            .component_instances
+            .as_ref()
+            .and_then(serde_json::Value::as_array)
+            .map(|instances| {
+                instances
+                    .iter()
+                    .filter_map(|instance| {
+                        let object = instance.as_object()?;
+                        Some(ComponentInstance {
+                            class_name: object.get("class_name")?.as_str()?.to_string(),
+                            enabled: object
+                                .get("enabled")
+                                .and_then(serde_json::Value::as_bool)
+                                .unwrap_or(true),
+                            data: object.get("data").cloned().unwrap_or(serde_json::Value::Null),
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        // A few older scene files projected StaticMeshComponent's asset path
+        // into `props` without emitting a component-instances entry. Treat
+        // that as a load-time compatibility form so those scenes also get a
+        // typed World component; current files still use the normal path.
+        if inline_components.is_empty() {
+            if let Some(mesh_asset) = obj
+                .props
+                .get("mesh_asset")
+                .and_then(serde_json::Value::as_str)
+                .filter(|path| !path.trim().is_empty())
+            {
+                inline_components.push(ComponentInstance {
+                    class_name: "StaticMeshComponent".to_string(),
+                    enabled: true,
+                    data: serde_json::json!({ "mesh_asset": mesh_asset }),
+                });
+            }
+        }
         let blueprint_script_path = if obj.object_type == ObjectType::Blueprint {
             Some(find_script_path(
                 &obj.props,
@@ -202,6 +463,10 @@ impl SceneDatabase {
             });
             id
         };
+
+        for component in inline_components {
+            self.metadata_db.add_component_instance(&object_id, component);
+        }
 
         if let Some(script_path) = blueprint_script_path {
             let already_has = self
@@ -325,6 +590,7 @@ impl SceneDatabase {
                 obj.insert(prop_name.to_string(), new_value);
             }
             self.update_component(object_id, idx, data);
+            self.record_property_change(object_id, class_name, prop_name);
         }
     }
 
@@ -389,6 +655,9 @@ impl SceneDatabase {
                 return Err(new_value);
             };
             (setter)(instance, new_value);
+            // Record the property change for the properties panel's change set
+            // so it can skip re-reading unchanged properties.
+            self.record_property_change(object_id, class_name, prop_name);
             // This was the actual bug behind "the properties panel shows the
             // right value but the light in the scene never changes": mutating
             // the live World component directly (above) is correct and
@@ -470,6 +739,56 @@ impl SceneDatabase {
         Some((getter)(instance))
     }
 
+    /// Batch-read every property of a component in one `store.read()`
+    /// acquisition.  Returns `None` if the class isn't World-registered,
+    /// the entity doesn't exist, or the component isn't hydrated.
+    ///
+    /// Takes a pre-built property metadata slice (from the cached metadata)
+    /// so we don't need to call `create_instance` + `get_properties` again.
+    pub fn read_component_properties_batch(
+        &self,
+        object_id: &ObjectId,
+        class_name: &str,
+        properties: &[pulsar_reflection::PropertyMetadata],
+    ) -> Option<Vec<Box<dyn Any>>> {
+        let store = self.store.read();
+        let entity = store.entity_for(object_id)?;
+        let instance = pulsar_world_registry::get_world_component_as_engine_class(
+            class_name,
+            store.world(),
+            entity,
+        )?;
+        Some(
+            properties
+                .iter()
+                .map(|prop| (prop.getter)(instance))
+                .collect(),
+        )
+    }
+
+    /// Run a closure with the live World component reference held under a
+    /// single `store.read()`.  The closure can call property getters
+    /// directly against the component reference without acquiring the lock
+    /// again.
+    ///
+    /// Returns `None` if the class isn't World-registered, the entity
+    /// doesn't exist, or the component isn't hydrated.
+    pub fn with_world_component<T>(
+        &self,
+        object_id: &ObjectId,
+        class_name: &str,
+        f: impl FnOnce(&dyn pulsar_reflection::EngineClass) -> T,
+    ) -> Option<T> {
+        let store = self.store.read();
+        let entity = store.entity_for(object_id)?;
+        let instance = pulsar_world_registry::get_world_component_as_engine_class(
+            class_name,
+            store.world(),
+            entity,
+        )?;
+        Some(f(instance))
+    }
+
     /// Clear the entire scene.
     pub fn clear(&self) {
         let root_ids: Vec<ObjectId> = {
@@ -508,6 +827,71 @@ impl SceneDatabase {
             .iter()
             .map(|&e| Self::entity_to_scene_object_data(&store, e))
             .collect()
+    }
+
+    /// Number of root-level objects, without building their data.
+    pub fn root_count(&self) -> usize {
+        self.store.read().children_of(None).len()
+    }
+
+    /// Monotonic counter that advances whenever the scene content may have
+    /// changed — UI-thread commands, AI tools, AND the render thread's own
+    /// direct writes (gizmo-drag release, click-to-select all go through
+    /// store mutators that `publish()`).
+    ///
+    /// The raw counter comes from the current `WorldSceneStore`; this folds
+    /// it through [`RevisionTracker`] so the value stays monotonic across
+    /// `restore_history_snapshot`'s wholesale store swap (undo/redo), which
+    /// resets the raw counter to a fresh deterministic value. Selection is
+    /// NOT covered (`select_object` deliberately doesn't publish) — poll it
+    /// alongside.
+    ///
+    /// This is what panel frame pumps compare per tick: one read-lock
+    /// acquisition + a couple of atomic ops, vs. re-deriving "did anything I
+    /// render change" from content snapshots.
+    pub fn store_revision(&self) -> u64 {
+        let raw = self.store.read().render_revision();
+        let epoch = self.revision_tracker.epoch.load(std::sync::atomic::Ordering::Relaxed);
+        self.revision_tracker.fold(epoch, raw)
+    }
+
+    // ── Targeted component reads ──────────────────────────────────────────
+    //
+    // The bound-field editors refresh these values on every scene revision
+    // bump under the current selection (gizmo drags, AI edits, typing). Each
+    // of these used to go through `get_object`, whose cost is O(scene data):
+    // a full `SceneObjectData` clone including the props map AND a
+    // `merge_component_props` pass cloning every component instance plus
+    // running reflection projection over it — twelve times per bump for the
+    // transform + header fields alone. These accessors read exactly one
+    // component under one short lock, allocate almost nothing, and never
+    // touch metadata_db.
+
+    /// Just the object's transform — no props merge, no path computation.
+    pub fn get_object_transform(&self, id: &ObjectId) -> Option<Transform> {
+        let store = self.store.read();
+        let entity = store.entity_for(id)?;
+        let t = store.transform(entity)?;
+        Some(Transform {
+            position: t.position,
+            rotation: t.rotation,
+            scale: t.scale,
+        })
+    }
+
+    /// Just the object's name.
+    pub fn get_object_name(&self, id: &ObjectId) -> Option<String> {
+        let store = self.store.read();
+        let entity = store.entity_for(id)?;
+        Some(store.name(entity)?.to_string())
+    }
+
+    /// Just the object's `(visible, locked)` flags.
+    pub fn get_object_visibility(&self, id: &ObjectId) -> Option<(bool, bool)> {
+        let store = self.store.read();
+        let entity = store.entity_for(id)?;
+        let v = store.visibility(entity)?;
+        Some((v.visible, v.locked))
     }
 
     /// Single object by ID, `None` if not found.
@@ -634,11 +1018,6 @@ impl SceneDatabase {
         store.reparent(entity, new_parent_entity).is_ok()
     }
 
-    /// Alias for `reparent_object` kept for backward compatibility.
-    pub fn set_parent(&self, id: &ObjectId, new_parent: Option<ObjectId>) -> bool {
-        self.reparent_object(id, new_parent)
-    }
-
     /// Reorder two sibling objects by swapping their positions.
     ///
     /// Both objects must have the same parent. Returns false if they don't
@@ -719,21 +1098,32 @@ impl SceneDatabase {
         class_name: String,
         data: serde_json::Value,
     ) {
-        self.metadata_db.add_component(object_id, class_name, data);
+        self.metadata_db.add_component(object_id, class_name.clone(), data);
         self.sync_registered_component_props_to_scene_db(object_id);
+        self.record_structural_change(object_id, &class_name);
     }
 
     /// Add a fully specified component instance.
     pub fn add_component_instance(&self, object_id: &EditorObjectId, component: ComponentInstance) {
+        let class_name = component.class_name.clone();
         self.metadata_db
             .add_component_instance(object_id, component);
         self.sync_registered_component_props_to_scene_db(object_id);
+        self.record_structural_change(object_id, &class_name);
     }
 
     pub fn remove_component(&self, object_id: &EditorObjectId, component_index: usize) {
+        let class_name = self
+            .metadata_db
+            .get_components(object_id)
+            .get(component_index)
+            .map(|c| c.class_name.clone());
         self.metadata_db
             .remove_component(object_id, component_index);
         self.sync_registered_component_props_to_scene_db(object_id);
+        if let Some(name) = class_name {
+            self.record_structural_change(object_id, &name);
+        }
     }
 
     /// Enable or disable a component by index.
@@ -743,11 +1133,19 @@ impl SceneDatabase {
         component_index: usize,
         enabled: bool,
     ) -> bool {
+        let class_name = self
+            .metadata_db
+            .get_components(object_id)
+            .get(component_index)
+            .map(|c| c.class_name.clone());
         let changed = self
             .metadata_db
             .set_component_enabled(object_id, component_index, enabled);
         if changed {
             self.sync_registered_component_props_to_scene_db(object_id);
+            if let Some(name) = class_name {
+                self.record_structural_change(object_id, &name);
+            }
         }
         changed
     }
@@ -765,9 +1163,11 @@ impl SceneDatabase {
 
         let insert_index = component_index.saturating_add(1);
         let component = components.get(component_index)?.clone();
+        let class_name = component.class_name.clone();
         components.insert(insert_index, component);
         self.metadata_db.replace_components(object_id, components);
         self.sync_registered_component_props_to_scene_db(object_id);
+        self.record_structural_change(object_id, &class_name);
         Some(insert_index)
     }
 
@@ -784,9 +1184,11 @@ impl SceneDatabase {
         }
 
         let component = components.remove(from_index);
+        let class_name = component.class_name.clone();
         components.insert(to_index, component);
         self.metadata_db.replace_components(object_id, components);
         self.sync_registered_component_props_to_scene_db(object_id);
+        self.record_structural_change(object_id, &class_name);
     }
 
     /// Every component instance attached to `object_id`, with `data`
@@ -802,6 +1204,20 @@ impl SceneDatabase {
     /// and stops there (no metadata_db write-back at all), and this method
     /// is what makes that edit visible everywhere else that reads
     /// component data, including what eventually gets serialized to disk.
+    /// Metadata-only view of the object's attached components: class names,
+    /// order, enabled flags and stored JSON, with NO live-World overlay.
+    ///
+    /// [`Self::get_components`] serializes every World-registered component
+    /// (`to_json()`) to overlay fresh values — the right thing for save-to-
+    /// disk, but pure waste for callers that only need structure (the
+    /// component tree's parent indices) or that read live values themselves
+    /// (the property cards batch-read straight from World). Per-render cost
+    /// of the properties panel used to scale with C × serialization for
+    /// exactly this reason.
+    pub fn get_components_metadata(&self, object_id: &EditorObjectId) -> Vec<ComponentInstance> {
+        self.metadata_db.get_components(object_id)
+    }
+
     pub fn get_components(&self, object_id: &EditorObjectId) -> Vec<ComponentInstance> {
         let mut components = self.metadata_db.get_components(object_id);
         if components.is_empty() {
@@ -1247,6 +1663,10 @@ impl SceneDatabase {
         let new_store =
             WorldSceneStore::load_from_snapshots(&snapshot.objects).map_err(|e| e.to_string())?;
         *self.store.write() = new_store;
+        // The swapped-in store's raw revision counter is unrelated to the
+        // old one's (it restarts at a deterministic value) — tell the
+        // monotonicizer so `store_revision` keeps advancing across undo/redo.
+        self.revision_tracker.note_swap();
         self.metadata_db.clear();
         for (object_id, components) in &snapshot.components {
             for component in components {
@@ -1454,6 +1874,60 @@ mod history_snapshot_tests {
 
         let child = db.get_object(&child_id).expect("child restored");
         assert_eq!(child.parent.as_deref(), Some(parent_id.as_str()));
+    }
+
+    /// `store_revision` must advance across a restore even when the swapped-in
+    /// store's raw counter lands on exactly the same value as the swapped-out
+    /// one. Both restores below build a 1-object scene, so the fresh store's
+    /// raw `render_revision` is identical both times — a naive equality check
+    /// misses the second restore entirely, which is how an undo→redo pair
+    /// would leave every panel stale.
+    #[test]
+    fn store_revision_advances_across_restores_with_identical_raw_counters() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("A", ObjectType::Empty), None);
+
+        let snapshot_a = db.capture_history_snapshot();
+        db.set_name(&id, "B".to_string());
+        let snapshot_b = db.capture_history_snapshot();
+        let _ = snapshot_b; // symmetric with the undo/redo flow below
+
+        // Restore A, then B: two wholesale store swaps with equal object
+        // counts and therefore equal raw counters after each swap.
+        db.restore_history_snapshot(&snapshot_a).unwrap();
+        assert_eq!(db.get_object(&id).unwrap().name, "A");
+        let rev_after_first_restore = db.store_revision();
+
+        db.restore_history_snapshot(&snapshot_a).unwrap();
+        let rev_after_second_restore = db.store_revision();
+        assert!(
+            rev_after_second_restore > rev_after_first_restore,
+            "identical raw counters across a store swap must still fold to an advanced revision"
+        );
+    }
+
+    #[test]
+    fn targeted_reads_match_the_full_object_read() {
+        let db = SceneDatabase::new();
+        let mut obj = object("Cube", ObjectType::Mesh(MeshType::Cube));
+        obj.transform.position = [1.0, 2.0, 3.0];
+        obj.transform.rotation = [10.0, 20.0, 30.0];
+        obj.transform.scale = [2.0, 2.0, 2.0];
+        obj.visible = false;
+        obj.locked = true;
+        let id = db.add_object(obj, None);
+
+        let full = db.get_object(&id).unwrap();
+        let t = db.get_object_transform(&id).unwrap();
+        assert_eq!(t.position, full.transform.position);
+        assert_eq!(t.rotation, full.transform.rotation);
+        assert_eq!(t.scale, full.transform.scale);
+        assert_eq!(db.get_object_name(&id).unwrap(), full.name);
+        assert_eq!(
+            db.get_object_visibility(&id).unwrap(),
+            (full.visible, full.locked)
+        );
+        assert!(db.get_object_transform(&"missing".into()).is_none());
     }
 }
 

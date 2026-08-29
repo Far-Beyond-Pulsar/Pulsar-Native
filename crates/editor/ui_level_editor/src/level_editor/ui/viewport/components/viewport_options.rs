@@ -19,31 +19,6 @@ use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle};
 use super::toggle_button::create_state_toggle;
 use crate::level_editor::state::{LevelEditorState, TransformTool};
 
-/// Visual toggle configuration.
-struct VisualToggle {
-    id: &'static str,
-    icon: IconName,
-    tooltip: &'static str,
-}
-
-const VISUAL_TOGGLES: &[VisualToggle] = &[
-    VisualToggle {
-        id: "toggle_grid",
-        icon: IconName::LayoutDashboard,
-        tooltip: "Toggle Grid",
-    },
-    VisualToggle {
-        id: "toggle_wireframe",
-        icon: IconName::Triangle,
-        tooltip: "Toggle Wireframe",
-    },
-    VisualToggle {
-        id: "toggle_lighting",
-        icon: IconName::Sun,
-        tooltip: "Toggle Lighting",
-    },
-];
-
 /// Render visual toggle buttons (grid, wireframe, lighting).
 fn visual_toggles(
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,

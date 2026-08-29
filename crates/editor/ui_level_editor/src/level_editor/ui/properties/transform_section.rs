@@ -44,30 +44,36 @@ fn axis_binding(
 
     F32FieldBinding::new_with_db(
         move |id, db| {
-            db.get_object(id).map(|obj| match axis {
-                Axis::Position => obj.transform.position[index],
-                Axis::Rotation => obj.transform.rotation[index],
-                Axis::Scale => obj.transform.scale[index],
+            // Targeted component read, not `get_object`: this getter runs on
+            // every scene revision bump under the current selection (gizmo
+            // drags, AI edits, typing) for each of the 9 fields. The old
+            // whole-object read cloned the props map and merged every
+            // component's JSON per field per bump — cost that scaled with
+            // how complex the inspected object was.
+            db.get_object_transform(id).map(|t| match axis {
+                Axis::Position => t.position[index],
+                Axis::Rotation => t.rotation[index],
+                Axis::Scale => t.scale[index],
             })
         },
         move |id, val, db| {
-            let Some(obj) = db.get_object(id) else { return false };
+            let Some(t) = db.get_object_transform(id) else { return false };
             let mut position = None;
             let mut rotation = None;
             let mut scale = None;
             match axis {
                 Axis::Position => {
-                    let mut v = obj.transform.position;
+                    let mut v = t.position;
                     v[index] = val;
                     position = Some(v);
                 }
                 Axis::Rotation => {
-                    let mut v = obj.transform.rotation;
+                    let mut v = t.rotation;
                     v[index] = val;
                     rotation = Some(v);
                 }
                 Axis::Scale => {
-                    let mut v = obj.transform.scale;
+                    let mut v = t.scale;
                     v[index] = val;
                     scale = Some(v);
                 }

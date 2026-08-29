@@ -11,9 +11,7 @@ use super::viewport::helio_viewport::HelioViewport;
 
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
 use engine_fs::virtual_fs;
-use std::cell::RefCell;
 use std::path::Path;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use ui::settings::EngineSettings;
 use ui::{notification::Notification, ContextModal as _};
@@ -32,11 +30,16 @@ use engine_backend::subsystems::render::{EditorCameraState, HelioEditorMailbox};
 use plugin_manager;
 
 /// Main Level Editor Panel - Orchestrates all sub-components
+///
+/// Invalidation model: this panel owns almost nothing that other panels need.
+/// Every sub-panel (toolbar, status bar, hierarchy, properties, viewport) is
+/// its own cached view with its own frame pump watching exactly the state it
+/// renders, so scene edits invalidate only the panels that display them.
+/// This panel re-renders only for what IT displays: the Play-In-Editor Game
+/// tab, and the tab title (scene path / unsaved marker). See
+/// `frame_pump`'s doc for why polling beats cross-panel notify cascades here.
 pub struct LevelEditorPanel {
     focus_handle: FocusHandle,
-
-    // FPS graph type state (shared with viewport for Switch)
-    fps_graph_is_line: Rc<RefCell<bool>>,
 
     // UI Components. Both are separate entities rendered with `AnyView::cached`
     // so they survive the per-frame invalidation the viewport propagates up the
@@ -60,20 +63,18 @@ pub struct LevelEditorPanel {
     // Workspace for draggable panels
     workspace: Option<Entity<Workspace>>,
 
-    // Handles to sub-panels so we can forward notifications after scene mutations.
-    hierarchy_panel_entity: Option<Entity<crate::level_editor::HierarchyPanelWrapper>>,
-    properties_panel_entity: Option<Entity<crate::level_editor::PropertiesPanelWrapper>>,
-
-    // Last scene revision observed by this panel. Used to detect AI-driven changes
-    // that happen outside normal GPUI action handlers.
-    last_observed_scene_revision: u64,
-
     // Play In Editor (issue #243): the Game tab is opened when the game starts
     // and removed on stop. `game_panel` is the live tab entity, if open.
     game_panel: Option<Entity<crate::level_editor::ui::viewport::game_viewport::GameViewport>>,
 
+    /// Last `(building, active, pending_start, has_error)` tuple that
+    /// [`Self::sync_game_tab`] acted on. Render runs several times per second
+    /// (viewport publishes dirty every ancestor); without this guard each of
+    /// those renders would take a write lock on the shared state for nothing.
+    applied_pie_signature: Option<(bool, bool, bool, bool)>,
+
     // Keeps the polling task alive for the lifetime of the panel.
-    _scene_revision_poller: gpui::Task<()>,
+    _root_input_poller: gpui::Task<()>,
 }
 
 impl LevelEditorPanel {
@@ -106,12 +107,12 @@ impl LevelEditorPanel {
                 .timer(std::time::Duration::ZERO)
                 .await;
 
-            // Back on the GPUI main thread: load the level file and notify
-            // the viewport / panels to re-render with the scene contents.
+            // Back on the GPUI main thread: load the level file. Panels pick
+            // the contents up through their own frame pumps; this panel only
+            // needs its title refreshed.
             cx.update(|cx| {
                 this.update(cx, |panel, cx| {
                     panel.ensure_default_level_file();
-                    panel.notify_sub_panels(cx);
                     cx.notify();
                 });
             });
@@ -149,12 +150,14 @@ impl LevelEditorPanel {
                     let mut w = self.shared_state.write();
                     w.scene.current_scene = Some(default_path);
                     w.scene.has_unsaved_changes = false;
+                    w.scene.bump_revision(false);
                     if let Some(path) = w.scene.current_scene.clone() {
                         ai_sessions::register_open_scene(&path, &self.shared_state);
                     }
                 }
                 Err(e) => {
                     tracing::warn!("Default level exists but could not be loaded: {e}");
+                    self.shared_state.write().scene.bump_revision(false);
                 }
             }
         } else {
@@ -191,12 +194,14 @@ impl LevelEditorPanel {
                     let mut w = self.shared_state.write();
                     w.scene.current_scene = Some(default_path);
                     w.scene.has_unsaved_changes = false;
+                    w.scene.bump_revision(false);
                     if let Some(path) = w.scene.current_scene.clone() {
                         ai_sessions::register_open_scene(&path, &self.shared_state);
                     }
                 }
                 Err(e) => {
                     tracing::warn!("Could not create default level at {:?}: {e}", default_path);
+                    self.shared_state.write().scene.bump_revision(false);
                 }
             }
         }
@@ -222,6 +227,7 @@ impl LevelEditorPanel {
             let mut state = panel.shared_state.write();
             state.scene.current_scene = Some(path);
             state.scene.has_unsaved_changes = false;
+            state.scene.bump_revision(false);
             if let Some(open_path) = state.scene.current_scene.clone() {
                 ai_sessions::register_open_scene(&open_path, &panel.shared_state);
             }
@@ -298,42 +304,79 @@ impl LevelEditorPanel {
             )
         });
 
-        // Poll for AI-driven scene mutations at 50 ms intervals.  AI tools
-        // run on background threads and can't call cx.notify() directly, so
-        // we bridge the gap here: whenever scene_revision advances we trigger
-        // a GPUI re-render that propagates to the hierarchy and properties panels.
+        // Poll for changes to the inputs this panel itself displays, at
+        // 50 ms intervals. Sub-panels do NOT ride on this loop — each has
+        // its own frame pump watching its own signature, so a scene edit
+        // invalidates only the views that actually render scene data.
+        //
+        // This loop covers exactly three things:
+        // - Play-In-Editor state (set by the build thread / GameViewport):
+        //   `sync_game_tab` opens/closes the Game tab. Applied on the next
+        //   render, guarded by `applied_pie_signature`.
+        // - Title inputs (`current_scene`, `has_unsaved_changes`): re-render
+        //   so the dock's tab title/icon/unsaved marker update.
+        // - Selection + tool: pushed to Helio here rather than in `render`,
+        //   which used to take a renderer lock several times a second for a
+        //   change that happens once per click.
         let poll_state = Arc::clone(&shared_state);
+        let poll_gpu = gpu_engine.clone();
         let poller = cx.spawn(async move |this, cx| {
-            let mut last_seen: u64 = 0;
-            // Also re-render on Play-In-Editor state changes (set by the build
-            // thread / GameViewport) so `sync_game_tab` opens/closes the Game tab.
-            let mut last_pie = (false, false, false, false);
+            let mut last: Option<(
+                (bool, bool, bool, bool),
+                (Option<std::path::PathBuf>, bool),
+                (Option<String>, TransformTool),
+            )> = None;
             loop {
                 cx.background_executor()
                     .timer(std::time::Duration::from_millis(50))
                     .await;
-                let (current, pie) = {
+                let snapshot = {
                     let s = poll_state.read();
                     (
-                        s.scene.revision,
                         (
                             s.play.pie.building,
                             s.play.pie.active,
                             s.play.pie.pending_start.is_some(),
                             s.play.pie.last_error.is_some(),
                         ),
+                        (
+                            s.scene.current_scene.clone(),
+                            s.scene.has_unsaved_changes,
+                        ),
+                        (s.scene.selected_object(), s.editor.current_tool),
                     )
                 };
-                if current != last_seen || pie != last_pie {
-                    last_seen = current;
-                    last_pie = pie;
+
+                let (pie_changed, title_changed, selection_changed) = match &last {
+                    Some(last) => (
+                        snapshot.0 != last.0,
+                        snapshot.1 != last.1,
+                        snapshot.2 != last.2,
+                    ),
+                    None => (true, true, true),
+                };
+
+                if selection_changed {
+                    // Selection or tool changed: sync both into the renderer.
+                    // `.try_lock()`, never a blocking lock — this runs on the
+                    // UI thread; a missed tick is corrected by the next one.
+                    if let Ok(mut engine) = poll_gpu.try_lock() {
+                        let (_, tool) = &snapshot.2;
+                        let (scene_type, _) = Self::tool_to_gizmo(*tool);
+                        if scene_type != engine.get_scene_gizmo_type() {
+                            engine.set_scene_gizmo_type(scene_type);
+                        }
+                        engine.sync_selection_to_helio();
+                    }
+                }
+
+                if pie_changed || title_changed {
                     cx.update(|cx| {
-                        this.update(cx, |panel, cx| {
-                            panel.notify_sub_panels(cx);
-                            cx.notify();
-                        });
+                        this.update(cx, |_, cx| cx.notify());
                     });
                 }
+
+                last = Some(snapshot);
             }
         });
 
@@ -351,7 +394,6 @@ impl LevelEditorPanel {
 
         Self {
             focus_handle: cx.focus_handle(),
-            fps_graph_is_line: Rc::new(RefCell::new(true)),
             toolbar,
             status_bar,
             viewport,
@@ -360,22 +402,9 @@ impl LevelEditorPanel {
             render_enabled,
             shared_state,
             workspace: None,
-            hierarchy_panel_entity: None,
-            properties_panel_entity: None,
-            last_observed_scene_revision: 0,
             game_panel: None,
-            _scene_revision_poller: poller,
-        }
-    }
-
-    /// Notify the hierarchy (and, via its observer, the properties panel) so they
-    /// re-render after any scene or selection mutation.
-    fn notify_sub_panels(&self, cx: &mut Context<Self>) {
-        if let Some(ref h) = self.hierarchy_panel_entity {
-            h.update(cx, |_, cx| cx.notify());
-        }
-        if let Some(ref p) = self.properties_panel_entity {
-            p.update(cx, |_, cx| cx.notify());
+            applied_pie_signature: None,
+            _root_input_poller: poller,
         }
     }
 
@@ -394,114 +423,94 @@ impl LevelEditorPanel {
         });
 
         let shared_state = self.shared_state.clone();
-        let fps_graph = self.fps_graph_is_line.clone();
         let gpu = self.gpu_engine.clone();
         let viewport = self.viewport.clone();
         let render_enabled = self.render_enabled.clone();
 
-        let (hierarchy_handle, properties_handle) =
-            workspace.update(cx, |workspace, cx| {
-                let dock_area = workspace.dock_area().downgrade();
+        workspace.update(cx, |workspace, cx| {
+            let dock_area = workspace.dock_area().downgrade();
 
-                // Create viewport in center
-                let viewport_panel_inner =
-                    ViewportPanel::new(viewport.clone(), render_enabled.clone(), window, cx);
-                let viewport_panel = cx.new(|cx| {
-                    use crate::level_editor::ViewportPanelWrapper;
-                    ViewportPanelWrapper::new(
-                        viewport_panel_inner,
-                        shared_state.clone(),
-                        fps_graph.clone(),
-                        gpu.clone(),
-                        cx,
-                    )
-                });
-
-                // Create right dock panels
-                let hierarchy_panel = cx.new(|cx| {
-                    use crate::level_editor::HierarchyPanelWrapper;
-                    HierarchyPanelWrapper::new(shared_state.clone(), window, cx)
-                });
-                let hierarchy_handle = hierarchy_panel.clone();
-                let properties_panel = cx.new(|cx| {
-                    use crate::level_editor::PropertiesPanelWrapper;
-                    PropertiesPanelWrapper::new(shared_state.clone(), window, cx)
-                });
-                let properties_handle = properties_panel.clone();
-                let world_settings_panel = cx.new(|cx| {
-                    use crate::level_editor::WorldSettingsPanel;
-                    WorldSettingsPanel::new(shared_state.clone(), window, cx)
-                });
-
-                // Wire up cross-panel notification: whenever the hierarchy is notified (e.g.
-                // after a selection click), the properties panel is also notified so it
-                // re-reads the selected object and updates its sections.
-                {
-                    let hierarchy_for_observe = hierarchy_panel.clone();
-                    properties_panel.update(cx, |_, cx| {
-                        cx.observe(&hierarchy_for_observe, |_, _, cx| {
-                            cx.notify();
-                        })
-                        .detach();
-                    });
-                }
-
-                // Bottom right: tabs for Properties and World Settings
-                let bottom_tabs = DockItem::tabs(
-                    vec![
-                        std::sync::Arc::new(properties_panel)
-                            as std::sync::Arc<dyn ui::dock::PanelView>,
-                        std::sync::Arc::new(world_settings_panel)
-                            as std::sync::Arc<dyn ui::dock::PanelView>,
-                    ],
-                    Some(0),
-                    &dock_area,
-                    window,
-                    cx,
-                );
-
-                // Top right: hierarchy panel (as a single-tab TabPanel)
-                let top_hierarchy = DockItem::tabs(
-                    vec![std::sync::Arc::new(hierarchy_panel)
-                        as std::sync::Arc<dyn ui::dock::PanelView>],
-                    Some(0),
-                    &dock_area,
-                    window,
-                    cx,
-                );
-
-                // Compose right dock as a vertical split: top = hierarchy (25%), bottom = tabs (75%)
-                // Hierarchy gets smaller fixed size, Properties/World gets larger
-                let right = ui::dock::DockItem::split_with_sizes(
-                    gpui::Axis::Vertical,
-                    vec![top_hierarchy, bottom_tabs],
-                    vec![Some(px(150.0)), Some(px(550.0))], // 150px hierarchy, 550px for Properties/World
-                    &dock_area,
-                    window,
-                    cx,
-                );
-
-                // Set center and right dock only (no left dock, matching DAW approach).
-                // The Game tab (Play In Editor, issue #243) is added dynamically
-                // when the game starts and removed on stop — see `sync_game_tab`.
-                let center_tabs = DockItem::tabs(
-                    vec![std::sync::Arc::new(viewport_panel)
-                        as std::sync::Arc<dyn ui::dock::PanelView>],
-                    Some(0),
-                    &dock_area,
-                    window,
-                    cx,
-                );
-                let _ = dock_area.update(cx, |dock_area, cx| {
-                    dock_area.set_center(center_tabs, window, cx);
-                    dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
-                });
-
-                (hierarchy_handle, properties_handle)
+            // Create viewport in center
+            let viewport_panel_inner =
+                ViewportPanel::new(viewport.clone(), render_enabled.clone(), window, cx);
+            let viewport_panel = cx.new(|cx| {
+                use crate::level_editor::ViewportPanelWrapper;
+                ViewportPanelWrapper::new(viewport_panel_inner, shared_state.clone(), gpu.clone(), cx)
             });
 
-        self.hierarchy_panel_entity = Some(hierarchy_handle);
-        self.properties_panel_entity = Some(properties_handle);
+            // Create right dock panels
+            let hierarchy_panel = cx.new(|cx| {
+                use crate::level_editor::HierarchyPanelWrapper;
+                HierarchyPanelWrapper::new(shared_state.clone(), window, cx)
+            });
+            let properties_panel = cx.new(|cx| {
+                use crate::level_editor::PropertiesPanelWrapper;
+                PropertiesPanelWrapper::new(shared_state.clone(), window, cx)
+            });
+            let world_settings_panel = cx.new(|cx| {
+                use crate::level_editor::WorldSettingsPanel;
+                WorldSettingsPanel::new(shared_state.clone(), window, cx)
+            });
+
+            // NOTE: Panels are self-invalidating — each owns a frame pump
+            // that watches the state it renders (`frame_pump`, signatures in
+            // `workspace::panels` / `toolbar::view` / `status_bar_view`).
+            // There is deliberately no observe/notify wiring between panels
+            // or from this panel to them; forwarding notifications here used
+            // to turn every scene edit into a whole-tree invalidation.
+
+            // Bottom right: tabs for Properties and World Settings
+            let bottom_tabs = DockItem::tabs(
+                vec![
+                    std::sync::Arc::new(properties_panel)
+                        as std::sync::Arc<dyn ui::dock::PanelView>,
+                    std::sync::Arc::new(world_settings_panel)
+                        as std::sync::Arc<dyn ui::dock::PanelView>,
+                ],
+                Some(0),
+                &dock_area,
+                window,
+                cx,
+            );
+
+            // Top right: hierarchy panel (as a single-tab TabPanel)
+            let top_hierarchy = DockItem::tabs(
+                vec![std::sync::Arc::new(hierarchy_panel)
+                    as std::sync::Arc<dyn ui::dock::PanelView>],
+                Some(0),
+                &dock_area,
+                window,
+                cx,
+            );
+
+            // Compose right dock as a vertical split: top = hierarchy (25%), bottom = tabs (75%)
+            // Hierarchy gets smaller fixed size, Properties/World gets larger
+            let right = ui::dock::DockItem::split_with_sizes(
+                gpui::Axis::Vertical,
+                vec![top_hierarchy, bottom_tabs],
+                vec![Some(px(150.0)), Some(px(550.0))], // 150px hierarchy, 550px for Properties/World
+                &dock_area,
+                window,
+                cx,
+            );
+
+            // Set center and right dock only (no left dock, matching DAW approach).
+            // The Game tab (Play In Editor, issue #243) is added dynamically
+            // when the game starts and removed on stop — see `sync_game_tab`.
+            let center_tabs = DockItem::tabs(
+                vec![std::sync::Arc::new(viewport_panel)
+                    as std::sync::Arc<dyn ui::dock::PanelView>],
+                Some(0),
+                &dock_area,
+                window,
+                cx,
+            );
+            let _ = dock_area.update(cx, |dock_area, cx| {
+                dock_area.set_center(center_tabs, window, cx);
+                dock_area.set_right_dock(right, Some(px(400.0)), true, window, cx);
+            });
+        });
+
         self.workspace = Some(workspace);
     }
 
@@ -509,8 +518,20 @@ impl LevelEditorPanel {
     /// running) — `add_panel` auto-activates it, so it autofocuses — and remove
     /// it on stop. Also surfaces build errors, since the tab may not exist when a
     /// build fails.
+    ///
+    /// Called from `render`, but guarded: this panel is invalidated several
+    /// times a second (every viewport publish dirties the ancestor chain), and
+    /// without the check each of those renders would take a write lock on the
+    /// shared state for nothing. The lock below is now taken once per actual
+    /// PiE state transition.
     fn sync_game_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         use crate::level_editor::ui::viewport::game_viewport::GameViewport;
+
+        // Cheap read-only guard first: no PiE transition since we last acted.
+        let current = self.pie_signature();
+        if Some(current) == self.applied_pie_signature {
+            return;
+        }
 
         let (should_open, error) = {
             let mut st = self.shared_state.write();
@@ -556,6 +577,22 @@ impl LevelEditorPanel {
                 });
             }
         }
+
+        // Record AFTER acting: `last_error` was taken above, so the fresh
+        // tuple differs from the pre-act snapshot whenever an error was
+        // consumed, and storing the pre-take value would loop.
+        self.applied_pie_signature = Some(self.pie_signature());
+    }
+
+    /// Cheap read-only snapshot of the Play-In-Editor state this panel acts on.
+    fn pie_signature(&self) -> (bool, bool, bool, bool) {
+        let st = self.shared_state.read();
+        (
+            st.play.pie.building,
+            st.play.pie.active,
+            st.play.pie.pending_start.is_some(),
+            st.play.pie.last_error.is_some(),
+        )
     }
 
     pub fn toggle_rendering(&mut self) {
@@ -745,7 +782,6 @@ impl LevelEditorPanel {
             },
         );
         drop(state);
-        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -777,7 +813,6 @@ impl LevelEditorPanel {
             },
         );
         drop(state);
-        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -790,7 +825,6 @@ impl LevelEditorPanel {
             drop(state);
             self.sync_gizmo_to_helio();
         }
-        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -808,7 +842,6 @@ impl LevelEditorPanel {
                 },
             );
         }
-        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -829,7 +862,6 @@ impl LevelEditorPanel {
             }
             self.sync_gizmo_to_helio();
         }
-        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -844,7 +876,6 @@ impl LevelEditorPanel {
             }
             self.sync_gizmo_to_helio();
         }
-        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -854,7 +885,6 @@ impl LevelEditorPanel {
             .scene
             .select_object(Some(action.object_id.clone()));
         self.sync_gizmo_to_helio(); // Sync gizmo to follow selected object
-        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -1172,7 +1202,6 @@ impl LevelEditorPanel {
                             }
                             Err(e) => tracing::error!("Open scene failed: {}", e),
                         }
-                        this.notify_sub_panels(cx);
                         cx.notify();
                     });
                 });
@@ -1203,7 +1232,6 @@ impl LevelEditorPanel {
             }
         }
         self.apply_editor_camera_state(editor_camera.as_ref());
-        self.notify_sub_panels(cx);
         {
             let mut state = self.shared_state.write();
             if let Some(prev) = state.scene.current_scene.clone() {
@@ -1319,25 +1347,15 @@ impl Render for LevelEditorPanel {
         self.initialize_workspace(window, cx);
 
         // Open/close the Play-In-Editor Game tab as the game starts/stops.
+        // Guarded: a no-op unless the PiE tuple actually changed since the
+        // last render that acted on it (see its doc).
         self.sync_game_tab(window, cx);
 
-        // Apply external scene mutations (e.g. AI tool calls) to panel UI.
-        let current_revision = self.shared_state.read().scene.revision;
-        if current_revision != self.last_observed_scene_revision {
-            self.last_observed_scene_revision = current_revision;
-            self.notify_sub_panels(cx);
-            cx.notify();
-        }
-
-        // Sync selection and gizmo state to Helio each frame via GpuRenderer API.
-        if let Ok(mut engine_guard) = self.gpu_engine.try_lock() {
-            let tool = self.shared_state.read().editor.current_tool;
-            let (scene_type, _) = Self::tool_to_gizmo(tool);
-            if scene_type != engine_guard.get_scene_gizmo_type() {
-                engine_guard.set_scene_gizmo_type(scene_type);
-            }
-            engine_guard.sync_selection_to_helio();
-        }
+        // NOTE: There is deliberately no per-render engine or panel work left
+        // here. Selection/tool sync to Helio runs in the 50ms root-input
+        // poller (spawned in `new_internal`), and every sub-panel invalidates
+        // itself via its own frame pump. Render only builds this panel's own
+        // element tree.
 
         v_flex()
             .size_full()

@@ -11,7 +11,6 @@ use ui_problems::ProblemsDrawer;
 // use ui_daw_editor::DawEditorPanel;
 use engine_backend::services::RustAnalyzerManager;
 use ui_common::command_palette::{GenericPalette, Palette, PaletteId, PaletteViewDelegate};
-use ui_entry::EntryScreen;
 use ui_log_viewer::MissionControlPanel;
 use ui_type_debugger::TypeDebuggerDrawer;
 
@@ -23,7 +22,6 @@ pub struct AppState {
 
     // Project management
     pub project_path: Option<PathBuf>,
-    pub entry_screen: Option<Entity<EntryScreen>>,
 
     // Drawers
     pub file_manager_drawer: Entity<FileManagerDrawer>,

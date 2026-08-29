@@ -122,7 +122,6 @@ fn workspace_engine_fs_callers_declare_their_minimum_surface() {
         ("pulsar_std".to_owned(), features(&[])),
         ("pulsar_terrain".to_owned(), features(&[])),
         ("ui_common".to_owned(), features(&["editor"])),
-        ("ui_entry".to_owned(), features(&["remote"])),
         ("ui_file_manager".to_owned(), features(&["editor"])),
         ("ui_git_manager".to_owned(), features(&[])),
         ("ui_level_editor".to_owned(), features(&[])),

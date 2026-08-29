@@ -7,7 +7,6 @@ use rust_i18n::t;
 use std::{collections::VecDeque, path::PathBuf, sync::Arc};
 use ui::dock::DockItem;
 use ui::ContextModal;
-use ui_entry::EntryScreen;
 use ui_file_manager::FileManagerDrawer;
 use ui_level_editor::LevelEditorPanel;
 use ui_log_viewer::MissionControlPanel;
@@ -169,14 +168,6 @@ impl PulsarApp {
             t.elapsed().as_millis()
         );
 
-        // Create entry screen only if no project path is provided
-        let entry_screen = if project_path.is_none() {
-            let screen = cx.new(|cx| EntryScreen::new(window, cx));
-            Some(screen)
-        } else {
-            None
-        };
-
         // Store project_path before moving it
         let has_project = project_path.is_some();
 
@@ -262,12 +253,6 @@ impl PulsarApp {
         cx.subscribe_in(&center_tabs, window, event_handlers::on_tab_panel_event)
             .detach();
         tracing::trace!("[SUBSCRIPTION] Subscription to center_tabs set up successfully");
-
-        // Subscribe to entry screen events
-        if let Some(screen) = &entry_screen {
-            cx.subscribe_in(screen, window, event_handlers::on_project_selected)
-                .detach();
-        }
 
         // Initialize palette manager global
         ui_common::command_palette::PaletteManager::init(cx);
@@ -413,7 +398,6 @@ impl PulsarApp {
             state: crate::app::state::AppState {
                 dock_area,
                 project_path,
-                entry_screen,
                 file_manager_drawer,
                 drawer_open: false,
                 drawer_height: 400.0,

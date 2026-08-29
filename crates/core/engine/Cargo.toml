@@ -30,7 +30,6 @@ profiling = { workspace = true }
 # Instead, engine will link against them at runtime
 ui_core.workspace = true
 ui_common.workspace = true
-ui_entry.workspace = true
 ui_loading_screen.workspace = true
 ui_log_viewer.workspace = true
 serde_json = { workspace = true }

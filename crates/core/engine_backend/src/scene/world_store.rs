@@ -99,10 +99,29 @@ pub struct Parent(pub Entity);
 
 /// Flat per-entity world-space transform. See this module's top doc for why
 /// this is flat rather than composed from a parent chain.
-#[derive(Clone, Copy, Debug, PartialEq)]
+///
+/// `#[derive(SceneStore)]`/`#[gpu(layout = packed)]` (SceneDB's own, low-
+/// level derive -- not `#[engine_class]`'s, since `Transform` has no
+/// properties-panel/reflection concerns of its own) gives this a real,
+/// entity-indexed GPU buffer, dirty-tracked the same as any other `#[gpu]`
+/// field: only entities that actually moved get re-uploaded on a given
+/// flush. This exists so a renderer consumer (a light/mesh/decal/anything
+/// else with a world position) can read an entity's CURRENT transform
+/// directly off the GPU, indexed by the same `Entity`, instead of the
+/// consumer's own CPU-side per-frame rebuild combining it in by hand --
+/// see `HelioRenderer::rebuild_light_frame`'s doc (`engine_backend`) for
+/// the concrete case this was built for. No `GpuRepr<T>` wrapping needed
+/// on the fields below: `[f32; 3]` is already `Pod` via `pulsar_scenedb`'s
+/// own blanket array impl, the same as any other already-Pod type.
+#[derive(Clone, Copy, Debug, PartialEq, pulsar_scenedb::SceneStore)]
+#[gpu(layout = packed)]
+#[repr(C)]
 pub struct Transform {
+    #[gpu]
     pub position: [f32; 3],
+    #[gpu]
     pub rotation: [f32; 3],
+    #[gpu]
     pub scale: [f32; 3],
 }
 
@@ -256,10 +275,10 @@ impl WorldSceneStore {
     }
 
     /// Direct access to the underlying [`pulsar_scenedb::SceneDb`], for
-    /// callers that need `register_subsystem`/`step()` (e.g. wiring
-    /// `helio_scenedb::HelioRenderSubsystem` into the live render sync
-    /// pass, Pulsar-Native#561 Phase D) beyond what [`Self::world`]/
-    /// [`Self::world_mut`] expose.
+    /// callers that need `register_subsystem`/`step()` beyond what
+    /// [`Self::world`]/[`Self::world_mut`] expose -- `step()`'s per-frame
+    /// GPU-mirror flush (`HelioRenderer::step_scene_db`) being the one live
+    /// caller today.
     pub fn scene_db_mut(&mut self) -> &mut pulsar_scenedb::SceneDb {
         &mut self.scene_db
     }
@@ -1366,6 +1385,67 @@ mod tests {
         store.spawn(Some("a".into()), "A", None).unwrap();
         store.spawn(Some("b".into()), "B", None).unwrap();
         assert_eq!(store.get_all_snapshots(), store.to_snapshots());
+    }
+
+    // ── Transform's GPU mirror ───────────────────────────────────────────
+    // Proves `#[derive(SceneStore)]`/`#[gpu(layout = packed)]` on `Transform`
+    // itself actually produces a real, entity-indexed GPU buffer -- the
+    // foundation `HelioRenderer::rebuild_light_frame`'s planned GPU-side
+    // position lookup builds on. `set_transform`/`transform()` (this
+    // module's own ordinary API) are completely unaffected -- unchanged
+    // CPU-side behavior, proven by the OTHER tests in this file; this one
+    // is specifically about the GPU half `#[gpu]` adds on top.
+
+    fn gpu_test_context() -> pulsar_scenedb::gpu::EngineGpuContext {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+            apply_limit_buckets: false,
+        }))
+        .expect("no adapter — GPU tests need a local GPU");
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("transform-gpu-mirror-test"),
+            ..Default::default()
+        }))
+        .expect("device");
+        pulsar_scenedb::gpu::EngineGpuContext::new(std::sync::Arc::new(device), std::sync::Arc::new(queue))
+    }
+
+    fn gpu_scene_cfg() -> pulsar_scenedb::gpu::SceneGpuConfig {
+        pulsar_scenedb::gpu::SceneGpuConfig {
+            classes: vec![pulsar_scenedb::gpu::RegionClassConfig { capacity: 64, max_resident_cells: 1 }],
+            tombstone_headroom: 8,
+            max_cells_metadata: 16,
+        }
+    }
+
+    #[test]
+    fn transform_lands_on_the_real_gpu_through_plain_world_insert() {
+        use pulsar_scenedb::GpuColumnSet;
+
+        let ctx = gpu_test_context();
+        let store_gpu = std::sync::Arc::new(pulsar_scenedb::gpu::SceneGpuStore::new(&ctx, gpu_scene_cfg()));
+
+        let mut store = WorldSceneStore::new();
+        store.world_mut().attach_gpu_mirror(pulsar_scenedb::gpu::GpuMirrorHandle::new(
+            std::sync::Arc::clone(&store_gpu),
+            std::sync::Arc::clone(ctx.queue()),
+        ));
+
+        let entity = store.spawn(Some("moved".into()), "Moved", None).unwrap();
+        let transform = Transform { position: [1.0, 2.0, 3.0], rotation: [0.0, 90.0, 0.0], scale: [2.0, 2.0, 2.0] };
+        store.set_transform(entity, transform);
+        store.world_mut().flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+
+        let id = Transform::packed_gpu_component_id();
+        let handle = store_gpu
+            .resolve_buffer_handle(store_gpu.buffer_key_for(id).expect("insert must auto-register the buffer"))
+            .expect("resolvable");
+        let got: Transform = pulsar_scenedb::gpu::readback_row(ctx.device(), ctx.queue(), &handle.buffer, entity.index());
+
+        assert_eq!(got, transform, "must be real GPU-resident data, byte-identical to what was inserted");
     }
 }
 

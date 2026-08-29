@@ -98,6 +98,12 @@ pub struct ViewportPanel {
     /// Input thread spawn tracking
     input_thread_spawned: Arc<AtomicBool>,
 
+    /// Signals the input thread to exit
+    input_thread_stop: Arc<AtomicBool>,
+
+    /// Join handle for the input thread
+    input_thread_handle: Option<std::thread::JoinHandle<()>>,
+
     /// Viewport hover state
     viewport_hovered: Arc<AtomicBool>,
 
@@ -143,6 +149,8 @@ impl ViewportPanel {
             metrics: RefCell::new(PerformanceMetrics::new()),
             input_state,
             input_thread_spawned: Arc::new(AtomicBool::new(false)),
+            input_thread_stop: Arc::new(AtomicBool::new(false)),
+            input_thread_handle: None,
             viewport_hovered: Arc::new(AtomicBool::new(false)),
             last_mouse_x: Arc::new(AtomicI32::new(0)),
             last_mouse_y: Arc::new(AtomicI32::new(0)),
@@ -161,9 +169,8 @@ impl ViewportPanel {
     /// Render the viewport panel.
     pub fn render<V>(
         &mut self,
-        state: &mut LevelEditorState,
+        state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        fps_graph_state: Rc<RefCell<bool>>,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -173,19 +180,25 @@ impl ViewportPanel {
         // Spawn dedicated input thread (once)
         self.spawn_input_thread_once(gpu_engine);
 
-        // Update performance metrics
-        self.update_performance_metrics(gpu_engine);
+        let snapshot = EngineFrameSnapshot::gather(
+            gpu_engine,
+            self.input_state.get_move_speed(),
+            self.input_state.take_zoom_delta(),
+        );
 
-        // Send input to GPU
-        self.send_input_to_gpu(gpu_engine, state);
+        // Update performance metrics
+        self.update_performance_metrics(
+            snapshot.as_ref(),
+            state.overlays.state.show_performance_overlay,
+        );
 
         // Build the viewport UI
-        self.build_viewport_ui(state, state_arc, fps_graph_state, gpu_engine, cx)
+        self.build_viewport_ui(state, state_arc, snapshot, gpu_engine, cx)
     }
 
     /// Spawn the input processing thread (only once).
     fn spawn_input_thread_once(
-        &self,
+        &mut self,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
     ) {
         if self.input_thread_spawned.load(Ordering::Relaxed) {
@@ -203,8 +216,9 @@ impl ViewportPanel {
         let mouse_middle_captured = self.mouse_middle_captured.clone();
         let locked_cursor_screen_x = self.locked_cursor_screen_x.clone();
         let locked_cursor_screen_y = self.locked_cursor_screen_y.clone();
+        let stop_flag = self.input_thread_stop.clone();
 
-        std::thread::spawn(move || {
+        self.input_thread_handle = Some(std::thread::spawn(move || {
             profiling::set_thread_name("Input Thread");
             tracing::debug!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
             let device_state = DeviceState::new();
@@ -212,6 +226,11 @@ impl ViewportPanel {
             let mut was_capturing = false;
 
             loop {
+                if stop_flag.load(Ordering::Acquire) {
+                    tracing::debug!("[INPUT-THREAD] shutdown requested, exiting");
+                    return;
+                }
+
                 let capture =
                     ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
                 let is_rotating = capture == ViewportCursorCapture::Rotate;
@@ -381,57 +400,74 @@ impl ViewportPanel {
                             }
                         }
                     }
+
+                    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+                    {
+                        let locked_screen_x = locked_cursor_screen_x.load(Ordering::Relaxed);
+                        let locked_screen_y = locked_cursor_screen_y.load(Ordering::Relaxed);
+
+                        if locked_screen_x > 0 && locked_screen_y > 0 {
+                            if let Some((cx, cy)) = platform::get_cursor_position() {
+                                let dx = cx - locked_screen_x;
+                                let dy = cy - locked_screen_y;
+
+                                if dx != 0 || dy != 0 {
+                                    if !just_activated {
+                                        if let Some(cam) = &camera_input {
+                                            if let Ok(mut input) = cam.lock() {
+                                                if is_rotating {
+                                                    input.accumulate_look_delta(dx as f32, dy as f32);
+                                                } else if is_panning {
+                                                    input.accumulate_pan_delta(dx as f32, dy as f32);
+                                                }
+                                            }
+                                        }
+
+                                        if is_rotating {
+                                            input_state.set_mouse_delta(dx as f32, dy as f32);
+                                        } else if is_panning {
+                                            input_state.set_pan_delta(dx as f32, dy as f32);
+                                        }
+                                    }
+
+                                    platform::set_cursor_position(locked_screen_x, locked_screen_y);
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // Track latency
                 let latency_us = input_start.elapsed().as_micros() as u64;
                 input_state.set_input_latency_us(latency_us);
             }
-        });
+        }));
     }
 
-    /// Update performance metrics from GPU.
+    /// Update performance metrics from the per-frame engine snapshot.
     fn update_performance_metrics(
         &self,
-        gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+        snapshot: Option<&EngineFrameSnapshot>,
+        track_consistency: bool,
     ) {
-        if let Ok(engine) = gpu_engine.try_lock() {
-            let ui_fps = engine.get_fps() as f64;
-            let helio_fps = engine.get_helio_fps() as f64;
+        let mut metrics = self.metrics.borrow_mut();
 
-            let metrics_opt = engine.get_render_metrics();
-            let (memory_mb, draw_calls, vertices, frame_time_ms) = if let Some(ref m) = metrics_opt
-            {
-                (
-                    m.memory_usage_mb,
-                    m.draw_calls,
-                    m.vertices_drawn,
-                    m.frame_time_ms,
-                )
-            } else {
-                (0.0, 0, 0, 0.0)
-            };
-
-            let mut metrics = self.metrics.borrow_mut();
-
+        if let Some(snapshot) = snapshot {
             // Update FPS using the renderer metric when UI-side frame count is not yet available.
-            let display_fps = if ui_fps > 0.0 { ui_fps } else { helio_fps };
+            let display_fps = if snapshot.ui_fps > 0.0 {
+                snapshot.ui_fps
+            } else {
+                snapshot.helio_fps
+            };
             metrics.add_fps(display_fps);
 
-            // Update frame time
-            metrics.add_frame_time(frame_time_ms as f64);
+            metrics.add_frame_time(snapshot.frame_time_ms);
+            metrics.add_memory(snapshot.memory_mb);
+            metrics.add_draw_calls(snapshot.draw_calls);
+            metrics.add_vertices(snapshot.vertices);
 
-            // Update memory
-            metrics.add_memory(memory_mb as f64);
-
-            // Update draw calls
-            metrics.add_draw_calls(draw_calls as f64);
-
-            // Update vertices
-            metrics.add_vertices(vertices as f64);
-
-            // Calculate UI consistency (FPS variance)
-            if metrics.fps_history.len() >= 10 {
+            if track_consistency && metrics.fps_history.len() >= 10 {
+                // Calculate UI consistency (FPS variance)
                 let sample_size = metrics.fps_history.len().min(30);
                 let recent_fps: Vec<f64> = metrics
                     .fps_history
@@ -455,47 +491,15 @@ impl ViewportPanel {
 
         // Add input latency
         let latency_us = self.input_state.get_input_latency_us();
-        self.metrics
-            .borrow_mut()
-            .add_input_latency(latency_us as f64 / 1000.0);
-    }
-
-    /// Send input state to GPU.
-    /// NOTE: Keyboard (forward/right/up/boost) and mouse/pan deltas are sent
-    /// DIRECTLY from the input thread for zero latency — this function only
-    /// pushes frame-rate-independent settings (move speed) and UI-driven
-    /// deltas (scroll zoom) onto CameraInput.
-    fn send_input_to_gpu(
-        &self,
-        gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
-        _state: &LevelEditorState,
-    ) {
-        if let Ok(engine) = gpu_engine.try_lock() {
-            if let Some(cam) = engine.camera_input() {
-                if let Ok(mut input) = cam.try_lock() {
-                    // NOTE: forward/right/up/boost are written DIRECTLY by the input
-                    // thread (spawn_input_thread_once) — writing them here would make
-                    // key state lag by a full GPUI frame, or go stale entirely if GPUI
-                    // isn't repainting. Only frame-rate-independent settings and
-                    // scroll-driven deltas go through the UI thread.
-                    input.move_speed = self.input_state.get_move_speed();
-
-                    // Zoom is also handled here since scroll events go through GPUI
-                    input.zoom_delta = self.input_state.take_zoom_delta();
-
-                    // NOTE: mouse_delta and pan_delta are now written DIRECTLY by input thread!
-                    // We don't touch them here to avoid race conditions and latency.
-                }
-            }
-        }
+        metrics.add_input_latency(latency_us as f64 / 1000.0);
     }
 
     /// Build the complete viewport UI.
     fn build_viewport_ui<V>(
         &mut self,
-        state: &mut LevelEditorState,
+        state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        fps_graph_state: Rc<RefCell<bool>>,
+        snapshot: Option<EngineFrameSnapshot>,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -506,65 +510,18 @@ impl ViewportPanel {
         let _element_bounds = self.element_bounds.clone();
         let viewport_entity = self.viewport.clone();
 
-        // Get performance data
-        let (ui_fps, helio_fps, render_fps, renderer_ready) =
-            if let Ok(engine) = gpu_engine.try_lock() {
-                let ui_fps = engine.get_fps() as f64;
-                let helio_fps = engine.get_helio_fps() as f64;
-                let render_fps = engine.get_render_fps() as f64;
-                let renderer_ready = engine.is_initialized();
-                (ui_fps, helio_fps, render_fps, renderer_ready)
-            } else {
-                (0.0, 0.0, 0.0, false)
-            };
+        let empty_snapshot = EngineFrameSnapshot::default();
+        let snap = snapshot.as_ref().unwrap_or(&empty_snapshot);
+        let ui_fps = snap.ui_fps;
+        let render_fps = snap.render_fps;
 
-        // Collect metric histories. These eight Vecs feed only
-        // `render_performance_overlay`, which is itself gated on
-        // `show_performance_overlay` — cloning them when the overlay is closed
-        // is pure waste on a hot path, so skip it entirely.
-        let (
-            fps_data,
-            tps_data,
-            frame_time_data,
-            memory_data,
-            draw_calls_data,
-            vertices_data,
-            input_latency_data,
-            ui_consistency_data,
-        ) = if state.overlays.state.show_performance_overlay {
-            let metrics = self.metrics.borrow();
-            (
-                metrics.fps_history.iter().cloned().collect::<Vec<FpsDataPoint>>(),
-                metrics.tps_history.iter().cloned().collect::<Vec<TpsDataPoint>>(),
-                metrics
-                    .frame_time_history
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<FrameTimeDataPoint>>(),
-                metrics.memory_history.iter().cloned().collect::<Vec<MemoryDataPoint>>(),
-                metrics
-                    .draw_calls_history
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<DrawCallsDataPoint>>(),
-                metrics
-                    .vertices_history
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<VerticesDataPoint>>(),
-                metrics
-                    .input_latency_history
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<InputLatencyDataPoint>>(),
-                metrics
-                    .ui_consistency_history
-                    .iter()
-                    .cloned()
-                    .collect::<Vec<UiConsistencyDataPoint>>(),
-            )
+        // Collect metric histories only while the performance overlay can
+        // show them; cloning eight Vecs per frame with the overlay closed is
+        // pure waste on a hot path.
+        let perf_snapshot = if state.overlays.state.show_performance_overlay {
+            PerformanceSnapshot::capture(&self.metrics.borrow(), ui_fps, render_fps)
         } else {
-            Default::default()
+            PerformanceSnapshot::empty()
         };
 
         // Clone for event handlers
@@ -573,20 +530,17 @@ impl ViewportPanel {
         let mouse_middle_captured = self.mouse_middle_captured.clone();
         // Pointer-event queue for the left-click/left-release handlers below
         // (Pulsar-Native drag-release freeze fix -- see `PendingPointerEvent`'s
-        // doc). One `try_lock()` here, per element rebuild, not per click --
+        // doc). Fetched once, in the same locked pass as the frame stats --
         // and non-blocking, so a miss just means those two handlers fall back
         // to a no-op this rebuild and correctly pick the queue back up next
         // time (GPUI rebuilds this element tree far more often than a user
         // can actually click). The click/release closures themselves never
         // touch `gpu_engine` again after this.
-        let pointer_events_for_click = gpu_engine
-            .try_lock()
-            .ok()
-            .and_then(|engine| engine.pointer_event_queue());
+        let pointer_events_for_click = snap.pointer_events.clone();
+        let camera_input_for_prepaint = snap.camera_input.clone();
         let element_bounds_for_prepaint = self.element_bounds.clone();
         let element_bounds_for_click = self.element_bounds.clone();
         let _state_arc_scroll = state_arc.clone();
-        let gpu_engine_clone = gpu_engine.clone();
         let last_mouse_x = self.last_mouse_x.clone();
         let last_mouse_y = self.last_mouse_y.clone();
         let locked_cursor_x = self.locked_cursor_x.clone();
@@ -619,18 +573,16 @@ impl ViewportPanel {
                 *element_bounds_for_prepaint.borrow_mut() = Some(geom.bounds);
 
                 // Update Helio camera viewport to match GPUI viewport bounds
-                if let Ok(engine) = gpu_engine_clone.try_lock() {
-                    if let Some(cam) = engine.camera_input() {
-                        if let Ok(mut camera_input) = cam.try_lock() {
-                            let origin_x: f32 = geom.bounds.origin.x.into();
-                            let origin_y: f32 = geom.bounds.origin.y.into();
-                            let width: f32 = geom.bounds.size.width.into();
-                            let height: f32 = geom.bounds.size.height.into();
-                            camera_input.viewport_x = origin_x;
-                            camera_input.viewport_y = origin_y;
-                            camera_input.viewport_width = width;
-                            camera_input.viewport_height = height;
-                        }
+                if let Some(cam) = &camera_input_for_prepaint {
+                    if let Ok(mut camera_input) = cam.try_lock() {
+                        let origin_x: f32 = geom.bounds.origin.x.into();
+                        let origin_y: f32 = geom.bounds.origin.y.into();
+                        let width: f32 = geom.bounds.size.width.into();
+                        let height: f32 = geom.bounds.size.height.into();
+                        camera_input.viewport_x = origin_x;
+                        camera_input.viewport_y = origin_y;
+                        camera_input.viewport_width = width;
+                        camera_input.viewport_height = height;
                     }
                 }
             })
@@ -789,6 +741,12 @@ impl ViewportPanel {
                     } else {
                         locked_cursor_x.store(x, Ordering::Relaxed);
                         locked_cursor_y.store(y, Ordering::Relaxed);
+                        if let Some((sx, sy)) =
+                            crate::level_editor::ui::viewport::platform::get_cursor_position()
+                        {
+                            locked_cursor_screen_x.store(sx, Ordering::Relaxed);
+                            locked_cursor_screen_y.store(sy, Ordering::Relaxed);
+                        }
                         crate::level_editor::ui::viewport::platform::lock_cursor_to_window(window);
                     }
 
@@ -878,6 +836,12 @@ impl ViewportPanel {
                     } else {
                         locked_cursor_x.store(x, Ordering::Relaxed);
                         locked_cursor_y.store(y, Ordering::Relaxed);
+                        if let Some((sx, sy)) =
+                            crate::level_editor::ui::viewport::platform::get_cursor_position()
+                        {
+                            locked_cursor_screen_x.store(sx, Ordering::Relaxed);
+                            locked_cursor_screen_y.store(sy, Ordering::Relaxed);
+                        }
                         crate::level_editor::ui::viewport::platform::lock_cursor_to_window(window);
                     }
 
@@ -1045,18 +1009,7 @@ impl ViewportPanel {
             .child(self.render_overlays(
                 state,
                 state_arc,
-                fps_graph_state,
-                ui_fps,
-                helio_fps,
-                render_fps,
-                fps_data,
-                tps_data,
-                frame_time_data,
-                memory_data,
-                draw_calls_data,
-                vertices_data,
-                input_latency_data,
-                ui_consistency_data,
+                perf_snapshot,
                 gpu_engine,
                 cx,
             ))
@@ -1067,18 +1020,7 @@ impl ViewportPanel {
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        fps_graph_state: Rc<RefCell<bool>>,
-        ui_fps: f64,
-        _helio_fps: f64,
-        render_fps: f64,
-        fps_data: Vec<FpsDataPoint>,
-        tps_data: Vec<TpsDataPoint>,
-        frame_time_data: Vec<FrameTimeDataPoint>,
-        memory_data: Vec<MemoryDataPoint>,
-        draw_calls_data: Vec<DrawCallsDataPoint>,
-        vertices_data: Vec<VerticesDataPoint>,
-        input_latency_data: Vec<InputLatencyDataPoint>,
-        ui_consistency_data: Vec<UiConsistencyDataPoint>,
+        perf_snapshot: PerformanceSnapshot,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -1161,22 +1103,7 @@ impl ViewportPanel {
         // Bottom-left: Performance overlay
         if state.overlays.state.show_performance_overlay {
             overlays = overlays.child(div().absolute().bottom_2().left_2().max_w(px(400.0)).child(
-                render_performance_overlay(
-                    state,
-                    state_arc.clone(),
-                    ui_fps,
-                    render_fps,
-                    fps_data,
-                    tps_data,
-                    frame_time_data,
-                    memory_data,
-                    draw_calls_data,
-                    vertices_data,
-                    input_latency_data,
-                    ui_consistency_data,
-                    fps_graph_state,
-                    cx,
-                ),
+                render_performance_overlay(state, state_arc.clone(), perf_snapshot, cx),
             ));
         }
 
@@ -1196,6 +1123,15 @@ impl ViewportPanel {
         }
 
         overlays
+    }
+}
+
+impl Drop for ViewportPanel {
+    fn drop(&mut self) {
+        self.input_thread_stop.store(true, Ordering::Release);
+        if let Some(handle) = self.input_thread_handle.take() {
+            let _ = handle.join();
+        }
     }
 }
 

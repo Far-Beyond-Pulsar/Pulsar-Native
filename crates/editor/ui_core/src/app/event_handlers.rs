@@ -2,7 +2,6 @@
 
 use gpui::{AppContext, Context, Entity, UpdateGlobal, Window};
 use ui::{dock::PanelEvent, ContextModal};
-use ui_entry::{EntryScreen, ProjectSelected};
 use ui_file_manager::{FileManagerDrawer, FileSelected, PopoutFileManagerEvent};
 use ui_problems::ProblemsDrawer;
 
@@ -590,45 +589,6 @@ fn compute_before_after(
     };
 
     (before_content, after_content)
-}
-
-pub fn on_project_selected(
-    app: &mut PulsarApp,
-    _selector: &Entity<EntryScreen>,
-    event: &ProjectSelected,
-    window: &mut Window,
-    cx: &mut Context<PulsarApp>,
-) {
-    tracing::debug!("[PROJECT_SELECTED] Received path: {:?}", event.path);
-
-    app.state.project_path = Some(event.path.clone());
-    app.state.entry_screen = None;
-
-    // Update file manager with project path
-    app.state.file_manager_drawer.update(cx, |drawer, cx| {
-        drawer.set_project_path(event.path.clone(), cx);
-    });
-
-    // Update problems drawer with project root for relative paths
-    app.state.problems_drawer.update(cx, |drawer, cx| {
-        drawer.set_project_root(Some(event.path.clone()), cx);
-    });
-
-    // Update type debugger drawer with project root for relative paths
-    app.state.type_debugger_drawer.update(cx, |drawer, cx| {
-        drawer.set_project_root(Some(event.path.clone()), cx);
-    });
-
-    // Start rust analyzer for the project
-    app.state.rust_analyzer.update(cx, |analyzer, cx| {
-        analyzer.start(event.path.clone(), window, cx);
-    });
-
-    // Update Discord presence with new project
-    app.update_discord_presence(cx);
-
-    tracing::debug!("Project selected: {:?}", event.path);
-    cx.notify();
 }
 
 pub fn on_tab_panel_event(
