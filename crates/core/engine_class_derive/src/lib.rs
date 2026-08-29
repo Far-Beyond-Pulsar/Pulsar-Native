@@ -76,6 +76,7 @@ use syn::{
         engine_class_no_register,
         engine_class_serialize,
         engine_class_deserialize,
+        engine_class_scene_store,
         gpu
     )
 )]
@@ -99,10 +100,19 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
         quote! { None }
     };
 
+    // GPU ownership boundary signal (see the field-scan comment below): the
+    // attribute macro stamps `#[engine_class_scene_store]` when the
+    // `scene_store` flag routed this struct's GPU storage to SceneDB's own
+    // `#[derive(SceneStore)]`. Same mechanism/limitation as the serialize /
+    // deserialize markers further down -- a derive never sees the derive
+    // list, only these stamped markers.
+    let scene_store_routed = input
+        .attrs
+        .iter()
+        .any(|a| a.path().is_ident("engine_class_scene_store"));
+
     // Extract direct #[property] fields and optional #[sub_props] flattening fields.
-    let (property_impls, property_fields, sub_props_fields, gpu_leaf_fields, gpu_list_leaf_fields, gpu_heavy_leaf_fields): (
-        Vec<_>,
-        Vec<_>,
+    let (property_impls, property_fields, sub_props_fields, gpu_leaf_fields): (
         Vec<_>,
         Vec<_>,
         Vec<_>,
@@ -113,8 +123,6 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                 let mut props = Vec::new();
                 let mut sub_props = Vec::new();
                 let mut gpu_fields = Vec::new();
-                let mut gpu_list_fields = Vec::new();
-                let mut gpu_heavy_fields = Vec::new();
                 for field in &fields.named {
                     let has_sub_props = has_sub_props_attr(field);
                     let property_attr = parse_property_attr(field);
@@ -163,39 +171,50 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                             field,
                         ));
                     }
-                    // A `#[gpu] Vec<T>` field either belongs to the SEPARATE
-                    // var-len list mirror (below) or -- for a struct that
-                    // ALSO uses `#[engine_class(..., scene_store)]` on
-                    // itself (`StaticMeshComponent::vertices`/`indices`,
-                    // Pulsar-Native#561 Phase D) -- is ALREADY handled
-                    // directly by that struct's own `#[derive(SceneStore)]`.
-                    // `derive_engine_class` has no visibility into whether
-                    // `scene_store` was requested (a separate macro
-                    // invocation's own parsed args), so it generates the
-                    // list-mirror companion unconditionally regardless --
-                    // harmlessly inert for a `scene_store` struct, since
-                    // nothing calls `sync_gpu_list_mirror` for it unless
-                    // `#[register_world_component(gpu_mirror)]` is ALSO
-                    // used, which such a struct's own custom hydrate
-                    // (`hydrate_static_mesh_component`) doesn't.
-                    if is_gpu && is_gpu_heavy_type(&field.ty) {
-                        let field_ident = field.ident.clone().unwrap();
-                        let handle_ty = gpu_heavy_inner_type(&field.ty)
-                            .expect("is_gpu_heavy_type confirmed this is GpuHeavy<T>, so T must parse");
-                        gpu_heavy_fields.push(GpuHeavyLeafField { ident: field_ident, handle_ty });
-                    } else if is_gpu && !is_vec_type(&field.ty) {
-                        let field_ident = field.ident.clone().unwrap();
-                        let override_ = match parse_gpu_attr(field) {
-                            Ok(o) => o,
-                            Err(err) => return err.to_compile_error().into(),
-                        };
-                        gpu_fields.push(GpuLeafField { ident: field_ident, field_ty: field.ty.clone(), override_ });
-                    } else if is_gpu {
-                        // is_vec_type(&field.ty) == true here.
-                        let field_ident = field.ident.clone().unwrap();
-                        let elem_ty = vec_elem_type(&field.ty)
-                            .expect("is_vec_type confirmed this is Vec<T>, so T must parse");
-                        gpu_list_fields.push(GpuListLeafField { ident: field_ident, elem_ty });
+                    // GPU ownership boundary (engine-class GPU de-duplication
+                    // audit): packed-scalar `#[gpu]` fields are THIS derive's
+                    // only storage concern. Var-len (`Vec<T>`) and heavy
+                    // (`GpuHeavy<T>`) shapes belong exclusively to SceneDB's
+                    // own `#[derive(SceneStore)]` -- a struct declares that
+                    // routing via the `scene_store` flag, which the attribute
+                    // macro stamps as an `#[engine_class_scene_store]` marker
+                    // (the derive can never see the derive list itself).
+                    // Unrouted misuse is a compile error, not silent
+                    // inertness.
+                    if is_gpu {
+                        if is_gpu_heavy_shape(&field.ty) {
+                            if !scene_store_routed {
+                                return syn::Error::new_spanned(
+                                    field,
+                                    "#[gpu] GpuHeavy<T> fields use SceneDB's heavy/handle-split \
+                                     storage, owned by this struct's own \
+                                     #[derive(pulsar_scenedb::SceneStore)] -- add the \
+                                     `scene_store` flag to #[engine_class]. This derive \
+                                     generates packed-scalar companions only.",
+                                )
+                                .to_compile_error()
+                                .into();
+                            }
+                        } else if is_vec_type(&field.ty) {
+                            if !scene_store_routed {
+                                return syn::Error::new_spanned(
+                                    field,
+                                    "#[gpu] Vec<T> fields store through this struct's own \
+                                     #[derive(pulsar_scenedb::SceneStore)] (add the \
+                                     `scene_store` flag to #[engine_class]). This derive \
+                                     generates packed-scalar companions only.",
+                                )
+                                .to_compile_error()
+                                .into();
+                            }
+                        } else {
+                            let field_ident = field.ident.clone().unwrap();
+                            let override_ = match parse_gpu_attr(field) {
+                                Ok(o) => o,
+                                Err(err) => return err.to_compile_error().into(),
+                            };
+                            gpu_fields.push(GpuLeafField { ident: field_ident, field_ty: field.ty.clone(), override_ });
+                        }
                     }
 
                     if has_sub_props {
@@ -203,7 +222,7 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                     }
                 }
                 let (impls, fields): (Vec<_>, Vec<_>) = props.into_iter().unzip();
-                (impls, fields, sub_props, gpu_fields, gpu_list_fields, gpu_heavy_fields)
+                (impls, fields, sub_props, gpu_fields)
             }
             _ => {
                 return syn::Error::new_spanned(
@@ -222,8 +241,6 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     };
 
     let gpu_mirror_tokens = gpu_mirror_codegen(name, &gpu_leaf_fields, &sub_props_fields);
-    let gpu_list_mirror_tokens = gpu_list_mirror_codegen(name, &gpu_list_leaf_fields);
-    let gpu_heavy_mirror_tokens = gpu_heavy_mirror_codegen(name, &gpu_heavy_leaf_fields);
 
     // Generate auto-property methods (getters and setters). Their metadata
     // rides the property's own category so blueprint palette grouping keeps
@@ -448,8 +465,6 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
         #registration
         #(#sub_props_assertions)*
         #gpu_mirror_tokens
-        #gpu_list_mirror_tokens
-        #gpu_heavy_mirror_tokens
     }
     .into()
 }
@@ -476,55 +491,12 @@ fn is_vec_type(ty: &syn::Type) -> bool {
     type_path.path.segments.last().map(|s| s.ident == "Vec").unwrap_or(false)
 }
 
-/// Returns `Some(T)` if `ty` is syntactically `Vec<T>` -- same syntactic-
-/// only check `is_vec_type` already makes, extended to also hand back the
-/// element type for the auto-derived var-len GPU list mirror
-/// (`gpu_list_mirror_codegen`).
-fn vec_elem_type(ty: &syn::Type) -> Option<syn::Type> {
-    let syn::Type::Path(type_path) = ty else { return None };
-    let last = type_path.path.segments.last()?;
-    if last.ident != "Vec" {
-        return None;
-    }
-    let syn::PathArguments::AngleBracketed(args) = &last.arguments else { return None };
-    if args.args.len() != 1 {
-        return None;
-    }
-    match args.args.first()? {
-        syn::GenericArgument::Type(t) => Some(t.clone()),
-        _ => None,
-    }
-}
-
-/// Same syntactic-only check `is_vec_type` makes for `Vec<T>`, for
-/// `pulsar_world_registry::GpuHeavy<T>` -- a proc macro has no way to ask
-/// "does this field's type implement `GpuUploadSource`" (trait resolution
-/// happens after macro expansion, not during it), so `GpuHeavy<T>` being a
-/// distinct, purpose-built wrapper the field's own type signature names is
-/// what makes this field shape detectable at all -- see that type's own
-/// doc for the full rationale.
-fn is_gpu_heavy_type(ty: &syn::Type) -> bool {
+/// Syntactic-only check that `ty` is `pulsar_world_registry::GpuHeavy<T>` --
+/// same last-segment style as `is_vec_type`. Used solely by the GPU ownership
+/// boundary errors; heavy storage itself is SceneDB's SceneStore concern.
+fn is_gpu_heavy_shape(ty: &syn::Type) -> bool {
     let syn::Type::Path(type_path) = ty else { return false };
     type_path.path.segments.last().map(|s| s.ident == "GpuHeavy").unwrap_or(false)
-}
-
-/// Returns `Some(T)` if `ty` is syntactically `GpuHeavy<T>` -- the handle
-/// type to splice, unwrapped, into the generated heavy/handle mirror
-/// (`gpu_heavy_mirror_codegen`).
-fn gpu_heavy_inner_type(ty: &syn::Type) -> Option<syn::Type> {
-    let syn::Type::Path(type_path) = ty else { return None };
-    let last = type_path.path.segments.last()?;
-    if last.ident != "GpuHeavy" {
-        return None;
-    }
-    let syn::PathArguments::AngleBracketed(args) = &last.arguments else { return None };
-    if args.args.len() != 1 {
-        return None;
-    }
-    match args.args.first()? {
-        syn::GenericArgument::Type(t) => Some(t.clone()),
-        _ => None,
-    }
 }
 
 #[proc_macro_attribute]
@@ -682,6 +654,17 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     } else {
         quote! {}
     };
+    // Same marker-attribute mechanism, for the GPU ownership boundary: a
+    // `scene_store` struct's `#[gpu] Vec<T>`/`GpuHeavy<T>` fields are
+    // SceneDB's own `#[derive(SceneStore)]` storage (var-len / handle-split
+    // paths), NOT this derive's packed companions. The marker is how
+    // `derive_engine_class` -- which can never see the derive list --
+    // distinguishes "routed to SceneDB, skip" from "misuse, reject".
+    let scene_store_marker_attr = if add_scene_store || has_scene_store_derive {
+        quote! { #[engine_class_scene_store] }
+    } else {
+        quote! {}
+    };
 
     let sub_props_marker_impl = if no_register {
         let name = &item_struct.ident;
@@ -765,6 +748,7 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         #no_register_attr
         #serialize_marker_attr
         #deserialize_marker_attr
+        #scene_store_marker_attr
         #item_struct
         #sub_props_marker_impl
         #runtime_registration
@@ -1182,8 +1166,6 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
     let gpu_mirror_sync = args.gpu_mirror.then(|| {
         quote! {
             <#self_ty as pulsar_world_registry::GpuMirrored>::sync_gpu_mirror(&parsed, world, entity);
-            <#self_ty as pulsar_world_registry::GpuListMirrored>::sync_gpu_list_mirror(&parsed, world, entity);
-            <#self_ty as pulsar_world_registry::GpuHeavyMirrored>::sync_gpu_heavy_mirror(&parsed, world, entity);
         }
     });
     let (hydrate_fn_def, hydrate_fn_ref) = match &args.custom_hydrate {
@@ -1236,8 +1218,6 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
     let gpu_mirror_remove = args.gpu_mirror.then(|| {
         quote! {
             <#self_ty as pulsar_world_registry::GpuMirrored>::remove_gpu_mirror(world, entity);
-            <#self_ty as pulsar_world_registry::GpuListMirrored>::remove_gpu_list_mirror(world, entity);
-            <#self_ty as pulsar_world_registry::GpuHeavyMirrored>::remove_gpu_heavy_mirror(world, entity);
         }
     });
     let (remove_fn_def, remove_fn_ref) = match &args.custom_remove {
@@ -1274,20 +1254,14 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
                 #[doc(hidden)]
                 #[allow(non_snake_case)]
                 fn #refresh_gpu_mirror_fn_name(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-                    let Some((gpu_mirror, gpu_list_mirror, gpu_heavy_mirror)) =
+                    let Some(gpu_mirror) =
                         world.get::<#self_ty>(entity).map(|component| {
-                            (
-                                <#self_ty as pulsar_world_registry::GpuMirrored>::to_gpu_mirror(component),
-                                <#self_ty as pulsar_world_registry::GpuListMirrored>::to_gpu_list_mirror(component),
-                                <#self_ty as pulsar_world_registry::GpuHeavyMirrored>::to_gpu_heavy_mirror(component),
-                            )
+                            <#self_ty as pulsar_world_registry::GpuMirrored>::to_gpu_mirror(component)
                         })
                     else {
                         return;
                     };
                     world.insert(entity, gpu_mirror);
-                    world.insert(entity, gpu_list_mirror);
-                    world.insert(entity, gpu_heavy_mirror);
                 }
             },
             quote! { #refresh_gpu_mirror_fn_name },
@@ -1576,16 +1550,12 @@ fn has_gpu_attr(field: &Field) -> bool {
 /// itself on every read; it's a real, non-zero one to be deliberate about,
 /// not an argument against using `with` where it's actually needed.
 ///
-/// Not yet wired into the OTHER two `#[gpu]` field shapes: a `Vec<T>`
-/// element (`gpu_list_mirror_codegen`) or a `GpuHeavy<T>` handle
-/// (`gpu_heavy_mirror_codegen`, which already has its own, separate
-/// handle -> heavy-element transform via `pulsar_scenedb::gpu::
-/// GpuUploadSource::upload_element` -- conceptually the same idea, at a
-/// different layer, for a different reason: that split exists for byte
-/// SIZE (a tiny CPU handle standing in for an arbitrarily large GPU
-/// resource), not byte SHAPE). Extending `as`/`with` to list elements is a
-/// bounded future addition if a real field needs it -- nothing about this
-/// design blocks it, it just hasn't had a real caller yet.
+/// Not yet wired into any other `#[gpu]` field shape: extending `as`/`with`
+/// to var-len list elements is a bounded future addition if a real field
+/// needs it -- nothing about this design blocks it, it just hasn't had a
+/// real caller yet. (Var-len and heavy storage shapes are SceneDB's own
+/// `#[derive(SceneStore)]` concern; this derive classifies packed scalars
+/// only.)
 struct GpuFieldOverride {
     target_ty: syn::Type,
     with_path: syn::Path,
@@ -1641,17 +1611,6 @@ struct GpuLeafField {
     field_ty: syn::Type,
     /// `Some` for `#[gpu(as = ..., with = ...)]` -- see [`GpuFieldOverride`].
     override_: Option<GpuFieldOverride>,
-}
-
-/// One `#[gpu] Vec<T>`-marked leaf field for the SEPARATE var-len list
-/// mirror (`gpu_list_mirror_codegen`) -- see [`pulsar_world_registry::
-/// GpuListMirrored`]'s doc for why this is a second companion, not folded
-/// into [`GpuLeafField`]'s packed one. Same universal `GpuRepr<T>` wrapping
-/// as the scalar case, applied to the `Vec`'s element type.
-struct GpuListLeafField {
-    ident: syn::Ident,
-    /// `T` in the source field's `Vec<T>`.
-    elem_ty: syn::Type,
 }
 
 /// Generates the composed `#[gpu]` mirror for one `#[engine_class]`-derived
@@ -1757,142 +1716,6 @@ fn gpu_mirror_codegen(
     }
 }
 
-/// Generates the SEPARATE var-len list mirror for one `#[engine_class]`-
-/// derived struct's `#[gpu] Vec<T>` leaf fields -- see
-/// [`pulsar_world_registry::GpuListMirrored`]'s doc for why this is its own
-/// companion type, not folded into `gpu_mirror_codegen`'s packed one.
-///
-/// Scope note (v1): does NOT compose `#[sub_props]` fields' own `Vec<T>`
-/// leaves into this mirror the way `gpu_mirror_codegen` composes their
-/// scalar ones -- only DIRECT `#[gpu] Vec<T>` fields on `#name` itself are
-/// collected. No real component needs nested list composition yet (see the
-/// design discussion this landed from); extending it is a bounded follow-up
-/// if/when one does, not a redesign.
-fn gpu_list_mirror_codegen(
-    name: &syn::Ident,
-    gpu_list_leaf_fields: &[GpuListLeafField],
-) -> proc_macro2::TokenStream {
-    if gpu_list_leaf_fields.is_empty() {
-        return quote! {
-            impl pulsar_world_registry::GpuListMirrored for #name {
-                type GpuListMirror = pulsar_world_registry::NoGpuMirror;
-                fn to_gpu_list_mirror(&self) -> pulsar_world_registry::NoGpuMirror {
-                    pulsar_world_registry::NoGpuMirror
-                }
-            }
-        };
-    }
-
-    let mirror_name = quote::format_ident!("{}GpuListMirror", name);
-
-    let leaf_field_defs = gpu_list_leaf_fields.iter().map(|leaf| {
-        let ident = &leaf.ident;
-        let ty = &leaf.elem_ty;
-        quote! { #[gpu] pub #ident: ::std::vec::Vec<pulsar_world_registry::GpuRepr<#ty>> }
-    });
-    let leaf_field_inits = gpu_list_leaf_fields.iter().map(|leaf| {
-        let ident = &leaf.ident;
-        quote! {
-            #ident: self.#ident.iter().copied().map(pulsar_world_registry::GpuRepr).collect()
-        }
-    });
-
-    quote! {
-        // No `Default` here either, same reasoning `gpu_mirror_codegen`
-        // documents -- `Vec` is already `Default` regardless, but the
-        // struct-level derive isn't needed by anything that consumes this.
-        #[derive(pulsar_scenedb::SceneStore, Clone)]
-        #[allow(non_snake_case)]
-        pub struct #mirror_name {
-            #(#leaf_field_defs,)*
-        }
-
-        impl pulsar_world_registry::GpuListMirrored for #name {
-            type GpuListMirror = #mirror_name;
-            fn to_gpu_list_mirror(&self) -> #mirror_name {
-                #mirror_name {
-                    #(#leaf_field_inits,)*
-                }
-            }
-        }
-    }
-}
-
-/// One `GpuHeavy<T>`-marked leaf field for the SEPARATE heavy/handle-split
-/// mirror (`gpu_heavy_mirror_codegen`) -- see [`pulsar_world_registry::
-/// GpuHeavyMirrored`]'s doc for why this is a third companion, not folded
-/// into either `GpuLeafField`'s packed mirror or `GpuListLeafField`'s var-len
-/// one.
-struct GpuHeavyLeafField {
-    ident: syn::Ident,
-    /// `T` in the source field's `GpuHeavy<T>` -- the lightweight CPU
-    /// handle type itself, unwrapped. SceneDB's `#[gpu(mirror = Once,
-    /// heavy)]` applies directly to the handle field, never to a wrapper
-    /// around it.
-    handle_ty: syn::Type,
-}
-
-/// Generates the SEPARATE heavy/handle-split mirror for one
-/// `#[engine_class]`-derived struct's `GpuHeavy<T>` leaf fields -- see
-/// [`pulsar_world_registry::GpuHeavyMirrored`]'s doc for why this is its own
-/// companion type, and [`pulsar_world_registry::GpuHeavy`]'s doc for why
-/// this field shape needs a type-level marker at all (a proc macro can't
-/// ask "does this field's type implement `GpuUploadSource`").
-///
-/// Never `#[gpu(layout = packed)]` -- SceneDB's own derive rejects a
-/// `heavy` field inside a packed struct outright (a packed buffer's element
-/// is the struct's own interleaved record, not any one field's
-/// `GpuUploadSource::Element`), so every handle field here gets its own
-/// independently-registered buffer instead, through the ordinary fixed,
-/// one-buffer-per-field path -- exactly how SceneDB's `#[gpu(mirror = Once,
-/// heavy)]` has always worked, just reached here with no attribute of its
-/// own to write.
-fn gpu_heavy_mirror_codegen(
-    name: &syn::Ident,
-    gpu_heavy_leaf_fields: &[GpuHeavyLeafField],
-) -> proc_macro2::TokenStream {
-    if gpu_heavy_leaf_fields.is_empty() {
-        return quote! {
-            impl pulsar_world_registry::GpuHeavyMirrored for #name {
-                type GpuHeavyMirror = pulsar_world_registry::NoGpuMirror;
-                fn to_gpu_heavy_mirror(&self) -> pulsar_world_registry::NoGpuMirror {
-                    pulsar_world_registry::NoGpuMirror
-                }
-            }
-        };
-    }
-
-    let mirror_name = quote::format_ident!("{}GpuHeavyMirror", name);
-
-    let leaf_field_defs = gpu_heavy_leaf_fields.iter().map(|leaf| {
-        let ident = &leaf.ident;
-        let ty = &leaf.handle_ty;
-        quote! { #[gpu(mirror = Once, heavy)] pub #ident: #ty }
-    });
-    let leaf_field_inits = gpu_heavy_leaf_fields.iter().map(|leaf| {
-        let ident = &leaf.ident;
-        // `self.#ident` is `GpuHeavy<T>`; `.0` is the plain handle SceneDB's
-        // `heavy` mechanism actually stores/dirty-tracks.
-        quote! { #ident: self.#ident.0 }
-    });
-
-    quote! {
-        #[derive(pulsar_scenedb::SceneStore, Clone, Copy)]
-        #[allow(non_snake_case)]
-        pub struct #mirror_name {
-            #(#leaf_field_defs,)*
-        }
-
-        impl pulsar_world_registry::GpuHeavyMirrored for #name {
-            type GpuHeavyMirror = #mirror_name;
-            fn to_gpu_heavy_mirror(&self) -> #mirror_name {
-                #mirror_name {
-                    #(#leaf_field_inits,)*
-                }
-            }
-        }
-    }
-}
 
 #[derive(Default)]
 struct PropertyAttrOptions {
