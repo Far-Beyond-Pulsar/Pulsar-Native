@@ -32,13 +32,15 @@
 //!   GPU actor) can drop it too -- without SceneDB or `World` ever needing
 //!   to know that state, or even the concept of a "class", exists. See
 //!   [`notify_world_component_removed_by_component_id`]'s doc.
-//! - **[`GpuMirrored`]/[`GpuListMirrored`]**: SceneDB-mirrored companion
-//!   components, auto-derived by `engine_class_derive` for any `#[property]`
-//!   field marked `#[gpu]` (`GpuMirrored`, packed/fixed-size) or
-//!   `#[gpu] Vec<T>` (`GpuListMirrored`, var-len -- a separate companion,
-//!   deliberately, see that trait's doc for why). `#[register_world_component
-//!   (gpu_mirror)]` wires both into the generated `hydrate`/`remove` above.
-//!   See [`GpuMirrored`]'s doc for the full design and packing rules.
+//! - **[`GpuMirrored`]**: the SceneDB-mirrored companion component,
+//!   auto-derived by `engine_class_derive` for any `#[property]` field
+//!   marked `#[gpu]` (packed/fixed-size scalars).
+//!   `#[register_world_component(gpu_mirror)]` wires it into the generated
+//!   `hydrate`/`remove` above. Var-len (`Vec<T>`) and heavy storage shapes
+//!   are SceneDB's own `#[derive(SceneStore)]` concern exclusively -- this
+//!   crate deliberately has no opinion on them (see the engine-class GPU
+//!   de-duplication audit). See [`GpuMirrored`]'s doc for the full design
+//!   and packing rules.
 //!
 //! ## Why this crate exists instead of extending `pulsar_reflection` directly
 //!
@@ -70,6 +72,36 @@
 // crate without that crate needing its own direct `inventory` dependency --
 // same pattern `pulsar_reflection` already uses for `RuntimeBehaviorRegistration`.
 pub use inventory;
+
+pub mod audit;
+pub mod dispatch;
+pub mod errors;
+pub mod marshal;
+pub mod type_shims;
+pub mod vm_abi;
+
+// The unified reflection dispatcher (#643) and its property accessors --
+// THE entry points every scripting backend (VM opcodes, generated code,
+// graph nodes) uses to touch live World components. No bespoke dispatch
+// downstream.
+pub use dispatch::{
+    get_component_property, get_component_property_boxed, invoke_component_method,
+    set_component_property, set_component_property_boxed,
+};
+// The one script-facing error taxonomy (#641/#643). Canonical home is this
+// crate (next to the dispatcher whose failures these are);
+// `pulsar_script_object_model::errors` re-exports it unchanged.
+pub use errors::ScriptRefError;
+// Unified marshalling (#644): JSON ⇄ Box<dyn Any> ⇄ arena bytes, plus the
+// versioned VM TypeSlot encoding spec Phase D builds against.
+pub use marshal::{any_to_bytes, any_to_json, bytes_to_any, json_to_any};
+pub use vm_abi::{
+    classify as classify_vm_value_kind, slot_for, TYPE_SLOT_ENCODING_VERSION, VmTypeSlot,
+    VmValueKind,
+};
+// Metadata audit (#645): overload sweep + the deterministic registry
+// snapshot CI golden tests diff against.
+pub use audit::{find_overloaded_methods, metadata_snapshot_json, MetadataAuditError};
 
 use pulsar_reflection::{ComponentRuntimeContext, EngineClass, RuntimeComponentOwner};
 use pulsar_scenedb::{ComponentId, Entity, World};
@@ -151,10 +183,9 @@ pub struct WorldComponentRegistration {
     /// correct for any class whose `sync_component` never created
     /// consumer-side state that would otherwise leak.
     pub on_removed: fn(&RuntimeComponentOwner, &mut dyn ComponentRuntimeContext),
-    /// Re-derive this class's `#[gpu]`-mirrored companion component(s) --
-    /// `GpuMirrored`/`GpuListMirrored`/`GpuHeavyMirrored`'s associated types
-    /// -- from `entity`'s CURRENT live `World` value of `Self`, and
-    /// re-`World::insert` them.
+    /// Re-derive this class's `#[gpu]`-mirrored companion component --
+    /// `GpuMirrored`'s associated type -- from `entity`'s CURRENT live
+    /// `World` value of `Self`, and re-`World::insert` it.
     ///
     /// Closes a real gap `#[register_world_component(gpu_mirror)]` alone
     /// didn't: that flag's generated `hydrate` calls `sync_gpu_mirror` once,
@@ -204,6 +235,18 @@ fn find_by_component_id(component_type: ComponentId) -> Option<&'static WorldCom
         .find(|r| (r.component_type)() == component_type)
 }
 
+/// Resolve a registered class's `pulsar_scenedb::ComponentId` -- the erased
+/// identity `World` subscriptions are keyed by (SceneDB#47's
+/// `World::subscribe_id`). This is the subscribe-path counterpart to
+/// [`find_by_component_id`] (the drain-path lookup): an editor caller that
+/// only knows a class NAME (the properties panel's reflection metadata) can
+/// arm a subscription without ever naming the Rust type. Returns `None` for
+/// classes not registered here -- those have no live `World` representation,
+/// so there is nothing to subscribe to.
+pub fn component_id_for_class(class_name: &str) -> Option<ComponentId> {
+    find(class_name).map(|r| (r.component_type)())
+}
+
 /// Hydrate `class_name`'s typed component from `data` onto `entity`. Returns
 /// `Ok(false)` if `class_name` isn't registered here (not migrated yet, or
 /// not a real component class) -- not an error, it just means the JSON
@@ -219,6 +262,20 @@ pub fn hydrate_world_component_for_class(
         Some(registration) => (registration.hydrate)(world, entity, data).map(|()| true),
         None => Ok(false),
     }
+}
+
+/// Whether `entity` currently carries a live-typed component of `class_name`
+/// in the `World`. Unregistered classes report `false` (they have no live
+/// representation at all).
+///
+/// This is the idempotence gate scripted hydration needs: generated actors
+/// seed prefab defaults ONLY when the scene hasn't already hydrated the
+/// component onto the entity, so per-instance scene values always win
+/// (#651). Read-only by construction -- it borrows through the same bridge
+/// the properties panel's read path uses.
+pub fn world_component_present_for_class(class_name: &str, world: &World, entity: Entity) -> bool {
+    find(class_name)
+        .is_some_and(|registration| (registration.get_as_engine_class)(world, entity).is_some())
 }
 
 /// Remove `class_name`'s typed component from `entity`, if that class is
@@ -383,8 +440,7 @@ pub fn registered_world_component_classes() -> impl Iterator<Item = &'static str
 // itself has since been normalized onto it (its `LightComponentGpuMirror`),
 // with no hand-written companion left. See `GpuRepr<T>`'s doc below for the
 // (universal -- any `Copy` type mirrors as its own exact bytes, no
-// allowlist/denylist/semantic conversion) packing rule, and `GpuHeavy<T>`'s
-// doc for the separate handle/heavy-element split, and `engine_class_
+// allowlist/denylist/semantic conversion) packing rule, and `engine_class_
 // derive`'s own doc for how `#[sub_props]` nesting composes.
 //
 // ## The GPU upload modes this covers, and where field-level transforms fit
@@ -400,13 +456,10 @@ pub fn registered_world_component_classes() -> impl Iterator<Item = &'static str
 //   -- runs once per genuine property edit, never per frame.
 // - **`Once`**: uploaded a single time, at first insert, never re-run
 //   after. Cheaper still, same "not per frame" property.
-// - **Var-len** (`Vec<T>` fields, `GpuListMirrored`): a shared, growable
-//   `VarLenGpuPool<GpuRepr<T>>` suballocated per entity, freed/reallocated
-//   only when the `Vec`'s length actually changes.
-// - **Heavy** (`GpuHeavy<T>`, `GpuUploadSource`): a tiny CPU handle stands
-//   in for an arbitrarily large GPU-resident element, uploaded via
-//   `upload_element` -- the handle/heavy-element split exists for byte
-//   SIZE, a different concern from `as`/`with`'s byte SHAPE.
+//
+// Var-len (`Vec<T>`) and heavy handle/heavy-element storage shapes are
+// SceneDB's own `#[derive(SceneStore)]` concern exclusively and are NOT
+// routed through this crate's companions.
 //
 // `#[gpu(as = Type, with = path)]` (`engine_class_derive::GpuFieldOverride`)
 // only touches the FIRST of these today (plain scalar `DirtyTracked`/`Once`
@@ -543,194 +596,6 @@ pub struct NoGpuMirror;
 
 unsafe impl pulsar_scenedb::Pod for NoGpuMirror {}
 
-/// The var-len-mirrored counterpart to [`GpuMirrored`], for `#[gpu] Vec<T>`
-/// `#[property]` fields.
-///
-/// Deliberately a SEPARATE trait/companion component, not a second
-/// `Vec`-typed field folded into [`GpuMirrored::GpuMirror`]: SceneDB's own
-/// `#[derive(SceneStore)]` forks a struct onto ONE of two completely
-/// different codegen paths depending on whether it has any `Vec<T>`
-/// `#[gpu]` field -- the packed, one-buffer-per-struct layout `GpuMirror`
-/// relies on is explicitly unsupported on that OTHER path (a `Vec<T>`
-/// field's length varies per row, so "one packed record" has no meaning).
-/// Cramming a list field into the same mirror struct as the scalar leaves
-/// would silently downgrade EVERY scalar field on that component from one
-/// packed buffer + one write back to the classic one-buffer-per-field
-/// split, for the whole struct, just because one field happened to need a
-/// list. Two independently-mirrored companion components (both riding the
-/// SAME entity -- a component with both a packed scalar `#[gpu]` field and
-/// a `#[gpu] Vec<T>` field gets one of each, `{Name}GpuMirror` and
-/// `{Name}GpuListMirror`, entirely separate types) keeps the packed half
-/// fully packed regardless of whether the list half is even present.
-///
-/// `engine_class_derive` generates an impl of this for EVERY
-/// `#[engine_class(...)]`-processed struct, unconditionally -- same
-/// "always some impl, `NoGpuMirror` when there's nothing" shape
-/// `GpuMirrored` uses, for the same reason (so a future composition of
-/// list fields through `#[sub_props]` nesting can rely on every struct
-/// having one to ask, the same way scalar composition already does).
-/// `GpuListMirror` reuses [`NoGpuMirror`] for the trivial case too -- it's
-/// equally valid as "nothing to mirror" regardless of which trait is
-/// asking, and a plain (non-`#[gpu]`) `World` component needs no `Pod`-ness
-/// at all, so there's no reason for a second sentinel type.
-pub trait GpuListMirrored {
-    /// The var-len-bearing `#[derive(SceneStore)]` companion type. Note:
-    /// NOT `Pod` (a `Vec<T>`-holding struct never is) -- only
-    /// `Send + Sync + 'static`, same as any ordinary `World` component.
-    type GpuListMirror: Send + Sync + 'static;
-
-    /// Translate `self`'s current `#[gpu] Vec<T>` fields into
-    /// `Self::GpuListMirror`. Reallocates its `Vec`s every call (a fresh
-    /// translation, not an in-place update) -- fine for how this is
-    /// actually invoked (event-driven, on a genuine property edit via
-    /// hydrate, not once per frame).
-    fn to_gpu_list_mirror(&self) -> Self::GpuListMirror;
-
-    /// Insert `self`'s current list mirror onto `entity`. Real, non-
-    /// overridable default -- same reasoning as `GpuMirrored::
-    /// sync_gpu_mirror`.
-    fn sync_gpu_list_mirror(&self, world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-        world.insert(entity, self.to_gpu_list_mirror());
-    }
-
-    /// Drop `entity`'s mirrored `Self::GpuListMirror`, if it has one.
-    fn remove_gpu_list_mirror(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-        let _ = world.remove::<Self::GpuListMirror>(entity);
-    }
-}
-
-/// Marks a `#[property]` field as SceneDB's existing handle/heavy-element
-/// split (`pulsar_scenedb::gpu::GpuUploadSource`) -- `T` stays a lightweight
-/// CPU-side handle (an asset ID, typically 4-16 bytes); the actual
-/// GPU-resident payload (`T::Element`, arbitrarily large -- mesh data,
-/// texture data, whatever) lives in its own separately-registered buffer,
-/// produced by `T::upload_element` only when the handle itself changes, not
-/// re-uploaded on every frame.
-///
-/// # Why this exists (as a type, not a macro argument)
-///
-/// SceneDB's own `#[derive(SceneStore)]` has supported this split for a
-/// while, via `#[gpu(mirror = Once, heavy)]` on the handle field -- but
-/// `engine_class_derive`'s higher-level `#[property] #[gpu]` layer had no
-/// way to reach it at all before this type existed, short of teaching it a
-/// THIRD macro argument alongside `#[gpu]` itself. A proc macro can't ask
-/// "does this field's type implement `GpuUploadSource`" (that's a trait-
-/// resolution question, which happens after macro expansion, not during
-/// it) -- so unlike plain scalar/`Vec<T>` `#[gpu]` fields (detected purely
-/// from their own already-existing shape), a heavy field needs SOME
-/// syntactic marker for the derive to pattern-match on, the same way
-/// `Vec<T>` itself is a syntactic marker. Wrapping the handle in its own
-/// type signature (`pub mesh: GpuHeavy<MeshHandle>` -- no attribute at
-/// all) is that marker, detected by `engine_class_derive` the exact same
-/// way `Vec<T>` already is (a field-type shape check, not a new attribute
-/// argument to learn).
-///
-/// # Reflection
-///
-/// `GpuHeavy<T>` is NOT stripped away in the user's own struct (unlike
-/// `GpuRepr<T>`, which only ever appears in an auto-generated companion,
-/// invisible to the source struct) -- it stays the field's real, live type,
-/// so it must itself be usable everywhere a `#[property]` field is: cloned
-/// by the property getter/setter, and `Reflectable` for `type_info()`. Both
-/// delegate straight through to `T` (below) -- the properties panel/editor
-/// treats a `GpuHeavy<T>` field exactly as if it were a plain `T`, matching
-/// `Deref`/`DerefMut`'s existing transparency. `engine_class_derive` unwraps
-/// to the bare handle type `T` when generating the companion mirror struct
-/// (SceneDB's `#[gpu(mirror = Once, heavy)]` applies to the handle itself,
-/// not to any wrapper around it).
-#[repr(transparent)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
-pub struct GpuHeavy<T>(pub T);
-
-impl<T> std::ops::Deref for GpuHeavy<T> {
-    type Target = T;
-    fn deref(&self) -> &T {
-        &self.0
-    }
-}
-impl<T> std::ops::DerefMut for GpuHeavy<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        &mut self.0
-    }
-}
-impl<T> From<T> for GpuHeavy<T> {
-    fn from(value: T) -> Self {
-        Self(value)
-    }
-}
-
-// Delegates every operation straight to `T` -- see this type's own doc for
-// why a `GpuHeavy<T>` `#[property]` field should read, in the editor, as
-// nothing more than a plain `T` field. `type_info()` in particular returns
-// `T`'s own registered runtime type info (not a distinct "GpuHeavy<T>"
-// shape) -- `generate_property_metadata`'s generated code (`engine_class_
-// derive`) only ever uses it descriptively (what kind of value/editor is
-// this), never to decide how to downcast a value -- every actual get/set
-// downcasts against the field's own literal declared type (`GpuHeavy<T>`),
-// which stays internally consistent regardless of what `type_info()` says.
-impl<T: pulsar_reflection::Reflectable + Clone> pulsar_reflection::Reflectable for GpuHeavy<T> {
-    fn type_info() -> &'static pulsar_reflection::RuntimeTypeInfo
-    where
-        Self: Sized,
-    {
-        T::type_info()
-    }
-
-    fn serialize(&self, serializer: &mut dyn pulsar_reflection::TypeSerializer) -> pulsar_reflection::ReflectResult<()> {
-        self.0.serialize(serializer)
-    }
-
-    fn deserialize(deserializer: &mut dyn pulsar_reflection::TypeDeserializer) -> pulsar_reflection::ReflectResult<Self>
-    where
-        Self: Sized,
-    {
-        Ok(Self(T::deserialize(deserializer)?))
-    }
-
-    fn clone_any(&self) -> Box<dyn std::any::Any> {
-        Box::new(self.clone())
-    }
-}
-
-/// The heavy/handle-split counterpart to [`GpuMirrored`]/[`GpuListMirrored`],
-/// for `#[gpu] GpuHeavy<T>` `#[property]` fields (`T: pulsar_scenedb::gpu::
-/// GpuUploadSource`).
-///
-/// A third, independently-mirrored companion component -- same reasoning
-/// [`GpuListMirrored`]'s doc gives for why var-len fields aren't folded into
-/// [`GpuMirrored::GpuMirror`]: SceneDB's own derive rejects `#[gpu(heavy)]`
-/// inside a packed struct outright (a packed buffer's element is the
-/// struct's own interleaved record, not any one field's `GpuUploadSource::
-/// Element`), so a heavy field can't share the packed scalar mirror's
-/// struct any more than a `Vec<T>` field can. Unlike the list mirror,
-/// though, `GpuHeavyMirror` IS `Pod` -- it holds the lightweight handle(s)
-/// themselves (SceneDB's fixed, non-packed `#[gpu(mirror = Once, heavy)]`
-/// path), never the heavy `Element` data, which lives in its own
-/// separately-registered buffer entirely.
-pub trait GpuHeavyMirrored {
-    /// The `Pod` handle-holding companion type. `NoGpuMirror` when there's
-    /// no `GpuHeavy<T>` field anywhere in this struct.
-    type GpuHeavyMirror: pulsar_scenedb::Pod + Send + Sync + 'static;
-
-    /// Translate `self`'s current `GpuHeavy<T>`-typed fields into
-    /// `Self::GpuHeavyMirror` -- a plain handle copy, never a call into
-    /// `GpuUploadSource::upload_element` (SceneDB's own `write_gpu_columns_
-    /// at_row` does that, only when the handle's dirty-tracked slot is
-    /// actually written).
-    fn to_gpu_heavy_mirror(&self) -> Self::GpuHeavyMirror;
-
-    /// Insert `self`'s current heavy mirror onto `entity`. Real,
-    /// non-overridable default -- same reasoning as `GpuMirrored::
-    /// sync_gpu_mirror`.
-    fn sync_gpu_heavy_mirror(&self, world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-        world.insert(entity, self.to_gpu_heavy_mirror());
-    }
-
-    /// Drop `entity`'s mirrored `Self::GpuHeavyMirror`, if it has one.
-    fn remove_gpu_heavy_mirror(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-        let _ = world.remove::<Self::GpuHeavyMirror>(entity);
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -918,7 +783,7 @@ mod tests {
         // `on_removed` deliberately takes no `World`/`Entity` at all (see its
         // doc) -- the only way to observe it fired is a side channel.
         thread_local! {
-            static FIRED: std::cell::Cell<bool> = std::cell::Cell::new(false);
+            static FIRED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
         }
         fn recording_on_removed(_owner: &RuntimeComponentOwner, _context: &mut dyn ComponentRuntimeContext) {
             FIRED.with(|f| f.set(true));

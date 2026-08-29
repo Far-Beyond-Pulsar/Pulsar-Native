@@ -24,6 +24,10 @@ const GAME_DEPENDENCIES: &[&str] = &[
     "pulsar_std",
     "pulsar_pie_abi",
     "engine_class_derive",
+    // The EngineClass derive's generated code names this crate directly
+    // (wrapper marshalling); without it every generated class fails E0433.
+    // Caught by the generated-project drift check (#652).
+    "pulsar_world_registry",
     "pulsar_reflection",
     "helio",
     "serde",
@@ -270,7 +274,14 @@ fn rewrite_paths(value: &toml::Value, workspace_root: &Path) -> toml::Value {
 fn absolute_path(workspace_root: &Path, rel: &str) -> String {
     let joined = workspace_root.join(rel);
     let resolved = joined.canonicalize().unwrap_or(joined);
-    resolved.to_string_lossy().replace('\\', "/")
+    let mut text = resolved.to_string_lossy().replace('\\', "/");
+    // Windows `canonicalize()` returns an extended-length `//?/` path, which
+    // cargo rejects as a dependency path url ("invalid path url"). Strip the
+    // prefix so baked game manifests parse (#652).
+    if let Some(stripped) = text.strip_prefix("//?/") {
+        text = stripped.to_string();
+    }
+    text
 }
 
 /// Format a `toml::Value` as inline TOML suitable for the right-hand side of a

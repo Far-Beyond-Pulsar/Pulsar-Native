@@ -262,18 +262,10 @@ pub fn register(cfg: &'static ConfigManager) {
             })
             .validator(Validator::float_range(-3.0, 3.0)),
         )
-        .setting(
-            "texture_streaming_pool_mb",
-            SchemaEntry::new("GPU memory pool size for streamed textures in MB", 512_i64)
-                .label("Texture Streaming Pool (MB)")
-                .page("Graphics")
-                .field_type(FieldType::NumberInput {
-                    min: Some(64.0),
-                    max: Some(8192.0),
-                    step: Some(64.0),
-                })
-                .validator(Validator::int_range(64, 8192)),
-        )
+        // "texture_streaming_pool_mb" was deleted here (Helio#238): it
+        // duplicated the CANONICAL `project/streaming.texture_stream_pool_mb`
+        // with a drifted range ceiling (8192 vs 16384). No code ever read this
+        // copy; the streaming namespace owns the key.
         .setting(
             "particle_quality",
             SchemaEntry::new("Quality level for particle systems", "high")

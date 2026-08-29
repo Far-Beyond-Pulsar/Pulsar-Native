@@ -1,0 +1,478 @@
+{
+  "classes": [
+    {
+      "methods": [],
+      "name": "PhysicsComponent",
+      "properties": [
+        {
+          "category": "Collision",
+          "display_name": "All Channels Response",
+          "name": "all_channels_response",
+          "type": "CollisionResponse"
+        },
+        {
+          "category": "Collision",
+          "display_name": "Channel Responses",
+          "name": "channel_responses",
+          "type": "alloc::vec::Vec<pulsar_physics::components::physics_component::sub_props::collision::ChannelCollisionResponse>"
+        },
+        {
+          "category": "Collision",
+          "display_name": "Collision Channel",
+          "name": "collision_channel",
+          "type": "u64"
+        },
+        {
+          "category": "General",
+          "display_name": "Collision Enabled",
+          "name": "collision_enabled",
+          "type": "bool"
+        },
+        {
+          "category": "General",
+          "display_name": "Collision On Rotation",
+          "name": "collision_on_rotation",
+          "type": "bool"
+        },
+        {
+          "category": "Collision",
+          "display_name": "Collision Preset",
+          "name": "collision_preset",
+          "type": "CollisionPreset"
+        },
+        {
+          "category": "Physics Material",
+          "display_name": "Combined Friction",
+          "name": "combined_friction",
+          "type": "f32"
+        },
+        {
+          "category": "Physics Material",
+          "display_name": "Combined Restitution",
+          "name": "combined_restitution",
+          "type": "f32"
+        },
+        {
+          "category": "Collision",
+          "display_name": "Complex As Simple",
+          "name": "complex_as_simple",
+          "type": "bool"
+        },
+        {
+          "category": "Collision",
+          "display_name": "Create Physics State",
+          "name": "create_physics_state",
+          "type": "bool"
+        },
+        {
+          "category": "Simulation",
+          "display_name": "Enable Sleeping",
+          "name": "enable_sleeping",
+          "type": "bool"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Enable Transform Interpolation",
+          "name": "enable_transform_interpolation",
+          "type": "bool"
+        },
+        {
+          "category": "General",
+          "display_name": "Enabled",
+          "name": "enabled",
+          "type": "bool"
+        },
+        {
+          "category": "Physics Material",
+          "display_name": "Friction",
+          "name": "friction",
+          "type": "f32"
+        },
+        {
+          "category": "Simulation",
+          "display_name": "Generate Collision Events",
+          "name": "generate_collision_events",
+          "type": "bool"
+        },
+        {
+          "category": "General",
+          "display_name": "Generate Overlap Events",
+          "name": "generate_overlap_events",
+          "type": "bool"
+        },
+        {
+          "category": "Simulation",
+          "display_name": "Interface",
+          "name": "interface",
+          "type": "SimulationInterface"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Interpolation Method",
+          "name": "interpolation_method",
+          "type": "InterpolationMethod"
+        },
+        {
+          "category": "Simulation",
+          "display_name": "Max Delta Time",
+          "name": "max_delta_time",
+          "type": "f32"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Min Rotation For Interpolation",
+          "name": "min_rotation_for_interpolation",
+          "type": "f32"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Min Translation For Interpolation",
+          "name": "min_translation_for_interpolation",
+          "type": "f32"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Override Angular Velocity",
+          "name": "override_angular_velocity",
+          "type": "bool"
+        },
+        {
+          "category": "Collision",
+          "display_name": "Override Collision Preset",
+          "name": "override_collision_preset",
+          "type": "bool"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Override Linear Velocity",
+          "name": "override_linear_velocity",
+          "type": "bool"
+        },
+        {
+          "category": "Physics Material",
+          "display_name": "Override Physics Material",
+          "name": "override_physics_material",
+          "type": "bool"
+        },
+        {
+          "category": "Physics Material",
+          "display_name": "Physics Material",
+          "name": "physics_material",
+          "type": "String"
+        },
+        {
+          "category": "Physics Material",
+          "display_name": "Restitution",
+          "name": "restitution",
+          "type": "f32"
+        },
+        {
+          "category": "Simulation",
+          "display_name": "Simulate Physics",
+          "name": "simulate_physics",
+          "type": "bool"
+        },
+        {
+          "category": "General",
+          "display_name": "Simulation Generates Hits",
+          "name": "simulation_generates_hits",
+          "type": "bool"
+        },
+        {
+          "category": "Simulation",
+          "display_name": "Sleep Threshold",
+          "name": "sleep_threshold",
+          "type": "f32"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Sync To Physics",
+          "name": "sync_to_physics",
+          "type": "bool"
+        },
+        {
+          "category": "Simulation",
+          "display_name": "Wake On Collision",
+          "name": "wake_on_collision",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "methods": [],
+      "name": "RigidbodyComponent",
+      "properties": [
+        {
+          "category": "Damping",
+          "display_name": "Angular Damping",
+          "name": "angular_damping",
+          "type": "f32"
+        },
+        {
+          "category": "Velocity",
+          "display_name": "Angular Velocity",
+          "name": "angular_velocity",
+          "type": "[f32; 3]"
+        },
+        {
+          "category": "Forces",
+          "display_name": "Apply Angular Impulse",
+          "name": "apply_angular_impulse",
+          "type": "[f32; 3]"
+        },
+        {
+          "category": "Forces",
+          "display_name": "Apply Force",
+          "name": "apply_force",
+          "type": "[f32; 3]"
+        },
+        {
+          "category": "Forces",
+          "display_name": "Apply Force Position",
+          "name": "apply_force_position",
+          "type": "[f32; 3]"
+        },
+        {
+          "category": "Forces",
+          "display_name": "Apply Impulse",
+          "name": "apply_impulse",
+          "type": "[f32; 3]"
+        },
+        {
+          "category": "Forces",
+          "display_name": "Apply Impulse Position",
+          "name": "apply_impulse_position",
+          "type": "[f32; 3]"
+        },
+        {
+          "category": "Forces",
+          "display_name": "Apply Torque",
+          "name": "apply_torque",
+          "type": "[f32; 3]"
+        },
+        {
+          "category": "Velocity",
+          "display_name": "Auto Compute Angular Velocity",
+          "name": "auto_compute_angular_velocity",
+          "type": "bool"
+        },
+        {
+          "category": "Velocity",
+          "display_name": "Auto Compute Linear Velocity",
+          "name": "auto_compute_linear_velocity",
+          "type": "bool"
+        },
+        {
+          "category": "Constraints",
+          "display_name": "Auto Update Constraints",
+          "name": "auto_update_constraints",
+          "type": "bool"
+        },
+        {
+          "category": "Velocity",
+          "display_name": "Compute Velocity From Displacement",
+          "name": "compute_velocity_from_displacement",
+          "type": "bool"
+        },
+        {
+          "category": "Forces",
+          "display_name": "Custom Gravity",
+          "name": "custom_gravity",
+          "type": "[f32; 3]"
+        },
+        {
+          "category": "Damping",
+          "display_name": "Default Angular Damping",
+          "name": "default_angular_damping",
+          "type": "f32"
+        },
+        {
+          "category": "Damping",
+          "display_name": "Default Linear Damping",
+          "name": "default_linear_damping",
+          "type": "f32"
+        },
+        {
+          "category": "General",
+          "display_name": "Density",
+          "name": "density",
+          "type": "f32"
+        },
+        {
+          "category": "Forces",
+          "display_name": "Disable All Forces",
+          "name": "disable_all_forces",
+          "type": "bool"
+        },
+        {
+          "category": "Damping",
+          "display_name": "Disable Animation Damping",
+          "name": "disable_animation_damping",
+          "type": "bool"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Disable Collision",
+          "name": "disable_collision",
+          "type": "bool"
+        },
+        {
+          "category": "Damping",
+          "display_name": "Disable Pose Animation Damping",
+          "name": "disable_pose_animation_damping",
+          "type": "bool"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Enable Gravity",
+          "name": "enable_gravity",
+          "type": "bool"
+        },
+        {
+          "category": "Constraints",
+          "display_name": "Enable Locked Motions Override",
+          "name": "enable_locked_motions_override",
+          "type": "bool"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Enable Sleeping",
+          "name": "enable_sleeping",
+          "type": "bool"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Enable Sync To Physics",
+          "name": "enable_sync_to_physics",
+          "type": "bool"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Enable Transform Interpolation",
+          "name": "enable_transform_interpolation",
+          "type": "bool"
+        },
+        {
+          "category": "General",
+          "display_name": "Enabled",
+          "name": "enabled",
+          "type": "bool"
+        },
+        {
+          "category": "Forces",
+          "display_name": "Gravity Enabled",
+          "name": "gravity_enabled",
+          "type": "bool"
+        },
+        {
+          "category": "Forces",
+          "display_name": "Gravity Scale",
+          "name": "gravity_scale",
+          "type": "f32"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Interpolation Method",
+          "name": "interpolation_method",
+          "type": "InterpolationMethod"
+        },
+        {
+          "category": "Damping",
+          "display_name": "Linear Damping",
+          "name": "linear_damping",
+          "type": "f32"
+        },
+        {
+          "category": "Velocity",
+          "display_name": "Linear Velocity",
+          "name": "linear_velocity",
+          "type": "[f32; 3]"
+        },
+        {
+          "category": "Constraints",
+          "display_name": "Lock Angular X",
+          "name": "lock_angular_x",
+          "type": "bool"
+        },
+        {
+          "category": "Constraints",
+          "display_name": "Lock Angular Y",
+          "name": "lock_angular_y",
+          "type": "bool"
+        },
+        {
+          "category": "Constraints",
+          "display_name": "Lock Angular Z",
+          "name": "lock_angular_z",
+          "type": "bool"
+        },
+        {
+          "category": "Constraints",
+          "display_name": "Lock Linear X",
+          "name": "lock_linear_x",
+          "type": "bool"
+        },
+        {
+          "category": "Constraints",
+          "display_name": "Lock Linear Y",
+          "name": "lock_linear_y",
+          "type": "bool"
+        },
+        {
+          "category": "Constraints",
+          "display_name": "Lock Linear Z",
+          "name": "lock_linear_z",
+          "type": "bool"
+        },
+        {
+          "category": "General",
+          "display_name": "Mass",
+          "name": "mass",
+          "type": "f32"
+        },
+        {
+          "category": "General",
+          "display_name": "Mass Scale",
+          "name": "mass_scale",
+          "type": "f32"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Min Rotation For Interpolation",
+          "name": "min_rotation_for_interpolation",
+          "type": "f32"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Min Translation For Interpolation",
+          "name": "min_translation_for_interpolation",
+          "type": "f32"
+        },
+        {
+          "category": "General",
+          "display_name": "Motion Type",
+          "name": "motion_type",
+          "type": "MotionType"
+        },
+        {
+          "category": "General",
+          "display_name": "Override Mass",
+          "name": "override_mass",
+          "type": "bool"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Sleep Threshold",
+          "name": "sleep_threshold",
+          "type": "f32"
+        },
+        {
+          "category": "Advanced",
+          "display_name": "Wake On Collision",
+          "name": "wake_on_collision",
+          "type": "bool"
+        }
+      ]
+    }
+  ]
+}

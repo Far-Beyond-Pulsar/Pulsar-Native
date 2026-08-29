@@ -55,6 +55,23 @@ pub use helio_component::WaterVolumeComponent as _ForceLink_WaterVolumeComponent
 
 // ── SceneLoader ───────────────────────────────────────────────────────────────
 
+/// Legacy/imperative scene loader: dispatches a `SceneFile`'s objects
+/// straight into a Helio `Scene` via `ComponentRuntimeBehavior::sync_
+/// component`, bypassing SceneDB entirely.
+///
+/// DEPRECATED for runtime use (Pulsar-Native#637): standalone games and PIE
+/// now load through `engine_backend::scene::RuntimeLevel`, which hydrates
+/// into the one shared `WorldSceneStore`/SceneDb world that renderers and
+/// gameplay both read -- keeping a second, renderer-private copy of scene
+/// state here broke the "one world" invariant the scripting epic is built
+/// on. Keep using this ONLY for import/legacy conversion tooling that has
+/// no runtime world of its own.
+#[deprecated(
+    since = "0.1.34",
+    note = "runtime scene loading must hydrate the shared WorldSceneStore \
+            instead (engine_backend::scene::RuntimeLevel); this direct-to-\
+            renderer path is for import/legacy conversion only"
+)]
 pub struct SceneLoader;
 
 impl SceneLoader {

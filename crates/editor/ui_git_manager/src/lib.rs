@@ -35,6 +35,8 @@ pub use git_hooks::{
 };
 pub use git_operations::*;
 pub use handlers::open_git_settings_modal;
+// GitManagerWindow / GitManagerParams are defined below alongside the
+// PulsarWindow impl; both are public items on this module directly.
 pub use models::*;
 
 use views::AlignedRow;
@@ -933,22 +935,64 @@ impl Render for GitManager {
 /// Type alias for use in the PulsarWindow system.
 pub type GitManagerWindow = GitManager;
 
+/// Parameters for opening a [`GitManagerWindow`].
+///
+/// `project_path: None` falls back to the globally-loaded project from
+/// `EngineContext` (matching the historical zero-param behaviour).
+#[derive(Debug, Clone, Default)]
+pub struct GitManagerParams {
+    pub project_path: Option<PathBuf>,
+}
+
+impl GitManagerParams {
+    pub fn scoped(project_path: impl Into<PathBuf>) -> Self {
+        Self {
+            project_path: Some(project_path.into()),
+        }
+    }
+}
+
 #[window_manager::register_window]
-impl window_manager::PulsarWindow for GitManager {
-    type Params = ();
+impl window_manager::PulsarWindow for GitManagerWindow {
+    type Params = GitManagerParams;
 
     fn window_name() -> &'static str {
         "GitManagerWindow"
     }
 
-    fn window_options(_: &()) -> gpui::WindowOptions {
+    fn window_options(_: &GitManagerParams) -> gpui::WindowOptions {
         window_manager::default_window_options(1280.0, 800.0)
     }
 
-    fn build(_: (), window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
-        let path = engine_state::get_project_path()
-            .map(std::path::PathBuf::from)
+    fn build(
+        params: GitManagerParams,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> gpui::Entity<Self> {
+        let path = params
+            .project_path
+            .or_else(|| engine_state::get_project_path().map(std::path::PathBuf::from))
             .unwrap_or_default();
         cx.new(|cx| GitManager::new(path, window, cx))
+    }
+}
+
+impl GitManagerWindow {
+    /// Register the `"GitManagerWindow"` opener in the global
+    /// [`window_manager::WindowRegistry`].
+    ///
+    /// Call once during app startup (parameterised windows are not
+    /// auto-registered by `#[register_window]`).
+    pub fn init(cx: &mut gpui::App) {
+        use ui_common::PulsarWindowExt;
+        <Self as PulsarWindowExt>::register(cx);
+    }
+
+    /// Open a git manager window rooted at a specific project.
+    ///
+    /// Focuses the existing window if one is already open.
+    pub fn open_scoped(project_path: Option<PathBuf>, cx: &mut gpui::App) {
+        use ui_common::PulsarWindowExt;
+        Self::open(GitManagerParams { project_path }, cx);
     }
 }

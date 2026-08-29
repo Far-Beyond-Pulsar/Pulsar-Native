@@ -40,10 +40,22 @@ impl PlaybackControls {
                         })
                         .into_any_element()
                 } else {
+                    // Native hot reload (#653): while a game runs, Play
+                    // rebuilds it and swaps the dylib WITHOUT stopping the
+                    // world — entities/components survive, actor logic
+                    // updates (the same contract `reload_blueprint` gives VM
+                    // classes). Stop still ends the session.
                     Button::new("play_active")
                         .icon(IconName::Play)
-                        .tooltip(t!("LevelEditor.Toolbar.SimulationRunning"))
+                        .tooltip(t!("LevelEditor.Toolbar.ReloadSimulation"))
                         .selected(true)
+                        .on_click(move |_, window, cx| {
+                            crate::level_editor::ui::panel::begin_pie(
+                                state_clone.clone(),
+                                window,
+                                cx,
+                            );
+                        })
                         .into_any_element()
                 }
             })

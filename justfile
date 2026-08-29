@@ -40,6 +40,20 @@ clippy:
 fmt:
     cargo fmt --all
 
+# ── Codegen drift guard (#652) ────────────────────────────────────────────────
+# Fast always-on probes: PBGC-generated blueprint actors compiled against the
+# pinned crates inside pulsar_game's own test binary.
+ci-drift-probe:
+    cargo test -p pbgc
+    cargo test -p pulsar_game --lib blueprint_codegen_drift
+
+# Heavy end-to-end check: generate a full game project into a temp dir and
+# cargo-check it against current pins (catches manifest/patch-table drift the
+# fast probes cannot). First run compiles the whole engine dep tree; later
+# runs reuse a shared target dir.
+ci-drift-check:
+    cargo test -p pulsar_game --test generated_project_compiles -- --ignored --nocapture
+
 # ── Submodules ───────────────────────────────────────────────────────────────
 
 # Init all submodules

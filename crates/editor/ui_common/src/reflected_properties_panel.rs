@@ -113,9 +113,18 @@ impl Default for PropertyStateManager {
 /// and reusing the cached instance afterwards, then pushes the current value
 /// into it before rendering.  Returns a placeholder when the property's type
 /// has no registered editor.
+///
+/// `editor_key` identifies the OWNING CARD in the editor cache — it must be
+/// unique per component INSTANCE, not just per class: an object with two
+/// instances of the same component class must get two independent editors
+/// (Pulsar-Native#519), or both cards would share widget state and every
+/// keystroke would land in whichever card rendered first. Callers typically
+/// pass something like `"{class_name}#{component_index}"`. `class_name`
+/// itself still flows to the editor factory untouched (labels, naming).
 pub fn render_property_row_runtime<V: 'static>(
     state: &mut PropertyStateManager,
     id_prefix: &str,
+    editor_key: &str,
     class_name: &str,
     display_name: &str,
     prop_name: &str,
@@ -131,7 +140,7 @@ pub fn render_property_row_runtime<V: 'static>(
         return div().text_sm().child("(nyi)").into_any_element();
     };
 
-    let key = (class_name.to_string(), prop_name.to_string());
+    let key = (editor_key.to_string(), prop_name.to_string());
     let editor = match state.editors.get(&key) {
         Some(editor) => editor.clone(),
         None => {
