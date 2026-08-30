@@ -2430,7 +2430,10 @@ mod world_component_hydration_tests {
              would be correct (readable directly) but never reach the actual scene"
         );
 
-        let flags = db.store.write().take_dirty_flags(&id);
+        let mut store = db.store.write();
+        let dirty = store.drain_dirty();
+        let e = store.entity_for(&id).unwrap();
+        let (_, flags) = dirty.into_iter().find(|(ent, _)| *ent == e).unwrap();
         assert!(
             flags.contains(engine_backend::scene::ObjectDirtyFlags::COMPONENTS),
             "dirty flags must include COMPONENTS so sync picks the object's \

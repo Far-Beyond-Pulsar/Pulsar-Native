@@ -1502,9 +1502,6 @@ impl HelioRenderer {
         // something this migration set out to change.
         let removed = {
             let mut store = scene_store.write();
-            for id in live_keys.inner() {
-                let _ = store.take_dirty_flags(id);
-            }
             // See `sync_snapshot_components`'s own doc for why this can't
             // happen in Phase 1 above: `refresh_gpu_mirror` needs `&mut
             // World` to re-`insert` a companion component, which Phase 1's
@@ -1514,6 +1511,7 @@ impl HelioRenderer {
                     class_name.as_str(),
                     store.world_mut(),
                     *entity,
+
                 );
             }
             Self::step_scene_db(&mut store);
@@ -1883,48 +1881,41 @@ impl HelioRenderer {
         inner: &mut HelioInner,
         error_queue: &Arc<Mutex<Vec<String>>>,
     ) -> SceneDbDelta {
-        // Phase 0: short WRITE lock -- draining is the only `&mut WorldSceneStore`
-        // work this function needs. Dropped immediately after, matching
-        // `sync_scene`'s own Phase 1/Phase 2 split (never hold a write lock
-        // across dispatch/GPU work -- see that fn's doc for why).
-        let (revision, dirty, removed) = {
-            let mut store = scene_store.write();
-            let revision = store.dirty_gen();
-            let dirty = store.drain_dirty();
-            let removed = store.take_removed_ids();
-            (revision, dirty, removed)
-        };
+        let mut store_write = scene_store.write();
+        let revision = store_write.dirty_gen();
+        let dirty = store_write.drain_dirty();
+        let removed = store_write.take_removed_ids();
 
         let mut added = Vec::new();
         let mut updated = Vec::new();
         let mut pending_gpu_mirror_refresh = Vec::new();
         let anything_changed = !dirty.is_empty() || !removed.is_empty();
 
-        // Phase 1: fresh READ lock, only entered if there's actually dirty
-        // work -- `dispatch_world_component_for_class` needs `&World` for the
-        // call's duration, same precedent as `sync_scene`'s own Phase 1.
+        // Phase 1: downgrade to READ lock atomically. This prevents concurrent
+        // structural modifications (e.g. entities deleted by another thread)
+        // between Phase 0 and Phase 1, eliminating race conditions while
+        // still allowing other systems to read the scene during GPU dispatch.
         if !dirty.is_empty() {
-            let store = scene_store.read();
+            let store = parking_lot::RwLockWriteGuard::downgrade(store_write);
             let project_root = engine_state::get_project_path()
                 .map(PathBuf::from)
                 .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
             let mut planet_runtime_init_attempted = inner.planet_terrain.is_some();
 
-            for (id, flags) in &dirty {
-                let Some(snap) = store.get_object(id) else {
-                    // Drained as dirty, then removed again before this loop
-                    // ran -- the `removed` list (handled below) already
-                    // covers cleanup.
+            for (entity_ref, flags) in &dirty {
+                let entity = *entity_ref;
+                let Some(id_str) = store.stable_id_of(entity) else {
                     continue;
                 };
-                let is_known = inner.known_ids.contains(id);
+                let is_known = inner.known_ids.contains(id_str);
+
+                let transform = store.transform(entity).unwrap_or_default();
+                let visibility = store.visibility(entity).unwrap_or_default();
 
                 if !is_known || flags.intersects(ObjectDirtyFlags::COMPONENTS | ObjectDirtyFlags::PROPS)
                 {
-                    // Full per-component dispatch -- also what makes a newly
-                    // spawned entity (`WorldSceneStore::spawn` publishes
-                    // `ObjectDirtyFlags::all()`) actually appear in
-                    // `helio::Scene` for the first time.
+                    // Full per-component dispatch (heavy path, requires full snapshot)
+                    let Some(snap) = store.get_object(id_str) else { continue; };
                     let mut live_keys = LiveKeySet::new();
                     Self::sync_snapshot_components(
                         inner,
@@ -1949,25 +1940,25 @@ impl HelioRenderer {
                 // actor; that actor no longer exists between frames at all,
                 // see `rebuild_light_frame`'s own doc).
 
-                if flags.contains(ObjectDirtyFlags::VISIBILITY) {
-                    Self::apply_visibility_patch(inner, &snap);
-                }
+
 
                 if is_known {
                     updated.push(ObjectUpdate {
-                        id: id.clone(),
+                        id: id_str.to_string(),
                         transform: Some(build_transform_parts(
-                            snap.transform.position,
-                            snap.transform.rotation,
-                            snap.transform.scale,
+                            transform.position,
+                            transform.rotation,
+                            transform.scale,
                         )),
-                        visible: Some(snap.visibility.visible),
+                        visible: Some(visibility.visible),
                         name: None,
                     });
                 } else {
-                    added.push(id.clone());
+                    added.push(id_str.to_string());
                 }
             }
+        } else {
+            drop(store_write);
         } // read guard dropped here -- everything below is lock-free w.r.t. `scene_store`.
 
         // Phase 2: short WRITE lock -- same reasoning as `sync_scene`'s own
@@ -2038,7 +2029,9 @@ impl HelioRenderer {
         }
     }
 
+
     /// Visibility is consumed directly by `rebuild_static_mesh_frame`; other
     /// persistent actor classes currently have no visibility-group path.
     fn apply_visibility_patch(_inner: &mut HelioInner, _snap: &crate::scene::ObjectSnapshot) {}
+
 }

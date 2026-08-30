@@ -15,7 +15,8 @@
 	url = https://github.com/Far-Beyond-Pulsar/Plugin_Matter
 [submodule "crates/ui/wgpui"]
 	path = crates/ui/wgpui
-	url = https://github.com/Far-Beyond-Pulsar/WGPUI.git
+	url = https://github.com/Far-Beyond-Pulsar/WGPUI
+	branch = main
 [submodule "crates/ui/wgpui-component"]
 	path = crates/ui/wgpui-component
 	url = https://github.com/Far-Beyond-Pulsar/WGPUI-Component.git
@@ -36,5 +37,5 @@
 	url = https://github.com/Far-Beyond-Pulsar/PulsarConfig.git
 [submodule "crates/renderer/helio"]
 	path = crates/renderer/helio
-	url = https://github.com/Far-Beyond-Pulsar/Helio.git
-	branch = scenedb20-m3
+	url = https://github.com/j4flmao/Helio.git
+	branch = fix-flaky-benchmark
