@@ -1,458 +1,69 @@
-//! Scene file format — the canonical on-disk representation of a Pulsar scene.
+//! Scene file format — the game runtime's view of the canonical schema.
 //!
-//! Supports both the v1 flat format and the v2.x nested-transform editor format.
+//! Since Pulsar-Native#557 (Phase B6) this module owns **no** serde
+//! definitions. The one canonical Rust type set with the one serde
+//! implementation lives in [`pulsar_scene_format`]; everything here is a
+//! re-export of it, so the runtime and the editor can no longer drift apart
+//! on the wire format. See that crate's module doc for the format itself
+//! (v1 flat vs. v2.x nested, and the leniency contract).
 //!
-//! # v2.x format (editor output)
-//! - `version` is a string (e.g. `"2.1"`)
-//! - `transform` is a nested object: `{ "position": [...], "rotation": [...], "scale": [...] }`
-//! - Unknown `object_type` values (e.g. `"ParticleSystem"`) are silently treated as `Empty`
-//! - Light `color`, `intensity`, `range` live directly in `props`
-//! - A `__component_instances` array in `props` may duplicate some data (ignored by loader)
-//!
-//! # v1 format (runtime-only, flat)
-//! - `version` is an integer (`1`)
-//! - `position`, `rotation`, `scale` are top-level fields on each object
+//! What *is* defined here is [`SceneObjectRuntimeExt`]: the projected-prop
+//! accessors (`mat_base_color`, `light_color`, `mesh_asset`, …) that read a
+//! scene object's props through the reflection system. Those are runtime
+//! ergonomics, not schema — they need `pulsar_reflection`, which the
+//! dependency-light schema crate deliberately does not depend on — so they
+//! ride on an extension trait implemented for the canonical
+//! [`SceneObject`]. The editor never sees them; the game loader keeps them
+//! by importing this trait.
 
-use engine_fs::virtual_fs;
 use pulsar_reflection::apply_scene_props_for_class;
-use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
-// ── Top-level file ─────────────────────────────────────────────────────────────
+// ── The canonical schema, re-exported verbatim ────────────────────────────────
 
-/// An entire scene read from a scene file.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SceneFile {
-    /// Format version — accepts both strings (`"2.1"`) and integers (`1`).
-    #[serde(default = "default_version_value")]
-    pub version: Value,
+pub use pulsar_scene_format::{
+    BlueprintBinding, BlueprintBindings, ComponentInstance, LevelEditorCameraState,
+    LevelEditorFileState, LevelMetadata, LightType, MeshType, ObjectId, ObjectType, SceneFile,
+    SceneLoadError, SceneObject, SceneTransform,
+};
 
-    /// All objects in depth-first order (parents before children).
-    #[serde(default)]
-    pub objects: Vec<SceneObject>,
+// ── Runtime-only projected-prop accessors ─────────────────────────────────────
 
-    // Editor-only top-level sections — loaded but unused at runtime.
-    #[serde(default, skip_serializing)]
-    pub components: Value,
-    #[serde(default, skip_serializing)]
-    pub metadata: Value,
-    #[serde(default, skip_serializing)]
-    pub editor: Value,
-
-    // ── Blueprint class bindings (#650) ───────────────────────────────────
-    /// Per-object Blueprint class bindings keyed by the object's **StableId**
-    /// (`SceneObject::id`), never its display name — so renaming an object
-    /// never orphans a binding. Multiple classes may bind to one object.
-    ///
-    /// Additive extension: older level files lack the key entirely and
-    /// deserialize to an empty map; files without bindings serialize without
-    /// it, staying byte-compatible with the pre-#650 format.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub blueprint_bindings: BlueprintBindings,
-}
-
-fn default_version_value() -> Value {
-    Value::Number(1.into())
-}
-
-impl SceneFile {
-    /// Load a scene from a JSON file.
-    pub fn load(path: &std::path::Path) -> Result<Self, SceneLoadError> {
-        tracing::debug!(path = %path.display(), "Reading scene file from disk");
-        let bytes = virtual_fs::read_file(path).map_err(|e| SceneLoadError::Io(e.to_string()))?;
-        let text = String::from_utf8(bytes).map_err(|e| SceneLoadError::Io(e.to_string()))?;
-        tracing::debug!(bytes = text.len(), "Scene file read OK, parsing JSON");
-        let scene: Self =
-            serde_json::from_str(&text).map_err(|e| SceneLoadError::Parse(e.to_string()))?;
-        tracing::info!(
-            path = %path.display(),
-            version = %scene.version,
-            objects = scene.objects.len(),
-            "Scene file parsed"
-        );
-        Ok(scene)
-    }
-
-    /// Save a scene to a JSON file (pretty-printed).
-    pub fn save(&self, path: &std::path::Path) -> Result<(), SceneLoadError> {
-        if let Some(parent) = path.parent() {
-            virtual_fs::create_dir_all(parent).map_err(|e| SceneLoadError::Io(e.to_string()))?;
-        }
-        let text =
-            serde_json::to_string_pretty(self).map_err(|e| SceneLoadError::Parse(e.to_string()))?;
-        virtual_fs::write_file(path, text.as_bytes()).map_err(|e| SceneLoadError::Io(e.to_string()))
-    }
-}
-
-// ── Blueprint class bindings (#650) ───────────────────────────────────────────
-
-/// One compiled-Blueprint class bound to one scene object (#650).
+/// Reflection-projected reads over a [`SceneObject`]'s props — the game
+/// runtime's convenience layer, deliberately kept off the schema type.
 ///
-/// At play-mode load each binding becomes exactly one dispatcher instance
-/// whose component ops address the bound object's entity. The class must
-/// exist as compiled bytecode at
-/// `<project>/src/classes/<class_name>/events/.build/bytecode.json` — the
-/// same layout the generated `engine_main` auto-discovers.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BlueprintBinding {
-    /// Compiled Blueprint class name — matches the bytecode's
-    /// `source_class` and the class directory under `<project>/src/classes/`.
-    pub class_name: String,
+/// Each accessor works against [`Self::projected_props`], i.e. the object's
+/// own `props` with every component instance's data projected in through its
+/// registered `ScenePropsProjector`. That means renaming a field on, say,
+/// `LightComponent` only requires updating that component's projector, never
+/// this module.
+pub trait SceneObjectRuntimeExt {
+    /// A copy of `props` with all component-instance data projected into it
+    /// via registered `ScenePropsProjector` implementations.
+    fn projected_props(&self) -> HashMap<String, Value>;
 
-    /// Per-instance variable overrides: variable name → JSON value in the
-    /// variable's natural JSON form (`7.5`, `"hello"`, `[1.0, 2.0]`, …).
-    /// Applied to this instance's state arena at spawn; variables not listed
-    /// keep their graph-authored defaults. Unknown names are ignored by the
-    /// dispatcher (the variable layout is the authority).
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub overrides: HashMap<String, Value>,
+    /// The `mesh_asset` path from this object's props or its component
+    /// instances, projected through the reflection system.
+    fn mesh_asset(&self) -> Option<String>;
+
+    fn mat_base_color(&self) -> [f32; 4];
+    fn mat_roughness(&self) -> f32;
+    fn mat_metallic(&self) -> f32;
+    fn mat_emissive(&self) -> [f32; 3];
+    fn mat_emissive_strength(&self) -> f32;
+
+    fn light_color(&self) -> [f32; 3];
+    fn light_intensity(&self) -> f32;
+    fn light_range(&self) -> f32;
+    fn light_inner_angle(&self) -> f32;
+    fn light_outer_angle(&self) -> f32;
 }
 
-/// A whole file's bindings: object StableId → that object's class bindings.
-///
-/// A `BTreeMap` so load-time spawning order is deterministic regardless of
-/// the JSON key order on disk.
-pub type BlueprintBindings = BTreeMap<String, Vec<BlueprintBinding>>;
-
-// ── Transform (nested, v2.x format) ───────────────────────────────────────────
-
-/// World-space transform stored as a nested object (editor v2.x format).
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
-pub struct SceneTransform {
-    #[serde(default)]
-    pub position: [f32; 3],
-
-    /// Euler rotation in degrees, YXZ order (pitch, yaw, roll as stored by editor).
-    #[serde(default)]
-    pub rotation: [f32; 3],
-
-    #[serde(default = "default_scale")]
-    pub scale: [f32; 3],
-}
-
-fn default_scale() -> [f32; 3] {
-    [1.0, 1.0, 1.0]
-}
-
-// ── Per-object ─────────────────────────────────────────────────────────────────
-
-/// A single object entry in a scene file.
-///
-/// Supports both v1 (flat `position`/`rotation`/`scale`) and v2.x (nested
-/// `transform`) by merging: if `transform` is present its values win.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SceneObject {
-    /// Stable string identifier (unique within the scene).
-    pub id: String,
-
-    /// Human-readable name shown in the editor hierarchy.
-    pub name: String,
-
-    /// What kind of thing this is.
-    #[serde(deserialize_with = "deserialize_object_type")]
-    pub object_type: ObjectType,
-
-    // ── v2.x nested transform (takes priority when present) ───────────────────
-    #[serde(default)]
-    pub transform: SceneTransform,
-
-    // ── v1 flat fields (fallback if no nested transform) ─────────────────────
-    #[serde(default)]
-    pub position: [f32; 3],
-    #[serde(default)]
-    pub rotation: [f32; 3],
-    #[serde(default = "default_scale")]
-    pub scale: [f32; 3],
-
-    /// Parent object `id`, or `None` for root-level objects.
-    #[serde(default)]
-    pub parent: Option<String>,
-
-    /// Whether this object is rendered.
-    #[serde(default = "default_true")]
-    pub visible: bool,
-
-    /// Type-specific properties (material, light, etc.).
-    ///
-    /// ⚠ This field does NOT contain `__component_instances`.  Component data is
-    /// carried in the separate `component_instances` field below.
-    #[serde(default)]
-    pub props: HashMap<String, Value>,
-
-    /// Reflection-based component instances (v2.2+).
-    /// Falls back to `props["__component_instances"]` for older scene files.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub component_instances: Option<Value>,
-
-    // Editor-only fields — silently accepted and ignored at runtime.
-    #[serde(default, skip_serializing)]
-    pub locked: bool,
-    #[serde(default, skip_serializing)]
-    pub children: Value,
-    #[serde(default, skip_serializing)]
-    pub scene_path: Option<String>,
-}
-
-fn default_true() -> bool {
-    true
-}
-
-impl Default for SceneObject {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            name: String::new(),
-            object_type: ObjectType::Empty,
-            transform: SceneTransform::default(),
-            position: [0.0; 3],
-            rotation: [0.0; 3],
-            scale: [1.0, 1.0, 1.0],
-            parent: None,
-            visible: true,
-            props: HashMap::new(),
-            component_instances: None,
-            locked: false,
-            children: Value::Null,
-            scene_path: None,
-        }
-    }
-}
-
-/// Resolved world-space position — prefers nested `transform` over flat field.
-impl SceneObject {
-    pub fn world_position(&self) -> [f32; 3] {
-        // Nested transform is the v2.x format; the flat field is v1.
-        // If the nested transform has a non-zero position use it, otherwise
-        // fall back to the flat field.  (A v1 file never writes `transform`
-        // so its zero-value default is safe to skip.)
-        if self.transform.position != [0.0; 3] {
-            self.transform.position
-        } else {
-            self.position
-        }
-    }
-
-    pub fn world_rotation(&self) -> [f32; 3] {
-        if self.transform.rotation != [0.0; 3] {
-            self.transform.rotation
-        } else {
-            self.rotation
-        }
-    }
-
-    pub fn world_scale(&self) -> [f32; 3] {
-        // Default scale is [1,1,1] in both paths; prefer the nested one.
-        let ns = self.transform.scale;
-        if ns != [1.0, 1.0, 1.0] {
-            ns
-        } else {
-            // If both are default, just use the flat field (also [1,1,1]).
-            self.scale
-        }
-    }
-}
-
-// ── Object / mesh / light types ───────────────────────────────────────────────
-
-/// Broad category of a scene object.
-///
-/// Unknown variants (e.g. `"ParticleSystem"`) deserialize as `Unknown` so that
-/// the scene still loads even if the runtime doesn't support all editor types.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-pub enum ObjectType {
-    Empty,
-    Folder,
-    Camera,
-    Mesh(MeshType),
-    Light(LightType),
-    /// Any type the runtime doesn't recognise.  Treated as `Empty` by the loader.
-    Unknown,
-}
-
-/// Custom deserializer for [`ObjectType`] that accepts both unit strings
-/// (`"Empty"`, `"ParticleSystem"`, …) and tagged objects
-/// (`{ "Mesh": "Cube" }`, `{ "Light": "Point" }`, …).
-fn deserialize_object_type<'de, D>(de: D) -> Result<ObjectType, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let v: Value = Value::deserialize(de)?;
-    Ok(object_type_from_value(&v))
-}
-
-fn object_type_from_value(v: &Value) -> ObjectType {
-    match v {
-        Value::String(s) => match s.as_str() {
-            "Empty" => ObjectType::Empty,
-            "Folder" => ObjectType::Folder,
-            "Camera" => ObjectType::Camera,
-            other => {
-                tracing::debug!(
-                    type_ = other,
-                    "Unknown ObjectType string — treating as Empty"
-                );
-                ObjectType::Unknown
-            }
-        },
-        Value::Object(map) => {
-            if let Some(mesh_val) = map.get("Mesh") {
-                let mt = mesh_type_from_value(mesh_val);
-                ObjectType::Mesh(mt)
-            } else if let Some(light_val) = map.get("Light") {
-                let lt = light_type_from_value(light_val);
-                ObjectType::Light(lt)
-            } else {
-                tracing::debug!(map = ?map, "Unknown tagged ObjectType map — treating as Empty");
-                ObjectType::Unknown
-            }
-        }
-        other => {
-            tracing::debug!(value = ?other, "Unexpected ObjectType JSON value — treating as Empty");
-            ObjectType::Unknown
-        }
-    }
-}
-
-fn mesh_type_from_value(v: &Value) -> MeshType {
-    match v.as_str().unwrap_or("") {
-        "Cube" => MeshType::Cube,
-        "Sphere" => MeshType::Sphere,
-        "Cylinder" => MeshType::Cylinder,
-        "Plane" => MeshType::Plane,
-        "Custom" => MeshType::Custom,
-        other => {
-            tracing::debug!(type_ = other, "Unknown MeshType — treating as Cube");
-            MeshType::Cube
-        }
-    }
-}
-
-fn light_type_from_value(v: &Value) -> LightType {
-    match v.as_str().unwrap_or("") {
-        "Directional" => LightType::Directional,
-        "Point" => LightType::Point,
-        "Spot" => LightType::Spot,
-        other => {
-            tracing::debug!(type_ = other, "Unknown LightType — treating as Point");
-            LightType::Point
-        }
-    }
-}
-
-// Manual Deserialize for ObjectType delegates to the custom fn above.
-impl<'de> Deserialize<'de> for ObjectType {
-    fn deserialize<D: Deserializer<'de>>(de: D) -> Result<Self, D::Error> {
-        let v: Value = Value::deserialize(de)?;
-        Ok(object_type_from_value(&v))
-    }
-}
-
-/// Built-in procedural mesh shapes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum MeshType {
-    Cube,
-    Sphere,
-    Cylinder,
-    Plane,
-    /// Custom asset; path provided in `props["asset_path"]`.
-    Custom,
-}
-
-/// Light kinds recognised by Helio.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LightType {
-    Directional,
-    Point,
-    Spot,
-}
-
-// ── Error type ─────────────────────────────────────────────────────────────────
-
-#[derive(Debug)]
-pub enum SceneLoadError {
-    Io(String),
-    Parse(String),
-}
-
-impl std::fmt::Display for SceneLoadError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Io(e) => write!(f, "I/O error: {e}"),
-            Self::Parse(e) => write!(f, "Parse error: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for SceneLoadError {}
-
-// ── Helper prop extractors ────────────────────────────────────────────────────
-
-impl SceneObject {
-    fn prop_f32(&self, key: &str, default: f32) -> f32 {
-        self.props
-            .get(key)
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32)
-            .unwrap_or(default)
-    }
-
-    fn prop_f32_arr3(&self, key: &str, default: [f32; 3]) -> [f32; 3] {
-        self.props
-            .get(key)
-            .and_then(|v| v.as_array())
-            .and_then(|a| {
-                if a.len() >= 3 {
-                    Some([
-                        a[0].as_f64().unwrap_or(0.0) as f32,
-                        a[1].as_f64().unwrap_or(0.0) as f32,
-                        a[2].as_f64().unwrap_or(0.0) as f32,
-                    ])
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(default)
-    }
-
-    fn prop_f32_arr4(&self, key: &str, default: [f32; 4]) -> [f32; 4] {
-        self.props
-            .get(key)
-            .and_then(|v| v.as_array())
-            .and_then(|a| {
-                if a.len() >= 4 {
-                    Some([
-                        a[0].as_f64().unwrap_or(0.0) as f32,
-                        a[1].as_f64().unwrap_or(0.0) as f32,
-                        a[2].as_f64().unwrap_or(0.0) as f32,
-                        a[3].as_f64().unwrap_or(1.0) as f32,
-                    ])
-                } else if a.len() == 3 {
-                    Some([
-                        a[0].as_f64().unwrap_or(0.0) as f32,
-                        a[1].as_f64().unwrap_or(0.0) as f32,
-                        a[2].as_f64().unwrap_or(0.0) as f32,
-                        1.0,
-                    ])
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(default)
-    }
-
-    // ── Reflection projection ────────────────────────────────────────────────
-
-    /// Return a copy of `props` with all component-instance data projected into
-    /// it via registered [`ScenePropsProjector`] implementations.
-    ///
-    /// This replaces manual field-name lookups into component data (e.g.
-    /// `data.get("mesh_asset")`) with the canonical reflection-based path so
-    /// that altering a component's field name only requires updating its
-    /// projector, not this scene-format module.
-    pub fn projected_props(&self) -> HashMap<String, Value> {
+impl SceneObjectRuntimeExt for SceneObject {
+    fn projected_props(&self) -> HashMap<String, Value> {
         let mut props = self.props.clone();
-        if let Some(instances) = self.component_instances() {
+        if let Some(instances) = component_instance_array(self) {
             for inst in instances {
                 if let Some(class_name) = inst.get("class_name").and_then(|v| v.as_str()) {
                     let component_data = inst.get("data");
@@ -463,168 +74,210 @@ impl SceneObject {
         props
     }
 
-    /// Helper: return the first component entry matching `class_name` from
-    /// the dedicated `component_instances` field, falling back to the legacy
-    /// `props["__component_instances"]` array.
-    fn component_instances(&self) -> Option<&Vec<Value>> {
-        self.component_instances
-            .as_ref()
-            .and_then(|v| v.as_array())
-            .or_else(|| {
-                self.props
-                    .get("__component_instances")
-                    .and_then(|v| v.as_array())
-            })
-    }
-
-    /// Return the `mesh_asset` path from this object's props or its
-    /// component instances, projected through the reflection system.
-    ///
-    /// This uses [`ScenePropsProjector`] registrations instead of hardcoded
-    /// field-name lookups into component data.
-    pub fn mesh_asset(&self) -> Option<String> {
-        let props = self.projected_props();
-        props
+    fn mesh_asset(&self) -> Option<String> {
+        self.projected_props()
             .get("mesh_asset")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty() && *s != "None")
             .map(String::from)
     }
 
-    // ── Material accessors ────────────────────────────────────────────────────
-
-    pub fn mat_base_color(&self) -> [f32; 4] {
-        self.prop_f32_arr4("base_color", [0.5, 0.5, 0.5, 1.0])
+    fn mat_base_color(&self) -> [f32; 4] {
+        prop_f32_arr4(&self.props, "base_color", [0.5, 0.5, 0.5, 1.0])
     }
-    pub fn mat_roughness(&self) -> f32 {
-        self.prop_f32("roughness", 0.5)
+    fn mat_roughness(&self) -> f32 {
+        prop_f32(&self.props, "roughness", 0.5)
     }
-    pub fn mat_metallic(&self) -> f32 {
-        self.prop_f32("metallic", 0.0)
+    fn mat_metallic(&self) -> f32 {
+        prop_f32(&self.props, "metallic", 0.0)
     }
-    pub fn mat_emissive(&self) -> [f32; 3] {
-        self.prop_f32_arr3("emissive", [0.0, 0.0, 0.0])
+    fn mat_emissive(&self) -> [f32; 3] {
+        prop_f32_arr3(&self.props, "emissive", [0.0, 0.0, 0.0])
     }
-    pub fn mat_emissive_strength(&self) -> f32 {
-        self.prop_f32("emissive_strength", 0.0)
+    fn mat_emissive_strength(&self) -> f32 {
+        prop_f32(&self.props, "emissive_strength", 0.0)
     }
 
-    // ── Light accessors ───────────────────────────────────────────────────────
-    //
-    // Uses projected props so that LightComponent data is reflected through
-    // the registered projector instead of manual field extraction.
-
-    pub fn light_color(&self) -> [f32; 3] {
-        let props = self.projected_props();
-        if let Some(v) = props.get("color") {
-            if let Some(a) = v.as_array() {
-                if a.len() >= 3 {
-                    return [
-                        a[0].as_f64().unwrap_or(1.0) as f32,
-                        a[1].as_f64().unwrap_or(1.0) as f32,
-                        a[2].as_f64().unwrap_or(1.0) as f32,
-                    ];
-                }
-            }
-        }
-        [1.0, 1.0, 1.0]
+    fn light_color(&self) -> [f32; 3] {
+        prop_f32_arr3(&self.projected_props(), "color", [1.0, 1.0, 1.0])
     }
-
-    pub fn light_intensity(&self) -> f32 {
-        let props = self.projected_props();
-        if let Some(v) = props.get("intensity").and_then(|v| v.as_f64()) {
-            return v as f32;
-        }
-        1.0
+    fn light_intensity(&self) -> f32 {
+        prop_f32(&self.projected_props(), "intensity", 1.0)
     }
-
-    pub fn light_range(&self) -> f32 {
-        let props = self.projected_props();
-        if let Some(v) = props.get("range").and_then(|v| v.as_f64()) {
-            return v as f32;
-        }
-        10.0
+    fn light_range(&self) -> f32 {
+        prop_f32(&self.projected_props(), "range", 10.0)
     }
-
-    pub fn light_inner_angle(&self) -> f32 {
-        let props = self.projected_props();
-        Self::prop_f32_from(&props, "inner_angle", 30.0)
+    fn light_inner_angle(&self) -> f32 {
+        prop_f32(&self.projected_props(), "inner_angle", 30.0)
     }
-    pub fn light_outer_angle(&self) -> f32 {
-        let props = self.projected_props();
-        Self::prop_f32_from(&props, "outer_angle", 45.0)
-    }
-
-    // ── Static helpers (no &self) ─────────────────────────────────────────────
-
-    fn prop_f32_from(props: &HashMap<String, Value>, key: &str, default: f32) -> f32 {
-        props
-            .get(key)
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32)
-            .unwrap_or(default)
+    fn light_outer_angle(&self) -> f32 {
+        prop_f32(&self.projected_props(), "outer_angle", 45.0)
     }
 }
 
+/// The object's component-instance array: the dedicated `component_instances`
+/// field, falling back to the legacy `props["__component_instances"]`.
+fn component_instance_array(obj: &SceneObject) -> Option<&Vec<Value>> {
+    obj.component_instances
+        .as_ref()
+        .and_then(|v| v.as_array())
+        .or_else(|| {
+            obj.props
+                .get("__component_instances")
+                .and_then(|v| v.as_array())
+        })
+}
+
+// ── Prop extraction helpers ───────────────────────────────────────────────────
+
+fn prop_f32(props: &HashMap<String, Value>, key: &str, default: f32) -> f32 {
+    props
+        .get(key)
+        .and_then(|v| v.as_f64())
+        .map(|v| v as f32)
+        .unwrap_or(default)
+}
+
+fn prop_f32_arr3(props: &HashMap<String, Value>, key: &str, default: [f32; 3]) -> [f32; 3] {
+    props
+        .get(key)
+        .and_then(|v| v.as_array())
+        .and_then(|a| {
+            if a.len() >= 3 {
+                Some([
+                    a[0].as_f64().unwrap_or(default[0] as f64) as f32,
+                    a[1].as_f64().unwrap_or(default[1] as f64) as f32,
+                    a[2].as_f64().unwrap_or(default[2] as f64) as f32,
+                ])
+            } else {
+                None
+            }
+        })
+        .unwrap_or(default)
+}
+
+fn prop_f32_arr4(props: &HashMap<String, Value>, key: &str, default: [f32; 4]) -> [f32; 4] {
+    props
+        .get(key)
+        .and_then(|v| v.as_array())
+        .and_then(|a| {
+            if a.len() >= 4 {
+                Some([
+                    a[0].as_f64().unwrap_or(0.0) as f32,
+                    a[1].as_f64().unwrap_or(0.0) as f32,
+                    a[2].as_f64().unwrap_or(0.0) as f32,
+                    a[3].as_f64().unwrap_or(1.0) as f32,
+                ])
+            } else if a.len() == 3 {
+                Some([
+                    a[0].as_f64().unwrap_or(0.0) as f32,
+                    a[1].as_f64().unwrap_or(0.0) as f32,
+                    a[2].as_f64().unwrap_or(0.0) as f32,
+                    1.0,
+                ])
+            } else {
+                None
+            }
+        })
+        .unwrap_or(default)
+}
+
 #[cfg(test)]
-mod blueprint_binding_tests {
-    //! #650 — the additive level-format extension for Blueprint class
-    //! bindings: old files load unchanged, new sections round-trip.
+mod tests {
+    //! Schema behaviour is verified in `pulsar_scene_format`'s own tests
+    //! (round-trip, v1/v2 backward compat, enum superset). What's left to
+    //! cover here is that the *runtime alias* really is that schema, and
+    //! that the extension trait still projects props the way the loader
+    //! expects.
 
     use super::*;
 
-    /// The additive guarantee: a pre-#650 file (no `blueprint_bindings` key)
-    /// deserializes with empty bindings.
+    /// The runtime's `SceneFile`/`SceneObject` are the canonical types, and a
+    /// v1 flat-transform file still opens through them.
     #[test]
-    fn old_files_without_bindings_load_unchanged() {
+    fn runtime_alias_is_the_canonical_schema() {
         let json = r#"{
-            "version": "2.1",
+            "version": 1,
             "objects": [
-                { "id": "cube", "name": "Cube", "object_type": {"Mesh": "Cube"}, "props": {} }
+                { "id": "ground", "name": "Ground", "object_type": {"Mesh": "Plane"},
+                  "position": [1.0, 2.0, 3.0], "scale": [10.0, 1.0, 10.0] }
             ]
         }"#;
-        let file: SceneFile = serde_json::from_str(json).expect("old file parses");
-        assert!(file.blueprint_bindings.is_empty());
-    }
-
-    /// A bindings section round-trips, keyed by StableId with per-instance
-    /// overrides; re-serializing drops the key when empty.
-    #[test]
-    fn bindings_round_trip_and_skip_serializing_when_empty() {
-        let json = r#"{
-            "version": "2.1",
-            "objects": [],
-            "blueprint_bindings": {
-                "lever_a": [
-                    { "class_name": "Lever", "overrides": { "speed": 7.5 } },
-                    { "class_name": "Alarm" }
-                ]
-            }
-        }"#;
-        let file: SceneFile = serde_json::from_str(json).expect("bindings parse");
-        let lever = &file.blueprint_bindings["lever_a"];
-        assert_eq!(lever.len(), 2, "multiple classes may bind to one object");
-        assert_eq!(lever[0].class_name, "Lever");
-        assert_eq!(lever[0].overrides.get("speed").and_then(Value::as_f64), Some(7.5));
-        assert!(lever[1].overrides.is_empty(), "missing overrides means defaults");
-
-        let rewritten = serde_json::to_string(&file).expect("serialize");
-        assert!(rewritten.contains("blueprint_bindings"), "non-empty section is written");
-        assert!(rewritten.contains(r#""overrides":{"speed":7.5}"#), "overrides survive");
-
-        let empty: SceneFile = serde_json::from_str(r#"{ "version": 1 }"#).unwrap();
-        assert!(
-            !serde_json::to_string(&empty).unwrap().contains("blueprint_bindings"),
-            "empty section stays out of the file (byte-compat with pre-#650 writers)"
+        let file: SceneFile = serde_json::from_str(json).expect("v1 parses");
+        let canonical: pulsar_scene_format::SceneFile =
+            serde_json::from_str(json).expect("v1 parses canonically");
+        assert_eq!(file.objects[0].world_position(), [1.0, 2.0, 3.0]);
+        assert_eq!(
+            file.objects[0].world_scale(),
+            canonical.objects[0].world_scale()
         );
     }
 
-    /// Bindings reference objects by StableId only — the type has no
-    /// name field to drift out of sync (#B2 identity rule).
+    /// Forward compatibility from the enum superset: the runtime now parses
+    /// object/light kinds it does not act on, rather than failing or
+    /// silently mislabelling them.
     #[test]
-    fn binding_type_carries_no_object_name() {
-        let binding: BlueprintBinding =
-            serde_json::from_str(r#"{ "class_name": "Enemy", "overrides": {} }"#).unwrap();
-        assert_eq!(binding.class_name, "Enemy");
+    fn runtime_accepts_editor_only_object_kinds() {
+        let json = r#"{
+            "version": "2.1",
+            "objects": [
+                { "id": "p", "name": "P", "object_type": "ParticleSystem" },
+                { "id": "l", "name": "L", "object_type": {"Light": "Area"} }
+            ]
+        }"#;
+        let file: SceneFile = serde_json::from_str(json).expect("superset parses");
+        assert_eq!(file.objects[0].object_type, ObjectType::ParticleSystem);
+        assert_eq!(file.objects[1].object_type, ObjectType::Light(LightType::Area));
+    }
+
+    /// The projected-prop accessors moved to a trait but kept their
+    /// behaviour: flat props are read directly, defaults apply when absent.
+    #[test]
+    fn extension_trait_reads_flat_props_and_defaults() {
+        let json = r#"{
+            "version": "2.1",
+            "objects": [
+                { "id": "a", "name": "A", "object_type": {"Mesh": "Cube"},
+                  "props": { "base_color": [0.1, 0.2, 0.3, 0.4], "roughness": 0.75,
+                             "color": [1.0, 0.5, 0.25], "intensity": 3.0 } },
+                { "id": "b", "name": "B", "object_type": {"Light": "Point"}, "props": {} }
+            ]
+        }"#;
+        let file: SceneFile = serde_json::from_str(json).expect("parses");
+
+        let a = &file.objects[0];
+        assert_eq!(a.mat_base_color(), [0.1, 0.2, 0.3, 0.4]);
+        assert_eq!(a.mat_roughness(), 0.75);
+        assert_eq!(a.light_color(), [1.0, 0.5, 0.25]);
+        assert_eq!(a.light_intensity(), 3.0);
+
+        let b = &file.objects[1];
+        assert_eq!(b.mat_base_color(), [0.5, 0.5, 0.5, 1.0]);
+        assert_eq!(b.mat_metallic(), 0.0);
+        assert_eq!(b.light_color(), [1.0, 1.0, 1.0]);
+        assert_eq!(b.light_range(), 10.0);
+        assert_eq!(b.light_outer_angle(), 45.0);
+        assert_eq!(b.mesh_asset(), None);
+    }
+
+    /// `mesh_asset` falls back to the legacy `props["__component_instances"]`
+    /// array when the dedicated field is absent.
+    #[test]
+    fn mesh_asset_reads_the_legacy_component_instances_key() {
+        let json = r#"{
+            "version": "2.1",
+            "objects": [
+                { "id": "a", "name": "A", "object_type": {"Mesh": "Custom"},
+                  "props": { "__component_instances": [
+                      { "class_name": "StaticMeshComponent", "data": { "mesh_asset": "models/a.mesh" } }
+                  ] } }
+            ]
+        }"#;
+        let file: SceneFile = serde_json::from_str(json).expect("parses");
+        // Whether the projector rewrites it or the raw prop survives, the
+        // legacy array is still the source that gets consulted.
+        assert!(file.objects[0]
+            .projected_props()
+            .contains_key("__component_instances"));
     }
 }

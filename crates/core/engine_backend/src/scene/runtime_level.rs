@@ -27,19 +27,16 @@
 //! `components` entry for an object wins over that object's own
 //! `component_instances`.
 
-use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
 use pulsar_scene::component_instances_from_props;
-use pulsar_scene::format::{BlueprintBindings, ObjectType as FileObjectType, SceneFile};
-use serde_json::Value;
-
-use crate::scene::{
-    LightType, MeshType, ObjectSnapshot, ObjectType, RenderProps, Transform, Visibility,
-    WorldSceneStore,
+use pulsar_scene::format::{
+    BlueprintBindings, ComponentInstance, LevelEditorFileState, SceneFile,
 };
+
+use crate::scene::{ObjectSnapshot, RenderProps, Transform, Visibility, WorldSceneStore};
 
 /// Errors from [`RuntimeLevel::load`].
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -159,10 +156,10 @@ impl RuntimeLevel {
         file: SceneFile,
         store: &mut WorldSceneStore,
     ) -> Result<(), RuntimeLevelError> {
-        let version = version_string(&file.version);
-        // Same accepted set as the editor's own loader: 1.x and 2.x.
-        if !version.starts_with("1.") && !version.starts_with("2.") && version != "1" {
-            return Err(RuntimeLevelError::UnsupportedVersion(version));
+        // Same accepted set as the editor's own loader: 1.x and 2.x -- now
+        // literally the same check, on the canonical type (#557).
+        if !file.is_supported_version() {
+            return Err(RuntimeLevelError::UnsupportedVersion(file.version_string()));
         }
 
         // Parent-before-child order is the format's own DFS guarantee (see
@@ -174,18 +171,16 @@ impl RuntimeLevel {
             message: error.to_string(),
         })?;
 
-        let persisted = persisted_components(&file.components);
         for obj in &file.objects {
             let Some(entity) = store.entity_for(&obj.id) else { continue };
-            let instances = match persisted.get(&obj.id) {
+            let instances = match file.components.get(&obj.id) {
                 Some(records) if !records.is_empty() => records.clone(),
                 _ => component_instances_from_props(
                     &obj.props,
                     obj.component_instances.as_ref(),
                 )
                 .into_iter()
-                .map(|(index, class_name, data)| ComponentRecord {
-                    index,
+                .map(|(_index, class_name, data)| ComponentInstance {
                     class_name,
                     data,
                     enabled: true,
@@ -217,28 +212,12 @@ impl RuntimeLevel {
     }
 }
 
-/// One component instance record -- either parsed from the file's persisted
-/// components array (which carries its own enabled flag) or converted from
-/// `component_instances_from_props`'s `(index, class_name, data)` tuples
-/// (where presence means enabled).
-#[derive(Clone, Debug)]
-struct ComponentRecord {
-    #[allow(dead_code)]
-    index: usize,
-    class_name: String,
-    data: Value,
-    enabled: bool,
-}
-
-fn version_string(version: &Value) -> String {
-    match version {
-        Value::String(s) => s.clone(),
-        Value::Number(n) => n.to_string(),
-        other => other.to_string(),
-    }
-}
-
 /// Map a file-format object onto the store's snapshot bridge type.
+///
+/// Since #557 there is no enum translation step here: `ObjectType`/
+/// `LightType`/`MeshType` on both sides are the same canonical types, and
+/// the v1 flat transform is already folded into `transform` by the schema's
+/// deserializer (`world_position()` and friends just read it back).
 fn object_snapshot(obj: &pulsar_scene::format::SceneObject) -> ObjectSnapshot {
     ObjectSnapshot {
         stable_id: obj.id.clone(),
@@ -250,61 +229,12 @@ fn object_snapshot(obj: &pulsar_scene::format::SceneObject) -> ObjectSnapshot {
             scale: obj.world_scale(),
         },
         visibility: Visibility { visible: obj.visible, locked: obj.locked },
-        object_type: object_type(obj.object_type),
+        object_type: obj.object_type,
         render_props: RenderProps {
             props: obj.props.clone(),
             component_instances: obj.component_instances.clone(),
         },
     }
-}
-
-/// `pulsar_scene`'s loader-facing object classification ->
-/// `engine_backend`'s store-facing one.
-fn object_type(object_type: FileObjectType) -> ObjectType {
-    match object_type {
-        FileObjectType::Empty | FileObjectType::Unknown => ObjectType::Empty,
-        FileObjectType::Folder => ObjectType::Folder,
-        FileObjectType::Camera => ObjectType::Camera,
-        FileObjectType::Mesh(mesh) => ObjectType::Mesh(match mesh {
-            pulsar_scene::format::MeshType::Cube => MeshType::Cube,
-            pulsar_scene::format::MeshType::Sphere => MeshType::Sphere,
-            pulsar_scene::format::MeshType::Cylinder => MeshType::Cylinder,
-            pulsar_scene::format::MeshType::Plane => MeshType::Plane,
-            pulsar_scene::format::MeshType::Custom => MeshType::Custom,
-        }),
-        FileObjectType::Light(light) => ObjectType::Light(match light {
-            pulsar_scene::format::LightType::Directional => LightType::Directional,
-            pulsar_scene::format::LightType::Point => LightType::Point,
-            pulsar_scene::format::LightType::Spot => LightType::Spot,
-        }),
-    }
-}
-
-/// Parse the editor's persisted components section:
-/// `{ "<object_id>": [ { "class_name": ..., "data": ..., "enabled": ... } ] }`.
-/// Lenient by design -- entries missing a class name are skipped; a missing
-/// `enabled` flag means enabled (matching how the editor treats inline
-/// instances).
-fn persisted_components(components: &Value) -> HashMap<String, Vec<ComponentRecord>> {
-    let mut out = HashMap::new();
-    let Some(map) = components.as_object() else { return out };
-    for (object_id, entries) in map {
-        let Some(array) = entries.as_array() else { continue };
-        let records = array
-            .iter()
-            .enumerate()
-            .filter_map(|(index, entry)| {
-                Some(ComponentRecord {
-                    index,
-                    class_name: entry.get("class_name")?.as_str()?.to_string(),
-                    data: entry.get("data").cloned().unwrap_or(Value::Null),
-                    enabled: entry.get("enabled").and_then(Value::as_bool).unwrap_or(true),
-                })
-            })
-            .collect();
-        out.insert(object_id.clone(), records);
-    }
-    out
 }
 
 /// Hydrate/remove every registered class's typed World value for `entity`
@@ -316,7 +246,7 @@ fn hydrate_components(
     store: &mut WorldSceneStore,
     entity: pulsar_scenedb::Entity,
     object_id: &str,
-    instances: &[ComponentRecord],
+    instances: &[ComponentInstance],
 ) {
     for class_name in pulsar_world_registry::registered_world_component_classes() {
         match instances.iter().find(|r| r.enabled && r.class_name == *class_name) {
@@ -344,17 +274,9 @@ fn hydrate_components(
 }
 
 /// Read `editor.camera` out of a level file's editor section, if present.
-fn editor_camera(editor: &Value) -> Option<EditorCamera> {
-    let cam = editor.get("camera")?;
-    let pos = cam.get("position")?.as_array()?;
-    if pos.len() < 3 {
-        return None;
-    }
-    Some(EditorCamera {
-        position: [pos[0].as_f64()? as f32, pos[1].as_f64()? as f32, pos[2].as_f64()? as f32],
-        yaw: cam.get("yaw").and_then(Value::as_f64).unwrap_or(0.0) as f32,
-        pitch: cam.get("pitch").and_then(Value::as_f64).unwrap_or(0.0) as f32,
-    })
+fn editor_camera(editor: &Option<LevelEditorFileState>) -> Option<EditorCamera> {
+    let cam = editor.as_ref()?.camera?;
+    Some(EditorCamera { position: cam.position, yaw: cam.yaw, pitch: cam.pitch })
 }
 
 #[cfg(test)]
@@ -362,6 +284,7 @@ mod tests {
     use super::*;
     use crate::scene::StableId;
     use helio_component::components::LightComponent;
+    use serde_json::Value;
 
     const SAMPLE_LEVEL: &str = r#"{
         "version": "2.1",
@@ -431,7 +354,16 @@ mod tests {
         if let Some(instances) = instances {
             file.objects[0].component_instances = Some(instances);
         }
-        file.components = components_section;
+        // Routed through the canonical schema's own lenient `components`
+        // deserializer (#557) rather than assigned as a raw `Value`, so the
+        // fixture still exercises the real parse path now that the field is
+        // typed.
+        file.components = serde_json::from_value::<SceneFile>(serde_json::json!({
+            "version": "2.1",
+            "components": components_section,
+        }))
+        .expect("components section parses")
+        .components;
         file
     }
 

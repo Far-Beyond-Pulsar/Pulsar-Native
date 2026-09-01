@@ -68,7 +68,6 @@ pub use world_store::{
 
 use bitflags::bitflags;
 use glam::Mat4;
-use serde::{Deserialize, Serialize};
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -79,34 +78,17 @@ use serde::{Deserialize, Serialize};
 /// (`SceneDatabase` and its ~50 call sites) already spells it as.
 pub type ObjectId = EditorObjectId;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ObjectType {
-    Empty,
-    Folder,
-    Camera,
-    Light(LightType),
-    Mesh(MeshType),
-    ParticleSystem,
-    AudioSource,
-    Blueprint,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LightType {
-    Directional,
-    Point,
-    Spot,
-    Area,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum MeshType {
-    Cube,
-    Sphere,
-    Cylinder,
-    Plane,
-    Custom,
-}
+/// Object classification and its two payload enums.
+///
+/// Re-exported from [`pulsar_scene_format`] since Pulsar-Native#557 (Phase
+/// B6): these three enums are part of the level file's wire format, and
+/// having the editor's copy here and the runtime's copy in `pulsar_scene`
+/// is exactly the drift that issue exists to kill -- the runtime's copy had
+/// silently fallen behind by three `ObjectType` variants and `LightType::
+/// Area`. The canonical definitions carry the editor's full coverage plus a
+/// lenient deserializer (unrecognised spellings degrade to `Empty`/`Cube`/
+/// `Point` instead of failing the parse).
+pub use pulsar_scene_format::{LightType, MeshType, ObjectType};
 
 bitflags! {
     // `Debug`/`PartialEq`/`Eq` weren't previously derived -- added so

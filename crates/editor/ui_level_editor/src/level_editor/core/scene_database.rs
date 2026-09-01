@@ -32,10 +32,9 @@ use engine_fs::virtual_fs;
 use parking_lot::RwLock;
 use pulsar_reflection::{apply_scene_props_for_class, registered_scene_props_classes};
 use pulsar_scenedb::Entity;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::any::Any;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -43,31 +42,29 @@ use std::sync::Arc;
 
 pub use engine_backend::scene::{LightType, MeshType, ObjectId, ObjectType, WorldSceneStore};
 
-// ── Transform ─────────────────────────────────────────────────────────────
+// ── Level file schema (Pulsar-Native#557) ─────────────────────────────────
+//
+// The editor no longer declares its own serde types for the level file. Every
+// name below is an alias of `pulsar_scene_format`, the single canonical
+// schema the game runtime's `pulsar_scene::{SceneFile, SceneObject}` also
+// aliases. One serde implementation, so the two sides cannot drift; the
+// aliases keep the ~250 editor call sites spelling things the way they
+// always have.
+//
+// What the editor gained from the merge:
+// - v1 flat-transform files (`position`/`rotation`/`scale` at the top level of
+//   an object, no nested `transform`) now open here too. They previously only
+//   worked in the runtime loader.
+// - unrecognised `object_type`/`MeshType`/`LightType` spellings degrade to
+//   `Empty`/`Cube`/`Point` instead of failing the whole load.
+// - `metadata` is optional: a runtime- or hand-authored file without it opens.
 
 /// Editor transform: position, Euler rotation (degrees), and scale.
 ///
 /// Stored inline in `SceneObjectData` for easy UI access. The underlying
 /// `WorldSceneStore` stores the same values behind one `RwLock` shared with
 /// the renderer.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Transform {
-    pub position: [f32; 3],
-    pub rotation: [f32; 3],
-    pub scale: [f32; 3],
-}
-
-impl Default for Transform {
-    fn default() -> Self {
-        Self {
-            position: [0.0, 0.0, 0.0],
-            rotation: [0.0, 0.0, 0.0],
-            scale: [1.0, 1.0, 1.0],
-        }
-    }
-}
-
-// ── SceneObjectData ────────────────────────────────────────────────────────
+pub type Transform = pulsar_scene::SceneTransform;
 
 /// Snapshot of a single scene object – the primary data type used by editor panels.
 ///
@@ -76,30 +73,10 @@ impl Default for Transform {
 /// `update_object`. Transform data is stored both here (for easy editing) and
 /// in the underlying `WorldSceneStore` (shared with the renderer); calling
 /// `update_object` keeps them in sync.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SceneObjectData {
-    pub id: ObjectId,
-    pub name: String,
-    pub object_type: ObjectType,
-    pub transform: Transform,
-    pub visible: bool,
-    pub locked: bool,
-    /// Parent object ID (`None` = root level).
-    pub parent: Option<ObjectId>,
-    /// Direct children (populated by `SceneDatabase` on read, ignored on write).
-    pub children: Vec<ObjectId>,
-    pub scene_path: String,
-    /// Type-specific properties that round-trip through the level file.
-    /// Lights: `"color_r"`, `"color_g"`, `"color_b"`, `"intensity"`, `"range"`.
-    ///
-    /// ⚠ This field does **not** contain `__component_instances`. Component
-    /// data flows exclusively through `SceneDatabase::add_component` / etc.
-    #[serde(default)]
-    pub props: std::collections::HashMap<String, serde_json::Value>,
-    /// Reflection-based component instances (synced from metadata_db).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub component_instances: Option<serde_json::Value>,
-}
+///
+/// Field-for-field the same type as `pulsar_scene::SceneObject` — see the
+/// module note above.
+pub type SceneObjectData = pulsar_scene::SceneObject;
 
 // ── Property change tracking ─────────────────────────────────────────────
 
@@ -1568,7 +1545,10 @@ impl SceneDatabase {
             .map(|file| file.blueprint_bindings)
             .unwrap_or_default();
         let level_file = LevelFile {
-            version: "2.1".into(),
+            // The canonical schema carries `version` as a `serde_json::Value`
+            // so it can round-trip both the editor's `"2.1"` string and v1's
+            // bare `1`; the emitted bytes are unchanged.
+            version: Value::String("2.1".into()),
             objects,
             components,
             blueprint_bindings: preserved_bindings,
@@ -1606,12 +1586,17 @@ impl SceneDatabase {
         let json = String::from_utf8(bytes).map_err(|e| format!("File is not valid UTF-8: {e}"))?;
         let level_file: LevelFile =
             serde_json::from_str(&json).map_err(|e| format!("Failed to parse JSON: {e}"))?;
-        if !level_file.version.starts_with("2.") && !level_file.version.starts_with("1.") {
+        // Same gate as the runtime's `RuntimeLevel::load` -- literally the
+        // same call now that both sides share the canonical type (#557).
+        if !level_file.is_supported_version() {
             return Err(format!(
                 "Unsupported scene version: {}. Expected 1.x or 2.x",
-                level_file.version
+                level_file.version_string()
             ));
         }
+        // Captured before the section below consumes `level_file` field by
+        // field (`version_string` borrows the whole value).
+        let version = level_file.version_string();
         self.clear();
         // Objects are stored in DFS order so parents are always inserted first.
         let has_persisted_components = !level_file.components.is_empty();
@@ -1636,7 +1621,7 @@ impl SceneDatabase {
         tracing::info!(
             "Scene loaded from: {} (version: {})",
             path.as_ref().display(),
-            level_file.version
+            version
         );
         Ok(level_file.editor.and_then(|editor| editor.camera))
     }
@@ -1937,48 +1922,23 @@ impl Default for SceneDatabase {
 }
 
 // ── Level File Format ──────────────────────────────────────────────────────
+//
+// Aliases of the canonical schema (Pulsar-Native#557) — see the note beside
+// `SceneObjectData` above. The `blueprint_bindings` section (#650) still has
+// no authoring UI here; `save_to_file` preserves whatever the file on disk
+// carried, mirroring how `preserved_editor` keeps camera state.
 
-/// JSON level file (version 2.x).
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LevelFile {
-    pub version: String,
-    pub objects: Vec<SceneObjectData>,
-    /// Reflection component instances keyed by object id.
-    #[serde(default)]
-    pub components: HashMap<ObjectId, Vec<ComponentInstance>>,
-    /// Per-object Blueprint class bindings keyed by StableId (#650).
-    ///
-    /// The editor has no binding-authoring UI yet (editor phase F); the
-    /// field exists so hand-authored or future sections survive editor
-    /// re-saves instead of being silently dropped. `save_to_file` preserves
-    /// it by reading it back from the file on disk, mirroring how
-    /// `preserved_editor` keeps camera state.
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub blueprint_bindings: pulsar_scene::BlueprintBindings,
-    pub metadata: LevelMetadata,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub editor: Option<LevelEditorFileState>,
-}
+/// JSON level file (version 1.x / 2.x).
+pub type LevelFile = pulsar_scene::SceneFile;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LevelMetadata {
-    pub created: String,
-    pub modified: String,
-    pub editor_version: String,
-}
+/// Authoring metadata written into the level file.
+pub type LevelMetadata = pulsar_scene::LevelMetadata;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LevelEditorFileState {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub camera: Option<LevelEditorCameraState>,
-}
+/// The level file's `editor` section.
+pub type LevelEditorFileState = pulsar_scene::LevelEditorFileState;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct LevelEditorCameraState {
-    pub position: [f32; 3],
-    pub yaw: f32,
-    pub pitch: f32,
-}
+/// Persisted editor camera (position + yaw/pitch in radians).
+pub type LevelEditorCameraState = pulsar_scene::LevelEditorCameraState;
 
 // ── Blueprint helpers ──────────────────────────────────────────────────────
 

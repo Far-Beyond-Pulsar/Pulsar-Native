@@ -23,7 +23,12 @@ tracing = { workspace = true }
 [build-dependencies]
 syn = { workspace = true, features = ["full", "parsing", "extra-traits", "visit"] }
 quote = { workspace = true }
-prettyplease = "0.3"
+# Must track the `syn` major this crate parses with (workspace `syn` is 2.x):
+# prettyplease 0.3 takes `syn` 3.0 types, so requesting it here resolved BOTH
+# syn majors into the build graph and `prettyplease::unparse(&file)` stopped
+# type-checking ("expected `syn::file::File`, found `syn::File`"). Cargo.lock
+# had never picked 0.3 up, so the mismatch only surfaced on a re-resolve.
+prettyplease = "0.2"
 walkdir = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
