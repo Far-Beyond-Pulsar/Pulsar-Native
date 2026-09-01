@@ -15,7 +15,9 @@ tracing    = { workspace = true }
 pulsar_reflection  = { workspace = true }
 helio_component    = { workspace = true }
 pulsar_events      = { workspace = true }
-engine_fs          = { workspace = true }
+# Canonical scene/level JSON schema (Pulsar-Native#557) — `format` is a
+# re-export of it plus the runtime-only projected-prop extension trait.
+pulsar_scene_format = { workspace = true }
 
 [lints]
 workspace = true

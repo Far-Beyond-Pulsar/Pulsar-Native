@@ -2930,6 +2930,7 @@ dependencies = [
  "pulsar_pie_abi",
  "pulsar_reflection",
  "pulsar_scene",
+ "pulsar_scene_format",
  "pulsar_scenedb",
  "pulsar_script_object_model",
  "pulsar_world_registry",
@@ -8942,13 +8943,23 @@ dependencies = [
 name = "pulsar_scene"
 version = "0.1.0"
 dependencies = [
- "engine_fs",
  "glam 0.33.5",
  "helio",
  "helio-asset-compat",
  "helio_component",
  "pulsar_events",
  "pulsar_reflection",
+ "pulsar_scene_format",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "pulsar_scene_format"
+version = "0.1.0"
+dependencies = [
+ "engine_fs",
  "serde",
  "serde_json",
  "tracing",

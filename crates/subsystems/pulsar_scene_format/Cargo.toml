@@ -1,0 +1,19 @@
+[package]
+name = "pulsar_scene_format"
+version = "0.1.0"
+edition = "2021"
+description = "Canonical on-disk scene/level file schema shared by the Pulsar editor and game runtime"
+publish = false
+
+# Deliberately dependency-light: this crate is depended on by BOTH the editor
+# (`ui_level_editor`, `engine_backend`) and the game runtime (`pulsar_scene`),
+# so it must not pull either side's graph in. serde + the virtual filesystem
+# is the whole surface.
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+engine_fs = { workspace = true }
+
+[lints]
+workspace = true
