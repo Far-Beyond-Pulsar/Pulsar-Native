@@ -367,6 +367,12 @@ impl HelioRenderer {
         height: u32,
         format: wgpu::TextureFormat,
     ) -> Option<wgpu::SubmissionIndex> {
+        // When the Inspector capture is active, put the engine-side render
+        // phases into the same bounded WGPUI timeline as Window::draw. The
+        // cfg keeps the renderer usable without the optional editor UI, and
+        // the macro is a single relaxed capture check when idle.
+        #[cfg(feature = "editor-ui")]
+        gpui::flamegraph_span!("pulsar: HelioRenderer::render_frame");
         profiling::profile_scope!("helio_frame");
         let frame_start = Instant::now();
         let now = Instant::now();
@@ -377,6 +383,8 @@ impl HelioRenderer {
 
         // ── Lazy init (first frame only) ────────────────────────────────────────
         if self.inner.is_none() {
+            #[cfg(feature = "editor-ui")]
+            gpui::flamegraph_span!("pulsar: HelioRenderer::lazy_init");
             tracing::info!("Initializing Helio renderer...");
 
             let device_arc = Arc::new(_device.clone());
@@ -498,6 +506,13 @@ impl HelioRenderer {
             .lock()
             .map(|mut events| std::mem::take(&mut *events))
             .unwrap_or_default();
+        #[cfg(feature = "editor-ui")]
+        let _pointer_events_profile = (!pending_pointer_events.is_empty())
+            .then(|| gpui::enter_span(
+                gpui::SpanName::Static("pulsar: HelioRenderer::pointer_events"),
+                gpui::SpanCategory::UserDefined,
+                None,
+            ));
         for event in pending_pointer_events {
             match event {
                 PendingPointerEvent::LeftClick { norm_x, norm_y } => {
@@ -530,6 +545,16 @@ impl HelioRenderer {
         if had_input {
             self.had_camera_input = true;
         }
+
+        #[cfg(feature = "editor-ui")]
+        let _engine_frame_diagnostic = gpui::record_diagnostic_scope(
+            gpui::DiagnosticKind::EngineFrame,
+            0,
+            self.frame_count,
+            width as u64,
+            height as u64,
+            0,
+        );
 
         {
             profiling::profile_scope!("helio_camera_input");
@@ -578,6 +603,17 @@ impl HelioRenderer {
 
         // ── Resize ──────────────────────────────────────────────────────────────
         if viewport_resized {
+            #[cfg(feature = "editor-ui")]
+            gpui::flamegraph_span!("pulsar: HelioRenderer::resize");
+            #[cfg(feature = "editor-ui")]
+            let _engine_resize_diagnostic = gpui::record_diagnostic_scope(
+                gpui::DiagnosticKind::EngineResize,
+                0,
+                width as u64,
+                height as u64,
+                scene_revision,
+                self.frame_count,
+            );
             profiling::profile_scope!("helio_resize");
             inner.renderer.set_render_size(width, height);
             if inner.planet_terrain.as_ref().is_some_and(|runtime| {
@@ -626,6 +662,17 @@ impl HelioRenderer {
         // ── Scene sync (delta when possible, full only on first frame) ──────────
         let mut sync_ms = 0.0;
         if has_pending_scene && !inner.editor_state.is_dragging() {
+            #[cfg(feature = "editor-ui")]
+            gpui::flamegraph_span!("pulsar: HelioRenderer::scene_sync");
+            #[cfg(feature = "editor-ui")]
+            let _engine_scene_sync_diagnostic = gpui::record_diagnostic_scope(
+                gpui::DiagnosticKind::EngineSceneSync,
+                0,
+                scene_revision,
+                self.frame_count,
+                inner.known_ids.len() as u64,
+                0,
+            );
             profiling::profile_scope!("helio_scene_sync");
             let t_sync = Instant::now();
             // Use delta sync for incremental updates; full sync only on first
@@ -642,6 +689,8 @@ impl HelioRenderer {
         // ── Camera / planet / gizmo / render ────────────────────────────────────
         let t_prepare = Instant::now();
         let camera = {
+            #[cfg(feature = "editor-ui")]
+            gpui::flamegraph_span!("pulsar: HelioRenderer::frame_prepare");
             profiling::profile_scope!("helio_frame_prepare");
             let (sy, cy) = self.cam_yaw.sin_cos();
             let (sp, cp) = self.cam_pitch.sin_cos();
@@ -730,6 +779,8 @@ impl HelioRenderer {
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
         let t_render = Instant::now();
         let submission_index = {
+            #[cfg(feature = "editor-ui")]
+            gpui::flamegraph_span!("pulsar: HelioRenderer::render_submit");
             profiling::profile_scope!("helio_render_submit");
             if let Err(e) = inner.renderer.render(&camera, &view) {
                 tracing::error!("Helio render error: {:?}", e);

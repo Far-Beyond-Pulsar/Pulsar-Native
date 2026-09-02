@@ -59,6 +59,13 @@ wgpui-side (prefix `wgpui: `, emitted by gpui-ce on the main thread):
 `gpu upload`. On the `retained-phase-9` wgpui branch additionally: `slab
 splice`, `pack layer at record`, `flush slab run`.
 
+The Inspector flame chart also joins the editor's Helio render path when the
+capture is active. These `pulsar:` zones cover `HelioRenderer::render_frame`,
+lazy initialization, queued pointer events, resize handling, SceneDB sync,
+frame preparation, and render submission. They share the WGPUI frame boundary,
+so a resize can be read as one timeline from native event through compositor
+and engine rendering rather than as separate profiler sessions.
+
 ## Cross-checking with WGPUI_RENDER_STATS
 
 Run with `WGPUI_RENDER_STATS=1` and every Tracy zone above has a matching
