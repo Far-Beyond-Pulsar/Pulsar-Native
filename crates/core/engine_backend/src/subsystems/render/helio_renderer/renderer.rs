@@ -121,6 +121,69 @@ impl HelioEditorMailbox {
     }
 }
 
+/// Bridges the engine's existing instrumentation stream into the Inspector's
+/// WGPUI capture when one is active. The bridge is intentionally scoped to a
+/// render frame: it drains only after all engine scopes have closed, so their
+/// absolute Unix timestamps and nesting metadata can be attached to the same
+/// bounded capture without adding work to the idle path.
+#[cfg(feature = "editor-ui")]
+struct WgpuiProfileBridge {
+    active: bool,
+    owns_profiler: bool,
+}
+
+#[cfg(feature = "editor-ui")]
+impl WgpuiProfileBridge {
+    fn begin() -> Self {
+        if !gpui::capture_enabled() {
+            return Self {
+                active: false,
+                owns_profiler: false,
+            };
+        }
+
+        // The legacy SQLite collector may already own the engine profiler.
+        // In that case leave its lifecycle untouched and only drain the
+        // events it has made available so far. Normal Inspector captures own
+        // the profiler for this frame and clean up after importing it.
+        let owns_profiler = !profiling::is_profiling_enabled();
+        if owns_profiler {
+            profiling::clear_events();
+            profiling::enable_profiling();
+        }
+
+        Self {
+            active: true,
+            owns_profiler,
+        }
+    }
+}
+
+#[cfg(feature = "editor-ui")]
+impl Drop for WgpuiProfileBridge {
+    fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
+
+        for event in profiling::collect_events() {
+            if event.name != "__FRAME_MARKER__" {
+                gpui::record_external_span(
+                    &event.name,
+                    event.start_ns,
+                    event.duration_ns,
+                    event.depth,
+                    event.thread_id,
+                );
+            }
+        }
+
+        if self.owns_profiler {
+            profiling::disable_profiling();
+        }
+    }
+}
+
 // ── HelioRenderer ─────────────────────────────────────────────────────────────
 
 /// Main renderer coordinating Helio 3D rendering with GPUI.
@@ -371,6 +434,8 @@ impl HelioRenderer {
         // phases into the same bounded WGPUI timeline as Window::draw. The
         // cfg keeps the renderer usable without the optional editor UI, and
         // the macro is a single relaxed capture check when idle.
+        #[cfg(feature = "editor-ui")]
+        let _wgpui_profile_bridge = WgpuiProfileBridge::begin();
         #[cfg(feature = "editor-ui")]
         gpui::flamegraph_span!("pulsar: HelioRenderer::render_frame");
         profiling::profile_scope!("helio_frame");
