@@ -1,7 +1,5 @@
 use super::*;
-use agent_chat_core::{
-    ChatMessage, ChatRequest, ChatRole, ToolCall,
-};
+use agent_chat_core::{ChatMessage, ChatRequest, ChatRole, ToolCall};
 use engine_state;
 use smol::Timer;
 use std::{
@@ -844,10 +842,9 @@ impl AgentChatPanel {
 
                                                 let mut iter_chunks: Vec<String> = Vec::new();
                                                 let response = provider_for_subagent
-                                                    .chat_streaming(
-                                                        sub_request,
-                                                        &mut |chunk| iter_chunks.push(chunk),
-                                                    )
+                                                    .chat_streaming(sub_request, &mut |chunk| {
+                                                        iter_chunks.push(chunk)
+                                                    })
                                                     .map_err(|e| {
                                                         format!("Sub-agent provider error: {e}")
                                                     })?;
@@ -935,9 +932,7 @@ impl AgentChatPanel {
                                                 .collect();
 
                                             Ok(agent_chat_tools::SubagentLlmResponse {
-                                                provider_id: provider_for_subagent
-                                                    .id()
-                                                    .to_string(),
+                                                provider_id: provider_for_subagent.id().to_string(),
                                                 model_used,
                                                 assistant_message,
                                                 streamed_chunks: all_chunks,

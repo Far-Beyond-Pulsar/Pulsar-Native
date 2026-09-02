@@ -55,8 +55,8 @@ use pulsar_scene::format::BlueprintBindings;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use serde_json::Value as JsonValue;
 use pulsar_scenedb::Entity;
+use serde_json::Value as JsonValue;
 
 /// Where a class's compiled bytecode lives under a project root — the exact
 /// layout `core_project_builder`'s generated discovery scans.
@@ -95,12 +95,23 @@ pub struct AppliedBinding {
 pub enum BindingError {
     /// No live object with this StableId in the hydrated store (deleted
     /// after the binding was authored).
-    UnknownObject { stable_id: String },
+    UnknownObject {
+        stable_id: String,
+    },
     /// Two entries on one object name the same class.
-    DuplicateClass { stable_id: String, class_name: String },
+    DuplicateClass {
+        stable_id: String,
+        class_name: String,
+    },
     /// No compiled bytecode for the class under the project root.
-    BytecodeMissing { class_name: String, path: PathBuf },
-    Io { path: String, message: String },
+    BytecodeMissing {
+        class_name: String,
+        path: PathBuf,
+    },
+    Io {
+        path: String,
+        message: String,
+    },
     Serialization(String),
     Executor(ExecutorError),
 }
@@ -111,11 +122,18 @@ impl std::fmt::Display for BindingError {
             BindingError::UnknownObject { stable_id } => {
                 write!(f, "no live object with stable id '{stable_id}'")
             }
-            BindingError::DuplicateClass { stable_id, class_name } => {
+            BindingError::DuplicateClass {
+                stable_id,
+                class_name,
+            } => {
                 write!(f, "class '{class_name}' bound twice to '{stable_id}'")
             }
             BindingError::BytecodeMissing { class_name, path } => {
-                write!(f, "no compiled bytecode for class '{class_name}' at {}", path.display())
+                write!(
+                    f,
+                    "no compiled bytecode for class '{class_name}' at {}",
+                    path.display()
+                )
             }
             BindingError::Io { path, message } => write!(f, "failed to read '{path}': {message}"),
             BindingError::Serialization(message) => write!(f, "invalid bytecode json: {message}"),
@@ -206,7 +224,9 @@ pub fn bind_object_class(
     overrides: HashMap<String, JsonValue>,
 ) -> Result<AppliedBinding, BindingError> {
     let Some(entity) = store.entity_for(stable_id) else {
-        return Err(BindingError::UnknownObject { stable_id: stable_id.to_string() });
+        return Err(BindingError::UnknownObject {
+            stable_id: stable_id.to_string(),
+        });
     };
 
     let instance_id = instance_id_for(stable_id, class_name);
@@ -225,7 +245,11 @@ pub fn bind_object_class(
         });
     }
 
-    let overrides = if overrides.is_empty() { None } else { Some(overrides) };
+    let overrides = if overrides.is_empty() {
+        None
+    } else {
+        Some(overrides)
+    };
     dispatcher.spawn_instance_for_entity(instance_id.clone(), &bytecode_path, entity, overrides)?;
 
     tracing::info!(
@@ -299,7 +323,10 @@ mod tests {
             HashMap::new(),
         )
         .unwrap_err();
-        assert!(matches!(error, BindingError::UnknownObject { .. }), "{error}");
+        assert!(
+            matches!(error, BindingError::UnknownObject { .. }),
+            "{error}"
+        );
     }
 
     #[test]
@@ -316,7 +343,10 @@ mod tests {
             HashMap::new(),
         )
         .unwrap_err();
-        assert!(matches!(error, BindingError::BytecodeMissing { .. }), "{error}");
+        assert!(
+            matches!(error, BindingError::BytecodeMissing { .. }),
+            "{error}"
+        );
     }
 
     /// Removing a binding unregisters cleanly even while `begin_play` is
@@ -333,8 +363,13 @@ mod tests {
             .register_bytecode(instance_id_for("lever", "TickProbe"), bytecode, None, None)
             .expect("register");
         assert!(unbind_object_class(&mut dispatcher, "lever", "TickProbe"));
-        assert!(!dispatcher.instance_ids().contains(&instance_id_for("lever", "TickProbe")));
-        assert!(!unbind_object_class(&mut dispatcher, "lever", "TickProbe"), "already gone");
+        assert!(!dispatcher
+            .instance_ids()
+            .contains(&instance_id_for("lever", "TickProbe")));
+        assert!(
+            !unbind_object_class(&mut dispatcher, "lever", "TickProbe"),
+            "already gone"
+        );
 
         let mut world = pulsar_scenedb::World::new();
         dispatcher.dispatch_pending_begin_play(&mut world);

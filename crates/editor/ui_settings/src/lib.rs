@@ -1,6 +1,6 @@
+pub mod components;
 mod handlers;
 mod screen;
-pub mod components;
 pub mod utils;
 pub mod window;
 

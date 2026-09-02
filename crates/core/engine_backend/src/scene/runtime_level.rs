@@ -98,9 +98,11 @@ impl RuntimeLevel {
             path: path_display.clone(),
             message: e.to_string(),
         })?;
-        let file: SceneFile = serde_json::from_str(&text).map_err(|e| {
-            RuntimeLevelError::Parse { path: path_display.clone(), message: e.to_string() }
-        })?;
+        let file: SceneFile =
+            serde_json::from_str(&text).map_err(|e| RuntimeLevelError::Parse {
+                path: path_display.clone(),
+                message: e.to_string(),
+            })?;
         Self::from_scene_file(file)
     }
 
@@ -128,9 +130,11 @@ impl RuntimeLevel {
             path: path_display.clone(),
             message: e.to_string(),
         })?;
-        let file: SceneFile = serde_json::from_str(&text).map_err(|e| {
-            RuntimeLevelError::Parse { path: path_display.clone(), message: e.to_string() }
-        })?;
+        let file: SceneFile =
+            serde_json::from_str(&text).map_err(|e| RuntimeLevelError::Parse {
+                path: path_display.clone(),
+                message: e.to_string(),
+            })?;
         // Extras are extracted before `file` moves into hydration.
         let extras = LevelExtras {
             editor_camera: editor_camera(&file.editor),
@@ -150,7 +154,10 @@ impl RuntimeLevel {
         };
         let mut store = WorldSceneStore::new();
         Self::hydrate_scene_file(file, &mut store)?;
-        Ok(Self { store: Arc::new(RwLock::new(store)), extras })
+        Ok(Self {
+            store: Arc::new(RwLock::new(store)),
+            extras,
+        })
     }
 
     /// Shared hydration core: version gate + objects + components into
@@ -169,28 +176,29 @@ impl RuntimeLevel {
         // `SceneFile::objects`' doc), which is exactly what insert_snapshots
         // requires.
         let snapshots: Vec<ObjectSnapshot> = file.objects.iter().map(object_snapshot).collect();
-        store.insert_snapshots(&snapshots).map_err(|error| RuntimeLevelError::Parse {
-            path: String::new(),
-            message: error.to_string(),
-        })?;
+        store
+            .insert_snapshots(&snapshots)
+            .map_err(|error| RuntimeLevelError::Parse {
+                path: String::new(),
+                message: error.to_string(),
+            })?;
 
         let persisted = persisted_components(&file.components);
         for obj in &file.objects {
-            let Some(entity) = store.entity_for(&obj.id) else { continue };
+            let Some(entity) = store.entity_for(&obj.id) else {
+                continue;
+            };
             let instances = match persisted.get(&obj.id) {
                 Some(records) if !records.is_empty() => records.clone(),
-                _ => component_instances_from_props(
-                    &obj.props,
-                    obj.component_instances.as_ref(),
-                )
-                .into_iter()
-                .map(|(index, class_name, data)| ComponentRecord {
-                    index,
-                    class_name,
-                    data,
-                    enabled: true,
-                })
-                .collect(),
+                _ => component_instances_from_props(&obj.props, obj.component_instances.as_ref())
+                    .into_iter()
+                    .map(|(index, class_name, data)| ComponentRecord {
+                        index,
+                        class_name,
+                        data,
+                        enabled: true,
+                    })
+                    .collect(),
             };
             hydrate_components(store, entity, &obj.id, &instances);
         }
@@ -249,7 +257,10 @@ fn object_snapshot(obj: &pulsar_scene::format::SceneObject) -> ObjectSnapshot {
             rotation: obj.world_rotation(),
             scale: obj.world_scale(),
         },
-        visibility: Visibility { visible: obj.visible, locked: obj.locked },
+        visibility: Visibility {
+            visible: obj.visible,
+            locked: obj.locked,
+        },
         object_type: object_type(obj.object_type),
         render_props: RenderProps {
             props: obj.props.clone(),
@@ -287,9 +298,13 @@ fn object_type(object_type: FileObjectType) -> ObjectType {
 /// instances).
 fn persisted_components(components: &Value) -> HashMap<String, Vec<ComponentRecord>> {
     let mut out = HashMap::new();
-    let Some(map) = components.as_object() else { return out };
+    let Some(map) = components.as_object() else {
+        return out;
+    };
     for (object_id, entries) in map {
-        let Some(array) = entries.as_array() else { continue };
+        let Some(array) = entries.as_array() else {
+            continue;
+        };
         let records = array
             .iter()
             .enumerate()
@@ -298,7 +313,10 @@ fn persisted_components(components: &Value) -> HashMap<String, Vec<ComponentReco
                     index,
                     class_name: entry.get("class_name")?.as_str()?.to_string(),
                     data: entry.get("data").cloned().unwrap_or(Value::Null),
-                    enabled: entry.get("enabled").and_then(Value::as_bool).unwrap_or(true),
+                    enabled: entry
+                        .get("enabled")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(true),
                 })
             })
             .collect();
@@ -319,7 +337,10 @@ fn hydrate_components(
     instances: &[ComponentRecord],
 ) {
     for class_name in pulsar_world_registry::registered_world_component_classes() {
-        match instances.iter().find(|r| r.enabled && r.class_name == *class_name) {
+        match instances
+            .iter()
+            .find(|r| r.enabled && r.class_name == *class_name)
+        {
             Some(record) => {
                 if let Err(error) = pulsar_world_registry::hydrate_world_component_for_class(
                     class_name,
@@ -351,7 +372,11 @@ fn editor_camera(editor: &Value) -> Option<EditorCamera> {
         return None;
     }
     Some(EditorCamera {
-        position: [pos[0].as_f64()? as f32, pos[1].as_f64()? as f32, pos[2].as_f64()? as f32],
+        position: [
+            pos[0].as_f64()? as f32,
+            pos[1].as_f64()? as f32,
+            pos[2].as_f64()? as f32,
+        ],
         yaw: cam.get("yaw").and_then(Value::as_f64).unwrap_or(0.0) as f32,
         pitch: cam.get("pitch").and_then(Value::as_f64).unwrap_or(0.0) as f32,
     })
@@ -405,7 +430,13 @@ mod tests {
         assert_eq!(store.visibility(sun).unwrap().visible, true);
 
         let cube = store.entity_for("cube").expect("cube loaded");
-        assert_eq!(store.visibility(cube).unwrap(), Visibility { visible: false, locked: true });
+        assert_eq!(
+            store.visibility(cube).unwrap(),
+            Visibility {
+                visible: false,
+                locked: true
+            }
+        );
         let group = store.entity_for("group").unwrap();
         assert_eq!(store.parent_of(cube), Some(group));
         assert_eq!(store.children_of(Some(group)), &[cube]);
@@ -426,8 +457,7 @@ mod tests {
     }
 
     fn level_with_sun_components(components_section: Value, instances: Option<Value>) -> SceneFile {
-        let mut file: SceneFile =
-            serde_json::from_str(SAMPLE_LEVEL).expect("sample parses");
+        let mut file: SceneFile = serde_json::from_str(SAMPLE_LEVEL).expect("sample parses");
         if let Some(instances) = instances {
             file.objects[0].component_instances = Some(instances);
         }
@@ -501,7 +531,10 @@ mod tests {
             .entity_for("sun")
             .and_then(|e| store.world().get::<LightComponent>(e))
             .expect("persisted map drove hydration");
-        assert_eq!(light.intensity.intensity, 99.0, "disabled record must lose to the enabled one");
+        assert_eq!(
+            light.intensity.intensity, 99.0,
+            "disabled record must lose to the enabled one"
+        );
     }
 
     #[test]
@@ -509,7 +542,11 @@ mod tests {
         let level = sample_level();
         assert_eq!(
             level.editor_camera(),
-            Some(EditorCamera { position: [10.0, 20.0, 30.0], yaw: 1.0, pitch: -0.25 })
+            Some(EditorCamera {
+                position: [10.0, 20.0, 30.0],
+                yaw: 1.0,
+                pitch: -0.25
+            })
         );
     }
 
@@ -534,7 +571,10 @@ mod tests {
         let store = level.store();
         let store = store.read();
         let cube = store.entity_for("cube").unwrap();
-        assert_eq!(store.world().get::<StableId>(cube).map(|s| s.0.clone()), Some("cube".into()));
+        assert_eq!(
+            store.world().get::<StableId>(cube).map(|s| s.0.clone()),
+            Some("cube".into())
+        );
     }
 
     /// #650 additive guarantee: files without `blueprint_bindings` load with

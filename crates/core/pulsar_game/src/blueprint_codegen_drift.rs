@@ -105,7 +105,12 @@ mod tests {
             pbgc::NodeInstance::new("begin", "begin_play", pbgc::Position { x: 0.0, y: 0.0 });
         begin.outputs.push(pbgc::PinInstance::new(
             "begin_exec",
-            pbgc::Pin::new("begin_exec", "Body", pbgc::DataType::Exec, pbgc::PinType::Output),
+            pbgc::Pin::new(
+                "begin_exec",
+                "Body",
+                pbgc::DataType::Exec,
+                pbgc::PinType::Output,
+            ),
         ));
         graph.add_node(begin);
         let logic = pbgc::compile_graph(&graph).expect("logic compilation");
@@ -165,7 +170,11 @@ mod tests {
         assert!(actor.contains("pub struct ComponentProbe {}"));
         assert!(actor.contains("__init_components(entity: Entity, world: &mut World)"));
         assert!(actor.contains("hydrate_world_component_for_class("));
-        for retired in ["__bp_with_comp", "__bp_set_comp_ctx", "pulsar_game::ComponentStore"] {
+        for retired in [
+            "__bp_with_comp",
+            "__bp_set_comp_ctx",
+            "pulsar_game::ComponentStore",
+        ] {
             assert!(
                 !actor.contains(retired),
                 "retired baked-store routing `{retired}` reappeared in the emission"
@@ -191,7 +200,10 @@ mod tests {
             "src/classes/layout_probe/events/events.rs",
             "src/classes/layout_probe/vars/mod.rs",
         ] {
-            assert!(paths.contains(&expected), "missing generated file {expected}");
+            assert!(
+                paths.contains(&expected),
+                "missing generated file {expected}"
+            );
         }
     }
 }

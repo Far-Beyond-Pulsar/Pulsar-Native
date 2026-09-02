@@ -1,16 +1,13 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use ui::{
-    button::Button,
-    clipboard::Clipboard,
-    h_flex,
-    input::TextInput,
-    v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, StyledExt,
+    button::Button, clipboard::Clipboard, h_flex, input::TextInput, v_flex, ActiveTheme as _,
+    Disableable as _, Icon, IconName, StyledExt,
 };
 
+use crate::handlers;
 use crate::screen::MultiplayerWindow;
 use crate::utils::types::ConnectionStatus;
-use crate::handlers;
 
 pub fn render_connection_form(
     this: &MultiplayerWindow,

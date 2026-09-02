@@ -1,7 +1,7 @@
 use chrono::Datelike;
 
 use gpui::*;
-use ui::{v_flex, ActiveTheme};
+use ui::{ActiveTheme, v_flex};
 
 pub fn render_title_version(theme: &ui::Theme) -> impl IntoElement {
     v_flex()
@@ -33,10 +33,7 @@ pub fn render_title_version(theme: &ui::Theme) -> impl IntoElement {
 }
 
 pub fn render_divider(theme: &ui::Theme) -> impl IntoElement {
-    div()
-        .w_full()
-        .h_px()
-        .bg(theme.border.opacity(0.5))
+    div().w_full().h_px().bg(theme.border.opacity(0.5))
 }
 
 pub fn render_description(theme: &ui::Theme) -> impl IntoElement {

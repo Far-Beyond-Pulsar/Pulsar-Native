@@ -35,12 +35,12 @@
 //! A stale reference crossing ANY boundary stays a typed error at first
 //! use ([`crate::contract`]) -- marshalling never validates, accessors do.
 
-use pulsar_reflection::{
-    Reflectable, ReflectError, ReflectResult, RuntimeTypeInfo, TypeDeserializer, TypeSerializer,
-    TypeStructure, WrapperType,
-};
 #[cfg(test)]
 use pulsar_reflection::RUNTIME_TYPE_REGISTRY;
+use pulsar_reflection::{
+    ReflectError, ReflectResult, Reflectable, RuntimeTypeInfo, TypeDeserializer, TypeSerializer,
+    TypeStructure, WrapperType,
+};
 use pulsar_scenedb::Entity;
 use serde_json::{json, Value};
 
@@ -165,7 +165,10 @@ impl Reflectable for ActorRef {
         boxed
             .downcast::<ActorRef>()
             .map(|value| *value)
-            .map_err(|_| ReflectError::TypeMismatch { expected: "ActorRef", found })
+            .map_err(|_| ReflectError::TypeMismatch {
+                expected: "ActorRef",
+                found,
+            })
     }
 
     fn clone_any(&self) -> Box<dyn std::any::Any> {
@@ -191,26 +194,39 @@ impl Reflectable for ComponentRef {
             deserializer.deserialize_struct(Self::type_info().fields().ok_or_else(|| {
                 ReflectError::DeserializationFailed("ComponentRef is not a struct".into())
             })?)?;
-        let take = |fields: &mut std::collections::HashMap<
-            &'static str,
-            Box<dyn std::any::Any>,
-        >,
-                    name: &'static str| {
-            fields.remove(name).ok_or_else(|| ReflectError::MissingField {
-                struct_name: "ComponentRef",
-                field_name: name,
-            })
-        };
+        let take =
+            |fields: &mut std::collections::HashMap<&'static str, Box<dyn std::any::Any>>,
+             name: &'static str| {
+                fields
+                    .remove(name)
+                    .ok_or_else(|| ReflectError::MissingField {
+                        struct_name: "ComponentRef",
+                        field_name: name,
+                    })
+            };
         let entity = *take(&mut fields, "entity")?
             .downcast::<Entity>()
-            .map_err(|_| ReflectError::TypeMismatch { expected: "Entity", found: "other".into() })?;
+            .map_err(|_| ReflectError::TypeMismatch {
+                expected: "Entity",
+                found: "other".into(),
+            })?;
         let class_name = *take(&mut fields, "class_name")?
             .downcast::<String>()
-            .map_err(|_| ReflectError::TypeMismatch { expected: "String", found: "other".into() })?;
+            .map_err(|_| ReflectError::TypeMismatch {
+                expected: "String",
+                found: "other".into(),
+            })?;
         let component_index = *take(&mut fields, "component_index")?
             .downcast::<u32>()
-            .map_err(|_| ReflectError::TypeMismatch { expected: "u32", found: "other".into() })?;
-        Ok(Self { entity, class_name, component_index })
+            .map_err(|_| ReflectError::TypeMismatch {
+                expected: "u32",
+                found: "other".into(),
+            })?;
+        Ok(Self {
+            entity,
+            class_name,
+            component_index,
+        })
     }
 
     fn clone_any(&self) -> Box<dyn std::any::Any> {
@@ -221,8 +237,9 @@ impl Reflectable for ComponentRef {
 // ── registry shims for the foreign types ───────────────────────────────────
 
 fn serialize_entity_json(value: &dyn std::any::Any) -> ReflectResult<Value> {
-    let entity =
-        value.downcast_ref::<Entity>().ok_or_else(|| ReflectError::TypeMismatch {
+    let entity = value
+        .downcast_ref::<Entity>()
+        .ok_or_else(|| ReflectError::TypeMismatch {
             expected: "pulsar_scenedb::Entity",
             found: format!("{:?}", value.type_id()),
         })?;
@@ -238,17 +255,24 @@ fn deserialize_entity_json(value: Value) -> ReflectResult<Entity> {
 }
 
 fn serialize_u32_json(value: &dyn std::any::Any) -> ReflectResult<Value> {
-    let n = value.downcast_ref::<u32>().ok_or_else(|| ReflectError::TypeMismatch {
-        expected: "u32",
-        found: format!("{:?}", value.type_id()),
-    })?;
+    let n = value
+        .downcast_ref::<u32>()
+        .ok_or_else(|| ReflectError::TypeMismatch {
+            expected: "u32",
+            found: format!("{:?}", value.type_id()),
+        })?;
     Ok(json!(n))
 }
 
 fn deserialize_u32_json(value: Value) -> ReflectResult<u32> {
     // Accept only values that fit exactly; a float/overflowed value is a
     // hard mismatch, not a truncation.
-    if value.is_u64() && value.as_u64().map(|n| n <= u32::MAX as u64).unwrap_or(false) {
+    if value.is_u64()
+        && value
+            .as_u64()
+            .map(|n| n <= u32::MAX as u64)
+            .unwrap_or(false)
+    {
         Ok(value.as_u64().unwrap() as u32)
     } else {
         Err(ReflectError::TypeMismatch {
@@ -279,10 +303,12 @@ inventory::submit! {
 }
 
 fn serialize_actor_ref_json(value: &dyn std::any::Any) -> ReflectResult<Value> {
-    let r = value.downcast_ref::<ActorRef>().ok_or_else(|| ReflectError::TypeMismatch {
-        expected: "ActorRef",
-        found: format!("{:?}", value.type_id()),
-    })?;
+    let r = value
+        .downcast_ref::<ActorRef>()
+        .ok_or_else(|| ReflectError::TypeMismatch {
+            expected: "ActorRef",
+            found: format!("{:?}", value.type_id()),
+        })?;
     Ok(json!(r.entity().bits()))
 }
 
@@ -358,9 +384,13 @@ mod tests {
     /// truncating.
     #[test]
     fn u32_shim_round_trips_and_rejects_garbage() {
-        let json = RUNTIME_TYPE_REGISTRY.serialize_json_for_any(&42u32).unwrap();
+        let json = RUNTIME_TYPE_REGISTRY
+            .serialize_json_for_any(&42u32)
+            .unwrap();
         assert_eq!(json, serde_json::json!(42));
-        let back = RUNTIME_TYPE_REGISTRY.deserialize_json_for_type(&U32_TYPE_INFO, json).unwrap();
+        let back = RUNTIME_TYPE_REGISTRY
+            .deserialize_json_for_type(&U32_TYPE_INFO, json)
+            .unwrap();
         assert_eq!(back.downcast_ref::<u32>(), Some(&42));
 
         assert!(RUNTIME_TYPE_REGISTRY
@@ -388,8 +418,9 @@ mod tests {
 
         // Registry path (what C's marshalling will use).
         let any_json = RUNTIME_TYPE_REGISTRY.serialize_json_for_any(&r).unwrap();
-        let back_any =
-            RUNTIME_TYPE_REGISTRY.deserialize_json_for_type(actor_ref_type_info(), any_json).unwrap();
+        let back_any = RUNTIME_TYPE_REGISTRY
+            .deserialize_json_for_type(actor_ref_type_info(), any_json)
+            .unwrap();
         assert_eq!(back_any.downcast_ref::<ActorRef>(), Some(&r));
     }
 
@@ -436,7 +467,10 @@ mod tests {
         ];
         assert!(colors.iter().all(|c| c.is_some()));
         assert_eq!(
-            colors.iter().collect::<std::collections::HashSet<_>>().len(),
+            colors
+                .iter()
+                .collect::<std::collections::HashSet<_>>()
+                .len(),
             3,
             "identity types need visually distinct pins"
         );

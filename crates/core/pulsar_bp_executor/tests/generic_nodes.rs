@@ -94,12 +94,7 @@ fn array_push_node(id: &str) -> NodeInstance {
     let mut n = NodeInstance::new(id, "array_push", Position::default());
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_arr"),
@@ -121,12 +116,7 @@ fn array_push_node(id: &str) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_eo"),
-        Pin::new(
-            &format!("{id}_eo"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_eo"), "exec", DataType::Exec, PinType::Output),
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_r"),
@@ -145,12 +135,7 @@ fn array_push_vec_item_node(id: &str) -> NodeInstance {
     let mut n = NodeInstance::new(id, "array_push", Position::default());
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_arr"),
@@ -172,12 +157,7 @@ fn array_push_vec_item_node(id: &str) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_eo"),
-        Pin::new(
-            &format!("{id}_eo"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_eo"), "exec", DataType::Exec, PinType::Output),
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_r"),
@@ -195,12 +175,7 @@ fn array_clear_node(id: &str) -> NodeInstance {
     let mut n = NodeInstance::new(id, "array_clear", Position::default());
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_arr"),
@@ -213,12 +188,7 @@ fn array_clear_node(id: &str) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_eo"),
-        Pin::new(
-            &format!("{id}_eo"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_eo"), "exec", DataType::Exec, PinType::Output),
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_r"),
@@ -236,12 +206,7 @@ fn array_set_node(id: &str) -> NodeInstance {
     let mut n = NodeInstance::new(id, "array_set", Position::default());
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_arr"),
@@ -272,12 +237,7 @@ fn array_set_node(id: &str) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_eo"),
-        Pin::new(
-            &format!("{id}_eo"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_eo"), "exec", DataType::Exec, PinType::Output),
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_r"),
@@ -341,12 +301,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_eq_int", Position::default());
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_a"),
@@ -368,12 +323,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_o"),
-        Pin::new(
-            &format!("{id}_o"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_o"), "exec", DataType::Exec, PinType::Output),
     ));
     n.properties
         .insert(format!("{id}_x"), serde_json::json!(expected as f64));
@@ -384,12 +334,7 @@ fn assert_true(id: &str) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_true", Position::default());
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_c"),
@@ -402,12 +347,7 @@ fn assert_true(id: &str) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_o"),
-        Pin::new(
-            &format!("{id}_o"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_o"), "exec", DataType::Exec, PinType::Output),
     ));
     n
 }
@@ -416,12 +356,7 @@ fn assert_false(id: &str) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_false", Position::default());
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_c"),
@@ -434,12 +369,7 @@ fn assert_false(id: &str) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_o"),
-        Pin::new(
-            &format!("{id}_o"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_o"), "exec", DataType::Exec, PinType::Output),
     ));
     n
 }

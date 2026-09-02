@@ -71,7 +71,7 @@
 //!   (proven by its own tests below) but nothing in `ui_level_editor` reads
 //!   from it yet.
 
-use crate::scene::{GizmoAxis, GizmoState, GizmoType, ObjectDirtyFlags, ObjectType};
+use crate::scene::{ObjectDirtyFlags, ObjectType};
 use pulsar_scenedb::{Entity, World};
 use std::collections::HashMap;
 
@@ -127,7 +127,11 @@ pub struct Transform {
 
 impl Default for Transform {
     fn default() -> Self {
-        Self { position: [0.0; 3], rotation: [0.0; 3], scale: [1.0; 3] }
+        Self {
+            position: [0.0; 3],
+            rotation: [0.0; 3],
+            scale: [1.0; 3],
+        }
     }
 }
 
@@ -149,7 +153,10 @@ pub struct Visibility {
 
 impl Default for Visibility {
     fn default() -> Self {
-        Self { visible: true, locked: false }
+        Self {
+            visible: true,
+            locked: false,
+        }
     }
 }
 
@@ -208,11 +215,6 @@ pub struct WorldSceneStore {
     children: HashMap<Option<Entity>, Vec<Entity>>,
     /// Currently selected entity, if any. Mirrors `SceneDbInner::selected`.
     selected: Option<Entity>,
-    /// Gizmo state for the level editor. Mirrors `SceneDbInner::gizmo_state`
-    /// -- reuses `crate::scene`'s existing `GizmoState`/`GizmoType`/
-    /// `GizmoAxis` types rather than redefining them, since this store lives
-    /// in the same crate and nothing about those types is `SceneDb`-specific.
-    gizmo_state: GizmoState,
     /// Per-entity accumulated dirty flags since the last
     /// [`Self::take_dirty_flags`]/[`Self::drain_dirty`] for that entity.
     /// Entity-keyed internally (the real identity); the public API mirrors
@@ -243,13 +245,14 @@ impl WorldSceneStore {
         // `HelioRenderSubsystem::simulate_b`'s `world.change_tracker()`
         // check never has to special-case "not attached yet" once a caller
         // gets around to `register_subsystem`.
-        scene_db.world.attach_change_tracker(pulsar_scenedb::SharedChangeTracker::new());
+        scene_db
+            .world
+            .attach_change_tracker(pulsar_scenedb::SharedChangeTracker::new());
         Self {
             scene_db,
             by_stable_id: HashMap::new(),
             children: HashMap::new(),
             selected: None,
-            gizmo_state: GizmoState::default(),
             dirty: HashMap::new(),
             dirty_gen: 0,
             removed_since_drain: Vec::new(),
@@ -261,7 +264,10 @@ impl WorldSceneStore {
     /// bump both revision counters. Mirrors `SceneDb::publish` -- called from
     /// every mutator below, not something callers invoke directly.
     fn publish(&mut self, entity: Entity, flags: ObjectDirtyFlags) {
-        self.dirty.entry(entity).or_insert_with(ObjectDirtyFlags::empty).insert(flags);
+        self.dirty
+            .entry(entity)
+            .or_insert_with(ObjectDirtyFlags::empty)
+            .insert(flags);
         self.dirty_gen = self.dirty_gen.saturating_add(1);
         self.render_revision = self.render_revision.saturating_add(1);
     }
@@ -315,7 +321,9 @@ impl WorldSceneStore {
         // tradeoff for new, unproven infrastructure; revisit once the pin
         // catches up (tracked at Pulsar-Native#560).
         let entity = self.scene_db.world.spawn();
-        self.scene_db.world.insert(entity, StableId(stable_id.clone()));
+        self.scene_db
+            .world
+            .insert(entity, StableId(stable_id.clone()));
         self.scene_db.world.insert(entity, Name(name.into()));
         self.scene_db.world.insert(entity, Transform::default());
         self.scene_db.world.insert(entity, Visibility::default());
@@ -376,7 +384,10 @@ impl WorldSceneStore {
     }
 
     pub fn stable_id_of(&self, entity: Entity) -> Option<&str> {
-        self.scene_db.world.get::<StableId>(entity).map(|id| id.0.as_str())
+        self.scene_db
+            .world
+            .get::<StableId>(entity)
+            .map(|id| id.0.as_str())
     }
 
     pub fn is_alive(&self, entity: Entity) -> bool {
@@ -416,7 +427,10 @@ impl WorldSceneStore {
         if let Some(new_parent_entity) = new_parent {
             if new_parent_entity == entity || self.is_ancestor_of(entity, new_parent_entity) {
                 let entity_id = self.stable_id_of(entity).unwrap_or_default().to_string();
-                let parent_id = self.stable_id_of(new_parent_entity).unwrap_or_default().to_string();
+                let parent_id = self
+                    .stable_id_of(new_parent_entity)
+                    .unwrap_or_default()
+                    .to_string();
                 return Err(WorldSceneStoreError::WouldCreateCycle(entity_id, parent_id));
             }
         }
@@ -435,7 +449,10 @@ impl WorldSceneStore {
             }
         }
         self.children.entry(new_parent).or_default().push(entity);
-        self.publish(entity, ObjectDirtyFlags::HIERARCHY | ObjectDirtyFlags::TRANSFORM);
+        self.publish(
+            entity,
+            ObjectDirtyFlags::HIERARCHY | ObjectDirtyFlags::TRANSFORM,
+        );
 
         Ok(())
     }
@@ -523,7 +540,10 @@ impl WorldSceneStore {
     }
 
     pub fn name(&self, entity: Entity) -> Option<&str> {
-        self.scene_db.world.get::<Name>(entity).map(|n| n.0.as_str())
+        self.scene_db
+            .world
+            .get::<Name>(entity)
+            .map(|n| n.0.as_str())
     }
 
     pub fn set_name(&mut self, entity: Entity, name: impl Into<String>) -> bool {
@@ -594,12 +614,17 @@ impl WorldSceneStore {
     /// `component_instances` in place rather than reading-modifying-writing
     /// a clone. No-op if `id` doesn't resolve.
     pub fn update_render_props(&mut self, id: &str, f: impl FnOnce(&mut RenderProps)) -> bool {
-        let Some(entity) = self.entity_for(id) else { return false };
+        let Some(entity) = self.entity_for(id) else {
+            return false;
+        };
         match self.scene_db.world.get_mut::<RenderProps>(entity) {
             Some(mut props) => f(&mut props),
             None => return false,
         }
-        self.publish(entity, ObjectDirtyFlags::PROPS | ObjectDirtyFlags::COMPONENTS);
+        self.publish(
+            entity,
+            ObjectDirtyFlags::PROPS | ObjectDirtyFlags::COMPONENTS,
+        );
         true
     }
 
@@ -621,7 +646,9 @@ impl WorldSceneStore {
 
     /// Mirrors `SceneDb::get_selected_id`.
     pub fn get_selected_id(&self) -> Option<String> {
-        self.selected.and_then(|e| self.stable_id_of(e)).map(str::to_string)
+        self.selected
+            .and_then(|e| self.stable_id_of(e))
+            .map(str::to_string)
     }
 
     pub fn get_selected_entity(&self) -> Option<Entity> {
@@ -629,21 +656,6 @@ impl WorldSceneStore {
     }
 
     // ── Gizmo state ──────────────────────────────────────────────────────
-
-    /// Mirrors `SceneDb::get_gizmo_state`.
-    pub fn get_gizmo_state(&self) -> GizmoState {
-        self.gizmo_state.clone()
-    }
-
-    /// Mirrors `SceneDb::set_gizmo_type`.
-    pub fn set_gizmo_type(&mut self, gizmo_type: GizmoType) {
-        self.gizmo_state.gizmo_type = gizmo_type;
-    }
-
-    /// Mirrors `SceneDb::set_gizmo_highlighted_axis`.
-    pub fn set_gizmo_highlighted_axis(&mut self, axis: Option<GizmoAxis>) {
-        self.gizmo_state.highlighted_axis = axis;
-    }
 
     // ── Dirty / revision tracking ────────────────────────────────────────
     //
@@ -675,7 +687,10 @@ impl WorldSceneStore {
     /// accumulated for one object since the last call.
     pub fn take_dirty_flags(&mut self, id: &str) -> ObjectDirtyFlags {
         match self.entity_for(id) {
-            Some(entity) => self.dirty.remove(&entity).unwrap_or_else(ObjectDirtyFlags::empty),
+            Some(entity) => self
+                .dirty
+                .remove(&entity)
+                .unwrap_or_else(ObjectDirtyFlags::empty),
             None => ObjectDirtyFlags::empty(),
         }
     }
@@ -712,7 +727,10 @@ impl WorldSceneStore {
     /// Mirrors `SceneDb::get_object`.
     pub fn get_object(&self, id: &str) -> Option<ObjectSnapshot> {
         let entity = self.entity_for(id)?;
-        let parent = self.parent_of(entity).and_then(|p| self.stable_id_of(p)).map(str::to_string);
+        let parent = self
+            .parent_of(entity)
+            .and_then(|p| self.stable_id_of(p))
+            .map(str::to_string);
         Some(ObjectSnapshot {
             stable_id: id.to_string(),
             name: self.name(entity).unwrap_or_default().to_string(),
@@ -720,7 +738,12 @@ impl WorldSceneStore {
             transform: self.transform(entity).unwrap_or_default(),
             visibility: self.visibility(entity).unwrap_or_default(),
             object_type: self.object_type(entity).unwrap_or(ObjectType::Empty),
-            render_props: self.scene_db.world.get::<RenderProps>(entity).cloned().unwrap_or_default(),
+            render_props: self
+                .scene_db
+                .world
+                .get::<RenderProps>(entity)
+                .cloned()
+                .unwrap_or_default(),
         })
     }
 
@@ -740,7 +763,14 @@ impl WorldSceneStore {
         scale: [f32; 3],
     ) -> bool {
         match self.entity_for(id) {
-            Some(entity) => self.set_transform(entity, Transform { position, rotation, scale }),
+            Some(entity) => self.set_transform(
+                entity,
+                Transform {
+                    position,
+                    rotation,
+                    scale,
+                },
+            ),
             None => false,
         }
     }
@@ -776,9 +806,7 @@ impl WorldSceneStore {
     /// [`ObjectSnapshot`] rather than either concrete file format, so both
     /// can convert into/out of `ObjectSnapshot` and share this rather than
     /// duplicating it.
-    pub fn load_from_snapshots(
-        snapshots: &[ObjectSnapshot],
-    ) -> Result<Self, WorldSceneStoreError> {
+    pub fn load_from_snapshots(snapshots: &[ObjectSnapshot]) -> Result<Self, WorldSceneStoreError> {
         let mut store = Self::new();
         store.insert_snapshots(snapshots)?;
         Ok(store)
@@ -823,7 +851,9 @@ impl WorldSceneStore {
     }
 
     fn collect_snapshots_dfs(&self, parent: Option<Entity>, out: &mut Vec<ObjectSnapshot>) {
-        let parent_stable_id = parent.and_then(|p| self.stable_id_of(p)).map(str::to_string);
+        let parent_stable_id = parent
+            .and_then(|p| self.stable_id_of(p))
+            .map(str::to_string);
         for &entity in self.children_of(parent) {
             out.push(ObjectSnapshot {
                 stable_id: self.stable_id_of(entity).unwrap_or_default().to_string(),
@@ -832,7 +862,12 @@ impl WorldSceneStore {
                 transform: self.transform(entity).unwrap_or_default(),
                 visibility: self.visibility(entity).unwrap_or_default(),
                 object_type: self.object_type(entity).unwrap_or(ObjectType::Empty),
-                render_props: self.scene_db.world.get::<RenderProps>(entity).cloned().unwrap_or_default(),
+                render_props: self
+                    .scene_db
+                    .world
+                    .get::<RenderProps>(entity)
+                    .cloned()
+                    .unwrap_or_default(),
             });
             self.collect_snapshots_dfs(Some(entity), out);
         }
@@ -916,9 +951,12 @@ mod tests {
     fn despawn_is_recursive_over_children() {
         let mut store = WorldSceneStore::new();
         let parent = store.spawn(Some("parent".into()), "Parent", None).unwrap();
-        let child = store.spawn(Some("child".into()), "Child", Some(parent)).unwrap();
-        let grandchild =
-            store.spawn(Some("grandchild".into()), "Grandchild", Some(child)).unwrap();
+        let child = store
+            .spawn(Some("child".into()), "Child", Some(parent))
+            .unwrap();
+        let grandchild = store
+            .spawn(Some("grandchild".into()), "Grandchild", Some(child))
+            .unwrap();
 
         store.despawn(parent);
 
@@ -960,7 +998,9 @@ mod tests {
     fn reparent_rejects_a_cycle() {
         let mut store = WorldSceneStore::new();
         let parent = store.spawn(Some("parent".into()), "Parent", None).unwrap();
-        let child = store.spawn(Some("child".into()), "Child", Some(parent)).unwrap();
+        let child = store
+            .spawn(Some("child".into()), "Child", Some(parent))
+            .unwrap();
 
         let err = store.reparent(parent, Some(child)).unwrap_err();
         assert_eq!(
@@ -977,7 +1017,10 @@ mod tests {
         let mut store = WorldSceneStore::new();
         let e = store.spawn(Some("self".into()), "Self", None).unwrap();
         let err = store.reparent(e, Some(e)).unwrap_err();
-        assert_eq!(err, WorldSceneStoreError::WouldCreateCycle("self".into(), "self".into()));
+        assert_eq!(
+            err,
+            WorldSceneStoreError::WouldCreateCycle("self".into(), "self".into())
+        );
     }
 
     #[test]
@@ -1035,14 +1078,21 @@ mod tests {
         let mut store = WorldSceneStore::new();
         let e = store.spawn(None, "Object", None).unwrap();
 
-        let t = Transform { position: [1.0, 2.0, 3.0], rotation: [0.0; 3], scale: [1.0; 3] };
+        let t = Transform {
+            position: [1.0, 2.0, 3.0],
+            rotation: [0.0; 3],
+            scale: [1.0; 3],
+        };
         assert!(store.set_transform(e, t));
         assert_eq!(store.transform(e), Some(t));
 
         assert!(store.set_name(e, "Renamed"));
         assert_eq!(store.name(e), Some("Renamed"));
 
-        let v = Visibility { visible: false, locked: true };
+        let v = Visibility {
+            visible: false,
+            locked: true,
+        };
         assert!(store.set_visibility(e, v));
         assert_eq!(store.visibility(e), Some(v));
     }
@@ -1066,7 +1116,9 @@ mod tests {
         let mut store = WorldSceneStore::new();
         let root_a = store.spawn(Some("root_a".into()), "RootA", None).unwrap();
         let root_b = store.spawn(Some("root_b".into()), "RootB", None).unwrap();
-        let mid = store.spawn(Some("mid".into()), "Mid", Some(root_a)).unwrap();
+        let mid = store
+            .spawn(Some("mid".into()), "Mid", Some(root_a))
+            .unwrap();
         let leaf = store.spawn(Some("leaf".into()), "Leaf", Some(mid)).unwrap();
 
         store.reparent(mid, Some(root_b)).unwrap();
@@ -1124,8 +1176,13 @@ mod tests {
         // `.err().unwrap()` rather than `.unwrap_err()` -- the latter needs
         // `WorldSceneStore: Debug` (the `Ok` type) too, which it doesn't
         // implement (it holds a `World`, which doesn't either).
-        let err = WorldSceneStore::load_from_snapshots(&snapshots).err().unwrap();
-        assert_eq!(err, WorldSceneStoreError::UnknownParent("root".into(), "child".into()));
+        let err = WorldSceneStore::load_from_snapshots(&snapshots)
+            .err()
+            .unwrap();
+        assert_eq!(
+            err,
+            WorldSceneStoreError::UnknownParent("root".into(), "child".into())
+        );
     }
 
     #[test]
@@ -1161,8 +1218,15 @@ mod tests {
     fn to_snapshots_preserves_transform_and_visibility_edits() {
         let mut store = WorldSceneStore::load_from_snapshots(&[snap("obj", None)]).unwrap();
         let entity = store.entity_for("obj").unwrap();
-        let t = Transform { position: [4.0, 5.0, 6.0], rotation: [0.0; 3], scale: [2.0; 3] };
-        let v = Visibility { visible: false, locked: true };
+        let t = Transform {
+            position: [4.0, 5.0, 6.0],
+            rotation: [0.0; 3],
+            scale: [2.0; 3],
+        };
+        let v = Visibility {
+            visible: false,
+            locked: true,
+        };
         store.set_transform(entity, t);
         store.set_visibility(entity, v);
 
@@ -1181,7 +1245,10 @@ mod tests {
         assert_eq!(store.object_type(e), Some(ObjectType::Empty));
 
         assert!(store.set_object_type(e, ObjectType::Mesh(crate::scene::MeshType::Cube)));
-        assert_eq!(store.object_type(e), Some(ObjectType::Mesh(crate::scene::MeshType::Cube)));
+        assert_eq!(
+            store.object_type(e),
+            Some(ObjectType::Mesh(crate::scene::MeshType::Cube))
+        );
     }
 
     #[test]
@@ -1191,7 +1258,10 @@ mod tests {
         store.set_object_type(e, ObjectType::Light(crate::scene::LightType::Point));
 
         let snap = store.get_object("light").unwrap();
-        assert_eq!(snap.object_type, ObjectType::Light(crate::scene::LightType::Point));
+        assert_eq!(
+            snap.object_type,
+            ObjectType::Light(crate::scene::LightType::Point)
+        );
 
         let reloaded = WorldSceneStore::load_from_snapshots(&store.to_snapshots()).unwrap();
         assert_eq!(
@@ -1209,7 +1279,9 @@ mod tests {
         assert_eq!(store.render_props("obj"), Some(RenderProps::default()));
 
         let ok = store.update_render_props("obj", |props| {
-            props.props.insert("intensity".to_string(), serde_json::json!(2.5));
+            props
+                .props
+                .insert("intensity".to_string(), serde_json::json!(2.5));
             props.component_instances = Some(serde_json::json!([{"class_name": "LightComponent"}]));
         });
         assert!(ok);
@@ -1269,20 +1341,6 @@ mod tests {
 
     // ── Gizmo state ──────────────────────────────────────────────────────
 
-    #[test]
-    fn gizmo_state_defaults_and_round_trips() {
-        let mut store = WorldSceneStore::new();
-        assert_eq!(store.get_gizmo_state().gizmo_type, GizmoType::None);
-        assert_eq!(store.get_gizmo_state().highlighted_axis, None);
-
-        store.set_gizmo_type(GizmoType::Rotate);
-        store.set_gizmo_highlighted_axis(Some(GizmoAxis::Y));
-
-        let state = store.get_gizmo_state();
-        assert_eq!(state.gizmo_type, GizmoType::Rotate);
-        assert_eq!(state.highlighted_axis, Some(GizmoAxis::Y));
-    }
-
     // ── Dirty / revision tracking ────────────────────────────────────────
 
     #[test]
@@ -1309,7 +1367,11 @@ mod tests {
         assert!(store.render_revision() > revision_before);
         assert_eq!(
             store.get_object("obj").unwrap().transform,
-            Transform { position: [1.0, 2.0, 3.0], rotation: [0.0; 3], scale: [1.0; 3] }
+            Transform {
+                position: [1.0, 2.0, 3.0],
+                rotation: [0.0; 3],
+                scale: [1.0; 3]
+            }
         );
     }
 
@@ -1327,7 +1389,10 @@ mod tests {
 
         let drained = store.drain_dirty();
         let ids: std::collections::HashSet<_> = drained.iter().map(|(id, _)| id.clone()).collect();
-        assert_eq!(ids, ["a".to_string(), "b".to_string()].into_iter().collect());
+        assert_eq!(
+            ids,
+            ["a".to_string(), "b".to_string()].into_iter().collect()
+        );
 
         assert!(store.drain_dirty().is_empty());
         assert_eq!(store.take_dirty_flags("a"), ObjectDirtyFlags::empty());
@@ -1347,13 +1412,20 @@ mod tests {
     fn despawn_reports_every_removed_descendant() {
         let mut store = WorldSceneStore::new();
         let parent = store.spawn(Some("parent".into()), "Parent", None).unwrap();
-        store.spawn(Some("child".into()), "Child", Some(parent)).unwrap();
+        store
+            .spawn(Some("child".into()), "Child", Some(parent))
+            .unwrap();
 
         store.despawn(parent);
 
         let removed = store.take_removed_ids();
         let removed: std::collections::HashSet<_> = removed.into_iter().collect();
-        assert_eq!(removed, ["parent".to_string(), "child".to_string()].into_iter().collect());
+        assert_eq!(
+            removed,
+            ["parent".to_string(), "child".to_string()]
+                .into_iter()
+                .collect()
+        );
     }
 
     #[test]
@@ -1370,7 +1442,9 @@ mod tests {
     fn get_object_resolves_parent_as_a_stable_id() {
         let mut store = WorldSceneStore::new();
         let parent = store.spawn(Some("parent".into()), "Parent", None).unwrap();
-        store.spawn(Some("child".into()), "Child", Some(parent)).unwrap();
+        store
+            .spawn(Some("child".into()), "Child", Some(parent))
+            .unwrap();
 
         let child = store.get_object("child").unwrap();
         assert_eq!(child.parent, Some("parent".to_string()));
@@ -1414,12 +1488,18 @@ mod tests {
             ..Default::default()
         }))
         .expect("device");
-        pulsar_scenedb::gpu::EngineGpuContext::new(std::sync::Arc::new(device), std::sync::Arc::new(queue))
+        pulsar_scenedb::gpu::EngineGpuContext::new(
+            std::sync::Arc::new(device),
+            std::sync::Arc::new(queue),
+        )
     }
 
     fn gpu_scene_cfg() -> pulsar_scenedb::gpu::SceneGpuConfig {
         pulsar_scenedb::gpu::SceneGpuConfig {
-            classes: vec![pulsar_scenedb::gpu::RegionClassConfig { capacity: 64, max_resident_cells: 1 }],
+            classes: vec![pulsar_scenedb::gpu::RegionClassConfig {
+                capacity: 64,
+                max_resident_cells: 1,
+            }],
             tombstone_headroom: 8,
             max_cells_metadata: 16,
         }
@@ -1430,25 +1510,49 @@ mod tests {
         use pulsar_scenedb::GpuColumnSet;
 
         let ctx = gpu_test_context();
-        let store_gpu = std::sync::Arc::new(pulsar_scenedb::gpu::SceneGpuStore::new(&ctx, gpu_scene_cfg()));
-
-        let mut store = WorldSceneStore::new();
-        store.world_mut().attach_gpu_mirror(pulsar_scenedb::gpu::GpuMirrorHandle::new(
-            std::sync::Arc::clone(&store_gpu),
-            std::sync::Arc::clone(ctx.queue()),
+        let store_gpu = std::sync::Arc::new(pulsar_scenedb::gpu::SceneGpuStore::new(
+            &ctx,
+            gpu_scene_cfg(),
         ));
 
+        let mut store = WorldSceneStore::new();
+        store
+            .world_mut()
+            .attach_gpu_mirror(pulsar_scenedb::gpu::GpuMirrorHandle::new(
+                std::sync::Arc::clone(&store_gpu),
+                std::sync::Arc::clone(ctx.queue()),
+            ));
+
         let entity = store.spawn(Some("moved".into()), "Moved", None).unwrap();
-        let transform = Transform { position: [1.0, 2.0, 3.0], rotation: [0.0, 90.0, 0.0], scale: [2.0, 2.0, 2.0] };
+        let transform = Transform {
+            position: [1.0, 2.0, 3.0],
+            rotation: [0.0, 90.0, 0.0],
+            scale: [2.0, 2.0, 2.0],
+        };
         store.set_transform(entity, transform);
-        store.world_mut().flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+        store
+            .world_mut()
+            .flush_gpu_mirror(ctx.queue())
+            .expect("mirror attached");
 
         let id = Transform::packed_gpu_component_id();
         let handle = store_gpu
-            .resolve_buffer_handle(store_gpu.buffer_key_for(id).expect("insert must auto-register the buffer"))
+            .resolve_buffer_handle(
+                store_gpu
+                    .buffer_key_for(id)
+                    .expect("insert must auto-register the buffer"),
+            )
             .expect("resolvable");
-        let got: Transform = pulsar_scenedb::gpu::readback_row(ctx.device(), ctx.queue(), &handle.buffer, entity.index());
+        let got: Transform = pulsar_scenedb::gpu::readback_row(
+            ctx.device(),
+            ctx.queue(),
+            &handle.buffer,
+            entity.index(),
+        );
 
-        assert_eq!(got, transform, "must be real GPU-resident data, byte-identical to what was inserted");
+        assert_eq!(
+            got, transform,
+            "must be real GPU-resident data, byte-identical to what was inserted"
+        );
     }
 }

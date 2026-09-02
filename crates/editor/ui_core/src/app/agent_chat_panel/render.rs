@@ -1,10 +1,10 @@
 use gpui::*;
-use std::rc::Rc;
 use std::collections::HashMap;
+use std::rc::Rc;
 
+use super::context;
 use super::panel::AgentChatPanel;
 use super::types::*;
-use super::context;
 
 impl AgentChatPanel {
     pub(crate) fn render_auto_scroll_safety_net(&mut self) -> bool {
@@ -52,15 +52,13 @@ impl AgentChatPanel {
                 queued_count
             )
         } else if queued_count > 0 {
-            let mode = if self.subagent_completion_mode == super::panel::SubagentCompletionMode::Manual {
-                "manual mode"
-            } else {
-                "auto mode"
-            };
-            format!(
-                "{} subagent completion(s) waiting ({})",
-                queued_count, mode
-            )
+            let mode =
+                if self.subagent_completion_mode == super::panel::SubagentCompletionMode::Manual {
+                    "manual mode"
+                } else {
+                    "auto mode"
+                };
+            format!("{} subagent completion(s) waiting ({})", queued_count, mode)
         } else {
             "No subagent completions waiting".to_string()
         }

@@ -1,10 +1,8 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use ui::{
-    button::Button,
-    h_flex,
-    input::TextInput,
-    v_flex, ActiveTheme as _, Disableable as _, Icon, IconName, StyledExt,
+    button::Button, h_flex, input::TextInput, v_flex, ActiveTheme as _, Disableable as _, Icon,
+    IconName, StyledExt,
 };
 
 use crate::screen::MultiplayerWindow;

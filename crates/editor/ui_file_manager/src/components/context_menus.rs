@@ -72,7 +72,9 @@ pub fn folder_context_menu(
                     top_level_items.sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
                     for file_type in top_level_items {
-                        let icon = Icon::new(file_type.icon.clone()).size_4().text_color(file_type.color);
+                        let icon = Icon::new(file_type.icon.clone())
+                            .size_4()
+                            .text_color(file_type.color);
                         submenu = submenu.menu_with_icon(
                             file_type.display_name.clone(),
                             icon,
@@ -337,49 +339,77 @@ pub fn item_context_menu(
                         "🔴 Red".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
-                            color: Some(ColorData { r: 255, g: 80, b: 80 }),
+                            color: Some(ColorData {
+                                r: 255,
+                                g: 80,
+                                b: 80,
+                            }),
                         }),
                     )
                     .menu(
                         "🟠 Orange".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
-                            color: Some(ColorData { r: 255, g: 160, b: 80 }),
+                            color: Some(ColorData {
+                                r: 255,
+                                g: 160,
+                                b: 80,
+                            }),
                         }),
                     )
                     .menu(
                         "🟡 Yellow".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
-                            color: Some(ColorData { r: 255, g: 220, b: 80 }),
+                            color: Some(ColorData {
+                                r: 255,
+                                g: 220,
+                                b: 80,
+                            }),
                         }),
                     )
                     .menu(
                         "🟢 Green".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
-                            color: Some(ColorData { r: 80, g: 200, b: 120 }),
+                            color: Some(ColorData {
+                                r: 80,
+                                g: 200,
+                                b: 120,
+                            }),
                         }),
                     )
                     .menu(
                         "🔵 Blue".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
-                            color: Some(ColorData { r: 80, g: 160, b: 255 }),
+                            color: Some(ColorData {
+                                r: 80,
+                                g: 160,
+                                b: 255,
+                            }),
                         }),
                     )
                     .menu(
                         "🟣 Purple".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
-                            color: Some(ColorData { r: 180, g: 100, b: 255 }),
+                            color: Some(ColorData {
+                                r: 180,
+                                g: 100,
+                                b: 255,
+                            }),
                         }),
                     )
                     .menu(
                         "🟤 Pink".to_string(),
                         Box::new(SetColorOverride {
                             item_path: submenu_path.to_string_lossy().to_string(),
-                            color: Some(ColorData { r: 255, g: 120, b: 180 }),
+                            color: Some(ColorData {
+                                r: 255,
+                                g: 120,
+                                b: 180,
+                            }),
                         }),
                     )
             },

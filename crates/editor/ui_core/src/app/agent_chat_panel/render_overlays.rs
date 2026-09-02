@@ -1,10 +1,11 @@
-﻿use gpui::{prelude::FluentBuilder as _, *};
+use gpui::{prelude::FluentBuilder as _, *};
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
+    dropdown::SearchableList,
+    h_flex,
     input::TextInput,
     popover::Popover,
-    dropdown::SearchableList,
+    v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
 };
 
 use super::panel::AgentChatPanel;
@@ -46,7 +47,9 @@ impl AgentChatPanel {
                                 .text_sm()
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .child(match (entry, field) {
-                                    (Some(e), Some(f)) => format!("{} \u{2014} {}", e.display_name, f.label),
+                                    (Some(e), Some(f)) => {
+                                        format!("{} \u{2014} {}", e.display_name, f.label)
+                                    }
                                     (Some(e), None) => e.display_name.to_string(),
                                     (None, _) => configuring.clone(),
                                 }),
@@ -61,7 +64,11 @@ impl AgentChatPanel {
                                 }),
                         ),
                 )
-                .child(TextInput::new(&self.custom_provider_input).w_full().xsmall())
+                .child(
+                    TextInput::new(&self.custom_provider_input)
+                        .w_full()
+                        .xsmall(),
+                )
                 .when(has_error, |el| {
                     el.child(
                         div()
@@ -93,13 +100,20 @@ impl AgentChatPanel {
                                 .primary()
                                 .label(if has_error { "Retry" } else { "Save" })
                                 .on_click(cx.listener(|this, _, window, cx| {
-                                    let value = this.custom_provider_input.read(cx).text().to_string();
+                                    let value =
+                                        this.custom_provider_input.read(cx).text().to_string();
                                     let pid = this.configuring_provider.clone();
                                     if let Some(ref id) = pid {
                                         let entry = this.provider_entries.get(id);
-                                        let fields_from_entry = entry.map(|e| e.config_fields.clone()).unwrap_or_default();
+                                        let fields_from_entry = entry
+                                            .map(|e| e.config_fields.clone())
+                                            .unwrap_or_default();
 
-                                        let field_key = fields_from_entry.get(this.configuring_field_index).map(|f| f.key).unwrap_or("value").to_string();
+                                        let field_key = fields_from_entry
+                                            .get(this.configuring_field_index)
+                                            .map(|f| f.key)
+                                            .unwrap_or("value")
+                                            .to_string();
                                         this.config_values.insert(field_key, value);
                                         this.configuring_field_index += 1;
                                         if this.configuring_field_index >= fields_from_entry.len() {
@@ -111,24 +125,41 @@ impl AgentChatPanel {
                                                 if let Ok(p) = c.create(id, config.clone()) {
                                                     match p.validate_config() {
                                                         Ok(()) => {
-                                                            this.provider_registry.register(std::sync::Arc::from(p));
-                                                            this.provider_states.insert(id.clone(), ProviderState::Ready);
-                                                            this.provider_states_shared.borrow_mut().insert(id.clone(), ProviderState::Ready);
+                                                            this.provider_registry
+                                                                .register(std::sync::Arc::from(p));
+                                                            this.provider_states.insert(
+                                                                id.clone(),
+                                                                ProviderState::Ready,
+                                                            );
+                                                            this.provider_states_shared
+                                                                .borrow_mut()
+                                                                .insert(
+                                                                    id.clone(),
+                                                                    ProviderState::Ready,
+                                                                );
                                                             this.provider_entries.remove(id);
                                                             this.configuring_provider = None;
                                                             this.config_error = None;
                                                             this.refresh_provider_catalog(cx);
-                                                            if this.active_provider_ix < this.provider_catalog.len() {
-                                                                this.fetch_models_in_background(this.active_provider_ix, cx);
+                                                            if this.active_provider_ix
+                                                                < this.provider_catalog.len()
+                                                            {
+                                                                this.fetch_models_in_background(
+                                                                    this.active_provider_ix,
+                                                                    cx,
+                                                                );
                                                             }
                                                             validated = true;
                                                         }
                                                         Err(e) => {
                                                             this.config_error = Some(e.to_string());
                                                             this.configuring_field_index = 0;
-                                                            this.custom_provider_input.update(cx, |input, cx| {
-                                                                input.set_value("", window, cx);
-                                                            });
+                                                            this.custom_provider_input.update(
+                                                                cx,
+                                                                |input, cx| {
+                                                                    input.set_value("", window, cx);
+                                                                },
+                                                            );
                                                         }
                                                     }
                                                     break;
@@ -150,7 +181,10 @@ impl AgentChatPanel {
         )
     }
 
-    pub(crate) fn render_custom_provider_wizard(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+    pub(crate) fn render_custom_provider_wizard(
+        &self,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
         let add_provider_prompt = self
             .pending_custom_provider_step
             .map(|s| Self::add_provider_prompt_title(s).to_string())?;
@@ -204,19 +238,28 @@ impl AgentChatPanel {
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     let step = this.pending_custom_provider_step;
                                     if let Some(s) = step {
-                                        let value = this.custom_provider_input.read(cx).text().to_string();
+                                        let value =
+                                            this.custom_provider_input.read(cx).text().to_string();
                                         match s {
                                             AddProviderPromptStep::ProviderLabel => {
-                                                if let Some(ref mut p) = this.pending_custom_provider {
+                                                if let Some(ref mut p) =
+                                                    this.pending_custom_provider
+                                                {
                                                     p.label = value;
                                                 }
-                                                this.pending_custom_provider_step = Some(AddProviderPromptStep::Endpoint);
-                                                this.custom_provider_input.update(cx, |input, cx| {
-                                                    input.set_value("", window, cx);
-                                                });
+                                                this.pending_custom_provider_step =
+                                                    Some(AddProviderPromptStep::Endpoint);
+                                                this.custom_provider_input.update(
+                                                    cx,
+                                                    |input, cx| {
+                                                        input.set_value("", window, cx);
+                                                    },
+                                                );
                                             }
                                             AddProviderPromptStep::Endpoint => {
-                                                if let Some(ref mut p) = this.pending_custom_provider {
+                                                if let Some(ref mut p) =
+                                                    this.pending_custom_provider
+                                                {
                                                     p.endpoint = value;
                                                 }
                                                 this.submit_custom_provider(window, cx);

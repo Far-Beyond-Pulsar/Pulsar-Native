@@ -64,7 +64,9 @@ mod tests {
         let sub_a = subscribe_component(&mut world, &ref_a).expect("subscribes");
         let _sub_b = subscribe_component(&mut world, &ref_b).expect("subscribes");
 
-        ref_a.set_property(&mut world, "charges", serde_json::json!(42)).unwrap();
+        ref_a
+            .set_property(&mut world, "charges", serde_json::json!(42))
+            .unwrap();
 
         let events = take_change_events_for(&mut world, sub_a);
         assert_eq!(events.len(), 1, "exactly one event for sub_a");
@@ -93,7 +95,9 @@ mod tests {
         assert_eq!(events[0].kind, pulsar_scenedb::ComponentChangeKind::Removed);
         assert_eq!(events[0].entity, e);
 
-        let err = r.set_property(&mut world, "charges", serde_json::json!(1)).unwrap_err();
+        let err = r
+            .set_property(&mut world, "charges", serde_json::json!(1))
+            .unwrap_err();
         assert!(matches!(err, ScriptRefError::ReferenceDespawned { .. }));
     }
 

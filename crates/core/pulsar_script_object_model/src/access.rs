@@ -36,7 +36,11 @@ impl ComponentRef {
     /// Live-typed path only: `component_index` must address the live-typed
     /// instance (default index 0). See [`Self::get_property_with_instances`]
     /// for duplicate-instance routing.
-    pub fn get_property(&self, world: &World, property: &str) -> Result<serde_json::Value, ScriptRefError> {
+    pub fn get_property(
+        &self,
+        world: &World,
+        property: &str,
+    ) -> Result<serde_json::Value, ScriptRefError> {
         self.get_property_with_instances(world, None, property)
     }
 
@@ -56,7 +60,8 @@ impl ComponentRef {
                 serialize_property(&self.class_name, property, &*value)
             }
             Route::Duplicate { record } => {
-                let scratch = crate::routing::ScratchInstance::hydrate(&self.class_name, &record.data)?;
+                let scratch =
+                    crate::routing::ScratchInstance::hydrate(&self.class_name, &record.data)?;
                 let value = (meta.getter)(scratch.instance()?);
                 serialize_property(&self.class_name, property, &*value)
             }
@@ -168,11 +173,15 @@ impl ComponentRef {
         &self,
         world: &'w World,
     ) -> Result<&'w dyn pulsar_reflection::EngineClass, ScriptRefError> {
-        pulsar_world_registry::get_world_component_as_engine_class(&self.class_name, world, self.entity)
-            .ok_or_else(|| ScriptRefError::ComponentMissing {
-                entity: self.entity,
-                class_name: self.class_name.clone(),
-            })
+        pulsar_world_registry::get_world_component_as_engine_class(
+            &self.class_name,
+            world,
+            self.entity,
+        )
+        .ok_or_else(|| ScriptRefError::ComponentMissing {
+            entity: self.entity,
+            class_name: self.class_name.clone(),
+        })
     }
 
     fn live_instance_mut<'w>(
@@ -197,7 +206,10 @@ impl ComponentRef {
         REGISTRY
             .create_instance(&self.class_name)
             .and_then(|instance| {
-                instance.get_properties().into_iter().find(|p| p.name == property)
+                instance
+                    .get_properties()
+                    .into_iter()
+                    .find(|p| p.name == property)
             })
             .ok_or_else(|| ScriptRefError::UnknownProperty {
                 class_name: self.class_name.clone(),
@@ -239,13 +251,23 @@ mod tests {
         let door_ref = ComponentRef::live(actor(door), "TestGizmo");
         let chest_ref = ComponentRef::live(actor(chest), "TestGizmo");
 
-        door_ref.set_property(&mut world, "charges", serde_json::json!(11)).unwrap();
-        chest_ref.set_property(&mut world, "charges", serde_json::json!(22)).unwrap();
+        door_ref
+            .set_property(&mut world, "charges", serde_json::json!(11))
+            .unwrap();
+        chest_ref
+            .set_property(&mut world, "charges", serde_json::json!(22))
+            .unwrap();
 
         assert_eq!(world.get::<TestGizmo>(door).unwrap().charges, 11);
         assert_eq!(world.get::<TestGizmo>(chest).unwrap().charges, 22);
-        assert_eq!(door_ref.get_property(&world, "charges").unwrap(), serde_json::json!(11));
-        assert_eq!(chest_ref.get_property(&world, "charges").unwrap(), serde_json::json!(22));
+        assert_eq!(
+            door_ref.get_property(&world, "charges").unwrap(),
+            serde_json::json!(11)
+        );
+        assert_eq!(
+            chest_ref.get_property(&world, "charges").unwrap(),
+            serde_json::json!(22)
+        );
     }
 
     /// #640 acceptance: refs held across a despawn (and slot churn) report
@@ -267,7 +289,10 @@ mod tests {
             "stale ref must be refused, got {result:?}"
         );
         // Whatever inherited the slot was never touched.
-        assert_eq!(world.get::<TestGizmo>(successor).map(|g| g.charges), Some(99));
+        assert_eq!(
+            world.get::<TestGizmo>(successor).map(|g| g.charges),
+            Some(99)
+        );
     }
 
     /// #640 acceptance: subscription events observe exactly the writes made
@@ -280,7 +305,8 @@ mod tests {
         let r = ComponentRef::live(actor(e), "TestGizmo");
         let sub = crate::subscribe::subscribe_component(&mut world, &r).unwrap();
 
-        r.set_property(&mut world, "charges", serde_json::json!(5)).unwrap();
+        r.set_property(&mut world, "charges", serde_json::json!(5))
+            .unwrap();
 
         let events = crate::subscribe::take_change_events_for(&mut world, sub);
         assert_eq!(events.len(), 1);
@@ -303,33 +329,57 @@ mod tests {
 
         // Reads come from different storages and never cross.
         assert_eq!(
-            live.get_property_with_instances(&world, Some(&store), "charges").unwrap(),
+            live.get_property_with_instances(&world, Some(&store), "charges")
+                .unwrap(),
             serde_json::json!(100)
         );
         assert_eq!(
-            dup.get_property_with_instances(&world, Some(&store), "charges").unwrap(),
+            dup.get_property_with_instances(&world, Some(&store), "charges")
+                .unwrap(),
             serde_json::json!(200)
         );
 
         // Writes likewise.
-        dup.set_property_with_instances(&mut world, Some(&mut store), "charges", serde_json::json!(222))
-            .unwrap();
+        dup.set_property_with_instances(
+            &mut world,
+            Some(&mut store),
+            "charges",
+            serde_json::json!(222),
+        )
+        .unwrap();
         assert_eq!(
-            dup.get_property_with_instances(&world, Some(&store), "charges").unwrap(),
+            dup.get_property_with_instances(&world, Some(&store), "charges")
+                .unwrap(),
             serde_json::json!(222)
         );
         assert_eq!(
-            live.get_property_with_instances(&world, Some(&store), "charges").unwrap(),
+            live.get_property_with_instances(&world, Some(&store), "charges")
+                .unwrap(),
             serde_json::json!(100)
         );
-        assert_eq!(world.get::<TestGizmo>(e).unwrap().charges, 100, "live World value untouched");
+        assert_eq!(
+            world.get::<TestGizmo>(e).unwrap().charges,
+            100,
+            "live World value untouched"
+        );
 
         // Live writes persist back into the record so they never diverge.
-        live.set_property_with_instances(&mut world, Some(&mut store), "charges", serde_json::json!(111))
-            .unwrap();
+        live.set_property_with_instances(
+            &mut world,
+            Some(&mut store),
+            "charges",
+            serde_json::json!(111),
+        )
+        .unwrap();
         assert_eq!(world.get::<TestGizmo>(e).unwrap().charges, 111);
-        assert_eq!(store.record_data(0).unwrap()["charges"], serde_json::json!(111));
-        assert_eq!(store.record_data(1).unwrap()["charges"], serde_json::json!(222));
+        assert_eq!(
+            store.record_data(0).unwrap()["charges"],
+            serde_json::json!(111)
+        );
+        assert_eq!(
+            store.record_data(1).unwrap()["charges"],
+            serde_json::json!(222)
+        );
     }
 
     /// Missing targets are typed, distinct errors (#641 taxonomy).
@@ -361,12 +411,18 @@ mod tests {
             e,
             &[
                 gizmo_record(1, true),
-                InstanceRecord { class_name: "Other".into(), enabled: true, data: serde_json::json!({}) },
+                InstanceRecord {
+                    class_name: "Other".into(),
+                    enabled: true,
+                    data: serde_json::json!({}),
+                },
             ],
         );
 
         let r = actor(e).component("TestGizmo", 1);
-        let err = r.get_property_with_instances(&world, Some(&store), "charges").unwrap_err();
+        let err = r
+            .get_property_with_instances(&world, Some(&store), "charges")
+            .unwrap_err();
         assert!(matches!(err, ScriptRefError::ClassMismatch { .. }));
     }
 
@@ -424,7 +480,9 @@ mod tests {
         );
 
         let dup = actor(e).component("TestGizmo", 1);
-        let err = dup.get_property_with_instances(&world, Some(&store), "charges").unwrap_err();
+        let err = dup
+            .get_property_with_instances(&world, Some(&store), "charges")
+            .unwrap_err();
         assert!(matches!(err, ScriptRefError::Marshalling { .. }));
     }
 
@@ -437,7 +495,9 @@ mod tests {
         world.insert(e, TestGizmo { charges: 1 });
         let r = ComponentRef::live(actor(e), "TestGizmo");
 
-        let err = r.set_property(&mut world, "charges", serde_json::json!("nope")).unwrap_err();
+        let err = r
+            .set_property(&mut world, "charges", serde_json::json!("nope"))
+            .unwrap_err();
         assert!(matches!(err, ScriptRefError::Marshalling { .. }));
         assert_eq!(world.get::<TestGizmo>(e).unwrap().charges, 1);
     }

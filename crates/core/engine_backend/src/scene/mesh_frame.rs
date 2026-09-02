@@ -88,7 +88,9 @@ pub struct MeshFrameMaintainer {
 
 impl MeshFrameMaintainer {
     pub fn new() -> Self {
-        Self { tracked: HashMap::new() }
+        Self {
+            tracked: HashMap::new(),
+        }
     }
 
     /// Drop all tracking; the next [`Self::maintain`] re-arms from scratch.
@@ -115,8 +117,12 @@ impl MeshFrameMaintainer {
         for (entity, _component) in world.query::<&StaticMeshComponent>() {
             live.push(entity);
         }
-        let gone: Vec<Entity> =
-            self.tracked.keys().copied().filter(|e| !live.contains(e)).collect();
+        let gone: Vec<Entity> = self
+            .tracked
+            .keys()
+            .copied()
+            .filter(|e| !live.contains(e))
+            .collect();
         for entity in gone {
             let subs = self.tracked.remove(&entity).expect("key came from tracked");
             world.unsubscribe(subs.mesh);
@@ -144,7 +150,9 @@ impl MeshFrameMaintainer {
             // Transform/Visibility row fires its Inserted event and resolves
             // on the next pass, matching the replaced join's semantics
             // (missing row == not rendered until it appears).
-            let Some(mesh_sub) = world.subscribe_id(entity, mesh_cid) else { continue };
+            let Some(mesh_sub) = world.subscribe_id(entity, mesh_cid) else {
+                continue;
+            };
             let Some(transform_sub) = world.subscribe_id(entity, transform_cid) else {
                 world.unsubscribe(mesh_sub);
                 continue;
@@ -156,7 +164,11 @@ impl MeshFrameMaintainer {
             };
             self.tracked.insert(
                 entity,
-                MeshSubscriptions { mesh: mesh_sub, transform: transform_sub, visibility: visibility_sub },
+                MeshSubscriptions {
+                    mesh: mesh_sub,
+                    transform: transform_sub,
+                    visibility: visibility_sub,
+                },
             );
             self.resolve(world, entity);
         }
@@ -170,7 +182,9 @@ impl MeshFrameMaintainer {
             .take_component_change_events()
             .into_iter()
             .filter(|e: &ComponentChangeEvent| {
-                e.component == mesh_cid || e.component == transform_cid || e.component == visibility_cid
+                e.component == mesh_cid
+                    || e.component == transform_cid
+                    || e.component == visibility_cid
             })
             .map(|e| e.entity)
             .collect();
@@ -204,9 +218,18 @@ impl MeshFrameMaintainer {
                 let frame = ResolvedMeshFrame {
                     model: model.to_cols_array(),
                     normal_mat: [
-                        normal_cols[0], normal_cols[1], normal_cols[2], 0.0,
-                        normal_cols[3], normal_cols[4], normal_cols[5], 0.0,
-                        normal_cols[6], normal_cols[7], normal_cols[8], 0.0,
+                        normal_cols[0],
+                        normal_cols[1],
+                        normal_cols[2],
+                        0.0,
+                        normal_cols[3],
+                        normal_cols[4],
+                        normal_cols[5],
+                        0.0,
+                        normal_cols[6],
+                        normal_cols[7],
+                        normal_cols[8],
+                        0.0,
                     ],
                     position: t.position,
                     bound_radius: scale.length().max(0.2) * 0.5,
@@ -235,9 +258,18 @@ mod tests {
         let entity = world.spawn();
         world.insert(
             entity,
-            Transform { position, ..Transform::default() },
+            Transform {
+                position,
+                ..Transform::default()
+            },
         );
-        world.insert(entity, Visibility { visible: true, locked: false });
+        world.insert(
+            entity,
+            Visibility {
+                visible: true,
+                locked: false,
+            },
+        );
         world.insert(entity, StaticMeshComponent::default());
         entity
     }
@@ -267,11 +299,15 @@ mod tests {
         let mesh = spawn_mesh(&mut world, [0.0; 3]);
         maintainer.maintain(&mut world);
 
-        *world.get_mut::<Transform>(mesh).expect("transform") =
-            Transform { position: [7.0, 8.0, 9.0], ..Transform::default() };
+        *world.get_mut::<Transform>(mesh).expect("transform") = Transform {
+            position: [7.0, 8.0, 9.0],
+            ..Transform::default()
+        };
         maintainer.maintain(&mut world);
 
-        let frame = world.get::<ResolvedMeshFrame>(mesh).expect("still resolved");
+        let frame = world
+            .get::<ResolvedMeshFrame>(mesh)
+            .expect("still resolved");
         assert_eq!(frame.position, [7.0, 8.0, 9.0]);
     }
 
@@ -288,7 +324,9 @@ mod tests {
             .visible = false;
         maintainer.maintain(&mut world);
 
-        let frame = world.get::<ResolvedMeshFrame>(mesh).expect("still resolved");
+        let frame = world
+            .get::<ResolvedMeshFrame>(mesh)
+            .expect("still resolved");
         assert!(!frame.visible);
     }
 
@@ -330,7 +368,13 @@ mod tests {
         let mut maintainer = MeshFrameMaintainer::new();
         let entity = world.spawn();
         world.insert(entity, StaticMeshComponent::default());
-        world.insert(entity, Visibility { visible: true, locked: false });
+        world.insert(
+            entity,
+            Visibility {
+                visible: true,
+                locked: false,
+            },
+        );
 
         maintainer.maintain(&mut world);
         assert!(world.get::<ResolvedMeshFrame>(entity).is_none());

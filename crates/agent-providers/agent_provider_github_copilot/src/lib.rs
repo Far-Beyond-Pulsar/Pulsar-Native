@@ -536,7 +536,9 @@ impl ChatProvider for GithubCopilotProvider {
         } else if response.status().as_u16() == 401 {
             Err(anyhow::anyhow!("GitHub token is invalid or expired"))
         } else if response.status().as_u16() == 403 {
-            Err(anyhow::anyhow!("GitHub token lacks permission or is rate-limited"))
+            Err(anyhow::anyhow!(
+                "GitHub token lacks permission or is rate-limited"
+            ))
         } else {
             let status = response.status();
             let body = response.text().unwrap_or_default();
@@ -555,7 +557,11 @@ impl ChatProvider for GithubCopilotProvider {
             .send()
             .map_err(|e| anyhow::anyhow!("Failed to fetch GitHub Models: {e}"))?;
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("GitHub Models catalog API {}: {}", response.status(), response.text().unwrap_or_default()));
+            return Err(anyhow::anyhow!(
+                "GitHub Models catalog API {}: {}",
+                response.status(),
+                response.text().unwrap_or_default()
+            ));
         }
         let body: serde_json::Value = response.json()?;
         let models = body
@@ -564,7 +570,11 @@ impl ChatProvider for GithubCopilotProvider {
                 arr.iter()
                     .filter_map(|m| {
                         let id = m.get("id")?.as_str()?.to_string();
-                        let label = m.get("name").and_then(|v| v.as_str()).unwrap_or(&id).to_string();
+                        let label = m
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(&id)
+                            .to_string();
                         let supports_tools = m
                             .get("capabilities")
                             .and_then(|c| c.as_array())
@@ -575,7 +585,13 @@ impl ChatProvider for GithubCopilotProvider {
                             .and_then(|l| l.get("max_input_tokens"))
                             .and_then(|v| v.as_u64())
                             .unwrap_or(0) as u32;
-                        Some(ModelDescriptor { id, label, supports_tools, context_tokens, compact_model: None })
+                        Some(ModelDescriptor {
+                            id,
+                            label,
+                            supports_tools,
+                            context_tokens,
+                            compact_model: None,
+                        })
                     })
                     .collect()
             })

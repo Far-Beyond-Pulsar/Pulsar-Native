@@ -12,7 +12,13 @@ pub fn render_tabs(
     h_flex()
         .w_full()
         .gap_1()
-        .child(render_tab_button(screen, "Online", FriendTab::Online, None, cx))
+        .child(render_tab_button(
+            screen,
+            "Online",
+            FriendTab::Online,
+            None,
+            cx,
+        ))
         .child(render_tab_button(
             screen,
             "Pending",

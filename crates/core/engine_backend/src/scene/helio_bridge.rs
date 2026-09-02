@@ -61,10 +61,6 @@ use crate::scene::{
 /// (lights #636, mesh instances #638) from World change events. Shared by
 /// play-mode render loops (#637) -- the editor's sync passes do the same
 /// between their phases.
-///
-/// Run under whatever lock yields `&mut WorldSceneStore`, immediately
-/// before the rebuild fns with a read guard; keep the write scope this
-/// short so concurrent readers never wait on it.
 pub fn step_scene_for_render(
     store: &mut WorldSceneStore,
     lights: &mut LightFrameMaintainer,
@@ -120,7 +116,10 @@ pub fn attach_gpu_render_seam(
     // fixed-region cell-mirrored buffers, so these numbers are
     // placeholder-safe, not load-bearing.
     let gpu_cfg = SceneGpuConfig {
-        classes: vec![RegionClassConfig { capacity: 256, max_resident_cells: 4 }],
+        classes: vec![RegionClassConfig {
+            capacity: 256,
+            max_resident_cells: 4,
+        }],
         tombstone_headroom: 8,
         max_cells_metadata: 16,
     };
@@ -144,7 +143,9 @@ pub fn attach_gpu_render_seam(
     // exists on top; it just draws whatever range each entity's row-indexed
     // handle names, shared or not.
     let vertex_pool = gpu_store
-        .interned_var_len_pool::<helio::PackedVertex>(BufferKey::of("StaticMeshComponent::vertices"))
+        .interned_var_len_pool::<helio::PackedVertex>(BufferKey::of(
+            "StaticMeshComponent::vertices",
+        ))
         .expect("register_gpu_columns_growable above must have registered this pool")
         .underlying()
         .clone();
@@ -153,7 +154,9 @@ pub fn attach_gpu_render_seam(
         .expect("register_gpu_columns_growable above must have registered this pool")
         .underlying()
         .clone();
-    renderer.scene_mut().rebind_static_mesh_pools(vertex_pool, index_pool);
+    renderer
+        .scene_mut()
+        .rebind_static_mesh_pools(vertex_pool, index_pool);
 
     // ── Texel-streaming tier configuration (Helio#238 §5) ────────────────────
     // The ONE consumer configuration call (SceneDB#61 §4 contract): translate
@@ -232,7 +235,9 @@ pub fn rebuild_static_mesh_frame(
         return;
     };
     let material_id = *default_material.get_or_insert_with(|| {
-        renderer.scene_mut().insert_material(default_static_mesh_material())
+        renderer
+            .scene_mut()
+            .insert_material(default_static_mesh_material())
     });
     let gpu_store = mirror.store();
     let mut inputs = Vec::new();
@@ -243,10 +248,10 @@ pub fn rebuild_static_mesh_frame(
     // matrix math in this loop anymore (#638).
     for (entity, frame) in store.world().query::<&ResolvedMeshFrame>() {
         component_count += 1;
-        let vertices = StaticMeshComponent::vertices_gpu_handle(gpu_store, entity.index())
-            .unwrap_or_default();
-        let indices = StaticMeshComponent::indices_gpu_handle(gpu_store, entity.index())
-            .unwrap_or_default();
+        let vertices =
+            StaticMeshComponent::vertices_gpu_handle(gpu_store, entity.index()).unwrap_or_default();
+        let indices =
+            StaticMeshComponent::indices_gpu_handle(gpu_store, entity.index()).unwrap_or_default();
         if vertices.count == 0 || indices.count == 0 {
             empty_handle_count += 1;
             continue;
@@ -327,7 +332,9 @@ pub fn rebuild_light_frame(renderer: &mut Renderer, store: &WorldSceneStore) {
             gpu_store.buffer_key_for(crate::scene::Transform::packed_gpu_component_id())
         {
             if let Some(handle) = gpu_store.resolve_buffer_handle(key) {
-                renderer.scene_mut().rebind_transform_buffer(handle.buffer.into());
+                renderer
+                    .scene_mut()
+                    .rebind_transform_buffer(handle.buffer.into());
             }
         }
     }

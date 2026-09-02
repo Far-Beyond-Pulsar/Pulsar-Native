@@ -7,13 +7,13 @@
 
 use std::sync::Arc;
 
-use engine_backend::scene::{
-    ObjectSnapshot, RenderProps, Transform, Visibility, WorldSceneStore,
-};
+use engine_backend::scene::{ObjectSnapshot, RenderProps, Transform, Visibility, WorldSceneStore};
 use parking_lot::RwLock;
 use pulsar_reflection::{EngineClass, PropertyMetadata, RuntimeTypeInfo, RUNTIME_TYPE_REGISTRY};
 use pulsar_scenedb::World;
-use pulsar_script_object_model::{ComponentRef, ResolveRefError, ScriptRefError, SerializedComponentRef};
+use pulsar_script_object_model::{
+    ComponentRef, ResolveRefError, ScriptRefError, SerializedComponentRef,
+};
 
 // ── a minimal registered class, self-contained to this test binary ────────
 
@@ -28,8 +28,9 @@ impl EngineClass for BridgeGizmo {
     }
 
     fn get_properties(&self) -> Vec<PropertyMetadata> {
-        let type_info: &'static RuntimeTypeInfo =
-            RUNTIME_TYPE_REGISTRY.get::<i32>().expect("i32 prim registered");
+        let type_info: &'static RuntimeTypeInfo = RUNTIME_TYPE_REGISTRY
+            .get::<i32>()
+            .expect("i32 prim registered");
         vec![PropertyMetadata {
             name: "charge",
             display_name: "Charge".into(),
@@ -71,14 +72,18 @@ impl EngineClass for BridgeGizmo {
 }
 
 fn bridge_gizmo_get(world: &World, entity: pulsar_scenedb::Entity) -> Option<&dyn EngineClass> {
-    world.get::<BridgeGizmo>(entity).map(|c| c as &dyn EngineClass)
+    world
+        .get::<BridgeGizmo>(entity)
+        .map(|c| c as &dyn EngineClass)
 }
 
 fn bridge_gizmo_get_mut(
     world: &mut World,
     entity: pulsar_scenedb::Entity,
 ) -> Option<&mut dyn EngineClass> {
-    world.get_mut::<BridgeGizmo>(entity).map(|c| c.into_inner() as &mut dyn EngineClass)
+    world
+        .get_mut::<BridgeGizmo>(entity)
+        .map(|c| c.into_inner() as &mut dyn EngineClass)
 }
 
 fn bridge_gizmo_hydrate(
@@ -146,13 +151,12 @@ fn snap(stable_id: &str, parent: Option<&str>) -> ObjectSnapshot {
 
 /// A saved session: snapshots + the serialized reference a graph held.
 fn session_with_door_and_chest() -> (Vec<ObjectSnapshot>, SerializedComponentRef) {
-    let mut store = WorldSceneStore::load_from_snapshots(&[snap("door", None), snap("chest", None)]).unwrap();
+    let mut store =
+        WorldSceneStore::load_from_snapshots(&[snap("door", None), snap("chest", None)]).unwrap();
     let door = store.entity_for("door").unwrap();
 
     // The gameplay state a graph would reference and mutate.
-    store
-        .world_mut()
-        .insert(door, BridgeGizmo { charge: 10 });
+    store.world_mut().insert(door, BridgeGizmo { charge: 10 });
 
     let r = ComponentRef::live(door.into(), "BridgeGizmo");
     let saved = r.to_serialized(&store).expect("door has a stable id");
@@ -176,11 +180,15 @@ fn reference_survives_save_load_and_still_targets_the_intended_component() {
     store.world_mut().insert(door, BridgeGizmo { charge: 10 });
     store.world_mut().insert(chest, BridgeGizmo { charge: 99 });
 
-    let resolved = saved.resolve(&store).expect("reference resolves after load");
+    let resolved = saved
+        .resolve(&store)
+        .expect("reference resolves after load");
     assert_eq!(resolved.class_name, "BridgeGizmo");
     assert_eq!(resolved.component_index, 0);
 
-    resolved.set_property(store.world_mut(), "charge", serde_json::json!(42)).expect("writes");
+    resolved
+        .set_property(store.world_mut(), "charge", serde_json::json!(42))
+        .expect("writes");
 
     let door = store.entity_for("door").unwrap();
     let chest = store.entity_for("chest").unwrap();
@@ -195,7 +203,9 @@ fn reference_survives_save_load_and_still_targets_the_intended_component() {
     let shared: Arc<RwLock<WorldSceneStore>> = Arc::new(RwLock::new(store));
     let again = saved.resolve(&*shared.read()).unwrap();
     assert_eq!(
-        again.get_property(&shared.read().world(), "charge").unwrap(),
+        again
+            .get_property(&shared.read().world(), "charge")
+            .unwrap(),
         serde_json::json!(42)
     );
 }
@@ -212,7 +222,9 @@ fn deleted_target_reports_reference_lost_after_load() {
 
     assert_eq!(
         saved.resolve(&store),
-        Err(ResolveRefError::ReferenceLost { stable_id: "door".into() })
+        Err(ResolveRefError::ReferenceLost {
+            stable_id: "door".into()
+        })
     );
 }
 
@@ -232,7 +244,9 @@ fn reparenting_between_sessions_does_not_disturb_references() {
     }
     let store = WorldSceneStore::load_from_snapshots(&edited).unwrap();
 
-    let resolved = saved.resolve(&store).expect("reparenting must not lose references");
+    let resolved = saved
+        .resolve(&store)
+        .expect("reparenting must not lose references");
     assert_eq!(resolved.actor().entity(), store.entity_for("door").unwrap());
 }
 
@@ -240,14 +254,17 @@ fn reparenting_between_sessions_does_not_disturb_references() {
 /// freeze time rather than persisting garbage.
 #[test]
 fn freezing_a_despawned_target_is_a_typed_error() {
-    let mut store = WorldSceneStore::load_from_snapshots(&[snap("door", None), snap("chest", None)]).unwrap();
+    let mut store =
+        WorldSceneStore::load_from_snapshots(&[snap("door", None), snap("chest", None)]).unwrap();
     let door = store.entity_for("door").unwrap();
     store.despawn(door);
 
     let dangling = ComponentRef::live(door.into(), "BridgeGizmo");
     assert_eq!(
         dangling.to_serialized(&store),
-        Err(ResolveRefError::ReferenceLost { stable_id: String::new() })
+        Err(ResolveRefError::ReferenceLost {
+            stable_id: String::new()
+        })
     );
     // Per-access staleness stays the #641 taxonomy:
     assert!(matches!(

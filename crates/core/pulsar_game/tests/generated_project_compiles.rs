@@ -40,17 +40,22 @@ fn generated_project_compiles_against_current_pins() {
     //    Editor runs. (#651: compiled logic functions receive the live-world
     //    slice, and the actor impl forwards its `(entity, world)` to them.)
     let mut graph = pbgc::GraphDescription::new("drift_sample");
-    let mut begin = pbgc::NodeInstance::new("begin", "begin_play", pbgc::Position { x: 0.0, y: 0.0 });
+    let mut begin =
+        pbgc::NodeInstance::new("begin", "begin_play", pbgc::Position { x: 0.0, y: 0.0 });
     begin.outputs.push(pbgc::PinInstance::new(
         "begin_exec",
-        pbgc::Pin::new("begin_exec", "Body", pbgc::DataType::Exec, pbgc::PinType::Output),
+        pbgc::Pin::new(
+            "begin_exec",
+            "Body",
+            pbgc::DataType::Exec,
+            pbgc::PinType::Output,
+        ),
     ));
     graph.add_node(begin);
     let logic = pbgc::compile_graph(&graph).expect("logic compilation");
 
-    let spec = pbgc::ProjectSpec::new("drift_sample").add_blueprint(
-        pbgc::CompiledBlueprint::new("drift_probe", logic).with_begin_play(true),
-    );
+    let spec = pbgc::ProjectSpec::new("drift_sample")
+        .add_blueprint(pbgc::CompiledBlueprint::new("drift_probe", logic).with_begin_play(true));
     let generated = pbgc::generate_project(&spec);
     generated
         .write_to_dir(project.path())
@@ -67,8 +72,13 @@ fn generated_project_compiles_against_current_pins() {
     //    scripts/ crate (#653) is part of that contract: it must exist AND
     //    its path dependencies must resolve to real manifests (a wrong
     //    engine-checkout anchor otherwise surfaces only as cargo ENOENT).
-    for required in ["Cargo.toml", "src/main.rs", "src/lib.rs", "src/classes/mod.rs",
-                    "src/classes/drift_probe/events/events.rs"] {
+    for required in [
+        "Cargo.toml",
+        "src/main.rs",
+        "src/lib.rs",
+        "src/classes/mod.rs",
+        "src/classes/drift_probe/events/events.rs",
+    ] {
         assert!(
             project.path().join(required).exists(),
             "generated project is missing {required}"
@@ -92,7 +102,9 @@ fn generated_project_compiles_against_current_pins() {
         std::fs::read_to_string(&script_manifest).expect("script crate manifest readable");
     const PATH_KEY: &str = "path = \"";
     for line in script_text.lines() {
-        let Some(start) = line.find(PATH_KEY) else { continue };
+        let Some(start) = line.find(PATH_KEY) else {
+            continue;
+        };
         let rest = &line[start + PATH_KEY.len()..];
         let Some(end) = rest.find('"') else { continue };
         let dep_path = &rest[..end];
@@ -110,8 +122,8 @@ fn generated_project_compiles_against_current_pins() {
 
     // 5. Compile it. A shared target dir makes repeat runs incremental.
     let started = std::time::Instant::now();
-    let status = cargo_check(project.path())
-        .unwrap_or_else(|e| panic!("failed to spawn cargo check: {e}"));
+    let status =
+        cargo_check(project.path()).unwrap_or_else(|e| panic!("failed to spawn cargo check: {e}"));
     println!(
         "cargo check of the generated project finished in {:?} ({status})",
         started.elapsed()
@@ -139,8 +151,14 @@ fn cargo_check(project_dir: &Path) -> std::io::Result<std::process::ExitStatus> 
     // Surface compiler errors on failure instead of swallowing them.
     let output = cmd.output()?;
     if !output.status.success() {
-        eprintln!("cargo check stdout:\n{}", String::from_utf8_lossy(&output.stdout));
-        eprintln!("cargo check stderr:\n{}", String::from_utf8_lossy(&output.stderr));
+        eprintln!(
+            "cargo check stdout:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        eprintln!(
+            "cargo check stderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
     Ok(output.status)
 }

@@ -11,8 +11,8 @@
 
 use engine_class_derive::register_runtime_behavior;
 use pulsar_reflection::{
-    apply_runtime_behavior_for_class, ComponentRuntimeBehavior, ComponentRuntimeContext,
-    RuntimeComponentOwner, Subsystems,
+    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner, Subsystems,
+    apply_runtime_behavior_for_class,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -40,7 +40,10 @@ impl ComponentRuntimeBehavior for ThrowawayRuntimeComponent {
             context.report_error("unexpected empty id".to_string());
             return;
         }
-        assert_eq!(component.value, 7, "sync_component must see the real typed value");
+        assert_eq!(
+            component.value, 7,
+            "sync_component must see the real typed value"
+        );
     }
 }
 
@@ -63,7 +66,11 @@ impl ComponentRuntimeContext for TestContext {
 }
 
 fn test_context() -> TestContext {
-    TestContext { subsystems: Subsystems::new(), project_root: PathBuf::from("."), errors: Vec::new() }
+    TestContext {
+        subsystems: Subsystems::new(),
+        project_root: PathBuf::from("."),
+        errors: Vec::new(),
+    }
 }
 
 fn owner(props: &HashMap<String, serde_json::Value>) -> RuntimeComponentOwner<'_> {
@@ -82,11 +89,22 @@ fn typed_sync_component_dispatches_through_inventory_registration() {
     let data = serde_json::to_value(ThrowawayRuntimeComponent { value: 7 }).unwrap();
     let mut ctx = test_context();
 
-    let handled =
-        apply_runtime_behavior_for_class("ThrowawayRuntimeComponent", &owner(&props), 0, &data, &mut ctx);
+    let handled = apply_runtime_behavior_for_class(
+        "ThrowawayRuntimeComponent",
+        &owner(&props),
+        0,
+        &data,
+        &mut ctx,
+    );
 
-    assert!(handled, "registered class must be found and dispatched via inventory");
-    assert!(ctx.errors.is_empty(), "a correctly-typed dispatch must not report an error");
+    assert!(
+        handled,
+        "registered class must be found and dispatched via inventory"
+    );
+    assert!(
+        ctx.errors.is_empty(),
+        "a correctly-typed dispatch must not report an error"
+    );
 }
 
 #[test]
@@ -100,12 +118,24 @@ fn invalid_json_reports_an_error_not_a_panic() {
     let data = serde_json::json!({ "value": "not a number" });
     let mut ctx = test_context();
 
-    let handled =
-        apply_runtime_behavior_for_class("ThrowawayRuntimeComponent", &owner(&props), 0, &data, &mut ctx);
+    let handled = apply_runtime_behavior_for_class(
+        "ThrowawayRuntimeComponent",
+        &owner(&props),
+        0,
+        &data,
+        &mut ctx,
+    );
 
-    assert!(handled, "class_name still matches -- dispatch happens, the deserialize inside it fails");
+    assert!(
+        handled,
+        "class_name still matches -- dispatch happens, the deserialize inside it fails"
+    );
     assert_eq!(ctx.errors.len(), 1);
-    assert!(ctx.errors[0].contains("ThrowawayRuntimeComponent"), "error must name the class: {:?}", ctx.errors);
+    assert!(
+        ctx.errors[0].contains("ThrowawayRuntimeComponent"),
+        "error must name the class: {:?}",
+        ctx.errors
+    );
 }
 
 #[test]
@@ -113,8 +143,13 @@ fn unregistered_class_name_is_not_handled() {
     let props = HashMap::new();
     let mut ctx = test_context();
 
-    let handled =
-        apply_runtime_behavior_for_class("NoSuchClass", &owner(&props), 0, &serde_json::Value::Null, &mut ctx);
+    let handled = apply_runtime_behavior_for_class(
+        "NoSuchClass",
+        &owner(&props),
+        0,
+        &serde_json::Value::Null,
+        &mut ctx,
+    );
 
     assert!(!handled);
     assert!(ctx.errors.is_empty());

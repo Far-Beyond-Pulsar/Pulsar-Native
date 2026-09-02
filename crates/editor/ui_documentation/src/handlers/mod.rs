@@ -25,14 +25,13 @@ pub fn close_new_file_dialog(window: &mut DocumentationWindow) {
     window.new_file_name.clear();
 }
 
-pub fn create_new_file(
-    window: &mut DocumentationWindow,
-    window_handle: &mut Window,
-    cx: &mut App,
-) {
+pub fn create_new_file(window: &mut DocumentationWindow, window_handle: &mut Window, cx: &mut App) {
     if !window.new_file_name.is_empty() {
         let file_name = window.new_file_name.clone();
-        if let Err(e) = window.manual_docs.create_new_file(file_name, window_handle, cx) {
+        if let Err(e) = window
+            .manual_docs
+            .create_new_file(file_name, window_handle, cx)
+        {
             tracing::error!("Failed to create file: {}", e);
         }
         window.show_new_file_dialog = false;

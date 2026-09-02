@@ -46,9 +46,7 @@ pub enum ScriptRefError {
     /// class than the ref claims. Same discipline as the properties panel's
     /// "index IS the identity" refusal (#519): a stale/mismatched index
     /// must never land an edit into some OTHER instance's storage.
-    #[error(
-        "component index {component_index} on {entity} holds '{found}', not '{expected}'"
-    )]
+    #[error("component index {component_index} on {entity} holds '{found}', not '{expected}'")]
     ClassMismatch {
         expected: String,
         found: String,
@@ -81,7 +79,10 @@ pub enum ScriptRefError {
     /// The class has no reflected property with that name (checked against
     /// `PropertyMetadata`, the same metadata the properties panel renders).
     #[error("'{class_name}' has no reflected property '{property}'")]
-    UnknownProperty { class_name: String, property: String },
+    UnknownProperty {
+        class_name: String,
+        property: String,
+    },
 
     /// The class has no blueprint-callable method with that name.
     #[error("'{class_name}' has no callable method '{method}'")]
@@ -90,9 +91,7 @@ pub enum ScriptRefError {
     /// #643: the argument vector has the wrong length for the reflected
     /// method. Checked BEFORE dispatch because generated caller closures
     /// panic on missing arguments -- the dispatcher refuses first.
-    #[error(
-        "'{class_name}.{method}' expects {expected} argument(s), got {got}"
-    )]
+    #[error("'{class_name}.{method}' expects {expected} argument(s), got {got}")]
     ArgumentCount {
         class_name: String,
         method: String,
@@ -129,7 +128,9 @@ pub enum ScriptRefError {
 /// same error from its own liveness gates.)
 impl ScriptRefError {
     pub fn despawned(entity: Entity) -> Self {
-        Self::ReferenceDespawned { entity_bits: entity.bits() }
+        Self::ReferenceDespawned {
+            entity_bits: entity.bits(),
+        }
     }
 }
 
@@ -143,7 +144,10 @@ mod tests {
     fn display_strings_name_the_target_and_cause() {
         let e = Entity::from_bits(0x0000_0002_0000_0003);
         let err = ScriptRefError::despawned(e);
-        assert_eq!(err.to_string(), "referenced actor Entity(3v2) no longer exists in this world");
+        assert_eq!(
+            err.to_string(),
+            "referenced actor Entity(3v2) no longer exists in this world"
+        );
 
         let err = ScriptRefError::ComponentMissing {
             entity: e,

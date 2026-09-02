@@ -121,7 +121,9 @@ mod actors {
         // renderers read), not a private world.
         let entity = {
             let mut store = tick_loop.scene_store.write();
-            tick_loop.actors.register(Counter(log.clone()), store.world_mut())
+            tick_loop
+                .actors
+                .register(Counter(log.clone()), store.world_mut())
         };
         tick_loop.tick_once();
         {
@@ -142,7 +144,9 @@ mod actors {
         let entity = {
             let mut store = tick_loop.scene_store.write();
             let e = store.spawn(None, "Runtime", None).unwrap();
-            tick_loop.actors.register(Counter(Arc::new(Mutex::new(Vec::new()))), store.world_mut());
+            tick_loop
+                .actors
+                .register(Counter(Arc::new(Mutex::new(Vec::new()))), store.world_mut());
             e
         };
 
@@ -206,12 +210,14 @@ mod blueprint_instances {
     //! the hand-built bytecode mirrors what `pbgc`'s comp-op codegen emits
     //! for `comp_set_prop` / `comp_call` nodes.
 
-    use crate::blueprint_runtime::{BlueprintDispatcher, CompiledBytecode, ExecutorError, VariableDescriptor};
+    use crate::blueprint_runtime::{
+        BlueprintDispatcher, CompiledBytecode, ExecutorError, VariableDescriptor,
+    };
     use crate::prelude::*;
-use pbgc::bytecode::comp_ops::{
-    encode_json_blob, encode_targeted_call_name_blob, encode_targeted_name_blob,
-    JSON_BLOB_CAPACITY,
-};
+    use pbgc::bytecode::comp_ops::{
+        encode_json_blob, encode_targeted_call_name_blob, encode_targeted_name_blob,
+        JSON_BLOB_CAPACITY,
+    };
     use pbgc::{BpProgram, Instruction};
     use pulsar_reflection::{
         ComponentMethodRegistration, EngineClass, EngineClassRegistration, MethodMetadata,
@@ -241,8 +247,9 @@ use pbgc::bytecode::comp_ops::{
         fn get_properties(&self) -> Vec<PropertyMetadata> {
             let i32_info: &'static RuntimeTypeInfo =
                 RUNTIME_TYPE_REGISTRY.get::<i32>().expect("i32 registered");
-            let bool_info: &'static RuntimeTypeInfo =
-                RUNTIME_TYPE_REGISTRY.get::<bool>().expect("bool registered");
+            let bool_info: &'static RuntimeTypeInfo = RUNTIME_TYPE_REGISTRY
+                .get::<bool>()
+                .expect("bool registered");
             vec![
                 PropertyMetadata {
                     name: "charges",
@@ -288,15 +295,25 @@ use pbgc::bytecode::comp_ops::{
                 name: "add_charges",
                 display_name: "Add Charges".into(),
                 category: None,
-                params: vec![MethodParameter { name: "amount", type_info: i32_info }],
-                return_type: Some(MethodReturnType { type_info: i32_info }),
-                method_type: MethodType::Fn,
-                caller: Box::new(|c: &mut dyn EngineClass, args: Vec<Box<dyn std::any::Any>>| {
-                    let amount = args.first().and_then(|a| a.downcast_ref::<i32>()).copied()?;
-                    let probe = c.as_any_mut().downcast_mut::<TickProbe>()?;
-                    probe.charges += amount;
-                    Some(Box::new(probe.charges))
+                params: vec![MethodParameter {
+                    name: "amount",
+                    type_info: i32_info,
+                }],
+                return_type: Some(MethodReturnType {
+                    type_info: i32_info,
                 }),
+                method_type: MethodType::Fn,
+                caller: Box::new(
+                    |c: &mut dyn EngineClass, args: Vec<Box<dyn std::any::Any>>| {
+                        let amount = args
+                            .first()
+                            .and_then(|a| a.downcast_ref::<i32>())
+                            .copied()?;
+                        let probe = c.as_any_mut().downcast_mut::<TickProbe>()?;
+                        probe.charges += amount;
+                        Some(Box::new(probe.charges))
+                    },
+                ),
             }]
         }
 
@@ -322,14 +339,22 @@ use pbgc::bytecode::comp_ops::{
     }
 
     fn tick_probe_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
-        world.get::<TickProbe>(entity).map(|c| c as &dyn EngineClass)
+        world
+            .get::<TickProbe>(entity)
+            .map(|c| c as &dyn EngineClass)
     }
 
     fn tick_probe_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
-        world.get_mut::<TickProbe>(entity).map(|c| c.into_inner() as &mut dyn EngineClass)
+        world
+            .get_mut::<TickProbe>(entity)
+            .map(|c| c.into_inner() as &mut dyn EngineClass)
     }
 
-    fn tick_probe_hydrate(world: &mut World, entity: Entity, data: &JsonValue) -> Result<(), String> {
+    fn tick_probe_hydrate(
+        world: &mut World,
+        entity: Entity,
+        data: &JsonValue,
+    ) -> Result<(), String> {
         let parsed: TickProbe = serde_json::from_value(data.clone()).map_err(|e| e.to_string())?;
         world.insert(entity, parsed);
         Ok(())
@@ -399,7 +424,10 @@ use pbgc::bytecode::comp_ops::{
                     pbgc::bytecode::comp_ops::RefTarget::SelfActor,
                 ),
             },
-            Instruction::InitBytes { offset: ARG_OFF, bytes: encode_json_blob("true") },
+            Instruction::InitBytes {
+                offset: ARG_OFF,
+                bytes: encode_json_blob("true"),
+            },
             Instruction::Call {
                 fn_ptr: 0,
                 node_type: "comp_set_prop::TickProbe::played".into(),
@@ -424,7 +452,10 @@ use pbgc::bytecode::comp_ops::{
                     pbgc::bytecode::comp_ops::RefTarget::SelfActor,
                 ),
             },
-            Instruction::InitBytes { offset: ARG_OFF, bytes: encode_json_blob("1") },
+            Instruction::InitBytes {
+                offset: ARG_OFF,
+                bytes: encode_json_blob("1"),
+            },
             Instruction::Call {
                 fn_ptr: 0,
                 node_type: "comp_call::TickProbe::add_charges".into(),
@@ -451,15 +482,26 @@ use pbgc::bytecode::comp_ops::{
     #[test]
     fn two_entities_sharing_one_class_tick_independently() {
         let mut game = TickLoop::new(TickMode::default(), 0);
-        let mut dispatcher =
-            BlueprintDispatcher::new().expect("blueprint executor loads");
+        let mut dispatcher = BlueprintDispatcher::new().expect("blueprint executor loads");
 
         let (ea, eb) = {
             let mut store = game.scene_store.write();
             let ea = store.spawn(None, "ProbeA", None).expect("spawn A");
             let eb = store.spawn(None, "ProbeB", None).expect("spawn B");
-            store.world_mut().insert(ea, TickProbe { charges: 5, played: false });
-            store.world_mut().insert(eb, TickProbe { charges: 50, played: false });
+            store.world_mut().insert(
+                ea,
+                TickProbe {
+                    charges: 5,
+                    played: false,
+                },
+            );
+            store.world_mut().insert(
+                eb,
+                TickProbe {
+                    charges: 50,
+                    played: false,
+                },
+            );
             (ea, eb)
         };
 
@@ -468,10 +510,20 @@ use pbgc::bytecode::comp_ops::{
         let mut overrides = HashMap::new();
         overrides.insert("speed".to_string(), serde_json::json!(7.5));
         dispatcher
-            .register_bytecode("probe_a".into(), build_tick_probe_bytecode(), Some(ea), Some(overrides))
+            .register_bytecode(
+                "probe_a".into(),
+                build_tick_probe_bytecode(),
+                Some(ea),
+                Some(overrides),
+            )
             .expect("register A");
         dispatcher
-            .register_bytecode("probe_b".into(), build_tick_probe_bytecode(), Some(eb), None)
+            .register_bytecode(
+                "probe_b".into(),
+                build_tick_probe_bytecode(),
+                Some(eb),
+                None,
+            )
             .expect("register B");
 
         assert_eq!(dispatcher.instance_entity("probe_a"), Some(ea));
@@ -484,9 +536,18 @@ use pbgc::bytecode::comp_ops::{
         let store = game.scene_store.read();
         let pa = store.world().get::<TickProbe>(ea).expect("A's probe alive");
         let pb = store.world().get::<TickProbe>(eb).expect("B's probe alive");
-        assert_eq!(pa.charges, 7, "instance A mutated only its own entity (5 + 2 ticks)");
-        assert_eq!(pb.charges, 52, "instance B mutated only its own entity (50 + 2 ticks)");
-        assert!(pa.played && pb.played, "begin_play dispatched per bound entity");
+        assert_eq!(
+            pa.charges, 7,
+            "instance A mutated only its own entity (5 + 2 ticks)"
+        );
+        assert_eq!(
+            pb.charges, 52,
+            "instance B mutated only its own entity (50 + 2 ticks)"
+        );
+        assert!(
+            pa.played && pb.played,
+            "begin_play dispatched per bound entity"
+        );
 
         drop(store);
         let dispatcher = game.blueprint_dispatcher.as_ref().unwrap().lock().unwrap();
@@ -509,12 +570,23 @@ use pbgc::bytecode::comp_ops::{
     fn despawning_one_entity_does_not_disturb_its_sibling_instance() {
         let mut world = World::new();
         let ea = world.spawn();
-        world.insert(ea, TickProbe { charges: 0, played: false });
+        world.insert(
+            ea,
+            TickProbe {
+                charges: 0,
+                played: false,
+            },
+        );
         let eb = world.spawn();
-        world.insert(eb, TickProbe { charges: 100, played: false });
+        world.insert(
+            eb,
+            TickProbe {
+                charges: 100,
+                played: false,
+            },
+        );
 
-        let mut dispatcher =
-            BlueprintDispatcher::new().expect("blueprint executor loads");
+        let mut dispatcher = BlueprintDispatcher::new().expect("blueprint executor loads");
         dispatcher
             .register_bytecode("a".into(), build_tick_probe_bytecode(), Some(ea), None)
             .unwrap();
@@ -546,10 +618,15 @@ use pbgc::bytecode::comp_ops::{
     fn unbound_instance_refuses_component_ops_until_bound() {
         let mut world = World::new();
         let e = world.spawn();
-        world.insert(e, TickProbe { charges: 9, played: false });
+        world.insert(
+            e,
+            TickProbe {
+                charges: 9,
+                played: false,
+            },
+        );
 
-        let mut dispatcher =
-            BlueprintDispatcher::new().expect("blueprint executor loads");
+        let mut dispatcher = BlueprintDispatcher::new().expect("blueprint executor loads");
         dispatcher
             .register_bytecode("solo".into(), build_tick_probe_bytecode(), None, None)
             .unwrap();
@@ -585,23 +662,39 @@ use pbgc::bytecode::comp_ops::{
     fn hot_reload_swaps_programs_without_respawning_instances() {
         let mut world = World::new();
         let e = world.spawn();
-        world.insert(e, TickProbe { charges: 1, played: false });
+        world.insert(
+            e,
+            TickProbe {
+                charges: 1,
+                played: false,
+            },
+        );
 
-        let mut dispatcher =
-            BlueprintDispatcher::new().expect("blueprint executor loads");
+        let mut dispatcher = BlueprintDispatcher::new().expect("blueprint executor loads");
         let mut overrides = HashMap::new();
         overrides.insert("speed".to_string(), serde_json::json!(4.5));
         dispatcher
-            .register_bytecode("hot".into(), build_tick_probe_bytecode(), Some(e), Some(overrides))
+            .register_bytecode(
+                "hot".into(),
+                build_tick_probe_bytecode(),
+                Some(e),
+                Some(overrides),
+            )
             .unwrap();
 
-        dispatcher.reload_blueprint(build_tick_probe_bytecode()).expect("same-layout reload");
+        dispatcher
+            .reload_blueprint(build_tick_probe_bytecode())
+            .expect("same-layout reload");
         assert_eq!(
             dispatcher.instance_variable_bytes("hot", "speed"),
             Some(4.5_f32.to_le_bytes().to_vec()),
             "matching-layout variables survive the swap"
         );
-        assert_eq!(dispatcher.instance_entity("hot"), Some(e), "binding survives");
+        assert_eq!(
+            dispatcher.instance_entity("hot"),
+            Some(e),
+            "binding survives"
+        );
 
         // Reloaded programs still run against the bound entity.
         dispatcher.dispatch_tick_all(&mut world, 0.016);
@@ -620,8 +713,8 @@ use pbgc::bytecode::comp_ops::{
     /// Materialise the committed schema example's class layout on disk so
     /// the loader finds compiled bytecode where generated projects keep it.
     fn probe_project(tag: &str) -> PathBuf {
-        let root = std::env::temp_dir()
-            .join(format!("pulsar_game_650_{tag}_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("pulsar_game_650_{tag}_{}", std::process::id()));
         let build = root.join("src/classes/TickProbe/events/.build");
         std::fs::create_dir_all(&build).expect("class dir created");
         std::fs::write(
@@ -652,8 +745,20 @@ use pbgc::bytecode::comp_ops::{
             let mut guard = store.write();
             let ea = guard.entity_for("lever_a").expect("lever_a hydrated");
             let eb = guard.entity_for("lever_b").expect("lever_b hydrated");
-            guard.world_mut().insert(ea, TickProbe { charges: 5, played: false });
-            guard.world_mut().insert(eb, TickProbe { charges: 50, played: false });
+            guard.world_mut().insert(
+                ea,
+                TickProbe {
+                    charges: 5,
+                    played: false,
+                },
+            );
+            guard.world_mut().insert(
+                eb,
+                TickProbe {
+                    charges: 50,
+                    played: false,
+                },
+            );
             (ea, eb)
         };
         (store, ea, eb, bindings)
@@ -667,8 +772,7 @@ use pbgc::bytecode::comp_ops::{
         let project_root = probe_project("acceptance");
         let (store, ea, eb, bindings) = fixture_level_with_probes();
 
-        let mut dispatcher =
-            BlueprintDispatcher::new().expect("blueprint executor loads");
+        let mut dispatcher = BlueprintDispatcher::new().expect("blueprint executor loads");
         let report = {
             let guard = store.read();
             level_bindings::apply_blueprint_bindings(
@@ -681,10 +785,17 @@ use pbgc::bytecode::comp_ops::{
         assert!(
             report.failures.is_empty(),
             "every binding applies: {:?}",
-            report.failures.iter().map(|f| f.error.to_string()).collect::<Vec<_>>()
+            report
+                .failures
+                .iter()
+                .map(|f| f.error.to_string())
+                .collect::<Vec<_>>()
         );
         assert_eq!(report.applied.len(), 2);
-        assert_eq!(report.applied[0].entity, ea, "deterministic StableId order: lever_a first");
+        assert_eq!(
+            report.applied[0].entity, ea,
+            "deterministic StableId order: lever_a first"
+        );
         assert_eq!(report.applied[1].entity, eb);
 
         // Full lifecycle through the dispatcher: begin_play + two ticks,
@@ -718,7 +829,11 @@ use pbgc::bytecode::comp_ops::{
         );
 
         // Removing a binding unregisters cleanly; the sibling keeps ticking.
-        assert!(level_bindings::unbind_object_class(&mut dispatcher, "lever_a", "TickProbe"));
+        assert!(level_bindings::unbind_object_class(
+            &mut dispatcher,
+            "lever_a",
+            "TickProbe"
+        ));
         {
             let mut guard = store.write();
             dispatcher.dispatch_tick_all(guard.world_mut(), 0.016);
@@ -746,12 +861,16 @@ use pbgc::bytecode::comp_ops::{
         let project_root = probe_project("dupes");
         let (store, _ea, _eb, bindings) = fixture_level_with_probes();
 
-        let mut dispatcher =
-            BlueprintDispatcher::new().expect("blueprint executor loads");
+        let mut dispatcher = BlueprintDispatcher::new().expect("blueprint executor loads");
 
         let first = {
             let guard = store.read();
-            level_bindings::apply_blueprint_bindings(&mut dispatcher, &guard, &project_root, &bindings)
+            level_bindings::apply_blueprint_bindings(
+                &mut dispatcher,
+                &guard,
+                &project_root,
+                &bindings,
+            )
         };
         assert_eq!(first.applied.len(), 2);
 
@@ -759,13 +878,21 @@ use pbgc::bytecode::comp_ops::{
         // untouched (still registered, still bound).
         let second = {
             let guard = store.read();
-            level_bindings::apply_blueprint_bindings(&mut dispatcher, &guard, &project_root, &bindings)
+            level_bindings::apply_blueprint_bindings(
+                &mut dispatcher,
+                &guard,
+                &project_root,
+                &bindings,
+            )
         };
         assert!(second.applied.is_empty());
         assert_eq!(second.failures.len(), 2);
         for failure in &second.failures {
             assert!(
-                matches!(failure.error, level_bindings::BindingError::DuplicateClass { .. }),
+                matches!(
+                    failure.error,
+                    level_bindings::BindingError::DuplicateClass { .. }
+                ),
                 "expected DuplicateClass, got {}",
                 failure.error
             );

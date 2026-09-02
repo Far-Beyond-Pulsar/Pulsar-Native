@@ -5,15 +5,13 @@ use ui::{
     v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };
 
+use crate::components::{
+    chat_tab::render_chat_tab, file_sync_tab::render_file_sync_tab,
+    presence_tab::render_presence_tab, session_info::render_session_info_tab,
+};
+use crate::handlers;
 use crate::screen::MultiplayerWindow;
 use crate::utils::types::{ActiveSession, FileSyncStatus, SessionTab};
-use crate::handlers;
-use crate::components::{
-    chat_tab::render_chat_tab,
-    file_sync_tab::render_file_sync_tab,
-    presence_tab::render_presence_tab,
-    session_info::render_session_info_tab,
-};
 
 pub fn render_tab_bar(
     this: &MultiplayerWindow,
@@ -59,7 +57,10 @@ pub fn render_tab_bar(
         }))
         .build_tabs(
             tab_count,
-            tab_labels.iter().map(|l| (Some(l.clone()), false)).collect(),
+            tab_labels
+                .iter()
+                .map(|l| (Some(l.clone()), false))
+                .collect(),
             {
                 let labels = tab_labels.clone();
                 move |ix, _, _| Tab::new(labels[ix].clone())

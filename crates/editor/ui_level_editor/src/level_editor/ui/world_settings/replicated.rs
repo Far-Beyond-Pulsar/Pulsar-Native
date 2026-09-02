@@ -358,10 +358,7 @@ impl WorldSettingsReplicated {
                             .justify_center()
                             .rounded(px(6.0))
                             .bg(cx.theme().accent.opacity(0.15))
-                            .child(
-                                Icon::new(IconName::Globe)
-                                    .size(px(20.0)),
-                            ),
+                            .child(Icon::new(IconName::Globe).size(px(20.0))),
                     )
                     .child(
                         v_flex()

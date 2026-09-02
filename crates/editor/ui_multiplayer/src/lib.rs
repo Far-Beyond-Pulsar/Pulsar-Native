@@ -18,7 +18,7 @@ mod sync_protocol;
 mod utils;
 
 // Re-export main types
-pub use screen::MultiplayerWindow;
 pub use diff::*;
 pub use diff_viewer::{DiffFileEntry, DiffViewer};
+pub use screen::MultiplayerWindow;
 pub use utils::types::*;

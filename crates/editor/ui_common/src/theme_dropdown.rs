@@ -170,85 +170,88 @@ impl Render for ThemePicker {
                             .overflow_y_scroll()
                             .track_scroll(&self.scroll_handle)
                             .py_1()
-                    // Empty state
-                    .when(is_empty, |el| {
-                        el.child(
-                            div()
-                                .px_4()
-                                .py_4()
-                                .text_sm()
-                                .text_color(muted)
-                                .child("No themes match your search."),
-                        )
-                    })
-                    // Theme rows
-                    .children(themes.into_iter().map(|config| {
-                        let name = config.name.clone();
-                        let is_active = name == current_name;
-                        let is_dark = config.mode.is_dark();
-                        let name_for_click = name.clone();
-
-                        let mode_badge_bg = if is_dark {
-                            gpui::hsla(0., 0., 0.15, 1.)
-                        } else {
-                            gpui::hsla(0., 0., 0.9, 1.)
-                        };
-                        let mode_badge_fg = if is_dark {
-                            gpui::hsla(0., 0., 0.65, 1.)
-                        } else {
-                            gpui::hsla(0., 0., 0.4, 1.)
-                        };
-
-                        h_flex()
-                            .id(SharedString::from(format!("theme-{}", name)))
-                            .w_full()
-                            .px_3()
-                            .py(px(6.))
-                            .gap_2()
-                            .items_center()
-                            .cursor_pointer()
-                            .bg(if is_active { active_bg } else { bg })
-                            .hover(|s| s.bg(hover_bg))
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(move |_this, _, _, cx| {
-                                    if let Some(cfg) = ThemeRegistry::global(cx)
-                                        .themes()
-                                        .get(&name_for_click)
-                                        .cloned()
-                                    {
-                                        Theme::global_mut(cx).apply_config(&cfg);
-                                        cx.refresh_windows();
-                                    }
-                                }),
-                            )
-                            // Swatch
-                            .child(render_swatch(&config))
-                            // Theme name
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .text_sm()
-                                    .text_color(fg)
-                                    .overflow_hidden()
-                                    .child(name.to_string()),
-                            )
-                            // Dark / Light badge
-                            .child(
-                                div()
-                                    .px(px(5.))
-                                    .py(px(2.))
-                                    .rounded_full()
-                                    .bg(mode_badge_bg)
-                                    .text_xs()
-                                    .text_color(mode_badge_fg)
-                                    .child(if is_dark { "Dark" } else { "Light" }),
-                            )
-                            // Active indicator
-                            .when(is_active, |el| {
-                                el.child(Icon::new(IconName::Check).size(px(14.)).text_color(fg))
+                            // Empty state
+                            .when(is_empty, |el| {
+                                el.child(
+                                    div()
+                                        .px_4()
+                                        .py_4()
+                                        .text_sm()
+                                        .text_color(muted)
+                                        .child("No themes match your search."),
+                                )
                             })
-                    })))
+                            // Theme rows
+                            .children(themes.into_iter().map(|config| {
+                                let name = config.name.clone();
+                                let is_active = name == current_name;
+                                let is_dark = config.mode.is_dark();
+                                let name_for_click = name.clone();
+
+                                let mode_badge_bg = if is_dark {
+                                    gpui::hsla(0., 0., 0.15, 1.)
+                                } else {
+                                    gpui::hsla(0., 0., 0.9, 1.)
+                                };
+                                let mode_badge_fg = if is_dark {
+                                    gpui::hsla(0., 0., 0.65, 1.)
+                                } else {
+                                    gpui::hsla(0., 0., 0.4, 1.)
+                                };
+
+                                h_flex()
+                                    .id(SharedString::from(format!("theme-{}", name)))
+                                    .w_full()
+                                    .px_3()
+                                    .py(px(6.))
+                                    .gap_2()
+                                    .items_center()
+                                    .cursor_pointer()
+                                    .bg(if is_active { active_bg } else { bg })
+                                    .hover(|s| s.bg(hover_bg))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(move |_this, _, _, cx| {
+                                            if let Some(cfg) = ThemeRegistry::global(cx)
+                                                .themes()
+                                                .get(&name_for_click)
+                                                .cloned()
+                                            {
+                                                Theme::global_mut(cx).apply_config(&cfg);
+                                                cx.refresh_windows();
+                                            }
+                                        }),
+                                    )
+                                    // Swatch
+                                    .child(render_swatch(&config))
+                                    // Theme name
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .text_sm()
+                                            .text_color(fg)
+                                            .overflow_hidden()
+                                            .child(name.to_string()),
+                                    )
+                                    // Dark / Light badge
+                                    .child(
+                                        div()
+                                            .px(px(5.))
+                                            .py(px(2.))
+                                            .rounded_full()
+                                            .bg(mode_badge_bg)
+                                            .text_xs()
+                                            .text_color(mode_badge_fg)
+                                            .child(if is_dark { "Dark" } else { "Light" }),
+                                    )
+                                    // Active indicator
+                                    .when(is_active, |el| {
+                                        el.child(
+                                            Icon::new(IconName::Check).size(px(14.)).text_color(fg),
+                                        )
+                                    })
+                            })),
+                    )
                     .child(
                         div()
                             .absolute()
@@ -256,10 +259,7 @@ impl Render for ThemePicker {
                             .left_0()
                             .right_0()
                             .bottom_0()
-                            .child(Scrollbar::vertical(
-                                &self.scroll_state,
-                                &self.scroll_handle,
-                            )),
+                            .child(Scrollbar::vertical(&self.scroll_state, &self.scroll_handle)),
                     ),
             )
     }

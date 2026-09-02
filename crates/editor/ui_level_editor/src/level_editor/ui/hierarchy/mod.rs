@@ -3,6 +3,7 @@ use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
 use crate::level_editor::state::{HierarchyDragPayload, LevelEditorState};
 use gpui::{prelude::*, *};
 use rust_i18n::t;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 use ui::{
@@ -267,7 +268,7 @@ impl HierarchyPanel {
             return;
         }
 
-        let all_objects = state.scene.database.get_all_objects();
+        let (all_objects, root_ids) = state.scene.database.get_hierarchy_snapshot();
         self.cached_items = all_objects
             .into_iter()
             .map(|obj| {
@@ -281,13 +282,7 @@ impl HierarchyPanel {
                 }
             })
             .collect();
-        self.cached_root_ids = state
-            .scene
-            .database
-            .get_root_objects()
-            .iter()
-            .map(|obj| obj.id.clone())
-            .collect();
+        self.cached_root_ids = root_ids;
         self.cache_key = Some(key);
     }
 

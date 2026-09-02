@@ -32,9 +32,7 @@ pub fn open_device_code_modal(
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
-                            .child(
-                                "Enter this code in the browser window GitHub opened.",
-                            ),
+                            .child("Enter this code in the browser window GitHub opened."),
                     )
                     .child(
                         div()

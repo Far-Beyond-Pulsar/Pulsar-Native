@@ -1,10 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use ui::{
-    button::Button,
-    h_flex,
-    v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
-};
+use ui::{button::Button, h_flex, v_flex, ActiveTheme as _, Icon, IconName, StyledExt};
 
 use crate::screen::MultiplayerWindow;
 
@@ -90,10 +86,7 @@ pub fn render_file_sync_tab(
                                             .text_sm()
                                             .font_semibold()
                                             .text_color(cx.theme().foreground)
-                                            .child(format!(
-                                                "Synchronize with {}",
-                                                host_peer_id
-                                            )),
+                                            .child(format!("Synchronize with {}", host_peer_id)),
                                     )
                                     .child(
                                         h_flex()
@@ -103,16 +96,10 @@ pub fn render_file_sync_tab(
                                                 format!("+{} added", diff.files_to_add.len()),
                                             ))
                                             .child(div().text_color(cx.theme().warning).child(
-                                                format!(
-                                                    "~{} modified",
-                                                    diff.files_to_update.len()
-                                                ),
+                                                format!("~{} modified", diff.files_to_update.len()),
                                             ))
                                             .child(div().text_color(cx.theme().danger).child(
-                                                format!(
-                                                    "-{} deleted",
-                                                    diff.files_to_delete.len()
-                                                ),
+                                                format!("-{} deleted", diff.files_to_delete.len()),
                                             )),
                                     ),
                             )
@@ -125,18 +112,16 @@ pub fn render_file_sync_tab(
                                         }),
                                     ))
                                     .child(
-                                        Button::new("sync-approve")
-                                            .label("Sync Files")
-                                            .on_click(cx.listener(|this, _, _window, cx| {
+                                        Button::new("sync-approve").label("Sync Files").on_click(
+                                            cx.listener(|this, _, _window, cx| {
                                                 crate::handlers::on_sync_approve(this, cx);
-                                            })),
+                                            }),
+                                        ),
                                     ),
                             ),
                     ),
             )
-            .child(
-                div().flex_1().child(this.diff_viewer.clone()),
-            )
+            .child(div().flex_1().child(this.diff_viewer.clone()))
             .into_any_element()
     } else {
         tracing::debug!("Rendering FileSync tab - no pending sync");

@@ -12,8 +12,8 @@ use ui::{
 use ui_common::translate;
 
 use crate::components;
-use crate::handlers;
 use crate::components::{EngineDocsPanel, ManualDocsPanel, ProjectDocsPanel};
+use crate::handlers;
 use crate::utils::{DocCategory, EngineDocsState, ManualDocsState, ProjectDocsState};
 
 pub struct DocumentationWindow {
@@ -127,12 +127,7 @@ impl Render for DocumentationWindow {
             .child(self.render_tabs(&theme, current_category, cx))
             .child(self.render_content(current_category, window, cx))
             .when(self.show_new_file_dialog, |this| {
-                this.child(components::render_new_file_dialog(
-                    self,
-                    &theme,
-                    window,
-                    cx,
-                ))
+                this.child(components::render_new_file_dialog(self, &theme, window, cx))
             })
     }
 }
@@ -168,10 +163,7 @@ impl DocumentationWindow {
                             .flex()
                             .items_center()
                             .justify_center()
-                            .child(
-                                Icon::new(IconName::BookOpen)
-                                    .size(px(18.0)),
-                            ),
+                            .child(Icon::new(IconName::BookOpen).size(px(18.0))),
                     )
                     .child(
                         div()

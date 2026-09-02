@@ -199,16 +199,12 @@ impl Render for ModernSettingsScreen {
                 this.child(crate::components::render_save_bar(cx))
             })
             .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .size_full()
-                    .child(
-                        Settings::new("app-settings")
-                            .with_size(self.size)
-                            .with_group_variant(self.group_variant)
-                            .pages(self.setting_pages(window, cx)),
-                    ),
+                div().flex_1().min_h_0().size_full().child(
+                    Settings::new("app-settings")
+                        .with_size(self.size)
+                        .with_group_variant(self.group_variant)
+                        .pages(self.setting_pages(window, cx)),
+                ),
             )
     }
 }

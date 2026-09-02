@@ -341,10 +341,7 @@ impl DiffViewer {
                                 h_flex()
                                     .gap_2()
                                     .items_center()
-                                    .child(
-                                        ui::Icon::new(IconName::Folder)
-                                            .size_4(),
-                                    )
+                                    .child(ui::Icon::new(IconName::Folder).size_4())
                                     .child(
                                         div()
                                             .text_sm()

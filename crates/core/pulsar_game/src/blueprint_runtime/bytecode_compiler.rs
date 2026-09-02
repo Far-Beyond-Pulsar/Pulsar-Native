@@ -5,9 +5,9 @@
 
 use super::compiled_bytecode::{CompiledBytecode, VariableDescriptor};
 use pbgc::{compile_graph_to_bytecode, BpProgram, GraphDescription as PbgcGraphDescription};
-use ui::graph::{BlueprintAsset, ClassVariable, GraphDescription};
 use std::collections::HashMap;
 use std::path::Path;
+use ui::graph::{BlueprintAsset, ClassVariable, GraphDescription};
 
 /// Bytecode compiler for blueprint classes.
 pub struct BytecodeCompiler {

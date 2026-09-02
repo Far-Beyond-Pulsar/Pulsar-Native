@@ -96,8 +96,8 @@ pub use errors::ScriptRefError;
 // versioned VM TypeSlot encoding spec Phase D builds against.
 pub use marshal::{any_to_bytes, any_to_json, bytes_to_any, json_to_any};
 pub use vm_abi::{
-    classify as classify_vm_value_kind, slot_for, TYPE_SLOT_ENCODING_VERSION, VmTypeSlot,
-    VmValueKind,
+    classify as classify_vm_value_kind, slot_for, VmTypeSlot, VmValueKind,
+    TYPE_SLOT_ENCODING_VERSION,
 };
 // Metadata audit (#645): overload sweep + the deterministic registry
 // snapshot CI golden tests diff against.
@@ -146,13 +146,8 @@ pub struct WorldComponentRegistration {
     /// component in `World` (not hydrated yet); callers should fall back to
     /// `pulsar_reflection::apply_runtime_behavior_for_class` in that case,
     /// which still works off the JSON channel unconditionally.
-    pub dispatch: fn(
-        &World,
-        Entity,
-        &RuntimeComponentOwner,
-        usize,
-        &mut dyn ComponentRuntimeContext,
-    ) -> bool,
+    pub dispatch:
+        fn(&World, Entity, &RuntimeComponentOwner, usize, &mut dyn ComponentRuntimeContext) -> bool,
     /// Borrow the typed value already in `World` as `&dyn EngineClass` --
     /// the properties panel's *read* path. No JSON, no throwaway `Default`
     /// instance: this is the one real, live value.
@@ -229,7 +224,9 @@ fn find(class_name: &str) -> Option<&'static WorldComponentRegistration> {
 /// class count is small (dozens, not thousands) and this only runs once
 /// per removal event, not per frame per entity, so it isn't worth a
 /// memoized `HashMap` until that stops being true.
-fn find_by_component_id(component_type: ComponentId) -> Option<&'static WorldComponentRegistration> {
+fn find_by_component_id(
+    component_type: ComponentId,
+) -> Option<&'static WorldComponentRegistration> {
     inventory::iter::<WorldComponentRegistration>
         .into_iter()
         .find(|r| (r.component_type)() == component_type)
@@ -280,7 +277,11 @@ pub fn world_component_present_for_class(class_name: &str, world: &World, entity
 
 /// Remove `class_name`'s typed component from `entity`, if that class is
 /// registered here. Returns `false` if `class_name` isn't registered.
-pub fn remove_world_component_for_class(class_name: &str, world: &mut World, entity: Entity) -> bool {
+pub fn remove_world_component_for_class(
+    class_name: &str,
+    world: &mut World,
+    entity: Entity,
+) -> bool {
     match find(class_name) {
         Some(registration) => {
             (registration.remove)(world, entity);
@@ -364,7 +365,9 @@ pub fn dispatch_world_component_for_class(
     context: &mut dyn ComponentRuntimeContext,
 ) -> bool {
     match find(class_name) {
-        Some(registration) => (registration.dispatch)(world, entity, owner, component_index, context),
+        Some(registration) => {
+            (registration.dispatch)(world, entity, owner, component_index, context)
+        }
         None => false,
     }
 }
@@ -596,7 +599,6 @@ pub struct NoGpuMirror;
 
 unsafe impl pulsar_scenedb::Pod for NoGpuMirror {}
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -633,7 +635,9 @@ mod tests {
     }
 
     fn test_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
-        world.get::<TestComponent>(entity).map(|c| c as &dyn EngineClass)
+        world
+            .get::<TestComponent>(entity)
+            .map(|c| c as &dyn EngineClass)
     }
 
     fn test_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
@@ -642,11 +646,14 @@ mod tests {
         // 2026-08-15 -- `.into_inner()` extracts the raw reference, same
         // fix as `engine_class_derive`'s generated `get_as_engine_class_mut`
         // shim (this hand-written fn mirrors what that macro emits).
-        world.get_mut::<TestComponent>(entity).map(|c| c.into_inner() as &mut dyn EngineClass)
+        world
+            .get_mut::<TestComponent>(entity)
+            .map(|c| c.into_inner() as &mut dyn EngineClass)
     }
 
     fn test_hydrate(world: &mut World, entity: Entity, data: &Value) -> Result<(), String> {
-        let parsed: TestComponent = serde_json::from_value(data.clone()).map_err(|e| e.to_string())?;
+        let parsed: TestComponent =
+            serde_json::from_value(data.clone()).map_err(|e| e.to_string())?;
         world.insert(entity, parsed);
         Ok(())
     }
@@ -655,7 +662,8 @@ mod tests {
         let _ = world.remove::<TestComponent>(entity);
     }
 
-    fn test_on_removed(_owner: &RuntimeComponentOwner, _context: &mut dyn ComponentRuntimeContext) {}
+    fn test_on_removed(_owner: &RuntimeComponentOwner, _context: &mut dyn ComponentRuntimeContext) {
+    }
 
     fn test_dispatch(
         world: &World,
@@ -698,7 +706,9 @@ mod tests {
     }
 
     fn dummy_context() -> DummyContext {
-        DummyContext { subsystems: pulsar_reflection::Subsystems::new() }
+        DummyContext {
+            subsystems: pulsar_reflection::Subsystems::new(),
+        }
     }
 
     fn dummy_owner(props: &HashMap<String, Value>) -> RuntimeComponentOwner<'_> {
@@ -725,21 +735,41 @@ mod tests {
 
         // Not hydrated yet -- dispatch is a clean no-op, not a panic.
         assert!(!dispatch_world_component_for_class(
-            "TestComponent", &world, entity, &dummy_owner(&props), 0, &mut ctx
+            "TestComponent",
+            &world,
+            entity,
+            &dummy_owner(&props),
+            0,
+            &mut ctx
         ));
 
         let hydrated = hydrate_world_component_for_class(
-            "TestComponent", &mut world, entity, &serde_json::json!({"value": 42}),
+            "TestComponent",
+            &mut world,
+            entity,
+            &serde_json::json!({"value": 42}),
         )
         .unwrap();
         assert!(hydrated);
-        assert_eq!(world.get::<TestComponent>(entity), Some(&TestComponent { value: 42 }));
+        assert_eq!(
+            world.get::<TestComponent>(entity),
+            Some(&TestComponent { value: 42 })
+        );
 
         assert!(dispatch_world_component_for_class(
-            "TestComponent", &world, entity, &dummy_owner(&props), 0, &mut ctx
+            "TestComponent",
+            &world,
+            entity,
+            &dummy_owner(&props),
+            0,
+            &mut ctx
         ));
 
-        assert!(remove_world_component_for_class("TestComponent", &mut world, entity));
+        assert!(remove_world_component_for_class(
+            "TestComponent",
+            &mut world,
+            entity
+        ));
         assert!(world.get::<TestComponent>(entity).is_none());
     }
 
@@ -749,12 +779,16 @@ mod tests {
         let entity = world.spawn();
 
         // Not hydrated yet -- no live value to edit.
-        assert!(get_world_component_as_engine_class_mut("TestComponent", &mut world, entity)
-            .is_none());
+        assert!(
+            get_world_component_as_engine_class_mut("TestComponent", &mut world, entity).is_none()
+        );
         assert!(get_world_component_as_engine_class("TestComponent", &world, entity).is_none());
 
         hydrate_world_component_for_class(
-            "TestComponent", &mut world, entity, &serde_json::json!({"value": 1}),
+            "TestComponent",
+            &mut world,
+            entity,
+            &serde_json::json!({"value": 1}),
         )
         .unwrap();
 
@@ -765,11 +799,17 @@ mod tests {
             let instance =
                 get_world_component_as_engine_class_mut("TestComponent", &mut world, entity)
                     .expect("hydrated component should be live-accessible");
-            let concrete = instance.as_any_mut().downcast_mut::<TestComponent>().unwrap();
+            let concrete = instance
+                .as_any_mut()
+                .downcast_mut::<TestComponent>()
+                .unwrap();
             concrete.value = 99;
         }
 
-        assert_eq!(world.get::<TestComponent>(entity), Some(&TestComponent { value: 99 }));
+        assert_eq!(
+            world.get::<TestComponent>(entity),
+            Some(&TestComponent { value: 99 })
+        );
         let read_back = get_world_component_as_engine_class("TestComponent", &world, entity)
             .expect("component should still be live-accessible for reading");
         assert_eq!(
@@ -785,7 +825,10 @@ mod tests {
         thread_local! {
             static FIRED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
         }
-        fn recording_on_removed(_owner: &RuntimeComponentOwner, _context: &mut dyn ComponentRuntimeContext) {
+        fn recording_on_removed(
+            _owner: &RuntimeComponentOwner,
+            _context: &mut dyn ComponentRuntimeContext,
+        ) {
             FIRED.with(|f| f.set(true));
         }
 
@@ -815,11 +858,25 @@ mod tests {
         let owner = dummy_owner(&props);
         let mut ctx = dummy_context();
 
-        assert!(!FIRED.with(|f| f.get()), "must not have fired before notify is called");
-        assert!(notify_world_component_removed("NotifyRemovedTestComponent", &owner, &mut ctx));
-        assert!(FIRED.with(|f| f.get()), "notify must invoke the registered on_removed hook");
+        assert!(
+            !FIRED.with(|f| f.get()),
+            "must not have fired before notify is called"
+        );
+        assert!(notify_world_component_removed(
+            "NotifyRemovedTestComponent",
+            &owner,
+            &mut ctx
+        ));
+        assert!(
+            FIRED.with(|f| f.get()),
+            "notify must invoke the registered on_removed hook"
+        );
 
-        assert!(!notify_world_component_removed("NotRegistered", &owner, &mut ctx));
+        assert!(!notify_world_component_removed(
+            "NotRegistered",
+            &owner,
+            &mut ctx
+        ));
 
         FIRED.with(|f| f.set(false));
         assert!(notify_world_component_removed_by_component_id(
@@ -827,7 +884,10 @@ mod tests {
             &owner,
             &mut ctx,
         ));
-        assert!(FIRED.with(|f| f.get()), "the ComponentId-keyed lookup must find the same registration");
+        assert!(
+            FIRED.with(|f| f.get()),
+            "the ComponentId-keyed lookup must find the same registration"
+        );
 
         // A ComponentId nothing registered (this test's own bare marker
         // type) must be a clean no-op, not a panic.
@@ -848,14 +908,26 @@ mod tests {
 
         assert_eq!(
             hydrate_world_component_for_class(
-                "NotRegistered", &mut world, entity, &serde_json::json!({})
+                "NotRegistered",
+                &mut world,
+                entity,
+                &serde_json::json!({})
             )
             .unwrap(),
             false
         );
-        assert!(!remove_world_component_for_class("NotRegistered", &mut world, entity));
+        assert!(!remove_world_component_for_class(
+            "NotRegistered",
+            &mut world,
+            entity
+        ));
         assert!(!dispatch_world_component_for_class(
-            "NotRegistered", &world, entity, &dummy_owner(&props), 0, &mut ctx
+            "NotRegistered",
+            &world,
+            entity,
+            &dummy_owner(&props),
+            0,
+            &mut ctx
         ));
     }
 
@@ -865,7 +937,10 @@ mod tests {
         let entity = world.spawn();
 
         let err = hydrate_world_component_for_class(
-            "TestComponent", &mut world, entity, &serde_json::json!("not an object"),
+            "TestComponent",
+            &mut world,
+            entity,
+            &serde_json::json!("not an object"),
         )
         .unwrap_err();
         assert!(!err.is_empty());
@@ -879,14 +954,23 @@ mod tests {
         let entity = world.spawn();
 
         hydrate_world_component_for_class(
-            "TestComponent", &mut world, entity, &serde_json::json!({"value": 1}),
+            "TestComponent",
+            &mut world,
+            entity,
+            &serde_json::json!({"value": 1}),
         )
         .unwrap();
         hydrate_world_component_for_class(
-            "TestComponent", &mut world, entity, &serde_json::json!({"value": 2}),
+            "TestComponent",
+            &mut world,
+            entity,
+            &serde_json::json!({"value": 2}),
         )
         .unwrap();
 
-        assert_eq!(world.get::<TestComponent>(entity), Some(&TestComponent { value: 2 }));
+        assert_eq!(
+            world.get::<TestComponent>(entity),
+            Some(&TestComponent { value: 2 })
+        );
     }
 }

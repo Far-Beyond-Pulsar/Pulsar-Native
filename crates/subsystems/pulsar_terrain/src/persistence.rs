@@ -162,7 +162,9 @@ pub enum TerrainPersistenceError {
     ThreadSpawn,
     #[error("terrain persistence request queue capacity {capacity} is exhausted")]
     RequestBackpressure { capacity: usize },
-    #[error("terrain persistence retained-byte budget {capacity} cannot reserve {requested} bytes")]
+    #[error(
+        "terrain persistence retained-byte budget {capacity} cannot reserve {requested} bytes"
+    )]
     SnapshotByteBackpressure { requested: usize, capacity: usize },
     #[error("planet {planet_id:?} already has an incompatible persistence operation in flight")]
     PlanetBusy { planet_id: PlanetId },

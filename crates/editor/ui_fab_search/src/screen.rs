@@ -16,7 +16,7 @@ use ui::{
 use crate::components;
 use crate::parser::{SketchfabMe, SketchfabModel, SketchfabModelDetail};
 use crate::search_index::fetch_sketchfab_me;
-use crate::utils::actions::{DownloadState, DownloadMsg, LicenseFilter, SortBy};
+use crate::utils::actions::{DownloadMsg, DownloadState, LicenseFilter, SortBy};
 
 pub struct FabSearchWindow {
     pub(crate) focus_handle: FocusHandle,
@@ -74,19 +74,17 @@ pub struct FabSearchWindow {
 impl FabSearchWindow {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
-        let search_input =
-            cx.new(|cx| InputState::new(_window, cx).placeholder("Search Sketchfab models\u{2026}"));
-        let token_input = cx
-            .new(|cx| InputState::new(_window, cx).placeholder("Paste your Sketchfab API token\u{2026}"));
+        let search_input = cx
+            .new(|cx| InputState::new(_window, cx).placeholder("Search Sketchfab models\u{2026}"));
+        let token_input = cx.new(|cx| {
+            InputState::new(_window, cx).placeholder("Paste your Sketchfab API token\u{2026}")
+        });
 
-        cx.subscribe(
-            &search_input,
-            |this, _input, event: &InputEvent, cx| {
-                if let InputEvent::PressEnter { .. } = event {
-                    crate::handlers::on_begin_search(this, cx);
-                }
-            },
-        )
+        cx.subscribe(&search_input, |this, _input, event: &InputEvent, cx| {
+            if let InputEvent::PressEnter { .. } = event {
+                crate::handlers::on_begin_search(this, cx);
+            }
+        })
         .detach();
 
         let saved_token = crate::auth::load_saved_token();
@@ -329,7 +327,11 @@ impl Render for FabSearchWindow {
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(div().text_color(muted_fg).child("Searching Sketchfab\u{2026}"))
+                .child(
+                    div()
+                        .text_color(muted_fg)
+                        .child("Searching Sketchfab\u{2026}"),
+                )
                 .into_any_element()
         } else if let Some(ref err) = self.error.clone() {
             let has_url = self.last_url.is_some();
@@ -395,64 +397,63 @@ impl Render for FabSearchWindow {
         let dl_entries = components::build_download_entries(self);
         let entity_for_drawer = cx.entity().clone();
 
-        let layout = v_flex()
-            .size_full()
-            .bg(bg)
-            .child(TitleBar::new().child("Sketchfab"))
-            .child(
-                div()
-                    .w_full()
-                    .px_4()
-                    .pt_4()
-                    .pb_3()
-                    .border_b_1()
-                    .border_color(border_col)
-                    .child(
-                        h_flex()
-                            .w_full()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div().flex_1().min_w(px(200.0)).child(
-                                    TextInput::new(&self.search_input).w_full().prefix(
-                                        ui::Icon::new(IconName::Search)
-                                            .size_4()
-                                            .text_color(muted_fg),
-                                    ),
-                                ),
-                            )
-                            .child(
-                                Button::new("search-btn")
-                                    .label("Search")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        crate::handlers::on_begin_search(this, cx);
-                                    })),
-                            )
-                            .child(div().w(px(1.0)).h(px(20.0)).bg(border_col))
-                            .child(auth_section)
-                            .when(show_dl_btn, |el| {
-                                let dl_label = if active_dl > 0 {
-                                    format!("\u{2193} {} active", active_dl)
-                                } else {
-                                    format!("\u{2193} {} done", dl_count)
-                                };
-                                el.child(div().w(px(1.0)).h(px(20.0)).bg(border_col)).child(
-                                    Button::new("dl-mgr-btn").label(dl_label).on_click(
-                                        cx.listener(|this, _, _, cx| {
-                                            this.show_download_manager =
-                                                !this.show_download_manager;
-                                            if this.show_download_manager {
-                                                this.scan_downloads_folder();
-                                            }
-                                            cx.notify();
-                                        }),
+        let layout =
+            v_flex()
+                .size_full()
+                .bg(bg)
+                .child(TitleBar::new().child("Sketchfab"))
+                .child(
+                    div()
+                        .w_full()
+                        .px_4()
+                        .pt_4()
+                        .pb_3()
+                        .border_b_1()
+                        .border_color(border_col)
+                        .child(
+                            h_flex()
+                                .w_full()
+                                .gap_2()
+                                .items_center()
+                                .child(
+                                    div().flex_1().min_w(px(200.0)).child(
+                                        TextInput::new(&self.search_input).w_full().prefix(
+                                            ui::Icon::new(IconName::Search)
+                                                .size_4()
+                                                .text_color(muted_fg),
+                                        ),
                                     ),
                                 )
-                            }),
-                    ),
-            )
-            .child(filter_bar)
-            .child(body);
+                                .child(Button::new("search-btn").label("Search").on_click(
+                                    cx.listener(|this, _, _, cx| {
+                                        crate::handlers::on_begin_search(this, cx);
+                                    }),
+                                ))
+                                .child(div().w(px(1.0)).h(px(20.0)).bg(border_col))
+                                .child(auth_section)
+                                .when(show_dl_btn, |el| {
+                                    let dl_label = if active_dl > 0 {
+                                        format!("\u{2193} {} active", active_dl)
+                                    } else {
+                                        format!("\u{2193} {} done", dl_count)
+                                    };
+                                    el.child(div().w(px(1.0)).h(px(20.0)).bg(border_col)).child(
+                                        Button::new("dl-mgr-btn").label(dl_label).on_click(
+                                            cx.listener(|this, _, _, cx| {
+                                                this.show_download_manager =
+                                                    !this.show_download_manager;
+                                                if this.show_download_manager {
+                                                    this.scan_downloads_folder();
+                                                }
+                                                cx.notify();
+                                            }),
+                                        ),
+                                    )
+                                }),
+                        ),
+                )
+                .child(filter_bar)
+                .child(body);
 
         div()
             .size_full()

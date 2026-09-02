@@ -610,5 +610,4 @@ impl Panel for ViewportPanelWrapper {
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
         "Viewport".into_any_element()
     }
-
 }

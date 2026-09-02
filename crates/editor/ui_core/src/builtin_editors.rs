@@ -422,9 +422,8 @@ impl BuiltinEditorProvider for AssetViewerBuiltinProvider {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
-        let panel = cx.new(|cx| {
-            asset_viewer_plugin::AssetViewerPanel::new(file_path.clone(), window, cx)
-        });
+        let panel =
+            cx.new(|cx| asset_viewer_plugin::AssetViewerPanel::new(file_path.clone(), window, cx));
         Ok(Arc::new(panel))
     }
 }

@@ -605,16 +605,30 @@ mod blueprint_binding_tests {
         let lever = &file.blueprint_bindings["lever_a"];
         assert_eq!(lever.len(), 2, "multiple classes may bind to one object");
         assert_eq!(lever[0].class_name, "Lever");
-        assert_eq!(lever[0].overrides.get("speed").and_then(Value::as_f64), Some(7.5));
-        assert!(lever[1].overrides.is_empty(), "missing overrides means defaults");
+        assert_eq!(
+            lever[0].overrides.get("speed").and_then(Value::as_f64),
+            Some(7.5)
+        );
+        assert!(
+            lever[1].overrides.is_empty(),
+            "missing overrides means defaults"
+        );
 
         let rewritten = serde_json::to_string(&file).expect("serialize");
-        assert!(rewritten.contains("blueprint_bindings"), "non-empty section is written");
-        assert!(rewritten.contains(r#""overrides":{"speed":7.5}"#), "overrides survive");
+        assert!(
+            rewritten.contains("blueprint_bindings"),
+            "non-empty section is written"
+        );
+        assert!(
+            rewritten.contains(r#""overrides":{"speed":7.5}"#),
+            "overrides survive"
+        );
 
         let empty: SceneFile = serde_json::from_str(r#"{ "version": 1 }"#).unwrap();
         assert!(
-            !serde_json::to_string(&empty).unwrap().contains("blueprint_bindings"),
+            !serde_json::to_string(&empty)
+                .unwrap()
+                .contains("blueprint_bindings"),
             "empty section stays out of the file (byte-compat with pre-#650 writers)"
         );
     }

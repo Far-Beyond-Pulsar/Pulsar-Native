@@ -5,17 +5,19 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use ui::{
-    h_flex, v_flex, v_virtual_list,
     button::{Button, ButtonGroup, ButtonVariants as _},
+    h_flex,
     input::{InputState, TextInput},
     menu::context_menu::ContextMenuExt,
     popup_menu::PopupMenuExt as _,
     resizable::{h_resizable, resizable_panel, ResizableState},
     scroll::{Scrollbar, ScrollbarState},
-    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt,
-    VirtualListScrollHandle,
+    v_flex, v_virtual_list, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _,
+    StyledExt, VirtualListScrollHandle,
 };
 
+use crate::components::commit_picker::{CommitPicker, CommitSelected};
+use crate::components::sidebar;
 use crate::utils::{
     actions::*,
     fs_metadata::FsMetadataManager,
@@ -24,8 +26,6 @@ use crate::utils::{
     tree::FolderNode,
     types::*,
 };
-use crate::components::commit_picker::{CommitPicker, CommitSelected};
-use crate::components::sidebar;
 
 pub struct FileManagerDrawer {
     pub project_path: Option<PathBuf>,
@@ -119,7 +119,9 @@ impl FileManagerDrawer {
             |drawer, _picker, event: &CommitSelected, cx| {
                 crate::handlers::handle_select_deleted_commit(
                     drawer,
-                    &crate::utils::actions::SelectDeletedCommit { commit: event.0.clone() },
+                    &crate::utils::actions::SelectDeletedCommit {
+                        commit: event.0.clone(),
+                    },
                     cx,
                 );
             },
@@ -128,7 +130,9 @@ impl FileManagerDrawer {
 
         let operations = FileOperations::new(project_path.clone());
         let mut fs_metadata = FsMetadataManager::new();
-        if let Some(ref p) = project_path { fs_metadata.load_from_project_root(p); }
+        if let Some(ref p) = project_path {
+            fs_metadata.load_from_project_root(p);
+        }
         let folder_tree = crate::preload::take_preloaded_tree()
             .or_else(|| project_path.as_ref().and_then(|p| FolderNode::from_path(p)));
 
@@ -277,20 +281,24 @@ impl Render for FileManagerDrawer {
             .on_action(cx.listener(|this, _: &DuplicateItem, _w, cx| {
                 crate::handlers::handle_duplicate_item(this, cx)
             }))
-                .on_action(cx.listener(|this, _: &crate::utils::actions::Copy, _w, cx| {
-                    crate::handlers::handle_copy(this, cx)
-                }))
-                .on_action(cx.listener(|this, _: &crate::utils::actions::Cut, _w, cx| {
-                    crate::handlers::handle_cut(this, cx)
-                }))
             .on_action(
-                    cx.listener(|this, _: &crate::utils::actions::Paste, _w, cx| {
-                        crate::handlers::handle_paste(this, cx)
-                    }),
+                cx.listener(|this, _: &crate::utils::actions::Copy, _w, cx| {
+                    crate::handlers::handle_copy(this, cx)
+                }),
             )
-                .on_action(cx.listener(|this, _: &crate::utils::actions::SelectAll, _w, cx| {
-                crate::handlers::handle_select_all(this, cx)
+            .on_action(cx.listener(|this, _: &crate::utils::actions::Cut, _w, cx| {
+                crate::handlers::handle_cut(this, cx)
             }))
+            .on_action(
+                cx.listener(|this, _: &crate::utils::actions::Paste, _w, cx| {
+                    crate::handlers::handle_paste(this, cx)
+                }),
+            )
+            .on_action(
+                cx.listener(|this, _: &crate::utils::actions::SelectAll, _w, cx| {
+                    crate::handlers::handle_select_all(this, cx)
+                }),
+            )
             .on_action(cx.listener(|this, a: &OpenInFileManager, _w, cx| {
                 crate::handlers::handle_open_in_file_manager(this, a, cx)
             }))
@@ -396,25 +404,25 @@ pub fn render_file_content(
                     move |d, is_hovered: &bool, _w, cx| {
                         if !*is_hovered && !d.asset_drag_emitted {
                             d.asset_drag_emitted = true;
-                            if let Some(payload) = cx.active_drag_value::<plugin_editor_api::AssetPayload>() {
-                                cx.emit(
-                                    ui_types_common::DragEvent::AssetDragStarted(
-                                        payload.clone().into(),
-                                    ),
-                                );
+                            if let Some(payload) =
+                                cx.active_drag_value::<plugin_editor_api::AssetPayload>()
+                            {
+                                cx.emit(ui_types_common::DragEvent::AssetDragStarted(
+                                    payload.clone().into(),
+                                ));
                             }
                         }
                     },
                 ));
             if d.selected_folder.is_some() {
                 cd = cd
-                    .on_drag_move(cx.listener(
-                        move |d, _: &DragMoveEvent<DraggedFile>, _w, cx| {
+                    .on_drag_move(
+                        cx.listener(move |d, _: &DragMoveEvent<DraggedFile>, _w, cx| {
                             d.hovered_drop_folder = d.selected_folder.clone();
                             d.show_drop_hint = true;
                             cx.notify();
-                        },
-                    ))
+                        }),
+                    )
                     .on_drag_move(cx.listener(
                         move |d, _: &DragMoveEvent<ExternalPaths>, _w, cx| {
                             d.hovered_drop_folder = d.selected_folder.clone();
@@ -675,15 +683,17 @@ pub fn render_grid_item(
                 cx.stop_propagation();
                 d.handle_drop_on_folder_new(&d2, &drag.paths, w, cx);
             }))
-            .on_drop(cx.listener(move |d, p: &plugin_editor_api::AssetPayload, w, cx| {
-                cx.stop_propagation();
-                d.handle_drop_on_folder_new(
-                    &d3,
-                    &[std::path::PathBuf::from(&p.engine_path)],
-                    w,
-                    cx,
-                );
-            }))
+            .on_drop(
+                cx.listener(move |d, p: &plugin_editor_api::AssetPayload, w, cx| {
+                    cx.stop_propagation();
+                    d.handle_drop_on_folder_new(
+                        &d3,
+                        &[std::path::PathBuf::from(&p.engine_path)],
+                        w,
+                        cx,
+                    );
+                }),
+            )
             .on_drop(cx.listener(move |d, ext: &ExternalPaths, w, cx| {
                 cx.stop_propagation();
                 d.handle_external_drop_on_folder(&d4, ext.paths(), w, cx);
@@ -793,9 +803,7 @@ pub fn render_grid_item(
                 )
                 .context_menu(move |m, w, cx| {
                     if ghost {
-                        crate::components::context_menus::deleted_item_context_menu(&irc)(
-                            m, w, cx,
-                        )
+                        crate::components::context_menus::deleted_item_context_menu(&irc)(m, w, cx)
                     } else {
                         crate::components::context_menus::item_context_menu(ip.clone(), hc, cls)(
                             m, w, cx,
@@ -960,15 +968,17 @@ pub fn render_list_item(
                 cx.stop_propagation();
                 d.handle_drop_on_folder_new(&d2, &drag.paths, w, cx);
             }))
-            .on_drop(cx.listener(move |d, p: &plugin_editor_api::AssetPayload, w, cx| {
-                cx.stop_propagation();
-                d.handle_drop_on_folder_new(
-                    &d3,
-                    &[std::path::PathBuf::from(&p.engine_path)],
-                    w,
-                    cx,
-                );
-            }))
+            .on_drop(
+                cx.listener(move |d, p: &plugin_editor_api::AssetPayload, w, cx| {
+                    cx.stop_propagation();
+                    d.handle_drop_on_folder_new(
+                        &d3,
+                        &[std::path::PathBuf::from(&p.engine_path)],
+                        w,
+                        cx,
+                    );
+                }),
+            )
             .on_drop(cx.listener(move |d, ext: &ExternalPaths, w, cx| {
                 cx.stop_propagation();
                 d.handle_external_drop_on_folder(&d4, ext.paths(), w, cx);
@@ -1054,9 +1064,7 @@ pub fn render_list_item(
     )
     .context_menu(move |m, w, cx| {
         if ghost {
-            crate::components::context_menus::deleted_item_context_menu(&irc)(
-                m, w, cx,
-            )
+            crate::components::context_menus::deleted_item_context_menu(&irc)(m, w, cx)
         } else {
             crate::components::context_menus::item_context_menu(ip.clone(), hc, cls)(m, w, cx)
         }
@@ -1070,7 +1078,8 @@ pub fn render_combined_toolbar(
     cx: &mut Context<FileManagerDrawer>,
 ) -> impl IntoElement {
     let vm = d.view_mode;
-    let current_commit = d.selected_deleted_commit
+    let current_commit = d
+        .selected_deleted_commit
         .clone()
         .unwrap_or_else(|| "HEAD".to_string());
     h_flex()
@@ -1249,7 +1258,7 @@ pub fn render_combined_toolbar(
                     )
                 })
         })
-    }
+}
 
 pub fn render_clickable_breadcrumb(
     d: &mut FileManagerDrawer,
@@ -1288,10 +1297,7 @@ pub fn render_clickable_breadcrumb(
         .bg(cx.theme().muted.opacity(0.3))
         .border_1()
         .border_color(cx.theme().border)
-        .child(
-            Icon::new(IconName::Folder)
-                .size_4(),
-        )
+        .child(Icon::new(IconName::Folder).size_4())
         .children(parts.into_iter().enumerate().flat_map(|(i, (name, path))| {
             let mut els: Vec<AnyElement> = Vec::new();
             if i > 0 {

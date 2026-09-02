@@ -56,10 +56,15 @@ impl ComponentInstanceStore for WorldSceneStore {
     fn set_instance_data(&mut self, entity: Entity, index: u32, data: Value) -> bool {
         // `update_render_props` is stable-id keyed and no-ops silently on
         // unknown ids -- resolve our key first so we can report misses.
-        let Some(id) = self.stable_id_of(entity).map(str::to_string) else { return false };
+        let Some(id) = self.stable_id_of(entity).map(str::to_string) else {
+            return false;
+        };
         let mut wrote = false;
         self.update_render_props(&id, |props| {
-            let Some(entries) = props.component_instances.as_mut().and_then(Value::as_array_mut)
+            let Some(entries) = props
+                .component_instances
+                .as_mut()
+                .and_then(Value::as_array_mut)
             else {
                 return;
             };
@@ -83,7 +88,9 @@ impl WorldSceneStore {
     /// `RenderProps.component_instances`, as `(resolved index, record)` in
     /// array order. See this module's doc for the index-resolution rule.
     fn instance_records(&self, entity: Entity) -> Vec<(u32, InstanceRecord)> {
-        let Some(props) = self.world().get::<RenderProps>(entity) else { return Vec::new() };
+        let Some(props) = self.world().get::<RenderProps>(entity) else {
+            return Vec::new();
+        };
         let Some(array) = props.component_instances.as_ref().and_then(Value::as_array) else {
             return Vec::new();
         };
@@ -95,7 +102,10 @@ impl WorldSceneStore {
                 let class_name = object.get("class_name")?.as_str()?.to_string();
                 let record = InstanceRecord {
                     class_name,
-                    enabled: object.get("enabled").and_then(Value::as_bool).unwrap_or(true),
+                    enabled: object
+                        .get("enabled")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(true),
                     data: object.get("data").cloned().unwrap_or(Value::Null),
                 };
                 Some((entry_resolved_index(entry, position), record))
@@ -206,7 +216,9 @@ mod tests {
         let (store, door) = store_with_instances();
         assert_eq!(
             <WorldSceneStore as ComponentInstanceStore>::live_component_index(
-                &store, door, "TestGizmo"
+                &store,
+                door,
+                "TestGizmo"
             ),
             Some(0)
         );
@@ -228,24 +240,39 @@ mod tests {
     fn set_instance_data_writes_only_the_targeted_record() {
         let (mut store, door) = store_with_instances();
 
-        let wrote =
-            <WorldSceneStore as ComponentInstanceStore>::set_instance_data(
-                &mut store, door, 1, json!({ "charges": 22 }),
-            );
+        let wrote = <WorldSceneStore as ComponentInstanceStore>::set_instance_data(
+            &mut store,
+            door,
+            1,
+            json!({ "charges": 22 }),
+        );
         assert!(wrote);
 
         let records = WorldSceneStore::instance_records(&store, door);
-        assert_eq!(records[0].1.data, json!({ "charges": 1 }), "record 0 untouched");
-        assert_eq!(records[1].1.data, json!({ "charges": 22 }), "record 1 replaced");
+        assert_eq!(
+            records[0].1.data,
+            json!({ "charges": 1 }),
+            "record 0 untouched"
+        );
+        assert_eq!(
+            records[1].1.data,
+            json!({ "charges": 22 }),
+            "record 1 replaced"
+        );
     }
 
     #[test]
     fn set_instance_data_on_unknown_entity_is_false() {
         let mut store = WorldSceneStore::new();
         let phantom = pulsar_scenedb::Entity::from_bits((50u64) << 32);
-        assert!(!<WorldSceneStore as ComponentInstanceStore>::set_instance_data(
-            &mut store, phantom, 0, json!({})
-        ));
+        assert!(
+            !<WorldSceneStore as ComponentInstanceStore>::set_instance_data(
+                &mut store,
+                phantom,
+                0,
+                json!({})
+            )
+        );
     }
 
     #[test]
@@ -253,8 +280,14 @@ mod tests {
         let store = WorldSceneStore::load_from_snapshots(&[snap("door"), snap("chest")]).unwrap();
 
         let door = store.entity_for("door").unwrap();
-        assert_eq!(StableIdResolver::stable_id_for_entity(&store, door), Some("door".to_string()));
-        assert_eq!(StableIdResolver::entity_for_stable_id(&store, "door"), Some(door));
+        assert_eq!(
+            StableIdResolver::stable_id_for_entity(&store, door),
+            Some("door".to_string())
+        );
+        assert_eq!(
+            StableIdResolver::entity_for_stable_id(&store, "door"),
+            Some(door)
+        );
         assert!(StableIdResolver::is_entity_alive(&store, door));
         assert_eq!(StableIdResolver::entity_for_stable_id(&store, "nope"), None);
     }
@@ -264,18 +297,23 @@ mod tests {
     /// resolve through at runtime.
     #[test]
     fn world_level_identity_lookups_find_hydrated_objects() {
-        let mut store =
-            WorldSceneStore::load_from_snapshots(&[
-                ObjectSnapshot { name: "Front Door".into(), ..snap("door") },
-                snap("chest"),
-            ])
-            .unwrap();
+        let mut store = WorldSceneStore::load_from_snapshots(&[
+            ObjectSnapshot {
+                name: "Front Door".into(),
+                ..snap("door")
+            },
+            snap("chest"),
+        ])
+        .unwrap();
         let world = store.world();
 
         let door = entity_with_stable_id(world, "door").expect("by stable id");
         assert_eq!(store.entity_for("door"), Some(door));
         assert_eq!(first_entity_named(world, "Front Door"), Some(door));
-        assert_eq!(entity_with_stable_id(world, "chest"), store.entity_for("chest"));
+        assert_eq!(
+            entity_with_stable_id(world, "chest"),
+            store.entity_for("chest")
+        );
         assert_eq!(first_entity_named(world, "no such object"), None);
 
         // Despawned targets stop resolving immediately (lazy resolution).

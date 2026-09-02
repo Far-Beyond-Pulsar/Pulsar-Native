@@ -129,10 +129,7 @@ pub fn render_grouped_view(
                             .w_full()
                             .gap_3()
                             .items_center()
-                            .child(
-                                ui::Icon::new(IconName::Folder)
-                                    .size_4(),
-                            )
+                            .child(ui::Icon::new(IconName::Folder).size_4())
                             .child(
                                 div()
                                     .flex_1()
@@ -587,10 +584,7 @@ pub fn render_hint_diff(
                     h_flex()
                         .gap_2()
                         .items_center()
-                        .child(
-                            ui::Icon::new(IconName::Info)
-                                .size_4(),
-                        )
+                        .child(ui::Icon::new(IconName::Info).size_4())
                         .child(
                             div()
                                 .flex_1()

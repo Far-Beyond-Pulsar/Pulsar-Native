@@ -237,21 +237,6 @@ impl GpuRenderer {
         }
     }
 
-    /// Get the current SceneDb-level gizmo type.
-    pub fn get_scene_gizmo_type(&self) -> crate::scene::GizmoType {
-        self.helio_renderer
-            .as_ref()
-            .map(|r| r.get_scene_gizmo_type())
-            .unwrap_or(crate::scene::GizmoType::None)
-    }
-
-    /// Set the SceneDb-level gizmo type.
-    pub fn set_scene_gizmo_type(&mut self, t: crate::scene::GizmoType) {
-        if let Some(r) = &mut self.helio_renderer {
-            r.set_scene_gizmo_type(t);
-        }
-    }
-
     /// Get the ID of the currently selected object in SceneDb.
     pub fn get_scene_db_selected_id(&self) -> Option<String> {
         self.helio_renderer
@@ -389,10 +374,10 @@ mod tests {
 
         // Simulate what viewport/mod.rs's on_mouse_down/on_mouse_up closures
         // do -- push directly onto the shared queue, no gpu_engine lock.
-        queue
-            .lock()
-            .unwrap()
-            .push(PendingPointerEvent::LeftClick { norm_x: 0.25, norm_y: 0.75 });
+        queue.lock().unwrap().push(PendingPointerEvent::LeftClick {
+            norm_x: 0.25,
+            norm_y: 0.75,
+        });
         queue.lock().unwrap().push(PendingPointerEvent::LeftRelease);
 
         let drained = std::mem::take(&mut *queue.lock().unwrap());
@@ -430,8 +415,6 @@ mod tests {
         // underlying `AtomicBool`s the render thread would see.
         let inner = renderer.helio_renderer.as_ref().unwrap();
         assert!(inner.pending_deselect.load(Ordering::Acquire));
-        assert!(inner
-            .pending_force_full_resync
-            .load(Ordering::Acquire));
+        assert!(inner.pending_force_full_resync.load(Ordering::Acquire));
     }
 }

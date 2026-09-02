@@ -27,6 +27,7 @@ pub mod asset_picker;
 pub mod command_palette;
 pub mod file_utils;
 pub mod generic_window;
+pub mod locale_picker;
 pub mod menu;
 pub mod open_window;
 pub mod panel;
@@ -36,7 +37,6 @@ pub mod property_editor_registry;
 pub mod reflected_properties_panel;
 pub mod shared;
 pub mod shared_state;
-pub mod locale_picker;
 pub mod theme_dropdown;
 
 pub use asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
@@ -49,6 +49,7 @@ pub use shared_state::SharedState;
 
 // Re-export commonly used types
 pub use file_utils::{find_openable_files, FileInfo, FileType};
+pub use locale_picker::LocalePicker;
 pub use menu::{AppTitleBar, AppTitleBarEvent};
 pub use panel::{PanelBase, PanelEvent};
 pub use profile_dropdown::{ProfileDropdown, ProfileDropdownEvent};
@@ -56,7 +57,6 @@ pub use reflected_properties_panel::{
     render_property_row_runtime, PropertyStateManager, ReflectedPropertiesPanelConfig,
 };
 pub use shared::{PropertyField, StatusBar, Toolbar, ToolbarButton, ViewportControls};
-pub use locale_picker::LocalePicker;
 pub use theme_dropdown::ThemePicker;
 
 // Re-export diagnostics from ui crate

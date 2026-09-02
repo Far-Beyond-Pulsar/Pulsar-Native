@@ -144,12 +144,7 @@ impl ObjectTypeFieldsSection {
             &component_list,
             move |_this, _, event: &SearchableListEvent<String>, cx| {
                 if let SearchableListEvent::Select(class_name) = event {
-                    Self::add_component(
-                        &scene_db_for_add,
-                        &object_id_for_add,
-                        class_name,
-                        cx,
-                    );
+                    Self::add_component(&scene_db_for_add, &object_id_for_add, class_name, cx);
                     cx.notify();
                 }
             },
@@ -293,9 +288,7 @@ impl Render for ObjectTypeFieldsSection {
         let structural = property_changes.components_added_or_removed();
 
         // ── Detect structural changes without full get_components() ────────
-        let current_count = self.scene_db.component_count(
-            &self.object_id,
-        );
+        let current_count = self.scene_db.component_count(&self.object_id);
         let count_changed = current_count != self.cached_component_count;
         self.cached_component_count = current_count;
 
@@ -400,8 +393,7 @@ impl Render for ObjectTypeFieldsSection {
             }
         }
 
-        let component_sections =
-            self.render_component_sections(&attached, window, cx);
+        let component_sections = self.render_component_sections(&attached, window, cx);
 
         v_flex()
             .w_full()

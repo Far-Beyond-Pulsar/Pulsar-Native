@@ -19,7 +19,7 @@
 //! mutates them -- so it is safe to call from tests and editor tooling
 //! alike.
 
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use pulsar_reflection::REGISTRY;
 
@@ -105,9 +105,7 @@ pub fn metadata_snapshot_json() -> Value {
                 let params: Vec<Value> = method
                     .params
                     .iter()
-                    .map(|param| {
-                        json!({ "name": param.name, "type": param.type_info.type_name })
-                    })
+                    .map(|param| json!({ "name": param.name, "type": param.type_info.type_name }))
                     .collect();
                 json!({
                     "name": method.name,
@@ -168,7 +166,10 @@ mod tests {
             assert!(class["name"].as_str().is_some());
             for method in class["methods"].as_array().unwrap() {
                 assert!(
-                    matches!(method["method_type"].as_str(), Some("Pure") | Some("Fn") | Some("ControlFlow")),
+                    matches!(
+                        method["method_type"].as_str(),
+                        Some("Pure") | Some("Fn") | Some("ControlFlow")
+                    ),
                     "method {} of {} lacks a valid method_type tag",
                     method["name"],
                     class["name"]

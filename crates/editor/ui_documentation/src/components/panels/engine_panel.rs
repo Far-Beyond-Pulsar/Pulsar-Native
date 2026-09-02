@@ -197,10 +197,7 @@ impl EngineDocsPanel {
             .bg(theme.sidebar.opacity(0.3))
             .child({
                 let mut crumbs = h_flex().gap_2().items_center();
-                crumbs = crumbs.child(
-                    Icon::new(IconName::BookOpen)
-                        .size_4(),
-                );
+                crumbs = crumbs.child(Icon::new(IconName::BookOpen).size_4());
                 for (idx, part) in parts.iter().enumerate() {
                     if idx > 0 {
                         crumbs = crumbs.child(

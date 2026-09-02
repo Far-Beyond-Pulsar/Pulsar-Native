@@ -79,17 +79,13 @@ pub fn render_grouped_view(
                                                 .child(
                                                     kind_icon(&kind_clone)
                                                         .size_4()
-                                                        .text_color(
-                                                            kind_color(&kind_clone, cx),
-                                                        ),
+                                                        .text_color(kind_color(&kind_clone, cx)),
                                                 )
                                                 .child(
                                                     div()
                                                         .flex_1()
                                                         .text_sm()
-                                                        .font_weight(
-                                                            gpui::FontWeight::SEMIBOLD,
-                                                        )
+                                                        .font_weight(gpui::FontWeight::SEMIBOLD)
                                                         .text_color(cx.theme().foreground)
                                                         .child(format!(
                                                             "{} ({})",
@@ -103,15 +99,9 @@ pub fn render_grouped_view(
                                     types_clone
                                         .iter()
                                         .map(|type_info| {
-                                            let is_selected =
-                                                selected_index == Some(global_index);
+                                            let is_selected = selected_index == Some(global_index);
                                             global_index += 1;
-                                            render_type_item(
-                                                drawer,
-                                                type_info,
-                                                is_selected,
-                                                cx,
-                                            )
+                                            render_type_item(drawer, type_info, is_selected, cx)
                                         })
                                         .collect::<Vec<_>>(),
                                 ),

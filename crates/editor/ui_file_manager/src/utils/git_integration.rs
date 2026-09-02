@@ -36,11 +36,14 @@ fn git(repo: &Path, args: &[&str]) -> Result<String, String> {
 /// Return up to `count` recent commits.
 pub fn recent_commits(repo: &Path, count: usize) -> Vec<CommitInfo> {
     let fmt = "%h|%H|%s|%ai";
-    let out = match git(repo, &[
-        "log",
-        &format!("-{count}"),
-        &format!("--pretty=format:{fmt}"),
-    ]) {
+    let out = match git(
+        repo,
+        &[
+            "log",
+            &format!("-{count}"),
+            &format!("--pretty=format:{fmt}"),
+        ],
+    ) {
         Ok(o) => o,
         Err(e) => {
             tracing::warn!("recent_commits: {e}");
@@ -65,14 +68,17 @@ pub fn recent_commits(repo: &Path, count: usize) -> Vec<CommitInfo> {
 
 /// Get list of files deleted in a commit (files that existed in parent but not in this commit).
 pub fn deleted_files_in_commit(repo: &Path, commit: &str) -> Vec<DeletedFileEntry> {
-    let out = match git(repo, &[
-        "log",
-        "-1",
-        "--diff-filter=D",
-        "--name-only",
-        "--pretty=format:",
-        commit,
-    ]) {
+    let out = match git(
+        repo,
+        &[
+            "log",
+            "-1",
+            "--diff-filter=D",
+            "--name-only",
+            "--pretty=format:",
+            commit,
+        ],
+    ) {
         Ok(o) => o,
         Err(e) => {
             tracing::warn!("deleted_files_in_commit({commit}): {e}");
@@ -90,9 +96,7 @@ pub fn deleted_files_in_commit(repo: &Path, commit: &str) -> Vec<DeletedFileEntr
 
 /// Read a file's content from a specific commit.
 pub fn read_file_from_commit(repo: &Path, commit: &str, path: &Path) -> Result<Vec<u8>, String> {
-    let rel = path
-        .strip_prefix(repo)
-        .unwrap_or(path);
+    let rel = path.strip_prefix(repo).unwrap_or(path);
     let spec = format!("{commit}:{}", rel.display());
     let out = Command::new("git")
         .args(["show", &spec])

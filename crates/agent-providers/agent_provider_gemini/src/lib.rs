@@ -108,7 +108,11 @@ impl ChatProvider for GeminiProvider {
         } else if response.status().as_u16() == 401 || response.status().as_u16() == 403 {
             Err(anyhow::anyhow!("Gemini API key is invalid or expired"))
         } else {
-            Err(anyhow::anyhow!("Gemini API returned {}: {}", response.status(), response.text().unwrap_or_default()))
+            Err(anyhow::anyhow!(
+                "Gemini API returned {}: {}",
+                response.status(),
+                response.text().unwrap_or_default()
+            ))
         }
     }
 
@@ -121,7 +125,11 @@ impl ChatProvider for GeminiProvider {
             .send()
             .map_err(|e| anyhow::anyhow!("Failed to fetch Gemini models: {e}"))?;
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("Gemini models API {}: {}", response.status(), response.text().unwrap_or_default()));
+            return Err(anyhow::anyhow!(
+                "Gemini models API {}: {}",
+                response.status(),
+                response.text().unwrap_or_default()
+            ));
         }
         let body: serde_json::Value = response.json()?;
         let models = body
@@ -131,8 +139,19 @@ impl ChatProvider for GeminiProvider {
                 arr.iter()
                     .filter_map(|m| {
                         let id = m.get("id")?.as_str()?.to_string();
-                        let label = m.get("display_name").or_else(|| m.get("name")).and_then(|v| v.as_str()).unwrap_or(&id).to_string();
-                        Some(ModelDescriptor { id, label, supports_tools: true, context_tokens: 0, compact_model: None })
+                        let label = m
+                            .get("display_name")
+                            .or_else(|| m.get("name"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(&id)
+                            .to_string();
+                        Some(ModelDescriptor {
+                            id,
+                            label,
+                            supports_tools: true,
+                            context_tokens: 0,
+                            compact_model: None,
+                        })
                     })
                     .collect()
             })

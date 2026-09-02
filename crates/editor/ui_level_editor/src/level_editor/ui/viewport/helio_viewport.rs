@@ -5,7 +5,7 @@
 //!   2. Each frame: `back_view_with_size()` → render → `swap_buffers()`.
 //!   3. Return `wgpu_surface(handle)` in the element tree so GPUI composits it.
 
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -15,9 +15,9 @@ use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::*;
 use plugin_editor_api::{AssetKind, AssetPayload};
 use rust_i18n::t;
-use ui::{ActiveTheme as _, ContextModal, notification::Notification};
+use ui::{notification::Notification, ActiveTheme as _, ContextModal};
 
-use crate::level_editor::commands::{SceneCommand, execute_command};
+use crate::level_editor::commands::{execute_command, SceneCommand};
 use crate::level_editor::scene_database::{MeshType, ObjectType, SceneObjectData, Transform};
 use crate::level_editor::state::LevelEditorState;
 use helio_component::asset_component::component_class_for_asset;
@@ -492,8 +492,8 @@ impl HelioViewport {
                 // undocks. That bounds their pickup latency without letting
                 // the ancestor-chain rebuild dominate idle frames.
                 this.frames_since_full_render += 1;
-                let viewport_resized = Some(window.viewport_size())
-                    != this.viewport_size_at_last_full_render;
+                let viewport_resized =
+                    Some(window.viewport_size()) != this.viewport_size_at_last_full_render;
                 if this.frames_since_full_render >= FULL_RENDER_INTERVAL
                     || this.awaiting_render
                     || viewport_resized
@@ -745,7 +745,7 @@ impl FramePacer {
 
 #[cfg(test)]
 mod pacer_tests {
-    use super::{FALLBACK_REFRESH_HZ, FramePacer, MIN_TARGET_HZ};
+    use super::{FramePacer, FALLBACK_REFRESH_HZ, MIN_TARGET_HZ};
 
     /// Drive `adapt` as if `n` frames in a row missed their deadline.
     fn run_late_frames(pacer: &mut FramePacer, n: u32) {

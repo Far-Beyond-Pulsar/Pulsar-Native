@@ -117,9 +117,7 @@ pub fn run_with_component_context<R>(
 /// pointer is valid only inside the installation closure, where the caller
 /// provably holds `&mut World` for the whole body.
 pub(super) fn context_snapshot() -> Option<(*mut World, Option<Entity>)> {
-    COMP_EXEC_CTX.with(|slot| {
-        slot.borrow().as_ref().map(|ctx| (ctx.world, ctx.entity))
-    })
+    COMP_EXEC_CTX.with(|slot| slot.borrow().as_ref().map(|ctx| (ctx.world, ctx.entity)))
 }
 
 /// Run `f` with the installed context's world/entity.

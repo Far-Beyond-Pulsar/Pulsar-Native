@@ -105,9 +105,7 @@ impl crate::tick::TickLoop {
 
         let mut store = self.scene_store.write();
         let entity = self.actors.register(actor, store.world_mut());
-        store
-            .world_mut()
-            .insert(entity, ScriptTag { type_path });
+        store.world_mut().insert(entity, ScriptTag { type_path });
         entity
     }
 
@@ -162,8 +160,8 @@ mod tests {
     use crate::tick::TickLoop;
     use engine_backend::scene::Transform;
     use pulsar_core::TickMode;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::Arc;
 
     /// Counts ticks in a shared cell so tests can observe that the REBOUND
     /// shell (not just the registry copy) drives after the swap.

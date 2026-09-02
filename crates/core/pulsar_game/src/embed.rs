@@ -180,9 +180,8 @@ impl EmbeddedGame {
                 "PiE: v2 context carries no shared_world token (host too old?)".to_string(),
             );
         } else {
-            let host_store = unsafe {
-                Arc::from_raw(ctx.shared_world as *const RwLock<WorldSceneStore>)
-            };
+            let host_store =
+                unsafe { Arc::from_raw(ctx.shared_world as *const RwLock<WorldSceneStore>) };
             TickLoop::with_scene_store(host_store, TickMode::default(), threads)
         };
         let mut tick_loop = tick_loop;
@@ -194,8 +193,7 @@ impl EmbeddedGame {
         // D3's `reload_blueprint` for VM instances.
         if ctx.session_flags & pulsar_pie_abi::session_flags::RELOAD != 0 {
             tick_loop.begin_script_reload();
-            let msg =
-                "PiE hot reload: actor registrations will re-bind to existing entities";
+            let msg = "PiE hot reload: actor registrations will re-bind to existing entities";
             (ctx.log)(ctx.userdata, LOG_INFO, msg.as_ptr(), msg.len());
         }
         // NOTE: `setup()` deliberately runs AFTER adoption so project actors

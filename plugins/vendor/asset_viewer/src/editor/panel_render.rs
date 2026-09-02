@@ -1,11 +1,11 @@
-use rust_i18n::t;
 use gpui::prelude::*;
 use gpui::*;
+use rust_i18n::t;
 use ui::dock::{Panel, PanelEvent};
 use ui::{h_flex, v_flex, ActiveTheme};
 
-use solid_rs::registry::Registry;
 use solid_fbx::FbxLoader;
+use solid_rs::registry::Registry;
 
 use super::panel::{AssetViewerPanel, MeshProps, SceneStats};
 
@@ -143,7 +143,11 @@ impl AssetViewerPanel {
             let (sw, sh) = self.surface_handle.as_ref().unwrap().size();
             let depth = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("depth buffer"),
-                size: wgpu::Extent3d { width: sw.max(1), height: sh.max(1), depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width: sw.max(1),
+                    height: sh.max(1),
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -161,11 +165,7 @@ impl AssetViewerPanel {
         self.needs_rebuild = false;
     }
 
-    fn setup_mesh_pipeline(
-        &mut self,
-        device: &wgpu::Device,
-        config: &wgpu::SurfaceConfiguration,
-    ) {
+    fn setup_mesh_pipeline(&mut self, device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) {
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("mesh uniform buffer"),
             size: 64,
@@ -476,7 +476,9 @@ impl AssetViewerPanel {
     }
 
     fn load_and_upload_mesh(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        let Some(ref path) = self.current_path else { return };
+        let Some(ref path) = self.current_path else {
+            return;
+        };
 
         let mut registry = solid_rs::registry::Registry::new();
         registry.register_loader(solid_fbx::FbxLoader);
@@ -498,7 +500,9 @@ impl AssetViewerPanel {
                 .map(|&id| (id, glam::Mat4::IDENTITY.to_cols_array()))
                 .collect();
             while let Some((node_id, parent_cols)) = stack.pop() {
-                let Some(node) = solid_scene.node(node_id) else { continue };
+                let Some(node) = solid_scene.node(node_id) else {
+                    continue;
+                };
                 let node_mat = node.transform.to_matrix().to_cols_array();
                 let mut prod = [0.0f32; 16];
                 for col in 0..4 {
@@ -520,7 +524,14 @@ impl AssetViewerPanel {
         }
 
         // First pass: collect all transformed vertices + compute bounding box
-        struct MeshVert { px: f32, py: f32, pz: f32, nx: f32, ny: f32, nz: f32 }
+        struct MeshVert {
+            px: f32,
+            py: f32,
+            pz: f32,
+            nx: f32,
+            ny: f32,
+            nz: f32,
+        }
         let mut all_verts: Vec<MeshVert> = Vec::new();
         let mut indices: Vec<u32> = Vec::new();
         let mut bbox_min = [f32::MAX; 3];
@@ -541,9 +552,18 @@ impl AssetViewerPanel {
 
             let base = all_verts.len() as u32;
             for v in &mesh.vertices {
-                let px = v.position.x * rot[0][0] + v.position.y * rot[0][1] + v.position.z * rot[0][2] + world_mat[12];
-                let py = v.position.x * rot[1][0] + v.position.y * rot[1][1] + v.position.z * rot[1][2] + world_mat[13];
-                let pz = v.position.x * rot[2][0] + v.position.y * rot[2][1] + v.position.z * rot[2][2] + world_mat[14];
+                let px = v.position.x * rot[0][0]
+                    + v.position.y * rot[0][1]
+                    + v.position.z * rot[0][2]
+                    + world_mat[12];
+                let py = v.position.x * rot[1][0]
+                    + v.position.y * rot[1][1]
+                    + v.position.z * rot[1][2]
+                    + world_mat[13];
+                let pz = v.position.x * rot[2][0]
+                    + v.position.y * rot[2][1]
+                    + v.position.z * rot[2][2]
+                    + world_mat[14];
                 let (nx, ny, nz) = match v.normal {
                     Some(n) => (
                         n.x * rot[0][0] + n.y * rot[0][1] + n.z * rot[0][2],
@@ -558,7 +578,14 @@ impl AssetViewerPanel {
                 bbox_max[0] = bbox_max[0].max(px);
                 bbox_max[1] = bbox_max[1].max(py);
                 bbox_max[2] = bbox_max[2].max(pz);
-                all_verts.push(MeshVert { px, py, pz, nx, ny, nz });
+                all_verts.push(MeshVert {
+                    px,
+                    py,
+                    pz,
+                    nx,
+                    ny,
+                    nz,
+                });
             }
 
             for prim in &mesh.primitives {
@@ -602,40 +629,54 @@ impl AssetViewerPanel {
         let mut total_indices_scene: u32 = 0;
         let mut morph_total = 0;
 
-        self.mesh_props = solid_scene.meshes.iter().map(|mesh| {
-            let prim_indices: u32 = mesh.primitives.iter()
-                .filter(|p| p.topology == solid_rs::geometry::Topology::TriangleList)
-                .map(|p| p.indices.len() as u32)
-                .sum();
-            let mat_name = mesh.primitives.first()
-                .and_then(|p| p.material_index)
-                .and_then(|mi| solid_scene.materials.get(mi))
-                .map(|m| m.name.clone())
-                .unwrap_or_default();
-            let bb = mesh.bounds.as_ref().map(|b| ([b.min.x, b.min.y, b.min.z], [b.max.x, b.max.y, b.max.z]))
-                .unwrap_or(([0.0; 3], [0.0; 3]));
-            morph_total += mesh.morph_targets.len();
+        self.mesh_props = solid_scene
+            .meshes
+            .iter()
+            .map(|mesh| {
+                let prim_indices: u32 = mesh
+                    .primitives
+                    .iter()
+                    .filter(|p| p.topology == solid_rs::geometry::Topology::TriangleList)
+                    .map(|p| p.indices.len() as u32)
+                    .sum();
+                let mat_name = mesh
+                    .primitives
+                    .first()
+                    .and_then(|p| p.material_index)
+                    .and_then(|mi| solid_scene.materials.get(mi))
+                    .map(|m| m.name.clone())
+                    .unwrap_or_default();
+                let bb = mesh
+                    .bounds
+                    .as_ref()
+                    .map(|b| ([b.min.x, b.min.y, b.min.z], [b.max.x, b.max.y, b.max.z]))
+                    .unwrap_or(([0.0; 3], [0.0; 3]));
+                morph_total += mesh.morph_targets.len();
 
-            total_verts += mesh.vertices.len() as u32;
-            total_indices_scene += prim_indices;
+                total_verts += mesh.vertices.len() as u32;
+                total_indices_scene += prim_indices;
 
-            MeshProps {
-                name: mesh.name.clone(),
-                vertex_count: mesh.vertices.len() as u32,
-                index_count: prim_indices,
-                triangle_count: prim_indices / 3,
-                primitive_count: mesh.primitives.len(),
-                morph_count: mesh.morph_targets.len(),
-                has_normals: mesh.vertices.iter().any(|v| v.normal.is_some()),
-                has_tangents: mesh.vertices.iter().any(|v| v.tangent.is_some()),
-                has_uvs: mesh.vertices.iter().any(|v| v.uvs[0].is_some()),
-                has_vertex_colors: mesh.vertices.iter().any(|v| v.colors.iter().any(|c| c.is_some())),
-                has_skin: mesh.vertices.iter().any(|v| v.skin_weights.is_some()),
-                material_name: mat_name,
-                bounds_min: bb.0,
-                bounds_max: bb.1,
-            }
-        }).collect();
+                MeshProps {
+                    name: mesh.name.clone(),
+                    vertex_count: mesh.vertices.len() as u32,
+                    index_count: prim_indices,
+                    triangle_count: prim_indices / 3,
+                    primitive_count: mesh.primitives.len(),
+                    morph_count: mesh.morph_targets.len(),
+                    has_normals: mesh.vertices.iter().any(|v| v.normal.is_some()),
+                    has_tangents: mesh.vertices.iter().any(|v| v.tangent.is_some()),
+                    has_uvs: mesh.vertices.iter().any(|v| v.uvs[0].is_some()),
+                    has_vertex_colors: mesh
+                        .vertices
+                        .iter()
+                        .any(|v| v.colors.iter().any(|c| c.is_some())),
+                    has_skin: mesh.vertices.iter().any(|v| v.skin_weights.is_some()),
+                    material_name: mat_name,
+                    bounds_min: bb.0,
+                    bounds_max: bb.1,
+                }
+            })
+            .collect();
 
         self.scene_stats = SceneStats {
             name: solid_scene.name.clone(),
@@ -693,13 +734,23 @@ impl AssetViewerPanel {
     pub fn reupload_texture(&mut self) {
         let Some(device) = &self.device else { return };
         let Some(queue) = &self.queue else { return };
-        let Some((width, height, ref pixels)) = self.image_data.clone() else { return };
-        let Some(bgl) = self.quad_bind_group_layout.as_ref() else { return };
-        let Some(sampler) = self.quad_sampler.as_ref() else { return };
+        let Some((width, height, ref pixels)) = self.image_data.clone() else {
+            return;
+        };
+        let Some(bgl) = self.quad_bind_group_layout.as_ref() else {
+            return;
+        };
+        let Some(sampler) = self.quad_sampler.as_ref() else {
+            return;
+        };
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("image texture"),
-            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -720,10 +771,15 @@ impl AssetViewerPanel {
                 bytes_per_row: Some(width * 4),
                 rows_per_image: Some(height),
             },
-            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
         );
         self.quad_texture = Some(texture);
-        if let (Some(tex), Some(sampler)) = (self.quad_texture.as_ref(), self.quad_sampler.as_ref()) {
+        if let (Some(tex), Some(sampler)) = (self.quad_texture.as_ref(), self.quad_sampler.as_ref())
+        {
             let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
             let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("quad bind group"),
@@ -822,30 +878,36 @@ impl AssetViewerPanel {
 
         let speed = self.move_speed * dt;
         let k = &self.keys;
-        if k[0] { // W - forward
+        if k[0] {
+            // W - forward
             self.orbit_target[0] += fwd[0] * speed;
             self.orbit_target[1] += fwd[1] * speed;
             self.orbit_target[2] += fwd[2] * speed;
         }
-        if k[2] { // S - backward
+        if k[2] {
+            // S - backward
             self.orbit_target[0] -= fwd[0] * speed;
             self.orbit_target[1] -= fwd[1] * speed;
             self.orbit_target[2] -= fwd[2] * speed;
         }
-        if k[1] { // A - left
+        if k[1] {
+            // A - left
             self.orbit_target[0] -= right[0] * speed;
             self.orbit_target[1] -= right[1] * speed;
             self.orbit_target[2] -= right[2] * speed;
         }
-        if k[3] { // D - right
+        if k[3] {
+            // D - right
             self.orbit_target[0] += right[0] * speed;
             self.orbit_target[1] += right[1] * speed;
             self.orbit_target[2] += right[2] * speed;
         }
-        if k[4] { // Space - up
+        if k[4] {
+            // Space - up
             self.orbit_target[1] += speed;
         }
-        if k[5] { // Ctrl - down
+        if k[5] {
+            // Ctrl - down
             self.orbit_target[1] -= speed;
         }
     }
@@ -862,16 +924,23 @@ impl AssetViewerPanel {
         let forward = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
         let fwd_len =
             (forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]).sqrt();
-        let fwd = [forward[0] / fwd_len, forward[1] / fwd_len, forward[2] / fwd_len];
+        let fwd = [
+            forward[0] / fwd_len,
+            forward[1] / fwd_len,
+            forward[2] / fwd_len,
+        ];
         let world_up = [0.0, 1.0, 0.0];
         let right = [
             world_up[1] * fwd[2] - world_up[2] * fwd[1],
             world_up[2] * fwd[0] - world_up[0] * fwd[2],
             world_up[0] * fwd[1] - world_up[1] * fwd[0],
         ];
-        let right_len =
-            (right[0] * right[0] + right[1] * right[1] + right[2] * right[2]).sqrt();
-        let r = [right[0] / right_len, right[1] / right_len, right[2] / right_len];
+        let right_len = (right[0] * right[0] + right[1] * right[1] + right[2] * right[2]).sqrt();
+        let r = [
+            right[0] / right_len,
+            right[1] / right_len,
+            right[2] / right_len,
+        ];
         let up = [
             fwd[1] * r[2] - fwd[2] * r[1],
             fwd[2] * r[0] - fwd[0] * r[2],
@@ -908,16 +977,28 @@ impl AssetViewerPanel {
         self.update_camera(1.0 / 60.0);
         let Some(device) = &self.device else { return };
         let Some(queue) = &self.queue else { return };
-        let Some(surface) = &self.surface_handle else { return };
+        let Some(surface) = &self.surface_handle else {
+            return;
+        };
         let (width, height) = surface.size();
         if height == 0 {
             return;
         }
-        let Some(vb) = &self.mesh_vertex_buffer else { return };
-        let Some(ib) = &self.mesh_index_buffer else { return };
-        if self.mesh_index_count == 0 { return; }
-        let Some(pipeline) = &self.mesh_pipeline else { return };
-        let Some(bg) = &self.mesh_bind_group else { return };
+        let Some(vb) = &self.mesh_vertex_buffer else {
+            return;
+        };
+        let Some(ib) = &self.mesh_index_buffer else {
+            return;
+        };
+        if self.mesh_index_count == 0 {
+            return;
+        }
+        let Some(pipeline) = &self.mesh_pipeline else {
+            return;
+        };
+        let Some(bg) = &self.mesh_bind_group else {
+            return;
+        };
 
         let view = match surface.back_buffer_view() {
             Some(v) => v,
@@ -954,7 +1035,11 @@ impl AssetViewerPanel {
             if let Some(device) = &self.device {
                 let depth = device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("depth buffer"),
-                    size: wgpu::Extent3d { width: cw.max(1), height: ch.max(1), depth_or_array_layers: 1 },
+                    size: wgpu::Extent3d {
+                        width: cw.max(1),
+                        height: ch.max(1),
+                        depth_or_array_layers: 1,
+                    },
                     mip_level_count: 1,
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
@@ -985,13 +1070,15 @@ impl AssetViewerPanel {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: depth_view.map(|dv| wgpu::RenderPassDepthStencilAttachment {
-                    view: dv,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
+                depth_stencil_attachment: depth_view.map(|dv| {
+                    wgpu::RenderPassDepthStencilAttachment {
+                        view: dv,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }
                 }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
@@ -1011,11 +1098,21 @@ impl AssetViewerPanel {
     fn render_quad(&mut self) {
         let Some(device) = &self.device else { return };
         let Some(queue) = &self.queue else { return };
-        let Some(surface) = &self.surface_handle else { return };
-        let Some(pipeline) = &self.quad_pipeline else { return };
-        let Some(bg) = &self.quad_bind_group else { return };
-        let Some(vb) = &self.quad_vertex_buffer else { return };
-        let Some((img_w, img_h, _)) = self.image_data else { return };
+        let Some(surface) = &self.surface_handle else {
+            return;
+        };
+        let Some(pipeline) = &self.quad_pipeline else {
+            return;
+        };
+        let Some(bg) = &self.quad_bind_group else {
+            return;
+        };
+        let Some(vb) = &self.quad_vertex_buffer else {
+            return;
+        };
+        let Some((img_w, img_h, _)) = self.image_data else {
+            return;
+        };
 
         let (vp_w, vp_h) = surface.size();
         if vp_w == 0 || vp_h == 0 || img_w == 0 || img_h == 0 {
@@ -1028,8 +1125,8 @@ impl AssetViewerPanel {
         let vh = vp_h as f32;
 
         let fit = (vw / iw).min(vh / ih);
-        let dw = iw * fit * self.zoom;  // displayed width in screen pixels
-        let dh = ih * fit * self.zoom;  // displayed height in screen pixels
+        let dw = iw * fit * self.zoom; // displayed width in screen pixels
+        let dh = ih * fit * self.zoom; // displayed height in screen pixels
 
         // Quad corners in screen pixel space
         let l = self.pan_x;
@@ -1042,12 +1139,12 @@ impl AssetViewerPanel {
         let sy = |y: f32| -((y / vh) * 2.0 - 1.0);
 
         let verts: [[f32; 4]; 6] = [
-            [sx(l), sy(b), 0.0, 1.0],  // bottom-left
-            [sx(r), sy(b), 1.0, 1.0],  // bottom-right
-            [sx(r), sy(t), 1.0, 0.0],  // top-right
-            [sx(l), sy(b), 0.0, 1.0],  // bottom-left
-            [sx(r), sy(t), 1.0, 0.0],  // top-right
-            [sx(l), sy(t), 0.0, 0.0],  // top-left
+            [sx(l), sy(b), 0.0, 1.0], // bottom-left
+            [sx(r), sy(b), 1.0, 1.0], // bottom-right
+            [sx(r), sy(t), 1.0, 0.0], // top-right
+            [sx(l), sy(b), 0.0, 1.0], // bottom-left
+            [sx(r), sy(t), 1.0, 0.0], // top-right
+            [sx(l), sy(t), 0.0, 0.0], // top-left
         ];
 
         queue.write_buffer(vb, 0, bytemuck::cast_slice(&verts));
@@ -1245,7 +1342,9 @@ impl AssetViewerPanel {
                 if !panel.panning {
                     return;
                 }
-                let Some(last) = panel.last_pan_pos else { return };
+                let Some(last) = panel.last_pan_pos else {
+                    return;
+                };
                 let dx = (event.position.x - last.x).to_f64() as f32;
                 let dy = (event.position.y - last.y).to_f64() as f32;
                 panel.pan_x += dx;
@@ -1323,9 +1422,7 @@ impl AssetViewerPanel {
         }
     }
 
-    pub fn on_key_down(
-        cx: &mut Context<Self>,
-    ) -> impl Fn(&KeyDownEvent, &mut Window, &mut App) {
+    pub fn on_key_down(cx: &mut Context<Self>) -> impl Fn(&KeyDownEvent, &mut Window, &mut App) {
         let entity = cx.entity().clone();
         move |event, _window, cx| {
             entity.update(cx, |panel, cx| {
@@ -1343,9 +1440,7 @@ impl AssetViewerPanel {
         }
     }
 
-    pub fn on_key_up(
-        cx: &mut Context<Self>,
-    ) -> impl Fn(&KeyUpEvent, &mut Window, &mut App) {
+    pub fn on_key_up(cx: &mut Context<Self>) -> impl Fn(&KeyUpEvent, &mut Window, &mut App) {
         let entity = cx.entity().clone();
         move |event, _window, cx| {
             entity.update(cx, |panel, cx| {

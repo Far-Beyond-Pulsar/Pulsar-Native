@@ -213,7 +213,11 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                                 Ok(o) => o,
                                 Err(err) => return err.to_compile_error().into(),
                             };
-                            gpu_fields.push(GpuLeafField { ident: field_ident, field_ty: field.ty.clone(), override_ });
+                            gpu_fields.push(GpuLeafField {
+                                ident: field_ident,
+                                field_ty: field.ty.clone(),
+                                override_,
+                            });
                         }
                     }
 
@@ -487,16 +491,30 @@ fn struct_has_gpu_vec_field(fields: &syn::Fields) -> bool {
 }
 
 fn is_vec_type(ty: &syn::Type) -> bool {
-    let syn::Type::Path(type_path) = ty else { return false };
-    type_path.path.segments.last().map(|s| s.ident == "Vec").unwrap_or(false)
+    let syn::Type::Path(type_path) = ty else {
+        return false;
+    };
+    type_path
+        .path
+        .segments
+        .last()
+        .map(|s| s.ident == "Vec")
+        .unwrap_or(false)
 }
 
 /// Syntactic-only check that `ty` is `pulsar_world_registry::GpuHeavy<T>` --
 /// same last-segment style as `is_vec_type`. Used solely by the GPU ownership
 /// boundary errors; heavy storage itself is SceneDB's SceneStore concern.
 fn is_gpu_heavy_shape(ty: &syn::Type) -> bool {
-    let syn::Type::Path(type_path) = ty else { return false };
-    type_path.path.segments.last().map(|s| s.ident == "GpuHeavy").unwrap_or(false)
+    let syn::Type::Path(type_path) = ty else {
+        return false;
+    };
+    type_path
+        .path
+        .segments
+        .last()
+        .map(|s| s.ident == "GpuHeavy")
+        .unwrap_or(false)
 }
 
 #[proc_macro_attribute]
@@ -1051,8 +1069,10 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
                 other => {
                     return Err(syn::Error::new(
                         key.span(),
-                        format!("unknown #[register_world_component] option `{other}` (expected `hydrate`, `remove`, `on_removed`, `gpu_mirror`, or `refresh_gpu_mirror`)"),
-                    ))
+                        format!(
+                            "unknown #[register_world_component] option `{other}` (expected `hydrate`, `remove`, `on_removed`, `gpu_mirror`, or `refresh_gpu_mirror`)"
+                        ),
+                    ));
                 }
             }
             if input.peek(syn::Token![,]) {
@@ -1584,7 +1604,10 @@ fn parse_gpu_attr(field: &Field) -> syn::Result<Option<GpuFieldOverride>> {
         }
     })?;
     match (target_ty, with_path) {
-        (Some(target_ty), Some(with_path)) => Ok(Some(GpuFieldOverride { target_ty, with_path })),
+        (Some(target_ty), Some(with_path)) => Ok(Some(GpuFieldOverride {
+            target_ty,
+            with_path,
+        })),
         _ => Err(syn::Error::new_spanned(
             attr,
             "#[gpu(as = Type, with = path)] requires both `as` and `with` together",
@@ -1650,7 +1673,11 @@ fn gpu_mirror_codegen(
 
     let leaf_field_defs = gpu_leaf_fields.iter().map(|leaf| {
         let ident = &leaf.ident;
-        let ty = leaf.override_.as_ref().map(|o| &o.target_ty).unwrap_or(&leaf.field_ty);
+        let ty = leaf
+            .override_
+            .as_ref()
+            .map(|o| &o.target_ty)
+            .unwrap_or(&leaf.field_ty);
         quote! { #[gpu] pub #ident: pulsar_world_registry::GpuRepr<#ty> }
     });
     let leaf_field_inits = gpu_leaf_fields.iter().map(|leaf| {
@@ -1715,7 +1742,6 @@ fn gpu_mirror_codegen(
         }
     }
 }
-
 
 #[derive(Default)]
 struct PropertyAttrOptions {
@@ -2035,8 +2061,10 @@ pub fn component_methods(_attr: TokenStream, item: TokenStream) -> TokenStream {
         let mut seen: HashMap<String, Span> = HashMap::new();
         for item in &impl_block.items {
             if let ImplItem::Fn(method) = item {
-                let has_method_attr =
-                    method.attrs.iter().any(|attr| attr.path().is_ident("method"));
+                let has_method_attr = method
+                    .attrs
+                    .iter()
+                    .any(|attr| attr.path().is_ident("method"));
                 if !has_method_attr {
                     continue;
                 }
@@ -2234,7 +2262,9 @@ pub fn component_methods(_attr: TokenStream, item: TokenStream) -> TokenStream {
 /// silent default of `Pure` would let side-effecting methods get illegally
 /// inlined. The author must declare Pure / Fn / ControlFlow explicitly;
 /// omitting it is a compile error spelling out why.
-fn parse_method_attribute(attr: &Attribute) -> syn::Result<(proc_macro2::TokenStream, Option<String>)> {
+fn parse_method_attribute(
+    attr: &Attribute,
+) -> syn::Result<(proc_macro2::TokenStream, Option<String>)> {
     let method_type_error = || {
         syn::Error::new_spanned(
             attr,
@@ -2254,8 +2284,7 @@ fn parse_method_attribute(attr: &Attribute) -> syn::Result<(proc_macro2::TokenSt
         // Parse type
         if tokens_str.contains("type") {
             if tokens_str.contains("MethodType :: Pure") || tokens_str.contains("Pure") {
-                method_type =
-                    Some(quote! { pulsar_reflection::MethodType::Pure });
+                method_type = Some(quote! { pulsar_reflection::MethodType::Pure });
             } else if tokens_str.contains("MethodType :: Fn") || tokens_str.contains("Fn") {
                 method_type = Some(quote! { pulsar_reflection::MethodType::Fn });
             } else if tokens_str.contains("MethodType :: ControlFlow")

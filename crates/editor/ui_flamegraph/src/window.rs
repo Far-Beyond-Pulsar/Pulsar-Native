@@ -422,12 +422,7 @@ impl FlamegraphWindow {
                                                     h_flex()
                                                         .gap_2()
                                                         .items_start()
-                                                        .child(
-                                                            div()
-                                                                .mt_0p5()
-                                                                .text_sm()
-                                                                .child("•"),
-                                                        )
+                                                        .child(div().mt_0p5().text_sm().child("•"))
                                                         .child(
                                                             div()
                                                                 .text_sm()
@@ -443,12 +438,7 @@ impl FlamegraphWindow {
                                                     h_flex()
                                                         .gap_2()
                                                         .items_start()
-                                                        .child(
-                                                            div()
-                                                                .mt_0p5()
-                                                                .text_sm()
-                                                                .child("•"),
-                                                        )
+                                                        .child(div().mt_0p5().text_sm().child("•"))
                                                         .child(
                                                             div()
                                                                 .text_sm()
@@ -464,12 +454,7 @@ impl FlamegraphWindow {
                                                     h_flex()
                                                         .gap_2()
                                                         .items_start()
-                                                        .child(
-                                                            div()
-                                                                .mt_0p5()
-                                                                .text_sm()
-                                                                .child("•"),
-                                                        )
+                                                        .child(div().mt_0p5().text_sm().child("•"))
                                                         .child(
                                                             div()
                                                                 .text_sm()
@@ -726,10 +711,7 @@ impl Render for FlamegraphWindow {
                                 .bg(theme.accent.opacity(0.08))
                                 .border_1()
                                 .border_color(theme.accent.opacity(0.16))
-                                .child(
-                                    Icon::new(IconName::Database)
-                                        .size(px(12.0)),
-                                )
+                                .child(Icon::new(IconName::Database).size(px(12.0)))
                                 .child(
                                     div()
                                         .text_xs()

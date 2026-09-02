@@ -1,10 +1,6 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use ui::{
-    button::Button,
-    h_flex,
-    v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
-};
+use ui::{button::Button, h_flex, v_flex, ActiveTheme as _, Icon, IconName, StyledExt};
 
 use crate::screen::MultiplayerWindow;
 
@@ -71,9 +67,7 @@ pub fn render_presence_tab(
                                 .child(
                                     Icon::new(IconName::User)
                                         .size(px(48.))
-                                        .text_color(
-                                            cx.theme().muted_foreground.opacity(0.3),
-                                        ),
+                                        .text_color(cx.theme().muted_foreground.opacity(0.3)),
                                 )
                                 .child(
                                     div()
@@ -84,24 +78,20 @@ pub fn render_presence_tab(
                         )
                     })
                     .children(this.user_presences.iter().map(|presence| {
-                        let is_self =
-                            Some(&presence.peer_id) == this.current_peer_id.as_ref();
+                        let is_self = Some(&presence.peer_id) == this.current_peer_id.as_ref();
                         let short_id = if presence.peer_id.len() > 8 {
                             format!("{}...", &presence.peer_id[..8])
                         } else {
                             presence.peer_id.clone()
                         };
 
-                        let (r, g, b) =
-                            (presence.color[0], presence.color[1], presence.color[2]);
+                        let (r, g, b) = (presence.color[0], presence.color[1], presence.color[2]);
                         let color_value = ((r * 255.0) as u32) << 16
                             | ((g * 255.0) as u32) << 8
                             | ((b * 255.0) as u32);
 
-                        let jump_id =
-                            SharedString::from(format!("jump-{}", presence.peer_id));
-                        let kick_id =
-                            SharedString::from(format!("kick-{}", presence.peer_id));
+                        let jump_id = SharedString::from(format!("jump-{}", presence.peer_id));
+                        let kick_id = SharedString::from(format!("kick-{}", presence.peer_id));
                         let peer_id_for_jump = presence.peer_id.clone();
                         let peer_id_for_kick = presence.peer_id.clone();
 
@@ -160,55 +150,34 @@ pub fn render_presence_tab(
                                     .gap_1()
                                     .text_xs()
                                     .text_color(cx.theme().muted_foreground)
-                                    .when_some(
-                                        presence.current_tab.as_ref(),
-                                        |this, tab| {
-                                            this.child(
-                                                h_flex()
-                                                    .gap_1()
-                                                    .child(
-                                                        Icon::new(IconName::Eye)
-                                                            .size(px(12.)),
-                                                    )
-                                                    .child(format!("Viewing: {}", tab)),
-                                            )
-                                        },
-                                    )
-                                    .when_some(
-                                        presence.editing_file.as_ref(),
-                                        |this, file| {
-                                            this.child(
-                                                h_flex()
-                                                    .gap_1()
-                                                    .child(
-                                                        Icon::new(IconName::Edit)
-                                                            .size(px(12.)),
-                                                    )
-                                                    .child(format!("Editing: {}", file)),
-                                            )
-                                        },
-                                    )
-                                    .when_some(
-                                        presence.selected_object.as_ref(),
-                                        |this, obj| {
-                                            this.child(
-                                                h_flex()
-                                                    .gap_1()
-                                                    .child(
-                                                        Icon::new(IconName::Check)
-                                                            .size(px(12.)),
-                                                    )
-                                                    .child(format!("Selected: {}", obj)),
-                                            )
-                                        },
-                                    ),
+                                    .when_some(presence.current_tab.as_ref(), |this, tab| {
+                                        this.child(
+                                            h_flex()
+                                                .gap_1()
+                                                .child(Icon::new(IconName::Eye).size(px(12.)))
+                                                .child(format!("Viewing: {}", tab)),
+                                        )
+                                    })
+                                    .when_some(presence.editing_file.as_ref(), |this, file| {
+                                        this.child(
+                                            h_flex()
+                                                .gap_1()
+                                                .child(Icon::new(IconName::Edit).size(px(12.)))
+                                                .child(format!("Editing: {}", file)),
+                                        )
+                                    })
+                                    .when_some(presence.selected_object.as_ref(), |this, obj| {
+                                        this.child(
+                                            h_flex()
+                                                .gap_1()
+                                                .child(Icon::new(IconName::Check).size(px(12.)))
+                                                .child(format!("Selected: {}", obj)),
+                                        )
+                                    }),
                             )
                             .when(!is_self, |this| {
                                 this.child(
-                                    div()
-                                        .h(px(1.))
-                                        .w_full()
-                                        .bg(cx.theme().border.opacity(0.5)),
+                                    div().h(px(1.)).w_full().bg(cx.theme().border.opacity(0.5)),
                                 )
                                 .child(
                                     h_flex()

@@ -58,9 +58,12 @@ pub(crate) fn is_direct_type(type_id: TypeId) -> bool {
 /// registry. `context` names the call site (e.g. `"LightComponent.color"`)
 /// for the error message.
 pub fn any_to_json(context: &str, value: &dyn Any) -> Result<Value, ScriptRefError> {
-    RUNTIME_TYPE_REGISTRY.serialize_json_for_any(value).map_err(|e| {
-        ScriptRefError::Marshalling { context: context.to_string(), message: e.to_string() }
-    })
+    RUNTIME_TYPE_REGISTRY
+        .serialize_json_for_any(value)
+        .map_err(|e| ScriptRefError::Marshalling {
+            context: context.to_string(),
+            message: e.to_string(),
+        })
 }
 
 /// Deserialize JSON into a typed value against `type_info`'s registration.
@@ -76,8 +79,9 @@ pub fn json_to_any(
 ) -> Result<Box<dyn Any>, ScriptRefError> {
     RUNTIME_TYPE_REGISTRY
         .deserialize_json_for_type(type_info, value)
-        .map_err(|e| {
-            ScriptRefError::Marshalling { context: context.to_string(), message: e.to_string() }
+        .map_err(|e| ScriptRefError::Marshalling {
+            context: context.to_string(),
+            message: e.to_string(),
         })
 }
 
@@ -148,8 +152,8 @@ pub fn bytes_to_any(
         VmValueKind::Vector => decode_vector(type_info, bytes),
         VmValueKind::JsonEncoded => {
             let payload = take_payload(type_info, bytes)?;
-            let json: Value =
-                serde_json::from_slice(payload).map_err(|e| marshal_error("vm decode", type_info, e))?;
+            let json: Value = serde_json::from_slice(payload)
+                .map_err(|e| marshal_error("vm decode", type_info, e))?;
             RUNTIME_TYPE_REGISTRY
                 .deserialize_json_for_type(type_info, json)
                 .map_err(|e| marshal_error("vm decode", type_info, e))
@@ -165,7 +169,11 @@ fn need_bytes<'a>(
     n: usize,
 ) -> Result<&'a [u8], ScriptRefError> {
     bytes.get(..n).ok_or_else(|| {
-        marshal_error("vm decode", type_info, format!("need {n} byte(s), got {}", bytes.len()))
+        marshal_error(
+            "vm decode",
+            type_info,
+            format!("need {n} byte(s), got {}", bytes.len()),
+        )
     })
 }
 
@@ -248,7 +256,11 @@ fn downcast_ref<'a, T: 'static>(
     value: &'a dyn Any,
 ) -> Result<&'a T, ScriptRefError> {
     value.downcast_ref::<T>().ok_or_else(|| {
-        marshal_error("vm marshal", type_info, "value's concrete type does not match its descriptor")
+        marshal_error(
+            "vm marshal",
+            type_info,
+            "value's concrete type does not match its descriptor",
+        )
     })
 }
 
@@ -256,8 +268,9 @@ fn take_payload<'a>(
     type_info: &RuntimeTypeInfo,
     bytes: &'a [u8],
 ) -> Result<&'a [u8], ScriptRefError> {
-    let header =
-        bytes.first_chunk::<8>().ok_or_else(|| marshal_error("vm decode", type_info, "missing length header"))?;
+    let header = bytes
+        .first_chunk::<8>()
+        .ok_or_else(|| marshal_error("vm decode", type_info, "missing length header"))?;
     let len = u64::from_ne_bytes(*header) as usize;
     bytes.get(8..8 + len).ok_or_else(|| {
         marshal_error(
@@ -337,7 +350,10 @@ fn decode_vector(
 
     macro_rules! vec_decode_arm {
         ($t:ty) => {
-            if type_info.inner_type().is_some_and(|inner| inner.type_id == TypeId::of::<$t>()) {
+            if type_info
+                .inner_type()
+                .is_some_and(|inner| inner.type_id == TypeId::of::<$t>())
+            {
                 const ESIZE: usize = std::mem::size_of::<$t>();
                 let need = count.checked_mul(ESIZE).ok_or_else(|| {
                     marshal_error("vm decode", type_info, "vector size overflows")
@@ -373,15 +389,23 @@ fn decode_vector(
     vec_decode_arm!(f32);
     vec_decode_arm!(f64);
 
-    if type_info.inner_type().is_some_and(|inner| inner.type_id == TypeId::of::<bool>()) {
+    if type_info
+        .inner_type()
+        .is_some_and(|inner| inner.type_id == TypeId::of::<bool>())
+    {
         let payload = bytes.get(8..8 + count).ok_or_else(|| {
             marshal_error(
                 "vm decode",
                 type_info,
-                format!("need {count} element byte(s), got {}", bytes.len().saturating_sub(8)),
+                format!(
+                    "need {count} element byte(s), got {}",
+                    bytes.len().saturating_sub(8)
+                ),
             )
         })?;
-        return Ok(Box::new(payload.iter().map(|b| *b != 0).collect::<Vec<bool>>()));
+        return Ok(Box::new(
+            payload.iter().map(|b| *b != 0).collect::<Vec<bool>>(),
+        ));
     }
 
     Err(marshal_error(
@@ -393,7 +417,11 @@ fn decode_vector(
 
 fn element_info(type_info: &RuntimeTypeInfo) -> Result<&'static RuntimeTypeInfo, ScriptRefError> {
     type_info.inner_type().ok_or_else(|| {
-        marshal_error("vm marshal", type_info, "vector descriptor without an inner element type")
+        marshal_error(
+            "vm marshal",
+            type_info,
+            "vector descriptor without an inner element type",
+        )
     })
 }
 
@@ -476,33 +504,31 @@ mod tests {
             ])
         }
 
-        fn deserialize(
-            deserializer: &mut dyn TypeDeserializer,
-        ) -> ReflectResult<Self> {
+        fn deserialize(deserializer: &mut dyn TypeDeserializer) -> ReflectResult<Self> {
             let mut fields =
                 deserializer.deserialize_struct(NESTED_INFO.fields().expect("struct info"))?;
-            let alpha = *fields.remove("alpha").ok_or_else(|| {
-                pulsar_reflection::ReflectError::MissingField {
+            let alpha = *fields
+                .remove("alpha")
+                .ok_or_else(|| pulsar_reflection::ReflectError::MissingField {
                     struct_name: "NestedSample",
                     field_name: "alpha",
-                }
-            })?
-            .downcast::<f32>()
-            .map_err(|_| pulsar_reflection::ReflectError::TypeMismatch {
-                expected: "f32",
-                found: "other".into(),
-            })?;
-            let label = *fields.remove("label").ok_or_else(|| {
-                pulsar_reflection::ReflectError::MissingField {
+                })?
+                .downcast::<f32>()
+                .map_err(|_| pulsar_reflection::ReflectError::TypeMismatch {
+                    expected: "f32",
+                    found: "other".into(),
+                })?;
+            let label = *fields
+                .remove("label")
+                .ok_or_else(|| pulsar_reflection::ReflectError::MissingField {
                     struct_name: "NestedSample",
                     field_name: "label",
-                }
-            })?
-            .downcast::<String>()
-            .map_err(|_| pulsar_reflection::ReflectError::TypeMismatch {
-                expected: "String",
-                found: "other".into(),
-            })?;
+                })?
+                .downcast::<String>()
+                .map_err(|_| pulsar_reflection::ReflectError::TypeMismatch {
+                    expected: "String",
+                    found: "other".into(),
+                })?;
             Ok(Self { alpha, label })
         }
 
@@ -557,7 +583,10 @@ mod tests {
     /// trip with its value preserved.
     #[test]
     fn corpus_round_trips_through_every_pair_of_representations() {
-        let nested = NestedSample { alpha: 0.5, label: "nested".into() };
+        let nested = NestedSample {
+            alpha: 0.5,
+            label: "nested".into(),
+        };
         let corpus: Vec<(&'static RuntimeTypeInfo, Box<dyn Any>)> = vec![
             (info_of::<f32>(), Box::new(1.5f32)),
             (info_of::<f64>(), Box::new(-2.25f64)),
@@ -566,8 +595,14 @@ mod tests {
             (info_of::<i64>(), Box::new(-77i64)),
             (info_of::<bool>(), Box::new(true)),
             (info_of::<String>(), Box::new("héllo wörld".to_string())),
-            (<Vec<f32> as Reflectable>::type_info(), Box::new(vec![1.0f32, -2.5, 4.25])),
-            (<Vec<i32> as Reflectable>::type_info(), Box::new(vec![3i32, -4, 5])),
+            (
+                <Vec<f32> as Reflectable>::type_info(),
+                Box::new(vec![1.0f32, -2.5, 4.25]),
+            ),
+            (
+                <Vec<i32> as Reflectable>::type_info(),
+                Box::new(vec![3i32, -4, 5]),
+            ),
             (
                 <NestedSample as Reflectable>::type_info(),
                 Box::new(nested.clone()),
@@ -611,7 +646,10 @@ mod tests {
         any_to_bytes(&ENTITY_INFO, &entity, &mut bytes).unwrap();
         assert_eq!(bytes.len(), 8, "direct encoding is exactly the packed bits");
         let back = bytes_to_any(&ENTITY_INFO, &bytes).unwrap();
-        assert_eq!(back.downcast_ref::<Entity>().map(|e| e.bits()), Some(entity.bits()));
+        assert_eq!(
+            back.downcast_ref::<Entity>().map(|e| e.bits()),
+            Some(entity.bits())
+        );
 
         assert_eq!(
             crate::vm_abi::classify(&ENTITY_INFO).unwrap(),
@@ -629,7 +667,10 @@ mod tests {
         let mut out = Vec::new();
         any_to_bytes(&U32_INFO, &9u32, &mut out).unwrap();
         assert_eq!(out.len(), 4);
-        assert_eq!(bytes_to_any(&U32_INFO, &out).unwrap().downcast_ref::<u32>(), Some(&9));
+        assert_eq!(
+            bytes_to_any(&U32_INFO, &out).unwrap().downcast_ref::<u32>(),
+            Some(&9)
+        );
 
         // Descriptor disagreement is refused for every direct kind.
         assert!(any_to_bytes(&U32_INFO, &9i64, &mut Vec::new()).is_err());
@@ -686,8 +727,17 @@ mod tests {
                 }
             };
         }
-        cmp!(f32); cmp!(f64); cmp!(i8); cmp!(i16); cmp!(i32); cmp!(i64);
-        cmp!(u8); cmp!(u16); cmp!(u32); cmp!(u64); cmp!(bool);
+        cmp!(f32);
+        cmp!(f64);
+        cmp!(i8);
+        cmp!(i16);
+        cmp!(i32);
+        cmp!(i64);
+        cmp!(u8);
+        cmp!(u16);
+        cmp!(u32);
+        cmp!(u64);
+        cmp!(bool);
 
         if type_info.type_id == TypeId::of::<String>() {
             assert_eq!(got.downcast_ref::<String>(), want.downcast_ref::<String>());
@@ -696,7 +746,10 @@ mod tests {
 
         macro_rules! cmp_vec {
             ($t:ty) => {
-                if type_info.inner_type().is_some_and(|i| i.type_id == TypeId::of::<$t>()) {
+                if type_info
+                    .inner_type()
+                    .is_some_and(|i| i.type_id == TypeId::of::<$t>())
+                {
                     assert_eq!(
                         got.downcast_ref::<Vec<$t>>(),
                         want.downcast_ref::<Vec<$t>>()

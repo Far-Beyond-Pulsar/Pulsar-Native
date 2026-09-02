@@ -1,11 +1,12 @@
 use engine_state::MultiuserParticipant;
-use gpui::{AnyElement, App, ImageSource, IntoElement, ObjectFit, ParentElement, Styled, StyledImage, div, img, px};
+use gpui::{
+    AnyElement, App, ImageSource, IntoElement, ObjectFit, ParentElement, Styled, StyledImage, div,
+    img, px,
+};
 use std::sync::Arc;
 use ui::{ActiveTheme as _, StyledExt};
 
-use crate::utils::{
-    avatar_cache, fetch_avatar_image, participant_avatar_url, participant_label,
-};
+use crate::utils::{avatar_cache, fetch_avatar_image, participant_avatar_url, participant_label};
 
 pub fn avatar_chip_with_image(participant: &MultiuserParticipant, cx: &App) -> AnyElement {
     let name = participant_label(participant);
@@ -26,19 +27,17 @@ pub fn avatar_chip_with_image(participant: &MultiuserParticipant, cx: &App) -> A
         } else {
             let url = avatar_url.clone();
             let cache_clone = cache.clone();
-            std::thread::spawn(move || {
-                match fetch_avatar_image(&url) {
-                    Ok(image) => {
-                        cache_clone.write().insert(url.clone(), image);
-                        tracing::debug!("Fetched avatar from {}", url);
-                    }
-                    Err(e) => {
-                        tracing::debug!("Failed to fetch avatar from {}: {}", url, e);
-                        cache_clone.write().insert(
-                            url.clone(),
-                            Arc::new(gpui::RenderImage::new(smallvec::smallvec![])),
-                        );
-                    }
+            std::thread::spawn(move || match fetch_avatar_image(&url) {
+                Ok(image) => {
+                    cache_clone.write().insert(url.clone(), image);
+                    tracing::debug!("Fetched avatar from {}", url);
+                }
+                Err(e) => {
+                    tracing::debug!("Failed to fetch avatar from {}: {}", url, e);
+                    cache_clone.write().insert(
+                        url.clone(),
+                        Arc::new(gpui::RenderImage::new(smallvec::smallvec![])),
+                    );
                 }
             });
         }

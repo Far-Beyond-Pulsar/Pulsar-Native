@@ -5,8 +5,8 @@ use ui::input::InputEvent;
 
 use crate::FabSearchWindow;
 use crate::search_index::{
-    SearchPage, fetch_sketchfab_download_info, fetch_sketchfab_models,
-    fetch_sketchfab_model_detail, sketchfab_like_model, sketchfab_unlike_model,
+    SearchPage, fetch_sketchfab_download_info, fetch_sketchfab_model_detail,
+    fetch_sketchfab_models, sketchfab_like_model, sketchfab_unlike_model,
 };
 use crate::utils::actions::{DownloadMsg, DownloadState};
 
@@ -105,8 +105,7 @@ pub(crate) fn on_start_download(
             }
             let total = resp.content_length();
 
-            let mut file =
-                std::fs::File::create(&dest).map_err(|e| format!("create: {e}"))?;
+            let mut file = std::fs::File::create(&dest).map_err(|e| format!("create: {e}"))?;
             let mut bytes_total: u64 = 0;
             let mut last_sample = std::time::Instant::now();
             let mut bytes_since_sample: u64 = 0;

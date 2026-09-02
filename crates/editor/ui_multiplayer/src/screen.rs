@@ -4,7 +4,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use ui::input::InputState;
-use ui::{button::Button, h_flex, v_flex, ActiveTheme as _, Icon, IconName, StyledExt as _, TitleBar};
+use ui::{
+    button::Button, h_flex, v_flex, ActiveTheme as _, Icon, IconName, StyledExt as _, TitleBar,
+};
 
 use crate::diff_viewer::{DiffFileEntry, DiffViewer};
 use crate::utils::types::*;
@@ -158,9 +160,7 @@ impl MultiplayerWindow {
             our_peer_id.to_string(),
             host_peer_id,
         )
-        .with_status(MultiuserStatus::Connected {
-            relay_mode: None,
-        })
+        .with_status(MultiuserStatus::Connected { relay_mode: None })
         .with_participants(participants.to_vec());
 
         if let Some(active_session) = &self.active_session {
@@ -385,11 +385,7 @@ impl MultiplayerWindow {
             .find(|p| p.peer_id == peer_id)
     }
 
-    pub(crate) fn simulate_diff_for_dev(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn simulate_diff_for_dev(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         use std::fs;
 
         let project_root = match &self.project_root {
@@ -565,13 +561,9 @@ impl Render for MultiplayerWindow {
                                             .bg(cx.theme().success),
                                     )
                                     .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(cx.theme().foreground)
-                                            .child(format!(
-                                                "{} users",
-                                                session.connected_users.len()
-                                            )),
+                                        div().text_xs().text_color(cx.theme().foreground).child(
+                                            format!("{} users", session.connected_users.len()),
+                                        ),
                                     ),
                             )
                         }),
@@ -629,8 +621,7 @@ impl Render for MultiplayerWindow {
                                         .label("Close")
                                         .w_full()
                                         .on_click(cx.listener(|_, _, _window, cx| {
-                                            if let Some(ctx) =
-                                                engine_state::EngineContext::global()
+                                            if let Some(ctx) = engine_state::EngineContext::global()
                                             {
                                                 ctx.clear_multiuser();
                                             }

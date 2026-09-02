@@ -28,8 +28,7 @@
 
 use engine_class_derive::EngineClass;
 use pulsar_reflection::{
-    EngineClass, EngineClassRegistration, PropertyMetadata, RuntimeTypeInfo,
-    RUNTIME_TYPE_REGISTRY,
+    EngineClass, EngineClassRegistration, PropertyMetadata, RuntimeTypeInfo, RUNTIME_TYPE_REGISTRY,
 };
 use pulsar_scenedb::{component_id, Actor, ComponentChangeKind, Entity, World};
 use pulsar_world_registry::{
@@ -66,11 +65,19 @@ impl EngineClass for LiveDispatchProbe {
             category_order: None,
             type_info,
             getter: Box::new(|c: &dyn EngineClass| {
-                Box::new(c.as_any().downcast_ref::<LiveDispatchProbe>().unwrap().intensity)
+                Box::new(
+                    c.as_any()
+                        .downcast_ref::<LiveDispatchProbe>()
+                        .unwrap()
+                        .intensity,
+                )
             }),
             setter: Box::new(|c: &mut dyn EngineClass, v: Box<dyn std::any::Any>| {
                 if let Some(v) = v.downcast_ref::<f32>() {
-                    c.as_any_mut().downcast_mut::<LiveDispatchProbe>().unwrap().intensity = *v;
+                    c.as_any_mut()
+                        .downcast_mut::<LiveDispatchProbe>()
+                        .unwrap()
+                        .intensity = *v;
                 }
             }),
         }]
@@ -102,13 +109,12 @@ impl EngineClass for LiveDispatchProbe {
 }
 
 fn live_dispatch_probe_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
-    world.get::<LiveDispatchProbe>(entity).map(|c| c as &dyn EngineClass)
+    world
+        .get::<LiveDispatchProbe>(entity)
+        .map(|c| c as &dyn EngineClass)
 }
 
-fn live_dispatch_probe_get_mut(
-    world: &mut World,
-    entity: Entity,
-) -> Option<&mut dyn EngineClass> {
+fn live_dispatch_probe_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
     world
         .get_mut::<LiveDispatchProbe>(entity)
         .map(|c| c.into_inner() as &mut dyn EngineClass)
@@ -174,9 +180,12 @@ impl LiveDispatchReference {
     /// ONLY when the live world lacks the component (scene overrides win).
     fn __init_components(entity: Entity, world: &mut World) {
         if !world_component_present_for_class(PROBE_CLASS, world, entity) {
-            if let Err(__e) =
-                hydrate_world_component_for_class(PROBE_CLASS, world, entity, &json!({ "intensity": 10.0 }))
-            {
+            if let Err(__e) = hydrate_world_component_for_class(
+                PROBE_CLASS,
+                world,
+                entity,
+                &json!({ "intensity": 10.0 }),
+            ) {
                 tracing::error!("LiveDispatchReference: hydrating failed: {__e}");
             }
         }
@@ -189,27 +198,17 @@ impl Actor for LiveDispatchReference {
     // prop, json value` + log-and-continue error arm).
     fn begin_play(&mut self, _entity: Entity, _world: &mut World) {
         Self::__init_components(_entity, _world);
-        if let Err(__e) = set_component_property(
-            _world,
-            _entity,
-            PROBE_CLASS,
-            0,
-            "intensity",
-            json!(42.0f32),
-        ) {
+        if let Err(__e) =
+            set_component_property(_world, _entity, PROBE_CLASS, 0, "intensity", json!(42.0f32))
+        {
             tracing::error!("comp_set_prop::LiveDispatchProbe::intensity failed: {__e}");
         }
     }
 
     fn tick(&mut self, _entity: Entity, _world: &mut World) {
-        if let Err(__e) = set_component_property(
-            _world,
-            _entity,
-            PROBE_CLASS,
-            0,
-            "intensity",
-            json!(77.0f32),
-        ) {
+        if let Err(__e) =
+            set_component_property(_world, _entity, PROBE_CLASS, 0, "intensity", json!(77.0f32))
+        {
             tracing::error!("comp_set_prop::LiveDispatchProbe::intensity failed: {__e}");
         }
     }
@@ -255,11 +254,20 @@ fn generated_actor_shape_writes_the_shared_world_and_fires_subscriptions() {
     game.tick_once();
 
     assert_eq!(
-        game.scene_store.read().world().get::<LiveDispatchProbe>(entity).unwrap().intensity,
+        game.scene_store
+            .read()
+            .world()
+            .get::<LiveDispatchProbe>(entity)
+            .unwrap()
+            .intensity,
         77.0,
         "tick-side dispatcher write must be visible through the shared store"
     );
-    let events = game.scene_store.write().world_mut().take_component_change_events();
+    let events = game
+        .scene_store
+        .write()
+        .world_mut()
+        .take_component_change_events();
     assert!(
         events.iter().any(|e| e.entity == entity
             && e.component == component_id::<LiveDispatchProbe>()
@@ -277,7 +285,10 @@ fn hydration_is_absent_only_so_scene_overrides_win() {
 
     // Absent → baked default seeds the REAL world component.
     LiveDispatchReference::__init_components(entity, &mut world);
-    assert_eq!(world.get::<LiveDispatchProbe>(entity).unwrap().intensity, 10.0);
+    assert_eq!(
+        world.get::<LiveDispatchProbe>(entity).unwrap().intensity,
+        10.0
+    );
 
     // Present (scene provided its own values) → untouched.
     world.insert(entity, LiveDispatchProbe { intensity: 99.0 });
@@ -300,11 +311,11 @@ fn pbgc_emission_matches_the_reference_shape_this_module_proves() {
         )
         .with_tick(true)
         .with_begin_play(true)
-            .with_components(vec![pbgc::CompiledComponent {
-                class_name: "LiveDispatchProbe".to_string(),
-                property_defaults: json!({ "intensity": 10.0 }),
-                enabled: true,
-            }]),
+        .with_components(vec![pbgc::CompiledComponent {
+            class_name: "LiveDispatchProbe".to_string(),
+            property_defaults: json!({ "intensity": 10.0 }),
+            enabled: true,
+        }]),
     );
     let project = pbgc::generate_project(&spec);
     let actor = &project.files["src/classes/live_dispatch_reference/events/events.rs"];
@@ -315,9 +326,20 @@ fn pbgc_emission_matches_the_reference_shape_this_module_proves() {
         "hydrate_world_component_for_class(",
         "Self::__init_components(_entity, _world);",
     ] {
-        assert!(actor.contains(expected), "emission lost `{expected}`:\n{actor}");
+        assert!(
+            actor.contains(expected),
+            "emission lost `{expected}`:\n{actor}"
+        );
     }
-    for retired in ["__bp_with_comp", "__bp_set_comp_ctx", "ComponentStore", "gamma_core"] {
-        assert!(!actor.contains(retired), "retired routing `{retired}` reappeared:\n{actor}");
+    for retired in [
+        "__bp_with_comp",
+        "__bp_set_comp_ctx",
+        "ComponentStore",
+        "gamma_core",
+    ] {
+        assert!(
+            !actor.contains(retired),
+            "retired routing `{retired}` reappeared:\n{actor}"
+        );
     }
 }

@@ -35,17 +35,11 @@ pub fn on_send_chat(
     this.send_chat_message(window, cx);
 }
 
-pub fn on_sync_approve(
-    this: &mut MultiplayerWindow,
-    cx: &mut Context<MultiplayerWindow>,
-) {
+pub fn on_sync_approve(this: &mut MultiplayerWindow, cx: &mut Context<MultiplayerWindow>) {
     this.approve_file_sync(cx);
 }
 
-pub fn on_sync_cancel(
-    this: &mut MultiplayerWindow,
-    cx: &mut Context<MultiplayerWindow>,
-) {
+pub fn on_sync_cancel(this: &mut MultiplayerWindow, cx: &mut Context<MultiplayerWindow>) {
     this.cancel_file_sync(cx);
 }
 
@@ -67,11 +61,7 @@ pub fn on_kick_user(
     this.kick_user(peer_id, window, cx);
 }
 
-pub fn on_tab_click(
-    this: &mut MultiplayerWindow,
-    ix: &usize,
-    cx: &mut Context<MultiplayerWindow>,
-) {
+pub fn on_tab_click(this: &mut MultiplayerWindow, ix: &usize, cx: &mut Context<MultiplayerWindow>) {
     this.current_tab = match ix {
         0 => SessionTab::Info,
         1 => SessionTab::Presence,

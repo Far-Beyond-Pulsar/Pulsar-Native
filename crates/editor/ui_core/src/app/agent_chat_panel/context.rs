@@ -1,5 +1,5 @@
-use gpui::*;
 use agent_chat_core::{ChatMessage, ChatRole};
+use gpui::*;
 use ui::scroll::ScrollHandleOffsetable;
 
 use super::panel::AgentChatPanel;

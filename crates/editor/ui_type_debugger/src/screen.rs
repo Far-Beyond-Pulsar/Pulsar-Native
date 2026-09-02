@@ -4,11 +4,7 @@ use plugin_editor_api::FileTypeId;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use ui::StyledExt;
-use ui::{
-    h_flex,
-    input::InputState,
-    v_flex, ActiveTheme as _,
-};
+use ui::{h_flex, input::InputState, v_flex, ActiveTheme as _};
 
 use crate::utils::NavigateToType;
 
@@ -120,11 +116,7 @@ impl TypeDebuggerDrawer {
         self.types.len()
     }
 
-    pub(crate) fn set_filter(
-        &mut self,
-        kind: Option<FileTypeId>,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn set_filter(&mut self, kind: Option<FileTypeId>, cx: &mut Context<Self>) {
         self.filtered_kind = kind;
         self.selected_index = None;
         cx.notify();
@@ -141,11 +133,7 @@ impl TypeDebuggerDrawer {
         cx.notify();
     }
 
-    pub(crate) fn navigate_to_type(
-        &mut self,
-        type_info: &TypeInfo,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn navigate_to_type(&mut self, type_info: &TypeInfo, cx: &mut Context<Self>) {
         cx.emit(NavigateToType {
             file_path: Some(type_info.file_path.clone()),
             type_name: type_info.name.clone(),
@@ -181,8 +169,7 @@ impl Render for TypeDebuggerDrawer {
         let content: AnyElement = if filtered_types.is_empty() {
             crate::components::render_empty_state(self, cx).into_any_element()
         } else if group_by_kind {
-            crate::components::render_grouped_view(self, selected_index, cx)
-                .into_any_element()
+            crate::components::render_grouped_view(self, selected_index, cx).into_any_element()
         } else {
             crate::components::render_flat_view(self, filtered_types, selected_index, cx)
                 .into_any_element()

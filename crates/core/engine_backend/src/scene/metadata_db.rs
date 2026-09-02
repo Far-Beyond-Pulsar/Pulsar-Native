@@ -30,7 +30,9 @@ pub struct SceneMetadataDb {
 impl SceneMetadataDb {
     /// Create a new metadata database.
     pub fn new() -> Self {
-        Self { components: ComponentDb::new() }
+        Self {
+            components: ComponentDb::new(),
+        }
     }
 
     // ── Component Access ──────────────────────────────────────────────────

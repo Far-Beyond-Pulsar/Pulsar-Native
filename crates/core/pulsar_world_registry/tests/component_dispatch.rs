@@ -31,8 +31,9 @@ impl EngineClass for DispatchGizmo {
     }
 
     fn get_properties(&self) -> Vec<PropertyMetadata> {
-        let info: &'static RuntimeTypeInfo =
-            RUNTIME_TYPE_REGISTRY.get::<i32>().expect("i32 prim registered");
+        let info: &'static RuntimeTypeInfo = RUNTIME_TYPE_REGISTRY
+            .get::<i32>()
+            .expect("i32 prim registered");
         vec![PropertyMetadata {
             name: "charges",
             display_name: "Charges".into(),
@@ -46,26 +47,36 @@ impl EngineClass for DispatchGizmo {
             }),
             setter: Box::new(|c: &mut dyn EngineClass, v: Box<dyn std::any::Any>| {
                 if let Some(v) = v.downcast_ref::<i32>() {
-                    c.as_any_mut().downcast_mut::<DispatchGizmo>().unwrap().charges = *v;
+                    c.as_any_mut()
+                        .downcast_mut::<DispatchGizmo>()
+                        .unwrap()
+                        .charges = *v;
                 }
             }),
         }]
     }
 
     fn get_methods() -> Vec<MethodMetadata> {
-        let info: &'static RuntimeTypeInfo =
-            RUNTIME_TYPE_REGISTRY.get::<i32>().expect("i32 prim registered");
+        let info: &'static RuntimeTypeInfo = RUNTIME_TYPE_REGISTRY
+            .get::<i32>()
+            .expect("i32 prim registered");
         vec![MethodMetadata {
             name: "add_charges",
             display_name: "Add Charges".into(),
             category: None,
-            params: vec![MethodParameter { name: "amount", type_info: info }],
+            params: vec![MethodParameter {
+                name: "amount",
+                type_info: info,
+            }],
             return_type: Some(MethodReturnType { type_info: info }),
             // Deliberately NOT Pure: mutates state (#645's purity policy).
             method_type: MethodType::Fn,
             caller: Box::new(
                 |c: &mut dyn EngineClass, args: Vec<Box<dyn std::any::Any>>| {
-                    let amount = args.first().and_then(|a| a.downcast_ref::<i32>()).copied()?;
+                    let amount = args
+                        .first()
+                        .and_then(|a| a.downcast_ref::<i32>())
+                        .copied()?;
                     let gizmo = c.as_any_mut().downcast_mut::<DispatchGizmo>()?;
                     gizmo.charges += amount;
                     Some(Box::new(gizmo.charges))
@@ -106,13 +117,17 @@ fn gizmo_remove(world: &mut World, entity: Entity) {
 }
 
 fn gizmo_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
-    world.get::<DispatchGizmo>(entity).map(|c| c as &dyn EngineClass)
+    world
+        .get::<DispatchGizmo>(entity)
+        .map(|c| c as &dyn EngineClass)
 }
 
 fn gizmo_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
     // Same `Mut`-guard unwrap as the generated shims: writes through here
     // count as real mutations for subscriptions/GPU mirrors.
-    world.get_mut::<DispatchGizmo>(entity).map(|c| c.into_inner() as &mut dyn EngineClass)
+    world
+        .get_mut::<DispatchGizmo>(entity)
+        .map(|c| c.into_inner() as &mut dyn EngineClass)
 }
 
 fn gizmo_methods() -> Vec<MethodMetadata> {
@@ -167,7 +182,12 @@ fn native_call_runs_against_the_live_typed_instance() {
     let (mut world, e) = hydrated_world(3);
 
     let returned = invoke_component_method(
-        &mut world, e, "DispatchGizmo", 0, "add_charges", vec![Box::new(7i32)],
+        &mut world,
+        e,
+        "DispatchGizmo",
+        0,
+        "add_charges",
+        vec![Box::new(7i32)],
     )
     .unwrap()
     .expect("method returns new total");
@@ -183,10 +203,8 @@ fn native_call_runs_against_the_live_typed_instance() {
 fn wrong_argument_count_is_typed_not_a_panic() {
     let (mut world, e) = hydrated_world(3);
 
-    let err = invoke_component_method(
-        &mut world, e, "DispatchGizmo", 0, "add_charges", vec![],
-    )
-    .unwrap_err();
+    let err = invoke_component_method(&mut world, e, "DispatchGizmo", 0, "add_charges", vec![])
+        .unwrap_err();
 
     assert_eq!(
         err,
@@ -197,7 +215,11 @@ fn wrong_argument_count_is_typed_not_a_panic() {
             got: 0,
         }
     );
-    assert_eq!(world.get::<DispatchGizmo>(e).unwrap().charges, 3, "nothing dispatched");
+    assert_eq!(
+        world.get::<DispatchGizmo>(e).unwrap().charges,
+        3,
+        "nothing dispatched"
+    );
 }
 
 /// Wrong argument TYPE is typed (naming both sides), again before dispatch.
@@ -206,16 +228,30 @@ fn wrong_argument_type_is_typed_not_a_panic() {
     let (mut world, e) = hydrated_world(3);
 
     let err = invoke_component_method(
-        &mut world, e, "DispatchGizmo", 0, "add_charges", vec![Box::new("nope".to_string())],
+        &mut world,
+        e,
+        "DispatchGizmo",
+        0,
+        "add_charges",
+        vec![Box::new("nope".to_string())],
     )
     .unwrap_err();
 
     match err {
-        ScriptRefError::ArgumentType { index, param, expected, found, .. } => {
+        ScriptRefError::ArgumentType {
+            index,
+            param,
+            expected,
+            found,
+            ..
+        } => {
             assert_eq!(index, 0);
             assert_eq!(param, "amount");
             assert_eq!(expected, "i32");
-            assert_eq!(found, "String", "found names the registered type, not a raw TypeId");
+            assert_eq!(
+                found, "String",
+                "found names the registered type, not a raw TypeId"
+            );
         }
         other => panic!("expected ArgumentType, got {other:?}"),
     }
@@ -230,7 +266,12 @@ fn despawned_entity_is_reference_despawned() {
     world.despawn(e);
 
     let err = invoke_component_method(
-        &mut world, e, "DispatchGizmo", 0, "add_charges", vec![Box::new(1i32)],
+        &mut world,
+        e,
+        "DispatchGizmo",
+        0,
+        "add_charges",
+        vec![Box::new(1i32)],
     )
     .unwrap_err();
 
@@ -242,19 +283,21 @@ fn despawned_entity_is_reference_despawned() {
 fn unknown_class_and_method_are_distinct_typed_errors() {
     let (mut world, e) = hydrated_world(3);
 
-    let err = invoke_component_method(
-        &mut world, e, "NeverRegistered", 0, "anything", vec![],
-    )
-    .unwrap_err();
-    assert_eq!(err, ScriptRefError::UnregisteredClass("NeverRegistered".into()));
-
-    let err = invoke_component_method(
-        &mut world, e, "DispatchGizmo", 0, "nope", vec![],
-    )
-    .unwrap_err();
+    let err = invoke_component_method(&mut world, e, "NeverRegistered", 0, "anything", vec![])
+        .unwrap_err();
     assert_eq!(
         err,
-        ScriptRefError::UnknownMethod { class_name: "DispatchGizmo".into(), method: "nope".into() }
+        ScriptRefError::UnregisteredClass("NeverRegistered".into())
+    );
+
+    let err =
+        invoke_component_method(&mut world, e, "DispatchGizmo", 0, "nope", vec![]).unwrap_err();
+    assert_eq!(
+        err,
+        ScriptRefError::UnknownMethod {
+            class_name: "DispatchGizmo".into(),
+            method: "nope".into()
+        }
     );
 }
 
@@ -265,7 +308,12 @@ fn unhydrated_component_is_component_missing() {
     let e = world.spawn();
 
     let err = invoke_component_method(
-        &mut world, e, "DispatchGizmo", 0, "add_charges", vec![Box::new(1i32)],
+        &mut world,
+        e,
+        "DispatchGizmo",
+        0,
+        "add_charges",
+        vec![Box::new(1i32)],
     )
     .unwrap_err();
     assert!(matches!(err, ScriptRefError::ComponentMissing { .. }));
@@ -279,8 +327,15 @@ fn unhydrated_component_is_component_missing() {
 fn property_json_round_trip_through_the_live_value() {
     let (mut world, e) = hydrated_world(5);
 
-    set_component_property(&mut world, e, "DispatchGizmo", 0, "charges", serde_json::json!(11))
-        .unwrap();
+    set_component_property(
+        &mut world,
+        e,
+        "DispatchGizmo",
+        0,
+        "charges",
+        serde_json::json!(11),
+    )
+    .unwrap();
     assert_eq!(world.get::<DispatchGizmo>(e).unwrap().charges, 11);
 
     let json = get_component_property(&world, e, "DispatchGizmo", 0, "charges").unwrap();
@@ -294,7 +349,12 @@ fn boxed_property_set_skips_json_and_refuses_wrong_types() {
     let (mut world, e) = hydrated_world(1);
 
     set_component_property_boxed(
-        &mut world, e, "DispatchGizmo", 0, "charges", Box::new(42i32),
+        &mut world,
+        e,
+        "DispatchGizmo",
+        0,
+        "charges",
+        Box::new(42i32),
     )
     .unwrap();
     assert_eq!(world.get::<DispatchGizmo>(e).unwrap().charges, 42);
@@ -302,12 +362,15 @@ fn boxed_property_set_skips_json_and_refuses_wrong_types() {
     let got = get_component_property_boxed(&world, e, "DispatchGizmo", 0, "charges").unwrap();
     assert_eq!(got.downcast_ref::<i32>(), Some(&42));
 
-    let err = set_component_property_boxed(
-        &mut world, e, "DispatchGizmo", 0, "charges", Box::new(7i64),
-    )
-    .unwrap_err();
+    let err =
+        set_component_property_boxed(&mut world, e, "DispatchGizmo", 0, "charges", Box::new(7i64))
+            .unwrap_err();
     assert!(matches!(err, ScriptRefError::ArgumentType { .. }));
-    assert_eq!(world.get::<DispatchGizmo>(e).unwrap().charges, 42, "refused write");
+    assert_eq!(
+        world.get::<DispatchGizmo>(e).unwrap().charges,
+        42,
+        "refused write"
+    );
 }
 
 /// Malformed JSON is a typed Marshalling error and writes nothing.
@@ -316,7 +379,12 @@ fn malformed_property_json_writes_nothing() {
     let (mut world, e) = hydrated_world(9);
 
     let err = set_component_property(
-        &mut world, e, "DispatchGizmo", 0, "charges", serde_json::json!("not-a-number"),
+        &mut world,
+        e,
+        "DispatchGizmo",
+        0,
+        "charges",
+        serde_json::json!("not-a-number"),
     )
     .unwrap_err();
     assert!(matches!(err, ScriptRefError::Marshalling { .. }));

@@ -135,7 +135,11 @@ pub fn classify(type_info: &'static RuntimeTypeInfo) -> Result<VmValueKind, Stri
     if type_info.type_id == std::any::TypeId::of::<String>() {
         return Ok(VmValueKind::Utf8String);
     }
-    if let TypeStructure::Wrapper { wrapper_kind: WrapperType::Vec, inner } = &type_info.structure {
+    if let TypeStructure::Wrapper {
+        wrapper_kind: WrapperType::Vec,
+        inner,
+    } = &type_info.structure
+    {
         if marshal::is_direct_type(inner.type_id) {
             return Ok(VmValueKind::Vector);
         }
@@ -225,16 +229,31 @@ mod tests {
         assert_eq!(classify(info_of::<i32>()).unwrap(), VmValueKind::Direct);
         assert_eq!(classify(info_of::<bool>()).unwrap(), VmValueKind::Direct);
         assert_eq!(classify(&ENTITY_INFO).unwrap(), VmValueKind::Direct);
-        assert_eq!(classify(info_of::<String>()).unwrap(), VmValueKind::Utf8String);
+        assert_eq!(
+            classify(info_of::<String>()).unwrap(),
+            VmValueKind::Utf8String
+        );
 
-        assert_eq!(classify(info_of::<Vec<f32>>()).unwrap(), VmValueKind::Vector);
-        assert_eq!(classify(info_of::<Vec<i32>>()).unwrap(), VmValueKind::Vector);
+        assert_eq!(
+            classify(info_of::<Vec<f32>>()).unwrap(),
+            VmValueKind::Vector
+        );
+        assert_eq!(
+            classify(info_of::<Vec<i32>>()).unwrap(),
+            VmValueKind::Vector
+        );
 
         // Registered non-direct/non-string/non-direct-vec: JSON fallback
         // (Vec<String>'s registration is shimmed in crate::type_shims).
-        assert_eq!(classify(info_of::<Vec<String>>()).unwrap(), VmValueKind::JsonEncoded);
+        assert_eq!(
+            classify(info_of::<Vec<String>>()).unwrap(),
+            VmValueKind::JsonEncoded
+        );
 
-        assert!(classify(&UNREGISTERED_INFO).is_err(), "unregistered types are refused");
+        assert!(
+            classify(&UNREGISTERED_INFO).is_err(),
+            "unregistered types are refused"
+        );
     }
 
     /// #644: kind discriminants are wire-stable and total (no gaps; unknown
@@ -246,7 +265,10 @@ mod tests {
         assert_eq!(VmValueKind::Vector.discriminant(), 2);
         assert_eq!(VmValueKind::JsonEncoded.discriminant(), 3);
         for raw in 0..=3u32 {
-            assert_eq!(VmValueKind::from_discriminant(raw).unwrap().discriminant(), raw);
+            assert_eq!(
+                VmValueKind::from_discriminant(raw).unwrap().discriminant(),
+                raw
+            );
         }
         assert_eq!(VmValueKind::from_discriminant(4), None);
     }

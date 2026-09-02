@@ -150,16 +150,15 @@ impl BlueprintDispatcher {
     /// instance is re-attached after a respawn. Binding is validated only
     /// lazily — component ops refuse through liveness checks if the entity
     /// is stale by the time an event runs.
-    pub fn bind_instance(
-        &mut self,
-        object_id: &str,
-        entity: Entity,
-    ) -> Result<(), ExecutorError> {
+    pub fn bind_instance(&mut self, object_id: &str, entity: Entity) -> Result<(), ExecutorError> {
         let instance = self
             .instances
             .get_mut(object_id)
             .ok_or_else(|| ExecutorError::InstanceNotRegistered(object_id.to_string()))?;
-        if instance.bind_entity(entity).is_some_and(|prev| prev != entity) {
+        if instance
+            .bind_entity(entity)
+            .is_some_and(|prev| prev != entity)
+        {
             tracing::info!("Rebound '{object_id}' to a new entity");
         }
         Ok(())
@@ -183,11 +182,7 @@ impl BlueprintDispatcher {
     ///
     /// Exposed for hosts and tests that verify per-instance state isolation;
     /// game logic should read variables inside graphs instead.
-    pub fn instance_variable_bytes(
-        &self,
-        object_id: &str,
-        var_name: &str,
-    ) -> Option<Vec<u8>> {
+    pub fn instance_variable_bytes(&self, object_id: &str, var_name: &str) -> Option<Vec<u8>> {
         let instance = self.instances.get(object_id)?;
         let bytes = instance.get_variable_bytes(var_name)?;
         Some(bytes)
@@ -202,10 +197,7 @@ impl BlueprintDispatcher {
     /// rehydrate_after_reload` rebuilds arenas exact-match-only), so a
     /// recompile changes behaviour without respawning entities. Fails with
     /// [`ExecutorError::BlueprintNotLoaded`] if the class was never loaded.
-    pub fn reload_blueprint(
-        &mut self,
-        bytecode: CompiledBytecode,
-    ) -> Result<(), ExecutorError> {
+    pub fn reload_blueprint(&mut self, bytecode: CompiledBytecode) -> Result<(), ExecutorError> {
         let class_name = bytecode.source_class.clone();
         self.executor.reload_blueprint(bytecode)?;
 
@@ -293,14 +285,22 @@ impl BlueprintDispatcher {
         }
     }
 
-    pub fn dispatch_event(&mut self, event: BlueprintEvent, world: &mut World) -> Result<(), ExecutorError> {
+    pub fn dispatch_event(
+        &mut self,
+        event: BlueprintEvent,
+        world: &mut World,
+    ) -> Result<(), ExecutorError> {
         match event {
-            BlueprintEvent::BeginPlay { object_id } => self.execute_event(&object_id, "begin_play", world),
+            BlueprintEvent::BeginPlay { object_id } => {
+                self.execute_event(&object_id, "begin_play", world)
+            }
             BlueprintEvent::Tick {
                 object_id,
                 delta_time,
             } => self.execute_tick(&object_id, world, delta_time),
-            BlueprintEvent::EndPlay { object_id } => self.execute_event(&object_id, "end_play", world),
+            BlueprintEvent::EndPlay { object_id } => {
+                self.execute_event(&object_id, "end_play", world)
+            }
         }
     }
 

@@ -22,8 +22,7 @@ pub const HELIO_GIT_REVISION: &str = env!("PULSAR_HELIO_GIT_REVISION");
 /// Play-In-Editor game ABI-compatible with the editor it loads into (shared
 /// `wgpu` device across the dylib boundary) and fixes the version skew that a
 /// bare `git = "…Pulsar-Native"` dependency otherwise produces.
-const GAME_MANIFEST_DEPS: &str =
-    include_str!(concat!(env!("OUT_DIR"), "/game_manifest_deps.toml"));
+const GAME_MANIFEST_DEPS: &str = include_str!(concat!(env!("OUT_DIR"), "/game_manifest_deps.toml"));
 
 fn settings_string(
     settings: Option<&ProjectSettings>,
@@ -381,7 +380,9 @@ fn splice_script_dependencies(manifest_deps: &str, crates: &[ScriptCrate]) -> St
         ));
     }
 
-    let splice_at = manifest_deps.find("\n[patch.").unwrap_or(manifest_deps.len());
+    let splice_at = manifest_deps
+        .find("\n[patch.")
+        .unwrap_or(manifest_deps.len());
     let mut out = String::with_capacity(manifest_deps.len() + lines.len());
     out.push_str(&manifest_deps[..splice_at]);
     out.push_str(&lines);
@@ -756,8 +757,7 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
         })
         .collect();
     let script_section = if script_calls.is_empty() {
-        "    // No gameplay script crates yet — add one under scripts/ (see docs).\n"
-            .to_string()
+        "    // No gameplay script crates yet — add one under scripts/ (see docs).\n".to_string()
     } else {
         format!(
             "    // ── Gameplay script crates (scripts/) ──────────────────────────────\n\
@@ -901,11 +901,11 @@ fn ensure_level_json(project_root: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::native_scripts::{discover_script_actors, discover_script_crates};
     use super::{
         cargo_safe_name, ensure_core_cargo_toml, ensure_scripts_crate, splice_script_dependencies,
         workspace_block, HELIO_GIT_REVISION,
     };
-    use super::super::native_scripts::{discover_script_crates, discover_script_actors};
 
     #[test]
     fn generated_project_pins_the_workspace_helio_revision() {

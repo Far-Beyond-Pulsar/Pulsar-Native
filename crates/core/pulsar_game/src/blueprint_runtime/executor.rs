@@ -3,8 +3,8 @@
 //! Manages the virtual machine, loaded blueprints, and bytecode execution.
 
 use super::byte_arena::ByteArena;
-use super::component_ops::{component_op_handlers, run_with_component_context};
 use super::compiled_bytecode::CompiledBytecode;
+use super::component_ops::{component_op_handlers, run_with_component_context};
 use pbgc::{vm, BpProgram};
 use pulsar_bp_executor::{BpExecutor as NativeExecutor, ExecutorError as NativeExecutorError};
 use pulsar_scenedb::{Entity, World};
@@ -124,7 +124,10 @@ impl<'w> EventWorld<'w> {
 
     /// World access for an unbound instance: component ops refuse.
     pub fn unbound(world: &'w mut World) -> Self {
-        Self { world, entity: None }
+        Self {
+            world,
+            entity: None,
+        }
     }
 }
 

@@ -137,7 +137,11 @@ impl PropertyChangeSet {
 
     /// Check if a specific property was written since the last drain.
     pub fn has_changed(&self, object_id: &str, class_name: &str, prop_name: &str) -> bool {
-        self.changed.contains(&(object_id.to_string(), class_name.to_string(), prop_name.to_string()))
+        self.changed.contains(&(
+            object_id.to_string(),
+            class_name.to_string(),
+            prop_name.to_string(),
+        ))
     }
 
     /// Check if any property on a given class was written since the last drain.
@@ -237,20 +241,30 @@ impl RevisionTracker {
             if delta == 0 {
                 // Nothing changed; just keep the baseline current (best
                 // effort — a racing fold re-derives the same conclusion).
-                let _ = self.last_raw.compare_exchange(lr, raw, Ordering::Relaxed, Ordering::Relaxed);
+                let _ =
+                    self.last_raw
+                        .compare_exchange(lr, raw, Ordering::Relaxed, Ordering::Relaxed);
                 return self.out.load(Ordering::Relaxed);
             }
 
             if epoch != le {
                 // Claim the epoch transition so the swap's guaranteed delta
                 // is applied by exactly one caller.
-                match self.last_epoch.compare_exchange(le, epoch, Ordering::Relaxed, Ordering::Relaxed) {
+                match self.last_epoch.compare_exchange(
+                    le,
+                    epoch,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                ) {
                     Err(_) => continue,
                     Ok(_) => {}
                 }
             }
             // Claim the raw transition so intra-epoch growth is counted once.
-            match self.last_raw.compare_exchange(lr, raw, Ordering::Relaxed, Ordering::Relaxed) {
+            match self
+                .last_raw
+                .compare_exchange(lr, raw, Ordering::Relaxed, Ordering::Relaxed)
+            {
                 Ok(_) => {
                     let prev = self.out.fetch_add(delta, Ordering::Relaxed);
                     return prev + delta;
@@ -283,16 +297,6 @@ impl SceneDatabase {
     pub fn new() -> Self {
         Self {
             store: Arc::new(RwLock::new(WorldSceneStore::new())),
-            metadata_db: Arc::new(SceneMetadataDb::new()),
-            property_changes: Arc::new(parking_lot::Mutex::new(PropertyChangeSet::default())),
-            revision_tracker: Arc::new(RevisionTracker::default()),
-        }
-    }
-
-    /// Create using a caller-supplied store `Arc` that is shared with the renderer.
-    pub fn with_shared_store(store: Arc<RwLock<WorldSceneStore>>) -> Self {
-        Self {
-            store,
             metadata_db: Arc::new(SceneMetadataDb::new()),
             property_changes: Arc::new(parking_lot::Mutex::new(PropertyChangeSet::default())),
             revision_tracker: Arc::new(RevisionTracker::default()),
@@ -455,6 +459,24 @@ impl SceneDatabase {
     /// rebuilds `__component_instances` from `metadata_db`, so the component
     /// must live there — setting it only in `props` would be immediately overwritten.
     pub fn add_object(&self, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
+        // Reject caller-supplied identity/parent errors before touching the
+        // metadata projection. An add must never turn a duplicate or stale
+        // reference into a different object while the caller keeps using the
+        // original ID.
+        {
+            let store = self.store.read();
+            if !obj.id.is_empty() && store.entity_for(&obj.id).is_some() {
+                tracing::error!(id = %obj.id, "SceneDatabase rejected duplicate object ID");
+                return String::new();
+            }
+            if let Some(parent_id) = parent.as_deref() {
+                if store.entity_for(parent_id).is_none() {
+                    tracing::error!(parent = %parent_id, "SceneDatabase rejected missing parent");
+                    return String::new();
+                }
+            }
+        }
+
         // v2 scene objects may carry component instances inline. Preserve
         // those instances in the metadata store before the normal hydration
         // pass; otherwise the empty metadata store overwrites the inline list
@@ -475,7 +497,10 @@ impl SceneDatabase {
                                 .get("enabled")
                                 .and_then(serde_json::Value::as_bool)
                                 .unwrap_or(true),
-                            data: object.get("data").cloned().unwrap_or(serde_json::Value::Null),
+                            data: object
+                                .get("data")
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Null),
                         })
                     })
                     .collect::<Vec<_>>()
@@ -543,7 +568,10 @@ impl SceneDatabase {
             );
             store.set_visibility(
                 entity,
-                WorldVisibility { visible: obj.visible, locked: obj.locked },
+                WorldVisibility {
+                    visible: obj.visible,
+                    locked: obj.locked,
+                },
             );
             store.set_object_type(entity, obj.object_type);
             let id = store.stable_id_of(entity).unwrap_or_default().to_string();
@@ -555,7 +583,8 @@ impl SceneDatabase {
         };
 
         for component in inline_components {
-            self.metadata_db.add_component_instance(&object_id, component);
+            self.metadata_db
+                .add_component_instance(&object_id, component);
         }
 
         if let Some(script_path) = blueprint_script_path {
@@ -582,7 +611,9 @@ impl SceneDatabase {
     pub fn remove_object(&self, id: &ObjectId) -> bool {
         let ids_to_clear = {
             let mut store = self.store.write();
-            let Some(entity) = store.entity_for(id) else { return false };
+            let Some(entity) = store.entity_for(id) else {
+                return false;
+            };
             let mut ids_to_clear = vec![id.clone()];
             Self::collect_descendant_ids(&store, entity, &mut ids_to_clear);
             store.despawn(entity);
@@ -599,7 +630,9 @@ impl SceneDatabase {
         let id = obj.id.clone();
         {
             let mut store = self.store.write();
-            let Some(entity) = store.entity_for(&id) else { return false };
+            let Some(entity) = store.entity_for(&id) else {
+                return false;
+            };
             store.set_transform(
                 entity,
                 WorldTransform {
@@ -611,7 +644,10 @@ impl SceneDatabase {
             store.set_name(entity, obj.name);
             store.set_visibility(
                 entity,
-                WorldVisibility { visible: obj.visible, locked: obj.locked },
+                WorldVisibility {
+                    visible: obj.visible,
+                    locked: obj.locked,
+                },
             );
             store.update_render_props(&id, |render_props| render_props.props = obj.props);
         }
@@ -795,8 +831,8 @@ impl SceneDatabase {
         // bare scalar landing where a nested group lives), and duplicates
         // deserve the same nesting-correct write the live card gets --
         // that's the whole point of #519.
-        let is_live = self.live_typed_component_index(object_id, class_name)
-            == Some(component_index);
+        let is_live =
+            self.live_typed_component_index(object_id, class_name) == Some(component_index);
         if !is_live {
             let mut scratch = pulsar_scenedb::World::new();
             let scratch_entity = scratch.spawn();
@@ -874,7 +910,10 @@ impl SceneDatabase {
             // needs its own `&mut store` -- `instance` borrows `store`
             // mutably via `world_mut()`, so the two borrows can't overlap).
             let json = instance.to_json().ok();
-            store.mark_dirty(object_id, ObjectDirtyFlags::PROPS | ObjectDirtyFlags::COMPONENTS);
+            store.mark_dirty(
+                object_id,
+                ObjectDirtyFlags::PROPS | ObjectDirtyFlags::COMPONENTS,
+            );
             json
         };
 
@@ -985,16 +1024,26 @@ impl SceneDatabase {
 
     /// Clear the entire scene.
     pub fn clear(&self) {
-        let root_ids: Vec<ObjectId> = {
-            let store = self.store.read();
-            store
-                .children_of(None)
-                .iter()
-                .filter_map(|&e| store.stable_id_of(e).map(str::to_string))
-                .collect()
-        };
-        for id in root_ids {
-            self.remove_object(&id);
+        // Take the complete indexed object list once. Clearing only roots
+        // leaves orphaned scene entities behind when a caller has created an
+        // inconsistent parent link; those stale IDs then poison subsequent
+        // loads/adds. Despawn is recursive, so one pass over the snapshot is
+        // sufficient and does not require a lock per object.
+        let object_ids: Vec<ObjectId> = self
+            .store
+            .read()
+            .to_snapshots()
+            .into_iter()
+            .map(|object| object.stable_id)
+            .collect();
+        if !object_ids.is_empty() {
+            let mut store = self.store.write();
+            for id in object_ids {
+                if let Some(entity) = store.entity_for(&id) {
+                    store.despawn(entity);
+                }
+            }
+            self.metadata_db.clear();
         }
         tracing::info!("Scene cleared – ready for new level");
     }
@@ -1023,6 +1072,25 @@ impl SceneDatabase {
             .collect()
     }
 
+    /// Return the hierarchy projection from one WorldSceneStore read.
+    /// Keeping roots and objects together prevents the UI from observing two
+    /// different revisions during a background mutation.
+    pub fn get_hierarchy_snapshot(&self) -> (Vec<SceneObjectData>, Vec<ObjectId>) {
+        let store = self.store.read();
+        let mut objects = Vec::new();
+        Self::collect_dfs(&store, None, &mut objects);
+        let root_ids = store
+            .children_of(None)
+            .iter()
+            .filter_map(|&entity| store.stable_id_of(entity).map(str::to_string))
+            .collect();
+        drop(store);
+        for object in &mut objects {
+            Self::merge_component_props(&object.id, &mut object.props, &self.metadata_db);
+        }
+        (objects, root_ids)
+    }
+
     /// Number of root-level objects, without building their data.
     pub fn root_count(&self) -> usize {
         self.store.read().children_of(None).len()
@@ -1045,7 +1113,10 @@ impl SceneDatabase {
     /// render change" from content snapshots.
     pub fn store_revision(&self) -> u64 {
         let raw = self.store.read().render_revision();
-        let epoch = self.revision_tracker.epoch.load(std::sync::atomic::Ordering::Relaxed);
+        let epoch = self
+            .revision_tracker
+            .epoch
+            .load(std::sync::atomic::Ordering::Relaxed);
         self.revision_tracker.fold(epoch, raw)
     }
 
@@ -1102,7 +1173,9 @@ impl SceneDatabase {
     /// Direct children of `id`.
     pub fn get_children(&self, id: &ObjectId) -> Vec<ObjectId> {
         let store = self.store.read();
-        let Some(entity) = store.entity_for(id) else { return Vec::new() };
+        let Some(entity) = store.entity_for(id) else {
+            return Vec::new();
+        };
         store
             .children_of(Some(entity))
             .iter()
@@ -1138,7 +1211,9 @@ impl SceneDatabase {
 
     pub fn set_visible(&self, id: &ObjectId, visible: bool) -> bool {
         let mut store = self.store.write();
-        let Some(entity) = store.entity_for(id) else { return false };
+        let Some(entity) = store.entity_for(id) else {
+            return false;
+        };
         let mut visibility = store.visibility(entity).unwrap_or_default();
         visibility.visible = visible;
         store.set_visibility(entity, visibility)
@@ -1146,7 +1221,9 @@ impl SceneDatabase {
 
     pub fn set_locked(&self, id: &ObjectId, locked: bool) -> bool {
         let mut store = self.store.write();
-        let Some(entity) = store.entity_for(id) else { return false };
+        let Some(entity) = store.entity_for(id) else {
+            return false;
+        };
         let mut visibility = store.visibility(entity).unwrap_or_default();
         visibility.locked = locked;
         store.set_visibility(entity, visibility)
@@ -1171,7 +1248,9 @@ impl SceneDatabase {
         scale: Option<[f32; 3]>,
     ) -> bool {
         let mut store = self.store.write();
-        let Some(entity) = store.entity_for(id) else { return false };
+        let Some(entity) = store.entity_for(id) else {
+            return false;
+        };
         let mut transform = store.transform(entity).unwrap_or_default();
         let mut changed = false;
         if let Some(p) = position {
@@ -1201,7 +1280,9 @@ impl SceneDatabase {
     /// Re-parent an object (cycle-safe).
     pub fn reparent_object(&self, id: &ObjectId, new_parent: Option<ObjectId>) -> bool {
         let mut store = self.store.write();
-        let Some(entity) = store.entity_for(id) else { return false };
+        let Some(entity) = store.entity_for(id) else {
+            return false;
+        };
         let new_parent_entity = match new_parent {
             Some(ref parent_id) => match store.entity_for(parent_id) {
                 Some(e) => Some(e),
@@ -1218,8 +1299,12 @@ impl SceneDatabase {
     /// share a parent or either id is unknown.
     pub fn reorder_object_siblings(&self, object_id: &ObjectId, target_id: &ObjectId) -> bool {
         let mut store = self.store.write();
-        let Some(entity) = store.entity_for(object_id) else { return false };
-        let Some(target) = store.entity_for(target_id) else { return false };
+        let Some(entity) = store.entity_for(object_id) else {
+            return false;
+        };
+        let Some(target) = store.entity_for(target_id) else {
+            return false;
+        };
         store.reorder_sibling(entity, target)
     }
 
@@ -1292,7 +1377,8 @@ impl SceneDatabase {
         class_name: String,
         data: serde_json::Value,
     ) {
-        self.metadata_db.add_component(object_id, class_name.clone(), data);
+        self.metadata_db
+            .add_component(object_id, class_name.clone(), data);
         self.sync_registered_component_props_to_scene_db(object_id);
         self.record_structural_change(object_id, &class_name);
     }
@@ -1699,7 +1785,11 @@ impl SceneDatabase {
         parts.join("/")
     }
 
-    fn collect_dfs(store: &WorldSceneStore, parent: Option<Entity>, out: &mut Vec<SceneObjectData>) {
+    fn collect_dfs(
+        store: &WorldSceneStore,
+        parent: Option<Entity>,
+        out: &mut Vec<SceneObjectData>,
+    ) {
         for &entity in store.children_of(parent) {
             out.push(Self::entity_to_scene_object_data(store, entity));
             Self::collect_dfs(store, Some(entity), out);
@@ -1860,10 +1950,18 @@ impl SceneDatabase {
         let objects = self.store.read().to_snapshots();
         let components = objects
             .iter()
-            .map(|obj| (obj.stable_id.clone(), self.metadata_db.get_components(&obj.stable_id)))
+            .map(|obj| {
+                (
+                    obj.stable_id.clone(),
+                    self.metadata_db.get_components(&obj.stable_id),
+                )
+            })
             .filter(|(_, components)| !components.is_empty())
             .collect();
-        SceneHistorySnapshot { objects, components }
+        SceneHistorySnapshot {
+            objects,
+            components,
+        }
     }
 
     /// Restore a previously captured snapshot, replacing the current scene
@@ -2078,7 +2176,11 @@ mod history_snapshot_tests {
     fn restore_brings_back_reflection_components() {
         let db = SceneDatabase::new();
         let id = db.add_object(object("Light", ObjectType::Light(LightType::Point)), None);
-        db.add_component(&id, "LightComponent".to_string(), serde_json::json!({"intensity": 5.0}));
+        db.add_component(
+            &id,
+            "LightComponent".to_string(),
+            serde_json::json!({"intensity": 5.0}),
+        );
         assert_eq!(db.get_components(&id).len(), 1);
 
         let snapshot = db.capture_history_snapshot();
@@ -2205,7 +2307,10 @@ mod world_component_hydration_tests {
         let store = db.store.read();
         let entity = store.entity_for(&id).unwrap();
         let hydrated = store.world().get::<StaticMeshComponent>(entity).unwrap();
-        assert_eq!(hydrated.mesh_asset.as_str(), "meshes/primitives/SM_Cube.fbx");
+        assert_eq!(
+            hydrated.mesh_asset.as_str(),
+            "meshes/primitives/SM_Cube.fbx"
+        );
     }
 
     #[test]
@@ -2228,7 +2333,10 @@ mod world_component_hydration_tests {
         let store = db.store.read();
         let entity = store.entity_for(&id).unwrap();
         let hydrated = store.world().get::<StaticMeshComponent>(entity).unwrap();
-        assert_eq!(hydrated.mesh_asset.as_str(), "meshes/primitives/SM_Sphere.fbx");
+        assert_eq!(
+            hydrated.mesh_asset.as_str(),
+            "meshes/primitives/SM_Sphere.fbx"
+        );
     }
 
     #[test]
@@ -2302,13 +2410,17 @@ mod world_component_hydration_tests {
     fn light_component_hydrates_via_its_default_json() {
         let db = SceneDatabase::new();
         let id = db.add_object(object("Light"), None);
-        let default_json = serde_json::to_value(helio_component::LightComponent::default()).unwrap();
+        let default_json =
+            serde_json::to_value(helio_component::LightComponent::default()).unwrap();
 
         db.add_component(&id, "LightComponent".to_string(), default_json);
 
         let store = db.store.read();
         let entity = store.entity_for(&id).unwrap();
-        assert!(store.world().get::<helio_component::LightComponent>(entity).is_some());
+        assert!(store
+            .world()
+            .get::<helio_component::LightComponent>(entity)
+            .is_some());
     }
 
     /// Pulsar-Native#561 regression test: editing a `#[sub_props]`-nested
@@ -2342,7 +2454,10 @@ mod world_component_hydration_tests {
             "intensity",
             Box::new(500.0_f32) as Box<dyn Any + Send>,
         );
-        assert!(applied.is_ok(), "live edit should apply directly, no JSON fallback needed");
+        assert!(
+            applied.is_ok(),
+            "live edit should apply directly, no JSON fallback needed"
+        );
 
         // `color` is a leaf field inside `ColorLightProps`, whose *parent*
         // sub-props field on `LightComponent` is also named `color` -- the
@@ -2369,10 +2484,22 @@ mod world_component_hydration_tests {
         // the edit was scoped to just the one targeted leaf, not a
         // sub-struct-clobbering overwrite.
         let expected = LightComponent::default();
-        assert_eq!(hydrated.intensity.intensity_units, expected.intensity.intensity_units);
-        assert_eq!(hydrated.intensity.exposure_compensation, expected.intensity.exposure_compensation);
-        assert_eq!(hydrated.color.use_temperature, expected.color.use_temperature);
-        assert_eq!(hydrated.color.temperature_kelvin, expected.color.temperature_kelvin);
+        assert_eq!(
+            hydrated.intensity.intensity_units,
+            expected.intensity.intensity_units
+        );
+        assert_eq!(
+            hydrated.intensity.exposure_compensation,
+            expected.intensity.exposure_compensation
+        );
+        assert_eq!(
+            hydrated.color.use_temperature,
+            expected.color.use_temperature
+        );
+        assert_eq!(
+            hydrated.color.temperature_kelvin,
+            expected.color.temperature_kelvin
+        );
         // `GeneralLightProps`/`AttenuationLightProps`/`ShadowLightProps`
         // don't derive `PartialEq` -- compare via their own `Serialize`
         // impl instead (both already derive it for the JSON boundary).
@@ -2553,7 +2680,8 @@ mod world_component_hydration_tests {
         let db = SceneDatabase::new();
         let a = db.add_object(object("PortalA"), None);
         let b = db.add_object(object("PortalB"), None);
-        let default_json = serde_json::to_value(helio_component::PortalComponent::default()).unwrap();
+        let default_json =
+            serde_json::to_value(helio_component::PortalComponent::default()).unwrap();
 
         db.add_component(&a, "PortalComponent".to_string(), default_json.clone());
         db.add_component(&b, "PortalComponent".to_string(), default_json);
@@ -2561,8 +2689,14 @@ mod world_component_hydration_tests {
         let store = db.store.read();
         let entity_a = store.entity_for(&a).unwrap();
         let entity_b = store.entity_for(&b).unwrap();
-        assert!(store.world().get::<helio_component::PortalComponent>(entity_a).is_some());
-        assert!(store.world().get::<helio_component::PortalComponent>(entity_b).is_some());
+        assert!(store
+            .world()
+            .get::<helio_component::PortalComponent>(entity_a)
+            .is_some());
+        assert!(store
+            .world()
+            .get::<helio_component::PortalComponent>(entity_b)
+            .is_some());
     }
 
     /// Phase D (Pulsar-Native#558): `ReflectionCaptureComponent` is the
@@ -2749,13 +2883,8 @@ mod world_component_hydration_tests {
         // Index 0 is the StaticMeshComponent; claiming it for a Light edit
         // must bounce the value straight back, unmodified.
         let value = Box::new(500.0_f32) as Box<dyn Any + Send>;
-        let result = db.update_live_component_property(
-            &id,
-            "LightComponent",
-            0,
-            "intensity",
-            value,
-        );
+        let result =
+            db.update_live_component_property(&id, "LightComponent", 0, "intensity", value);
         assert!(result.is_err(), "class/index mismatch must refuse");
     }
 
@@ -2836,7 +2965,9 @@ mod world_component_hydration_tests {
     fn subscribing_an_unregistered_class_is_none() {
         let db = SceneDatabase::new();
         let id = db.add_object(object("Cube"), None);
-        assert!(db.subscribe_component(&id, "NoSuchComponentClass").is_none());
+        assert!(db
+            .subscribe_component(&id, "NoSuchComponentClass")
+            .is_none());
     }
 
     /// Undo/redo swaps the whole `World` out from under any outstanding
@@ -2857,6 +2988,19 @@ mod world_component_hydration_tests {
             before,
             "a store swap must invalidate every outstanding subscription"
         );
+    }
+
+    /// The lifecycle owner creates the SceneDB-backed store once; consumers
+    /// such as the renderer receive only a shared handle to that same store.
+    #[test]
+    fn shared_store_is_the_database_scene() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Cube"), None);
+        let store = db.shared_store();
+
+        let store = store.read();
+        let entity = store.entity_for(&id).expect("object lives in shared store");
+        assert_eq!(store.name(entity), Some("Cube"));
     }
 }
 
@@ -2888,8 +3032,8 @@ mod blueprint_bindings_preservation_tests {
     /// section byte-for-value, keyed by StableId with overrides intact.
     #[test]
     fn saving_preserves_an_authored_bindings_section() {
-        let dir = std::env::temp_dir()
-            .join(format!("pulsar_650_editor_save_{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("pulsar_650_editor_save_{}", std::process::id()));
         std::fs::create_dir_all(&dir).expect("tmp dir");
         let path = dir.join("roundtrip.level.json");
 
@@ -2905,13 +3049,18 @@ mod blueprint_bindings_preservation_tests {
 
         // An ordinary editor save (fresh LevelFile construction) must keep it.
         let db = SceneDatabase::new();
-        db.save_to_file_with_editor_camera(&path, None).expect("save");
+        db.save_to_file_with_editor_camera(&path, None)
+            .expect("save");
 
         let saved: LevelFile = {
             let bytes = virtual_fs::read_file(&path).expect("read back");
             serde_json::from_str(&String::from_utf8(bytes).unwrap()).expect("parse")
         };
-        assert_eq!(saved.blueprint_bindings, sample_bindings(), "bindings survive re-save");
+        assert_eq!(
+            saved.blueprint_bindings,
+            sample_bindings(),
+            "bindings survive re-save"
+        );
 
         // Files without the section still save cleanly (no phantom key).
         let bare = dir.join("bare.level.json");
@@ -2948,8 +3097,10 @@ mod blueprint_bindings_preservation_tests {
             "metadata": {"created": "2026-01-01T00:00:00Z", "modified": "2026-01-01T00:00:00Z", "editor_version": "0.1.0"},
             "blueprint_bindings": { "lever_a": [ { "class_name": "Lever", "overrides": {} } ] }
         }"#;
-        let path = std::env::temp_dir()
-            .join(format!("pulsar_650_editor_load_{}.json", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "pulsar_650_editor_load_{}.json",
+            std::process::id()
+        ));
         virtual_fs::write_file(&path, json.as_bytes()).expect("write");
 
         db.load_from_file(&path).expect("bound levels load");

@@ -1,5 +1,7 @@
 use crate::custom_providers::{self, CustomProvider};
-use agent_chat_core::{ChatMessage, ChatProvider, ChatRole, ProviderCrate, ProviderEntry, ProviderRegistry};
+use agent_chat_core::{
+    ChatMessage, ChatProvider, ChatRole, ProviderCrate, ProviderEntry, ProviderRegistry,
+};
 use agent_chat_tools::ToolRegistry;
 use gpui::{prelude::FluentBuilder as _, *};
 use std::{
@@ -11,17 +13,15 @@ use std::{
 };
 use ui::{
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
-    dropdown::{
-        SearchableList, SearchableListItemAction, SearchableListItemState,
-    },
+    dropdown::{SearchableList, SearchableListItemAction, SearchableListItemState},
     input::InputState,
     scroll::ScrollbarState,
     VirtualListScrollHandle,
 };
 
-use super::types::*;
 use super::chat_storage;
 use super::provider_selection;
+use super::types::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum SubagentCompletionMode {

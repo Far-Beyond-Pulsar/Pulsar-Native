@@ -52,14 +52,14 @@ pub mod helio_bridge;
 
 // Re-export new system types for convenience
 pub use component_db::ComponentDb;
-pub use light_frame::{LightFrameMaintainer, ResolvedLightFrame};
-pub use mesh_frame::{MeshFrameMaintainer, ResolvedMeshFrame};
-pub use metadata::{ComponentInstance, EditorObjectId};
-pub use metadata_db::SceneMetadataDb;
 #[cfg(feature = "render")]
 pub use helio_bridge::{
     attach_gpu_render_seam, rebuild_light_frame, rebuild_static_mesh_frame, step_scene_for_render,
 };
+pub use light_frame::{LightFrameMaintainer, ResolvedLightFrame};
+pub use mesh_frame::{MeshFrameMaintainer, ResolvedMeshFrame};
+pub use metadata::{ComponentInstance, EditorObjectId};
+pub use metadata_db::SceneMetadataDb;
 pub use runtime_level::{EditorCamera, LevelExtras, RuntimeLevel, RuntimeLevelError};
 pub use world_store::{
     Name, ObjectSnapshot, Parent, RenderProps, StableId, Transform, Visibility, WorldSceneStore,
@@ -138,7 +138,6 @@ pub struct SceneDbDelta {
     pub added: Vec<String>,
     pub removed: Vec<String>,
     pub updated: Vec<ObjectUpdate>,
-    pub revision: u64,
 }
 
 // ─── Gizmo state ─────────────────────────────────────────────────────────────
@@ -175,4 +174,3 @@ impl Default for GizmoState {
         }
     }
 }
-

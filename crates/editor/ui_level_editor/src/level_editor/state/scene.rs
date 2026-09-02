@@ -7,13 +7,9 @@
 //! (running on the GPUI main thread) can detect changes made by background
 //! threads (AI tools, asset import, etc.) and trigger a re-render.
 
-use std::path::PathBuf;
-use std::sync::Arc;
-
 use crate::level_editor::scene_database::{ObjectId, SceneHistorySnapshot, SceneObjectData};
 use crate::level_editor::SceneDatabase;
-use engine_backend::scene::WorldSceneStore;
-use parking_lot::RwLock;
+use std::path::PathBuf;
 
 /// Undo/redo history depth cap (Pulsar-Native#554). Each entry is a full
 /// scene snapshot (`SceneDatabase::capture_history_snapshot`'s cost is
@@ -49,7 +45,10 @@ pub struct SceneDomain {
     /// Scene database — single source of truth for all scene data.
     pub database: SceneDatabase,
     /// Snapshot of scene state when entering play mode (for reset on stop).
-    pub snapshot: Option<Arc<parking_lot::RwLock<Vec<SceneObjectData>>>>,
+    /// Immutable SceneDB snapshot captured before PIE.  Keep the database's
+    /// native snapshot here instead of a second object-shaped store; it
+    /// carries parent links and component metadata atomically.
+    pub snapshot: Option<SceneHistorySnapshot>,
     /// Current editor mode.
     pub editor_mode: EditorMode,
     /// Currently open scene file path.
@@ -86,14 +85,6 @@ impl Default for SceneDomain {
 }
 
 impl SceneDomain {
-    /// Create using a caller-supplied scene store `Arc` that is shared with the renderer.
-    pub fn with_scene_db(scene_store: Arc<RwLock<WorldSceneStore>>) -> Self {
-        Self {
-            database: SceneDatabase::with_shared_store(scene_store),
-            ..Self::default()
-        }
-    }
-
     // ── Selection ─────────────────────────────────────────────────────────
 
     pub fn selected_object(&self) -> Option<ObjectId> {
@@ -187,7 +178,9 @@ impl SceneDomain {
     /// method deliberately leaves to the caller since it has no `cx` to
     /// notify with here).
     pub fn undo(&mut self) -> bool {
-        let Some(previous) = self.undo_stack.pop() else { return false };
+        let Some(previous) = self.undo_stack.pop() else {
+            return false;
+        };
         let current = self.database.capture_history_snapshot();
         if self.database.restore_history_snapshot(&previous).is_err() {
             // Restore failed (malformed snapshot) -- put it back so the
@@ -202,7 +195,9 @@ impl SceneDomain {
     /// Redo the last undone command. See [`Self::undo`]'s doc for the
     /// caller's responsibilities on success.
     pub fn redo(&mut self) -> bool {
-        let Some(next) = self.redo_stack.pop() else { return false };
+        let Some(next) = self.redo_stack.pop() else {
+            return false;
+        };
         let current = self.database.capture_history_snapshot();
         if self.database.restore_history_snapshot(&next).is_err() {
             self.redo_stack.push(next);
@@ -216,21 +211,22 @@ impl SceneDomain {
 
     /// Enter play mode — snapshot scene and start game thread.
     pub fn enter_play_mode(&mut self) {
-        let objects = self.database.get_all_objects();
-        self.snapshot = Some(Arc::new(parking_lot::RwLock::new(objects)));
+        self.snapshot = Some(self.database.capture_history_snapshot());
         self.editor_mode = EditorMode::Play;
     }
 
     /// Exit play mode — restore scene state from snapshot.
     pub fn exit_play_mode(&mut self) {
-        if let Some(ref snapshot) = self.snapshot {
-            let objects = snapshot.read().clone();
-            self.database.clear();
-            for obj in objects {
-                self.database.add_object(obj, None);
+        if let Some(snapshot) = self.snapshot.take() {
+            // WorldSceneStore restores the complete hierarchy in one
+            // transaction and rehydrates registered components together with
+            // the object data. This avoids the old clear-and-readd loop,
+            // which turned every object into a root and silently regenerated
+            // IDs when cleanup was incomplete.
+            if let Err(error) = self.database.restore_history_snapshot(&snapshot) {
+                tracing::error!(%error, "failed to restore the editor scene after play mode");
             }
         }
         self.editor_mode = EditorMode::Edit;
-        self.snapshot = None;
     }
 }

@@ -55,7 +55,12 @@ struct Churn {
 
 impl Churn {
     fn new() -> Self {
-        Self { world: World::new(), tracked: Vec::new(), retired: Vec::new(), next_marker: 1 }
+        Self {
+            world: World::new(),
+            tracked: Vec::new(),
+            retired: Vec::new(),
+            next_marker: 1,
+        }
     }
 
     fn spawn(&mut self) {
@@ -65,7 +70,12 @@ impl Churn {
         self.world.insert(entity, TestGizmo { charges: marker });
         let actor_ref = ActorRef::new(entity);
         let component_ref = ComponentRef::live(actor_ref, "TestGizmo");
-        self.tracked.push(Tracked { entity, marker, actor_ref, component_ref });
+        self.tracked.push(Tracked {
+            entity,
+            marker,
+            actor_ref,
+            component_ref,
+        });
     }
 
     /// Despawn one tracked object through ITS OWN ref (the scripting path),
@@ -76,9 +86,15 @@ impl Churn {
         }
         let victim = rng.below(self.tracked.len() as u64) as usize;
         let t = self.tracked.remove(victim);
-        assert!(t.actor_ref.validate(&self.world).is_ok(), "tracked actor was already stale");
+        assert!(
+            t.actor_ref.validate(&self.world).is_ok(),
+            "tracked actor was already stale"
+        );
         self.retired.push(t.component_ref);
-        assert!(t.actor_ref.despawn(&mut self.world), "despawn of a live tracked actor");
+        assert!(
+            t.actor_ref.despawn(&mut self.world),
+            "despawn of a live tracked actor"
+        );
     }
 
     /// Write through one HELD ref, then prove nothing else moved: the
@@ -125,10 +141,20 @@ impl Churn {
                 t.actor_ref.validate(&self.world).is_ok(),
                 "live tracked actor failed validation"
             );
-            let value = t.component_ref.get_property(&self.world, "charges").unwrap_or_else(|e| {
-                panic!("read through a live ref failed: {e} (ref {:?})", t.component_ref)
-            });
-            assert_eq!(value, serde_json::json!(t.marker), "ref saw another object's value");
+            let value = t
+                .component_ref
+                .get_property(&self.world, "charges")
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "read through a live ref failed: {e} (ref {:?})",
+                        t.component_ref
+                    )
+                });
+            assert_eq!(
+                value,
+                serde_json::json!(t.marker),
+                "ref saw another object's value"
+            );
         }
     }
 
@@ -147,7 +173,8 @@ impl Churn {
 /// The #641 property test: heavy spawn/despawn/reuse churn while scripts
 /// hold refs. No cross-object write ever occurs; no accessor ever panics.
 #[test]
-fn churn_spawn_despawn_and_slot_reuse_never_crosses_writes() {    for seed in [0xDEADBEEF, 0x12345678, 0x00C0FFEE] {
+fn churn_spawn_despawn_and_slot_reuse_never_crosses_writes() {
+    for seed in [0xDEADBEEF, 0x12345678, 0x00C0FFEE] {
         let mut rng = Rng::new(seed);
         let mut sim = Churn::new();
 
@@ -185,7 +212,12 @@ fn recycled_slots_never_adopt_stale_handles() {
     let survivors_marker = 7i32;
 
     let survivor = world.spawn();
-    world.insert(survivor, TestGizmo { charges: survivors_marker });
+    world.insert(
+        survivor,
+        TestGizmo {
+            charges: survivors_marker,
+        },
+    );
     let survivor_ref = ComponentRef::live(ActorRef::new(survivor), "TestGizmo");
 
     // Fill, kill, refill -- twice over -- so `World` recycles slots with
@@ -195,7 +227,12 @@ fn recycled_slots_never_adopt_stale_handles() {
         let mut batch = Vec::new();
         for _ in 0..8 {
             let e = world.spawn();
-            world.insert(e, TestGizmo { charges: 1000 + round });
+            world.insert(
+                e,
+                TestGizmo {
+                    charges: 1000 + round,
+                },
+            );
             batch.push((e, ComponentRef::live(ActorRef::new(e), "TestGizmo")));
         }
         for (e, r) in batch.drain(..) {

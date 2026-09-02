@@ -101,9 +101,7 @@ pub fn render_header(
                                 } else {
                                     t!("Problems.Action.GroupByFile").to_string()
                                 })
-                                .on_click(
-                                    cx.listener(|this, _, _, cx| this.toggle_grouping(cx)),
-                                ),
+                                .on_click(cx.listener(|this, _, _, cx| this.toggle_grouping(cx))),
                         )
                         .child(
                             Button::new("clear-all")
@@ -111,9 +109,7 @@ pub fn render_header(
                                 .small()
                                 .icon(IconName::Close)
                                 .tooltip(t!("Problems.Action.ClearAll").to_string())
-                                .on_click(
-                                    cx.listener(|this, _, _, cx| this.clear_diagnostics(cx)),
-                                ),
+                                .on_click(cx.listener(|this, _, _, cx| this.clear_diagnostics(cx))),
                         ),
                 ),
         )
@@ -137,32 +133,29 @@ pub fn render_header(
                         .small()
                         .icon(IconName::Filter)
                         .label(current_filter_label.clone())
-                        .popup_menu_with_anchor(
-                            Corner::BottomRight,
-                            move |menu, _window, _cx| {
-                                menu.menu_with_check(
-                                    t!("Problems.Filter.All").to_string(),
-                                    is_all_selected,
-                                    Box::new(FilterAll),
-                                )
-                                .separator()
-                                .menu_with_check(
-                                    t!("Problems.Filter.Errors").to_string(),
-                                    is_errors_selected,
-                                    Box::new(FilterErrors),
-                                )
-                                .menu_with_check(
-                                    t!("Problems.Filter.Warnings").to_string(),
-                                    is_warnings_selected,
-                                    Box::new(FilterWarnings),
-                                )
-                                .menu_with_check(
-                                    t!("Problems.Filter.Information").to_string(),
-                                    is_info_selected,
-                                    Box::new(FilterInfo),
-                                )
-                            },
-                        ),
+                        .popup_menu_with_anchor(Corner::BottomRight, move |menu, _window, _cx| {
+                            menu.menu_with_check(
+                                t!("Problems.Filter.All").to_string(),
+                                is_all_selected,
+                                Box::new(FilterAll),
+                            )
+                            .separator()
+                            .menu_with_check(
+                                t!("Problems.Filter.Errors").to_string(),
+                                is_errors_selected,
+                                Box::new(FilterErrors),
+                            )
+                            .menu_with_check(
+                                t!("Problems.Filter.Warnings").to_string(),
+                                is_warnings_selected,
+                                Box::new(FilterWarnings),
+                            )
+                            .menu_with_check(
+                                t!("Problems.Filter.Information").to_string(),
+                                is_info_selected,
+                                Box::new(FilterInfo),
+                            )
+                        }),
                 ),
         )
 }

@@ -59,8 +59,7 @@ pub fn on_refresh_friends(this: &mut FriendsScreen, cx: &mut Context<FriendsScre
                             .update(cx, |list, cx| list.set_items(Vec::new(), cx));
                     }
                 }
-                let urls: Vec<String> =
-                    screen.friends.iter().map(|f| f.pfp_url.clone()).collect();
+                let urls: Vec<String> = screen.friends.iter().map(|f| f.pfp_url.clone()).collect();
                 for url in &urls {
                     ensure_avatar_loaded(screen, url, cx);
                 }
@@ -197,10 +196,7 @@ pub fn on_fetch_friend_homes(this: &mut FriendsScreen, cx: &mut Context<FriendsS
                         on_refresh_friends(screen, cx);
                     }
                     Err(e) => {
-                        tracing::error!(
-                            "[FriendsScreen] Failed to fetch friend homes: {:?}",
-                            e
-                        );
+                        tracing::error!("[FriendsScreen] Failed to fetch friend homes: {:?}", e);
                     }
                 }
                 cx.notify();
@@ -263,8 +259,7 @@ pub fn on_add_friend(this: &mut FriendsScreen, username: &str, cx: &mut Context<
                             AddFriendState::Error("User not found".to_string());
                     }
                     Err(e) => {
-                        screen.add_friend_state =
-                            AddFriendState::Error(format!("Error: {:?}", e));
+                        screen.add_friend_state = AddFriendState::Error(format!("Error: {:?}", e));
                     }
                 }
                 cx.notify();

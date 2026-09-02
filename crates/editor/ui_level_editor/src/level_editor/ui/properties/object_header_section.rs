@@ -47,7 +47,10 @@ impl ObjectHeaderSection {
                     move |id, name, _db| {
                         execute_command(
                             &mut state_arc.write(),
-                            SceneCommand::SetName { id: id.clone(), name },
+                            SceneCommand::SetName {
+                                id: id.clone(),
+                                name,
+                            },
                         )
                         .changed
                     },

@@ -31,11 +31,11 @@ use glam::{EulerRot, Mat4, Quat, Vec3};
 use helio::Renderer;
 use serde_json::Value;
 
-use pulsar_reflection::{
-    ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner, Subsystems,
-    apply_runtime_behavior_for_class,
-};
 use helio_component::subsystems::{FoliageCache, MeshCache, PortalLinkCache};
+use pulsar_reflection::{
+    apply_runtime_behavior_for_class, ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner,
+    Subsystems,
+};
 
 use crate::format::{SceneFile, SceneLoadError};
 

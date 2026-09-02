@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use pulsar_reflection::{RUNTIME_TYPE_REGISTRY, Reflectable};
+use pulsar_reflection::{Reflectable, RUNTIME_TYPE_REGISTRY};
 use serde_json::Value as JsonValue;
 use ui::notification::Notification;
 use ui::{
@@ -21,7 +21,7 @@ use ui::{
 };
 use ui_common::reflected_properties_panel::PropertyStateManager;
 use ui_common::render_property_row_runtime;
-use window_manager::{PulsarWindow, default_window_options};
+use window_manager::{default_window_options, PulsarWindow};
 
 use helio_component::mesh_cache::{self, ImportField};
 
@@ -79,7 +79,8 @@ impl ImportConfigurator {
                         .and_then(|n| n.to_str())
                         .unwrap_or("mesh")
                         .to_string();
-                    window.push_notification(Notification::success(format!("Imported \"{n}\"")), cx);
+                    window
+                        .push_notification(Notification::success(format!("Imported \"{n}\"")), cx);
                 }
                 Err(e) => {
                     tracing::error!("Model import failed for {}: {}", src.display(), e);
@@ -88,7 +89,8 @@ impl ImportConfigurator {
                         .and_then(|n| n.to_str())
                         .unwrap_or("model")
                         .to_string();
-                    window.push_notification(Notification::error(format!("Import failed: {n}")), cx);
+                    window
+                        .push_notification(Notification::error(format!("Import failed: {n}")), cx);
                 }
             }
         }
@@ -96,7 +98,12 @@ impl ImportConfigurator {
         window.remove_window();
     }
 
-    fn render_field(&mut self, field: &ImportField, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render_field(
+        &mut self,
+        field: &ImportField,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let vs = self.values_shared.clone();
         let fj = self.field_json.clone();
         let k = field.key.clone();
@@ -130,26 +137,27 @@ impl ImportConfigurator {
                     .unwrap_or_else(|| {
                         // The default MUST be a registered reflectable type.
                         // If we ever hit this something is deeply wrong.
-                        tracing::error!(
-                            "import field {} default not reflectable",
-                            field.key
-                        );
+                        tracing::error!("import field {} default not reflectable", field.key);
                         Box::new(())
                     })
             });
 
-        let write_back = Arc::new(move |new_val: Box<dyn Any + Send>, _window: &mut Window, _cx: &mut App| {
-            if let Ok(mut v) = vs.lock() {
-                v.insert(k.clone(), new_val);
-                if let Some(stored) = v.get(&k) {
-                    if let Ok(json) = RUNTIME_TYPE_REGISTRY.serialize_json_for_any(stored.as_ref()) {
-                        if let Ok(mut j) = fj.lock() {
-                            j.insert(k.clone(), json);
+        let write_back = Arc::new(
+            move |new_val: Box<dyn Any + Send>, _window: &mut Window, _cx: &mut App| {
+                if let Ok(mut v) = vs.lock() {
+                    v.insert(k.clone(), new_val);
+                    if let Some(stored) = v.get(&k) {
+                        if let Ok(json) =
+                            RUNTIME_TYPE_REGISTRY.serialize_json_for_any(stored.as_ref())
+                        {
+                            if let Ok(mut j) = fj.lock() {
+                                j.insert(k.clone(), json);
+                            }
                         }
                     }
                 }
-            }
-        });
+            },
+        );
 
         render_property_row_runtime(
             &mut self.property_state,

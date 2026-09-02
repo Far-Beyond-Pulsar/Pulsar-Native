@@ -1,8 +1,7 @@
 use gpui::{prelude::*, *};
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex,
-    v_flex, ActiveTheme as _, Disableable, Icon, IconName,
+    h_flex, v_flex, ActiveTheme as _, Disableable, Icon, IconName,
 };
 
 use crate::screen::FriendsScreen;
@@ -47,11 +46,9 @@ pub fn render_add_friend_bar(
                                         .size(px(15.))
                                         .text_color(theme.muted_foreground),
                                 )
-                                .child(div().flex_1().h_full().child(
-                                    ui::input::TextInput::new(
-                                        screen.add_friend_input.as_ref().unwrap(),
-                                    ),
-                                )),
+                                .child(div().flex_1().h_full().child(ui::input::TextInput::new(
+                                    screen.add_friend_input.as_ref().unwrap(),
+                                ))),
                         ),
                 )
                 .child(

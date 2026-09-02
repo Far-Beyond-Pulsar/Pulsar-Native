@@ -66,8 +66,7 @@ impl WindowState {
                     .windows
                     .iter()
                     .find(|entry| {
-                        std::mem::discriminant(&entry.window_type)
-                            == std::mem::discriminant(other)
+                        std::mem::discriminant(&entry.window_type) == std::mem::discriminant(other)
                     })
                     .map(|entry| entry.value().clone());
             }

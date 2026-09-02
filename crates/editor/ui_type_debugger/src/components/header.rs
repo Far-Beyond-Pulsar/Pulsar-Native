@@ -14,7 +14,7 @@ use ui::{
 
 use crate::components::{kind_color, kind_icon, kind_label};
 use crate::screen::TypeDebuggerDrawer;
-use crate::utils::{FilterAll, FilterAliases, FilterStructs, FilterEnums, FilterTraits};
+use crate::utils::{FilterAliases, FilterAll, FilterEnums, FilterStructs, FilterTraits};
 
 pub fn render_header(
     drawer: &mut TypeDebuggerDrawer,
@@ -161,14 +161,8 @@ pub fn render_header(
                         .small()
                         .icon(IconName::Filter)
                         .label(current_filter_label.clone())
-                        .popup_menu_with_anchor(
-                            Corner::BottomRight,
-                            move |menu, _window, _cx| {
-                                menu.menu_with_check(
-                                    "All Types",
-                                    is_all_selected,
-                                    Box::new(FilterAll),
-                                )
+                        .popup_menu_with_anchor(Corner::BottomRight, move |menu, _window, _cx| {
+                            menu.menu_with_check("All Types", is_all_selected, Box::new(FilterAll))
                                 .separator()
                                 .menu_with_check(
                                     "Aliases",
@@ -180,18 +174,13 @@ pub fn render_header(
                                     is_structs_selected,
                                     Box::new(FilterStructs),
                                 )
-                                .menu_with_check(
-                                    "Enums",
-                                    is_enums_selected,
-                                    Box::new(FilterEnums),
-                                )
+                                .menu_with_check("Enums", is_enums_selected, Box::new(FilterEnums))
                                 .menu_with_check(
                                     "Traits",
                                     is_traits_selected,
                                     Box::new(FilterTraits),
                                 )
-                            },
-                        )
+                        })
                 }),
         )
 }
@@ -209,11 +198,7 @@ pub fn render_type_badge(
         .py_0p5()
         .rounded_md()
         .bg(kind_color(kind, cx).opacity(0.15))
-        .child(
-            kind_icon(kind)
-                .size_3()
-                .text_color(kind_color(kind, cx)),
-        )
+        .child(kind_icon(kind).size_3().text_color(kind_color(kind, cx)))
         .child(
             div()
                 .text_xs()
@@ -335,17 +320,13 @@ pub fn render_type_item(
                                     .child(
                                         kind_icon(&type_info.file_type_id)
                                             .size_4()
-                                            .text_color(
-                                                kind_color(&type_info.file_type_id, cx),
-                                            ),
+                                            .text_color(kind_color(&type_info.file_type_id, cx)),
                                     )
                                     .child(
                                         div()
                                             .text_xs()
                                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                                            .text_color(
-                                                kind_color(&type_info.file_type_id, cx),
-                                            )
+                                            .text_color(kind_color(&type_info.file_type_id, cx))
                                             .child(kind_label(&type_info.file_type_id)),
                                     ),
                             )

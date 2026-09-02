@@ -57,7 +57,9 @@ fn axis_binding(
             })
         },
         move |id, val, db| {
-            let Some(t) = db.get_object_transform(id) else { return false };
+            let Some(t) = db.get_object_transform(id) else {
+                return false;
+            };
             let mut position = None;
             let mut rotation = None;
             let mut scale = None;
@@ -80,7 +82,12 @@ fn axis_binding(
             }
             execute_command(
                 &mut state_arc.write(),
-                SceneCommand::SetTransform { id: id.clone(), position, rotation, scale },
+                SceneCommand::SetTransform {
+                    id: id.clone(),
+                    position,
+                    rotation,
+                    scale,
+                },
             )
             .changed
         },

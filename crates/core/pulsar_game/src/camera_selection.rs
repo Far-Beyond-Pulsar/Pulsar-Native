@@ -42,11 +42,7 @@ pub fn select_world_camera(store: &WorldSceneStore) -> Option<RenderCamera> {
 /// the same defaults the freecam uses for anything a bare transform can't
 /// express (fov/near/far).
 fn camera_from_pose(position: [f32; 3], yaw: f32, pitch: f32) -> RenderCamera {
-    let freecam = FreeCam::default().place(
-        glam::Vec3::from_array(position),
-        yaw,
-        pitch,
-    );
+    let freecam = FreeCam::default().place(glam::Vec3::from_array(position), yaw, pitch);
     freecam.to_render_camera()
 }
 
@@ -75,7 +71,10 @@ mod tests {
         let resolved = select_world_camera(&store).expect("world camera");
         assert_eq!(resolved.position, [3.0, 4.0, 5.0]);
         // Zero rotation looks down +Z (yaw = 0 in FreeCam's convention).
-        assert!(resolved.target[2] > resolved.position[2], "must face +Z at zero yaw");
+        assert!(
+            resolved.target[2] > resolved.position[2],
+            "must face +Z at zero yaw"
+        );
     }
 
     #[test]
@@ -85,7 +84,13 @@ mod tests {
 
         let plain = store.spawn(None, "Cube", None).unwrap();
         store.set_object_type(plain, ObjectType::Mesh(MeshType::Cube));
-        store.set_visibility(plain, Visibility { visible: true, locked: false });
+        store.set_visibility(
+            plain,
+            Visibility {
+                visible: true,
+                locked: false,
+            },
+        );
         assert!(
             select_world_camera(&store).is_none(),
             "meshes must not be mistaken for cameras"
@@ -100,7 +105,13 @@ mod tests {
         let mut store = WorldSceneStore::new();
         let cam = store.spawn(None, "Cam", None).unwrap();
         store.set_object_type(cam, ObjectType::Camera);
-        store.set_visibility(cam, Visibility { visible: false, locked: false });
+        store.set_visibility(
+            cam,
+            Visibility {
+                visible: false,
+                locked: false,
+            },
+        );
         assert!(select_world_camera(&store).is_some());
     }
 }

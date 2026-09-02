@@ -1,14 +1,15 @@
 //! File diff preview panel (right side) — virtualized diff viewer
 
 use crate::{
-    views::render_side_by_side_diff, DiffLineKind, DiffRow, DiffViewMode, GitManager,
-    DIFF_COLLAPSE_ROW_H, DIFF_LINE_ROW_H,
+    DIFF_COLLAPSE_ROW_H, DIFF_LINE_ROW_H, DiffLineKind, DiffRow, DiffViewMode, GitManager,
+    views::render_side_by_side_diff,
 };
 use gpui::*;
 use std::rc::Rc;
 use ui::{
-    ActiveTheme as _, Icon, IconName, h_flex,
+    ActiveTheme as _, Icon, IconName,
     button::{Button, ButtonVariants as _},
+    h_flex,
     scroll::{Scrollbar, ScrollbarAxis},
     v_flex, v_virtual_list,
 };

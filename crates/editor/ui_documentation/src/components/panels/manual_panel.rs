@@ -182,10 +182,7 @@ impl ManualDocsPanel {
                             .gap_3()
                             .items_center()
                             .when(has_selection, |this| {
-                                this.child(
-                                    Icon::new(IconName::BookOpen)
-                                        .size_4(),
-                                )
+                                this.child(Icon::new(IconName::BookOpen).size_4())
                             })
                             .child(
                                 div()

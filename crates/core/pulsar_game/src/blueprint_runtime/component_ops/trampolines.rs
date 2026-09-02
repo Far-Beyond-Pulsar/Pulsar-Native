@@ -116,11 +116,21 @@ pub unsafe extern "C" fn comp_op_get_trampoline(
                 ref_operand,
             )
             .and_then(|(entity, index)| {
-                match get_component_property(world, entity, &fields.class_name, index, &fields.member)
-                {
+                match get_component_property(
+                    world,
+                    entity,
+                    &fields.class_name,
+                    index,
+                    &fields.member,
+                ) {
                     Ok(value) => Some(value),
                     Err(error) => {
-                        log_failure(CompOpKind::GetProp, &fields.class_name, &fields.member, error);
+                        log_failure(
+                            CompOpKind::GetProp,
+                            &fields.class_name,
+                            &fields.member,
+                            error,
+                        );
                         None
                     }
                 }
@@ -179,17 +189,25 @@ pub unsafe extern "C" fn comp_op_set_trampoline(
                 fields.target,
                 ref_operand,
             ) {
-                Some((entity, index)) => {
-                    set_component_property(
-                        world, entity, &fields.class_name, index, &fields.member, value,
-                    )
-                }
+                Some((entity, index)) => set_component_property(
+                    world,
+                    entity,
+                    &fields.class_name,
+                    index,
+                    &fields.member,
+                    value,
+                ),
                 // Unresolved target was already logged by the resolver.
                 None => Ok(()),
             }
         },
     ) {
-        log_failure(CompOpKind::SetProp, &fields.class_name, &fields.member, error);
+        log_failure(
+            CompOpKind::SetProp,
+            &fields.class_name,
+            &fields.member,
+            error,
+        );
     }
 }
 
@@ -235,40 +253,38 @@ pub unsafe extern "C" fn comp_op_call_trampoline(
     // Convert JSON arguments to their declared types through the shared
     // dispatcher helper (#643's guarantee, one policy for both adapters —
     // the generated Rust actors call the exact same function).
-    let method_args =
-        match json_args_to_method_args(&fields.class_name, &fields.method, arg_values) {
-            Ok(args) => args,
-            Err(error) => {
-                log_failure(CompOpKind::Call, &fields.class_name, &fields.method, error);
-                return;
-            }
-        };
+    let method_args = match json_args_to_method_args(&fields.class_name, &fields.method, arg_values)
+    {
+        Ok(args) => args,
+        Err(error) => {
+            log_failure(CompOpKind::Call, &fields.class_name, &fields.method, error);
+            return;
+        }
+    };
 
     let ref_operand = *args.add(1);
     let outcome = with_context(
         CompOpKind::Call,
         &fields.class_name,
         &fields.method,
-        |world, instance_entity| {
-            match resolve_op_target(
-                CompOpKind::Call,
-                &fields.class_name,
-                &fields.method,
+        |world, instance_entity| match resolve_op_target(
+            CompOpKind::Call,
+            &fields.class_name,
+            &fields.method,
+            world,
+            instance_entity,
+            fields.target,
+            ref_operand,
+        ) {
+            Some((entity, index)) => invoke_component_method(
                 world,
-                instance_entity,
-                fields.target,
-                ref_operand,
-            ) {
-                Some((entity, index)) => invoke_component_method(
-                    world,
-                    entity,
-                    &fields.class_name,
-                    index,
-                    &fields.method,
-                    method_args,
-                ),
-                None => Ok(None),
-            }
+                entity,
+                &fields.class_name,
+                index,
+                &fields.method,
+                method_args,
+            ),
+            None => Ok(None),
         },
     );
     let Some(returned) = outcome else { return };
@@ -307,7 +323,10 @@ pub unsafe extern "C" fn comp_op_get_ref_trampoline(
         );
         return;
     };
-    let context = format!("get_component_ref::{}::{}", fields.class_name, fields.member);
+    let context = format!(
+        "get_component_ref::{}::{}",
+        fields.class_name, fields.member
+    );
     let actor_operand = *args.add(1);
     let Some(result) = with_world(CompOpKind::GetRef, |world| {
         // A DANGLING bit pattern must not reach a validated accessor (B3).
@@ -324,7 +343,13 @@ pub unsafe extern "C" fn comp_op_get_ref_trampoline(
             );
             return JsonValue::Null;
         };
-        crate::script_refs::component_ref_json(world, actor, &fields.class_name, component_index, &context)
+        crate::script_refs::component_ref_json(
+            world,
+            actor,
+            &fields.class_name,
+            component_index,
+            &context,
+        )
     }) else {
         return;
     };
@@ -402,7 +427,12 @@ pub unsafe extern "C" fn object_literal_trampoline(
         return;
     };
     let parsed = serde_json::from_value::<LiteralShape>(literal);
-    let Ok(LiteralShape { stable_id, class_name, component_index }) = parsed else {
+    let Ok(LiteralShape {
+        stable_id,
+        class_name,
+        component_index,
+    }) = parsed
+    else {
         tracing::error!(
             "blueprint object_ref_literal: operand does not match {{stable_id, class_name, component_index}}"
         );

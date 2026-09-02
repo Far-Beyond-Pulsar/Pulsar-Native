@@ -7,29 +7,29 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 
 use helio::{
-    Camera, EditorState, GizmoMode, GroupId, MaterialId,
-    Renderer, RendererConfig, SceneActor, ScenePicker, SkyActor,
+    Camera, EditorState, GizmoMode, GroupId, MaterialId, Renderer, RendererConfig, SceneActor,
+    ScenePicker, SkyActor,
+};
+use helio_component::{
+    subsystems::{
+        apply_portal_pair_action, remove_foliage_handles, FoliageCache, MeshCache, PortalLinkCache,
+        PostProcessVolumeCache, ReflectionCaptureCache, WaterVolumeCache,
+    },
+    PlanetTerrainFrameInput, PlanetTerrainRuntime, PLANET_TERRAIN_CLASS_NAME,
 };
 use pulsar_events::script_registry;
 use pulsar_reflection::{
     apply_runtime_behavior_for_class, scene_id_to_tag, ComponentRuntimeContext, LiveKeySet,
     RuntimeComponentOwner, Subsystems,
 };
-use helio_component::{
-    subsystems::{
-        apply_portal_pair_action, remove_foliage_handles, FoliageCache, MeshCache,
-        PortalLinkCache, PostProcessVolumeCache, ReflectionCaptureCache, WaterVolumeCache,
-    },
-    PlanetTerrainFrameInput, PlanetTerrainRuntime, PLANET_TERRAIN_CLASS_NAME,
-};
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
 
+use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 use crate::scene::{
     LightFrameMaintainer, MeshFrameMaintainer, ObjectDirtyFlags, ObjectUpdate, SceneDbDelta,
     WorldSceneStore,
 };
 use parking_lot::RwLock;
-use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 
 /// Camera velocity squared below this threshold is considered stopped.
 const CAMERA_IDLE_EPSILON: f32 = 0.001;
@@ -86,12 +86,11 @@ pub enum PendingPointerEvent {
 /// `render_frame` call). Each of `queue_gizmo`/`queue_deselect`/
 /// `queue_force_full_resync` below only ever touches its own small
 /// `Arc<Mutex<...>>`/`Arc<AtomicBool>` mailbox (or `scene_store`'s already
-/// cheap, short-held lock for `queue_gizmo`'s `set_gizmo_type` call) --
-/// never `gpu_engine` -- so none of them can block on the render thread's
+/// cheap mailbox state) -- never `gpu_engine` -- so none of them can block on
+/// the render thread's
 /// per-frame lock hold at all.
 #[derive(Clone)]
 pub struct HelioEditorMailbox {
-    scene_store: Arc<RwLock<WorldSceneStore>>,
     pending_gizmo_mode: Arc<Mutex<Option<GizmoMode>>>,
     pending_deselect: Arc<AtomicBool>,
     pending_force_full_resync: Arc<AtomicBool>,
@@ -101,8 +100,7 @@ impl HelioEditorMailbox {
     /// Set the scene-store-level gizmo type immediately (already a cheap,
     /// short `scene_store.write()`, unrelated to `gpu_engine`) and queue the
     /// matching Helio gizmo mode for the render thread to pick up next frame.
-    pub fn queue_gizmo(&self, scene_type: crate::scene::GizmoType, mode: GizmoMode) {
-        self.scene_store.write().set_gizmo_type(scene_type);
+    pub fn queue_gizmo(&self, mode: GizmoMode) {
         if let Ok(mut guard) = self.pending_gizmo_mode.lock() {
             *guard = Some(mode);
         }
@@ -118,7 +116,8 @@ impl HelioEditorMailbox {
     /// must never be silently dropped (unlike `queue_deselect`, which is
     /// pure UX and fine to occasionally miss a frame on).
     pub fn queue_force_full_resync(&self) {
-        self.pending_force_full_resync.store(true, Ordering::Relaxed);
+        self.pending_force_full_resync
+            .store(true, Ordering::Relaxed);
     }
 }
 
@@ -558,12 +557,9 @@ impl HelioRenderer {
         let has_pending_scene =
             needs_initial_scene_sync || scene_revision != inner.last_scene_revision;
         let has_pending_editor = self.pending_deselect.load(Ordering::Acquire)
-            || self
-                .pending_gizmo_mode
-                .lock()
-                .is_ok_and(|g| g.is_some());
-        let camera_stopped =
-            self.cam_local_velocity.length_squared() <= CAMERA_IDLE_EPSILON && !self.had_camera_input;
+            || self.pending_gizmo_mode.lock().is_ok_and(|g| g.is_some());
+        let camera_stopped = self.cam_local_velocity.length_squared() <= CAMERA_IDLE_EPSILON
+            && !self.had_camera_input;
         let is_idle = camera_stopped
             && !has_pending_scene
             && !has_pending_editor
@@ -606,10 +602,7 @@ impl HelioRenderer {
         // Inlined rather than calling `self.force_full_resync()` -- `inner`
         // above is already a live `&mut` borrow of `self.inner` at this
         // point, and `force_full_resync` needs the same borrow itself.
-        if self
-            .pending_force_full_resync
-            .swap(false, Ordering::AcqRel)
-        {
+        if self.pending_force_full_resync.swap(false, Ordering::AcqRel) {
             inner.last_scene_revision = 0;
             inner.known_ids.clear();
             // Same store-swap invalidation as `force_full_resync` -- this is
@@ -741,7 +734,11 @@ impl HelioRenderer {
             if let Err(e) = inner.renderer.render(&camera, &view) {
                 tracing::error!("Helio render error: {:?}", e);
             }
-            Some(inner.queue.submit(std::iter::empty::<wgpu::CommandBuffer>()))
+            Some(
+                inner
+                    .queue
+                    .submit(std::iter::empty::<wgpu::CommandBuffer>()),
+            )
         };
         inner.has_rendered_frame = true;
         let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
@@ -923,16 +920,6 @@ impl HelioRenderer {
             .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// Get the active gizmo state from the scene store (gizmo_type, highlighted_axis, etc.).
-    pub fn get_scene_gizmo_type(&self) -> crate::scene::GizmoType {
-        self.scene_store.read().get_gizmo_state().gizmo_type
-    }
-
-    /// Set the active gizmo type on the scene store.
-    pub fn set_scene_gizmo_type(&self, t: crate::scene::GizmoType) {
-        self.scene_store.write().set_gizmo_type(t);
-    }
-
     /// Return the scene-store-level selected object ID (set by
     /// `select_object_atomic` on viewport click or by the hierarchy panel).
     pub fn get_scene_db_selected_id(&self) -> Option<String> {
@@ -974,7 +961,6 @@ impl HelioRenderer {
     /// `Mutex`. See [`HelioEditorMailbox`]'s own doc.
     pub fn editor_mailbox(&self) -> HelioEditorMailbox {
         HelioEditorMailbox {
-            scene_store: self.scene_store.clone(),
             pending_gizmo_mode: self.pending_gizmo_mode.clone(),
             pending_deselect: self.pending_deselect.clone(),
             pending_force_full_resync: self.pending_force_full_resync.clone(),
@@ -1435,7 +1421,9 @@ impl HelioRenderer {
         // was complete; the surviving side (if any) just waits for a new
         // partner.
         for action in inner.portal_link_cache.remove_stale(&live_keys) {
-            if let Some((portal_id, id)) = apply_portal_pair_action(inner.renderer.scene_mut(), action) {
+            if let Some((portal_id, id)) =
+                apply_portal_pair_action(inner.renderer.scene_mut(), action)
+            {
                 match id {
                     Some(id) => inner.portal_link_cache.set_active(portal_id, id),
                     None => inner.portal_link_cache.clear_active(portal_id),
@@ -1547,7 +1535,13 @@ impl HelioRenderer {
         let project_root = engine_state::get_project_path()
             .map(PathBuf::from)
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-        Self::dispatch_component_removals(inner, &scene_store.read(), error_queue, &project_root, &removed);
+        Self::dispatch_component_removals(
+            inner,
+            &scene_store.read(),
+            error_queue,
+            &project_root,
+            &removed,
+        );
     }
 
     /// Steps `SceneDb` -- advances the `SimulateA`/`SimulateB` phases,
@@ -1887,18 +1881,31 @@ impl HelioRenderer {
         // work this function needs. Dropped immediately after, matching
         // `sync_scene`'s own Phase 1/Phase 2 split (never hold a write lock
         // across dispatch/GPU work -- see that fn's doc for why).
-        let (revision, dirty, removed) = {
+        let (dirty, removed) = {
             let mut store = scene_store.write();
-            let revision = store.dirty_gen();
             let dirty = store.drain_dirty();
             let removed = store.take_removed_ids();
-            (revision, dirty, removed)
+            (dirty, removed)
         };
 
         let mut added = Vec::new();
         let mut updated = Vec::new();
         let mut pending_gpu_mirror_refresh = Vec::new();
         let anything_changed = !dirty.is_empty() || !removed.is_empty();
+
+        // Tear down the previous incarnation before syncing dirty objects.
+        // Generated stable IDs may be reused after deletion; doing this later
+        // could tear down a newly spawned object with the same ID.
+        let project_root = engine_state::get_project_path()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+        Self::dispatch_component_removals(
+            inner,
+            &scene_store.read(),
+            error_queue,
+            &project_root,
+            &removed,
+        );
 
         // Phase 1: fresh READ lock, only entered if there's actually dirty
         // work -- `dispatch_world_component_for_class` needs `&World` for the
@@ -1917,9 +1924,10 @@ impl HelioRenderer {
                     // covers cleanup.
                     continue;
                 };
-                let is_known = inner.known_ids.contains(id);
+                let is_known = inner.known_ids.contains(id) && !removed.iter().any(|old| old == id);
 
-                if !is_known || flags.intersects(ObjectDirtyFlags::COMPONENTS | ObjectDirtyFlags::PROPS)
+                if !is_known
+                    || flags.intersects(ObjectDirtyFlags::COMPONENTS | ObjectDirtyFlags::PROPS)
                 {
                     // Full per-component dispatch -- also what makes a newly
                     // spawned entity (`WorldSceneStore::spawn` publishes
@@ -2008,17 +2016,6 @@ impl HelioRenderer {
         Self::rebuild_static_mesh_frame(inner, &scene_store.read());
         Self::rebuild_light_frame(inner, &scene_store.read());
 
-        // Generic teardown for every removed/disabled component and every
-        // despawned object -- see `dispatch_component_removals`'s doc
-        // (Pulsar-Native#561: replaces what used to be a light-only
-        // hardcoded block here). Unconditional, not gated on `!removed.
-        // is_empty()`: a single component can be removed/disabled off a
-        // still-alive object with `removed` staying empty all pass.
-        let project_root = engine_state::get_project_path()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-        Self::dispatch_component_removals(inner, &scene_store.read(), error_queue, &project_root, &removed);
-
         for id in &removed {
             inner.known_ids.remove(id);
         }
@@ -2034,7 +2031,6 @@ impl HelioRenderer {
             added,
             removed,
             updated,
-            revision,
         }
     }
 

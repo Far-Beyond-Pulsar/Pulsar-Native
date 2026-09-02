@@ -1,6 +1,6 @@
-use rust_i18n::t;
 use gpui::*;
 use plugin_editor_api::*;
+use rust_i18n::t;
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -105,9 +105,8 @@ impl AssetViewerPlugin {
     ) -> Result<Arc<dyn PanelView>, PluginError> {
         log::info!("Creating asset viewer for {:?}", file_path);
 
-        let panel = cx.new(|cx| {
-            editor::panel::AssetViewerPanel::new(file_path.clone(), window, cx)
-        });
+        let panel =
+            cx.new(|cx| editor::panel::AssetViewerPanel::new(file_path.clone(), window, cx));
 
         let panel_arc: Arc<dyn PanelView> = Arc::new(panel.clone());
 
@@ -118,10 +117,12 @@ impl AssetViewerPlugin {
             id
         };
 
-        self.editors
-            .lock()
-            .unwrap()
-            .insert(id, EditorStorage { panel: panel_arc.clone() });
+        self.editors.lock().unwrap().insert(
+            id,
+            EditorStorage {
+                panel: panel_arc.clone(),
+            },
+        );
 
         log::info!("Created asset viewer instance {} for {:?}", id, file_path);
         Ok(panel_arc)

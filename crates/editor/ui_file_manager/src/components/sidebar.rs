@@ -181,7 +181,10 @@ pub fn render_folder_node(
     } else {
         IconName::Folder
     };
-    let ic = d.fs_metadata.get_color_override(&node.path).unwrap_or(ui::hierarchical_tree::tree_colors::FOLDER);
+    let ic = d
+        .fs_metadata
+        .get_color_override(&node.path)
+        .unwrap_or(ui::hierarchical_tree::tree_colors::FOLDER);
     let tc = if sel {
         cx.theme().accent_foreground
     } else {
@@ -300,10 +303,7 @@ pub fn render_folder_node(
         .children(if exp {
             node.children
                 .iter()
-                .map(|c| {
-                    render_folder_node(d, c, depth + 1, w, cx)
-                        .into_any_element()
-                })
+                .map(|c| render_folder_node(d, c, depth + 1, w, cx).into_any_element())
                 .collect()
         } else {
             Vec::new()

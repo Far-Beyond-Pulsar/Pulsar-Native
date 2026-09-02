@@ -1,5 +1,5 @@
 use crate::custom_providers;
-use agent_chat_core::{ChatMessage, ChatRole, ProviderCrate, ProviderConfig};
+use agent_chat_core::{ChatMessage, ChatRole, ProviderConfig, ProviderCrate};
 use agent_chat_tools::ToolRegistry;
 use agent_provider_anthropic::AnthropicProviderCrate;
 use agent_provider_aws_bedrock::AwsBedrockProviderCrate;
@@ -7,19 +7,14 @@ use agent_provider_demo_random::DemoRandomProviderCrate;
 use agent_provider_docker_model_runner::DockerModelRunnerProviderCrate;
 use agent_provider_gemini::GeminiProviderCrate;
 use agent_provider_github_copilot::GithubCopilotProviderCrate;
-use agent_provider_opencode::OpenCodeProviderCrate;
 use agent_provider_openai::OpenAiProviderCrate;
+use agent_provider_opencode::OpenCodeProviderCrate;
 use agent_provider_vertex_ai::VertexAiProviderCrate;
 use gpui::*;
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 use ui::{
     dock::{DockArea, TabPanel},
-    dropdown::{SearchableList, SearchableListItemState, SearchableListEvent},
+    dropdown::{SearchableList, SearchableListEvent, SearchableListItemState},
     input::InputState,
     scroll::ScrollbarState,
     VirtualListScrollHandle,
@@ -51,7 +46,8 @@ impl AgentChatPanel {
         ];
 
         let mut provider_states: HashMap<String, ProviderState> = HashMap::new();
-        let provider_states_shared: Rc<RefCell<HashMap<String, ProviderState>>> = Rc::new(RefCell::new(HashMap::new()));
+        let provider_states_shared: Rc<RefCell<HashMap<String, ProviderState>>> =
+            Rc::new(RefCell::new(HashMap::new()));
         let mut provider_entries: HashMap<String, agent_chat_core::ProviderEntry> = HashMap::new();
         let disabled_providers = ["aws_bedrock", "vertex_ai"];
 
@@ -73,7 +69,9 @@ impl AgentChatPanel {
                     let id = entry.id.to_string();
                     provider_entries.insert(id.clone(), entry);
                     provider_states.insert(id.clone(), state.clone());
-                    provider_states_shared.borrow_mut().insert(id.clone(), state.clone());
+                    provider_states_shared
+                        .borrow_mut()
+                        .insert(id.clone(), state.clone());
                     provider_registry.register(Arc::from(provider));
                 }
             }
@@ -112,8 +110,11 @@ impl AgentChatPanel {
                 .map(Self::custom_provider_to_definition),
         );
 
-        let plugin_bridge = plugin_manager::global()
-            .map(|manager_lock| Arc::new(std::sync::RwLock::new(manager_lock.read().build_tool_bridge())));
+        let plugin_bridge = plugin_manager::global().map(|manager_lock| {
+            Arc::new(std::sync::RwLock::new(
+                manager_lock.read().build_tool_bridge(),
+            ))
+        });
 
         let prompt_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Ask the engine assistant..."));

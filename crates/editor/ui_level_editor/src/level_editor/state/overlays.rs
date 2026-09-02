@@ -209,5 +209,4 @@ impl OverlayDomain {
     pub fn set_show_viewport_options(&mut self, show: bool) {
         self.state.show_viewport_options = show;
     }
-
 }

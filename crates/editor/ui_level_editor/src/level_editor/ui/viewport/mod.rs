@@ -27,7 +27,7 @@ use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use helio_viewport::HelioViewport;
 use ui::Sizable;
-use ui::{ActiveTheme, v_flex};
+use ui::{v_flex, ActiveTheme};
 use ui_common::ViewportControls;
 
 use crate::level_editor::state::LevelEditorState;
@@ -240,7 +240,11 @@ impl ViewportPanel {
                 // While capturing, poll at ~500Hz so keypresses and cursor deltas
                 // reach the camera within ~2ms instead of up to 8ms; idle, drop to
                 // ~120Hz so we don't burn CPU.
-                std::thread::sleep(std::time::Duration::from_millis(if capturing { 2 } else { 8 }));
+                std::thread::sleep(std::time::Duration::from_millis(if capturing {
+                    2
+                } else {
+                    8
+                }));
                 profiling::profile_scope!("input_poll");
                 let input_start = std::time::Instant::now();
 
@@ -353,9 +357,12 @@ impl ViewportPanel {
                                         if let Some(cam) = &camera_input {
                                             if let Ok(mut input) = cam.lock() {
                                                 if is_rotating {
-                                                    input.accumulate_look_delta(dx as f32, dy as f32);
+                                                    input.accumulate_look_delta(
+                                                        dx as f32, dy as f32,
+                                                    );
                                                 } else if is_panning {
-                                                    input.accumulate_pan_delta(dx as f32, dy as f32);
+                                                    input
+                                                        .accumulate_pan_delta(dx as f32, dy as f32);
                                                 }
                                             }
                                         }
@@ -416,9 +423,12 @@ impl ViewportPanel {
                                         if let Some(cam) = &camera_input {
                                             if let Ok(mut input) = cam.lock() {
                                                 if is_rotating {
-                                                    input.accumulate_look_delta(dx as f32, dy as f32);
+                                                    input.accumulate_look_delta(
+                                                        dx as f32, dy as f32,
+                                                    );
                                                 } else if is_panning {
-                                                    input.accumulate_pan_delta(dx as f32, dy as f32);
+                                                    input
+                                                        .accumulate_pan_delta(dx as f32, dy as f32);
                                                 }
                                             }
                                         }

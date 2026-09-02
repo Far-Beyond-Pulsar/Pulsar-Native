@@ -61,7 +61,9 @@ pub enum ResolveRefError {
     /// The stable id no longer maps to any object: deleted, or renamed
     /// without migration. Deliberately a LOUD typed state -- never a silent
     /// rebinding to another object (#639 acceptance).
-    #[error("reference target '{stable_id}' no longer exists (deleted or renamed since it was saved)")]
+    #[error(
+        "reference target '{stable_id}' no longer exists (deleted or renamed since it was saved)"
+    )]
     ReferenceLost { stable_id: String },
 
     /// The entity is alive but was never given a stable id (spawned
@@ -80,7 +82,9 @@ impl SerializedComponentRef {
         resolver: &R,
     ) -> Result<ComponentRef, ResolveRefError> {
         let Some(entity) = resolver.entity_for_stable_id(&self.stable_id) else {
-            return Err(ResolveRefError::ReferenceLost { stable_id: self.stable_id.clone() });
+            return Err(ResolveRefError::ReferenceLost {
+                stable_id: self.stable_id.clone(),
+            });
         };
         Ok(ComponentRef {
             entity,
@@ -99,11 +103,15 @@ impl ComponentRef {
     ) -> Result<SerializedComponentRef, ResolveRefError> {
         if !resolver.is_entity_alive(self.entity) {
             return Err(ResolveRefError::ReferenceLost {
-                stable_id: resolver.stable_id_for_entity(self.entity).unwrap_or_default(),
+                stable_id: resolver
+                    .stable_id_for_entity(self.entity)
+                    .unwrap_or_default(),
             });
         }
         let Some(stable_id) = resolver.stable_id_for_entity(self.entity) else {
-            return Err(ResolveRefError::Unidentified { entity: self.entity });
+            return Err(ResolveRefError::Unidentified {
+                entity: self.entity,
+            });
         };
         Ok(SerializedComponentRef {
             stable_id,
@@ -187,8 +195,11 @@ mod tests {
         let mut session = FakeResolver::default();
         session.insert("door", e(3));
 
-        let saved =
-            SerializedComponentRef { stable_id: "door".into(), class_name: "X".into(), component_index: 0 };
+        let saved = SerializedComponentRef {
+            stable_id: "door".into(),
+            class_name: "X".into(),
+            component_index: 0,
+        };
 
         // The target is deleted out from under the saved reference.
         session.by_id.remove("door");
@@ -196,7 +207,9 @@ mod tests {
 
         assert_eq!(
             saved.resolve(&session),
-            Err(ResolveRefError::ReferenceLost { stable_id: "door".into() })
+            Err(ResolveRefError::ReferenceLost {
+                stable_id: "door".into()
+            })
         );
     }
 
@@ -207,8 +220,11 @@ mod tests {
     fn freezing_an_unidentified_entity_is_typed() {
         let mut resolver = FakeResolver::default();
         resolver.alive.push(999); // alive, but never given a stable id
-        let orphan =
-            ComponentRef { entity: e(999), class_name: "TestGizmo".into(), component_index: 0 };
+        let orphan = ComponentRef {
+            entity: e(999),
+            class_name: "TestGizmo".into(),
+            component_index: 0,
+        };
         assert_eq!(
             orphan.to_serialized(&resolver),
             Err(ResolveRefError::Unidentified { entity: e(999) })
@@ -232,6 +248,9 @@ mod tests {
                 "component_index": 2,
             })
         );
-        assert_eq!(serde_json::from_value::<SerializedComponentRef>(json).unwrap(), saved);
+        assert_eq!(
+            serde_json::from_value::<SerializedComponentRef>(json).unwrap(),
+            saved
+        );
     }
 }

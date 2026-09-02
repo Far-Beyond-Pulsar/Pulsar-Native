@@ -1,10 +1,8 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use ui::{
-    button::Button,
-    clipboard::Clipboard,
-    h_flex,
-    v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
+    button::Button, clipboard::Clipboard, h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+    StyledExt,
 };
 
 use crate::screen::MultiplayerWindow;
@@ -107,10 +105,7 @@ pub fn render_session_info_tab(
                             let id = session_id.clone();
                             let token = join_token.clone();
                             move |_, _| {
-                                SharedString::from(format!(
-                                    "Session: {}\nPassword: {}",
-                                    id, token
-                                ))
+                                SharedString::from(format!("Session: {}\nPassword: {}", id, token))
                             }
                         })
                         .on_copied(|_, _window, _cx| {
@@ -164,9 +159,9 @@ pub fn render_session_info_tab(
                 .child(
                     v_flex()
                         .gap_1()
-                    .children(
-                        this.format_participants(&session.connected_users)
-                            .iter()
+                        .children(
+                            this.format_participants(&session.connected_users)
+                                .iter()
                                 .map(|user| {
                                     h_flex()
                                         .items_center()

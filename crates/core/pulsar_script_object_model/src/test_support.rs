@@ -30,7 +30,9 @@ impl EngineClass for TestGizmo {
     }
 
     fn get_properties(&self) -> Vec<PropertyMetadata> {
-        let type_info: &'static RuntimeTypeInfo = RUNTIME_TYPE_REGISTRY.get::<i32>().expect("i32 prim registered");
+        let type_info: &'static RuntimeTypeInfo = RUNTIME_TYPE_REGISTRY
+            .get::<i32>()
+            .expect("i32 prim registered");
         vec![PropertyMetadata {
             name: "charges",
             display_name: "Charges".into(),
@@ -39,7 +41,9 @@ impl EngineClass for TestGizmo {
             category_default_collapsed: false,
             category_order: None,
             type_info,
-            getter: Box::new(|c: &dyn EngineClass| Box::new(c.as_any().downcast_ref::<TestGizmo>().unwrap().charges)),
+            getter: Box::new(|c: &dyn EngineClass| {
+                Box::new(c.as_any().downcast_ref::<TestGizmo>().unwrap().charges)
+            }),
             setter: Box::new(|c: &mut dyn EngineClass, v: Box<dyn std::any::Any>| {
                 if let Some(v) = v.downcast_ref::<i32>() {
                     c.as_any_mut().downcast_mut::<TestGizmo>().unwrap().charges = *v;
@@ -49,20 +53,32 @@ impl EngineClass for TestGizmo {
     }
 
     fn get_methods() -> Vec<MethodMetadata> {
-        let i32_info: &'static RuntimeTypeInfo = RUNTIME_TYPE_REGISTRY.get::<i32>().expect("i32 prim registered");
+        let i32_info: &'static RuntimeTypeInfo = RUNTIME_TYPE_REGISTRY
+            .get::<i32>()
+            .expect("i32 prim registered");
         vec![MethodMetadata {
             name: "add_charges",
             display_name: "Add Charges".into(),
             category: None,
-            params: vec![pulsar_reflection::MethodParameter { name: "amount", type_info: i32_info }],
-            return_type: Some(MethodReturnType { type_info: i32_info }),
-            method_type: MethodType::Fn,
-            caller: Box::new(|c: &mut dyn EngineClass, args: Vec<Box<dyn std::any::Any>>| {
-                let amount = args.first().and_then(|a| a.downcast_ref::<i32>()).copied()?;
-                let gizmo = c.as_any_mut().downcast_mut::<TestGizmo>()?;
-                gizmo.charges += amount;
-                Some(Box::new(gizmo.charges))
+            params: vec![pulsar_reflection::MethodParameter {
+                name: "amount",
+                type_info: i32_info,
+            }],
+            return_type: Some(MethodReturnType {
+                type_info: i32_info,
             }),
+            method_type: MethodType::Fn,
+            caller: Box::new(
+                |c: &mut dyn EngineClass, args: Vec<Box<dyn std::any::Any>>| {
+                    let amount = args
+                        .first()
+                        .and_then(|a| a.downcast_ref::<i32>())
+                        .copied()?;
+                    let gizmo = c.as_any_mut().downcast_mut::<TestGizmo>()?;
+                    gizmo.charges += amount;
+                    Some(Box::new(gizmo.charges))
+                },
+            ),
         }]
     }
 
@@ -88,7 +104,9 @@ impl EngineClass for TestGizmo {
 }
 
 fn test_gizmo_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
-    world.get::<TestGizmo>(entity).map(|c| c as &dyn EngineClass)
+    world
+        .get::<TestGizmo>(entity)
+        .map(|c| c as &dyn EngineClass)
 }
 
 fn test_gizmo_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
@@ -96,7 +114,9 @@ fn test_gizmo_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn Engi
     // `.into_inner()` extracts the raw reference exactly like the generated
     // shims do (a write-through here counts as a real mutation for
     // subscriptions/GPU mirrors).
-    world.get_mut::<TestGizmo>(entity).map(|c| c.into_inner() as &mut dyn EngineClass)
+    world
+        .get_mut::<TestGizmo>(entity)
+        .map(|c| c.into_inner() as &mut dyn EngineClass)
 }
 
 fn test_gizmo_hydrate(world: &mut World, entity: Entity, data: &Value) -> Result<(), String> {
@@ -131,9 +151,7 @@ fn test_gizmo_test_methods() -> Vec<pulsar_reflection::MethodMetadata> {
     <TestGizmo as EngineClass>::get_methods()
 }
 
-fn test_gizmo_from_json(
-    data: &serde_json::Value,
-) -> Result<Box<dyn EngineClass>, String> {
+fn test_gizmo_from_json(data: &serde_json::Value) -> Result<Box<dyn EngineClass>, String> {
     serde_json::from_value::<TestGizmo>(data.clone())
         .map(|g| Box::new(g) as Box<dyn EngineClass>)
         .map_err(|e| e.to_string())

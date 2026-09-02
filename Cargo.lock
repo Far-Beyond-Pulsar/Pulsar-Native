@@ -5063,7 +5063,6 @@ dependencies = [
  "helio-asset-compat",
  "helio-pass-planetary-voxel",
  "helio-planet-voxel-core",
- "image",
  "libhelio",
  "plugin_editor_api",
  "pollster 0.4.0",

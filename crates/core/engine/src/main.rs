@@ -32,7 +32,6 @@
 //!
 //! Each task is profiled with `Engine::Init::{TaskName}` scope.
 
-
 // --- Global Allocator Setup ---
 // Only one #[global_allocator] can be registered, so the dhat heap profiler
 // (feature = "dhat-heap") and the normal in-editor tracking allocator are

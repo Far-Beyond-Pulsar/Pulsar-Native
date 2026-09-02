@@ -35,7 +35,9 @@ fn methods() -> Vec<DynMethodMetadata> {
                 name: "target",
                 type_info: component_ref_type_info(),
             }],
-            return_type: Some(MethodReturnType { type_info: component_ref_type_info() }),
+            return_type: Some(MethodReturnType {
+                type_info: component_ref_type_info(),
+            }),
             // Pure: same world state in, same reference out; no mutation.
             method_type: MethodType::Pure,
             caller: Box::new(|receiver: &mut dyn std::any::Any, args: DynMethodArgs| {
@@ -72,7 +74,11 @@ fn methods() -> Vec<DynMethodMetadata> {
                     tracing::warn!("describe_ref: {target:?} is dead");
                     return None;
                 }
-                let alive = if target.is_valid(world) { "live" } else { "unhydrated" };
+                let alive = if target.is_valid(world) {
+                    "live"
+                } else {
+                    "unhydrated"
+                };
                 Some(Box::new(format!(
                     "{}@{} ({alive}, index {})",
                     target.class_name,
@@ -108,9 +114,12 @@ mod tests {
         let r = ComponentRef::live(ActorRef::new(e), "TestGizmo");
 
         let returned = DYN_METHOD_REGISTRY
-            .invoke(RECEIVER_NAME, "normalize_ref", &mut world as &mut dyn std::any::Any, vec![
-                Box::new(r.clone())
-            ])
+            .invoke(
+                RECEIVER_NAME,
+                "normalize_ref",
+                &mut world as &mut dyn std::any::Any,
+                vec![Box::new(r.clone())],
+            )
             .expect("method registered")
             .expect("valid ref normalizes to itself");
         assert_eq!(returned.downcast_ref::<ComponentRef>(), Some(&r));
@@ -128,17 +137,26 @@ mod tests {
         r.actor().despawn(&mut world);
 
         let result = DYN_METHOD_REGISTRY
-            .invoke(RECEIVER_NAME, "normalize_ref", &mut world as &mut dyn std::any::Any, vec![
-                Box::new(r)
-            ])
+            .invoke(
+                RECEIVER_NAME,
+                "normalize_ref",
+                &mut world as &mut dyn std::any::Any,
+                vec![Box::new(r)],
+            )
             .expect("registered");
-        assert!(result.is_none(), "stale ref must be refused, not dispatched");
+        assert!(
+            result.is_none(),
+            "stale ref must be refused, not dispatched"
+        );
 
         // Wrong argument type: clean None.
         let result = DYN_METHOD_REGISTRY
-            .invoke(RECEIVER_NAME, "normalize_ref", &mut world as &mut dyn std::any::Any, vec![
-                Box::new(7i32)
-            ])
+            .invoke(
+                RECEIVER_NAME,
+                "normalize_ref",
+                &mut world as &mut dyn std::any::Any,
+                vec![Box::new(7i32)],
+            )
             .expect("registered");
         assert!(result.is_none());
     }
@@ -153,9 +171,12 @@ mod tests {
         let r = ComponentRef::live(ActorRef::new(e), "TestGizmo");
 
         let described = DYN_METHOD_REGISTRY
-            .invoke(RECEIVER_NAME, "describe_ref", &mut world as &mut dyn std::any::Any, vec![
-                Box::new(r)
-            ])
+            .invoke(
+                RECEIVER_NAME,
+                "describe_ref",
+                &mut world as &mut dyn std::any::Any,
+                vec![Box::new(r)],
+            )
             .expect("registered")
             .expect("live target describes");
         let text = described.downcast_ref::<String>().unwrap();
@@ -163,4 +184,3 @@ mod tests {
         assert!(text.contains("(live, index 0)"), "got {text}");
     }
 }
-

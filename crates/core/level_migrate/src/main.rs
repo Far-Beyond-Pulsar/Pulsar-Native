@@ -27,9 +27,8 @@
 // reasoning as `pulsar_scene::loader`'s forced re-exports).
 #[allow(unused_imports)]
 use helio_component::{
-    FoliageComponent as _ForceLink_FoliageComponent,
+    FoliageComponent as _ForceLink_FoliageComponent, LODComponent as _ForceLink_LODComponent,
     LightComponent as _ForceLink_LightComponent,
-    LODComponent as _ForceLink_LODComponent,
     MaterialOverrideComponent as _ForceLink_MaterialOverrideComponent,
     PlanetTerrainComponent as _ForceLink_PlanetTerrainComponent,
     PortalComponent as _ForceLink_PortalComponent,
@@ -252,7 +251,12 @@ fn migrate_file(path: &Path) -> Result<(), String> {
 /// Attempts to repair one component instance's `data` in place. Leaves
 /// `data_slot` completely untouched unless a repaired version is produced
 /// AND verified to load cleanly through the real hydrate path.
-fn migrate_entry(obj_id: &str, class_name: &str, data_slot: &mut Value, report: &mut MigrationReport) {
+fn migrate_entry(
+    obj_id: &str,
+    class_name: &str,
+    data_slot: &mut Value,
+    report: &mut MigrationReport,
+) {
     let mut world = World::new();
 
     // Ask the engine's own real load path first: if this component already
@@ -280,9 +284,9 @@ fn migrate_entry(obj_id: &str, class_name: &str, data_slot: &mut Value, report: 
     }
 
     let Some(rebuilt) = rebuild_component_json(class_name, data_slot) else {
-        report
-            .failed
-            .push(format!("{class_name} on {obj_id}: could not reconstruct from stored data"));
+        report.failed.push(format!(
+            "{class_name} on {obj_id}: could not reconstruct from stored data"
+        ));
         return;
     };
 

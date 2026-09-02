@@ -2,21 +2,24 @@ use gpui::{prelude::FluentBuilder as _, Corner, *};
 use ui::{
     button::{Button, ButtonVariants as _},
     dropdown::{SearchableList, SearchableListEvent},
-    h_flex, v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
-    popover::Popover,
+    h_flex,
     menu::popup_menu::PopupMenuExt,
+    popover::Popover,
+    v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
 };
 
+use super::chat_storage;
 use super::panel::AgentChatPanel;
 use super::types::*;
-use super::chat_storage;
 
 impl AgentChatPanel {
     pub(crate) fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let provider_label = self.active_provider()
+        let provider_label = self
+            .active_provider()
             .map(|p| p.label.to_string())
             .unwrap_or_else(|| "Provider".to_string());
-        let model_label = self.active_model()
+        let model_label = self
+            .active_model()
             .map(|m| m.label.to_string())
             .unwrap_or_else(|| "Model".to_string());
 
@@ -24,46 +27,39 @@ impl AgentChatPanel {
         let model_list = self.model_list.clone();
 
         // ── Left: Provider / Model ──
-        let provider_popover = Popover::<SearchableList<ProviderDefinition>>::new(
-            "agent-chat-provider-popover",
-        )
-        .anchor(Corner::TopLeft)
-        .trigger(
-            Button::new("agent-chat-provider-trigger")
-                .small()
-                .ghost()
-                .justify_start()
-                .tooltip("Select provider")
-                .label(provider_label)
-                .dropdown_caret(true),
-        )
-        .content(move |_window, _cx| provider_list.clone());
+        let provider_popover =
+            Popover::<SearchableList<ProviderDefinition>>::new("agent-chat-provider-popover")
+                .anchor(Corner::TopLeft)
+                .trigger(
+                    Button::new("agent-chat-provider-trigger")
+                        .small()
+                        .ghost()
+                        .justify_start()
+                        .tooltip("Select provider")
+                        .label(provider_label)
+                        .dropdown_caret(true),
+                )
+                .content(move |_window, _cx| provider_list.clone());
 
-        let model_popover = Popover::<SearchableList<ModelDefinition>>::new(
-            "agent-chat-model-popover",
-        )
-        .anchor(Corner::TopLeft)
-        .trigger(
-            Button::new("agent-chat-model-trigger")
-                .small()
-                .ghost()
-                .justify_start()
-                .tooltip("Select model")
-                .label(model_label)
-                .dropdown_caret(true),
-        )
-        .content(move |_window, _cx| model_list.clone());
+        let model_popover =
+            Popover::<SearchableList<ModelDefinition>>::new("agent-chat-model-popover")
+                .anchor(Corner::TopLeft)
+                .trigger(
+                    Button::new("agent-chat-model-trigger")
+                        .small()
+                        .ghost()
+                        .justify_start()
+                        .tooltip("Select model")
+                        .label(model_label)
+                        .dropdown_caret(true),
+                )
+                .content(move |_window, _cx| model_list.clone());
 
         let provider_model_row = h_flex()
             .items_center()
             .gap_1()
             .child(provider_popover)
-            .child(
-                div()
-                    .text_color(cx.theme().border)
-                    .text_sm()
-                    .child("/"),
-            )
+            .child(div().text_color(cx.theme().border).text_sm().child("/"))
             .child(model_popover);
 
         // ── Right: Chat History dropdown ──
@@ -92,7 +88,8 @@ impl AgentChatPanel {
 
         // ── Three-dots menu ──
         let panel = cx.entity().clone();
-        let has_subagents = self.pending_subagent_events.len() > 0 || self.is_processing_subagent_event;
+        let has_subagents =
+            self.pending_subagent_events.len() > 0 || self.is_processing_subagent_event;
         let queued_count = self.pending_subagent_events.len();
         let is_processing = self.is_processing_subagent_event;
         let is_in_flight = self.is_request_in_flight;
@@ -108,39 +105,53 @@ impl AgentChatPanel {
                     let menu = menu
                         .menu_handler_with_icon("Import Chat", IconName::Upload, {
                             let p = p.clone();
-                            move |_, cx| { p.update(cx, |this, cx| this.import_chat(cx)); }
+                            move |_, cx| {
+                                p.update(cx, |this, cx| this.import_chat(cx));
+                            }
                         })
                         .menu_handler_with_icon("Export Chat", IconName::Download, {
                             let p = p.clone();
-                            move |_, cx| { p.update(cx, |this, _| this.export_current_chat()); }
+                            move |_, cx| {
+                                p.update(cx, |this, _| this.export_current_chat());
+                            }
                         })
                         .separator()
                         .menu_handler_with_icon("Refresh Models", IconName::Refresh, {
                             let p = p.clone();
-                            move |_, cx| { p.update(cx, |this, cx| this.refresh_models_for_active_provider(cx)); }
+                            move |_, cx| {
+                                p.update(cx, |this, cx| {
+                                    this.refresh_models_for_active_provider(cx)
+                                });
+                            }
                         })
                         .menu_handler_with_icon("Add Provider", IconName::Plus, {
                             let p = p.clone();
-                            move |window, cx| { p.update(cx, |this, cx| this.start_add_provider_prompt(window, cx)); }
+                            move |window, cx| {
+                                p.update(cx, |this, cx| this.start_add_provider_prompt(window, cx));
+                            }
                         });
 
                     if has_subagents {
-                        menu
-                            .separator()
+                        menu.separator()
                             .menu_handler_with_icon_and_disabled(
                                 format!("Process Next ({})", queued_count),
                                 IconName::Play,
                                 is_in_flight || is_processing,
                                 {
                                     let p = p.clone();
-                                    move |_, cx| { p.update(cx, |this, cx| this.process_next_subagent_completion_now(cx)); }
+                                    move |_, cx| {
+                                        p.update(cx, |this, cx| {
+                                            this.process_next_subagent_completion_now(cx)
+                                        });
+                                    }
                                 },
                             )
                             .menu_handler_with_icon("Auto Queue", IconName::Play, {
                                 let p = p.clone();
                                 move |_, cx| {
                                     p.update(cx, |this, cx| {
-                                        this.subagent_completion_mode = super::panel::SubagentCompletionMode::Auto;
+                                        this.subagent_completion_mode =
+                                            super::panel::SubagentCompletionMode::Auto;
                                         this.maybe_start_next_subagent_processing(cx);
                                         cx.notify();
                                     });
@@ -150,7 +161,8 @@ impl AgentChatPanel {
                                 let p = p.clone();
                                 move |_, cx| {
                                     p.update(cx, |this, cx| {
-                                        this.subagent_completion_mode = super::panel::SubagentCompletionMode::Manual;
+                                        this.subagent_completion_mode =
+                                            super::panel::SubagentCompletionMode::Manual;
                                         cx.notify();
                                     });
                                 }
@@ -218,7 +230,8 @@ impl AgentChatPanel {
             cx.theme().success
         };
 
-        let model_ctx = self.active_model()
+        let model_ctx = self
+            .active_model()
             .and_then(|m| {
                 if m.context_tokens > 0 {
                     Some(m.context_tokens)

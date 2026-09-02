@@ -120,38 +120,60 @@ impl std::fmt::Debug for SceneCommand {
                 .field("parent_id", parent_id)
                 .finish(),
             Self::RemoveObject { id } => f.debug_struct("RemoveObject").field("id", id).finish(),
-            Self::UpdateObject { data } => {
-                f.debug_struct("UpdateObject").field("data.id", &data.id).finish()
-            }
+            Self::UpdateObject { data } => f
+                .debug_struct("UpdateObject")
+                .field("data.id", &data.id)
+                .finish(),
             Self::ReparentObject { id, new_parent_id } => f
                 .debug_struct("ReparentObject")
                 .field("id", id)
                 .field("new_parent_id", new_parent_id)
                 .finish(),
-            Self::DuplicateObject { source_id, count, position_offset } => f
+            Self::DuplicateObject {
+                source_id,
+                count,
+                position_offset,
+            } => f
                 .debug_struct("DuplicateObject")
                 .field("source_id", source_id)
                 .field("count", count)
                 .field("position_offset", position_offset)
                 .finish(),
             Self::SelectObject { id } => f.debug_struct("SelectObject").field("id", id).finish(),
-            Self::SetTransform { id, position, rotation, scale } => f
+            Self::SetTransform {
+                id,
+                position,
+                rotation,
+                scale,
+            } => f
                 .debug_struct("SetTransform")
                 .field("id", id)
                 .field("position", position)
                 .field("rotation", rotation)
                 .field("scale", scale)
                 .finish(),
-            Self::SetName { id, name } => {
-                f.debug_struct("SetName").field("id", id).field("name", name).finish()
-            }
-            Self::SetVisibility { id, visible, locked } => f
+            Self::SetName { id, name } => f
+                .debug_struct("SetName")
+                .field("id", id)
+                .field("name", name)
+                .finish(),
+            Self::SetVisibility {
+                id,
+                visible,
+                locked,
+            } => f
                 .debug_struct("SetVisibility")
                 .field("id", id)
                 .field("visible", visible)
                 .field("locked", locked)
                 .finish(),
-            Self::SetComponentProperty { id, class_name, component_index, prop_name, value } => f
+            Self::SetComponentProperty {
+                id,
+                class_name,
+                component_index,
+                prop_name,
+                value,
+            } => f
                 .debug_struct("SetComponentProperty")
                 .field("id", id)
                 .field("class_name", class_name)
@@ -227,190 +249,212 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
     let result = (move || -> CommandResult {
         let state = state_ref;
         match cmd {
-        SceneCommand::AddObject { data, parent_id } => {
-            let id = state.scene.database.add_object(data, parent_id);
-            state.scene.bump_revision(true);
-            CommandResult::ok(vec![id])
-        }
-
-        SceneCommand::RemoveObject { ref id } => {
-            let removed = state.scene.database.remove_object(id);
-            if removed {
-                if state.scene.database.get_selected_object_id().as_deref() == Some(id) {
-                    state.scene.database.select_object(None);
+            SceneCommand::AddObject { data, parent_id } => {
+                let id = state.scene.database.add_object(data, parent_id);
+                if id.is_empty() {
+                    return CommandResult::noop("Object could not be added");
                 }
-                state.scene.bump_revision(true);
-                CommandResult::ok(vec![id.clone()])
-            } else {
-                CommandResult::noop("Object not found")
-            }
-        }
-
-        SceneCommand::UpdateObject { data } => {
-            let id = data.id.clone();
-            if state.scene.database.update_object(data) {
                 state.scene.bump_revision(true);
                 CommandResult::ok(vec![id])
-            } else {
-                CommandResult::noop("Object not found")
             }
-        }
 
-        SceneCommand::ReparentObject {
-            ref id,
-            ref new_parent_id,
-        } => {
-            let moved = state
-                .scene
-                .database
-                .reparent_object(id, new_parent_id.clone());
-            if moved {
-                state.scene.bump_revision(true);
-                CommandResult::ok(vec![id.clone()])
-            } else {
-                CommandResult::noop("Object not found or reparent rejected")
-            }
-        }
-
-        SceneCommand::DuplicateObject {
-            ref source_id,
-            count,
-            position_offset,
-        } => {
-            let src_pos = state
-                .scene
-                .database
-                .get_object(source_id)
-                .map(|o| o.transform.position);
-            let mut created = Vec::new();
-            for i in 0..count {
-                if let Some(new_id) = state.scene.database.duplicate_object(source_id) {
-                    if let (Some(off), Some(src)) = (position_offset, src_pos) {
-                        let n = (i + 1) as f32;
-                        if let Some(mut copy) = state.scene.database.get_object(&new_id) {
-                            copy.transform.position = [
-                                src[0] + off[0] * n,
-                                src[1] + off[1] * n,
-                                src[2] + off[2] * n,
-                            ];
-                            state.scene.database.update_object(copy);
-                        }
+            SceneCommand::RemoveObject { ref id } => {
+                let removed = state.scene.database.remove_object(id);
+                if removed {
+                    if state.scene.database.get_selected_object_id().as_deref() == Some(id) {
+                        state.scene.database.select_object(None);
                     }
-                    created.push(new_id);
-                } else {
-                    break;
-                }
-            }
-            if created.is_empty() {
-                CommandResult::noop("Source object not found")
-            } else {
-                state.scene.bump_revision(true);
-                CommandResult::ok(created)
-            }
-        }
-
-        SceneCommand::SelectObject { id } => {
-            state.scene.database.select_object(id.clone());
-            state.scene.bump_revision(false);
-            CommandResult::ok(id.into_iter().collect())
-        }
-
-        SceneCommand::SetTransform {
-            ref id,
-            position,
-            rotation,
-            scale,
-        } => {
-            // `SceneDatabase::set_transform`, NOT `get_object`+`update_object`
-            // (Pulsar-Native#561): the old whole-object round trip triggered
-            // `sync_registered_component_props_to_scene_db` -- a full
-            // re-serialize/re-hydrate of every component on the object --
-            // on every keystroke of a position/rotation/scale field, for a
-            // change that has nothing to do with component data at all.
-            if state.scene.database.set_transform(id, position, rotation, scale) {
-                state.scene.bump_revision(true);
-                CommandResult::ok(vec![id.clone()])
-            } else {
-                CommandResult::noop("Object not found or no transform fields changed")
-            }
-        }
-
-        SceneCommand::SetName { ref id, name } => {
-            if state.scene.database.set_name(id, name) {
-                state.scene.bump_revision(true);
-                CommandResult::ok(vec![id.clone()])
-            } else {
-                CommandResult::noop("Object not found")
-            }
-        }
-
-        SceneCommand::SetVisibility { ref id, visible, locked } => {
-            let mut changed = false;
-            if let Some(v) = visible {
-                changed |= state.scene.database.set_visible(id, v);
-            }
-            if let Some(l) = locked {
-                changed |= state.scene.database.set_locked(id, l);
-            }
-            if changed {
-                state.scene.bump_revision(true);
-                CommandResult::ok(vec![id.clone()])
-            } else {
-                CommandResult::noop("Object not found or no visibility fields changed")
-            }
-        }
-
-        SceneCommand::SetComponentProperty { ref id, ref class_name, component_index, ref prop_name, value } => {
-            // Typed path first -- `update_live_component_property` writes
-            // `value` straight onto the live `World` component via its
-            // reflected setter closure, no JSON anywhere (Pulsar-Native#561).
-            //
-            // `component_index` targets the exact instance being edited
-            // (Pulsar-Native#519): only the object's first enabled instance
-            // of a World-registered class is live-typed in `World` (one
-            // storage slot per `(entity, type)`), so that instance takes the
-            // typed path and every OTHER instance -- plus classes with no
-            // World registration at all (`LODComponent`/
-            // `MaterialOverrideComponent`) -- is handled inside as an
-            // indexed metadata_db JSON write, so each duplicate keeps its
-            // own field values instead of every edit landing in instance 0.
-            match state
-                .scene
-                .database
-                .update_live_component_property(id, class_name, component_index, prop_name, value)
-            {
-                Ok(()) => {
                     state.scene.bump_revision(true);
                     CommandResult::ok(vec![id.clone()])
+                } else {
+                    CommandResult::noop("Object not found")
                 }
-                Err(value) => {
-                    match pulsar_reflection::RUNTIME_TYPE_REGISTRY.serialize_json_for_any(value.as_ref()) {
-                        Ok(value_json) => {
-                            state
-                                .scene
-                                .database
-                                .update_component_property(id, class_name, prop_name, value_json);
-                            state.scene.bump_revision(true);
-                            CommandResult::ok(vec![id.clone()])
+            }
+
+            SceneCommand::UpdateObject { data } => {
+                let id = data.id.clone();
+                if state.scene.database.update_object(data) {
+                    state.scene.bump_revision(true);
+                    CommandResult::ok(vec![id])
+                } else {
+                    CommandResult::noop("Object not found")
+                }
+            }
+
+            SceneCommand::ReparentObject {
+                ref id,
+                ref new_parent_id,
+            } => {
+                let moved = state
+                    .scene
+                    .database
+                    .reparent_object(id, new_parent_id.clone());
+                if moved {
+                    state.scene.bump_revision(true);
+                    CommandResult::ok(vec![id.clone()])
+                } else {
+                    CommandResult::noop("Object not found or reparent rejected")
+                }
+            }
+
+            SceneCommand::DuplicateObject {
+                ref source_id,
+                count,
+                position_offset,
+            } => {
+                let src_pos = state
+                    .scene
+                    .database
+                    .get_object(source_id)
+                    .map(|o| o.transform.position);
+                let mut created = Vec::new();
+                for i in 0..count {
+                    if let Some(new_id) = state.scene.database.duplicate_object(source_id) {
+                        if let (Some(off), Some(src)) = (position_offset, src_pos) {
+                            let n = (i + 1) as f32;
+                            if let Some(mut copy) = state.scene.database.get_object(&new_id) {
+                                copy.transform.position = [
+                                    src[0] + off[0] * n,
+                                    src[1] + off[1] * n,
+                                    src[2] + off[2] * n,
+                                ];
+                                state.scene.database.update_object(copy);
+                            }
                         }
-                        Err(error) => {
-                            // Not `World`-registered AND not in
-                            // `RUNTIME_TYPE_REGISTRY` either -- nothing this
-                            // command can do with the value. Surfaced loudly
-                            // rather than silently dropping the edit: this
-                            // should only happen for a genuinely new/
-                            // misconfigured property type, not real usage.
-                            tracing::error!(
+                        created.push(new_id);
+                    } else {
+                        break;
+                    }
+                }
+                if created.is_empty() {
+                    CommandResult::noop("Source object not found")
+                } else {
+                    state.scene.bump_revision(true);
+                    CommandResult::ok(created)
+                }
+            }
+
+            SceneCommand::SelectObject { id } => {
+                state.scene.database.select_object(id.clone());
+                state.scene.bump_revision(false);
+                CommandResult::ok(id.into_iter().collect())
+            }
+
+            SceneCommand::SetTransform {
+                ref id,
+                position,
+                rotation,
+                scale,
+            } => {
+                // `SceneDatabase::set_transform`, NOT `get_object`+`update_object`
+                // (Pulsar-Native#561): the old whole-object round trip triggered
+                // `sync_registered_component_props_to_scene_db` -- a full
+                // re-serialize/re-hydrate of every component on the object --
+                // on every keystroke of a position/rotation/scale field, for a
+                // change that has nothing to do with component data at all.
+                if state
+                    .scene
+                    .database
+                    .set_transform(id, position, rotation, scale)
+                {
+                    state.scene.bump_revision(true);
+                    CommandResult::ok(vec![id.clone()])
+                } else {
+                    CommandResult::noop("Object not found or no transform fields changed")
+                }
+            }
+
+            SceneCommand::SetName { ref id, name } => {
+                if state.scene.database.set_name(id, name) {
+                    state.scene.bump_revision(true);
+                    CommandResult::ok(vec![id.clone()])
+                } else {
+                    CommandResult::noop("Object not found")
+                }
+            }
+
+            SceneCommand::SetVisibility {
+                ref id,
+                visible,
+                locked,
+            } => {
+                let mut changed = false;
+                if let Some(v) = visible {
+                    changed |= state.scene.database.set_visible(id, v);
+                }
+                if let Some(l) = locked {
+                    changed |= state.scene.database.set_locked(id, l);
+                }
+                if changed {
+                    state.scene.bump_revision(true);
+                    CommandResult::ok(vec![id.clone()])
+                } else {
+                    CommandResult::noop("Object not found or no visibility fields changed")
+                }
+            }
+
+            SceneCommand::SetComponentProperty {
+                ref id,
+                ref class_name,
+                component_index,
+                ref prop_name,
+                value,
+            } => {
+                // Typed path first -- `update_live_component_property` writes
+                // `value` straight onto the live `World` component via its
+                // reflected setter closure, no JSON anywhere (Pulsar-Native#561).
+                //
+                // `component_index` targets the exact instance being edited
+                // (Pulsar-Native#519): only the object's first enabled instance
+                // of a World-registered class is live-typed in `World` (one
+                // storage slot per `(entity, type)`), so that instance takes the
+                // typed path and every OTHER instance -- plus classes with no
+                // World registration at all (`LODComponent`/
+                // `MaterialOverrideComponent`) -- is handled inside as an
+                // indexed metadata_db JSON write, so each duplicate keeps its
+                // own field values instead of every edit landing in instance 0.
+                match state.scene.database.update_live_component_property(
+                    id,
+                    class_name,
+                    component_index,
+                    prop_name,
+                    value,
+                ) {
+                    Ok(()) => {
+                        state.scene.bump_revision(true);
+                        CommandResult::ok(vec![id.clone()])
+                    }
+                    Err(value) => {
+                        match pulsar_reflection::RUNTIME_TYPE_REGISTRY
+                            .serialize_json_for_any(value.as_ref())
+                        {
+                            Ok(value_json) => {
+                                state.scene.database.update_component_property(
+                                    id, class_name, prop_name, value_json,
+                                );
+                                state.scene.bump_revision(true);
+                                CommandResult::ok(vec![id.clone()])
+                            }
+                            Err(error) => {
+                                // Not `World`-registered AND not in
+                                // `RUNTIME_TYPE_REGISTRY` either -- nothing this
+                                // command can do with the value. Surfaced loudly
+                                // rather than silently dropping the edit: this
+                                // should only happen for a genuinely new/
+                                // misconfigured property type, not real usage.
+                                tracing::error!(
                                 "[SetComponentProperty] '{class_name}.{prop_name}' on '{id}' has \
                                  no live World value and its type isn't registered for JSON \
                                  fallback either -- edit dropped: {error}"
                             );
-                            CommandResult::noop("Property type not registered for World or JSON fallback")
+                                CommandResult::noop(
+                                    "Property type not registered for World or JSON fallback",
+                                )
+                            }
                         }
                     }
                 }
             }
-        }
         }
     })();
 
@@ -450,7 +494,10 @@ mod undo_redo_tests {
 
         let result = execute_command(
             &mut state,
-            SceneCommand::AddObject { data: object("Cube"), parent_id: None },
+            SceneCommand::AddObject {
+                data: object("Cube"),
+                parent_id: None,
+            },
         );
         assert!(result.changed);
         assert!(state.scene.can_undo());
@@ -467,7 +514,10 @@ mod undo_redo_tests {
         let mut state = LevelEditorState::new();
         execute_command(
             &mut state,
-            SceneCommand::AddObject { data: object("Cube"), parent_id: None },
+            SceneCommand::AddObject {
+                data: object("Cube"),
+                parent_id: None,
+            },
         );
         state.scene.undo();
         assert!(state.scene.database.get_all_objects().is_empty());
@@ -484,14 +534,20 @@ mod undo_redo_tests {
         let mut state = LevelEditorState::new();
         execute_command(
             &mut state,
-            SceneCommand::AddObject { data: object("A"), parent_id: None },
+            SceneCommand::AddObject {
+                data: object("A"),
+                parent_id: None,
+            },
         );
         state.scene.undo();
         assert!(state.scene.can_redo());
 
         execute_command(
             &mut state,
-            SceneCommand::AddObject { data: object("B"), parent_id: None },
+            SceneCommand::AddObject {
+                data: object("B"),
+                parent_id: None,
+            },
         );
 
         assert!(!state.scene.can_redo());
@@ -500,8 +556,12 @@ mod undo_redo_tests {
     #[test]
     fn a_noop_command_does_not_push_an_undo_checkpoint() {
         let mut state = LevelEditorState::new();
-        let result =
-            execute_command(&mut state, SceneCommand::RemoveObject { id: "nope".to_string() });
+        let result = execute_command(
+            &mut state,
+            SceneCommand::RemoveObject {
+                id: "nope".to_string(),
+            },
+        );
         assert!(!result.changed);
         assert!(!state.scene.can_undo());
     }
@@ -511,7 +571,10 @@ mod undo_redo_tests {
         let mut state = LevelEditorState::new();
         let add = execute_command(
             &mut state,
-            SceneCommand::AddObject { data: object("Cube"), parent_id: None },
+            SceneCommand::AddObject {
+                data: object("Cube"),
+                parent_id: None,
+            },
         );
         let id = add.affected_ids[0].clone();
         assert!(state.scene.can_undo()); // the AddObject checkpoint
@@ -590,7 +653,10 @@ mod undo_redo_tests {
                 value: Box::new(4242.0_f32),
             },
         );
-        assert!(result.changed, "typed live write must succeed, not fall through to the JSON path");
+        assert!(
+            result.changed,
+            "typed live write must succeed, not fall through to the JSON path"
+        );
 
         let live = state
             .scene

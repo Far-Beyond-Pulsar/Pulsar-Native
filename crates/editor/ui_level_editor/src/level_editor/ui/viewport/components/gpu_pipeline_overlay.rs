@@ -250,8 +250,7 @@ where
                                         .child(time_label(data.total_gpu_ms)),
                                 ),
                         )
-                        .child(
-                            div().text_xs().text_color(muted).child(format!(
+                        .child(div().text_xs().text_color(muted).child(format!(
                                 "CPU frame {} · GPU frame {} · lag {} · drops {} · overflows {}",
                                 data.frame_count,
                                 data.gpu_frame_count
@@ -262,8 +261,7 @@ where
                                     .unwrap_or_else(|| "—".to_owned()),
                                 data.readback_drops,
                                 data.query_overflows
-                            )),
-                        ),
+                            ))),
                 )
             } else {
                 this.child(

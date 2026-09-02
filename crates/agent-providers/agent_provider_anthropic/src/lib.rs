@@ -526,7 +526,9 @@ impl ChatProvider for AnthropicProvider {
             return Err(anyhow::anyhow!("Anthropic API key is required"));
         }
         if !self.api_key.starts_with("sk-ant-") {
-            return Err(anyhow::anyhow!("Anthropic API key should start with sk-ant-"));
+            return Err(anyhow::anyhow!(
+                "Anthropic API key should start with sk-ant-"
+            ));
         }
         let response = self
             .client
@@ -542,7 +544,11 @@ impl ChatProvider for AnthropicProvider {
         } else if response.status().as_u16() == 401 {
             Err(anyhow::anyhow!("Anthropic API key is invalid or expired"))
         } else {
-            Err(anyhow::anyhow!("Anthropic API returned {}: {}", response.status(), response.text().unwrap_or_default()))
+            Err(anyhow::anyhow!(
+                "Anthropic API returned {}: {}",
+                response.status(),
+                response.text().unwrap_or_default()
+            ))
         }
     }
 
@@ -556,7 +562,11 @@ impl ChatProvider for AnthropicProvider {
             .send()
             .map_err(|e| anyhow::anyhow!("Failed to fetch Anthropic models: {e}"))?;
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("Anthropic models API {}: {}", response.status(), response.text().unwrap_or_default()));
+            return Err(anyhow::anyhow!(
+                "Anthropic models API {}: {}",
+                response.status(),
+                response.text().unwrap_or_default()
+            ));
         }
         let body: serde_json::Value = response.json()?;
         let models = body
@@ -566,8 +576,18 @@ impl ChatProvider for AnthropicProvider {
                 arr.iter()
                     .filter_map(|m| {
                         let id = m.get("id")?.as_str()?.to_string();
-                        let label = m.get("display_name").and_then(|v| v.as_str()).unwrap_or(&id).to_string();
-                        Some(ModelDescriptor { id, label, supports_tools: true, context_tokens: 0, compact_model: None })
+                        let label = m
+                            .get("display_name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(&id)
+                            .to_string();
+                        Some(ModelDescriptor {
+                            id,
+                            label,
+                            supports_tools: true,
+                            context_tokens: 0,
+                            compact_model: None,
+                        })
                     })
                     .collect()
             })

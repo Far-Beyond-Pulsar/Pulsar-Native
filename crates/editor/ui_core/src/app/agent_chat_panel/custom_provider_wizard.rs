@@ -1,5 +1,5 @@
 use super::*;
-use crate::custom_providers::{self, CustomProvider, CustomModel};
+use crate::custom_providers::{self, CustomModel, CustomProvider};
 use agent_provider_openai::OpenAiProviderCrate;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -26,12 +26,10 @@ impl AgentChatPanel {
         self.pending_custom_provider_step = None;
     }
 
-    pub(super) fn submit_custom_provider(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(pending) = self.pending_custom_provider.take() else { return };
+    pub(super) fn submit_custom_provider(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(pending) = self.pending_custom_provider.take() else {
+            return;
+        };
         if pending.label.is_empty() || pending.endpoint.is_empty() {
             self.pending_custom_provider = Some(pending);
             return;
@@ -60,9 +58,10 @@ impl AgentChatPanel {
 
         // Register as a runtime provider
         let config = agent_chat_core::ProviderConfig {
-            values: std::collections::HashMap::from([
-                ("endpoint_url".to_string(), pending.endpoint),
-            ]),
+            values: std::collections::HashMap::from([(
+                "endpoint_url".to_string(),
+                pending.endpoint,
+            )]),
         };
         let openai = OpenAiProviderCrate;
         match openai.create("custom_openai", config) {
@@ -82,18 +81,18 @@ impl AgentChatPanel {
         tracing::debug!(provider = %provider_id, "delete_custom_provider: deleting");
         let config_dir = Self::custom_provider_config_dir();
         let _ = custom_providers::remove_custom_provider(&config_dir, provider_id);
-        self.custom_providers_list
-            .retain(|p| p.id != provider_id);
+        self.custom_providers_list.retain(|p| p.id != provider_id);
         self.provider_registry.remove(provider_id);
         self.refresh_provider_catalog(cx);
     }
 
     pub(super) fn refresh_provider_catalog(&mut self, cx: &mut Context<Self>) {
-        let current_id = self
-            .active_provider()
-            .map(|p| p.id.to_string());
+        let current_id = self.active_provider().map(|p| p.id.to_string());
         let mut catalog: Vec<ProviderDefinition> = Vec::new();
-        tracing::debug!("refresh_provider_catalog: rebuilding, previous size={}", self.provider_catalog.len());
+        tracing::debug!(
+            "refresh_provider_catalog: rebuilding, previous size={}",
+            self.provider_catalog.len()
+        );
 
         // Preserve models that were already fetched across catalog refreshes
         let old_models: HashMap<&str, Arc<Vec<ModelDefinition>>> = self
@@ -161,7 +160,10 @@ impl AgentChatPanel {
             .and_then(|id| self.provider_catalog.iter().position(|p| p.id == id))
             .unwrap_or(0);
         cx.notify();
-        tracing::debug!(count = self.provider_catalog.len(), "refresh_provider_catalog: built");
+        tracing::debug!(
+            count = self.provider_catalog.len(),
+            "refresh_provider_catalog: built"
+        );
     }
 
     pub(super) fn add_provider_prompt_title(step: AddProviderPromptStep) -> &'static str {

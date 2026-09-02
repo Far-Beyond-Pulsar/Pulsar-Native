@@ -131,7 +131,10 @@ fn build_game_manifest_deps(
         // (e.g. it pins `tracing-subscriber` with no features, but the generated
         // `main.rs` calls `.with_env_filter`). Ensure the extras the templates
         // rely on without dropping the workspace's version pin.
-        let value = with_features(rewrite_paths(value, workspace_root), required_extra_features(dep));
+        let value = with_features(
+            rewrite_paths(value, workspace_root),
+            required_extra_features(dep),
+        );
         out.push_str(&format!("{dep} = {}\n", format_toml_inline(&value)));
     }
 
@@ -153,7 +156,10 @@ fn build_game_manifest_deps(
                     continue;
                 }
                 let rewritten = rewrite_paths(spec, workspace_root);
-                out.push_str(&format!("{crate_name} = {}\n", format_toml_inline(&rewritten)));
+                out.push_str(&format!(
+                    "{crate_name} = {}\n",
+                    format_toml_inline(&rewritten)
+                ));
             }
         }
     }
@@ -254,7 +260,10 @@ fn rewrite_paths(value: &toml::Value, workspace_root: &Path) -> toml::Value {
             for (key, val) in table {
                 if key == "path" {
                     if let Some(rel) = val.as_str() {
-                        out.insert(key.clone(), toml::Value::String(absolute_path(workspace_root, rel)));
+                        out.insert(
+                            key.clone(),
+                            toml::Value::String(absolute_path(workspace_root, rel)),
+                        );
                         continue;
                     }
                 }
@@ -262,9 +271,12 @@ fn rewrite_paths(value: &toml::Value, workspace_root: &Path) -> toml::Value {
             }
             toml::Value::Table(out)
         }
-        toml::Value::Array(items) => {
-            toml::Value::Array(items.iter().map(|v| rewrite_paths(v, workspace_root)).collect())
-        }
+        toml::Value::Array(items) => toml::Value::Array(
+            items
+                .iter()
+                .map(|v| rewrite_paths(v, workspace_root))
+                .collect(),
+        ),
         other => other.clone(),
     }
 }

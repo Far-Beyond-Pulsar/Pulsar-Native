@@ -10,11 +10,13 @@ use ui::{
     input::{InputEvent, InputState},
     popover::Popover,
     skeleton::Skeleton,
-    v_flex, ActiveTheme as _, Disableable, Icon, IconName,
-    StyledExt,
+    v_flex, ActiveTheme as _, Disableable, Icon, IconName, StyledExt,
 };
 
-use crate::components::{render_add_friend_bar, render_empty_state, render_friend_row, render_header, render_loading_state, render_not_authenticated, render_tabs, filtered_friends};
+use crate::components::{
+    filtered_friends, render_add_friend_bar, render_empty_state, render_friend_row, render_header,
+    render_loading_state, render_not_authenticated, render_tabs,
+};
 use crate::utils::types::{AddFriendState, FriendEntry, FriendTab};
 
 pub struct FriendsScreen {

@@ -81,7 +81,9 @@ pub enum ExecutorError {
     /// A component-op call (`comp_*::…`) was prepared without host handlers.
     /// Use `prepare_with_component_ops`; plain `prepare` refuses these
     /// because they have no pulsar_std symbol to resolve.
-    ComponentOpsNotBound { node_type: String },
+    ComponentOpsNotBound {
+        node_type: String,
+    },
 
     /// The library file could not be read for hash verification.
     Io(std::io::Error),

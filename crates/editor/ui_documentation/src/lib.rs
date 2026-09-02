@@ -1,6 +1,6 @@
-mod screen;
 pub mod components;
 pub mod handlers;
+mod screen;
 pub mod utils;
 
 pub use screen::{

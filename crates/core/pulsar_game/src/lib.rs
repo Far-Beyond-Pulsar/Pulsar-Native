@@ -57,9 +57,7 @@ pub mod script_refs;
 /// visible on the next frame exactly like editor edits.
 pub mod scene {
     pub use engine_backend::scene::{Name, Transform, Visibility};
-    pub use helio_component::components::{
-        LightComponent, MeshAssetPath, StaticMeshComponent,
-    };
+    pub use helio_component::components::{LightComponent, MeshAssetPath, StaticMeshComponent};
 }
 
 // Compile-time drift guard: PBGC-generated actors must match pinned crates

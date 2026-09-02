@@ -86,10 +86,7 @@ impl FriendsPopover {
                                 .update(cx, |list, cx| list.set_items(friends_usernames, cx));
                         }
                         Err(e) => {
-                            tracing::error!(
-                                "[FriendsPopover] Failed to load friends: {:?}",
-                                e
-                            );
+                            tracing::error!("[FriendsPopover] Failed to load friends: {:?}", e);
                             screen
                                 .friends_list
                                 .update(cx, |list, cx| list.set_items(Vec::new(), cx));

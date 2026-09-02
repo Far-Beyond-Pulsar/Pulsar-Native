@@ -257,12 +257,7 @@ fn branch(id: &str) -> NodeInstance {
     let mut n = NodeInstance::new(id, "branch", Position { x: 300.0, y: 0.0 });
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_c"),
@@ -275,21 +270,11 @@ fn branch(id: &str) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_t"),
-        Pin::new(
-            &format!("{id}_t"),
-            "True",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_t"), "True", DataType::Exec, PinType::Output),
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_f"),
-        Pin::new(
-            &format!("{id}_f"),
-            "False",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_f"), "False", DataType::Exec, PinType::Output),
     ));
     n
 }
@@ -298,12 +283,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_eq_int", Position { x: 400.0, y: 0.0 });
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_a"),
@@ -325,12 +305,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_o"),
-        Pin::new(
-            &format!("{id}_o"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_o"), "exec", DataType::Exec, PinType::Output),
     ));
     n.properties
         .insert(format!("{id}_x"), serde_json::json!(expected as f64));
@@ -341,12 +316,7 @@ fn assert_eq_float(id: &str, expected: f64, epsilon: f64) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_eq_float", Position { x: 400.0, y: 0.0 });
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_a"),
@@ -377,12 +347,7 @@ fn assert_eq_float(id: &str, expected: f64, epsilon: f64) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_o"),
-        Pin::new(
-            &format!("{id}_o"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_o"), "exec", DataType::Exec, PinType::Output),
     ));
     n.properties
         .insert(format!("{id}_x"), serde_json::json!(expected));
@@ -395,12 +360,7 @@ fn assert_true(id: &str) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_true", Position { x: 400.0, y: 0.0 });
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_c"),
@@ -413,12 +373,7 @@ fn assert_true(id: &str) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_o"),
-        Pin::new(
-            &format!("{id}_o"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_o"), "exec", DataType::Exec, PinType::Output),
     ));
     n
 }

@@ -264,9 +264,7 @@ pub fn item_from_info(
                         global_config()
                             .get(&ns, &owner, &key)
                             .ok()
-                            .and_then(|v| {
-                                v.as_str().ok().map(|s| SharedString::from(s.to_owned()))
-                            })
+                            .and_then(|v| v.as_str().ok().map(|s| SharedString::from(s.to_owned())))
                             .unwrap_or_default()
                     },
                     move |val: SharedString, cx: &mut App| {
@@ -343,9 +341,7 @@ pub fn item_from_info(
                         global_config()
                             .get(&ns, &owner, &key)
                             .ok()
-                            .and_then(|v| {
-                                v.as_str().ok().map(|s| SharedString::from(s.to_owned()))
-                            })
+                            .and_then(|v| v.as_str().ok().map(|s| SharedString::from(s.to_owned())))
                             .unwrap_or_default()
                     },
                     move |val: SharedString, cx: &mut App| {

@@ -44,9 +44,6 @@ pub use scene::SceneDomain;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use engine_backend::scene::WorldSceneStore;
-use parking_lot::RwLock;
-
 // ── LevelEditorState ─────────────────────────────────────────────────────────
 
 /// Root editor state — the single source of truth for the level editor.
@@ -91,15 +88,6 @@ impl Default for LevelEditorState {
 impl LevelEditorState {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// Create a `LevelEditorState` that shares the given scene store `Arc` with the renderer.
-    /// The database starts empty; `ensure_default_level_file` populates it from disk.
-    pub fn new_with_scene_db(scene_store: Arc<RwLock<WorldSceneStore>>) -> Self {
-        Self {
-            scene: SceneDomain::with_scene_db(scene_store),
-            ..Self::default()
-        }
     }
 }
 

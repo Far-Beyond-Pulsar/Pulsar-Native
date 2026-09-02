@@ -5,9 +5,9 @@
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");
 
+pub mod components;
 mod handlers;
 mod screen;
-pub mod components;
 pub mod utils;
 pub mod window;
 

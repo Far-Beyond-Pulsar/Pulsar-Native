@@ -4,14 +4,16 @@
 
 rust_i18n::i18n!("locales", fallback = "en");
 
+pub mod components;
 mod handlers;
 mod screen;
-pub mod components;
 pub mod utils;
 pub mod window;
 
 pub use screen::TypeDebuggerDrawer;
-pub use utils::{NavigateToType, FilterAll, FilterAliases, FilterStructs, FilterEnums, FilterTraits};
+pub use utils::{
+    FilterAliases, FilterAll, FilterEnums, FilterStructs, FilterTraits, NavigateToType,
+};
 pub use window::TypeDebuggerWindow;
 
 pub fn locale() -> String {

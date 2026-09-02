@@ -88,11 +88,13 @@ impl PieWorldBridge {
         // allocation address never moves, so borrowing the allocation through
         // its pointer cannot dangle while the guard is stored here.
         let keep_alive = Arc::clone(&self.store);
-        let static_lock: &'static RwLock<WorldSceneStore> =
-            unsafe { &*Arc::as_ptr(&keep_alive) };
+        let static_lock: &'static RwLock<WorldSceneStore> = unsafe { &*Arc::as_ptr(&keep_alive) };
         let mut guard = static_lock.write();
         let ptr = &mut *guard as *mut WorldSceneStore as *mut c_void;
-        self.slice = Some(SliceGuard { _keep_alive: keep_alive, guard });
+        self.slice = Some(SliceGuard {
+            _keep_alive: keep_alive,
+            guard,
+        });
         ptr
     }
 
@@ -276,8 +278,7 @@ impl PieHost {
         // exactly one from_raw). The bridge is boxed so its address is stable
         // -- the guest's lock callbacks receive it as userdata.
         let mut world_bridge = Box::new(PieWorldBridge::new(Arc::clone(&shared_world)));
-        let shared_world_ptr =
-            Arc::into_raw(Arc::clone(&shared_world)) as *const c_void;
+        let shared_world_ptr = Arc::into_raw(Arc::clone(&shared_world)) as *const c_void;
         let userdata: *mut c_void = &mut *world_bridge as *mut PieWorldBridge as *mut c_void;
 
         let mut ctx = Box::new(PieContext {
@@ -289,7 +290,10 @@ impl PieHost {
             height: height.max(1),
             project_root_ptr: project_root_s.as_ptr(),
             project_root_len: project_root_s.len(),
-            scene_path_ptr: scene_path_s.as_ref().map(|s| s.as_ptr()).unwrap_or(std::ptr::null()),
+            scene_path_ptr: scene_path_s
+                .as_ref()
+                .map(|s| s.as_ptr())
+                .unwrap_or(std::ptr::null()),
             scene_path_len: scene_path_s.as_ref().map(|s| s.len()).unwrap_or(0),
             userdata,
             log: log_cb,
@@ -311,7 +315,9 @@ impl PieHost {
 
         if ok != INIT_OK {
             // Give the transferred count back so the world can drop normally.
-            drop(Arc::from_raw(shared_world_ptr as *const RwLock<WorldSceneStore>));
+            drop(Arc::from_raw(
+                shared_world_ptr as *const RwLock<WorldSceneStore>,
+            ));
             return Err("Game init returned failure (see log for details)".to_string());
         }
 
@@ -458,7 +464,10 @@ mod tests {
 
         unsafe { pie_unlock_world(userdata) };
         let third = unsafe { pie_lock_world(userdata) };
-        assert!(!third.is_null(), "after unlock a new slice must be grantable");
+        assert!(
+            !third.is_null(),
+            "after unlock a new slice must be grantable"
+        );
         unsafe { pie_unlock_world(userdata) };
 
         // Idempotent unlock: no panic / no wedge.

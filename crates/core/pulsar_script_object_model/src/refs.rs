@@ -175,7 +175,10 @@ mod tests {
         let (mut world, actor) = world_with_actor();
         assert!(actor.validate(&world).is_ok());
         assert!(actor.despawn(&mut world));
-        assert_eq!(actor.validate(&world), Err(ScriptRefError::despawned(actor.entity())));
+        assert_eq!(
+            actor.validate(&world),
+            Err(ScriptRefError::despawned(actor.entity()))
+        );
         assert!(!actor.is_alive(&world));
     }
 
@@ -199,7 +202,10 @@ mod tests {
 
         // Fabricated out-of-range id: ordinary staleness, no assert anywhere.
         let fabricated = ActorRef::new(Entity::from_bits(999_999u64 << 32));
-        assert_eq!(fabricated.validate(&world), Err(ScriptRefError::despawned(fabricated.0)));
+        assert_eq!(
+            fabricated.validate(&world),
+            Err(ScriptRefError::despawned(fabricated.0))
+        );
 
         // DANGLING sentinel: typed error in release; loud debug assert in
         // dev builds (by design).
@@ -221,7 +227,10 @@ mod tests {
         assert_eq!(r.component_index, 2);
         assert_eq!(r.class_name, "LightComponent");
         assert_eq!(r.actor(), actor);
-        assert_eq!(ComponentRef::live(actor, "LightComponent"), actor.component("LightComponent", 0));
+        assert_eq!(
+            ComponentRef::live(actor, "LightComponent"),
+            actor.component("LightComponent", 0)
+        );
     }
 
     /// #640: an unregistered class fails validation up front -- there is no
@@ -230,7 +239,10 @@ mod tests {
     fn unregistered_class_fails_validation() {
         let (world, actor) = world_with_actor();
         let r = actor.component("NeverRegistered", 0);
-        assert_eq!(r.validate(&world), Err(ScriptRefError::UnregisteredClass("NeverRegistered".into())));
+        assert_eq!(
+            r.validate(&world),
+            Err(ScriptRefError::UnregisteredClass("NeverRegistered".into()))
+        );
     }
 
     /// #640: slots are recycled with generation bumps -- a stale handle to a

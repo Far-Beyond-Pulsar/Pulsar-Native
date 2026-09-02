@@ -25,7 +25,6 @@ use crate::level_editor::scene_database::{
     LevelEditorCameraState, LightType, MeshType, ObjectType, SceneObjectData, Transform,
 };
 use crate::level_editor::{request_thumbnail_capture, CameraMode, LevelEditorState, TransformTool};
-use engine_backend::scene::WorldSceneStore;
 use engine_backend::subsystems::render::{EditorCameraState, HelioEditorMailbox};
 use plugin_manager;
 
@@ -250,13 +249,13 @@ impl LevelEditorPanel {
         let physics_query = engine_backend::EngineBackend::global()
             .and_then(|backend| backend.read().get_physics_query_service());
 
-        // Create the shared scene store FIRST so both the renderer and the UI
-        // panels hold the same Arc<RwLock<..>>. All reads/writes go through it.
-        let scene_store = Arc::new(parking_lot::RwLock::new(WorldSceneStore::new()));
+        // Construct editor state first: SceneDatabase owns the SceneDB-backed
+        // store, and the renderer receives only its shared access handle.
+        let state = LevelEditorState::new();
+        let scene_store = state.scene.database.shared_store();
 
         // Create GPU render engine sharing the scene store Arc and physics query service
-        let mut renderer_builder =
-            GpuRendererBuilder::new(1600, 900).scene_db(scene_store.clone());
+        let mut renderer_builder = GpuRendererBuilder::new(1600, 900).scene_db(scene_store.clone());
         if let Some(pq) = physics_query {
             renderer_builder = renderer_builder.physics(pq);
         }
@@ -278,13 +277,9 @@ impl LevelEditorPanel {
             }
         }
 
-        // Build the level editor state with the default scene populated into the shared store.
-        // The renderer and all panels now read/write the same Arc<RwLock<WorldSceneStore>>.
-        let mut state = LevelEditorState::new_with_scene_db(scene_store);
-
         // SceneDatabase and HelioRenderer share the same store `Arc`, so every
-        // add/remove/update SceneDatabase makes is visible to the renderer's
-        // next sync pass without a separate write-through call.
+        // add/remove/update made through SceneDatabase is visible to the
+        // renderer's next sync pass without a separate write-through call.
 
         let shared_state = Arc::new(parking_lot::RwLock::new(state));
 
@@ -339,10 +334,7 @@ impl LevelEditorPanel {
                             s.play.pie.pending_start.is_some(),
                             s.play.pie.last_error.is_some(),
                         ),
-                        (
-                            s.scene.current_scene.clone(),
-                            s.scene.has_unsaved_changes,
-                        ),
+                        (s.scene.current_scene.clone(), s.scene.has_unsaved_changes),
                         (s.scene.selected_object(), s.editor.current_tool),
                     )
                 };
@@ -362,10 +354,8 @@ impl LevelEditorPanel {
                     // UI thread; a missed tick is corrected by the next one.
                     if let Ok(mut engine) = poll_gpu.try_lock() {
                         let (_, tool) = &snapshot.2;
-                        let (scene_type, _) = Self::tool_to_gizmo(*tool);
-                        if scene_type != engine.get_scene_gizmo_type() {
-                            engine.set_scene_gizmo_type(scene_type);
-                        }
+                        let (_, helio_mode) = Self::tool_to_gizmo(*tool);
+                        engine.queue_gizmo_mode(helio_mode);
                         engine.sync_selection_to_helio();
                     }
                 }
@@ -390,7 +380,10 @@ impl LevelEditorPanel {
         // somehow arrived pre-torn-down, which the `if let` call sites below
         // degrade out of harmlessly (same "skip this one tick" shape the old
         // `gpu_engine.lock()` sites already had on any lock failure).
-        let helio_mailbox = gpu_engine.lock().ok().and_then(|engine| engine.editor_mailbox());
+        let helio_mailbox = gpu_engine
+            .lock()
+            .ok()
+            .and_then(|engine| engine.editor_mailbox());
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -558,7 +551,8 @@ impl LevelEditorPanel {
             let shared = self.shared_state.clone();
             let game_panel = cx.new(|cx| GameViewport::new(shared, cx));
             self.game_panel = Some(game_panel.clone());
-            let panel_view: std::sync::Arc<dyn ui::dock::PanelView> = std::sync::Arc::new(game_panel);
+            let panel_view: std::sync::Arc<dyn ui::dock::PanelView> =
+                std::sync::Arc::new(game_panel);
             workspace.update(cx, |ws, cx| {
                 let dock_area = ws.dock_area().clone();
                 dock_area.update(cx, |da, cx| {
@@ -618,20 +612,20 @@ impl LevelEditorPanel {
 
     fn sync_gizmo_to_helio(&mut self) {
         let tool = self.shared_state.read().editor.current_tool;
-        let (scene_type, helio_mode) = Self::tool_to_gizmo(tool);
+        let (_, helio_mode) = Self::tool_to_gizmo(tool);
         // Mailbox, not `gpu_engine.lock()` -- fires on every tool hotkey
         // press, frequent enough that a dropped tick (the old blocking-lock
         // site's failure mode when contended) would be visibly janky. See
         // `HelioEditorMailbox`'s doc.
         if let Some(mailbox) = &self.helio_mailbox {
-            mailbox.queue_gizmo(scene_type, helio_mode);
+            mailbox.queue_gizmo(helio_mode);
         }
     }
 
     fn queue_gizmo_mode_for_tool(&mut self, tool: TransformTool) {
-        let (scene_type, helio_mode) = Self::tool_to_gizmo(tool);
+        let (_, helio_mode) = Self::tool_to_gizmo(tool);
         if let Some(mailbox) = &self.helio_mailbox {
-            mailbox.queue_gizmo(scene_type, helio_mode);
+            mailbox.queue_gizmo(helio_mode);
         }
     }
 
@@ -1328,7 +1322,6 @@ impl Panel for LevelEditorPanel {
             self.viewport.update(cx, |v, _| v.mark_tab_activated());
         }
     }
-
 }
 
 ui_common::panel_boilerplate!(LevelEditorPanel);
@@ -1607,7 +1600,11 @@ pub(crate) fn end_pie(shared_state: Arc<parking_lot::RwLock<LevelEditorState>>) 
 /// Fastpath: if a release library already exists and no `.rs`/`.toml` under the
 /// project is newer than it, skip regeneration + `cargo build` entirely and reuse
 /// the last-built artifact — pressing Play with no source changes is instant.
-fn build_pie_dylib(root: &Path, scene_path: &Path, reload: bool) -> Result<PieStartRequest, String> {
+fn build_pie_dylib(
+    root: &Path,
+    scene_path: &Path,
+    reload: bool,
+) -> Result<PieStartRequest, String> {
     // PiE uses the release library (faster at runtime, and matches the artifact
     // `cargo build --release` / `cargo run --release` produce).
     let release = true;
@@ -1660,7 +1657,8 @@ fn build_pie_dylib(root: &Path, scene_path: &Path, reload: bool) -> Result<PieSt
     }
 
     let crate_name = read_crate_name(root)?;
-    let dylib_path = engine_backend::services::PieHost::output_dylib_path(root, &crate_name, release);
+    let dylib_path =
+        engine_backend::services::PieHost::output_dylib_path(root, &crate_name, release);
     if !dylib_path.exists() {
         return Err(format!(
             "Build succeeded but library not found at {}",

@@ -176,10 +176,7 @@ impl PulsarApp {
                             .child(
                                 Button::new("toggle-type-debugger")
                                     .ghost()
-                                    .icon(
-                                        Icon::new(IconName::Database)
-                                            .size(px(16.)),
-                                    )
+                                    .icon(Icon::new(IconName::Database).size(px(16.)))
                                     .relative()
                                     .px_2()
                                     .py_1()

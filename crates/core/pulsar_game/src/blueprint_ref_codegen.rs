@@ -26,9 +26,8 @@ impl pulsar_reflection::EngineClass for RefProbe {
     }
 
     fn get_properties(&self) -> Vec<pulsar_reflection::PropertyMetadata> {
-        let type_info: &'static pulsar_reflection::RuntimeTypeInfo = RUNTIME_TYPE_REGISTRY
-            .get::<i32>()
-            .expect("i32 registered");
+        let type_info: &'static pulsar_reflection::RuntimeTypeInfo =
+            RUNTIME_TYPE_REGISTRY.get::<i32>().expect("i32 registered");
         vec![pulsar_reflection::PropertyMetadata {
             name: "charges",
             display_name: "Charges".into(),
@@ -40,11 +39,13 @@ impl pulsar_reflection::EngineClass for RefProbe {
             getter: Box::new(|c: &dyn pulsar_reflection::EngineClass| {
                 Box::new(c.as_any().downcast_ref::<RefProbe>().unwrap().charges)
             }),
-            setter: Box::new(|c: &mut dyn pulsar_reflection::EngineClass, v: Box<dyn std::any::Any>| {
-                if let Some(v) = v.downcast_ref::<i32>() {
-                    c.as_any_mut().downcast_mut::<RefProbe>().unwrap().charges = *v;
-                }
-            }),
+            setter: Box::new(
+                |c: &mut dyn pulsar_reflection::EngineClass, v: Box<dyn std::any::Any>| {
+                    if let Some(v) = v.downcast_ref::<i32>() {
+                        c.as_any_mut().downcast_mut::<RefProbe>().unwrap().charges = *v;
+                    }
+                },
+            ),
         }]
     }
 
@@ -74,7 +75,9 @@ impl pulsar_reflection::EngineClass for RefProbe {
 }
 
 fn ref_probe_get(world: &World, entity: Entity) -> Option<&dyn pulsar_reflection::EngineClass> {
-    world.get::<RefProbe>(entity).map(|c| c as &dyn pulsar_reflection::EngineClass)
+    world
+        .get::<RefProbe>(entity)
+        .map(|c| c as &dyn pulsar_reflection::EngineClass)
 }
 
 fn ref_probe_get_mut(
@@ -131,9 +134,12 @@ use pulsar_reflection::RUNTIME_TYPE_REGISTRY;
 /// instance's actor) and the lamp it references by display name.
 fn scene() -> (WorldSceneStore, Entity, Entity) {
     let mut store = WorldSceneStore::new();
-    let trigger =
-        store.spawn(Some("trigger".into()), "Trigger", None).expect("spawn trigger");
-    let lamp = store.spawn(Some("lamp".into()), "Red Lamp", None).expect("spawn lamp");
+    let trigger = store
+        .spawn(Some("trigger".into()), "Trigger", None)
+        .expect("spawn trigger");
+    let lamp = store
+        .spawn(Some("lamp".into()), "Red Lamp", None)
+        .expect("spawn lamp");
     store.world_mut().insert(trigger, RefProbe { charges: 1 });
     store.world_mut().insert(lamp, RefProbe { charges: 2 });
     (store, trigger, lamp)
@@ -154,11 +160,8 @@ fn scene() -> (WorldSceneStore, Entity, Entity) {
 /// Only the surrounding function shell is elided — compiled logic already
 /// runs inside an Actor callback carrying `(_entity, _world)`.
 fn generated_begin_play_twin(_entity: Entity, _world: &mut World) {
-    let actor_bits = crate::script_refs::find_object_by_name(
-        _world,
-        &json!("Red Lamp"),
-        "find_object_by_name",
-    );
+    let actor_bits =
+        crate::script_refs::find_object_by_name(_world, &json!("Red Lamp"), "find_object_by_name");
     let Some(actor) = actor_bits.as_u64().map(pulsar_scenedb::Entity::from_bits) else {
         tracing::error!("find_object_by_name resolved nothing; event degrades");
         return;
@@ -221,7 +224,10 @@ fn sourcegen_twin_writes_the_found_entity_like_the_vm_path() {
 /// `resolve_pin_target`, matching the twin above.
 #[test]
 fn pbgc_emission_matches_the_twin_calls() {
-    use pbgc::{compile_graph, ConnectionType, DataType, GraphDescription, NodeInstance, Pin, PinInstance, PinType, Position};
+    use pbgc::{
+        compile_graph, ConnectionType, DataType, GraphDescription, NodeInstance, Pin, PinInstance,
+        PinType, Position,
+    };
 
     fn begin(id: &str) -> NodeInstance {
         let mut n = NodeInstance::new(id, "begin_play", Position { x: 0.0, y: 0.0 });
@@ -242,32 +248,58 @@ fn pbgc_emission_matches_the_twin_calls() {
     ));
     find.outputs.push(PinInstance::new(
         "find_r",
-        Pin::new("find_r", "actor", DataType::typed("ActorRef"), PinType::Output),
+        Pin::new(
+            "find_r",
+            "actor",
+            DataType::typed("ActorRef"),
+            PinType::Output,
+        ),
     ));
     find.properties.insert("find_n".into(), json!("Red Lamp"));
     g.add_node(find);
 
-    let mut get_ref =
-        NodeInstance::new("gr", "get_component_ref::RefProbe::0", Position { x: 20.0, y: 0.0 });
+    let mut get_ref = NodeInstance::new(
+        "gr",
+        "get_component_ref::RefProbe::0",
+        Position { x: 20.0, y: 0.0 },
+    );
     get_ref.inputs.push(PinInstance::new(
         "actor",
-        Pin::new("actor", "actor", DataType::typed("ActorRef"), PinType::Input),
+        Pin::new(
+            "actor",
+            "actor",
+            DataType::typed("ActorRef"),
+            PinType::Input,
+        ),
     ));
     get_ref.outputs.push(PinInstance::new(
         "gr_r",
-        Pin::new("gr_r", "component", DataType::typed("ComponentRef"), PinType::Output),
+        Pin::new(
+            "gr_r",
+            "component",
+            DataType::typed("ComponentRef"),
+            PinType::Output,
+        ),
     ));
     g.add_node(get_ref);
 
-    let mut set =
-        NodeInstance::new("set", "comp_set_prop::RefProbe::charges", Position { x: 30.0, y: 0.0 });
+    let mut set = NodeInstance::new(
+        "set",
+        "comp_set_prop::RefProbe::charges",
+        Position { x: 30.0, y: 0.0 },
+    );
     set.inputs.push(PinInstance::new(
         "set_e",
         Pin::new("set_e", "exec", DataType::Exec, PinType::Input),
     ));
     set.inputs.push(PinInstance::new(
         "component_ref",
-        Pin::new("component_ref", "component", DataType::typed("ComponentRef"), PinType::Input),
+        Pin::new(
+            "component_ref",
+            "component",
+            DataType::typed("ComponentRef"),
+            PinType::Input,
+        ),
     ));
     set.inputs.push(PinInstance::new(
         "set_v",

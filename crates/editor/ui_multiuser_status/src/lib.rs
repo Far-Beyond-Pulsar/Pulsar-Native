@@ -4,4 +4,4 @@ mod components;
 mod screen;
 mod utils;
 
-pub use screen::{render_status_bar_indicator, AvatarCache, fetch_avatar_image};
+pub use screen::{AvatarCache, fetch_avatar_image, render_status_bar_indicator};

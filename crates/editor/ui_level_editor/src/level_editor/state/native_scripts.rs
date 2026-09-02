@@ -57,7 +57,10 @@ pub fn find_rust_script_binding(component_instances: Option<&Value>) -> Option<(
     arr.iter()
         .find(|inst| {
             inst.get("class_name").and_then(|v| v.as_str()) == Some(SCRIPT_COMPONENT_CLASS)
-                && inst.get("data").and_then(|d| d.get("mode")).and_then(|m| m.as_str())
+                && inst
+                    .get("data")
+                    .and_then(|d| d.get("mode"))
+                    .and_then(|m| m.as_str())
                     == Some("rust")
         })
         .and_then(|inst| {
@@ -73,10 +76,7 @@ pub fn find_rust_script_binding(component_instances: Option<&Value>) -> Option<(
 /// add-object flow (F wires the menu; this owns the DATA so both the menu and
 /// tests agree on one shape).
 #[allow(dead_code)]
-pub fn rust_script_object_data(
-    crate_name: &str,
-    actor_type: &str,
-) -> SceneObjectData {
+pub fn rust_script_object_data(crate_name: &str, actor_type: &str) -> SceneObjectData {
     SceneObjectData {
         id: String::new(),
         name: actor_type.to_string(),
@@ -89,8 +89,7 @@ pub fn rust_script_object_data(
         scene_path: String::new(),
         props: Default::default(),
         component_instances: Some(Value::Array(vec![rust_script_instance(
-            crate_name,
-            actor_type,
+            crate_name, actor_type,
         )])),
     }
 }

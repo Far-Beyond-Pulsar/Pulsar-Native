@@ -48,13 +48,17 @@ pub(crate) fn route(
     // First-enabled index per the store's list; without a store the runtime
     // convention applies: the single typed row IS index 0 (hydration
     // collapses duplicates into one live value).
-    let live_index =
-        store.and_then(|s| s.live_component_index(r.entity, &r.class_name)).unwrap_or(0);
+    let live_index = store
+        .and_then(|s| s.live_component_index(r.entity, &r.class_name))
+        .unwrap_or(0);
     if r.component_index == live_index {
         return if get_world_component_as_engine_class(&r.class_name, world, r.entity).is_some() {
             Ok(Route::Live)
         } else {
-            Err(ScriptRefError::ComponentMissing { entity: r.entity, class_name: r.class_name.clone() })
+            Err(ScriptRefError::ComponentMissing {
+                entity: r.entity,
+                class_name: r.class_name.clone(),
+            })
         };
     }
 
@@ -98,7 +102,11 @@ impl ScratchInstance {
                 message,
             },
         )?;
-        Ok(Self { world, entity, class_name: class_name.to_string() })
+        Ok(Self {
+            world,
+            entity,
+            class_name: class_name.to_string(),
+        })
     }
 
     pub fn instance(&self) -> Result<&dyn pulsar_reflection::EngineClass, ScriptRefError> {
@@ -117,10 +125,13 @@ impl ScratchInstance {
     /// JSON. `Err` (never a silent `Null` overwrite) when the JSON round
     /// trip is unavailable.
     pub fn persist(&self) -> Result<Value, ScriptRefError> {
-        let json = self.instance()?.to_json().map_err(|message| ScriptRefError::Marshalling {
-            context: format!("{} persist", self.class_name),
-            message,
-        })?;
+        let json = self
+            .instance()?
+            .to_json()
+            .map_err(|message| ScriptRefError::Marshalling {
+                context: format!("{} persist", self.class_name),
+                message,
+            })?;
         Ok(json)
     }
 }

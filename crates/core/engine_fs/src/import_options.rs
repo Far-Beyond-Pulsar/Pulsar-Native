@@ -63,7 +63,8 @@ pub fn remove(project_root: &Path, key: &str) -> Result<()> {
     let mut map = read_all(project_root);
     if map.remove(key).is_some() {
         let bytes = serde_json::to_vec_pretty(&map).context("serialize import options")?;
-        virtual_fs::write_file(&store_path(project_root), &bytes).context("write import options")?;
+        virtual_fs::write_file(&store_path(project_root), &bytes)
+            .context("write import options")?;
     }
     Ok(())
 }
@@ -97,7 +98,12 @@ mod tests {
         assert_eq!(get(&dir, key), Some(val));
 
         // A second asset coexists.
-        set(&dir, "models/b.obj", serde_json::json!({ "triangulate": true })).unwrap();
+        set(
+            &dir,
+            "models/b.obj",
+            serde_json::json!({ "triangulate": true }),
+        )
+        .unwrap();
         assert!(get(&dir, "models/b.obj").is_some());
 
         remove(&dir, key).unwrap();

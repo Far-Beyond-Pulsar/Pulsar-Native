@@ -8,7 +8,9 @@ use gpui::*;
 use ui::{
     ActiveTheme as _, Icon, IconName, StyledExt,
     button::{Button, ButtonVariants as _},
-    h_flex, scroll::ScrollbarAxis, v_flex,
+    h_flex,
+    scroll::ScrollbarAxis,
+    v_flex,
 };
 
 pub fn render_commit_detail(

@@ -3,10 +3,7 @@ use std::sync::Arc;
 use gpui::*;
 use ui::ActiveTheme;
 
-pub fn render_logo_section(
-    logo: &Option<Arc<RenderImage>>,
-    theme: &ui::Theme,
-) -> impl IntoElement {
+pub fn render_logo_section(logo: &Option<Arc<RenderImage>>, theme: &ui::Theme) -> impl IntoElement {
     div()
         .w(px(120.0))
         .h(px(120.0))

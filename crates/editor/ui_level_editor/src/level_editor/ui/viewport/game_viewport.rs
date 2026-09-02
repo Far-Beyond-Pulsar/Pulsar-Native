@@ -18,7 +18,7 @@ use engine_backend::services::{PieBlit, PieHost};
 use gpui::*;
 use pulsar_pie_abi::{input_kind, InputEvent};
 use rust_i18n::t;
-use ui::{ActiveTheme as _, ContextModal as _, notification::Notification};
+use ui::{notification::Notification, ActiveTheme as _, ContextModal as _};
 
 use crate::level_editor::state::LevelEditorState;
 
@@ -149,7 +149,12 @@ impl GameViewport {
         cx.stop_propagation();
     }
 
-    fn on_scroll(&mut self, event: &ScrollWheelEvent, _window: &mut Window, cx: &mut Context<Self>) {
+    fn on_scroll(
+        &mut self,
+        event: &ScrollWheelEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if !self.captured {
             return;
         }
@@ -287,7 +292,6 @@ impl ui::dock::Panel for GameViewport {
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
         "Game".into_any_element()
     }
-
 }
 
 impl Render for GameViewport {

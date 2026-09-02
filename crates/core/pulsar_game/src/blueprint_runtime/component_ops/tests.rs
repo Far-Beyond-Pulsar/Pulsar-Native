@@ -63,15 +63,25 @@ impl EngineClass for VmProbe {
             name: "add_charges",
             display_name: "Add Charges".into(),
             category: None,
-            params: vec![MethodParameter { name: "amount", type_info: i32_info }],
-            return_type: Some(MethodReturnType { type_info: i32_info }),
-            method_type: MethodType::Fn,
-            caller: Box::new(|c: &mut dyn EngineClass, args: Vec<Box<dyn std::any::Any>>| {
-                let amount = args.first().and_then(|a| a.downcast_ref::<i32>()).copied()?;
-                let probe = c.as_any_mut().downcast_mut::<VmProbe>()?;
-                probe.charges += amount;
-                Some(Box::new(probe.charges))
+            params: vec![MethodParameter {
+                name: "amount",
+                type_info: i32_info,
+            }],
+            return_type: Some(MethodReturnType {
+                type_info: i32_info,
             }),
+            method_type: MethodType::Fn,
+            caller: Box::new(
+                |c: &mut dyn EngineClass, args: Vec<Box<dyn std::any::Any>>| {
+                    let amount = args
+                        .first()
+                        .and_then(|a| a.downcast_ref::<i32>())
+                        .copied()?;
+                    let probe = c.as_any_mut().downcast_mut::<VmProbe>()?;
+                    probe.charges += amount;
+                    Some(Box::new(probe.charges))
+                },
+            ),
         }]
     }
 
@@ -101,7 +111,9 @@ fn vm_probe_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
 }
 
 fn vm_probe_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
-    world.get_mut::<VmProbe>(entity).map(|c| c.into_inner() as &mut dyn EngineClass)
+    world
+        .get_mut::<VmProbe>(entity)
+        .map(|c| c.into_inner() as &mut dyn EngineClass)
 }
 
 fn vm_probe_hydrate(world: &mut World, entity: Entity, data: &JsonValue) -> Result<(), String> {
@@ -157,7 +169,10 @@ fn build_program(ops: Vec<pbgc::Instruction>) -> BpProgram {
 
 fn bind_handlers(program: &mut BpProgram) {
     for instr in &mut program.instructions {
-        if let Instruction::Call { node_type, fn_ptr, .. } = instr {
+        if let Instruction::Call {
+            node_type, fn_ptr, ..
+        } = instr
+        {
             *fn_ptr = match parse_node_kind(node_type) {
                 Some(CompOpKind::GetProp) => component_op_handlers().get,
                 Some(CompOpKind::SetProp) => component_op_handlers().set,
@@ -179,7 +194,9 @@ fn parse_node_kind(node_type: &str) -> Option<CompOpKind> {
 fn stage(program: &mut BpProgram, bytes: Vec<u8>) -> usize {
     let offset = program.arena_size;
     program.arena_size += bytes.len() + 8;
-    program.instructions.insert(0, Instruction::InitBytes { offset, bytes });
+    program
+        .instructions
+        .insert(0, Instruction::InitBytes { offset, bytes });
     offset
 }
 
@@ -226,7 +243,11 @@ fn vm_set_writes_live_world_property() {
     let mut prog = build_program(vec![]);
     let name = stage(
         &mut prog,
-        encode_targeted_name_blob("VmProbe", "charges", pbgc::bytecode::comp_ops::RefTarget::SelfActor),
+        encode_targeted_name_blob(
+            "VmProbe",
+            "charges",
+            pbgc::bytecode::comp_ops::RefTarget::SelfActor,
+        ),
     );
     let value = stage(&mut prog, encode_json_blob("7"));
     prog.instructions.push(Instruction::Call {
@@ -253,7 +274,11 @@ fn vm_get_reads_live_world_property_into_output_blob() {
     let mut prog = build_program(vec![]);
     let name = stage(
         &mut prog,
-        encode_targeted_name_blob("VmProbe", "charges", pbgc::bytecode::comp_ops::RefTarget::SelfActor),
+        encode_targeted_name_blob(
+            "VmProbe",
+            "charges",
+            pbgc::bytecode::comp_ops::RefTarget::SelfActor,
+        ),
     );
     let output_offset = reserve_output(&mut prog);
     prog.instructions.push(Instruction::Call {
@@ -279,7 +304,12 @@ fn vm_call_dispatches_through_reflection() {
     let mut prog = build_program(vec![]);
     let name = stage(
         &mut prog,
-        encode_targeted_call_name_blob("VmProbe", "add_charges", 1, pbgc::bytecode::comp_ops::RefTarget::SelfActor),
+        encode_targeted_call_name_blob(
+            "VmProbe",
+            "add_charges",
+            1,
+            pbgc::bytecode::comp_ops::RefTarget::SelfActor,
+        ),
     );
     let arg = stage(&mut prog, encode_json_blob("2"));
     let output_offset = reserve_output(&mut prog);
@@ -307,7 +337,11 @@ fn unbound_instance_ops_refuse_without_panicking() {
     let mut prog = build_program(vec![]);
     let name = stage(
         &mut prog,
-        encode_targeted_name_blob("VmProbe", "charges", pbgc::bytecode::comp_ops::RefTarget::SelfActor),
+        encode_targeted_name_blob(
+            "VmProbe",
+            "charges",
+            pbgc::bytecode::comp_ops::RefTarget::SelfActor,
+        ),
     );
     let value = stage(&mut prog, encode_json_blob("999"));
     prog.instructions.push(Instruction::Call {
@@ -463,9 +497,7 @@ fn pin_targets_fail_typed_without_misaddressing() {
     let mut stale_prog = build_program(vec![]);
     let stale_ref = stage(
         &mut stale_prog,
-        encode_json_blob(
-            "{\"entity\":999999,\"class_name\":\"VmProbe\",\"component_index\":0}",
-        ),
+        encode_json_blob("{\"entity\":999999,\"class_name\":\"VmProbe\",\"component_index\":0}"),
     );
     let set_name = stage(
         &mut stale_prog,
@@ -493,9 +525,7 @@ fn pin_targets_fail_typed_without_misaddressing() {
     let mut mismatch_prog = build_program(vec![]);
     let door_ref = stage(
         &mut mismatch_prog,
-        encode_json_blob(
-            "{\"entity\":1,\"class_name\":\"Door\",\"component_index\":0}",
-        ),
+        encode_json_blob("{\"entity\":1,\"class_name\":\"Door\",\"component_index\":0}"),
     );
     let m_set_name = stage(
         &mut mismatch_prog,

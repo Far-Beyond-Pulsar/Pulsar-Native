@@ -4,7 +4,7 @@
 //! Virtualized via `v_virtual_list` with a scrollbar overlay.
 
 use crate::{
-    DiffLineKind, DiffResult, DiffSegment, GitManager, DIFF_COLLAPSE_ROW_H, DIFF_LINE_ROW_H,
+    DIFF_COLLAPSE_ROW_H, DIFF_LINE_ROW_H, DiffLineKind, DiffResult, DiffSegment, GitManager,
 };
 use gpui::*;
 use std::collections::HashSet;
@@ -66,9 +66,7 @@ pub(crate) fn compute_aligned_rows(
                         }
                         DiffLineKind::Removed => {
                             // Pair with following Added if present → single Replace row
-                            if i + 1 < lines.len()
-                                && lines[i + 1].kind == DiffLineKind::Added
-                            {
+                            if i + 1 < lines.len() && lines[i + 1].kind == DiffLineKind::Added {
                                 rows.push(AlignedRow::Line {
                                     left_line: lines[i].content.clone(),
                                     left_num: lines[i].old_line_num,
@@ -232,11 +230,7 @@ pub(crate) fn render_aligned_row(
                                 .pr_2()
                                 .text_xs()
                                 .text_color(line_num_color)
-                                .child(
-                                    left_num
-                                        .map(|n| n.to_string())
-                                        .unwrap_or_default(),
-                                ),
+                                .child(left_num.map(|n| n.to_string()).unwrap_or_default()),
                         )
                         .child(
                             div()
@@ -268,11 +262,7 @@ pub(crate) fn render_aligned_row(
                                 .pr_2()
                                 .text_xs()
                                 .text_color(line_num_color)
-                                .child(
-                                    right_num
-                                        .map(|n| n.to_string())
-                                        .unwrap_or_default(),
-                                ),
+                                .child(right_num.map(|n| n.to_string()).unwrap_or_default()),
                         )
                         .child(
                             div()
@@ -449,10 +439,7 @@ pub fn render_side_by_side_diff(
                     div()
                         .absolute()
                         .inset_0()
-                        .child(Scrollbar::vertical(
-                            &scrollbar_state,
-                            &scroll_handle,
-                        )),
+                        .child(Scrollbar::vertical(&scrollbar_state, &scroll_handle)),
                 ),
         )
         .into_any_element()

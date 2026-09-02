@@ -180,10 +180,7 @@ where
                     h_flex()
                         .gap_1p5()
                         .items_center()
-                        .child(
-                            Icon::new(IconName::Activity)
-                                .size_3(),
-                        )
+                        .child(Icon::new(IconName::Activity).size_3())
                         .child(
                             div()
                                 .text_xs()

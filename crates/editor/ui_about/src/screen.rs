@@ -84,17 +84,17 @@ impl Render for AboutWindow {
                                             .label("View on GitHub")
                                             .icon(IconName::ExternalLink)
                                             .primary()
-                                            .on_click(cx.listener(handlers::on_open_github))
+                                            .on_click(cx.listener(handlers::on_open_github)),
                                     )
                                     .child(
                                         Button::new("docs-button")
                                             .label("Documentation")
                                             .icon(IconName::BookOpen)
                                             .ghost()
-                                            .on_click(cx.listener(handlers::on_open_docs))
-                                    )
-                            )
-                    )
+                                            .on_click(cx.listener(handlers::on_open_docs)),
+                                    ),
+                            ),
+                    ),
             )
     }
 }

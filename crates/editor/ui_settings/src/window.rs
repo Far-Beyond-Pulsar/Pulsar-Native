@@ -78,10 +78,12 @@ impl SettingsWindow {
     }
 
     fn title(&self, cx: &App) -> String {
-        let project = self
-            .settings_screen
-            .as_ref()
-            .and_then(|screen| screen.read(cx).project_path().map(std::path::Path::to_path_buf));
+        let project = self.settings_screen.as_ref().and_then(|screen| {
+            screen
+                .read(cx)
+                .project_path()
+                .map(std::path::Path::to_path_buf)
+        });
         match project.and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())) {
             Some(name) => format!("Project Settings \u{b7} {}", name),
             None => "Settings".to_string(),
@@ -124,7 +126,11 @@ impl window_manager::PulsarWindow for SettingsWindow {
         window_manager::default_window_options(1200.0, 700.0) // Wider for sidebar layout
     }
 
-    fn build(params: SettingsParams, window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+    fn build(
+        params: SettingsParams,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> gpui::Entity<Self> {
         cx.new(|cx| SettingsWindow::new(params, window, cx))
     }
 }

@@ -56,7 +56,9 @@ fn readback(ctx: &EngineGpuContext, buf: &wgpu::Buffer, src_offset: u64, bytes: 
     ctx.queue().submit([enc.finish()]);
     let slice = staging.slice(..);
     slice.map_async(wgpu::MapMode::Read, |r| r.expect("map"));
-    ctx.device().poll(wgpu::PollType::wait_indefinitely()).expect("poll");
+    ctx.device()
+        .poll(wgpu::PollType::wait_indefinitely())
+        .expect("poll");
     let data = slice.get_mapped_range().expect("mapped range").to_vec();
     staging.unmap();
     data
@@ -67,7 +69,10 @@ fn scene_cfg() -> SceneGpuConfig {
     // needs to be valid enough for `SceneGpuStore::new` to build its own
     // built-ins. Mirrors `pulsar_scenedb`'s own `world_gpu_mirror.rs` test.
     SceneGpuConfig {
-        classes: vec![RegionClassConfig { capacity: 64, max_resident_cells: 1 }],
+        classes: vec![RegionClassConfig {
+            capacity: 64,
+            max_resident_cells: 1,
+        }],
         tombstone_headroom: 8,
         max_cells_metadata: 16,
     }
@@ -97,7 +102,10 @@ fn engine_class_scene_store_field_lands_in_its_gpu_buffer_at_entity_index() {
     let store = Arc::new(store);
 
     let mut world = World::new();
-    world.attach_gpu_mirror(GpuMirrorHandle::new(Arc::clone(&store), Arc::clone(ctx.queue())));
+    world.attach_gpu_mirror(GpuMirrorHandle::new(
+        Arc::clone(&store),
+        Arc::clone(ctx.queue()),
+    ));
 
     // Non-trivial row, same reasoning as the SceneDB-side test this mirrors:
     // row 0 succeeding wouldn't prove `entity.index()` actually drives the
@@ -109,22 +117,46 @@ fn engine_class_scene_store_field_lands_in_its_gpu_buffer_at_entity_index() {
     let row = entity.index();
     assert_eq!(row, 5, "sanity: depends on a non-zero row");
 
-    world.insert(entity, ThrowawayComponent { label: 7.0, mesh: 0xBEEF });
+    world.insert(
+        entity,
+        ThrowawayComponent {
+            label: 7.0,
+            mesh: 0xBEEF,
+        },
+    );
 
     let columns = ThrowawayComponent::gpu_columns();
-    assert_eq!(columns.len(), 1, "ThrowawayComponent has exactly one #[gpu] field");
+    assert_eq!(
+        columns.len(),
+        1,
+        "ThrowawayComponent has exactly one #[gpu] field"
+    );
     let mesh_field_id = columns[0].field_token.id();
-    let mesh_buf = store.buffer_for_id(mesh_field_id).expect("mesh buffer registered");
+    let mesh_buf = store
+        .buffer_for_id(mesh_field_id)
+        .expect("mesh buffer registered");
 
     let bytes = readback(&ctx, &mesh_buf, (row as u64) * 4, 4);
     let got = u32::from_ne_bytes(bytes.try_into().unwrap());
-    assert_eq!(got, 0xBEEF, "engine_class's #[gpu] field must be readable at row = entity.index()");
+    assert_eq!(
+        got, 0xBEEF,
+        "engine_class's #[gpu] field must be readable at row = entity.index()"
+    );
 
     // In-place update (re-insert) must re-mirror too, not just first insert.
-    world.insert(entity, ThrowawayComponent { label: 7.0, mesh: 0x1234 });
+    world.insert(
+        entity,
+        ThrowawayComponent {
+            label: 7.0,
+            mesh: 0x1234,
+        },
+    );
     let bytes = readback(&ctx, &mesh_buf, (row as u64) * 4, 4);
     let got = u32::from_ne_bytes(bytes.try_into().unwrap());
-    assert_eq!(got, 0x1234, "re-insert (update) must re-mirror the new value");
+    assert_eq!(
+        got, 0x1234,
+        "re-insert (update) must re-mirror the new value"
+    );
 
     // And the plain CPU-only field is readable back through World normally,
     // proving engine_class's own storage (not just its GPU column) is intact.
@@ -135,7 +167,10 @@ fn engine_class_scene_store_field_lands_in_its_gpu_buffer_at_entity_index() {
 fn engine_class_scene_store_struct_is_still_reflection_visible() {
     // The whole point: SceneDB storage and the reflection/properties-panel
     // system read the SAME struct, not two parallel representations.
-    let value = ThrowawayComponent { label: 42.0, mesh: 0 };
+    let value = ThrowawayComponent {
+        label: 42.0,
+        mesh: 0,
+    };
     let props = value.get_properties();
     assert!(
         props.iter().any(|p| p.name == "label"),
@@ -150,7 +185,13 @@ fn without_an_attached_mirror_insert_never_touches_the_gpu() {
     // feature existed: no panic, no silent GPU write.
     let mut world = World::new();
     let entity = world.spawn();
-    world.insert(entity, ThrowawayComponent { label: 1.0, mesh: 99 });
+    world.insert(
+        entity,
+        ThrowawayComponent {
+            label: 1.0,
+            mesh: 99,
+        },
+    );
     assert_eq!(world.get::<ThrowawayComponent>(entity).unwrap().mesh, 99);
     assert!(!world.has_gpu_mirror());
 }

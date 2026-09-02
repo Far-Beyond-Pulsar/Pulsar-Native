@@ -102,7 +102,8 @@ impl ProviderCrate for AwsBedrockProviderCrate {
             config_fields: vec![ConfigField {
                 key: "info",
                 label: "AWS Configuration",
-                description: "AWS Bedrock uses standard AWS credential chain (env vars, ~/.aws, IAM roles)",
+                description:
+                    "AWS Bedrock uses standard AWS credential chain (env vars, ~/.aws, IAM roles)",
                 sensitive: false,
                 required: false,
                 placeholder: None,

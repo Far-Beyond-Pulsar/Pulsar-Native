@@ -34,7 +34,10 @@ pub fn handle_item_click(
         // order. Without Ctrl held this replaces the selection; with Ctrl it
         // adds the range. The anchor itself is left unchanged.
         let items = d.get_filtered_items();
-        let anchor = d.selection_anchor.clone().unwrap_or_else(|| item.path.clone());
+        let anchor = d
+            .selection_anchor
+            .clone()
+            .unwrap_or_else(|| item.path.clone());
         let anchor_idx = items.iter().position(|i| i.path == anchor);
         let click_idx = items.iter().position(|i| i.path == item.path);
 
@@ -526,10 +529,7 @@ pub fn handle_set_color_override(
     }
 }
 
-pub fn handle_toggle_deleted_files(
-    d: &mut FileManagerDrawer,
-    cx: &mut Context<FileManagerDrawer>,
-) {
+pub fn handle_toggle_deleted_files(d: &mut FileManagerDrawer, cx: &mut Context<FileManagerDrawer>) {
     d.show_deleted_files = !d.show_deleted_files;
     if d.show_deleted_files {
         if let Some(ref proj) = d.project_path {

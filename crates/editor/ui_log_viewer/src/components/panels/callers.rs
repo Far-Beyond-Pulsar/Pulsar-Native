@@ -215,8 +215,8 @@ impl Render for CallerSitesPanel {
         let filter_text = self.filter_input.read(cx).value().to_string();
 
         // True process-wide live bytes (all tracked allocs, regardless of CALLER_MAP cap or filter).
-        let global_live =
-            crate::utils::caller_tracking::GLOBAL_LIVE_BYTES.load(std::sync::atomic::Ordering::Relaxed);
+        let global_live = crate::utils::caller_tracking::GLOBAL_LIVE_BYTES
+            .load(std::sync::atomic::Ordering::Relaxed);
 
         // Refresh rows from snapshot and re-apply sort.
         {

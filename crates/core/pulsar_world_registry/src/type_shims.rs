@@ -17,19 +17,20 @@
 //! demand them.
 
 use pulsar_reflection::{
-    JsonDeserializer, JsonSerializer, Reflectable, ReflectResult, RuntimeTypeRegistration,
+    JsonDeserializer, JsonSerializer, ReflectResult, Reflectable, RuntimeTypeRegistration,
 };
 use serde_json::Value;
 use std::any::Any;
 
 /// Serialize any `T: Reflectable` through its own trait impl.
 fn serialize_via_trait<T: Reflectable + 'static>(value: &dyn Any) -> ReflectResult<Value> {
-    let typed = value.downcast_ref::<T>().ok_or_else(|| {
-        pulsar_reflection::ReflectError::TypeMismatch {
-            expected: std::any::type_name::<T>(),
-            found: format!("{:?}", value.type_id()),
-        }
-    })?;
+    let typed =
+        value
+            .downcast_ref::<T>()
+            .ok_or_else(|| pulsar_reflection::ReflectError::TypeMismatch {
+                expected: std::any::type_name::<T>(),
+                found: format!("{:?}", value.type_id()),
+            })?;
     let mut serializer = JsonSerializer::new();
     typed.serialize(&mut serializer)?;
     Ok(serializer.into_json())
@@ -73,7 +74,7 @@ register_wrapper_shim!(ser_opt_string, de_opt_string, Option<String>);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pulsar_reflection::{RUNTIME_TYPE_REGISTRY, Reflectable};
+    use pulsar_reflection::{Reflectable, RUNTIME_TYPE_REGISTRY};
 
     /// The shimmed instantiations are real registry entries now: lookup by
     /// TypeId succeeds and the JSON round trip preserves values (#644's
@@ -87,13 +88,19 @@ mod tests {
         );
 
         let value = vec![1.0f32, -2.5, 4.25];
-        let json = RUNTIME_TYPE_REGISTRY.serialize_json_for_any(&value).unwrap();
+        let json = RUNTIME_TYPE_REGISTRY
+            .serialize_json_for_any(&value)
+            .unwrap();
         assert_eq!(json, serde_json::json!([1.0, -2.5, 4.25]));
-        let back = RUNTIME_TYPE_REGISTRY.deserialize_json_for_type(vec_info, json).unwrap();
+        let back = RUNTIME_TYPE_REGISTRY
+            .deserialize_json_for_type(vec_info, json)
+            .unwrap();
         assert_eq!(back.downcast_ref::<Vec<f32>>(), Some(&value));
 
         let strings = vec!["a".to_string(), "b".to_string()];
-        let json = RUNTIME_TYPE_REGISTRY.serialize_json_for_any(&strings).unwrap();
+        let json = RUNTIME_TYPE_REGISTRY
+            .serialize_json_for_any(&strings)
+            .unwrap();
         assert_eq!(json, serde_json::json!(["a", "b"]));
         let back = RUNTIME_TYPE_REGISTRY
             .deserialize_json_for_type(<Vec<String> as Reflectable>::type_info(), json)
@@ -101,7 +108,9 @@ mod tests {
         assert_eq!(back.downcast_ref::<Vec<String>>(), Some(&strings));
 
         let maybe = Some(7i32);
-        let json = RUNTIME_TYPE_REGISTRY.serialize_json_for_any(&maybe).unwrap();
+        let json = RUNTIME_TYPE_REGISTRY
+            .serialize_json_for_any(&maybe)
+            .unwrap();
         let back = RUNTIME_TYPE_REGISTRY
             .deserialize_json_for_type(<Option<i32> as Reflectable>::type_info(), json)
             .unwrap();

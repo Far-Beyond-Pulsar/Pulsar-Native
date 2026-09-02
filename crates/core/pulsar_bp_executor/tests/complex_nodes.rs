@@ -108,12 +108,7 @@ fn pure_bool_out(
         let pid = format!("{id}_{name}");
         n.inputs.push(PinInstance::new(
             &pid,
-            Pin::new(
-                &pid,
-                name.to_string(),
-                DataType::typed(ty),
-                PinType::Input,
-            ),
+            Pin::new(&pid, name.to_string(), DataType::typed(ty), PinType::Input),
         ));
         if let Some(&v) = consts.get(i) {
             n.properties.insert(pid, serde_json::json!(v));
@@ -135,12 +130,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_eq_int", Position::default());
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_a"),
@@ -162,12 +152,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_o"),
-        Pin::new(
-            &format!("{id}_o"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_o"), "exec", DataType::Exec, PinType::Output),
     ));
     n.properties
         .insert(format!("{id}_x"), serde_json::json!(expected as f64));
@@ -178,12 +163,7 @@ fn assert_eq_float(id: &str, expected: f64, eps: f64) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_eq_float", Position::default());
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_a"),
@@ -214,12 +194,7 @@ fn assert_eq_float(id: &str, expected: f64, eps: f64) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_o"),
-        Pin::new(
-            &format!("{id}_o"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_o"), "exec", DataType::Exec, PinType::Output),
     ));
     n.properties
         .insert(format!("{id}_x"), serde_json::json!(expected));
@@ -232,12 +207,7 @@ fn assert_eq_f32(id: &str, expected: f32, eps: f32) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_eq_f32", Position::default());
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_a"),
@@ -268,12 +238,7 @@ fn assert_eq_f32(id: &str, expected: f32, eps: f32) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_o"),
-        Pin::new(
-            &format!("{id}_o"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_o"), "exec", DataType::Exec, PinType::Output),
     ));
     n.properties
         .insert(format!("{id}_x"), serde_json::json!(expected as f64));
@@ -286,12 +251,7 @@ fn assert_true(id: &str) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_true", Position::default());
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_c"),
@@ -304,12 +264,7 @@ fn assert_true(id: &str) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_o"),
-        Pin::new(
-            &format!("{id}_o"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_o"), "exec", DataType::Exec, PinType::Output),
     ));
     n
 }
@@ -318,12 +273,7 @@ fn assert_false(id: &str) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_false", Position::default());
     n.inputs.push(PinInstance::new(
         &format!("{id}_e"),
-        Pin::new(
-            &format!("{id}_e"),
-            "exec",
-            DataType::Exec,
-            PinType::Input,
-        ),
+        Pin::new(&format!("{id}_e"), "exec", DataType::Exec, PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         &format!("{id}_c"),
@@ -336,12 +286,7 @@ fn assert_false(id: &str) -> NodeInstance {
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_o"),
-        Pin::new(
-            &format!("{id}_o"),
-            "exec",
-            DataType::Exec,
-            PinType::Output,
-        ),
+        Pin::new(&format!("{id}_o"), "exec", DataType::Exec, PinType::Output),
     ));
     n
 }
@@ -701,12 +646,7 @@ fn test_smoothstep_midpoint() {
     }
     n.outputs.push(PinInstance::new(
         "n_r",
-        Pin::new(
-            "n_r",
-            "result",
-            DataType::typed("f32"),
-            PinType::Output,
-        ),
+        Pin::new("n_r", "result", DataType::typed("f32"), PinType::Output),
     ));
     n.properties
         .insert("n_edge0".to_string(), serde_json::json!(0.0));
@@ -743,12 +683,7 @@ fn test_clamp_to_range_below_min() {
     }
     n.outputs.push(PinInstance::new(
         "n_r",
-        Pin::new(
-            "n_r",
-            "result",
-            DataType::typed("f32"),
-            PinType::Output,
-        ),
+        Pin::new("n_r", "result", DataType::typed("f32"), PinType::Output),
     ));
     n.properties
         .insert("n_value".to_string(), serde_json::json!(-5.0));
@@ -1085,30 +1020,15 @@ fn test_select_number_true() {
     ));
     n.inputs.push(PinInstance::new(
         "n_a",
-        Pin::new(
-            "n_a",
-            "a",
-            DataType::typed("f64"),
-            PinType::Input,
-        ),
+        Pin::new("n_a", "a", DataType::typed("f64"), PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         "n_b",
-        Pin::new(
-            "n_b",
-            "b",
-            DataType::typed("f64"),
-            PinType::Input,
-        ),
+        Pin::new("n_b", "b", DataType::typed("f64"), PinType::Input),
     ));
     n.outputs.push(PinInstance::new(
         "n_r",
-        Pin::new(
-            "n_r",
-            "result",
-            DataType::typed("f64"),
-            PinType::Output,
-        ),
+        Pin::new("n_r", "result", DataType::typed("f64"), PinType::Output),
     ));
     n.properties
         .insert("n_cond".to_string(), serde_json::json!(1.0));
@@ -1141,30 +1061,15 @@ fn test_select_number_false() {
     ));
     n.inputs.push(PinInstance::new(
         "n_a",
-        Pin::new(
-            "n_a",
-            "a",
-            DataType::typed("f64"),
-            PinType::Input,
-        ),
+        Pin::new("n_a", "a", DataType::typed("f64"), PinType::Input),
     ));
     n.inputs.push(PinInstance::new(
         "n_b",
-        Pin::new(
-            "n_b",
-            "b",
-            DataType::typed("f64"),
-            PinType::Input,
-        ),
+        Pin::new("n_b", "b", DataType::typed("f64"), PinType::Input),
     ));
     n.outputs.push(PinInstance::new(
         "n_r",
-        Pin::new(
-            "n_r",
-            "result",
-            DataType::typed("f64"),
-            PinType::Output,
-        ),
+        Pin::new("n_r", "result", DataType::typed("f64"), PinType::Output),
     ));
     n.properties
         .insert("n_cond".to_string(), serde_json::json!(0.0));
@@ -1432,12 +1337,7 @@ fn color_node(id: &str, node_type: &str, r: f32, g: f32, b: f32, a: f32) -> Node
         let pid = format!("{id}_{name}");
         n.inputs.push(PinInstance::new(
             &pid,
-            Pin::new(
-                &pid,
-                name,
-                DataType::typed("f32"),
-                PinType::Input,
-            ),
+            Pin::new(&pid, name, DataType::typed("f32"), PinType::Input),
         ));
         n.properties.insert(pid, serde_json::json!(val as f64));
     }
@@ -1470,12 +1370,7 @@ fn color_lerp_node(id: &str, t: f32) -> NodeInstance {
     let tp = format!("{id}_t");
     n.inputs.push(PinInstance::new(
         &tp,
-        Pin::new(
-            &tp,
-            "t",
-            DataType::typed("f32"),
-            PinType::Input,
-        ),
+        Pin::new(&tp, "t", DataType::typed("f32"), PinType::Input),
     ));
     n.properties.insert(tp, serde_json::json!(t as f64));
     n.outputs.push(PinInstance::new(
@@ -1507,12 +1402,7 @@ fn color_eq_node(id: &str, eps: f32) -> NodeInstance {
     let ep = format!("{id}_epsilon");
     n.inputs.push(PinInstance::new(
         &ep,
-        Pin::new(
-            &ep,
-            "epsilon",
-            DataType::typed("f32"),
-            PinType::Input,
-        ),
+        Pin::new(&ep, "epsilon", DataType::typed("f32"), PinType::Input),
     ));
     n.properties.insert(ep, serde_json::json!(eps as f64));
     n.outputs.push(PinInstance::new(
@@ -1644,12 +1534,7 @@ fn pure_one_input(
     let pid = format!("{id}_{param}");
     n.inputs.push(PinInstance::new(
         &pid,
-        Pin::new(
-            &pid,
-            param,
-            DataType::typed(in_ty),
-            PinType::Input,
-        ),
+        Pin::new(&pid, param, DataType::typed(in_ty), PinType::Input),
     ));
     n.outputs.push(PinInstance::new(
         &format!("{id}_r"),

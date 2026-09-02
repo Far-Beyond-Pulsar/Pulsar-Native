@@ -77,7 +77,9 @@ pub struct LightFrameMaintainer {
 
 impl LightFrameMaintainer {
     pub fn new() -> Self {
-        Self { tracked: HashMap::new() }
+        Self {
+            tracked: HashMap::new(),
+        }
     }
 
     /// Drop all tracking. The next [`Self::maintain`] re-arms every light
@@ -113,8 +115,12 @@ impl LightFrameMaintainer {
         for (entity, _mirror) in world.query::<&LightComponentGpuMirror>() {
             live.push(entity);
         }
-        let gone: Vec<Entity> =
-            self.tracked.keys().copied().filter(|e| !live.contains(e)).collect();
+        let gone: Vec<Entity> = self
+            .tracked
+            .keys()
+            .copied()
+            .filter(|e| !live.contains(e))
+            .collect();
         for entity in gone {
             let subs = self.tracked.remove(&entity).expect("key came from tracked");
             world.unsubscribe(subs.mirror);
@@ -148,12 +154,20 @@ impl LightFrameMaintainer {
             // row exists is deliberate: when the row appears later, its
             // `Inserted` event fires and the next pass resolves the light,
             // instead of it silently never rendering.
-            let Some(mirror_sub) = world.subscribe_id(entity, mirror_cid) else { continue };
+            let Some(mirror_sub) = world.subscribe_id(entity, mirror_cid) else {
+                continue;
+            };
             let Some(transform_sub) = world.subscribe_id(entity, transform_cid) else {
                 world.unsubscribe(mirror_sub);
                 continue;
             };
-            self.tracked.insert(entity, LightSubscriptions { mirror: mirror_sub, transform: transform_sub });
+            self.tracked.insert(
+                entity,
+                LightSubscriptions {
+                    mirror: mirror_sub,
+                    transform: transform_sub,
+                },
+            );
             self.resolve(world, entity);
         }
     }
@@ -217,11 +231,19 @@ mod tests {
     /// component, then mirror it (enabled lights only).
     fn spawn_enabled_light(world: &mut World, position: [f32; 3]) -> Entity {
         let entity = world.spawn();
-        world.insert(entity, Transform { position, ..Transform::default() });
+        world.insert(
+            entity,
+            Transform {
+                position,
+                ..Transform::default()
+            },
+        );
         let mut light = LightComponent::default();
         light.general.enabled = true;
         world.insert(entity, light);
-        let mirror = world.get::<LightComponent>(entity).map(GpuMirrored::to_gpu_mirror);
+        let mirror = world
+            .get::<LightComponent>(entity)
+            .map(GpuMirrored::to_gpu_mirror);
         world.insert(entity, mirror.expect("just inserted"));
         entity
     }
@@ -256,7 +278,9 @@ mod tests {
         // No other change of any kind between the two passes.
         maintainer.maintain(&mut world);
 
-        let frame = world.get::<ResolvedLightFrame>(light).expect("still resolved");
+        let frame = world
+            .get::<ResolvedLightFrame>(light)
+            .expect("still resolved");
         assert_eq!(frame.light.position_range[0..3], [4.0, 5.0, 6.0]);
     }
 
@@ -269,7 +293,11 @@ mod tests {
 
         // The properties panel's live-edit path: mutate the component, then
         // let its registered refresh hook rebuild the mirror row.
-        world.get_mut::<LightComponent>(light).unwrap().attenuation.range = 25.0;
+        world
+            .get_mut::<LightComponent>(light)
+            .unwrap()
+            .attenuation
+            .range = 25.0;
         pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
             "LightComponent",
             &mut world,
@@ -277,8 +305,13 @@ mod tests {
         );
         maintainer.maintain(&mut world);
 
-        let frame = world.get::<ResolvedLightFrame>(light).expect("still resolved");
-        assert_eq!(frame.light.position_range[3], 25.0, "range must follow the refreshed mirror");
+        let frame = world
+            .get::<ResolvedLightFrame>(light)
+            .expect("still resolved");
+        assert_eq!(
+            frame.light.position_range[3], 25.0,
+            "range must follow the refreshed mirror"
+        );
     }
 
     #[test]
@@ -292,7 +325,11 @@ mod tests {
         // Live-disable: refresh removes the mirror row (the hydrate path's
         // own "disabled means absent" rule), and the next pass must drop
         // both the tracking and the resolved frame.
-        world.get_mut::<LightComponent>(light).unwrap().general.enabled = false;
+        world
+            .get_mut::<LightComponent>(light)
+            .unwrap()
+            .general
+            .enabled = false;
         pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
             "LightComponent",
             &mut world,
@@ -353,16 +390,29 @@ mod tests {
         let mut light_component = LightComponent::default();
         light_component.general.enabled = true;
         world.insert(entity, light_component);
-        let mirror = world.get::<LightComponent>(entity).map(GpuMirrored::to_gpu_mirror);
+        let mirror = world
+            .get::<LightComponent>(entity)
+            .map(GpuMirrored::to_gpu_mirror);
         world.insert(entity, mirror.expect("just inserted"));
 
         maintainer.maintain(&mut world);
-        assert!(world.get::<ResolvedLightFrame>(entity).is_none(), "no transform, no frame");
+        assert!(
+            world.get::<ResolvedLightFrame>(entity).is_none(),
+            "no transform, no frame"
+        );
 
-        world.insert(entity, Transform { position: [9.0; 3], ..Transform::default() });
+        world.insert(
+            entity,
+            Transform {
+                position: [9.0; 3],
+                ..Transform::default()
+            },
+        );
         maintainer.maintain(&mut world);
 
-        let frame = world.get::<ResolvedLightFrame>(entity).expect("resolved once transformed");
+        let frame = world
+            .get::<ResolvedLightFrame>(entity)
+            .expect("resolved once transformed");
         assert_eq!(frame.light.position_range[0..3], [9.0, 9.0, 9.0]);
     }
 }

@@ -100,9 +100,7 @@ pub fn discover_script_actors(project_root: &Path) -> Vec<ScriptActorType> {
             }
         }
     }
-    out.sort_by(|a, b| {
-        (&a.crate_name, &a.type_name).cmp(&(&b.crate_name, &b.type_name))
-    });
+    out.sort_by(|a, b| (&a.crate_name, &a.type_name).cmp(&(&b.crate_name, &b.type_name)));
     out.dedup();
     out
 }
@@ -146,7 +144,12 @@ fn scan_registered_types(text: &str) -> Vec<String> {
             .chars()
             .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
             .collect();
-        if !ident.is_empty() && out.last().map(|last: &String| last != &ident).unwrap_or(true) {
+        if !ident.is_empty()
+            && out
+                .last()
+                .map(|last: &String| last != &ident)
+                .unwrap_or(true)
+        {
             out.push(ident);
         }
         rest = tail;

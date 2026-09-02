@@ -113,8 +113,9 @@ pub fn render_friend_row(
                         }),
                 )
                 .child(match friend.relation_status {
-                    RelationStatus::PendingInbound => render_pending_inbound_actions(friend, cx)
-                        .into_any_element(),
+                    RelationStatus::PendingInbound => {
+                        render_pending_inbound_actions(friend, cx).into_any_element()
+                    }
                     RelationStatus::PendingOutbound => {
                         render_pending_outbound_state(cx).into_any_element()
                     }
@@ -172,8 +173,8 @@ fn render_self_row(screen: &FriendsScreen, cx: &Context<FriendsScreen>) -> AnyEl
     let theme = cx.theme();
 
     let self_entry = screen.friends.iter().find(|f| f.is_self);
-    let avatar = self_entry
-        .and_then(|f| screen.avatar_cache.get(&f.pfp_url).and_then(|o| o.clone()));
+    let avatar =
+        self_entry.and_then(|f| screen.avatar_cache.get(&f.pfp_url).and_then(|o| o.clone()));
 
     h_flex()
         .w_full()

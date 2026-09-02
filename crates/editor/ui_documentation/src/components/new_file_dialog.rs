@@ -90,37 +90,30 @@ fn dialog_header(
         )
 }
 
-fn dialog_body(
-    window: &DocumentationWindow,
-    theme: &ui::ThemeColor,
-) -> impl IntoElement {
-    v_flex()
-        .w_full()
-        .p_6()
-        .gap_4()
-        .child(
-            v_flex()
-                .gap_2()
-                .child(
-                    div()
-                        .text_sm()
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(theme.foreground)
-                        .child("File Name"),
-                )
-                .child(
-                    TextInput::new(&window.new_file_input_state)
-                        .w_full()
-                        .appearance(true)
-                        .bordered(true),
-                )
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(theme.muted_foreground)
-                        .child("File will be saved with .md extension"),
-                ),
-        )
+fn dialog_body(window: &DocumentationWindow, theme: &ui::ThemeColor) -> impl IntoElement {
+    v_flex().w_full().p_6().gap_4().child(
+        v_flex()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(theme.foreground)
+                    .child("File Name"),
+            )
+            .child(
+                TextInput::new(&window.new_file_input_state)
+                    .w_full()
+                    .appearance(true)
+                    .bordered(true),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child("File will be saved with .md extension"),
+            ),
+    )
 }
 
 fn dialog_footer(

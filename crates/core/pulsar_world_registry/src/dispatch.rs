@@ -69,12 +69,13 @@ pub fn invoke_component_method(
     if crate::component_id_for_class(class_name).is_none() {
         return Err(ScriptRefError::UnregisteredClass(class_name.to_string()));
     }
-    let meta = REGISTRY
-        .get_method(class_name, method)
-        .ok_or_else(|| ScriptRefError::UnknownMethod {
-            class_name: class_name.to_string(),
-            method: method.to_string(),
-        })?;
+    let meta =
+        REGISTRY
+            .get_method(class_name, method)
+            .ok_or_else(|| ScriptRefError::UnknownMethod {
+                class_name: class_name.to_string(),
+                method: method.to_string(),
+            })?;
     validate_args(class_name, &meta, &args)?;
 
     let _ = component_index; // methods are class-level behavior; see module doc
@@ -133,8 +134,11 @@ pub fn set_component_property(
     value: Value,
 ) -> Result<(), ScriptRefError> {
     let meta = property_metadata(class_name, property)?;
-    let typed =
-        crate::marshal::json_to_any(&property_context(class_name, property), meta.type_info, value)?;
+    let typed = crate::marshal::json_to_any(
+        &property_context(class_name, property),
+        meta.type_info,
+        value,
+    )?;
     set_typed(world, entity, class_name, component_index, meta, typed)
 }
 
@@ -151,7 +155,14 @@ pub fn set_component_property_boxed(
     value: Box<dyn Any>,
 ) -> Result<(), ScriptRefError> {
     let meta = property_metadata(class_name, property)?;
-    validate_arg_type(class_name, property, 0, meta.name, meta.type_info, value.as_ref())?;
+    validate_arg_type(
+        class_name,
+        property,
+        0,
+        meta.name,
+        meta.type_info,
+        value.as_ref(),
+    )?;
     set_typed(world, entity, class_name, component_index, meta, value)
 }
 
@@ -171,12 +182,13 @@ pub fn json_args_to_method_args(
     method: &str,
     values: Vec<Value>,
 ) -> Result<MethodArgs, ScriptRefError> {
-    let meta = REGISTRY.get_method(class_name, method).ok_or_else(|| {
-        ScriptRefError::UnknownMethod {
-            class_name: class_name.to_string(),
-            method: method.to_string(),
-        }
-    })?;
+    let meta =
+        REGISTRY
+            .get_method(class_name, method)
+            .ok_or_else(|| ScriptRefError::UnknownMethod {
+                class_name: class_name.to_string(),
+                method: method.to_string(),
+            })?;
     if values.len() != meta.params.len() {
         return Err(ScriptRefError::ArgumentCount {
             class_name: class_name.to_string(),
@@ -220,14 +232,14 @@ fn set_typed(
 /// Reflected metadata for one property, resolved through a throwaway default
 /// instance exactly like the properties panel does -- only the type-bound
 /// getter/setter closures are used, never the throwaway's values.
-fn property_metadata(
-    class_name: &str,
-    property: &str,
-) -> Result<PropertyMetadata, ScriptRefError> {
+fn property_metadata(class_name: &str, property: &str) -> Result<PropertyMetadata, ScriptRefError> {
     REGISTRY
         .create_instance(class_name)
         .and_then(|instance| {
-            instance.get_properties().into_iter().find(|p| p.name == property)
+            instance
+                .get_properties()
+                .into_iter()
+                .find(|p| p.name == property)
         })
         .ok_or_else(|| ScriptRefError::UnknownProperty {
             class_name: class_name.to_string(),
@@ -248,11 +260,12 @@ fn live_instance<'w>(
             component_index,
         });
     }
-    crate::get_world_component_as_engine_class(class_name, world, entity)
-        .ok_or_else(|| ScriptRefError::ComponentMissing {
+    crate::get_world_component_as_engine_class(class_name, world, entity).ok_or_else(|| {
+        ScriptRefError::ComponentMissing {
             entity,
             class_name: class_name.to_string(),
-        })
+        }
+    })
 }
 
 fn live_instance_mut<'w>(
@@ -268,11 +281,12 @@ fn live_instance_mut<'w>(
             component_index,
         });
     }
-    crate::get_world_component_as_engine_class_mut(class_name, world, entity)
-        .ok_or_else(|| ScriptRefError::ComponentMissing {
+    crate::get_world_component_as_engine_class_mut(class_name, world, entity).ok_or_else(|| {
+        ScriptRefError::ComponentMissing {
             entity,
             class_name: class_name.to_string(),
-        })
+        }
+    })
 }
 
 /// Liveness gate mirroring the object-model crate's `ensure_live_entity`:
@@ -314,7 +328,14 @@ fn validate_args(
     // `Any`, so `.type_id()` on the box would report the box, not the
     // payload (and every downcast would look like a mismatch).
     for (index, (arg, param)) in args.iter().zip(&meta.params).enumerate() {
-        validate_arg_type(class_name, meta.name, index, param.name, param.type_info, arg.as_ref())?;
+        validate_arg_type(
+            class_name,
+            meta.name,
+            index,
+            param.name,
+            param.type_info,
+            arg.as_ref(),
+        )?;
     }
     Ok(())
 }

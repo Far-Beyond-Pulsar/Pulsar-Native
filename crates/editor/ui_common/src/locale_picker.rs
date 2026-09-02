@@ -1,8 +1,7 @@
 use gpui::{
     div, prelude::FluentBuilder as _, px, App, AppContext as _, Context, DismissEvent, Entity,
-    FocusHandle, Focusable, InteractiveElement as _, IntoElement, MouseButton,
-    ParentElement as _, Render, ScrollHandle, SharedString, StatefulInteractiveElement,
-    Styled as _, Window,
+    FocusHandle, Focusable, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _,
+    Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled as _, Window,
 };
 use ui::scroll::{Scrollbar, ScrollbarState};
 use ui::{
@@ -39,7 +38,8 @@ pub struct LocalePicker {
 
 impl LocalePicker {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search languages…"));
+        let search_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Search languages…"));
         Self {
             focus_handle: cx.focus_handle(),
             search_input,
@@ -156,9 +156,7 @@ impl Render for LocalePicker {
                                     )
                                     .when(is_active, |el| {
                                         el.child(
-                                            Icon::new(IconName::Check)
-                                                .size(px(14.))
-                                                .text_color(fg),
+                                            Icon::new(IconName::Check).size(px(14.)).text_color(fg),
                                         )
                                     })
                             })),
@@ -170,10 +168,7 @@ impl Render for LocalePicker {
                             .left_0()
                             .right_0()
                             .bottom_0()
-                            .child(Scrollbar::vertical(
-                                &self.scroll_state,
-                                &self.scroll_handle,
-                            )),
+                            .child(Scrollbar::vertical(&self.scroll_state, &self.scroll_handle)),
                     ),
             )
     }

@@ -28,9 +28,9 @@ use std::any::Any;
 use std::sync::Arc;
 use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
-use crate::level_editor::core::commands::{execute_command, SceneCommand};
 use super::category_section::group_rows_by_category;
 use super::{ObjectTypeFieldsSection, PropertyMetadataCacheEntry};
+use crate::level_editor::core::commands::{execute_command, SceneCommand};
 
 /// Read a property value from the live World, with JSON and default-instance
 /// fallbacks.  Used only when the batch read (via `with_world_component`)
@@ -111,7 +111,14 @@ fn read_card_values_fresh(
         None => properties
             .iter()
             .map(|prop| {
-                read_property_from_world(scene_db, object_id, class_name, prop, component, default_instance)
+                read_property_from_world(
+                    scene_db,
+                    object_id,
+                    class_name,
+                    prop,
+                    component,
+                    default_instance,
+                )
             })
             .collect(),
     }
@@ -327,8 +334,7 @@ impl ObjectTypeFieldsSection {
                 self.world_value_cache.insert(card_key, values);
 
                 let (mut uncategorized, categorized) = group_rows_by_category(row_data);
-                let category_elements =
-                    self.render_categorized_rows(class_name, categorized, cx);
+                let category_elements = self.render_categorized_rows(class_name, categorized, cx);
                 uncategorized.extend(category_elements);
 
                 Some(

@@ -61,8 +61,11 @@ pub fn init(cx: &mut gpui::App) {
 
     // Register global keybindings for actions that must work anywhere in the app
     #[cfg(target_os = "windows")]
-    let toggle_palette =
-        gpui::KeyBinding::new::<ToggleCommandPalette>("ctrl-shift-p", ToggleCommandPalette {}, None);
+    let toggle_palette = gpui::KeyBinding::new::<ToggleCommandPalette>(
+        "ctrl-shift-p",
+        ToggleCommandPalette {},
+        None,
+    );
     #[cfg(not(target_os = "windows"))]
     let toggle_palette =
         gpui::KeyBinding::new::<ToggleCommandPalette>("alt-space", ToggleCommandPalette {}, None);

@@ -163,7 +163,9 @@ impl Render for ResourceMonitorPanel {
                                     .linear()
                                     .tick_margin(0)
                                     .max_y_range(100.0)
-                                    .max_points(crate::utils::performance_metrics::MAX_HISTORY_SIZE),
+                                    .max_points(
+                                        crate::utils::performance_metrics::MAX_HISTORY_SIZE,
+                                    ),
                             ),
                         )
                     }),
@@ -207,7 +209,9 @@ impl Render for ResourceMonitorPanel {
                                     .fill(theme.warning.opacity(0.15))
                                     .linear()
                                     .tick_margin(0)
-                                    .max_points(crate::utils::performance_metrics::MAX_HISTORY_SIZE),
+                                    .max_points(
+                                        crate::utils::performance_metrics::MAX_HISTORY_SIZE,
+                                    ),
                             ),
                         )
                     }),
@@ -255,7 +259,9 @@ impl Render for ResourceMonitorPanel {
                                     .fill(theme.success.opacity(0.15))
                                     .linear()
                                     .tick_margin(0)
-                                    .max_points(crate::utils::performance_metrics::MAX_HISTORY_SIZE),
+                                    .max_points(
+                                        crate::utils::performance_metrics::MAX_HISTORY_SIZE,
+                                    ),
                             ),
                         )
                     }),
@@ -303,7 +309,9 @@ impl Render for ResourceMonitorPanel {
                                     .fill(theme.accent.opacity(0.15))
                                     .linear()
                                     .tick_margin(0)
-                                    .max_points(crate::utils::performance_metrics::MAX_HISTORY_SIZE),
+                                    .max_points(
+                                        crate::utils::performance_metrics::MAX_HISTORY_SIZE,
+                                    ),
                             ),
                         )
                     }),

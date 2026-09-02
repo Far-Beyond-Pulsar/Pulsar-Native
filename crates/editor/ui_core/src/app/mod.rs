@@ -114,23 +114,13 @@ impl PulsarApp {
         self.refresh_open_editor_snapshot(cx);
     }
 
-    fn on_go_back(
-        &mut self,
-        _: &menu::GoBack,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn on_go_back(&mut self, _: &menu::GoBack, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(path) = self.state.go_back() {
             self.open_path(path, window, cx);
         }
     }
 
-    fn on_go_forward(
-        &mut self,
-        _: &menu::GoForward,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn on_go_forward(&mut self, _: &menu::GoForward, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(path) = self.state.go_forward() {
             self.open_path(path, window, cx);
         }

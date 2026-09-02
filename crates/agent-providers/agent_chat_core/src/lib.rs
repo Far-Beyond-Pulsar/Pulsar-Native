@@ -29,9 +29,10 @@ impl ProviderConfig {
         self.values.get(key).map(|s| s.as_str())
     }
     pub fn require(&self, key: &str) -> anyhow::Result<&str> {
-        self.values.get(key).map(|s| s.as_str()).ok_or_else(|| {
-            anyhow::anyhow!("missing required config field: {key}")
-        })
+        self.values
+            .get(key)
+            .map(|s| s.as_str())
+            .ok_or_else(|| anyhow::anyhow!("missing required config field: {key}"))
     }
 }
 
@@ -114,7 +115,9 @@ pub struct ChatResponse {
 pub trait ChatProvider: Send + Sync {
     fn id(&self) -> &str;
     fn display_name(&self) -> &str;
-    fn config_fields(&self) -> &[ConfigField] { &[] }
+    fn config_fields(&self) -> &[ConfigField] {
+        &[]
+    }
 
     /// Validate the provider's configuration (e.g. check API key is valid).
     /// Return `Ok(())` on success, or an error with a human-readable message.
@@ -160,8 +163,7 @@ impl ProviderRegistry {
     }
 
     pub fn register(&mut self, provider: Arc<dyn ChatProvider>) {
-        self.providers
-            .insert(provider.id().to_string(), provider);
+        self.providers.insert(provider.id().to_string(), provider);
     }
 
     pub fn get(&self, id: &str) -> Option<&Arc<dyn ChatProvider>> {

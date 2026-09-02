@@ -202,8 +202,8 @@ impl Render for AdvancedMetricsPanel {
                     div()
                         .text_size(px(12.0))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-.text_color(theme.foreground)
-                            .child(format!("CPU Cores ({})", core_histories.len())),
+                        .text_color(theme.foreground)
+                        .child(format!("CPU Cores ({})", core_histories.len())),
                 )
                 .child(div().w_full().grid().grid_cols(4).gap_2().children(
                     core_histories.into_iter().enumerate().map(|(i, hist)| {

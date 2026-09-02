@@ -27,8 +27,8 @@
 //! label, degrading to JSON `Null`. No panics on stale, lost, or malformed
 //! references — a broken reference must never take down the tick loop.
 
-use pulsar_script_object_model::{ActorRef, ComponentRef, ResolveRefError, ScriptRefError};
 use pulsar_scenedb::{Entity, World};
+use pulsar_script_object_model::{ActorRef, ComponentRef, ResolveRefError, ScriptRefError};
 use serde_json::{json, Value};
 
 /// Build a `ComponentRef` JSON for `(actor, class_name, component_index)`,
@@ -112,7 +112,9 @@ fn find_object(
     match lookup(world, needle_text) {
         Some(entity) => json!(entity.bits()),
         None => {
-            let lost = ResolveRefError::ReferenceLost { stable_id: needle_text.to_string() };
+            let lost = ResolveRefError::ReferenceLost {
+                stable_id: needle_text.to_string(),
+            };
             log_typed(context, &lost);
             Value::Null
         }
@@ -176,7 +178,11 @@ fn parse_component_ref(reference: &Value) -> Result<ComponentRef, ScriptRefError
         .and_then(Value::as_u64)
         .ok_or_else(|| marshalled(BAD))?;
     u32::try_from(component_index)
-        .map(|index| ComponentRef { entity: Entity::from_bits(bits), class_name, component_index: index })
+        .map(|index| ComponentRef {
+            entity: Entity::from_bits(bits),
+            class_name,
+            component_index: index,
+        })
         .map_err(|_| marshalled("component_index does not fit u32"))
 }
 
@@ -188,8 +194,11 @@ fn marshalled(message: &str) -> ScriptRefError {
 }
 
 fn resolve_stable_id(world: &World, stable_id: &str) -> Result<Entity, ResolveRefError> {
-    engine_backend::scene::entity_with_stable_id(world, stable_id)
-        .ok_or_else(|| ResolveRefError::ReferenceLost { stable_id: stable_id.to_string() })
+    engine_backend::scene::entity_with_stable_id(world, stable_id).ok_or_else(|| {
+        ResolveRefError::ReferenceLost {
+            stable_id: stable_id.to_string(),
+        }
+    })
 }
 
 fn log_typed(context: &str, error: impl std::fmt::Display) {
@@ -206,8 +215,12 @@ mod tests {
     /// attaches StableId + Name exactly like hydration does).
     fn scene() -> (WorldSceneStore, Entity, Entity) {
         let mut store = WorldSceneStore::new();
-        let door = store.spawn(Some("door".into()), "Front Door", None).expect("spawn door");
-        let lamp = store.spawn(Some("lamp".into()), "Red Lamp", None).expect("spawn lamp");
+        let door = store
+            .spawn(Some("door".into()), "Front Door", None)
+            .expect("spawn door");
+        let lamp = store
+            .spawn(Some("lamp".into()), "Red Lamp", None)
+            .expect("spawn lamp");
         (store, door, lamp)
     }
 
@@ -276,7 +289,10 @@ mod tests {
         // "VmProbe" is registered by the component_ops test inventory;
         // unregistered classes must refuse validation (B's contract).
         let good = component_ref_json(world, lamp, "VmProbe", 0, "mk");
-        assert_eq!(resolve_pin_target(world, &good, "VmProbe", "set"), Some((lamp, 0)));
+        assert_eq!(
+            resolve_pin_target(world, &good, "VmProbe", "set"),
+            Some((lamp, 0))
+        );
 
         // #519 discipline: a ref of one class cannot feed another class's op.
         assert!(resolve_pin_target(world, &good, "Door", "set").is_none());
@@ -302,6 +318,9 @@ mod tests {
 
         // A live ref round-trips its index so instance 2 stays addressable.
         let second = component_ref_json(world, door, "VmProbe", 2, "mk");
-        assert_eq!(resolve_pin_target(world, &second, "VmProbe", "call"), Some((door, 2)));
+        assert_eq!(
+            resolve_pin_target(world, &second, "VmProbe", "call"),
+            Some((door, 2))
+        );
     }
 }

@@ -28,8 +28,8 @@ use helio::{
 };
 use parking_lot::RwLock;
 
-use crate::camera_selection::select_world_camera;
 use crate::blueprint_runtime::level_bindings;
+use crate::camera_selection::select_world_camera;
 use crate::freecam::FreeCam;
 use crate::window::{RenderCamera, WindowBridge, WindowCommand, WindowDescriptor, WindowHandle};
 
@@ -103,11 +103,15 @@ impl GameWindow {
             // All illumination comes from lights in the scene file — same as editor.
             .with_ambient([0.0, 0.0, 0.0], 0.0)
             .with_graph(Box::new(|d, q, s, c, ds, cb, csb| {
-                helio_default_graphs::build_default_graph_external(
-                    d, q, s, c, ds, cb, csb, None,
-                )
+                helio_default_graphs::build_default_graph_external(d, q, s, c, ds, cb, csb, None)
             }))
-            .build(device.clone(), queue.clone(), surface_config.width, surface_config.height, surface_format);
+            .build(
+                device.clone(),
+                queue.clone(),
+                surface_config.width,
+                surface_config.height,
+                surface_format,
+            );
 
         Self {
             handle,
@@ -204,10 +208,7 @@ impl GameWindow {
                 return;
             }
             wgpu::CurrentSurfaceTexture::Occluded => {
-                tracing::warn!(
-                    window = self.handle.id(),
-                    "Skipping frame: window occluded"
-                );
+                tracing::warn!(window = self.handle.id(), "Skipping frame: window occluded");
                 return;
             }
             wgpu::CurrentSurfaceTexture::Validation => {
@@ -711,11 +712,10 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 // then a Camera-typed entity in the SHARED world (#637 --
                 // moving that entity moves the view next frame), then the
                 // freecam.
-                let ecs_camera =
-                    match self.bridge.camera(handle) {
-                        Some(cam) => Some(cam),
-                        None => select_world_camera(&self.scene_store.read()),
-                    };
+                let ecs_camera = match self.bridge.camera(handle) {
+                    Some(cam) => Some(cam),
+                    None => select_world_camera(&self.scene_store.read()),
+                };
                 if let Some(gw) = self.windows.get_mut(&handle) {
                     gw.render(ecs_camera);
                 }

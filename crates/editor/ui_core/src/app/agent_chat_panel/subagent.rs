@@ -1,10 +1,10 @@
-use std::collections::VecDeque;
 use gpui::*;
+use std::collections::VecDeque;
 
+use super::context;
 use super::panel::AgentChatPanel;
 use super::panel::SubagentCompletionMode;
 use super::types::*;
-use super::context;
 
 impl AgentChatPanel {
     pub(super) fn update_subagent_invocation_started(

@@ -50,8 +50,8 @@ keywords = ["game-engine", "editor"]
 # strip = "symbols"
 # lto = "fat"
 # panic = "abort"
-lto = "thin"
-codegen-units = 1
+# lto = "thin"
+# codegen-units = 1
 
 [profile.dev]
 codegen-units = 16

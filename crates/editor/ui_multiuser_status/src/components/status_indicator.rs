@@ -1,6 +1,4 @@
-use engine_state::{
-    EngineContext, MultiuserParticipant, MultiuserStatus, RelayConnectionMode,
-};
+use engine_state::{EngineContext, MultiuserParticipant, MultiuserStatus, RelayConnectionMode};
 use gpui::{AnyElement, App, IntoElement, ParentElement, Styled, div, px};
 use ui::{ActiveTheme as _, Icon, IconName, StyledExt as _, h_flex};
 

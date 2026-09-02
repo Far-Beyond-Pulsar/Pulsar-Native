@@ -1,7 +1,7 @@
 pub mod actions;
 mod drag_drop;
-pub mod git_integration;
 pub mod fs_metadata;
+pub mod git_integration;
 pub mod helpers;
 pub mod operations;
 mod rename;

@@ -27,8 +27,8 @@ impl DockerModelRunnerProvider {
             id: "ai/gemma4:4B".to_string(),
             label: "Gemma 4 4B (Docker)".to_string(),
             supports_tools: true,
-                context_tokens: 0,
-                compact_model: None,
+            context_tokens: 0,
+            compact_model: None,
         }]
     }
 

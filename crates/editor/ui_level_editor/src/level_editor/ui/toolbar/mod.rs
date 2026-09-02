@@ -23,7 +23,6 @@ mod time_scale_dropdown;
 mod view;
 
 pub use actions::*;
-pub use view::ToolbarView;
 use build_core::BuildCoreButton;
 use build_dropdowns::BuildDropdowns;
 use feature_toggles::FeatureToggles;
@@ -31,6 +30,7 @@ use mode_indicator::ModeIndicator;
 use multiplayer_dropdown::MultiplayerDropdown;
 use playback_controls::PlaybackControls;
 use time_scale_dropdown::TimeScaleDropdown;
+pub use view::ToolbarView;
 
 use crate::level_editor::{request_thumbnail_capture, LevelEditorState};
 
