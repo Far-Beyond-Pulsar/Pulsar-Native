@@ -130,3 +130,36 @@ scene world.
 Do not introduce another scene owner, snapshot cache, lock wrapper, or async
 facade. If an API cannot be migrated without one, stop and document the
 specific boundary instead of inventing a parallel representation.
+
+## Progress
+
+### Slice 1 — `PhysicsComponent` (complete)
+
+- `PhysicsComponent` is already registered with `pulsar_world_registry` and
+  is now hydrated directly into the entity's canonical `pulsar_scenedb::World`
+  from `SceneDatabase::add_component` / `add_component_instance`.
+- Enabled Physics data is read from the typed World component by the existing
+  `SceneDatabase::get_components` live overlay and edited through the existing
+  typed property/update paths.
+- The `SceneMetadataDb` record remains only as a UI-compatible attachment,
+  order, and enabled-state index. For an enabled migrated component its
+  `data` is `Value::Null`, so it is not a competing data authority.
+- Disabled Physics entries retain their last serialized value only as a
+  re-enable compatibility seed; enabling hydrates World and clears that seed.
+- Existing public UI APIs remain unchanged. No new wrapper, snapshot, lock, or
+  async facade was added.
+- Regression coverage is in
+  `crates/editor/ui_level_editor/tests/scenedb_migration.rs`.
+
+## Remaining work and blockers
+
+- The metadata list still owns component-instance identity (order, duplicate
+  instances, and enabled state). Moving that identity into SceneDB requires a
+  representation for multiple instances of one Rust component type; the
+  current `World` component model stores one value per `(entity, ComponentId)`.
+- The remaining World-registered classes still use metadata JSON as their
+  hydration seed and need independent slices. Classes without a World
+  registration continue to use the legacy JSON path by design.
+- `RenderProps.component_instances` remains a renderer/file-format projection
+  for compatibility. It is not the source of truth for the migrated Physics
+  data, and renderer/PIE changes are intentionally outside this slice.

@@ -39,6 +39,16 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
+/// First SceneDB migration slice: enabled PhysicsComponent data is owned by
+/// the canonical World component. The metadata record remains only as the
+/// UI-compatible attachment/order/enabled index until component-instance
+/// identity moves out of the legacy list in a later slice.
+const SCENEDB_AUTHORITY_CLASS: &str = "PhysicsComponent";
+
+fn is_scenedb_authority_class(class_name: &str) -> bool {
+    class_name == SCENEDB_AUTHORITY_CLASS
+}
+
 // ── Public re-exports for UI layer compatibility ───────────────────────────
 
 pub use engine_backend::scene::{LightType, MeshType, ObjectId, ObjectType, WorldSceneStore};
@@ -427,6 +437,69 @@ impl SceneDatabase {
         self.property_changes.lock().touches_object(object_id)
     }
 
+    /// Hydrate one canonical component directly into the entity World.
+    ///
+    /// This is deliberately a narrow migration seam for the first migrated
+    /// class. The caller decides whether the legacy metadata record should
+    /// retain its input JSON as a dormant compatibility value.
+    fn hydrate_canonical_component(
+        &self,
+        object_id: &ObjectId,
+        class_name: &str,
+        data: &Value,
+    ) -> bool {
+        let mut store = self.store.write();
+        let Some(entity) = store.entity_for(object_id) else {
+            return false;
+        };
+        match pulsar_world_registry::hydrate_world_component_for_class(
+            class_name,
+            store.world_mut(),
+            entity,
+            data,
+        ) {
+            Ok(true) => {
+                store.mark_dirty(
+                    object_id,
+                    ObjectDirtyFlags::PROPS | ObjectDirtyFlags::COMPONENTS,
+                );
+                true
+            }
+            Ok(false) => false,
+            Err(error) => {
+                tracing::error!(
+                    "World hydration failed for {class_name} on '{object_id}': {error}"
+                );
+                false
+            }
+        }
+    }
+
+    /// Attach a component while keeping the public metadata-shaped API
+    /// compatible. For the migrated PhysicsComponent, enabled data is
+    /// hydrated into World and the metadata record stores only attachment
+    /// state; disabled/failed entries retain JSON for re-enable compatibility.
+    fn attach_component_instance(
+        &self,
+        object_id: &EditorObjectId,
+        mut component: ComponentInstance,
+        record_change: bool,
+    ) {
+        let class_name = component.class_name.clone();
+        if component.enabled
+            && is_scenedb_authority_class(&class_name)
+            && self.hydrate_canonical_component(object_id, &class_name, &component.data)
+        {
+            component.data = Value::Null;
+        }
+        self.metadata_db
+            .add_component_instance(object_id, component);
+        self.sync_registered_component_props_to_scene_db(object_id);
+        if record_change {
+            self.record_structural_change(object_id, &class_name);
+        }
+    }
+
     /// Lightweight query: return the list of class names attached to
     /// `object_id`, reading only from `metadata_db` (no JSON clone, no
     /// `to_json()` serialization).  This replaces `get_components()` in the
@@ -583,8 +656,7 @@ impl SceneDatabase {
         };
 
         for component in inline_components {
-            self.metadata_db
-                .add_component_instance(&object_id, component);
+            self.attach_component_instance(&object_id, component, false);
         }
 
         if let Some(script_path) = blueprint_script_path {
@@ -595,10 +667,14 @@ impl SceneDatabase {
                 .any(|c| c.class_name == "ScriptComponent");
 
             if !already_has {
-                self.metadata_db.add_component(
+                self.attach_component_instance(
                     &object_id,
-                    "ScriptComponent".to_string(),
-                    serde_json::json!({ "script_asset": script_path }),
+                    ComponentInstance {
+                        class_name: "ScriptComponent".to_string(),
+                        enabled: true,
+                        data: serde_json::json!({ "script_asset": script_path }),
+                    },
+                    false,
                 );
             }
         }
@@ -655,16 +731,33 @@ impl SceneDatabase {
         true
     }
 
-    /// Update a single component's JSON data by index.
+    /// Update a single component's data by index.
     ///
-    /// This is the correct entry point for component edits; callers must not
-    /// access `metadata_db` directly.
+    /// This is the correct entry point for component edits; World-authoritative
+    /// classes are hydrated directly and legacy classes retain the existing
+    /// metadata-backed behavior. Callers must not access `metadata_db`
+    /// directly.
     pub fn update_component(
         &self,
         object_id: &ObjectId,
         component_index: usize,
         data: serde_json::Value,
     ) {
+        let component = self
+            .metadata_db
+            .get_components(object_id)
+            .get(component_index)
+            .cloned();
+        if let Some(component) = component.as_ref() {
+            if component.enabled
+                && is_scenedb_authority_class(&component.class_name)
+                && self.hydrate_canonical_component(object_id, &component.class_name, &data)
+            {
+                self.sync_registered_component_props_to_scene_db(object_id);
+                return;
+            }
+        }
+
         let ok = self
             .metadata_db
             .components()
@@ -917,18 +1010,16 @@ impl SceneDatabase {
             json
         };
 
-        // Persist back into `metadata_db` (Pulsar-Native#561, Bug B): without
-        // this, `update_live_component_property` mutates `World` and stops --
-        // `metadata_db` keeps the pre-edit value. The NEXT unrelated edit to
-        // this object (a transform move, a name change, any legacy-path
-        // component write) runs `sync_registered_component_props_to_scene_db`,
-        // which re-hydrates every `World`-registered component from
-        // `metadata_db`'s JSON -- silently reverting this write. Writing
-        // through here closes that gap: `metadata_db` and `World` never
-        // diverge for longer than this one call. Persisted to the EXACT
-        // edited instance (`component_index`), not "first with this class"
-        // -- with duplicates those are different blobs (Pulsar-Native#519).
-        if let Some(json) = persisted_json {
+        // Persist back into `metadata_db` for legacy and non-live instances
+        // (Pulsar-Native#561, Bug B). A live migrated class is deliberately
+        // excluded below: World is its authority, while metadata keeps only
+        // the attachment/order/enabled record. Every other instance is still
+        // persisted to the EXACT edited index, not "first with this class" --
+        // with duplicates those are different compatibility blobs
+        // (Pulsar-Native#519).
+        if let Some(json) =
+            persisted_json.filter(|_| !(is_live && is_scenedb_authority_class(class_name)))
+        {
             self.metadata_db
                 .components()
                 .update_component(object_id, component_index, json);
@@ -1343,7 +1434,7 @@ impl SceneDatabase {
 
         self.metadata_db.clear_components(&new_id);
         for component in source_components {
-            self.metadata_db.add_component_instance(&new_id, component);
+            self.attach_component_instance(&new_id, component, false);
         }
         self.sync_registered_component_props_to_scene_db(&new_id);
 
@@ -1377,19 +1468,20 @@ impl SceneDatabase {
         class_name: String,
         data: serde_json::Value,
     ) {
-        self.metadata_db
-            .add_component(object_id, class_name.clone(), data);
-        self.sync_registered_component_props_to_scene_db(object_id);
-        self.record_structural_change(object_id, &class_name);
+        self.attach_component_instance(
+            object_id,
+            ComponentInstance {
+                class_name,
+                enabled: true,
+                data,
+            },
+            true,
+        );
     }
 
     /// Add a fully specified component instance.
     pub fn add_component_instance(&self, object_id: &EditorObjectId, component: ComponentInstance) {
-        let class_name = component.class_name.clone();
-        self.metadata_db
-            .add_component_instance(object_id, component);
-        self.sync_registered_component_props_to_scene_db(object_id);
-        self.record_structural_change(object_id, &class_name);
+        self.attach_component_instance(object_id, component, true);
     }
 
     pub fn remove_component(&self, object_id: &EditorObjectId, component_index: usize) {
@@ -1418,11 +1510,30 @@ impl SceneDatabase {
             .get_components(object_id)
             .get(component_index)
             .map(|c| c.class_name.clone());
-        let changed = self
-            .metadata_db
-            .set_component_enabled(object_id, component_index, enabled);
+        let mut components = self.metadata_db.get_components(object_id);
+        let Some(component) = components.get_mut(component_index) else {
+            return false;
+        };
+        if component.enabled == enabled {
+            return true;
+        }
+        if is_scenedb_authority_class(&component.class_name) && component.enabled {
+            if let Some(live) = self.get_components(object_id).get(component_index) {
+                component.data = live.data.clone();
+            }
+        }
+        component.enabled = enabled;
+        self.metadata_db.replace_components(object_id, components);
+        let changed = true;
         if changed {
             self.sync_registered_component_props_to_scene_db(object_id);
+            if enabled && is_scenedb_authority_class(&class_name.clone().unwrap_or_default()) {
+                self.metadata_db.components().update_component(
+                    object_id,
+                    component_index,
+                    Value::Null,
+                );
+            }
             if let Some(name) = class_name {
                 self.record_structural_change(object_id, &name);
             }
@@ -1714,7 +1825,7 @@ impl SceneDatabase {
                 }
 
                 for component in components {
-                    self.add_component(&object_id, component.class_name, component.data);
+                    self.add_component_instance(&object_id, component);
                 }
             }
         }
@@ -1879,6 +1990,20 @@ impl SceneDatabase {
                     .find(|c| c.class_name == class_name && c.enabled)
                     .map(|c| &c.data);
                 match enabled_data {
+                    Some(_)
+                        if is_scenedb_authority_class(class_name)
+                            && pulsar_world_registry::get_world_component_as_engine_class(
+                                class_name,
+                                store.world(),
+                                entity,
+                            )
+                            .is_some() =>
+                    {
+                        // PhysicsComponent is authoritative in World. Its
+                        // metadata record intentionally has no data to
+                        // rehydrate from, so an ordinary object update must
+                        // not overwrite the live typed value.
+                    }
                     Some(data) => {
                         if let Err(error) = pulsar_world_registry::hydrate_world_component_for_class(
                             class_name,
@@ -1950,12 +2075,7 @@ impl SceneDatabase {
         let objects = self.store.read().to_snapshots();
         let components = objects
             .iter()
-            .map(|obj| {
-                (
-                    obj.stable_id.clone(),
-                    self.metadata_db.get_components(&obj.stable_id),
-                )
-            })
+            .map(|obj| (obj.stable_id.clone(), self.get_components(&obj.stable_id)))
             .filter(|(_, components)| !components.is_empty())
             .collect();
         SceneHistorySnapshot {
@@ -1991,8 +2111,7 @@ impl SceneDatabase {
         self.metadata_db.clear();
         for (object_id, components) in &snapshot.components {
             for component in components {
-                self.metadata_db
-                    .add_component_instance(object_id, component.clone());
+                self.attach_component_instance(object_id, component.clone(), false);
             }
         }
 
