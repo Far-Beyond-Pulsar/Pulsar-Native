@@ -3,7 +3,8 @@
 Function-level CPU profiling is wired through the [`profiling`](https://crates.io/crates/profiling)
 crate (v1.x) so backends stay swappable. Tracy is the active backend; a second,
 independent collector (the custom SQLite-backed one feeding the Flamegraph
-panel) continues to run alongside it and is untouched by everything below.
+panel) continues to run alongside it. The Inspector's Profiler tab uses
+WGPUI's bounded capture engine directly.
 
 ## Build
 
@@ -79,6 +80,22 @@ frames (resize, tooltips) between dumps rather than either measurement.
 On wgpui branches carrying notify attribution, `WGPUI_NOTIFY_ATTRIBUTION=1`
 adds a top-10 dump of entities issuing the most `cx.notify()` calls — use it
 to explain why `apply_invalidations` / `layout` spikes appear in a capture.
+
+## Structured diagnostics
+
+With the WGPUI flamegraph feature enabled, open the Inspector's **Profiler**
+tab and stop a capture. The **Diagnostics** tab shows the selected frame's
+structured lifecycle events alongside the Flame Chart, Counters, Memory, UI
+Tree and GPU Deep Capture views. Resize captures include native resize
+dimensions and scale, total resize-handler time, `Window::bounds_changed`,
+refresh requests, drawable texture replacement, and the blocking
+`Surface::configure` duration.
+
+Diagnostic records are fixed-width values stored in a bounded queue and
+attached to the next captured frame. With capture disabled, each call site
+does only one relaxed atomic check; no timestamp, allocation, lock, or string
+formatting occurs. The viewer limits the displayed diagnostic tail to 500
+rows so a resize storm cannot make the profiler itself slow.
 
 ## Cost model
 

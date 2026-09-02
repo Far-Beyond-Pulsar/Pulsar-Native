@@ -63,21 +63,14 @@ impl InstrumentationCollector {
             }
         });
 
-        // Create a test span to verify the system works
-        {
-            profiling::profile_scope!("TEST_SPAN_FROM_COLLECTOR");
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        }
-
-        // Small delay to let the test span be recorded
-        std::thread::sleep(std::time::Duration::from_millis(10));
-
-        // CRITICAL: Collect events from channel into storage FIRST
-        profiling::collect_events();
+        // Drain the producer queue once so the collector can begin from a
+        // known boundary. Do not synthesize a test span or sleep here: both
+        // change the timing of the application being profiled.
+        let initial_events = profiling::collect_events();
 
         tracing::trace!(
             "[PROFILER] Current event count: {}",
-            profiling::get_all_events().len()
+            initial_events.len()
         );
 
         let trace_data = Arc::clone(&self.trace_data);
@@ -115,33 +108,26 @@ fn collector_loop(
     tracing::trace!("[PROFILER] Starting instrumentation collector");
 
     let mut accumulator = TraceAccumulator::from_frame(&trace_data.get_frame());
-    let mut last_event_count = 0;
-
     while *running.read() {
         thread::sleep(Duration::from_millis(update_interval_ms));
 
-        // CRITICAL: Collect from channel into storage first!
-        profiling::collect_events();
-
-        // NOW get all events from storage
-        let all_events = profiling::get_all_events();
-
-        // Only process new events since last update
-        if all_events.len() <= last_event_count {
+        // `collect_events` returns exactly the events drained on this tick.
+        // Consuming that delta avoids cloning the complete session history
+        // every 100ms, which used to make the profiler increasingly expensive
+        // during long captures.
+        let new_events = profiling::collect_events();
+        if new_events.is_empty() {
             continue;
         }
-
-        let new_events = &all_events[last_event_count..];
-        last_event_count = all_events.len();
 
         tracing::trace!(
             "[PROFILER] Collected {} new instrumentation events (total: {})",
             new_events.len(),
-            all_events.len()
+            profiling::get_all_events().len()
         );
 
         // Convert ONLY new events to TraceData format
-        for event in new_events {
+        for event in &new_events {
             accumulator.apply_event(event);
         }
 
