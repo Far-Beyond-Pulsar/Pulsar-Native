@@ -2,7 +2,9 @@
 
 use gpui::{AppContext, Context, Entity, UpdateGlobal, Window};
 use ui::{dock::PanelEvent, ContextModal};
-use ui_file_manager::{FileManagerDrawer, FileSelected, PopoutFileManagerEvent};
+use ui_file_manager::{
+    DockFileManagerEvent, FileManagerDrawer, FileSelected, PopoutFileManagerEvent,
+};
 use ui_problems::ProblemsDrawer;
 
 // Note: These event handlers need plugin-based architecture to decouple from core UI.
@@ -663,8 +665,22 @@ pub fn on_file_selected(
     // Open via plugin system
     app.open_path(event.path.clone(), window, cx);
 
-    app.state.drawer_open = false;
+    if !app.state.drawer_docked {
+        app.state.drawer_open = false;
+    }
     app.update_discord_presence(cx);
+    cx.notify();
+}
+
+pub fn on_dock_file_manager(
+    app: &mut PulsarApp,
+    _drawer: &Entity<FileManagerDrawer>,
+    _event: &DockFileManagerEvent,
+    _window: &mut Window,
+    cx: &mut Context<PulsarApp>,
+) {
+    app.state.drawer_docked = true;
+    app.state.drawer_open = false;
     cx.notify();
 }
 
@@ -682,6 +698,7 @@ pub fn on_popout_file_manager(
     // Get project path from the drawer
     let project_path = drawer.read(cx).project_path.clone();
 
+    app.state.drawer_docked = false;
     app.state.drawer_open = false;
     cx.notify();
 

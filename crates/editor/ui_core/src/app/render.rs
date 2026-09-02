@@ -663,6 +663,7 @@ impl Render for PulsarApp {
         };
 
         let drawer_open = self.state.drawer_open;
+        let drawer_docked = self.state.drawer_docked;
 
         v_flex()
             .size_full()
@@ -716,7 +717,7 @@ impl Render for PulsarApp {
                     .flex_1()
                     .relative()
                     .child(self.state.dock_area.clone())
-                    .when(drawer_open, |this| {
+                    .when(drawer_open && !drawer_docked, |this| {
                         this.child(
                             div()
                                 .absolute()
@@ -801,7 +802,65 @@ impl Render for PulsarApp {
                         })
                     }),
             )
-            .child(self.render_footer(drawer_open, cx))
+            .when(drawer_docked, |this| {
+                this.child(
+                    div()
+                        .id("file-manager-docked-panel")
+                        .w_full()
+                        .h(px(self.state.drawer_height))
+                        .flex_shrink_0()
+                        .border_t_1()
+                        .border_color(cx.theme().border)
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
+                        .child(
+                            v_flex()
+                                .size_full()
+                                .child(
+                                    div()
+                                        .id("docked-drawer-resize-handle")
+                                        .w_full()
+                                        .h(px(6.))
+                                        .flex_shrink_0()
+                                        .cursor_ns_resize()
+                                        .bg(cx.theme().border.opacity(0.5))
+                                        .hover(|style| style.bg(cx.theme().accent).h(px(8.)))
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(|this, _event, _window, cx| {
+                                                this.state.drawer_resizing = true;
+                                                cx.notify();
+                                            }),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_h_0()
+                                        .child(self.state.file_manager_drawer.clone()),
+                                ),
+                        )
+                        .when(self.state.drawer_resizing, |this| {
+                            this.on_mouse_move(cx.listener(
+                                |app, event: &MouseMoveEvent, window, cx| {
+                                    let window_height: f32 = window.viewport_size().height.into();
+                                    let mouse_y: f32 = event.position.y.into();
+                                    let new_height = window_height - mouse_y;
+                                    app.state.drawer_height = new_height.clamp(200.0, 700.0);
+                                    cx.notify();
+                                },
+                            ))
+                            .on_mouse_up(
+                                MouseButton::Left,
+                                cx.listener(|app, _event, _window, cx| {
+                                    app.state.drawer_resizing = false;
+                                    cx.notify();
+                                }),
+                            )
+                        }),
+                )
+            })
+            .child(self.render_footer(drawer_open || drawer_docked, cx))
             .children(command_palette)
             .children(project_switcher)
             .into_any_element()

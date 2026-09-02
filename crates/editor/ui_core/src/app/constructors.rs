@@ -214,6 +214,12 @@ impl PulsarApp {
             event_handlers::on_popout_file_manager,
         )
         .detach();
+        cx.subscribe_in(
+            &file_manager_drawer,
+            window,
+            event_handlers::on_dock_file_manager,
+        )
+        .detach();
         cx.subscribe_in(&file_manager_drawer, window, event_handlers::on_drag_event)
             .detach();
         cx.subscribe_in(
@@ -400,6 +406,7 @@ impl PulsarApp {
                 project_path,
                 file_manager_drawer,
                 drawer_open: false,
+                drawer_docked: false,
                 drawer_height: 400.0,
                 drawer_resizing: false,
                 suppress_drawer_for_drag: false,

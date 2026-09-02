@@ -26,6 +26,7 @@ pub struct AppState {
     // Drawers
     pub file_manager_drawer: Entity<FileManagerDrawer>,
     pub drawer_open: bool,
+    pub drawer_docked: bool,
     pub drawer_height: f32,
     pub drawer_resizing: bool,
     pub suppress_drawer_for_drag: bool, // Auto-close drawer during asset drag

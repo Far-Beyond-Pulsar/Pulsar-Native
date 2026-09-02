@@ -10,7 +10,7 @@ pub mod utils;
 pub use components::FileManagerDrawer;
 pub use preload::{store_preloaded_tree, take_preloaded_tree};
 pub use screen::FileManagerWindow;
-pub use utils::{FileSelected, FolderNode, PopoutFileManagerEvent};
+pub use utils::{DockFileManagerEvent, FileSelected, FolderNode, PopoutFileManagerEvent};
 
 /// Register the file-browser keyboard shortcuts. Scoped to the `FileManagerDrawer`
 /// key context so they only fire while the file browser is focused (and don't

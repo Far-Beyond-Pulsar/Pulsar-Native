@@ -56,6 +56,9 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_drawer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.state.drawer_docked {
+            return;
+        }
         self.state.drawer_open = !self.state.drawer_open;
         cx.notify();
     }

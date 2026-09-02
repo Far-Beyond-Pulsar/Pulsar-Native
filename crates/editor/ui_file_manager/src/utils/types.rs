@@ -173,3 +173,6 @@ pub struct FileSelected {
 pub struct PopoutFileManagerEvent {
     pub position: Point<Pixels>,
 }
+
+#[derive(Clone, Debug)]
+pub struct DockFileManagerEvent;

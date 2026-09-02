@@ -239,6 +239,7 @@ impl FileManagerDrawer {
 
 impl EventEmitter<FileSelected> for FileManagerDrawer {}
 impl EventEmitter<PopoutFileManagerEvent> for FileManagerDrawer {}
+impl EventEmitter<DockFileManagerEvent> for FileManagerDrawer {}
 impl EventEmitter<ui_types_common::DragEvent> for FileManagerDrawer {}
 
 impl Render for FileManagerDrawer {
@@ -1223,6 +1224,15 @@ pub fn render_combined_toolbar(
                             cx.emit(PopoutFileManagerEvent {
                                 position: w.mouse_position(),
                             })
+                        })),
+                )
+                .child(
+                    Button::new("dock")
+                        .icon(IconName::PanelBottom)
+                        .ghost()
+                        .tooltip("Dock File Manager at Bottom")
+                        .on_click(cx.listener(|_d, _e, _w, cx| {
+                            cx.emit(DockFileManagerEvent);
                         })),
                 ),
         )
