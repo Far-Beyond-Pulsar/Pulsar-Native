@@ -2924,7 +2924,7 @@ dependencies = [
  "lsp-types",
  "parking_lot",
  "pollster 0.4.0",
- "profiling 0.1.0",
+ "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=988521c84d1e0d259b9c33e10e2f504eaed53dfc)",
  "pulsar_events",
  "pulsar_lsp",
  "pulsar_pie_abi",
@@ -2984,7 +2984,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "plugin_manager",
- "profiling 0.1.0",
+ "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=988521c84d1e0d259b9c33e10e2f504eaed53dfc)",
  "pulsar-multiplayer-core",
  "pulsar_reflection",
  "serde",
@@ -8477,6 +8477,19 @@ dependencies = [
 
 [[package]]
 name = "profiling"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=988521c84d1e0d259b9c33e10e2f504eaed53dfc#988521c84d1e0d259b9c33e10e2f504eaed53dfc"
+dependencies = [
+ "chrono",
+ "crossbeam-channel",
+ "once_cell",
+ "parking_lot",
+ "rusqlite",
+ "serde",
+]
+
+[[package]]
+name = "profiling"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
@@ -8745,7 +8758,7 @@ dependencies = [
 name = "pulsar_core"
 version = "0.1.0"
 dependencies = [
- "profiling 0.1.0",
+ "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=988521c84d1e0d259b9c33e10e2f504eaed53dfc)",
  "smol",
  "tracing",
 ]
@@ -8780,7 +8793,7 @@ dependencies = [
  "file-association-manager",
  "futures",
  "gpui-ce",
- "profiling 0.1.0",
+ "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=988521c84d1e0d259b9c33e10e2f504eaed53dfc)",
  "profiling 1.0.18",
  "pulsar_auth",
  "pulsar_std",
@@ -8832,7 +8845,7 @@ dependencies = [
  "parking_lot",
  "pbgc",
  "pollster 1.0.1",
- "profiling 0.1.0",
+ "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=988521c84d1e0d259b9c33e10e2f504eaed53dfc)",
  "pulsar_bp_executor",
  "pulsar_core",
  "pulsar_pie_abi",
@@ -8958,7 +8971,7 @@ version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar//SceneDB?rev=72291d0f211dc8826eb70339aeb0409be4270ad5#72291d0f211dc8826eb70339aeb0409be4270ad5"
 dependencies = [
  "ahash 0.8.12",
- "profiling 0.1.0",
+ "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=12424a5f75166332f9f1d2741281f6fc4847b44d)",
  "pulsar_reflection",
  "pulsar_scenedb_derive",
  "serde_json",
@@ -13032,7 +13045,7 @@ dependencies = [
  "engine_state",
  "gpui-ce",
  "parking_lot",
- "profiling 0.1.0",
+ "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=988521c84d1e0d259b9c33e10e2f504eaed53dfc)",
  "rand 0.10.2",
  "rfd",
  "rusqlite",
@@ -13125,7 +13138,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "plugin_manager",
- "profiling 0.1.0",
+ "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=988521c84d1e0d259b9c33e10e2f504eaed53dfc)",
  "pulsar_physics",
  "pulsar_pie_abi",
  "pulsar_reflection",

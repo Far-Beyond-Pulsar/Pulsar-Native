@@ -77,7 +77,7 @@ ui-macros    = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 
 # ---------- Core Engine ----------
 # Profiling - instrumentation-based
-profiling                          = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling", rev = "12424a5f75166332f9f1d2741281f6fc4847b44d", default-features = false }
+profiling                          = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling", rev = "988521c84d1e0d259b9c33e10e2f504eaed53dfc", default-features = false }
 # Tracy frontend: crates.io `profiling` v1, kept separate from the custom
 # collector above so both can coexist. Because gpui-ce depends on the same
 # crates.io package, enabling any crate's tracy feature feature-unifies the
