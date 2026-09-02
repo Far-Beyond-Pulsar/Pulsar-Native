@@ -139,7 +139,9 @@ fn main() {
 
     macos_permissions::ensure_accessibility_permission_blocking();
 
-    println!(" If pulsar engine simply exits and you're reading this message note that you must pass a URI indicating where your project is into the engine the project launcher is no longer built into this repo and has been moved to Pulsar-Installer Which bundles in version and project management https://github.com/Far-Beyond-Pulsar/Pulsar-Installer");
+    println!(
+        "If Pulsar Engine exits immediately, launch it from Pulsar Hub (https://github.com/Far-Beyond-Pulsar/Pulsar-Hub) or pass a project path manually with `--project-path <PROJECT_PATH>`."
+    );
 
     // Name the main thread FIRST
     profiling::set_thread_name("Main Thread");
@@ -155,6 +157,7 @@ fn main() {
     // Parse arguments first (needed for init context)
     let _ = dotenv::dotenv();
     let parsed = args::parse_args();
+    let project_path = parsed.project_path.clone();
 
     // Create initialization context
     let mut init_ctx = InitContext::new(parsed.clone());
@@ -318,29 +321,24 @@ fn main() {
             tracing::info!("Opening project splash from URI: {}", path.display());
             open_via_loading_screen(path, cx);
         } else {
-            let direct_path = std::env::args()
-                .skip(1)
-                .find(|arg| !arg.starts_with('-'))
-                .map(std::path::PathBuf::from);
-
-            match direct_path.filter(|p| p.is_dir()) {
-                Some(path) => {
-                    tracing::info!("Opening project from argument: {}", path.display());
+            match project_path {
+                Some(path) if path.is_dir() => {
+                    tracing::info!("Opening project from --project-path: {}", path.display());
                     open_via_loading_screen(path, cx);
                 }
-                Some(path) if path.exists() => {
-                    tracing::error!(
-                        "Project path is not a directory: {}",
-                        path.display()
-                    );
-                    cx.quit();
-                }
                 Some(path) => {
-                    tracing::error!("Project path does not exist: {}", path.display());
+                    if path.exists() {
+                        tracing::error!(
+                            "Project path is not a directory: {}",
+                            path.display()
+                        );
+                    } else {
+                        tracing::error!("Project path does not exist: {}", path.display());
+                    }
                     cx.quit();
                 }
                 None => {
-                    tracing::warn!("No project specified. Pass a project directory as an argument or launch via Pulsar Hub.");
+                    tracing::warn!("No project specified. Pass one with --project-path <PROJECT_PATH> or launch via Pulsar Hub.");
                     cx.quit();
                 }
             }
