@@ -2,7 +2,7 @@
 # Builds only the pulsar-relay binary from the workspace.
 
 # Stage 1: Builder
-FROM rust:1.97-slim@sha256:8e8cf8f7fd54a2d23d5a743b3a03f56e26b6c774276c33fa0595111704ebb15c AS builder
+FROM rust:1.98-slim@sha256:17d1ba895198f9934c6314ec5346a0d5115372f3243390c3d731e242f35c2f27 AS builder
 
 WORKDIR /app
 
