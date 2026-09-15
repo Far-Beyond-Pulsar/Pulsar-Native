@@ -1,6 +1,7 @@
 //! Helio renderer — wgpu-based, renders directly into a WgpuSurface each frame.
 
 pub mod core;
+mod interaction;
 pub mod renderer;
 
 pub use core::{

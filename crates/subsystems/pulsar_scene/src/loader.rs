@@ -1,18 +1,18 @@
-//! Pulsar scene loader — canonical implementation shared by game runtime and editor engine.
+//! Pulsar scene import adapter — retained for explicit offline conversion only.
 //!
 //! ## Design
 //!
-//! Component dispatch goes through the **inventory registration system**:
+//! Component dispatch goes through the **inventory registration system** for
+//! the legacy import path only:
 //!
 //! 1. Each component crate (e.g. `helio_component`) submits a
 //!    `RuntimeBehaviorRegistration` via `inventory::submit!` in its
 //!    `#[register_runtime_behavior]` proc-macro expansion.
-//! 2. The loader creates a [`SceneObjectContext`] that implements
-//!    [`ComponentRuntimeContext`] and owns all renderer state needed to
-//!    materialise lights and meshes.
+//! 2. The import adapter creates a [`SceneObjectContext`] that implements
+//!    [`ComponentRuntimeContext`] and owns the renderer handle required by
+//!    legacy conversion callers.
 //! 3. `apply_runtime_behavior_for_class` iterates the inventory and calls the
-//!    matching component's `sync_component` — which parses its own fields and
-//!    calls `context.upsert_light` / `context.upsert_mesh`.
+//!    matching component's `sync_component`.
 //!
 //! The loader **never touches component field values**.  All parsing, defaults,
 //! and unit conversions live inside the component's `sync_component`.  Adding a
@@ -58,13 +58,10 @@ pub use helio_component::WaterVolumeComponent as _ForceLink_WaterVolumeComponent
 /// straight into a Helio `Scene` via `ComponentRuntimeBehavior::sync_
 /// component`, bypassing SceneDB entirely.
 ///
-/// DEPRECATED for runtime use (Pulsar-Native#637): standalone games and PIE
-/// now load through `engine_backend::scene::RuntimeLevel`, which hydrates
-/// into the one shared `WorldSceneStore`/SceneDb world that renderers and
-/// gameplay both read -- keeping a second, renderer-private copy of scene
-/// state here broke the "one world" invariant the scripting epic is built
-/// on. Keep using this ONLY for import/legacy conversion tooling that has
-/// no runtime world of its own.
+/// It is never a runtime loading path. Standalone games, editor PIE, and
+/// embedded games must hydrate `WorldSceneStore` through
+/// `engine_backend::scene::RuntimeLevel`; keeping this adapter on a runtime
+/// path creates a second renderer-private copy of world state.
 #[deprecated(
     since = "0.1.34",
     note = "runtime scene loading must hydrate the shared WorldSceneStore \
@@ -79,6 +76,8 @@ impl SceneLoader {
         project_root: &Path,
         renderer: &mut Renderer,
     ) -> Result<(), SceneLoadError> {
+        // Explicit import boundary: runtime code must use RuntimeLevel so
+        // SceneDB remains the only authoritative world store.
         let scene = SceneFile::load(path)?;
         Self::load_scene(&scene, project_root, renderer)
     }
@@ -92,7 +91,8 @@ impl SceneLoader {
         Ok(())
     }
 
-    /// Core loader — dispatches every scene object through the component system.
+    /// Core import adapter — dispatches every scene object through the legacy
+    /// component system. This function must not be used by runtime loading.
     ///
     /// Each object gets a [`SceneObjectContext`] implementing
     /// [`ComponentRuntimeContext`].  `apply_runtime_behavior_for_class` calls the

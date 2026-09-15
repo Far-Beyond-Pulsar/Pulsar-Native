@@ -42,7 +42,7 @@
 //!   that component lands, invalidation rides the same subscription
 //!   mechanism as everything above.
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use helio::{GroupId, GroupMask, MaterialId, Movability, Renderer};
 use helio_component::components::{MaterialOverrideComponent, StaticMeshComponent};
@@ -75,36 +75,41 @@ pub struct SceneRenderProjection {
 }
 
 impl SceneRenderProjection {
-    /// Build once at the SceneDB owner/frame boundary, then pass by value or
-    /// clone to render work.  All GPU buffer access after this point goes
-    /// through the borrowed SceneDB `GpuMirrorHandle`.
+    /// Build a disposable render view directly from the current SceneDB rows.
+    /// No derived frame rows or asset snapshots are written back to World.
     pub fn from_store(store: &WorldSceneStore) -> Self {
-        let mirror = store.world().gpu_mirror().cloned();
-        let meshes = store
-            .world()
-            .query::<&ResolvedMeshFrame>()
-            .filter_map(|(entity, frame)| {
+        let world = store.world();
+        let mirror = world.gpu_mirror().cloned();
+        let mesh_entities: Vec<_> = world
+            .query::<&StaticMeshComponent>()
+            .map(|(entity, _)| entity)
+            .collect();
+        let meshes = mesh_entities
+            .into_iter()
+            .filter_map(|entity| {
+                let frame = ResolvedMeshFrame::from_world(world, entity)?;
                 let stable = store
                     .stable_id_of(entity)
                     .map(scene_id_to_tag)
                     .unwrap_or(entity.index() as u64);
-                let material = store.world().get::<MaterialResource>(entity).cloned();
-                let override_material = store
-                    .world()
-                    .get::<MaterialOverrideComponent>(entity)
-                    .cloned();
-                Some((entity, *frame, stable, material, override_material))
+                let material = world.get::<MaterialResource>(entity).cloned();
+                let override_material = world.get::<MaterialOverrideComponent>(entity).cloned();
+                Some((entity, frame, stable, material, override_material))
             })
             .collect();
-        let lights = store
-            .world()
-            .query::<&ResolvedLightFrame>()
-            .map(|(entity, frame)| {
+        let light_entities: Vec<_> = world
+            .query::<&helio_component::components::LightComponentGpuMirror>()
+            .map(|(entity, _)| entity)
+            .collect();
+        let lights = light_entities
+            .into_iter()
+            .filter_map(|entity| {
+                let frame = ResolvedLightFrame::from_world(world, entity)?;
                 let stable = store
                     .stable_id_of(entity)
                     .map(scene_id_to_tag)
                     .unwrap_or(entity.index() as u64);
-                (entity, *frame, stable)
+                Some((entity, frame, stable))
             })
             .collect();
         Self {
@@ -123,12 +128,12 @@ impl SceneRenderProjection {
 /// between their phases.
 pub fn step_scene_for_render(
     store: &mut WorldSceneStore,
-    lights: &mut LightFrameMaintainer,
-    meshes: &mut MeshFrameMaintainer,
+    _lights: &mut LightFrameMaintainer,
+    _meshes: &mut MeshFrameMaintainer,
 ) {
+    // SceneDB is the only invalidation/upload authority. The compatibility
+    // maintainer arguments are intentionally inert.
     store.scene_db_mut().step();
-    lights.maintain(store.world_mut());
-    meshes.maintain(store.world_mut());
 }
 
 /// Ensure `store`'s SceneDB has a GPU mirror attached and return a cloneable
@@ -225,11 +230,7 @@ pub fn ensure_gpu_mirror(
     // 4096/8192 just match `MeshPool`'s own prior static defaults (mesh.rs)
     // -- growable, not a hard ceiling.
     StaticMeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
-    helio_pass_decal::DecalComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        256,
-        &device,
-    );
+    helio_pass_decal::DecalComponent::register_gpu_columns_growable(&mut gpu_store, 256, &device);
     helio_pass_water_sim::WaterVolumeComponent::register_gpu_columns_growable(
         &mut gpu_store,
         64,
@@ -425,9 +426,14 @@ pub fn rebuild_static_mesh_frame(
 ) {
     let Some(mirror) = projection.mirror.as_ref() else {
         renderer.submit_static_mesh_frame(&[]);
-        for stale in authored_objects.drain() {
-            world.remove::<helio_pass_gbuffer::StaticObjectComponent>(stale);
+        let stale: Vec<_> = world
+            .query::<&helio_pass_gbuffer::StaticObjectComponent>()
+            .map(|(entity, _)| entity)
+            .collect();
+        for entity in stale {
+            world.remove::<helio_pass_gbuffer::StaticObjectComponent>(entity);
         }
+        authored_objects.clear();
         return;
     };
     let default_material = materials.default(renderer);
@@ -435,8 +441,7 @@ pub fn rebuild_static_mesh_frame(
     let mut inputs = Vec::new();
     let mut component_count = 0usize;
     let mut empty_handle_count = 0usize;
-    let mut live_this_frame =
-        std::collections::HashSet::with_capacity(projection.meshes.len());
+    let mut live_this_frame = std::collections::HashSet::with_capacity(projection.meshes.len());
 
     // One query over resolved rows only -- no Transform/Visibility join, no
     // matrix math in this loop anymore (#638).
@@ -458,9 +463,11 @@ pub fn rebuild_static_mesh_frame(
         let material = material_resource
             .as_ref()
             .map(|component| materials.material_for_resource(renderer, *entity, component))
-            .or_else(|| material_override.as_ref().map(|component| {
-                materials.material_for_override(renderer, *entity, component)
-            }))
+            .or_else(|| {
+                material_override
+                    .as_ref()
+                    .map(|component| materials.material_for_override(renderer, *entity, component))
+            })
             .unwrap_or(default_material);
         inputs.push(helio::StaticMeshRenderInput {
             mesh_key,
@@ -543,14 +550,19 @@ pub fn rebuild_static_mesh_frame(
         }
     }
 
-    // Absence-is-removal, made explicit: unlike Helio's own transient list
-    // (rebuilt wholesale every pass), a `StaticObjectComponent` row persists
-    // in SceneDB until removed, so any entity authored last pass but not
-    // live this pass loses its row now.
-    for stale in authored_objects.iter().filter(|e| !live_this_frame.contains(e)) {
-        world.remove::<helio_pass_gbuffer::StaticObjectComponent>(*stale);
+    // Remove stale derived GPU rows by querying SceneDB itself. The caller's
+    // legacy `authored_objects` argument is intentionally cleared and never
+    // used as authority; removal remains correct after replacement, despawn,
+    // or renderer recreation.
+    let stale: Vec<_> = world
+        .query::<&helio_pass_gbuffer::StaticObjectComponent>()
+        .map(|(entity, _)| entity)
+        .filter(|entity| !live_this_frame.contains(entity))
+        .collect();
+    for entity in stale {
+        world.remove::<helio_pass_gbuffer::StaticObjectComponent>(entity);
     }
-    *authored_objects = live_this_frame;
+    authored_objects.clear();
 
     if component_count > 0 {
         tracing::info!(
@@ -621,88 +633,36 @@ pub fn rebuild_light_frame(renderer: &mut Renderer, projection: &SceneRenderProj
     renderer.submit_light_frame(&inputs);
 }
 
-/// Renderer-local projections of SceneDB material state.
+/// Compatibility shell for the renderer interaction layer.
 ///
-/// The component values remain authoritative in SceneDB. Helio only receives
-/// `MaterialId` handles and the GPU material records needed for the current
-/// renderer instance. Keeping one handle per entity lets edits update the
-/// existing Helio slot instead of minting a new material every frame.
+/// SceneDB owns material values. This type deliberately contains no default,
+/// entity, content, or Helio-id map; material records are projected from the
+/// current World component at submission time. A later renderer migration may
+/// replace this shell with SceneDB GPU-mirror bindings without changing the
+/// ownership contract.
 #[derive(Default)]
-pub struct StaticMeshMaterialProjections {
-    default: Option<MaterialId>,
-    overrides: HashMap<pulsar_scenedb::Entity, (MaterialKey, MaterialId)>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct MaterialKey {
-    base_color: [u32; 4],
-    metallic: u32,
-    roughness: u32,
-    emissive_color: [u32; 3],
-    emissive_intensity: u32,
-    alpha: u32,
-}
-
-impl MaterialKey {
-    fn from_component(component: &MaterialOverrideComponent) -> Self {
-        Self {
-            base_color: component.base_color.map(f32::to_bits),
-            metallic: component.metallic.to_bits(),
-            roughness: component.roughness.to_bits(),
-            emissive_color: component.emissive_color.map(f32::to_bits),
-            emissive_intensity: component.emissive_intensity.to_bits(),
-            alpha: component.alpha.to_bits(),
-        }
-    }
-
-    fn from_resource(component: &MaterialResource) -> Self {
-        Self {
-            base_color: component.base_color.map(f32::to_bits),
-            metallic: component.metallic.to_bits(),
-            roughness: component.roughness.to_bits(),
-            emissive_color: component.emissive_color.map(f32::to_bits),
-            emissive_intensity: component.emissive_intensity.to_bits(),
-            alpha: component.base_color[3].to_bits(),
-        }
-    }
-}
+pub struct StaticMeshMaterialProjections;
 
 impl StaticMeshMaterialProjections {
     fn default(&mut self, renderer: &mut Renderer) -> MaterialId {
-        *self.default.get_or_insert_with(|| {
-            renderer.create_material_projection(default_static_mesh_material())
-        })
+        renderer.create_material_projection(default_static_mesh_material())
     }
 
     fn material_for_override(
         &mut self,
         renderer: &mut Renderer,
-        entity: pulsar_scenedb::Entity,
+        _entity: pulsar_scenedb::Entity,
         component: &MaterialOverrideComponent,
     ) -> MaterialId {
-        let key = MaterialKey::from_component(component);
-        if let Some((previous_key, material_id)) = self.overrides.get_mut(&entity) {
-            if *previous_key == key {
-                return *material_id;
-            }
-            let _ = renderer
-                .update_material_projection(*material_id, material_from_override(component));
-            *previous_key = key;
-            return *material_id;
-        }
-
-        let material_id = renderer.create_material_projection(material_from_override(component));
-        self.overrides.insert(entity, (key, material_id));
-        material_id
+        renderer.create_material_projection(material_from_override(component))
     }
 
     fn material_for_resource(
         &mut self,
         renderer: &mut Renderer,
-        entity: pulsar_scenedb::Entity,
+        _entity: pulsar_scenedb::Entity,
         component: &MaterialResource,
     ) -> MaterialId {
-        let key = MaterialKey::from_resource(component);
         let material = helio::GpuMaterial {
             base_color: component.base_color,
             emissive: [
@@ -722,16 +682,7 @@ impl StaticMeshMaterialProjections {
             material_class: 0,
             class_params: [0.0; 4],
         };
-        if let Some((previous_key, material_id)) = self.overrides.get_mut(&entity) {
-            if *previous_key != key {
-                let _ = renderer.update_material_projection(*material_id, material);
-                *previous_key = key;
-            }
-            return *material_id;
-        }
-        let material_id = renderer.create_material_projection(material);
-        self.overrides.insert(entity, (key, material_id));
-        material_id
+        renderer.create_material_projection(material)
     }
 }
 
@@ -812,10 +763,7 @@ mod tests {
         assert_eq!(gpu.base_color, [0.1, 0.2, 0.3, 0.5]);
         assert_eq!(gpu.emissive, [1.4, 1.6, 1.8, 0.0]);
         assert_eq!(gpu.roughness_metallic, [0.6, 0.4, 1.5, 0.5]);
-        assert_eq!(
-            MaterialKey::from_component(&component).alpha,
-            0.5f32.to_bits()
-        );
+        assert_eq!(component.alpha, 0.5);
     }
 
     /// #637 contract: attaching twice is a no-op the second time -- a second

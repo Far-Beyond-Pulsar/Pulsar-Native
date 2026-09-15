@@ -61,9 +61,9 @@ pub struct EmbeddedGame {
     out_view: wgpu::TextureView,
     /// The tick loop's shared world (Pulsar-Native#634): the same store
     /// gameplay mutates, rendered through the per-frame rebuild bridge.
-    /// Under ABI v1 this store is still guest-owned (the host's is a
-    /// separate instance until the #635 v2 bridge hands us theirs); it is
-    /// SceneDB-resident either way.
+    /// ABI v2 requires the host's shared-world token; this store is adopted
+    /// from the host and remains SceneDB-resident
+    /// for gameplay and rendering.
     scene_store: Arc<RwLock<WorldSceneStore>>,
     /// Resolved-light-frame maintainer over [`Self::scene_store`]'s world.
     light_frames: LightFrameMaintainer,
@@ -320,9 +320,9 @@ impl EmbeddedGame {
             cam.far,
         );
 
-        // 4. Render into the offscreen target the editor samples. Under ABI
-        //    v1 this is still the guest's own world copy; #635's v2 bridge
-        //    will hand us the host's authoritative store instead.
+        // 4. Render into the offscreen target the editor samples. ABI v2
+        //    requires the host's authoritative SceneDB-backed store above, so
+        //    simulation and rendering observe the same hydrated world.
         if let Err(e) = self.renderer.render(&helio_cam, &self.out_view) {
             tracing::error!("PiE render error: {:?}", e);
         }

@@ -36,7 +36,7 @@ pub use subsystems::world::World;
 
 // Re-export Helio types for UI integration
 #[cfg(feature = "render")]
-pub use helio::GizmoMode;
+pub use scene::GizmoType as GizmoMode;
 
 // Re-export reflection system for convenience
 pub use pulsar_reflection::*;

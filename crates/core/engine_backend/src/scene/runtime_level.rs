@@ -23,17 +23,19 @@
 //!   `RenderProps.component_instances`, exactly as the editor does today.
 //!
 //! Component data source precedence matches the editor's ("persisted
-//! components are authoritative when present"): a non-empty top-level
+//! components are authoritative when present"): a top-level
 //! `components` entry for an object wins over that object's own
 //! `component_instances`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
 use pulsar_scene::component_instances_from_props;
-use pulsar_scene::format::{BlueprintBindings, ObjectType as FileObjectType, SceneFile};
+use pulsar_scene::format::{
+    BlueprintBindings, ObjectType as FileObjectType, SceneFile, SceneLoadError,
+};
 use serde_json::Value;
 
 use crate::scene::{
@@ -50,6 +52,12 @@ pub enum RuntimeLevelError {
     Parse { path: String, message: String },
     #[error("unsupported scene version '{0}' (expected 1.x or 2.x)")]
     UnsupportedVersion(String),
+    #[error("failed to hydrate component {class_name} on object {object_id}: {message}")]
+    ComponentHydration {
+        object_id: String,
+        class_name: String,
+        message: String,
+    },
 }
 
 /// Editor camera state persisted in the level file (`editor.camera`) --
@@ -89,23 +97,9 @@ impl RuntimeLevel {
     /// contract; call `engine_state::set_project_path` first so asset-
     /// resolving hydrates (`StaticMeshComponent`) can find project files.
     pub fn load(path: &Path) -> Result<Self, RuntimeLevelError> {
-        let path_display = path.display().to_string();
-        let bytes = std::fs::read(path).map_err(|e| RuntimeLevelError::Io {
-            path: path_display.clone(),
-            message: e.to_string(),
-        })?;
-        let text = String::from_utf8(bytes).map_err(|e| RuntimeLevelError::Io {
-            path: path_display.clone(),
-            message: e.to_string(),
-        })?;
-        let file: SceneFile =
-            serde_json::from_str(&text).map_err(|e| RuntimeLevelError::Parse {
-                path: path_display.clone(),
-                message: e.to_string(),
-            })?;
+        let file = load_scene_file(path)?;
         Self::from_scene_file(file)
     }
-
     /// Load a level file and hydrate it into an EXISTING store -- the
     /// one-world play-mode path (Pulsar-Native#637/#634): the tick loop's
     /// shared store is authoritative, so the level merges INTO it
@@ -121,21 +115,7 @@ impl RuntimeLevel {
         path: &Path,
         store: &mut WorldSceneStore,
     ) -> Result<LevelExtras, RuntimeLevelError> {
-        let path_display = path.display().to_string();
-        let bytes = std::fs::read(path).map_err(|e| RuntimeLevelError::Io {
-            path: path_display.clone(),
-            message: e.to_string(),
-        })?;
-        let text = String::from_utf8(bytes).map_err(|e| RuntimeLevelError::Io {
-            path: path_display.clone(),
-            message: e.to_string(),
-        })?;
-        let file: SceneFile =
-            serde_json::from_str(&text).map_err(|e| RuntimeLevelError::Parse {
-                path: path_display.clone(),
-                message: e.to_string(),
-            })?;
-        // Extras are extracted before `file` moves into hydration.
+        let file = load_scene_file(path)?;
         let extras = LevelExtras {
             editor_camera: editor_camera(&file.editor),
             blueprint_bindings: file.blueprint_bindings.clone(),
@@ -143,7 +123,6 @@ impl RuntimeLevel {
         Self::hydrate_scene_file(file, store)?;
         Ok(extras)
     }
-
     /// Hydrate from an already-parsed [`SceneFile`] into a fresh store
     /// (import/legacy callers that get their JSON from somewhere other than
     /// disk).
@@ -175,7 +154,10 @@ impl RuntimeLevel {
         // Parent-before-child order is the format's own DFS guarantee (see
         // `SceneFile::objects`' doc), which is exactly what insert_snapshots
         // requires.
+        // Validate before mutating World so malformed hierarchy/identity data
+        // cannot leave a partially hydrated SceneDB.
         let snapshots: Vec<ObjectSnapshot> = file.objects.iter().map(object_snapshot).collect();
+        validate_snapshots(store, &snapshots)?;
         store
             .insert_snapshots(&snapshots)
             .map_err(|error| RuntimeLevelError::Parse {
@@ -188,9 +170,15 @@ impl RuntimeLevel {
             let Some(entity) = store.entity_for(&obj.id) else {
                 continue;
             };
-            let instances = match persisted.get(&obj.id) {
-                Some(records) if !records.is_empty() => records.clone(),
-                _ => component_instances_from_props(&obj.props, obj.component_instances.as_ref())
+            let (instances, has_component_source) = match persisted.get(&obj.id) {
+                // A persisted entry is authoritative, including an explicit empty
+                // array, which means all registered components are removed.
+                Some(records) => (records.clone(), true),
+                None => {
+                    let records = component_instances_from_props(
+                        &obj.props,
+                        obj.component_instances.as_ref(),
+                    )
                     .into_iter()
                     .map(|(index, class_name, data)| ComponentRecord {
                         index,
@@ -198,9 +186,21 @@ impl RuntimeLevel {
                         data,
                         enabled: true,
                     })
-                    .collect(),
+                    .collect::<Vec<_>>();
+                    (records, component_source_present(obj))
+                }
             };
-            hydrate_components(store, entity, &obj.id, &instances);
+
+            // SceneDB keeps the ordered compatibility projection as well as the
+            // typed registered component values. Older consumers can therefore
+            // observe the same enabled/order state without another scene list.
+            if has_component_source {
+                let component_instances = component_records_value(&instances);
+                store.update_render_props(&obj.id, |props| {
+                    props.component_instances = Some(component_instances);
+                });
+            }
+            hydrate_components(store, entity, &obj.id, &instances)?;
         }
         Ok(())
     }
@@ -238,6 +238,18 @@ struct ComponentRecord {
     enabled: bool,
 }
 
+fn load_scene_file(path: &Path) -> Result<SceneFile, RuntimeLevelError> {
+    SceneFile::load(path).map_err(|error| match error {
+        SceneLoadError::Io(message) => RuntimeLevelError::Io {
+            path: path.display().to_string(),
+            message,
+        },
+        SceneLoadError::Parse(message) => RuntimeLevelError::Parse {
+            path: path.display().to_string(),
+            message,
+        },
+    })
+}
 fn version_string(version: &Value) -> String {
     match version {
         Value::String(s) => s.clone(),
@@ -310,7 +322,11 @@ fn persisted_components(components: &Value) -> HashMap<String, Vec<ComponentReco
             .enumerate()
             .filter_map(|(index, entry)| {
                 Some(ComponentRecord {
-                    index,
+                    index: entry
+                        .get("index")
+                        .and_then(Value::as_u64)
+                        .map(|value| value as usize)
+                        .unwrap_or(index),
                     class_name: entry.get("class_name")?.as_str()?.to_string(),
                     data: entry.get("data").cloned().unwrap_or(Value::Null),
                     enabled: entry
@@ -325,33 +341,86 @@ fn persisted_components(components: &Value) -> HashMap<String, Vec<ComponentReco
     out
 }
 
-/// Hydrate/remove every registered class's typed World value for `entity`
-/// against this object's enabled instance list; unregistered classes
-/// intentionally stay JSON-only in `RenderProps` (the editor's exact
-/// behavior). An absent or disabled registered class gets any stale typed
-/// row removed, matching `sync_registered_component_props_to_scene_db`.
+/// Hydrate/remove every registered class typed World value for an entity.
+fn component_source_present(obj: &pulsar_scene::format::SceneObject) -> bool {
+    obj.component_instances
+        .as_ref()
+        .and_then(Value::as_array)
+        .is_some()
+        || obj
+            .props
+            .get("__component_instances")
+            .and_then(Value::as_array)
+            .is_some()
+}
+
+fn component_records_value(records: &[ComponentRecord]) -> Value {
+    Value::Array(
+        records
+            .iter()
+            .map(|record| {
+                serde_json::json!({
+                    "index": record.index,
+                    "class_name": record.class_name,
+                    "data": record.data,
+                    "enabled": record.enabled,
+                })
+            })
+            .collect(),
+    )
+}
+
+fn validate_snapshots(
+    store: &WorldSceneStore,
+    snapshots: &[ObjectSnapshot],
+) -> Result<(), RuntimeLevelError> {
+    let mut seen = HashSet::with_capacity(snapshots.len());
+    for snapshot in snapshots {
+        if store.entity_for(&snapshot.stable_id).is_some()
+            || !seen.insert(snapshot.stable_id.as_str())
+        {
+            return Err(RuntimeLevelError::Parse {
+                path: String::new(),
+                message: format!("duplicate stable id '{}'", snapshot.stable_id),
+            });
+        }
+        if let Some(parent) = &snapshot.parent {
+            if !seen.contains(parent.as_str()) && store.entity_for(parent).is_none() {
+                return Err(RuntimeLevelError::Parse {
+                    path: String::new(),
+                    message: format!(
+                        "object '{}' references parent '{}' before it is available",
+                        snapshot.stable_id, parent
+                    ),
+                });
+            }
+        }
+    }
+    Ok(())
+}
 fn hydrate_components(
     store: &mut WorldSceneStore,
     entity: pulsar_scenedb::Entity,
     object_id: &str,
     instances: &[ComponentRecord],
-) {
+) -> Result<(), RuntimeLevelError> {
     for class_name in pulsar_world_registry::registered_world_component_classes() {
         match instances
             .iter()
             .find(|r| r.enabled && r.class_name == *class_name)
         {
             Some(record) => {
-                if let Err(error) = pulsar_world_registry::hydrate_world_component_for_class(
+                pulsar_world_registry::hydrate_world_component_for_class(
                     class_name,
                     store.world_mut(),
                     entity,
                     &record.data,
-                ) {
-                    tracing::error!(
-                        "World hydration failed for {class_name} on '{object_id}': {error}"
-                    );
-                }
+                )
+                .map_err(|error| RuntimeLevelError::ComponentHydration {
+                    object_id: object_id.to_string(),
+                    class_name: class_name.to_string(),
+                    message: error.to_string(),
+                })?;
             }
             None => {
                 pulsar_world_registry::remove_world_component_for_class(
@@ -362,6 +431,7 @@ fn hydrate_components(
             }
         }
     }
+    Ok(())
 }
 
 /// Read `editor.camera` out of a level file's editor section, if present.
@@ -537,6 +607,78 @@ mod tests {
         );
     }
 
+    #[test]
+    fn persisted_empty_component_list_is_authoritative() {
+        let file = level_with_sun_components(
+            serde_json::json!({ "sun": [] }),
+            Some(light_instances_json(1111.0)),
+        );
+        let level = RuntimeLevel::from_scene_file(file).unwrap();
+        let store = level.store();
+        let store = store.read();
+        let sun = store.entity_for("sun").unwrap();
+
+        assert!(
+            store.world().get::<LightComponent>(sun).is_none(),
+            "an explicit empty persisted list removes the inline component"
+        );
+        assert_eq!(
+            store.render_props("sun").unwrap().component_instances,
+            Some(serde_json::json!([])),
+            "the removal remains visible in SceneDB metadata"
+        );
+    }
+
+    #[test]
+    fn persisted_component_order_and_enabled_state_are_kept_in_scene_db_projection() {
+        let mut disabled = LightComponent::default();
+        disabled.general.enabled = true;
+        let mut enabled = LightComponent::default();
+        enabled.general.enabled = true;
+        enabled.intensity.intensity = 99.0;
+
+        let file = level_with_sun_components(
+            serde_json::json!({
+                "sun": [
+                    {
+                        "index": 7,
+                        "class_name": "LightComponent",
+                        "data": serde_json::to_value(&disabled).unwrap(),
+                        "enabled": false
+                    },
+                    {
+                        "index": 3,
+                        "class_name": "NotARealComponent",
+                        "data": { "x": 1 },
+                        "enabled": true
+                    },
+                    {
+                        "index": 11,
+                        "class_name": "LightComponent",
+                        "data": serde_json::to_value(&enabled).unwrap(),
+                        "enabled": true
+                    }
+                ]
+            }),
+            Some(light_instances_json(1111.0)),
+        );
+        let level = RuntimeLevel::from_scene_file(file).unwrap();
+        let store = level.store();
+        let store = store.read();
+        let records = store
+            .render_props("sun")
+            .unwrap()
+            .component_instances
+            .unwrap();
+        let records = records.as_array().unwrap();
+
+        assert_eq!(records.len(), 3);
+        assert_eq!(records[0]["index"], serde_json::json!(7));
+        assert_eq!(records[0]["enabled"], serde_json::json!(false));
+        assert_eq!(records[1]["index"], serde_json::json!(3));
+        assert_eq!(records[2]["index"], serde_json::json!(11));
+        assert_eq!(records[2]["enabled"], serde_json::json!(true));
+    }
     #[test]
     fn editor_camera_is_extracted_when_present() {
         let level = sample_level();
