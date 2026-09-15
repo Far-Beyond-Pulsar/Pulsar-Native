@@ -4434,15 +4434,14 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
- "helio-foliage-core",
  "helio-pass-billboard",
  "helio-pass-corona",
+ "helio-pass-foliage-place",
+ "helio-pass-portal-cull",
  "helio-pass-postprocess",
  "helio-pass-sky",
  "helio-pass-tsr",
  "helio-pass-virtual-geometry",
- "helio-portal-core",
- "helio-voxel-core",
  "helio-xr",
  "image",
  "libhelio",
@@ -4465,9 +4464,11 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio",
+ "helio-pass-gbuffer",
  "image",
  "libhelio",
  "log",
+ "pulsar_scenedb",
  "solid-fbx 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=4724f4f32b28a8ef6fe9ca2b2b59ea87a8e85ced)",
  "solid-gltf",
  "solid-obj",
@@ -4484,7 +4485,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
- "helio-voxel-core",
  "libhelio",
  "naga",
  "pulsar_scenedb",
@@ -4498,7 +4498,6 @@ version = "0.1.0"
 dependencies = [
  "helio",
  "helio-core",
- "helio-foliage-core",
  "helio-pass-billboard",
  "helio-pass-corona",
  "helio-pass-debug-overlay",
@@ -4538,15 +4537,8 @@ dependencies = [
  "helio-pass-voxel-mesh",
  "helio-pass-water-sim",
  "image",
+ "pulsar_scenedb",
  "wgpu",
-]
-
-[[package]]
-name = "helio-foliage-core"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "glam 0.33.5",
 ]
 
 [[package]]
@@ -4634,9 +4626,10 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "helio-foliage-core",
+ "helio-pass-foliage-place",
  "libhelio",
  "log",
+ "pulsar_scenedb",
  "wgpu",
 ]
 
@@ -4645,10 +4638,12 @@ name = "helio-pass-foliage-place"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio-core",
- "helio-foliage-core",
  "libhelio",
  "log",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=72291d0f211dc8826eb70339aeb0409be4270ad5)",
  "wgpu",
 ]
 
@@ -4661,8 +4656,10 @@ dependencies = [
  "helio-core",
  "libhelio",
  "log",
+ "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=72291d0f211dc8826eb70339aeb0409be4270ad5)",
+ "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=f8ebfa44096451153fa238bba3bd24a00419e271)",
+ "serde_json",
  "wgpu",
 ]
 
@@ -4686,8 +4683,10 @@ dependencies = [
  "helio-core",
  "libhelio",
  "log",
+ "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=72291d0f211dc8826eb70339aeb0409be4270ad5)",
+ "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=bbe45f3b10bb6115c7b7b55afd6789e7cbf57a40)",
+ "serde_json",
  "wgpu",
 ]
 
@@ -4784,7 +4783,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "helio-planet-voxel-core",
  "libhelio",
  "log",
  "thiserror 2.0.20",
@@ -4796,9 +4794,12 @@ name = "helio-pass-portal-cull"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam 0.33.5",
  "helio-core",
  "libhelio",
  "log",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=72291d0f211dc8826eb70339aeb0409be4270ad5)",
  "wgpu",
 ]
 
@@ -4812,6 +4813,7 @@ dependencies = [
  "helio-pass-portal-cull",
  "libhelio",
  "log",
+ "pulsar_scenedb",
  "wgpu",
 ]
 
@@ -4943,6 +4945,7 @@ dependencies = [
  "helio-core",
  "libhelio",
  "log",
+ "pulsar_scenedb",
  "wgpu",
 ]
 
@@ -4965,7 +4968,6 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
- "helio-voxel-core",
  "libhelio",
  "log",
  "wgpu",
@@ -4981,30 +4983,6 @@ dependencies = [
  "pulsar_scenedb",
  "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=72291d0f211dc8826eb70339aeb0409be4270ad5)",
  "wgpu",
-]
-
-[[package]]
-name = "helio-planet-voxel-core"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "thiserror 2.0.20",
-]
-
-[[package]]
-name = "helio-portal-core"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "glam 0.33.5",
-]
-
-[[package]]
-name = "helio-voxel-core"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "glam 0.33.5",
 ]
 
 [[package]]
@@ -5035,10 +5013,11 @@ dependencies = [
  "helio",
  "helio-asset-compat",
  "helio-pass-deferred-light",
+ "helio-pass-foliage-place",
  "helio-pass-planetary-voxel",
+ "helio-pass-portal-cull",
  "helio-pass-postprocess",
  "helio-pass-water-sim",
- "helio-planet-voxel-core",
  "libhelio",
  "plugin_editor_api",
  "pulsar_events",
@@ -8978,7 +8957,27 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=bbe45f3b10bb6115c7b7b55afd6789e7cbf57a40#bbe45f3b10bb6115c7b7b55afd6789e7cbf57a40"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "pulsar_scenedb_derive"
+version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=c761890789b3e3c16b362a91769570bd587e5ac6#c761890789b3e3c16b362a91769570bd587e5ac6"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "pulsar_scenedb_derive"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=f8ebfa44096451153fa238bba3bd24a00419e271#f8ebfa44096451153fa238bba3bd24a00419e271"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -165,6 +165,8 @@ helio-pass-gbuffer = { path = "crates/renderer/helio/crates/passes/3d/helio-pass
 helio-pass-water-sim = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-water-sim" }
 helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-postprocess" }
 helio-pass-deferred-light = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-deferred-light" }
+helio-pass-foliage-place = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-foliage-place" }
+helio-pass-portal-cull = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-portal-cull" }
 libhelio                   = { path = "crates/renderer/helio/crates/libhelio" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
