@@ -61,12 +61,18 @@ fn main() {
 
     // ── Helio revision (kept for HELIO_GIT_REVISION consumers) ───────────────
     let revision = dependency_revision(dependencies, HELIO_DEPENDENCIES[0]);
-    for dependency in HELIO_DEPENDENCIES.into_iter().skip(1) {
-        let candidate = dependency_revision(dependencies, dependency);
-        assert_eq!(
-            candidate, revision,
-            "workspace dependency `{dependency}` uses Helio revision {candidate}, expected {revision}"
-        );
+    if dependencies
+        .get(HELIO_DEPENDENCIES[0])
+        .and_then(|value| value.get("rev"))
+        .is_some()
+    {
+        for dependency in HELIO_DEPENDENCIES.into_iter().skip(1) {
+            let candidate = dependency_revision(dependencies, dependency);
+            assert_eq!(
+                candidate, revision,
+                "workspace dependency `{dependency}` uses Helio revision {candidate}, expected {revision}"
+            );
+        }
     }
     println!("cargo:rustc-env=PULSAR_HELIO_GIT_REVISION={revision}");
 
@@ -89,9 +95,13 @@ fn dependency_revision<'a>(dependencies: &'a toml::Table, dependency: &str) -> &
         .get(dependency)
         .and_then(|value| value.get("rev"))
         .and_then(toml::Value::as_str)
-        .unwrap_or_else(|| {
-            panic!("workspace dependency `{dependency}` must pin Helio with an explicit `rev`")
+        .or_else(|| {
+            dependencies
+                .get(dependency)
+                .and_then(|value| value.get("path"))
+                .and_then(toml::Value::as_str)
         })
+        .unwrap_or_else(|| panic!("workspace dependency `{dependency}` must pin Helio with an explicit `rev` or local `path`"))
 }
 
 /// Assemble the `[dependencies]` + `[patch."…"]` TOML text for generated games.

@@ -1,7 +1,13 @@
+use engine_subsystems::{Subsystem, SubsystemContext};
 use pulsar_terrain::{
     CellWord, DeterministicGenerator, EditLog, EditMode, EditOp, EditShape, FixedSphereGenerator,
     NodeState, PageKey, PlanetId, SparseBrickTree, TerrainCore, VoxelPage,
 };
+use pulsar_terrain::{
+    PlanetDefinition, PlanetPosition, TerrainPersistenceConfig, TerrainPersistenceEvent,
+    TerrainPlanningConfig, TerrainRuntimeConfig, TerrainStreamingConfig, TerrainSubsystem,
+};
+use std::time::{Duration, Instant};
 
 fn sphere() -> FixedSphereGenerator {
     FixedSphereGenerator {
@@ -185,4 +191,154 @@ fn randomized_page_codecs_are_canonical_and_deterministic() {
         assert_eq!(decoded.encode(), encoded);
         assert_eq!(decoded.page_id(), page.page_id());
     }
+}
+
+fn integration_definition(id: u8) -> PlanetDefinition {
+    PlanetDefinition {
+        planet_id: PlanetId([id; 16]),
+        center_cell: [0; 3],
+        radius_cells: 1_000,
+        material: id.max(1),
+        root_lod: 8,
+        max_resident_pages: 64,
+    }
+}
+
+fn integration_runtime_config() -> TerrainRuntimeConfig {
+    TerrainRuntimeConfig {
+        worker_count: 1,
+        max_planets: 4,
+        max_component_sources: 4,
+        request_capacity: 32,
+        critical_request_reserve: 4,
+        completion_capacity: 32,
+        event_capacity: 64,
+        max_resident_pages: 64,
+        max_resident_dense_bytes: 64 * pulsar_terrain::CELL_COUNT * 4,
+        max_completions_per_frame: 16,
+    }
+}
+
+#[test]
+fn removed_planet_cancels_background_plan_without_publishing_a_miss() {
+    let mut subsystem = TerrainSubsystem::new(integration_runtime_config()).unwrap();
+    subsystem.init(&SubsystemContext::new()).unwrap();
+    let runtime = subsystem.runtime_handle();
+    let planning = subsystem.planning_handle();
+    let definition = integration_definition(20);
+    runtime.upsert_planet(definition.clone()).unwrap();
+
+    let view = PlanetPosition::from_lod0_cell([1_000, 0, 0]);
+    let view = pulsar_terrain::PlanetView::new(
+        view,
+        [-1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        60_f64.to_radians(),
+        [1280, 720],
+        0.1,
+        100_000.0,
+        [0.0; 3],
+    )
+    .unwrap();
+    planning
+        .submit(
+            definition.planet_id,
+            view,
+            TerrainPlanningConfig {
+                streaming: TerrainStreamingConfig {
+                    max_pages: 64,
+                    max_traversal_nodes: 4_096,
+                    ..TerrainStreamingConfig::default()
+                },
+                ..TerrainPlanningConfig::default()
+            },
+        )
+        .unwrap();
+    assert!(runtime.remove_planet(definition.planet_id).unwrap());
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while planning.counters().pending != 0 && Instant::now() < deadline {
+        std::thread::yield_now();
+    }
+    let counters = planning.counters();
+    assert_eq!(counters.pending, 0);
+    assert_eq!(counters.completed, 0);
+    assert!(counters.cancelled >= 1);
+    assert!(planning.drain_completed(1).is_empty());
+    subsystem.shutdown().unwrap();
+}
+
+#[test]
+fn persistence_save_completion_is_delivered_and_durable() {
+    engine_fs::virtual_fs::reset_to_local();
+    let temporary = tempfile::tempdir().unwrap();
+    let store = pulsar_terrain::TerrainStore::new(temporary.path().join("terrain"));
+    let mut subsystem = TerrainSubsystem::new_with_persistence(
+        integration_runtime_config(),
+        TerrainPersistenceConfig::default(),
+    )
+    .unwrap();
+    subsystem.init(&SubsystemContext::new()).unwrap();
+    let runtime = subsystem.runtime_handle();
+    let persistence = subsystem.persistence_handle();
+    let definition = integration_definition(21);
+    runtime.upsert_planet(definition.clone()).unwrap();
+    persistence
+        .request_save(definition.planet_id, store.clone())
+        .unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut events = Vec::new();
+    while events.is_empty() && Instant::now() < deadline {
+        persistence.pump(8);
+        events.extend(persistence.drain_events(8));
+        std::thread::yield_now();
+    }
+    assert!(matches!(
+        events.as_slice(),
+        [TerrainPersistenceEvent::Saved { .. }]
+    ));
+    assert_eq!(persistence.counters().outstanding, 0);
+    let (_, snapshot) = store.load_latest_snapshot().unwrap().unwrap();
+    let stored_hash = snapshot.content_hash().unwrap();
+    assert!(matches!(
+        events.as_slice(),
+        [TerrainPersistenceEvent::Saved { snapshot_hash, .. }] if *snapshot_hash == stored_hash
+    ));
+    subsystem.shutdown().unwrap();
+}
+
+#[test]
+fn host_component_registration_rebinds_source_and_retires_old_planet() {
+    let mut subsystem = TerrainSubsystem::new(integration_runtime_config()).unwrap();
+    subsystem.init(&SubsystemContext::new()).unwrap();
+    let runtime = subsystem.runtime_handle();
+    let first = integration_definition(22);
+    let second = integration_definition(23);
+    runtime
+        .upsert_component("host-format:terrain".to_owned(), first.clone())
+        .unwrap();
+    assert_eq!(runtime.counters().planets, 1);
+    runtime
+        .upsert_component("host-format:terrain".to_owned(), second.clone())
+        .unwrap();
+    assert_eq!(runtime.counters().planets, 1);
+    assert!(matches!(
+        runtime.request_page(
+            first.planet_id,
+            PageKey::new(0, [0; 3]),
+            pulsar_terrain::TerrainRequestClass::Visible,
+            0,
+        ),
+        Err(pulsar_terrain::TerrainRuntimeError::PlanetMissing(id)) if id == first.planet_id
+    ));
+    assert!(runtime
+        .request_page(
+            second.planet_id,
+            PageKey::new(0, [0; 3]),
+            pulsar_terrain::TerrainRequestClass::Visible,
+            0,
+        )
+        .is_ok());
+    subsystem.shutdown().unwrap();
 }

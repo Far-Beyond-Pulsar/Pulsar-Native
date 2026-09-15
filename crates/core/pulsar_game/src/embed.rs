@@ -20,13 +20,14 @@
 
 use std::cell::RefCell;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use engine_backend::scene::{
-    attach_gpu_render_seam, rebuild_light_frame, rebuild_static_mesh_frame, step_scene_for_render,
-    LightFrameMaintainer, MeshFrameMaintainer, WorldSceneStore,
+    bind_renderer_mesh_projection, ensure_gpu_mirror, rebuild_light_frame,
+    rebuild_static_mesh_frame, step_scene_for_render, LightFrameMaintainer, MeshFrameMaintainer,
+    StaticMeshMaterialProjections, WorldSceneStore,
 };
-use helio::{Camera, DebugDrawState, MaterialId, Renderer, RendererConfig, Scene};
+use helio::{Camera, Renderer, RendererBuilder, RendererConfig};
 use parking_lot::RwLock;
 use pulsar_pie_abi::{
     EngineContext as PieContext, InputEvent, LogFn, INIT_ERR, INIT_OK, LOG_ERROR, LOG_INFO,
@@ -70,7 +71,10 @@ pub struct EmbeddedGame {
     mesh_frames: MeshFrameMaintainer,
     /// Lazily-minted shared default material (same cache the editor renderer
     /// keeps; see `engine_backend::scene::rebuild_static_mesh_frame`).
-    default_static_mesh_material: Option<MaterialId>,
+    default_static_mesh_material: StaticMeshMaterialProjections,
+    /// Entities last authored a `StaticObjectComponent` SceneDB row for --
+    /// see `rebuild_static_mesh_frame`'s doc.
+    static_object_scenedb_cache: std::collections::HashSet<pulsar_scenedb::Entity>,
     /// Fallback free-look camera (used until an ECS camera drives the view).
     freecam: FreeCam,
 
@@ -204,69 +208,34 @@ impl EmbeddedGame {
         // ── Offscreen Helio renderer (external device) ───────────────────────
         let (out_texture, out_view) = make_target(&device, color_format, width, height);
 
-        let config = RendererConfig::new(width, height, color_format);
-        let scene = Scene::new(device.clone(), queue.clone());
-        let debug_camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("pie_debug_camera"),
-            size: 64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let cull_stats_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("pie_cull_stats"),
-            size: 64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let debug_state = Arc::new(Mutex::new(DebugDrawState::default()));
-        let graph = helio_default_graphs::build_default_graph_external(
-            &device,
-            &queue,
-            &scene,
-            config,
-            debug_state.clone(),
-            &debug_camera_buffer,
-            &cull_stats_buffer,
-            None,
-        );
-        let mut renderer = Renderer::new_with_external_device(
-            device.clone(),
-            queue.clone(),
-            color_format,
-            width,
-            height,
-            1.0,
-            config,
-            scene,
-            graph,
-            debug_state,
-            debug_camera_buffer,
-            cull_stats_buffer,
-        );
-        // Game (not editor) presentation: no editor gizmos, illumination from
-        // the scene's own lights only.
-        renderer.set_editor_mode(false);
-        renderer.set_ambient([0.0, 0.0, 0.0], 0.0);
-
         // ── Renderer seam onto the shared world (#637/#634) ──────────────────
         // The world already holds the level (the host hydrated it before Play,
-        // and under v2 we adopted that very store), so there is nothing left
-        // to load -- only the GPU seam to wire for THIS renderer. When the
-        // editor's own viewport already wired the mirror, the attach is a
-        // no-op that still rebinds this renderer's scene to the shared pools.
+        // and under v2 we adopted that very store). SceneDB's GPU mirror must
+        // be attached BEFORE the renderer is constructed: `RendererBuilder::new`
+        // requires a `SceneDbHandle` up front (SceneDB is the sole scene
+        // authority). When the editor's own viewport already wired the
+        // mirror, this is idempotent and just returns that same handle.
+        let scene_store = Arc::clone(&tick_loop.scene_store);
+        let scene_db_handle =
+            ensure_gpu_mirror(&mut scene_store.write(), device.clone(), queue.clone());
+
+        let config = RendererConfig::new(width, height, color_format);
+        let mut renderer = RendererBuilder::new(config, scene_db_handle.clone())
+            .with_external_device()
+            .with_editor_mode(false)
+            .with_ambient([0.0, 0.0, 0.0], 0.0)
+            .with_graph(Box::new(move |d, q, s, c, ds, cb, csb| {
+                helio_default_graphs::build_default_graph_external(d, q, s, c, ds, cb, csb, None)
+            }))
+            .build(device.clone(), queue.clone(), width, height, color_format);
+        bind_renderer_mesh_projection(&scene_db_handle, &mut renderer);
+
         // Under v2 the world comes pre-hydrated by the host, so the old
         // editor-camera file seeding is gone too -- camera selection prefers
         // Camera-typed entities from the shared world instead.
         let freecam = FreeCam::default();
         engine_state::set_project_path(project_root.display().to_string());
         drop(scene_path); // advisory-only under v2 (world comes pre-hydrated)
-        let scene_store = Arc::clone(&tick_loop.scene_store);
-        attach_gpu_render_seam(
-            &mut scene_store.write(),
-            &mut renderer,
-            device.clone(),
-            queue.clone(),
-        );
 
         Ok(Self {
             tick_loop,
@@ -281,7 +250,8 @@ impl EmbeddedGame {
             scene_store,
             light_frames: LightFrameMaintainer::new(),
             mesh_frames: MeshFrameMaintainer::new(),
-            default_static_mesh_material: None,
+            default_static_mesh_material: StaticMeshMaterialProjections::default(),
+            static_object_scenedb_cache: std::collections::HashSet::new(),
             freecam,
             userdata: ctx.userdata,
             log: ctx.log,
@@ -314,13 +284,24 @@ impl EmbeddedGame {
             &mut self.mesh_frames,
         );
         {
-            let shared = self.scene_store.read();
+            let projection = {
+                let shared = self.scene_store.read();
+                engine_backend::scene::SceneRenderProjection::from_store(&shared)
+                // `shared` dropped here -- `rebuild_static_mesh_frame` below
+                // needs a write lock on the same store, and parking_lot's
+                // RwLock deadlocks if a read guard is still held on this
+                // thread when a write is requested.
+            };
+            let mut store = self.scene_store.write();
             rebuild_static_mesh_frame(
                 &mut self.renderer,
-                &shared,
+                &projection,
                 &mut self.default_static_mesh_material,
+                store.world_mut(),
+                &mut self.static_object_scenedb_cache,
             );
-            rebuild_light_frame(&mut self.renderer, &shared);
+            drop(store);
+            rebuild_light_frame(&mut self.renderer, &projection);
         }
 
         // 3. Camera. A Camera-typed entity in the shared world drives the

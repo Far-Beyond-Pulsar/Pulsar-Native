@@ -101,6 +101,7 @@ impl GpuProfilerData {
             }));
     }
 
+
     pub fn slowest_cpu_pass(&self) -> Option<(&'static str, f32)> {
         self.render_metrics
             .iter()

@@ -19,12 +19,13 @@ use winit::{
 };
 
 use engine_backend::scene::{
-    attach_gpu_render_seam, rebuild_light_frame, rebuild_static_mesh_frame, step_scene_for_render,
-    LightFrameMaintainer, MeshFrameMaintainer, RuntimeLevel, WorldSceneStore,
+    bind_renderer_mesh_projection, ensure_gpu_mirror, rebuild_light_frame,
+    rebuild_static_mesh_frame, step_scene_for_render, LightFrameMaintainer, MeshFrameMaintainer,
+    RuntimeLevel, StaticMeshMaterialProjections, WorldSceneStore,
 };
 use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
-    MaterialId, Renderer, RendererConfig,
+    Renderer, RendererConfig,
 };
 use parking_lot::RwLock;
 
@@ -47,7 +48,12 @@ struct GameWindow {
     /// Lazily-minted shared default material for `StaticMeshComponent`
     /// objects -- the same cache the editor renderer keeps (see
     /// `engine_backend::scene::rebuild_static_mesh_frame`).
-    default_static_mesh_material: Option<MaterialId>,
+    default_static_mesh_material: StaticMeshMaterialProjections,
+    /// Entities this window last authored a `StaticObjectComponent` SceneDB
+    /// row for -- see `rebuild_static_mesh_frame`'s doc on why this tracking
+    /// is needed (that row persists until explicitly removed, unlike
+    /// Helio's own rebuilt-every-frame transient list).
+    static_object_scenedb_cache: std::collections::HashSet<pulsar_scenedb::Entity>,
     /// Built-in free-look camera — active when no ECS camera has been set.
     freecam: FreeCam,
     /// Time of last `render` — used to advance the per-frame wind clock.
@@ -64,6 +70,7 @@ impl GameWindow {
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
         desc: &WindowDescriptor,
+        scene_store: &Arc<RwLock<WorldSceneStore>>,
     ) -> Self {
         let surface = instance
             .create_surface(window.clone())
@@ -95,9 +102,16 @@ impl GameWindow {
         // editor's wgpui-hosted viewport, which shares GPUI's device via
         // `RendererBuilder::with_external_device`), so we use the plain `build`
         // constructor with the owning-device default.
+        //
+        // SceneDB's GPU mirror must be attached to the shared world BEFORE
+        // the renderer is constructed: `RendererBuilder::new` requires a
+        // `SceneDbHandle` up front (SceneDB is the sole scene authority).
+        // Idempotent: a second window sharing this `scene_store` gets back
+        // the same mirror rather than a second one.
+        let scene_db_handle = ensure_gpu_mirror(&mut scene_store.write(), device.clone(), queue.clone());
         let render_config =
             RendererConfig::new(surface_config.width, surface_config.height, surface_format);
-        let renderer = helio::RendererBuilder::new(render_config)
+        let mut renderer = helio::RendererBuilder::new(render_config, scene_db_handle.clone())
             .with_editor_mode(desc.editor_mode)
             // Kill the default helio ambient ([0.05, 0.05, 0.08] @ 1.0).
             // All illumination comes from lights in the scene file — same as editor.
@@ -112,6 +126,7 @@ impl GameWindow {
                 surface_config.height,
                 surface_format,
             );
+        bind_renderer_mesh_projection(&scene_db_handle, &mut renderer);
 
         Self {
             handle,
@@ -121,7 +136,8 @@ impl GameWindow {
             device,
             queue,
             renderer,
-            default_static_mesh_material: None,
+            default_static_mesh_material: StaticMeshMaterialProjections::default(),
+            static_object_scenedb_cache: std::collections::HashSet::new(),
             freecam: FreeCam::default(),
             last_frame: Instant::now(),
         }
@@ -165,7 +181,7 @@ impl GameWindow {
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
-        self.renderer.scene_mut().advance_wind(dt);
+        self.renderer.advance_frame_simulation(dt);
 
         let size = self.window.inner_size();
         let aspect = size.width as f32 / size.height.max(1) as f32;
@@ -445,6 +461,7 @@ impl PulsarApp {
             self.gpu.device(),
             self.gpu.queue(),
             &desc,
+            &self.scene_store,
         );
 
         self.winit_to_handle.insert(winit_id, handle);
@@ -465,12 +482,12 @@ impl PulsarApp {
             };
             match load_result {
                 Ok(extras) => {
-                    attach_gpu_render_seam(
-                        &mut self.scene_store.write(),
-                        &mut game_window.renderer,
-                        game_window.device.clone(),
-                        game_window.queue.clone(),
-                    );
+                    // `GameWindow::new` above already attached the shared
+                    // world's GPU mirror before constructing the renderer
+                    // (SceneDB must be present at construction time), so
+                    // components `RuntimeLevel::load_into` just inserted are
+                    // already auto-mirrored -- no separate seam-attach step
+                    // is needed here.
 
                     // Seed the freecam from the editor camera saved in the
                     // level file, if present, so the first frame matches the
@@ -698,14 +715,25 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                     &mut self.light_frames,
                     &mut self.mesh_frames,
                 );
-                let shared = self.scene_store.read();
+                let projection = {
+                    let shared = self.scene_store.read();
+                    engine_backend::scene::SceneRenderProjection::from_store(&shared)
+                    // `shared` dropped here -- `rebuild_static_mesh_frame`
+                    // below needs a write lock on the same store, and
+                    // parking_lot's RwLock deadlocks if a read guard is
+                    // still held on this thread when a write is requested.
+                };
                 if let Some(gw) = self.windows.get_mut(&handle) {
+                    let mut store = self.scene_store.write();
                     rebuild_static_mesh_frame(
                         &mut gw.renderer,
-                        &shared,
+                        &projection,
                         &mut gw.default_static_mesh_material,
+                        store.world_mut(),
+                        &mut gw.static_object_scenedb_cache,
                     );
-                    rebuild_light_frame(&mut gw.renderer, &shared);
+                    drop(store);
+                    rebuild_light_frame(&mut gw.renderer, &projection);
                 }
 
                 // Camera precedence: a gameplay-pushed bridge camera wins,

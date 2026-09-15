@@ -42,19 +42,79 @@
 //!   that component lands, invalidation rides the same subscription
 //!   mechanism as everything above.
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use helio::{GroupId, GroupMask, MaterialId, Movability, Renderer};
-use helio_component::components::StaticMeshComponent;
+use helio_component::components::{MaterialOverrideComponent, StaticMeshComponent};
 use pulsar_reflection::scene_id_to_tag;
 use pulsar_scenedb::gpu::{
     BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
 
 use crate::scene::{
-    LightFrameMaintainer, MeshFrameMaintainer, ResolvedLightFrame, ResolvedMeshFrame,
-    WorldSceneStore,
+    LightFrameMaintainer, MaterialResource, MeshFrameMaintainer, ResolvedLightFrame,
+    ResolvedMeshFrame, WorldSceneStore,
 };
+
+/// Read-only, frame-boundary projection owned by the SceneDB owner and handed
+/// to a renderer.  It deliberately contains no `World` reference and no
+/// lock.  The GPU mirror handle is SceneDB-owned; the small CPU vectors are
+/// derived rows for this frame, not a second scene database or a snapshot.
+#[derive(Clone)]
+pub struct SceneRenderProjection {
+    pub revision: u64,
+    pub mirror: Option<GpuMirrorHandle>,
+    pub meshes: Vec<(
+        pulsar_scenedb::Entity,
+        ResolvedMeshFrame,
+        u64,
+        Option<MaterialResource>,
+        Option<MaterialOverrideComponent>,
+    )>,
+    pub lights: Vec<(pulsar_scenedb::Entity, ResolvedLightFrame, u64)>,
+}
+
+impl SceneRenderProjection {
+    /// Build once at the SceneDB owner/frame boundary, then pass by value or
+    /// clone to render work.  All GPU buffer access after this point goes
+    /// through the borrowed SceneDB `GpuMirrorHandle`.
+    pub fn from_store(store: &WorldSceneStore) -> Self {
+        let mirror = store.world().gpu_mirror().cloned();
+        let meshes = store
+            .world()
+            .query::<&ResolvedMeshFrame>()
+            .filter_map(|(entity, frame)| {
+                let stable = store
+                    .stable_id_of(entity)
+                    .map(scene_id_to_tag)
+                    .unwrap_or(entity.index() as u64);
+                let material = store.world().get::<MaterialResource>(entity).cloned();
+                let override_material = store
+                    .world()
+                    .get::<MaterialOverrideComponent>(entity)
+                    .cloned();
+                Some((entity, *frame, stable, material, override_material))
+            })
+            .collect();
+        let lights = store
+            .world()
+            .query::<&ResolvedLightFrame>()
+            .map(|(entity, frame)| {
+                let stable = store
+                    .stable_id_of(entity)
+                    .map(scene_id_to_tag)
+                    .unwrap_or(entity.index() as u64);
+                (entity, *frame, stable)
+            })
+            .collect();
+        Self {
+            revision: store.render_revision(),
+            mirror,
+            meshes,
+            lights,
+        }
+    }
+}
 
 /// Advance the store by one render-side sync pass: flush the GPU mirror
 /// (`SceneDb::step`) and refresh the subscription-maintained resolved rows
@@ -71,18 +131,26 @@ pub fn step_scene_for_render(
     meshes.maintain(store.world_mut());
 }
 
-/// One-time wiring of the SceneDB GPU-native render seam (Pulsar-Native#561
-/// Phase D) between `store` and `renderer`, shared by the editor and
-/// play-mode renderers via #637.
+/// Ensure `store`'s SceneDB has a GPU mirror attached and return a cloneable
+/// handle to it, creating one from `device`/`queue` if none exists yet.
+///
+/// **Must be called BEFORE constructing the `Renderer` for this device/queue.**
+/// `helio::RendererBuilder::new` requires a `SceneDbHandle` (a `GpuMirrorHandle`)
+/// up front — SceneDB is the sole scene authority and there is no valid
+/// renderer configuration without one, so the mirror cannot be attached
+/// after the fact the way the old `attach_gpu_render_seam(..., &mut Renderer,
+/// ...)` API did. Once the `Renderer` exists, finish wiring it with
+/// [`bind_renderer_mesh_projection`].
+///
+/// Idempotent: a second renderer (e.g. another viewport) sharing the same
+/// `store` gets back the SAME handle rather than a second mirror.
 ///
 /// Registers the canonical `StaticMeshComponent::vertices`/`indices`
 /// content-id-interned var-len pools (Pulsar-Native#632: entities naming the
 /// same `mesh_asset` share ONE GPU-resident allocation, refcounted, freed
 /// automatically at zero) plus `Transform`'s packed buffer into a fresh
-/// `SceneGpuStore`, points Helio's own mesh storage at those SAME pools'
-/// underlying buffers (hydrate-time writes and draw-time reads then share
-/// one buffer, zero translation), and attaches the mirror so future
-/// component inserts auto-mirror their `#[gpu]` fields.
+/// `SceneGpuStore`, and attaches the mirror so future component inserts
+/// auto-mirror their `#[gpu]` fields.
 ///
 /// Components inserted BEFORE this call were written with no mirror attached,
 /// and SceneDB deliberately does not retroactively mirror those writes -- so
@@ -90,24 +158,53 @@ pub fn step_scene_for_render(
 /// immediately after attaching (same typed value, re-dispatched into the
 /// pools; no Helio mesh state is created here).
 ///
-/// Idempotent: returns `false` without touching anything if `store` already
-/// has a GPU mirror (e.g. a second viewport's renderer sharing the store must
-/// not clobber the first one's wiring). `true` means "attached by this call".
-pub fn attach_gpu_render_seam(
+/// Idempotent: if `store` already has a GPU mirror (e.g. a second viewport's
+/// renderer sharing the store), that SAME handle is returned and nothing else
+/// is touched -- a second call never clobbers the first mirror's wiring.
+pub fn ensure_gpu_mirror(
     store: &mut WorldSceneStore,
-    renderer: &mut Renderer,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
-) -> bool {
+) -> GpuMirrorHandle {
     let scene_db = store.scene_db_mut();
-    if scene_db.world.has_gpu_mirror() {
-        return false;
+    if let Some(existing) = scene_db.world.gpu_mirror() {
+        return existing.clone();
     }
 
     let existing_static_meshes: Vec<_> = scene_db
         .world
         .query::<&StaticMeshComponent>()
         .map(|(entity, component)| (entity, component.clone()))
+        .collect();
+    let existing_decals: Vec<_> = scene_db
+        .world
+        .query::<&helio_pass_decal::DecalComponent>()
+        .map(|(entity, component)| (entity, *component))
+        .collect();
+    let existing_water_volumes: Vec<_> = scene_db
+        .world
+        .query::<&helio_pass_water_sim::WaterVolumeComponent>()
+        .map(|(entity, component)| (entity, *component))
+        .collect();
+    let existing_water_hitboxes: Vec<_> = scene_db
+        .world
+        .query::<&helio_pass_water_sim::WaterHitboxComponent>()
+        .map(|(entity, component)| (entity, *component))
+        .collect();
+    let existing_groups: Vec<_> = scene_db
+        .world
+        .query::<&helio_pass_gbuffer::RenderGroupComponent>()
+        .map(|(entity, component)| (entity, *component))
+        .collect();
+    let existing_sublevels: Vec<_> = scene_db
+        .world
+        .query::<&helio_pass_gbuffer::SublevelComponent>()
+        .map(|(entity, component)| (entity, *component))
+        .collect();
+    let existing_sectioned_objects: Vec<_> = scene_db
+        .world
+        .query::<&helio_pass_gbuffer::SectionedObjectComponent>()
+        .map(|(entity, component)| (entity, *component))
         .collect();
     let ctx = EngineGpuContext::new(device.clone(), queue.clone());
     // Minimal, cell-mirror-region config -- this seam only uses the
@@ -128,6 +225,44 @@ pub fn attach_gpu_render_seam(
     // 4096/8192 just match `MeshPool`'s own prior static defaults (mesh.rs)
     // -- growable, not a hard ceiling.
     StaticMeshComponent::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
+    helio_pass_decal::DecalComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        256,
+        &device,
+    );
+    helio_pass_water_sim::WaterVolumeComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        64,
+        &device,
+    );
+    helio_pass_water_sim::WaterHitboxComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        256,
+        &device,
+    );
+    helio_pass_gbuffer::RenderGroupComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        256,
+        &device,
+    );
+    helio_pass_gbuffer::SublevelComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        64,
+        &device,
+    );
+    helio_pass_gbuffer::SectionedObjectComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        256,
+        &device,
+    );
+    // `helio-pass-object-batch`'s sole data source -- see
+    // `rebuild_static_mesh_frame`'s doc. 4096 matches `StaticMeshComponent`'s
+    // own default above (growable, not a hard ceiling).
+    helio_pass_gbuffer::StaticObjectComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        4096,
+        &device,
+    );
     // Registered up front (rather than lazily on first insert) so a stable
     // buffer handle exists for `rebuild_light_frame`'s per-frame
     // transform-buffer rebind immediately.
@@ -142,22 +277,6 @@ pub fn attach_gpu_render_seam(
     // took -- Helio's own buffer binding is completely unaware interning
     // exists on top; it just draws whatever range each entity's row-indexed
     // handle names, shared or not.
-    let vertex_pool = gpu_store
-        .interned_var_len_pool::<helio::PackedVertex>(BufferKey::of(
-            "StaticMeshComponent::vertices",
-        ))
-        .expect("register_gpu_columns_growable above must have registered this pool")
-        .underlying()
-        .clone();
-    let index_pool = gpu_store
-        .interned_var_len_pool::<u32>(BufferKey::of("StaticMeshComponent::indices"))
-        .expect("register_gpu_columns_growable above must have registered this pool")
-        .underlying()
-        .clone();
-    renderer
-        .scene_mut()
-        .rebind_static_mesh_pools(vertex_pool, index_pool);
-
     // ── Texel-streaming tier configuration (Helio#238 §5) ────────────────────
     // The ONE consumer configuration call (SceneDB#61 §4 contract): translate
     // the canonical `project/streaming.*` keys into a TierConfig and install
@@ -200,18 +319,82 @@ pub fn attach_gpu_render_seam(
     }
 
     let mirror = GpuMirrorHandle::new(gpu_store, queue);
-    scene_db.world.attach_gpu_mirror(mirror);
+    scene_db.world.attach_gpu_mirror(mirror.clone());
     for (entity, component) in existing_static_meshes {
+        scene_db.world.insert(entity, component);
+    }
+    for (entity, component) in existing_decals {
+        scene_db.world.insert(entity, component);
+    }
+    for (entity, component) in existing_water_volumes {
+        scene_db.world.insert(entity, component);
+    }
+    for (entity, component) in existing_water_hitboxes {
+        scene_db.world.insert(entity, component);
+    }
+    for (entity, component) in existing_groups {
+        scene_db.world.insert(entity, component);
+    }
+    for (entity, component) in existing_sublevels {
+        scene_db.world.insert(entity, component);
+    }
+    for (entity, component) in existing_sectioned_objects {
         scene_db.world.insert(entity, component);
     }
 
     tracing::info!("SceneDB GPU-native render seam wired");
-    true
+    mirror
+}
+
+/// Finish wiring a `Renderer` that was constructed with the handle from
+/// [`ensure_gpu_mirror`]: bind Helio's mesh storage directly at the SAME
+/// content-id-interned var-len pools' underlying buffers the mirror's
+/// `SceneGpuStore` owns (hydrate-time writes and draw-time reads then share
+/// one buffer, zero translation).
+///
+/// Call this once, immediately after `RendererBuilder::build()`, using the
+/// same `mirror` handle that was passed to `RendererBuilder::new`.
+pub fn bind_renderer_mesh_projection(mirror: &GpuMirrorHandle, renderer: &mut Renderer) {
+    let gpu_store = mirror.store();
+    // `StaticMeshComponent::vertices`/`indices` are content-id-interned
+    // (Pulsar-Native#632/#659, `#[gpu(content_id = "mesh_asset")]`), so they
+    // register through `interned_var_len_pool`, not the plain `var_len_pool`
+    // this call used before. `.underlying()` hands back the SAME
+    // `Arc<VarLenGpuPool<T>>` shape `rebind_static_mesh_pools` always took --
+    // Helio's own buffer binding is completely unaware interning exists on
+    // top; it just draws whatever range each entity's row-indexed handle
+    // names, shared or not.
+    let vertex_pool = gpu_store
+        .interned_var_len_pool::<helio::PackedVertex>(BufferKey::of(
+            "StaticMeshComponent::vertices",
+        ))
+        .expect("ensure_gpu_mirror must have registered this pool")
+        .underlying()
+        .clone();
+    let index_pool = gpu_store
+        .interned_var_len_pool::<u32>(BufferKey::of("StaticMeshComponent::indices"))
+        .expect("ensure_gpu_mirror must have registered this pool")
+        .underlying()
+        .clone();
+    renderer.bind_static_mesh_projection(vertex_pool, index_pool);
 }
 
 /// Assemble Helio's transient static-mesh instance list from the
-/// authoritative World rows. Shared by the editor and play-mode renderers
+/// authoritative World rows, AND author each live entity's
+/// [`helio_pass_gbuffer::StaticObjectComponent`] SceneDB row -- the actual
+/// GPU-driven render path (`helio-pass-object-batch` onward) reads only the
+/// latter now; central render-pass crates have zero knowledge of any
+/// particular scene-object type, `StaticObjectComponent` being owned by
+/// `helio-pass-gbuffer`. Shared by the editor and play-mode renderers
 /// (Pulsar-Native#637).
+///
+/// The `submit_static_mesh_frame` transient-list half is kept for now only
+/// because [`helio::picking`]'s `Scene::iter_pickable_objects` (click-to-
+/// select) still reads it -- migrating picking onto SceneDB is a distinct,
+/// not-yet-done follow-up. Until then this function does genuinely
+/// duplicate per-entity work (draw params/instance data computed twice);
+/// accepted as the safe intermediate state rather than silently breaking
+/// selection.
 ///
 /// Pulsar-Native#638: the transform-derived half of each instance (model /
 /// normal matrices, position, bounding radius, cull flag) is READ from the
@@ -225,28 +408,39 @@ pub fn attach_gpu_render_seam(
 /// minted once per renderer (`default_material` cache). Per-instance
 /// materials by stable id are Helio#231's renderer-side stage -- see this
 /// module's ownership-protocol doc for the agreed split.
+///
+/// `world`/`authored_objects`: SceneDB write access and this function's own
+/// "what did I author last pass" set, needed because a `StaticObjectComponent`
+/// row is a real, persistent SceneDB row (unlike Helio's rebuilt-every-frame
+/// transient list) -- an entity that drops out of `projection.meshes` (removed,
+/// hidden, mesh hydration failed) needs its row explicitly removed, tracked
+/// here the same way `foliage_cache`/`portal_link_cache` track their own
+/// live sets elsewhere in this bridge.
 pub fn rebuild_static_mesh_frame(
     renderer: &mut Renderer,
-    store: &WorldSceneStore,
-    default_material: &mut Option<MaterialId>,
+    projection: &SceneRenderProjection,
+    materials: &mut StaticMeshMaterialProjections,
+    world: &mut pulsar_scenedb::World,
+    authored_objects: &mut std::collections::HashSet<pulsar_scenedb::Entity>,
 ) {
-    let Some(mirror) = store.world().gpu_mirror() else {
-        renderer.scene_mut().rebuild_static_mesh_instances(&[]);
+    let Some(mirror) = projection.mirror.as_ref() else {
+        renderer.submit_static_mesh_frame(&[]);
+        for stale in authored_objects.drain() {
+            world.remove::<helio_pass_gbuffer::StaticObjectComponent>(stale);
+        }
         return;
     };
-    let material_id = *default_material.get_or_insert_with(|| {
-        renderer
-            .scene_mut()
-            .insert_material(default_static_mesh_material())
-    });
+    let default_material = materials.default(renderer);
     let gpu_store = mirror.store();
     let mut inputs = Vec::new();
     let mut component_count = 0usize;
     let mut empty_handle_count = 0usize;
+    let mut live_this_frame =
+        std::collections::HashSet::with_capacity(projection.meshes.len());
 
     // One query over resolved rows only -- no Transform/Visibility join, no
     // matrix math in this loop anymore (#638).
-    for (entity, frame) in store.world().query::<&ResolvedMeshFrame>() {
+    for (entity, frame, stable_id, material_resource, material_override) in &projection.meshes {
         component_count += 1;
         let vertices =
             StaticMeshComponent::vertices_gpu_handle(gpu_store, entity.index()).unwrap_or_default();
@@ -261,20 +455,23 @@ pub fn rebuild_static_mesh_frame(
             ^ indices.offset.rotate_left(3)
             ^ vertices.count
             ^ indices.count;
-        let stable_id = store
-            .stable_id_of(entity)
-            .map(scene_id_to_tag)
-            .unwrap_or(entity.index() as u64);
+        let material = material_resource
+            .as_ref()
+            .map(|component| materials.material_for_resource(renderer, *entity, component))
+            .or_else(|| material_override.as_ref().map(|component| {
+                materials.material_for_override(renderer, *entity, component)
+            }))
+            .unwrap_or(default_material);
         inputs.push(helio::StaticMeshRenderInput {
             mesh_key,
-            material: material_id,
+            material,
             groups: if frame.visible {
                 GroupMask::NONE
             } else {
                 GroupMask::from(GroupId::new(8))
             },
             movability: Movability::Movable,
-            user_tag: stable_id,
+            user_tag: *stable_id,
             instance: helio::GpuInstanceData {
                 model: frame.model,
                 normal_mat: frame.normal_mat,
@@ -286,7 +483,7 @@ pub fn rebuild_static_mesh_frame(
                 ],
                 prev_model: frame.model,
                 mesh_id: mesh_key,
-                material_id: material_id.slot(),
+                material_id: material.slot(),
                 flags: 0,
                 lightmap_index: 0xFFFFFFFF,
             },
@@ -299,7 +496,61 @@ pub fn rebuild_static_mesh_frame(
                 instance_count: 0,
             },
         });
+
+        // ── GPU-driven path: author the SceneDB row `helio-pass-object-
+        // batch` reads. `!frame.visible` is treated as absent here (no
+        // per-view group masking on this path yet, unlike `groups` above --
+        // a known simplification, not full parity with the legacy list).
+        if frame.visible {
+            if let Some((material_class, graph_hash)) = renderer.material_batch_key(material) {
+                let transform = transform_cols(frame.model);
+                let prev_transform = world
+                    .get::<helio_pass_gbuffer::StaticObjectComponent>(*entity)
+                    .map(|existing| existing.transform)
+                    .unwrap_or(transform);
+                world.insert(
+                    *entity,
+                    helio_pass_gbuffer::StaticObjectComponent {
+                        // No live `helio::MeshId` exists for SceneDB-native
+                        // geometry (it never went through Helio's own mesh
+                        // upload path) -- unused by the draw pipeline, only
+                        // by `StaticObjectComponent::mesh()` for asset
+                        // re-resolution, which nothing calls for these rows.
+                        mesh_slot: 0,
+                        mesh_generation: 0,
+                        material_slot: material.slot(),
+                        material_generation: material.generation(),
+                        transform,
+                        prev_transform,
+                        normal_mat: normal_mat_rows(frame.normal_mat),
+                        bounds: [
+                            frame.position[0],
+                            frame.position[1],
+                            frame.position[2],
+                            frame.bound_radius,
+                        ],
+                        index_count: indices.count,
+                        first_index: indices.offset,
+                        vertex_offset: vertices.offset as i32,
+                        material_class,
+                        graph_hash_lo: graph_hash as u32,
+                        graph_hash_hi: (graph_hash >> 32) as u32,
+                        flags: 0,
+                    },
+                );
+                live_this_frame.insert(*entity);
+            }
+        }
     }
+
+    // Absence-is-removal, made explicit: unlike Helio's own transient list
+    // (rebuilt wholesale every pass), a `StaticObjectComponent` row persists
+    // in SceneDB until removed, so any entity authored last pass but not
+    // live this pass loses its row now.
+    for stale in authored_objects.iter().filter(|e| !live_this_frame.contains(e)) {
+        world.remove::<helio_pass_gbuffer::StaticObjectComponent>(*stale);
+    }
+    *authored_objects = live_this_frame;
 
     if component_count > 0 {
         tracing::info!(
@@ -310,7 +561,29 @@ pub fn rebuild_static_mesh_frame(
         );
     }
 
-    renderer.scene_mut().rebuild_static_mesh_instances(&inputs);
+    renderer.submit_static_mesh_frame(&inputs);
+}
+
+/// Reinterpret a flat column-major `[f32; 16]` (`ResolvedMeshFrame::model`'s
+/// layout) as the nested `[[f32; 4]; 4]` shape `StaticObjectComponent::
+/// transform` stores -- a pure reshape, no floating-point recomputation.
+fn transform_cols(flat: [f32; 16]) -> [[f32; 4]; 4] {
+    [
+        [flat[0], flat[1], flat[2], flat[3]],
+        [flat[4], flat[5], flat[6], flat[7]],
+        [flat[8], flat[9], flat[10], flat[11]],
+        [flat[12], flat[13], flat[14], flat[15]],
+    ]
+}
+
+/// Same reshape as `transform_cols`, for `ResolvedMeshFrame::normal_mat`'s
+/// flat `[f32; 12]` into `StaticObjectComponent::normal_mat`'s `[[f32; 4]; 3]`.
+fn normal_mat_rows(flat: [f32; 12]) -> [[f32; 4]; 3] {
+    [
+        [flat[0], flat[1], flat[2], flat[3]],
+        [flat[4], flat[5], flat[6], flat[7]],
+        [flat[8], flat[9], flat[10], flat[11]],
+    ]
 }
 
 /// Push the World's resolved light frames (`ResolvedLightFrame`, maintained
@@ -320,38 +593,146 @@ pub fn rebuild_static_mesh_frame(
 ///
 /// Absence IS the removal signal: a disabled/removed/despawned light simply
 /// has no resolved row, so nothing stale can survive here.
-pub fn rebuild_light_frame(renderer: &mut Renderer, store: &WorldSceneStore) {
+pub fn rebuild_light_frame(renderer: &mut Renderer, projection: &SceneRenderProjection) {
     // Re-resolved every call, deliberately: `resolve_buffer_handle` returns
     // a snapshot current only at the moment it's called, so caching one
     // `Arc<wgpu::Buffer>` would go stale the first time Transform's packed
     // buffer reallocates past its initial capacity. A cheap registry lookup
     // + Arc clone, not a GPU operation.
-    if let Some(mirror) = store.world().gpu_mirror() {
+    if let Some(mirror) = projection.mirror.as_ref() {
         let gpu_store = mirror.store();
         if let Some(key) =
             gpu_store.buffer_key_for(crate::scene::Transform::packed_gpu_component_id())
         {
             if let Some(handle) = gpu_store.resolve_buffer_handle(key) {
-                renderer
-                    .scene_mut()
-                    .rebind_transform_buffer(handle.buffer.into());
+                renderer.bind_transform_projection(handle.buffer.into());
             }
         }
     }
 
     let mut inputs = Vec::new();
-    for (entity, frame) in store.world().query::<&ResolvedLightFrame>() {
-        let user_tag = store
-            .stable_id_of(entity)
-            .map(scene_id_to_tag)
-            .unwrap_or(entity.index() as u64);
+    for (entity, frame, user_tag) in &projection.lights {
         inputs.push(helio::LightRenderInput {
             light: frame.light,
-            user_tag,
+            user_tag: *user_tag,
             entity_index: entity.index(),
         });
     }
-    renderer.scene_mut().rebuild_light_instances(&inputs);
+    renderer.submit_light_frame(&inputs);
+}
+
+/// Renderer-local projections of SceneDB material state.
+///
+/// The component values remain authoritative in SceneDB. Helio only receives
+/// `MaterialId` handles and the GPU material records needed for the current
+/// renderer instance. Keeping one handle per entity lets edits update the
+/// existing Helio slot instead of minting a new material every frame.
+#[derive(Default)]
+pub struct StaticMeshMaterialProjections {
+    default: Option<MaterialId>,
+    overrides: HashMap<pulsar_scenedb::Entity, (MaterialKey, MaterialId)>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct MaterialKey {
+    base_color: [u32; 4],
+    metallic: u32,
+    roughness: u32,
+    emissive_color: [u32; 3],
+    emissive_intensity: u32,
+    alpha: u32,
+}
+
+impl MaterialKey {
+    fn from_component(component: &MaterialOverrideComponent) -> Self {
+        Self {
+            base_color: component.base_color.map(f32::to_bits),
+            metallic: component.metallic.to_bits(),
+            roughness: component.roughness.to_bits(),
+            emissive_color: component.emissive_color.map(f32::to_bits),
+            emissive_intensity: component.emissive_intensity.to_bits(),
+            alpha: component.alpha.to_bits(),
+        }
+    }
+
+    fn from_resource(component: &MaterialResource) -> Self {
+        Self {
+            base_color: component.base_color.map(f32::to_bits),
+            metallic: component.metallic.to_bits(),
+            roughness: component.roughness.to_bits(),
+            emissive_color: component.emissive_color.map(f32::to_bits),
+            emissive_intensity: component.emissive_intensity.to_bits(),
+            alpha: component.base_color[3].to_bits(),
+        }
+    }
+}
+
+impl StaticMeshMaterialProjections {
+    fn default(&mut self, renderer: &mut Renderer) -> MaterialId {
+        *self.default.get_or_insert_with(|| {
+            renderer.create_material_projection(default_static_mesh_material())
+        })
+    }
+
+    fn material_for_override(
+        &mut self,
+        renderer: &mut Renderer,
+        entity: pulsar_scenedb::Entity,
+        component: &MaterialOverrideComponent,
+    ) -> MaterialId {
+        let key = MaterialKey::from_component(component);
+        if let Some((previous_key, material_id)) = self.overrides.get_mut(&entity) {
+            if *previous_key == key {
+                return *material_id;
+            }
+            let _ = renderer
+                .update_material_projection(*material_id, material_from_override(component));
+            *previous_key = key;
+            return *material_id;
+        }
+
+        let material_id = renderer.create_material_projection(material_from_override(component));
+        self.overrides.insert(entity, (key, material_id));
+        material_id
+    }
+
+    fn material_for_resource(
+        &mut self,
+        renderer: &mut Renderer,
+        entity: pulsar_scenedb::Entity,
+        component: &MaterialResource,
+    ) -> MaterialId {
+        let key = MaterialKey::from_resource(component);
+        let material = helio::GpuMaterial {
+            base_color: component.base_color,
+            emissive: [
+                component.emissive_color[0] * component.emissive_intensity,
+                component.emissive_color[1] * component.emissive_intensity,
+                component.emissive_color[2] * component.emissive_intensity,
+                0.0,
+            ],
+            roughness_metallic: [component.roughness, component.metallic, 1.5, 0.5],
+            tex_base_color: helio::GpuMaterial::NO_TEXTURE,
+            tex_normal: helio::GpuMaterial::NO_TEXTURE,
+            tex_roughness: helio::GpuMaterial::NO_TEXTURE,
+            tex_emissive: helio::GpuMaterial::NO_TEXTURE,
+            tex_occlusion: helio::GpuMaterial::NO_TEXTURE,
+            workflow: 0,
+            flags: 0,
+            material_class: 0,
+            class_params: [0.0; 4],
+        };
+        if let Some((previous_key, material_id)) = self.overrides.get_mut(&entity) {
+            if *previous_key != key {
+                let _ = renderer.update_material_projection(*material_id, material);
+                *previous_key = key;
+            }
+            return *material_id;
+        }
+        let material_id = renderer.create_material_projection(material);
+        self.overrides.insert(entity, (key, material_id));
+        material_id
+    }
 }
 
 /// Same hardcoded default `StaticMeshComponent::sync_component` used to
@@ -377,9 +758,65 @@ fn default_static_mesh_material() -> helio::GpuMaterial {
     }
 }
 
+fn material_from_override(component: &MaterialOverrideComponent) -> helio::GpuMaterial {
+    helio::GpuMaterial {
+        base_color: [
+            component.base_color[0],
+            component.base_color[1],
+            component.base_color[2],
+            component.alpha,
+        ],
+        emissive: [
+            component.emissive_color[0] * component.emissive_intensity,
+            component.emissive_color[1] * component.emissive_intensity,
+            component.emissive_color[2] * component.emissive_intensity,
+            0.0,
+        ],
+        roughness_metallic: [component.roughness, component.metallic, 1.5, 0.5],
+        tex_base_color: helio::GpuMaterial::NO_TEXTURE,
+        tex_normal: helio::GpuMaterial::NO_TEXTURE,
+        tex_roughness: helio::GpuMaterial::NO_TEXTURE,
+        tex_emissive: helio::GpuMaterial::NO_TEXTURE,
+        tex_occlusion: helio::GpuMaterial::NO_TEXTURE,
+        workflow: 0,
+        flags: 0,
+        material_class: 0,
+        class_params: [0.0; 4],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn material_override() -> MaterialOverrideComponent {
+        MaterialOverrideComponent {
+            base_color: [0.1, 0.2, 0.3, 0.9],
+            metallic: 0.4,
+            roughness: 0.6,
+            emissive_color: [0.7, 0.8, 0.9],
+            emissive_intensity: 2.0,
+            alpha: 0.5,
+            uv_scale_x: 1.0,
+            uv_scale_y: 1.0,
+            uv_offset_x: 0.0,
+            uv_offset_y: 0.0,
+        }
+    }
+
+    #[test]
+    fn material_override_projection_reads_scene_db_fields() {
+        let component = material_override();
+        let gpu = material_from_override(&component);
+
+        assert_eq!(gpu.base_color, [0.1, 0.2, 0.3, 0.5]);
+        assert_eq!(gpu.emissive, [1.4, 1.6, 1.8, 0.0]);
+        assert_eq!(gpu.roughness_metallic, [0.6, 0.4, 1.5, 0.5]);
+        assert_eq!(
+            MaterialKey::from_component(&component).alpha,
+            0.5f32.to_bits()
+        );
+    }
 
     /// #637 contract: attaching twice is a no-op the second time -- a second
     /// renderer sharing the store must not clobber the first one's wiring.
@@ -387,7 +824,7 @@ mod tests {
     /// path is exercised; the happy path needs wgpu and runs in the editor.)
     #[test]
     fn attach_is_idempotent_when_a_mirror_already_exists() {
-        let mut store = WorldSceneStore::new();
+        let store = WorldSceneStore::new();
         // Simulate an already-wired store without constructing a real
         // SceneGpuStore (that needs a device): attach requires `has_gpu_
         // mirror()` to be false, so a store that reports true must short-

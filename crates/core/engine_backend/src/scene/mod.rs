@@ -30,6 +30,9 @@ pub mod light_frame;
 // pattern as light_frame.
 pub mod mesh_frame;
 
+// Persistent texture/material/sectioned-mesh/object resource components.
+pub mod render_resources;
+
 // Play-mode level bootstrap (Pulsar-Native#637) -- hydrates a `.level` file
 // into WorldSceneStore/SceneDb instead of pulsar_scene::SceneLoader's direct
 // Helio Scene writes.
@@ -54,12 +57,19 @@ pub mod helio_bridge;
 pub use component_db::ComponentDb;
 #[cfg(feature = "render")]
 pub use helio_bridge::{
-    attach_gpu_render_seam, rebuild_light_frame, rebuild_static_mesh_frame, step_scene_for_render,
+    bind_renderer_mesh_projection, ensure_gpu_mirror, rebuild_light_frame,
+    rebuild_static_mesh_frame, step_scene_for_render, SceneRenderProjection,
+    StaticMeshMaterialProjections,
 };
 pub use light_frame::{LightFrameMaintainer, ResolvedLightFrame};
 pub use mesh_frame::{MeshFrameMaintainer, ResolvedMeshFrame};
 pub use metadata::{ComponentInstance, EditorObjectId};
 pub use metadata_db::SceneMetadataDb;
+pub use render_resources::{
+    insert_render_resources, MaterialComponent, MaterialResource, MaterialTextureResource,
+    MeshObjectComponent, MeshObjectResource, MeshSectionResource, SectionedMeshComponent,
+    SectionedMeshResource, TextureComponent, TextureResource,
+};
 pub use runtime_level::{EditorCamera, LevelExtras, RuntimeLevel, RuntimeLevelError};
 pub use world_store::{
     Name, ObjectSnapshot, Parent, RenderProps, StableId, Transform, Visibility, WorldSceneStore,
