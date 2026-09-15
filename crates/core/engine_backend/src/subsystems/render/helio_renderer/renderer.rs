@@ -9,9 +9,7 @@ use std::time::Instant;
 use helio::{Camera, EditorState, GizmoMode, GroupId, Renderer, RendererConfig, ScenePicker};
 use helio_component::{
     subsystems::{
-        apply_portal_pair_action, remove_foliage_handles, FoliageCache, MeshCache,
-        PendingWorldWrites, PortalLinkCache, PostProcessVolumeCache, ReflectionCaptureCache,
-        WaterVolumeCache,
+        PendingWorldWrites,
     },
     PlanetTerrainFrameInput, PlanetTerrainRuntime, PLANET_TERRAIN_CLASS_NAME,
 };
@@ -257,18 +255,6 @@ struct HelioInner {
     queue: Arc<wgpu::Queue>,
     editor_state: EditorState,
     scene_picker: ScenePicker,
-    /// Persists GPU-uploaded mesh geometry across frames so components
-    /// don't re-load + re-upload the same asset every sync pass.
-    mesh_cache: MeshCache,
-    /// Persists foliage component handles (types/layers/interactors/materials)
-    /// so the editor's per-sync component pass updates them in place instead of
-    /// re-registering (which re-rolls GPU placement) every scene change.
-    foliage_cache: FoliageCache,
-    /// Pairs up `PortalComponent` instances that share a `portal_id` into
-    /// real `helio::Scene` portals — see that type's doc for why portals
-    /// need their own cache (unlike every other single-object cache here,
-    /// a portal doesn't exist until *two* components agree on an ID).
-    portal_link_cache: PortalLinkCache,
     /// Owns Pulsar's canonical planet state and incrementally publishes it to
     /// the planetary pass in this renderer's graph. Helio's GPU residency is
     /// deliberately not duplicated here.
@@ -296,9 +282,6 @@ struct HelioInner {
     /// change to report. This is separate from scene synchronization state:
     /// `known_ids` can be populated before Helio has rendered anything.
     has_rendered_frame: bool,
-    reflection_capture_cache: ReflectionCaptureCache,
-    water_volume_cache: WaterVolumeCache,
-    post_process_volume_cache: PostProcessVolumeCache,
     /// Subscription-backed maintainer for the World's `ResolvedLightFrame`
     /// rows (Pulsar-Native#636) -- what `rebuild_light_frame` reads instead
     /// of re-combining every light's position from its `Transform` every
@@ -528,9 +511,6 @@ impl HelioRenderer {
                 queue: queue_arc.clone(),
                 editor_state: EditorState::new(),
                 scene_picker: ScenePicker::new(),
-                mesh_cache: MeshCache::new(),
-                foliage_cache: FoliageCache::new(),
-                portal_link_cache: PortalLinkCache::new(),
                 planet_terrain: None,
                 planet_graph_rebuilt: false,
                 last_scene_revision: 0,
@@ -538,9 +518,6 @@ impl HelioRenderer {
                 static_mesh_materials: Default::default(),
                 static_object_scenedb_cache: HashSet::new(),
                 has_rendered_frame: false,
-                reflection_capture_cache: ReflectionCaptureCache::new(),
-                water_volume_cache: WaterVolumeCache::new(),
-                post_process_volume_cache: PostProcessVolumeCache::new(),
                 light_frames: LightFrameMaintainer::new(),
                 mesh_frames: MeshFrameMaintainer::new(),
             };
@@ -1507,19 +1484,6 @@ impl HelioRenderer {
         // `object_by_tag`-based staleness check instead of a cache, tracked
         // as a follow-up rather than attempted here.
 
-        // Remove stale foliage component instances (components didn't touch them
-        // this pass): the cached type/layer/interactor/material are all torn down.
-        let stale_foliage: Vec<String> = inner
-            .foliage_cache
-            .map
-            .keys()
-            .filter(|key| !live_keys.contains(*key))
-            .cloned()
-            .collect();
-        for key in stale_foliage {
-            remove_foliage_handles(&mut inner.renderer, &mut inner.foliage_cache, &key);
-        }
-
         // NOTE (Pulsar-Native#561): `LightCache` (since deleted) was never
         // actually populated (`LightComponent::sync_component` resolves via
         // `scene.light_by_tag` instead), so a sweep keyed off it here was
@@ -1527,21 +1491,6 @@ impl HelioRenderer {
         // `dispatch_component_removals` below (`LightComponent::on_removed`
         // tears down its `scene.light_by_tag` entry the same way
         // `sync_component` does for the still-enabled case).
-
-        // Drop stale portal sides (their object deleted, or their
-        // PortalComponent removed/disabled while the object stayed —
-        // PortalComponent itself handles the disabled-but-still-attached
-        // case). A side disappearing tears down the real portal if the pair
-        // was complete; the surviving side (if any) just waits for a new
-        // partner.
-        for action in inner.portal_link_cache.remove_stale(&live_keys) {
-            if let Some((portal_id, id)) = apply_portal_pair_action(&mut inner.renderer, action) {
-                match id {
-                    Some(id) => inner.portal_link_cache.set_active(portal_id, id),
-                    None => inner.portal_link_cache.clear_active(portal_id),
-                }
-            }
-        }
 
         if let Some(planet_terrain) = inner.planet_terrain.as_mut() {
             if let Err(error) = planet_terrain.remove_stale_components(&live_keys) {
@@ -1749,12 +1698,6 @@ impl HelioRenderer {
         }
         let mut subsystems = Subsystems::new();
         subsystems.register_ref::<Renderer>(&mut inner.renderer);
-        subsystems.register_ref::<MeshCache>(&mut inner.mesh_cache);
-        subsystems.register_ref::<FoliageCache>(&mut inner.foliage_cache);
-        subsystems.register_ref::<PortalLinkCache>(&mut inner.portal_link_cache);
-        subsystems.register_ref::<ReflectionCaptureCache>(&mut inner.reflection_capture_cache);
-        subsystems.register_ref::<WaterVolumeCache>(&mut inner.water_volume_cache);
-        subsystems.register_ref::<PostProcessVolumeCache>(&mut inner.post_process_volume_cache);
         if let Some(planet_terrain) = inner.planet_terrain.as_mut() {
             let (runtime, cache) = planet_terrain.component_context_mut();
             subsystems.register_ref(runtime);
@@ -1858,12 +1801,6 @@ impl HelioRenderer {
         let mut live_keys = LiveKeySet::new();
         let mut subsystems = Subsystems::new();
         subsystems.register_ref::<Renderer>(&mut inner.renderer);
-        subsystems.register_ref::<MeshCache>(&mut inner.mesh_cache);
-        subsystems.register_ref::<FoliageCache>(&mut inner.foliage_cache);
-        subsystems.register_ref::<PortalLinkCache>(&mut inner.portal_link_cache);
-        subsystems.register_ref::<ReflectionCaptureCache>(&mut inner.reflection_capture_cache);
-        subsystems.register_ref::<WaterVolumeCache>(&mut inner.water_volume_cache);
-        subsystems.register_ref::<PostProcessVolumeCache>(&mut inner.post_process_volume_cache);
         subsystems.register_ref::<LiveKeySet>(&mut live_keys);
         let mut ctx = HelioRuntimeContext {
             renderer: &mut inner.renderer,

@@ -8878,7 +8878,7 @@ version = "0.1.0"
 [[package]]
 name = "pulsar_reflection"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection?rev=745ee787cc63288463c170aafb778672db8e85ac#745ee787cc63288463c170aafb778672db8e85ac"
+source = "git+https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection?rev=27eaaf7233522ff7d8c79cd2c76e7eeacb17d59d#27eaaf7233522ff7d8c79cd2c76e7eeacb17d59d"
 dependencies = [
  "dashmap",
  "glam 0.33.5",
@@ -8896,7 +8896,7 @@ dependencies = [
 [[package]]
 name = "pulsar_reflection_derive"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection?rev=745ee787cc63288463c170aafb778672db8e85ac#745ee787cc63288463c170aafb778672db8e85ac"
+source = "git+https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection?rev=27eaaf7233522ff7d8c79cd2c76e7eeacb17d59d#27eaaf7233522ff7d8c79cd2c76e7eeacb17d59d"
 dependencies = [
  "owo-colors",
  "proc-macro2",

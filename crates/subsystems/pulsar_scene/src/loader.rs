@@ -31,7 +31,6 @@ use glam::{EulerRot, Mat4, Quat, Vec3};
 use helio::Renderer;
 use serde_json::Value;
 
-use helio_component::subsystems::{FoliageCache, MeshCache, PortalLinkCache};
 use pulsar_reflection::{
     apply_runtime_behavior_for_class, ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner,
     Subsystems,
@@ -109,15 +108,6 @@ impl SceneLoader {
     ) {
         tracing::info!(total = objects.len(), "Loading scene objects");
 
-        // Unlike the other per-object caches below (freshly created every
-        // iteration — this loader is one-shot, so nothing needs cross-object
-        // memory for meshes/foliage/etc.), `PortalLinkCache` is declared
-        // *outside* the loop and only `register_ref`'d each iteration: a
-        // portal doesn't exist until two different objects' components both
-        // sync, in whichever order they happen to appear in `objects`, so
-        // the cache has to actually persist across the whole load.
-        let mut portal_link_cache = PortalLinkCache::new();
-
         for obj in objects {
             if !obj.visible {
                 continue;
@@ -137,7 +127,6 @@ impl SceneLoader {
             {
                 let mut subsystems = Subsystems::new();
                 subsystems.register_ref::<Renderer>(renderer);
-                subsystems.register(MeshCache::new());
                 // `SceneObjectCache` used to be registered here too
                 // (Pulsar-Native#561) -- deleted along with the type itself,
                 // confirmed fully dead: `StaticMeshComponent` resolves
@@ -146,8 +135,6 @@ impl SceneLoader {
                 // (registered fresh inside the `for obj in objects` loop),
                 // so it could never have cached anything across calls even
                 // if something had read from it.
-                subsystems.register(FoliageCache::new());
-                subsystems.register_ref::<PortalLinkCache>(&mut portal_link_cache);
                 subsystems.register(LiveKeySet::new());
                 let mut ctx = SceneObjectContext {
                     obj_id: &obj.id,
