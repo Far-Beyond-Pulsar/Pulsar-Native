@@ -18,6 +18,7 @@ exclude = [
     # path dependency, but its standalone examples/dev dependencies must remain
     # owned and resolved by WGPUI rather than polluting Pulsar's workspace graph.
     "crates/ui/wgpui",
+    "crates/renderer/helio",
     "plugins/vendor/blueprint_editor",
     "plugins/vendor/code_editor",
     "plugins/vendor/matter_editor",
@@ -97,6 +98,7 @@ pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
 pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "c761890789b3e3c16b362a91769570bd587e5ac6", features = ["gpu"] }
+pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "c761890789b3e3c16b362a91769570bd587e5ac6" }
 pulsar_reflection                  = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "745ee787cc63288463c170aafb778672db8e85ac" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
@@ -153,12 +155,17 @@ plugin_editor_api     = { path = "crates/core/plugin_editor_api"}
 plugin_manager        = { path = "crates/core/plugin_manager" }
 
 # ---------- Helio Renderer (external git dep) ----------
-helio                      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6fb248c921fdce8adbc01d0eef8c18a9a98f2308" }
-helio-asset-compat         = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6fb248c921fdce8adbc01d0eef8c18a9a98f2308" }
-helio-default-graphs       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6fb248c921fdce8adbc01d0eef8c18a9a98f2308" }
-helio-planet-voxel-core    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6fb248c921fdce8adbc01d0eef8c18a9a98f2308" }
-helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6fb248c921fdce8adbc01d0eef8c18a9a98f2308" }
-libhelio                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6fb248c921fdce8adbc01d0eef8c18a9a98f2308" }
+helio                      = { path = "crates/renderer/helio/crates/helio" }
+helio-asset-compat         = { path = "crates/renderer/helio/crates/helio-asset-compat" }
+helio-default-graphs       = { path = "crates/renderer/helio/crates/helio-default-graphs" }
+helio-planet-voxel-core    = { path = "crates/renderer/helio/crates/helio-planet-voxel-core" }
+helio-pass-planetary-voxel = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-planetary-voxel" }
+helio-pass-decal = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-decal" }
+helio-pass-gbuffer = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-gbuffer" }
+helio-pass-water-sim = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-water-sim" }
+helio-pass-postprocess = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-postprocess" }
+helio-pass-deferred-light = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-deferred-light" }
+libhelio                   = { path = "crates/renderer/helio/crates/libhelio" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------

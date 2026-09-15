@@ -6,14 +6,12 @@ use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 
-use helio::{
-    Camera, EditorState, GizmoMode, GroupId, MaterialId, Renderer, RendererConfig, SceneActor,
-    ScenePicker, SkyActor,
-};
+use helio::{Camera, EditorState, GizmoMode, GroupId, Renderer, RendererConfig, ScenePicker};
 use helio_component::{
     subsystems::{
-        apply_portal_pair_action, remove_foliage_handles, FoliageCache, MeshCache, PortalLinkCache,
-        PostProcessVolumeCache, ReflectionCaptureCache, WaterVolumeCache,
+        apply_portal_pair_action, remove_foliage_handles, FoliageCache, MeshCache,
+        PendingWorldWrites, PortalLinkCache, PostProcessVolumeCache, ReflectionCaptureCache,
+        WaterVolumeCache,
     },
     PlanetTerrainFrameInput, PlanetTerrainRuntime, PLANET_TERRAIN_CLASS_NAME,
 };
@@ -285,13 +283,15 @@ struct HelioInner {
     /// Set of scene-object IDs that have been synced to Helio.
     /// Used by `sync_scene_delta` to distinguish additions from updates.
     known_ids: HashSet<String>,
-    /// Lazily-minted, shared default material for every `StaticMeshComponent`
-    /// object -- the component has no material fields of its own yet
-    /// (per-instance materials are separate, later scope), so there's
-    /// nothing to key a cache by; one shared `MaterialId` for all of them
-    /// is exactly as correct as the hardcoded-per-mesh-but-identical
-    /// material this replaces, minus the redundant re-minting.
-    default_static_mesh_material: Option<MaterialId>,
+    /// Renderer-local Helio material handles projected from SceneDB mesh
+    /// material components. SceneDB remains authoritative for the values.
+    static_mesh_materials: crate::scene::helio_bridge::StaticMeshMaterialProjections,
+    /// Entities `rebuild_static_mesh_frame` authored a
+    /// `helio_pass_gbuffer::StaticObjectComponent` row for last pass --
+    /// unlike Helio's own rebuilt-every-frame transient list, that row
+    /// persists in SceneDB until removed, so this tracks which ones need
+    /// removing when they drop out of the live set.
+    static_object_scenedb_cache: HashSet<pulsar_scenedb::Entity>,
     /// The first frame must be submitted even when SceneDB has no revision
     /// change to report. This is separate from scene synchronization state:
     /// `known_ids` can be populated before Helio has rendered anything.
@@ -487,7 +487,24 @@ impl HelioRenderer {
                 .max(16);
             // Streaming stays OFF unless the canonical toggle says otherwise:
             // defaults must preserve today's behavior exactly.
-            let mut builder = helio::RendererBuilder::new(config)
+            //
+            // ── SceneDB GPU-native render seam (Pulsar-Native#561 Phase D,
+            // shared with the play-mode renderers via #637's helio_bridge)
+            // ──────────────────────────────────────────────────────────
+            // The GPU mirror MUST be attached before the renderer is
+            // constructed: `RendererBuilder::new` requires a `SceneDbHandle`
+            // up front (SceneDB is the sole scene authority — there is no
+            // valid renderer configuration without one), so this can no
+            // longer be a post-construction `&mut Renderer` step. Idempotent
+            // inside the bridge (a second renderer sharing the same
+            // `scene_store`, e.g. another viewport, gets back the same
+            // mirror instead of clobbering it).
+            let scene_db_handle = crate::scene::ensure_gpu_mirror(
+                &mut self.scene_store.write(),
+                device_arc.clone(),
+                queue_arc.clone(),
+            );
+            let mut builder = helio::RendererBuilder::new(config, scene_db_handle.clone())
                 .with_external_device()
                 .with_editor_mode(true)
                 .with_clear_color([0.15, 0.18, 0.25, 1.0])
@@ -496,13 +513,14 @@ impl HelioRenderer {
             if vt_enabled {
                 builder = builder.with_texture_streaming(pool_mb);
             }
-            let r = builder
+            let mut r = builder
                 .with_graph(Box::new(|d, q, s, c, ds, cb, csb| {
                     helio_default_graphs::build_default_graph_external(
                         d, q, s, c, ds, cb, csb, None,
                     )
                 }))
                 .build(device_arc.clone(), queue_arc.clone(), width, height, format);
+            crate::scene::bind_renderer_mesh_projection(&scene_db_handle, &mut r);
 
             let mut inner = HelioInner {
                 renderer: r,
@@ -517,7 +535,8 @@ impl HelioRenderer {
                 planet_graph_rebuilt: false,
                 last_scene_revision: 0,
                 known_ids: HashSet::new(),
-                default_static_mesh_material: None,
+                static_mesh_materials: Default::default(),
+                static_object_scenedb_cache: HashSet::new(),
                 has_rendered_frame: false,
                 reflection_capture_cache: ReflectionCaptureCache::new(),
                 water_volume_cache: WaterVolumeCache::new(),
@@ -528,27 +547,6 @@ impl HelioRenderer {
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
             self.viewport_size = (width, height);
-
-            // ── SceneDB GPU-native render seam (Pulsar-Native#561 Phase D,
-            // shared with the play-mode renderers via #637's helio_bridge)
-            // ──────────────────────────────────────────────────────────
-            // First point `device`/`queue` exist -- `SceneGpuStore` needs a
-            // real `wgpu::Device`/`Queue` (CONTRACTS C0: the SceneDB core
-            // stays graphics-free without one, so it can't be constructed
-            // any earlier than this). Idempotent inside the bridge (a second
-            // renderer sharing the same `scene_store`, e.g. another
-            // viewport, must not clobber an already-wired mirror).
-            {
-                let mut store_guard = self.scene_store.write();
-                if let Some(inner) = self.inner.as_mut() {
-                    crate::scene::attach_gpu_render_seam(
-                        &mut store_guard,
-                        &mut inner.renderer,
-                        device_arc.clone(),
-                        queue_arc.clone(),
-                    );
-                }
-            }
 
             tracing::info!(
                 "[HELIO] Renderer initialized - camera at {:?}, yaw={}, pitch={}",
@@ -664,7 +662,7 @@ impl HelioRenderer {
         }
 
         // Advance wind every frame (frozen clock yields static lean — correct).
-        inner.renderer.scene_mut().advance_wind(dt);
+        inner.renderer.advance_frame_simulation(dt);
 
         // ── Resize ──────────────────────────────────────────────────────────────
         if viewport_resized {
@@ -1101,22 +1099,22 @@ impl HelioRenderer {
     }
 
     /// Get the currently selected object ID (Helio internal ID).
-    pub fn get_selected_object(&self) -> Option<helio::SceneActorId> {
+    pub fn get_selected_object(&self) -> Option<helio::SceneEntityId> {
         self.inner.as_ref()?.editor_state.selected()
     }
 
     /// Get the SceneDb ID of the currently selected object.
     pub fn get_selected_scene_db_id(&self) -> Option<String> {
-        use helio::SceneActorId;
+        use helio::SceneEntityId;
         let inner = self.inner.as_ref()?;
         let tag = match inner.editor_state.selected()? {
-            SceneActorId::Object(obj_id) => inner
+            SceneEntityId::Object(obj_id) => inner
                 .renderer
                 .scene()
                 .iter_objects_for_editor()
                 .find(|(id, _, _, _)| *id == obj_id)
                 .map(|(_, _, _, t)| t)?,
-            SceneActorId::Light(light_id) => inner
+            SceneEntityId::Light(light_id) => inner
                 .renderer
                 .scene()
                 .iter_lights()
@@ -1134,7 +1132,7 @@ impl HelioRenderer {
 
     /// Select an object or light by its SceneDb ID.
     pub fn select_by_scene_db_id(&mut self, scene_db_id: &str) -> bool {
-        use helio::SceneActorId;
+        use helio::SceneEntityId;
         self.gizmo_dirty = true;
         let Some(inner) = &mut self.inner else {
             return false;
@@ -1147,7 +1145,7 @@ impl HelioRenderer {
             .iter_objects_for_editor()
             .find(|(_, _, _, t)| *t == tag)
         {
-            inner.editor_state.select(SceneActorId::Object(obj_id));
+            inner.editor_state.select(SceneEntityId::Object(obj_id));
             true
         } else if let Some((light_id, _, _)) = inner
             .renderer
@@ -1155,7 +1153,7 @@ impl HelioRenderer {
             .iter_lights()
             .find(|(_, _, t)| *t == tag)
         {
-            inner.editor_state.select(SceneActorId::Light(light_id));
+            inner.editor_state.select(SceneEntityId::Light(light_id));
             true
         } else {
             false
@@ -1180,7 +1178,7 @@ impl HelioRenderer {
     /// This ensures both systems are always in sync without needing a reconciliation loop.
     /// Returns true if the object was found and selected.
     pub fn select_object_atomic(&mut self, scene_db_id: Option<String>) -> bool {
-        use helio::SceneActorId;
+        use helio::SceneEntityId;
 
         // Mark gizmo dirty so the next rendered frame rebuilds gizmo geometry.
         self.gizmo_dirty = true;
@@ -1201,7 +1199,7 @@ impl HelioRenderer {
                 .iter_objects_for_editor()
                 .find(|(_, _, _, t)| *t == tag)
             {
-                inner.editor_state.select(SceneActorId::Object(obj_id));
+                inner.editor_state.select(SceneEntityId::Object(obj_id));
                 tracing::info!("[ATOMIC] Selected object: {}", id);
                 true
             } else if let Some((light_id, _, _)) = inner
@@ -1210,7 +1208,7 @@ impl HelioRenderer {
                 .iter_lights()
                 .find(|(_, _, t)| *t == tag)
             {
-                inner.editor_state.select(SceneActorId::Light(light_id));
+                inner.editor_state.select(SceneEntityId::Light(light_id));
                 tracing::info!("[ATOMIC] Selected light: {}", id);
                 true
             } else {
@@ -1247,7 +1245,7 @@ impl HelioRenderer {
     /// `norm_x`/`norm_y` must be in [0.0, 1.0] relative to the viewport area.
     pub fn handle_left_click(&mut self, norm_x: f32, norm_y: f32) {
         self.gizmo_dirty = true;
-        use helio::SceneActorId;
+        use helio::SceneEntityId;
         let (ray_o, ray_d) = self.build_pick_ray(norm_x, norm_y);
 
         // Determine what to select (if anything) by doing raycast and lookup
@@ -1268,7 +1266,7 @@ impl HelioRenderer {
                     .cast_ray(inner.renderer.scene(), ray_o, ray_d)
                 {
                     match hit.actor_id {
-                        SceneActorId::Object(_) | SceneActorId::Light(_) => {
+                        SceneEntityId::Object(_) | SceneEntityId::Light(_) => {
                             // Resolve SceneDb ID by scanning for matching user_tag.
                             let scene_db_id = self
                                 .scene_store
@@ -1334,9 +1332,9 @@ impl HelioRenderer {
 
         // Write the final gizmo position back to SceneDb for whichever actor type was dragged.
         if let Some(actor) = dragged_actor {
-            use helio::SceneActorId;
+            use helio::SceneEntityId;
             match actor {
-                SceneActorId::Object(obj_id) => {
+                SceneEntityId::Object(obj_id) => {
                     if let Ok(mat) = inner.renderer.scene().get_object_transform(obj_id) {
                         let (scale_v, quat, pos_v) = mat.to_scale_rotation_translation();
                         let (yaw, pitch, roll) = quat.to_euler(EulerRot::YXZ);
@@ -1364,7 +1362,7 @@ impl HelioRenderer {
                         }
                     }
                 }
-                SceneActorId::Light(light_id) => {
+                SceneEntityId::Light(light_id) => {
                     if let Some(gpu_light) = inner.renderer.scene().get_light(light_id) {
                         let pos = [
                             gpu_light.position_range[0],
@@ -1411,15 +1409,13 @@ impl HelioRenderer {
         tracing::info!("[HELIO SCENE] Populating initial scene...");
 
         // Sky
-        inner.renderer.scene_mut().insert_actor(SceneActor::Sky(
-            SkyActor::new().with_sky_color([0.5, 0.7, 1.0]),
-        ));
+        inner.renderer.configure_default_sky([0.5, 0.7, 1.0]);
         tracing::info!("[HELIO SCENE] Added sky");
 
         // The HIDDEN group is always hidden — objects toggled invisible in the
         // editor are assigned to this group so they don't render visually while
         // remaining in the scene for gizmo rendering and selection.
-        inner.renderer.scene_mut().hide_group(GroupId::new(8));
+        inner.renderer.hide_render_group(GroupId::new(8));
 
         // Lights and meshes are driven exclusively through SceneDb via sync_scene()
         // so that the hierarchy panel and the renderer always show the same state.
@@ -1462,6 +1458,7 @@ impl HelioRenderer {
         // was pure incidental scope creep, not a real requirement. Dirty-flag
         // draining now happens in its own short Phase 2 write lock, below.
         let mut pending_gpu_mirror_refresh = Vec::new();
+        let mut pending_world_writes = PendingWorldWrites::new();
         let mut live_keys = {
             let store = scene_store.read();
             let t_snap = std::time::Instant::now();
@@ -1489,6 +1486,7 @@ impl HelioRenderer {
                     &mut planet_runtime_init_attempted,
                     &mut live_keys,
                     &mut pending_gpu_mirror_refresh,
+                    &mut pending_world_writes,
                 );
             }
             live_keys
@@ -1519,7 +1517,7 @@ impl HelioRenderer {
             .cloned()
             .collect();
         for key in stale_foliage {
-            remove_foliage_handles(inner.renderer.scene_mut(), &mut inner.foliage_cache, &key);
+            remove_foliage_handles(&mut inner.renderer, &mut inner.foliage_cache, &key);
         }
 
         // NOTE (Pulsar-Native#561): `LightCache` (since deleted) was never
@@ -1537,9 +1535,7 @@ impl HelioRenderer {
         // was complete; the surviving side (if any) just waits for a new
         // partner.
         for action in inner.portal_link_cache.remove_stale(&live_keys) {
-            if let Some((portal_id, id)) =
-                apply_portal_pair_action(inner.renderer.scene_mut(), action)
-            {
+            if let Some((portal_id, id)) = apply_portal_pair_action(&mut inner.renderer, action) {
                 match id {
                     Some(id) => inner.portal_link_cache.set_active(portal_id, id),
                     None => inner.portal_link_cache.clear_active(portal_id),
@@ -1620,6 +1616,11 @@ impl HelioRenderer {
                     *entity,
                 );
             }
+            // Same reasoning as `refresh_world_component_gpu_mirror_for_class`
+            // just above: every `sync_component` this pass that wanted to
+            // author a SceneDB row queued it in `PendingWorldWrites` instead
+            // (Phase 1's read lock has no `&mut World`) -- apply them all now.
+            pending_world_writes.drain_and_apply(store.world_mut());
             Self::step_scene_db(&mut store);
             // Refresh the resolved light frames from this pass's World
             // change events (Pulsar-Native#636). Runs unconditionally, not
@@ -1634,9 +1635,12 @@ impl HelioRenderer {
 
         // Static meshes and lights are rebuilt from the authoritative
         // SceneDB world after its GPU mirror has advanced. Helio retains
-        // only transient frame data for either.
-        Self::rebuild_static_mesh_frame(inner, &scene_store.read());
-        Self::rebuild_light_frame(inner, &scene_store.read());
+        // only transient frame data for either. One projection built from
+        // one read lock, shared by both rebuilds -- not two separate world
+        // scans.
+        let projection = crate::scene::SceneRenderProjection::from_store(&scene_store.read());
+        Self::rebuild_static_mesh_frame(inner, &projection, scene_store);
+        Self::rebuild_light_frame(inner, &projection);
 
         // Generic teardown for every removed/disabled component and every
         // despawned object this pass -- see `dispatch_component_removals`'s
@@ -1711,6 +1715,7 @@ impl HelioRenderer {
         planet_runtime_init_attempted: &mut bool,
         live_keys: &mut LiveKeySet,
         pending_gpu_mirror_refresh: &mut Vec<(pulsar_scenedb::Entity, String)>,
+        pending_world_writes: &mut PendingWorldWrites,
     ) {
         let owner = RuntimeComponentOwner {
             scene_object_id: snap.stable_id.as_str(),
@@ -1772,6 +1777,17 @@ impl HelioRenderer {
         // hydration didn't happen for some reason -- fails safe rather
         // than silently dropping the object's rendering.
         let entity = store.entity_for(snap.stable_id.as_str());
+        // Give `sync_component` implementations a queue for SceneDB writes
+        // (see `PendingWorldWrites`'s doc for why they can't write `World`
+        // directly from here) and the entity to author onto, when one
+        // exists yet. Absent on an object's very first sync or two, before
+        // `by_stable_id` has caught up -- components that need it just skip
+        // authoring that pass and pick it up next time, same as every other
+        // per-entity subsystem here.
+        ctx.subsystems.register_ref::<PendingWorldWrites>(pending_world_writes);
+        if let Some(entity) = entity {
+            ctx.subsystems.register::<pulsar_scenedb::Entity>(entity);
+        }
         for (component_index, class_name, data) in component_instances {
             if let Some(entity) = entity {
                 if pulsar_world_registry::dispatch_world_component_for_class(
@@ -1897,11 +1913,22 @@ impl HelioRenderer {
     /// [`crate::scene::rebuild_static_mesh_frame`] bridge (Pulsar-Native#637:
     /// the editor renderer and the play-mode renderers run the SAME
     /// per-frame rebuild code, not two copies).
-    fn rebuild_static_mesh_frame(inner: &mut HelioInner, store: &WorldSceneStore) {
+    fn rebuild_static_mesh_frame(
+        inner: &mut HelioInner,
+        projection: &crate::scene::SceneRenderProjection,
+        scene_store: &Arc<RwLock<WorldSceneStore>>,
+    ) {
+        // Short write lock, same discipline as every other post-Phase-2
+        // `store.world_mut()` use in this file -- `rebuild_static_mesh_frame`
+        // now also authors `StaticObjectComponent` SceneDB rows, not just
+        // Helio's transient list.
+        let mut store = scene_store.write();
         crate::scene::rebuild_static_mesh_frame(
             &mut inner.renderer,
-            store,
-            &mut inner.default_static_mesh_material,
+            projection,
+            &mut inner.static_mesh_materials,
+            store.world_mut(),
+            &mut inner.static_object_scenedb_cache,
         );
     }
 
@@ -1910,8 +1937,8 @@ impl HelioRenderer {
     /// [`crate::scene::rebuild_light_frame`] bridge (Pulsar-Native#636/#637:
     /// per-frame CPU position combination is gone; the editor renderer and
     /// the play-mode renderers run the SAME rebuild code).
-    fn rebuild_light_frame(inner: &mut HelioInner, store: &WorldSceneStore) {
-        crate::scene::rebuild_light_frame(&mut inner.renderer, store);
+    fn rebuild_light_frame(inner: &mut HelioInner, projection: &crate::scene::SceneRenderProjection) {
+        crate::scene::rebuild_light_frame(&mut inner.renderer, projection);
     }
 
     fn sync_planet_graph(inner: &mut HelioInner, error_queue: &Arc<Mutex<Vec<String>>>) {
@@ -2007,6 +2034,7 @@ impl HelioRenderer {
         let mut added = Vec::new();
         let mut updated = Vec::new();
         let mut pending_gpu_mirror_refresh = Vec::new();
+        let mut pending_world_writes = PendingWorldWrites::new();
         let anything_changed = !dirty.is_empty() || !removed.is_empty();
 
         // Tear down the previous incarnation before syncing dirty objects.
@@ -2059,6 +2087,7 @@ impl HelioRenderer {
                         &mut planet_runtime_init_attempted,
                         &mut live_keys,
                         &mut pending_gpu_mirror_refresh,
+                        &mut pending_world_writes,
                     );
                 }
                 // A TRANSFORM-only change on a static mesh or light needs no
@@ -2112,6 +2141,7 @@ impl HelioRenderer {
                     *entity,
                 );
             }
+            pending_world_writes.drain_and_apply(store.world_mut());
             Self::step_scene_db(&mut store);
         }
 
@@ -2129,8 +2159,10 @@ impl HelioRenderer {
         // Always rebuild the transient static-mesh and light frames from
         // SceneDB. This also handles component removal and empty/failed
         // mesh hydration without a Helio-side stale-object sweep or cache.
-        Self::rebuild_static_mesh_frame(inner, &scene_store.read());
-        Self::rebuild_light_frame(inner, &scene_store.read());
+        // One shared projection for both calls avoids scanning `World` twice.
+        let projection = crate::scene::SceneRenderProjection::from_store(&scene_store.read());
+        Self::rebuild_static_mesh_frame(inner, &projection, scene_store);
+        Self::rebuild_light_frame(inner, &projection);
 
         for id in &removed {
             inner.known_ids.remove(id);

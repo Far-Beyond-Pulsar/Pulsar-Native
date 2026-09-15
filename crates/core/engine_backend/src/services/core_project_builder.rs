@@ -913,13 +913,20 @@ mod tests {
         ensure_core_cargo_toml(project.path()).unwrap();
 
         let manifest = std::fs::read_to_string(project.path().join("Cargo.toml")).unwrap();
-        let expected = format!(
-            "helio = {{ git = \"https://github.com/Far-Beyond-Pulsar/Helio\", rev = \"{HELIO_GIT_REVISION}\" }}"
-        );
-        assert!(manifest.lines().any(|line| line == expected));
-        assert!(!manifest
-            .lines()
-            .any(|line| { line.starts_with("helio = ") && !line.contains("rev = ") }));
+        if HELIO_GIT_REVISION.contains("crates/renderer/helio") {
+            assert!(manifest.lines().any(|line| {
+                line.starts_with("helio = { path = ")
+                    && line.contains("crates/renderer/helio/crates/helio")
+            }));
+        } else {
+            let expected = format!(
+                "helio = {{ git = \"https://github.com/Far-Beyond-Pulsar/Helio\", rev = \"{HELIO_GIT_REVISION}\" }}"
+            );
+            assert!(manifest.lines().any(|line| line == expected));
+            assert!(!manifest
+                .lines()
+                .any(|line| { line.starts_with("helio = ") && !line.contains("rev = ") }));
+        }
     }
 
     /// #653 scaffolding: a fresh project gets a starter scripts crate whose

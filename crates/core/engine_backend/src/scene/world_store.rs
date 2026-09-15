@@ -238,6 +238,27 @@ pub struct WorldSceneStore {
 }
 
 impl WorldSceneStore {
+    /// Insert persistent render-resource components into the authoritative
+    /// SceneDB world.  GPU handles and renderer records are deliberately not
+    /// accepted here; those are rebuilt by the Helio projection layer.
+    pub fn insert_render_resources(
+        &mut self,
+        entity: Entity,
+        texture: Option<crate::scene::TextureResource>,
+        material: Option<crate::scene::MaterialResource>,
+        mesh: Option<crate::scene::SectionedMeshResource>,
+        object: Option<crate::scene::MeshObjectResource>,
+    ) {
+        crate::scene::render_resources::insert_render_resources(
+            self.world_mut(),
+            entity,
+            texture,
+            material,
+            mesh,
+            object,
+        );
+    }
+
     pub fn new() -> Self {
         let mut scene_db = pulsar_scenedb::SceneDb::new();
         // Attached unconditionally, not lazily on first subsystem
