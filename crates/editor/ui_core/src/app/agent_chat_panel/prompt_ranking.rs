@@ -339,20 +339,30 @@ mod tests {
         let (compacted, dropped) = compact_messages(messages, 2_200, 200);
         let dropped = dropped.expect("the ordinary middle turn should exceed the budget");
 
-        assert!(compacted
-            .iter()
-            .any(|message| message.content.contains("ORIGINAL_GOAL")));
-        assert!(compacted
-            .iter()
-            .any(|message| message.content.contains("CURRENT_REQUEST")));
-        assert!(compacted
-            .iter()
-            .any(|message| message.content.contains("Subagent result")));
-        assert!(!compacted
-            .iter()
-            .any(|message| message.content.contains("ORDINARY_MIDDLE_TURN")));
-        assert!(dropped
-            .iter()
-            .any(|message| message.content.contains("ORDINARY_MIDDLE_TURN")));
+        assert!(
+            compacted
+                .iter()
+                .any(|message| message.content.contains("ORIGINAL_GOAL"))
+        );
+        assert!(
+            compacted
+                .iter()
+                .any(|message| message.content.contains("CURRENT_REQUEST"))
+        );
+        assert!(
+            compacted
+                .iter()
+                .any(|message| message.content.contains("Subagent result"))
+        );
+        assert!(
+            !compacted
+                .iter()
+                .any(|message| message.content.contains("ORDINARY_MIDDLE_TURN"))
+        );
+        assert!(
+            dropped
+                .iter()
+                .any(|message| message.content.contains("ORDINARY_MIDDLE_TURN"))
+        );
     }
 }

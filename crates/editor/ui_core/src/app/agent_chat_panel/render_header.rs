@@ -1,11 +1,12 @@
-use gpui::{prelude::FluentBuilder as _, Corner, *};
+use gpui::{Corner, prelude::FluentBuilder as _, *};
 use ui::{
+    ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
     button::{Button, ButtonVariants as _},
     dropdown::{SearchableList, SearchableListEvent},
     h_flex,
     menu::popup_menu::PopupMenuExt,
     popover::Popover,
-    v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
+    v_flex,
 };
 
 use super::chat_storage;

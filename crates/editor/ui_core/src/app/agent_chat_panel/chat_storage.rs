@@ -267,7 +267,6 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
 
         self.current_chat_id = chat.id;
         self.current_chat_created_at = chat.created_at;
-        self.message_row_heights.clear();
         self.display_item_heights.clear();
         self.streaming_display_item_ix = None;
 
@@ -334,7 +333,6 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
     pub(super) fn start_new_chat(&mut self, cx: &mut Context<Self>) {
         self.current_chat_id = format!("chat-{}", Self::now_epoch_nanos());
         self.current_chat_created_at = Self::now_epoch_secs();
-        self.message_row_heights.clear();
         self.display_item_heights.clear();
         self.streaming_display_item_ix = None;
         let system_msg = Self::default_system_message(&self.tool_registry);

@@ -13,11 +13,11 @@ use agent_provider_vertex_ai::VertexAiProviderCrate;
 use gpui::*;
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 use ui::{
+    VirtualListScrollHandle,
     dock::{DockArea, TabPanel},
     dropdown::{SearchableList, SearchableListEvent, SearchableListItemState},
     input::InputState,
     scroll::ScrollbarState,
-    VirtualListScrollHandle,
 };
 
 use super::panel::AgentChatPanel;
@@ -251,7 +251,6 @@ impl AgentChatPanel {
             current_chat_id: String::new(),
             current_chat_created_at: 0,
             loaded_chat_project_root: None,
-            message_row_heights: HashMap::new(),
             active_provider_ix: 0,
             active_model_ix: 0,
             is_request_in_flight: false,

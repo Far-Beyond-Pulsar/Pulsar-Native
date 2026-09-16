@@ -443,6 +443,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ashpd"
+version = "0.13.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb8421aaa9644a5faf26735f258b669b15f063313ef8f8e2bdb28912a1a6f111"
+dependencies = [
+ "enumflags2",
+ "futures-util",
+ "getrandom 0.4.3",
+ "serde",
+ "zbus",
+]
+
+[[package]]
 name = "asn1-rs"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3908,6 +3921,12 @@ checksum = "9e05e7e6723e3455f4818c7b26e855439f7546cf617ef669d1adedb8669e5cb9"
 
 [[package]]
 name = "glam"
+version = "0.29.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8babf46d4c1c9d92deac9f7be466f76dfc4482b6452fc5024b5e8daf6ffeb3ee"
+
+[[package]]
+name = "glam"
 version = "0.30.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
@@ -4104,6 +4123,7 @@ dependencies = [
  "web-time",
  "wgpu",
  "winit",
+ "x11-dl",
 ]
 
 [[package]]
@@ -4433,18 +4453,23 @@ dependencies = [
  "arrayvec",
  "bytemuck",
  "glam 0.33.5",
+ "helio-bake-types",
  "helio-core",
+ "helio-mats",
  "helio-pass-billboard",
  "helio-pass-corona",
  "helio-pass-foliage-place",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "helio-pass-object-batch",
  "helio-pass-portal-cull",
  "helio-pass-postprocess",
+ "helio-pass-radiance-cascades",
+ "helio-pass-shadow-matrix",
  "helio-pass-sky",
  "helio-pass-tsr",
- "helio-pass-virtual-geometry",
  "helio-xr",
  "image",
- "libhelio",
  "log",
  "meshopt",
  "openxr",
@@ -4465,9 +4490,10 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio",
+ "helio-mats",
+ "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "image",
- "libhelio",
  "log",
  "pulsar_scenedb",
  "solid-fbx 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=4724f4f32b28a8ef6fe9ca2b2b59ea87a8e85ced)",
@@ -4481,12 +4507,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-bake-types"
+version = "0.1.0"
+
+[[package]]
 name = "helio-core"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
- "libhelio",
  "naga",
  "pulsar_scenedb",
  "thiserror 2.0.20",
@@ -4543,12 +4572,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-mats"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "log",
+ "wgpu",
+]
+
+[[package]]
 name = "helio-pass-billboard"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
@@ -4561,7 +4599,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
@@ -4574,7 +4611,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "wgpu",
 ]
 
@@ -4584,7 +4620,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
+ "helio-mats",
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -4598,7 +4634,9 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
+ "helio-mats",
+ "helio-pass-radiance-cascades",
+ "helio-pass-shadow-matrix",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
@@ -4611,7 +4649,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "wgpu",
 ]
 
@@ -4621,7 +4658,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "wgpu",
 ]
 
@@ -4632,7 +4668,6 @@ dependencies = [
  "bytemuck",
  "helio-core",
  "helio-pass-foliage-place",
- "libhelio",
  "log",
  "pulsar_scenedb",
  "wgpu",
@@ -4645,11 +4680,11 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
- "libhelio",
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "serde_json",
  "wgpu",
 ]
 
@@ -4658,9 +4693,10 @@ name = "helio-pass-forward-lit"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "helio",
  "helio-core",
- "libhelio",
+ "helio-mats",
+ "helio-pass-gbuffer",
+ "helio-pass-light-cull",
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -4675,7 +4711,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "wgpu",
 ]
 
@@ -4685,9 +4720,10 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
- "helio",
  "helio-core",
- "libhelio",
+ "helio-mats",
+ "helio-pass-radiance-cascades",
+ "helio-pass-shadow-matrix",
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -4702,7 +4738,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "log",
  "wgpu",
 ]
@@ -4714,7 +4749,8 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
- "libhelio",
+ "helio-pass-gbuffer",
+ "helio-pass-shadow-matrix",
  "wgpu",
 ]
 
@@ -4724,7 +4760,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
+ "helio-pass-gbuffer",
  "wgpu",
 ]
 
@@ -4734,7 +4770,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "pulsar_scenedb",
  "wgpu",
 ]
@@ -4746,7 +4781,6 @@ dependencies = [
  "bytemuck",
  "helio-core",
  "helio-pass-gbuffer",
- "libhelio",
  "log",
  "pulsar_scenedb",
  "wgpu",
@@ -4758,7 +4792,8 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
+ "helio-pass-gbuffer",
+ "helio-pass-indirect-dispatch",
  "wgpu",
 ]
 
@@ -4768,7 +4803,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "wgpu",
 ]
 
@@ -4778,7 +4812,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "log",
  "wgpu",
 ]
@@ -4789,7 +4822,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "log",
  "thiserror 2.0.20",
  "wgpu",
@@ -4802,7 +4834,7 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
- "libhelio",
+ "helio-pass-gbuffer",
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -4816,9 +4848,9 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
+ "helio-mats",
  "helio-pass-gbuffer",
  "helio-pass-portal-cull",
- "libhelio",
  "log",
  "pulsar_scenedb",
  "wgpu",
@@ -4830,7 +4862,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
@@ -4843,7 +4874,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
+ "helio-pass-sky",
  "wgpu",
 ]
 
@@ -4853,7 +4884,8 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
+ "helio-pass-gbuffer",
+ "helio-pass-shadow-matrix",
  "log",
  "wgpu",
 ]
@@ -4864,7 +4896,8 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
+ "helio-pass-gbuffer",
+ "helio-pass-shadow-matrix",
  "wgpu",
 ]
 
@@ -4874,7 +4907,8 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
+ "helio-pass-gbuffer",
+ "helio-pass-shadow-matrix",
  "wgpu",
 ]
 
@@ -4884,7 +4918,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "wgpu",
 ]
 
@@ -4894,7 +4927,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "log",
  "wgpu",
 ]
@@ -4905,10 +4937,10 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "serde_json",
  "wgpu",
 ]
 
@@ -4918,7 +4950,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
+ "helio-pass-hiz",
  "wgpu",
 ]
 
@@ -4927,10 +4959,11 @@ name = "helio-pass-transparent"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
- "helio",
  "helio-core",
+ "helio-mats",
  "helio-pass-gbuffer",
- "libhelio",
+ "helio-pass-light-cull",
+ "helio-pass-occlusion-cull",
  "log",
  "pulsar_scenedb",
  "wgpu",
@@ -4942,7 +4975,6 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
  "wgpu",
 ]
 
@@ -4952,7 +4984,10 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
+ "helio-mats",
+ "helio-pass-gbuffer",
+ "helio-pass-object-batch",
+ "helio-pass-radiance-cascades",
  "log",
  "pulsar_scenedb",
  "wgpu",
@@ -4964,7 +4999,8 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
+ "helio-pass-postprocess",
+ "helio-pass-shadow-matrix",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
@@ -4978,7 +5014,7 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
- "libhelio",
+ "helio-pass-object-batch",
  "log",
  "wgpu",
 ]
@@ -4989,7 +5025,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
- "libhelio",
+ "helio-pass-hiz",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
@@ -5002,7 +5038,7 @@ version = "0.1.0"
 dependencies = [
  "ash",
  "glam 0.33.5",
- "libhelio",
+ "helio-core",
  "libloading 0.9.0",
  "log",
  "openxr",
@@ -5029,7 +5065,6 @@ dependencies = [
  "helio-pass-portal-cull",
  "helio-pass-postprocess",
  "helio-pass-water-sim",
- "libhelio",
  "plugin_editor_api",
  "pulsar_events",
  "pulsar_reflection",
@@ -5545,6 +5580,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e0242819d153cba4b4b05a5a8f2a7e9bbf97b6055b2a002b395c96b5ff3c0222"
 dependencies = [
  "cfg-if",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -5966,15 +6004,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "libhelio"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "glam 0.33.5",
- "wgpu",
-]
-
-[[package]]
 name = "libloading"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6275,6 +6304,7 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a5cab8f2cadc416a82d2e783a1946388b31654d391d1c7d92cc1f03e295b1deb"
 dependencies = [
+ "serde",
  "unicode-id",
 ]
 
@@ -6305,6 +6335,18 @@ dependencies = [
 
 [[package]]
 name = "markup5ever_rcdom"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edaa21ab3701bfee5099ade5f7e1f84553fd19228cf332f13cd6e964bf59be18"
+dependencies = [
+ "html5ever 0.27.0",
+ "markup5ever 0.12.1",
+ "tendril 0.4.3",
+ "xml5ever 0.18.1",
+]
+
+[[package]]
+name = "markup5ever_rcdom"
 version = "0.39.0+unofficial"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ac010f19d6c4af81eeb4018a39d7a115de9d285af45c126a4ac02e6fc5716b7"
@@ -6312,7 +6354,7 @@ dependencies = [
  "html5ever 0.39.0",
  "markup5ever 0.39.0",
  "tendril 0.5.1",
- "xml5ever",
+ "xml5ever 0.39.0",
 ]
 
 [[package]]
@@ -8889,10 +8931,9 @@ version = "0.1.0"
 [[package]]
 name = "pulsar_reflection"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection?rev=27eaaf7233522ff7d8c79cd2c76e7eeacb17d59d#27eaaf7233522ff7d8c79cd2c76e7eeacb17d59d"
 dependencies = [
  "dashmap",
- "glam 0.33.5",
+ "glam 0.29.3",
  "gpui-ce",
  "inventory",
  "once_cell",
@@ -8907,7 +8948,6 @@ dependencies = [
 [[package]]
 name = "pulsar_reflection_derive"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection?rev=27eaaf7233522ff7d8c79cd2c76e7eeacb17d59d#27eaaf7233522ff7d8c79cd2c76e7eeacb17d59d"
 dependencies = [
  "owo-colors",
  "proc-macro2",
@@ -12777,7 +12817,7 @@ dependencies = [
  "linkme",
  "lsp-types",
  "markdown",
- "markup5ever_rcdom",
+ "markup5ever_rcdom 0.39.0+unofficial",
  "mathjax-svg-rs",
  "mermaid-rs-renderer",
  "notify 6.1.1",
@@ -12837,6 +12877,7 @@ dependencies = [
  "unicode-segmentation",
  "uuid",
  "wgpu",
+ "wgpui-base",
  "windows 0.62.2",
 ]
 
@@ -14071,6 +14112,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "wgpui-base"
+version = "0.6.1"
+dependencies = [
+ "aho-corasick",
+ "anyhow",
+ "ashpd",
+ "async-channel 2.5.0",
+ "chrono",
+ "data-url",
+ "futures",
+ "gpui-ce",
+ "gpui_sum_tree",
+ "html5ever 0.27.0",
+ "indoc",
+ "instant",
+ "lsp-types",
+ "markdown",
+ "markup5ever_rcdom 0.3.0",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "raw-window-handle",
+ "regex",
+ "ropey",
+ "schemars",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "smol",
+ "tracing",
+ "ui-macros",
+ "unicode-segmentation",
+ "web-time",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "wgsl_std"
 version = "0.1.0"
 dependencies = [
@@ -14823,6 +14901,17 @@ name = "xml-rs"
 version = "0.8.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e450f9b2ed1dff33c94c12589a87338689467b9c4f5d8a5710bd09a847d2c8a7"
+
+[[package]]
+name = "xml5ever"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9bbb26405d8e919bc1547a5aa9abc95cbfa438f04844f5fdd9dc7596b748bf69"
+dependencies = [
+ "log",
+ "mac",
+ "markup5ever 0.12.1",
+]
 
 [[package]]
 name = "xml5ever"

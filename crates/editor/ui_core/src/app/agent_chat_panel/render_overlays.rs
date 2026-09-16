@@ -1,11 +1,12 @@
 use gpui::{prelude::FluentBuilder as _, *};
 use ui::{
+    ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
     button::{Button, ButtonVariants as _},
     dropdown::SearchableList,
     h_flex,
     input::TextInput,
     popover::Popover,
-    v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
+    v_flex,
 };
 
 use super::panel::AgentChatPanel;

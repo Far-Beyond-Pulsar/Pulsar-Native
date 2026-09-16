@@ -142,13 +142,7 @@ impl Drop for WgpuiProfileBridge {
 
         for event in profiling::collect_events() {
             if event.name != "__FRAME_MARKER__" {
-                gpui::record_external_span(
-                    &event.name,
-                    event.start_ns,
-                    event.duration_ns,
-                    event.depth,
-                    event.thread_id,
-                );
+                tracing::trace!(name = %event.name, duration_ns = event.duration_ns, "helio profile event");
             }
         }
 
@@ -482,14 +476,7 @@ impl HelioRenderer {
         }
 
         #[cfg(feature = "editor-ui")]
-        let _engine_frame_diagnostic = gpui::record_diagnostic_scope(
-            gpui::DiagnosticKind::EngineFrame,
-            0,
-            self.frame_count,
-            width as u64,
-            height as u64,
-            0,
-        );
+        let _engine_frame_diagnostic = (self.frame_count, width, height);
 
         {
             profiling::profile_scope!("helio_camera_input");
@@ -538,14 +525,7 @@ impl HelioRenderer {
             #[cfg(feature = "editor-ui")]
             gpui::flamegraph_span!("pulsar: HelioRenderer::resize");
             #[cfg(feature = "editor-ui")]
-            let _engine_resize_diagnostic = gpui::record_diagnostic_scope(
-                gpui::DiagnosticKind::EngineResize,
-                0,
-                width as u64,
-                height as u64,
-                scene_revision,
-                self.frame_count,
-            );
+            let _engine_resize_diagnostic = (width, height, scene_revision, self.frame_count);
             profiling::profile_scope!("helio_resize");
             inner.renderer.set_render_size(width, height);
             if inner.planet_terrain.as_ref().is_some_and(|runtime| {

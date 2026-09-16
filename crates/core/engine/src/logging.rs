@@ -55,6 +55,15 @@ pub fn init(verbose: bool) -> LogGuard {
         .create(true)
         .append(true)
         .open(&engine_log_path)
+        .or_else(|_| {
+            let fallback_dir = std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join("logs");
+            fs::create_dir_all(&fallback_dir)?;
+            let fallback_path = fallback_dir.join("engine.log");
+            std::env::set_var("PULSAR_ENGINE_LOG_FILE", fallback_path.to_string_lossy().to_string());
+            std::fs::OpenOptions::new().create(true).append(true).open(fallback_path)
+        })
         .expect("Failed to open engine.log for writing");
     let (non_blocking, guard) = tracing_appender::non_blocking(engine_log_file);
 

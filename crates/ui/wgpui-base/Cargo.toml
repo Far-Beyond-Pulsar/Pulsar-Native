@@ -1,0 +1,72 @@
+[package]
+description = "Behavior, interaction, and infrastructure foundations for GPUI applications."
+keywords = ["desktop", "gpui", "ui", "foundation"]
+license = "Apache-2.0"
+name = "wgpui-base"
+# The examples are development tools that read fixtures from `crates/story`;
+# they stay out of the published package.
+exclude = ["examples/"]
+repository = "https://github.com/longbridge/gpui-kit"
+homepage = "https://gpui-kit.com"
+documentation = "https://docs.rs/wgpui-base"
+version = "0.6.1"
+publish = true
+edition = "2024"
+
+[lib]
+doctest = false
+
+[features]
+upstream-full = []
+test-support = ["gpui/test-support"]
+inspector = ["gpui/inspector"]
+
+[dependencies]
+anyhow.workspace = true
+aho-corasick = "1.1.3"
+chrono = "0.4.38"
+data-url = "0.3"
+futures = "0.3"
+gpui = { package = "gpui-ce", path = "../wgpui", features = ["inspector", "flamegraph"] }
+ui-macros = { workspace = true }
+instant = { version = "0.1", features = ["wasm-bindgen"] }
+lsp-types = "0.97"
+markdown = { version = "1.0.0", features = ["serde"] }
+html5ever = "0.27"
+markup5ever_rcdom = "0.3.0"
+ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_lf"] }
+regex = "1"
+schemars = "1.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+smallvec = "1"
+sum-tree = { package = "gpui_sum_tree", version = "0.2.2" }
+tracing = "0.1"
+unicode-segmentation = "1.12.0"
+web-time = "1"
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+smol = "2"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+async-channel = "2.3.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+raw-window-handle.workspace = true
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSAccessibility", "NSView", "NSWindow", "NSWorkspace"] }
+objc2-foundation = { version = "0.3", features = ["NSGeometry", "NSString"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# The reduced-motion preference (SystemParametersInfoW).
+windows = { workspace = true, features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The reduced-motion preference, through the XDG desktop portal's Settings
+# interface. The same version and features `gpui-pre-linux` already pulls in.
+ashpd = { version = "0.13", default-features = false, features = ["async-io", "settings"] }
+
+[dev-dependencies]
+gpui = { package = "gpui-ce", path = "../wgpui", features = ["test-support", "inspector", "flamegraph"] }
+indoc = "2"
+

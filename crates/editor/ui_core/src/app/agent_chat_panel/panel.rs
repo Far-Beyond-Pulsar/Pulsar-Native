@@ -12,11 +12,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 use ui::{
+    VirtualListScrollHandle,
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
     dropdown::{SearchableList, SearchableListItemAction, SearchableListItemState},
     input::InputState,
     scroll::ScrollbarState,
-    VirtualListScrollHandle,
 };
 
 use super::chat_storage;
@@ -63,7 +63,6 @@ pub struct AgentChatPanel {
     pub(crate) current_chat_id: String,
     pub(crate) current_chat_created_at: u64,
     pub(crate) loaded_chat_project_root: Option<PathBuf>,
-    pub(crate) message_row_heights: HashMap<usize, Pixels>,
     pub(crate) active_provider_ix: usize,
     pub(crate) active_model_ix: usize,
     pub(crate) is_request_in_flight: bool,

@@ -5,8 +5,8 @@ use smol::Timer;
 use std::{
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Condvar, Mutex,
+        atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -140,7 +140,6 @@ impl AgentChatPanel {
                         if let Some(message) = panel.messages.get_mut(message_ix) {
                             message.content.push_str(&chunk);
                         }
-                        panel.message_row_heights.remove(&message_ix);
                         panel.save_current_chat();
                         panel.scroll_messages_to_bottom();
                         cx.notify();
@@ -793,10 +792,10 @@ impl AgentChatPanel {
                                                 );
 
                                             let mut current_messages = vec![
-                                            ChatMessage {
-                                                role: ChatRole::System,
-                                                content: format!(
-                                                    "You are an AI assistant completing a specific task.\n\
+                                                ChatMessage {
+                                                    role: ChatRole::System,
+                                                    content: format!(
+                                                        "You are an AI assistant completing a specific task.\n\
                                                      \n\
                                                      TASK NAME: {name}\n\
                                                      \n\
@@ -809,21 +808,21 @@ impl AgentChatPanel {
                                                      Use the available tools to read files, search the codebase, and gather evidence.\n\
                                                      Include file paths, line numbers, and direct quotes in your answer.\n\
                                                      When you have enough information, write your final answer and stop calling tools.",
-                                                    name = req.name,
-                                                    task = req.task,
-                                                    instructions = instructions,
-                                                    workspace = req.workspace_root.display(),
-                                                ),
-                                                tool_call_id: None,
-                                                tool_calls: vec![],
-                                            },
-                                            ChatMessage {
-                                                role: ChatRole::User,
-                                                content: "Complete the task.".to_string(),
-                                                tool_call_id: None,
-                                                tool_calls: vec![],
-                                            },
-                                        ];
+                                                        name = req.name,
+                                                        task = req.task,
+                                                        instructions = instructions,
+                                                        workspace = req.workspace_root.display(),
+                                                    ),
+                                                    tool_call_id: None,
+                                                    tool_calls: vec![],
+                                                },
+                                                ChatMessage {
+                                                    role: ChatRole::User,
+                                                    content: "Complete the task.".to_string(),
+                                                    tool_call_id: None,
+                                                    tool_calls: vec![],
+                                                },
+                                            ];
 
                                             let mut all_chunks: Vec<String> = Vec::new();
                                             let mut last_raw_response = serde_json::Value::Null;
@@ -1078,7 +1077,6 @@ impl AgentChatPanel {
                                 // Update provider history message
                                 if let Some(message) = panel.messages.get_mut(message_ix) {
                                     message.content.push_str(&chunk);
-                                    panel.message_row_heights.remove(&message_ix);
                                 }
                                 // Update the streaming display bubble.
                                 // Do NOT remove the cached height — the canvas measurement from the
@@ -1332,7 +1330,6 @@ impl AgentChatPanel {
                                             message.content = text;
                                         }
                                     }
-                                    panel.message_row_heights.remove(&message_ix);
                                 }
                                 panel.save_current_chat();
                                 panel.refresh_chat_history_list(cx);
@@ -1388,7 +1385,6 @@ impl AgentChatPanel {
                                 }
                                 if let Some(message) = panel.messages.get_mut(message_ix) {
                                     message.content = error_text;
-                                    panel.message_row_heights.remove(&message_ix);
                                 }
                                 panel.save_current_chat();
                                 panel.refresh_chat_history_list(cx);
@@ -1493,7 +1489,6 @@ impl AgentChatPanel {
             return;
         }
         self.display_item_heights.clear();
-        self.message_row_heights.clear();
 
         let provider_id = self.active_provider().map(|p| p.id).unwrap_or("unknown");
         let Some(provider) = self.provider_registry.get(provider_id).cloned() else {
@@ -1526,7 +1521,6 @@ impl AgentChatPanel {
         self.display_items.truncate(display_ix);
         self.messages.truncate(message_index);
         self.display_item_heights.clear();
-        self.message_row_heights.clear();
         self.streaming_display_item_ix = None;
         self.streaming_message_ix = None;
         self.save_current_chat();

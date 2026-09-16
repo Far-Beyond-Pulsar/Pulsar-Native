@@ -68,10 +68,7 @@ impl InstrumentationCollector {
         // change the timing of the application being profiled.
         let initial_events = profiling::collect_events();
 
-        tracing::trace!(
-            "[PROFILER] Current event count: {}",
-            initial_events.len()
-        );
+        tracing::trace!("[PROFILER] Current event count: {}", initial_events.len());
 
         let trace_data = Arc::clone(&self.trace_data);
         let running_flag = Arc::clone(&self.running);

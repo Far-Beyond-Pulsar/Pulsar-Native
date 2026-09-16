@@ -284,7 +284,7 @@ fn deserialize_u32_json(value: Value) -> ReflectResult<u32> {
 
 inventory::submit! {
     pulsar_reflection::RuntimeTypeRegistration {
-        type_info: entity_type_info,
+        type_info: &ENTITY_TYPE_INFO,
         serialize_json: serialize_entity_json,
         deserialize_json: |value| {
             deserialize_entity_json(value).map(|e| Box::new(e) as Box<dyn std::any::Any>)
@@ -294,7 +294,7 @@ inventory::submit! {
 
 inventory::submit! {
     pulsar_reflection::RuntimeTypeRegistration {
-        type_info: || &U32_TYPE_INFO,
+        type_info: &U32_TYPE_INFO,
         serialize_json: serialize_u32_json,
         deserialize_json: |value| {
             deserialize_u32_json(value).map(|n| Box::new(n) as Box<dyn std::any::Any>)
@@ -335,7 +335,7 @@ fn deserialize_component_ref_json(value: Value) -> ReflectResult<ComponentRef> {
 
 inventory::submit! {
     pulsar_reflection::RuntimeTypeRegistration {
-        type_info: actor_ref_type_info,
+        type_info: &ACTOR_REF_TYPE_INFO,
         serialize_json: serialize_actor_ref_json,
         deserialize_json: |value| {
             deserialize_actor_ref_json(value).map(|r| Box::new(r) as Box<dyn std::any::Any>)
@@ -345,7 +345,7 @@ inventory::submit! {
 
 inventory::submit! {
     pulsar_reflection::RuntimeTypeRegistration {
-        type_info: component_ref_type_info,
+        type_info: &COMPONENT_REF_TYPE_INFO,
         serialize_json: serialize_component_ref_json,
         deserialize_json: |value| {
             deserialize_component_ref_json(value).map(|r| Box::new(r) as Box<dyn std::any::Any>)

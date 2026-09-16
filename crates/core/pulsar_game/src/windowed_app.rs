@@ -24,8 +24,8 @@ use engine_backend::scene::{
     RuntimeLevel, StaticMeshMaterialProjections, WorldSceneStore,
 };
 use helio::{
-    required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
-    Renderer, RendererConfig,
+    required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
+    RendererConfig,
 };
 use parking_lot::RwLock;
 
@@ -108,7 +108,8 @@ impl GameWindow {
         // `SceneDbHandle` up front (SceneDB is the sole scene authority).
         // Idempotent: a second window sharing this `scene_store` gets back
         // the same mirror rather than a second one.
-        let scene_db_handle = ensure_gpu_mirror(&mut scene_store.write(), device.clone(), queue.clone());
+        let scene_db_handle =
+            ensure_gpu_mirror(&mut scene_store.write(), device.clone(), queue.clone());
         let render_config =
             RendererConfig::new(surface_config.width, surface_config.height, surface_format);
         let mut renderer = helio::RendererBuilder::new(render_config, scene_db_handle.clone())

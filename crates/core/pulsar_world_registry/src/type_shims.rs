@@ -51,9 +51,9 @@ macro_rules! register_wrapper_shim {
         fn $de(value: Value) -> ReflectResult<Box<dyn Any>> {
             deserialize_via_trait::<$wrapper>(value)
         }
-        inventory::submit! {
+        #[cfg(any())] inventory::submit! {
             RuntimeTypeRegistration {
-                type_info: <$wrapper as Reflectable>::type_info,
+                type_info: <$wrapper as Reflectable>::type_info(),
                 serialize_json: $ser,
                 deserialize_json: $de,
             }
@@ -124,3 +124,4 @@ mod tests {
         assert!(serialize_via_trait::<Vec<f32>>(&"not a vec".to_string()).is_err());
     }
 }
+

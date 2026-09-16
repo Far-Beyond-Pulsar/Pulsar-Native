@@ -10,7 +10,6 @@ mod provider_catalog;
 mod provider_selection;
 mod render;
 mod render_header;
-mod render_messages;
 mod render_overlays;
 mod streaming;
 mod subagent;
@@ -43,6 +42,9 @@ use std::{
     sync::{Arc, RwLock},
 };
 use ui::{
+    ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
+    VirtualListScrollHandle,
+    bubble::{Bubble, BubbleVariant},
     button::{Button, ButtonVariants as _},
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
     dropdown::{
@@ -51,12 +53,12 @@ use ui::{
     h_flex,
     input::Enter,
     input::{InputState, TextInput},
+    message::{Message, MessageAlignment, MessageContent},
     popover::Popover,
     scroll::{Scrollbar, ScrollbarState},
     spinner::Spinner,
     text::TextView,
-    v_flex, v_virtual_list, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size,
-    StyledExt, VirtualListScrollHandle,
+    v_flex, v_virtual_list,
 };
 
 impl Render for AgentChatPanel {
@@ -1089,34 +1091,26 @@ impl Render for AgentChatPanel {
                                                             .justify_start()
                                                             .when(is_user, |el| el.justify_end())
                                                             .child(
-                                                                v_flex()
-                                                                    .w_auto()
-                                                                    .max_w(px(620.0))
-                                                                    .min_w_0()
-                                                                    .gap_1()
-                                                                    .px_3()
-                                                                    .py_2()
-                                                                    .rounded(px(8.0))
-                                                                    .bg(if is_user {
-                                                                        cx.theme()
-                                                                            .primary
-                                                                            .opacity(0.16)
+                                                                Message::new()
+                                                                    .alignment(if is_user {
+                                                                        MessageAlignment::End
                                                                     } else {
-                                                                        cx.theme().secondary
+                                                                        MessageAlignment::Start
+                                                                    })
+                                                                    .content(
+                                                                        MessageContent::new().bubble(
+                                                                Bubble::new()
+                                                                    .with_variant(if is_user {
+                                                                        BubbleVariant::Tinted
+                                                                    } else {
+                                                                        BubbleVariant::Secondary
                                                                     })
                                                                     .child(
                                                                         div()
                                                                             .text_xs()
                                                                             .font_semibold()
-                                                                            .text_color(
-                                                                                cx.theme()
-                                                                                    .muted_foreground,
-                                                                            )
-                                                                            .child(if is_user {
-                                                                                "You"
-                                                                            } else {
-                                                                                "Agent"
-                                                                            }),
+                                                                            .text_color(cx.theme().muted_foreground)
+                                                                            .child(if is_user { "You" } else { "Agent" }),
                                                                     )
                                                                     .child(if is_user || is_streaming {
                                                                         div()
@@ -1141,6 +1135,8 @@ impl Render for AgentChatPanel {
                                                                         .selectable()
                                                                         .into_any_element()
                                                                     }),
+                                                                        ),
+                                                                    ),
                                                             )
                                                             .id(("agent-chat-message", ix)),
                                                     )
