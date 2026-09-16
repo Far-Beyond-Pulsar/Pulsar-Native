@@ -56,11 +56,7 @@ pub mod helio_bridge;
 // Re-export new system types for convenience
 pub use component_db::ComponentDb;
 #[cfg(feature = "render")]
-pub use helio_bridge::{
-    bind_renderer_mesh_projection, ensure_gpu_mirror, rebuild_light_frame,
-    rebuild_static_mesh_frame, step_scene_for_render, SceneRenderProjection,
-    StaticMeshMaterialProjections,
-};
+pub use helio_bridge::{ensure_gpu_mirror, sync_static_mesh_rows};
 pub use light_frame::{LightFrameMaintainer, ResolvedLightFrame};
 pub use mesh_frame::{MeshFrameMaintainer, ResolvedMeshFrame};
 pub use metadata::{ComponentInstance, EditorObjectId};

@@ -596,7 +596,9 @@ impl HelioRenderer {
             gpui::flamegraph_span!("pulsar: HelioRenderer::scene_db_step");
             profiling::profile_scope!("helio_scene_db_step");
             let t_sync = Instant::now();
-            self.scene_store.write().scene_db_mut().step();
+            let mut scene_store = self.scene_store.write();
+            crate::scene::sync_static_mesh_rows(&mut scene_store);
+            scene_store.scene_db_mut().step();
             sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
             inner.last_scene_revision = scene_revision;
         }
