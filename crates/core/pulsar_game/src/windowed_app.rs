@@ -18,11 +18,7 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-use engine_backend::scene::{
-    bind_renderer_mesh_projection, ensure_gpu_mirror, rebuild_light_frame,
-    rebuild_static_mesh_frame, step_scene_for_render, LightFrameMaintainer, MeshFrameMaintainer,
-    RuntimeLevel, StaticMeshMaterialProjections, WorldSceneStore,
-};
+use engine_backend::scene::{ensure_gpu_mirror, sync_static_mesh_rows, RuntimeLevel, WorldSceneStore};
 use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
     RendererConfig,
@@ -45,19 +41,8 @@ struct GameWindow {
     /// wgpu 30 moved `SurfaceTexture::present()` to `Queue::present()`.
     queue: Arc<wgpu::Queue>,
     renderer: Renderer,
-    /// Lazily-minted shared default material for `StaticMeshComponent`
-    /// objects -- the same cache the editor renderer keeps (see
-    /// `engine_backend::scene::rebuild_static_mesh_frame`).
-    default_static_mesh_material: StaticMeshMaterialProjections,
-    /// Entities this window last authored a `StaticObjectComponent` SceneDB
-    /// row for -- see `rebuild_static_mesh_frame`'s doc on why this tracking
-    /// is needed (that row persists until explicitly removed, unlike
-    /// Helio's own rebuilt-every-frame transient list).
-    static_object_scenedb_cache: std::collections::HashSet<pulsar_scenedb::Entity>,
     /// Built-in free-look camera — active when no ECS camera has been set.
     freecam: FreeCam,
-    /// Time of last `render` — used to advance the per-frame wind clock.
-    last_frame: Instant,
 }
 
 impl GameWindow {
@@ -112,13 +97,24 @@ impl GameWindow {
             ensure_gpu_mirror(&mut scene_store.write(), device.clone(), queue.clone());
         let render_config =
             RendererConfig::new(surface_config.width, surface_config.height, surface_format);
-        let mut renderer = helio::RendererBuilder::new(render_config, scene_db_handle.clone())
+        let graph_scene_db = scene_db_handle.clone();
+        let renderer = helio::RendererBuilder::new(render_config, scene_db_handle)
             .with_editor_mode(desc.editor_mode)
             // Kill the default helio ambient ([0.05, 0.05, 0.08] @ 1.0).
             // All illumination comes from lights in the scene file — same as editor.
             .with_ambient([0.0, 0.0, 0.0], 0.0)
-            .with_graph(Box::new(|d, q, s, c, ds, cb, csb| {
-                helio_default_graphs::build_default_graph_external(d, q, s, c, ds, cb, csb, None)
+            .with_graph(Box::new(move |d, q, c, ds, cb, dcb, csb| {
+                helio_default_graphs::build_default_graph_external(
+                    d,
+                    q,
+                    cb,
+                    c,
+                    ds,
+                    dcb,
+                    csb,
+                    None,
+                    graph_scene_db.clone(),
+                )
             }))
             .build(
                 device.clone(),
@@ -127,7 +123,6 @@ impl GameWindow {
                 surface_config.height,
                 surface_format,
             );
-        bind_renderer_mesh_projection(&scene_db_handle, &mut renderer);
 
         Self {
             handle,
@@ -137,10 +132,7 @@ impl GameWindow {
             device,
             queue,
             renderer,
-            default_static_mesh_material: StaticMeshMaterialProjections::default(),
-            static_object_scenedb_cache: std::collections::HashSet::new(),
             freecam: FreeCam::default(),
-            last_frame: Instant::now(),
         }
     }
 
@@ -176,14 +168,9 @@ impl GameWindow {
     fn render(&mut self, ecs_camera: Option<RenderCamera>) {
         let cam = ecs_camera.unwrap_or_else(|| self.freecam.to_render_camera());
 
-        // Advance the foliage wind clock once per frame. The wind model evaluates at
-        // `t` and `t - dt`, so a frozen clock yields a static lean with zero motion
-        // vectors — grass stays parked even when wind is enabled.
-        let now = Instant::now();
-        let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
-        self.last_frame = now;
-        self.renderer.advance_frame_simulation(dt);
-
+        // `Renderer::render` tracks its own frame delta internally (wind/TAA/
+        // foliage clocks all advance from that), so there is nothing to push
+        // in from here.
         let size = self.window.inner_size();
         let aspect = size.width as f32 / size.height.max(1) as f32;
 
@@ -340,12 +327,6 @@ pub struct PulsarApp {
     /// window's per-frame rebuild. Gameplay mutations land here too, so an
     /// actor-spawned entity renders on the next frame.
     scene_store: Arc<RwLock<WorldSceneStore>>,
-    /// Subscription-backed maintainer for the shared world's resolved light
-    /// frames (#636) -- one per world, stepped by
-    /// [`step_scene_for_render`] before each frame's rebuilds.
-    light_frames: LightFrameMaintainer,
-    /// Same for static-mesh instance frames (#638).
-    mesh_frames: MeshFrameMaintainer,
 
     /// Which window currently owns the cursor (receives mouse-look).
     focused_window: Option<WindowHandle>,
@@ -377,8 +358,6 @@ impl PulsarApp {
             project_root,
             default_scene,
             scene_store,
-            light_frames: LightFrameMaintainer::new(),
-            mesh_frames: MeshFrameMaintainer::new(),
             focused_window: None,
             cursor_captured: false,
             last_frame: Instant::now(),
@@ -706,35 +685,15 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
 
             // ── Render ────────────────────────────────────────────────────────
             WindowEvent::RedrawRequested => {
-                // Advance the shared world's render-side state (GPU mirror
-                // flush + subscription-driven light frames), then rebuild
-                // this window's transient frame lists from it
-                // (Pulsar-Native#637 -- the same per-frame path the editor
-                // renderer runs, never SceneLoader's one-shot writes).
-                step_scene_for_render(
-                    &mut self.scene_store.write(),
-                    &mut self.light_frames,
-                    &mut self.mesh_frames,
-                );
-                let projection = {
-                    let shared = self.scene_store.read();
-                    engine_backend::scene::SceneRenderProjection::from_store(&shared)
-                    // `shared` dropped here -- `rebuild_static_mesh_frame`
-                    // below needs a write lock on the same store, and
-                    // parking_lot's RwLock deadlocks if a read guard is
-                    // still held on this thread when a write is requested.
-                };
-                if let Some(gw) = self.windows.get_mut(&handle) {
+                // Advance the shared world's authoritative SceneDB state and
+                // flush its GPU mirror. World content is read by Helio passes
+                // directly from that mirror -- there is no renderer-owned
+                // frame projection or CPU object cache to rebuild here (same
+                // zero-copy seam the editor viewport renderer uses).
+                {
                     let mut store = self.scene_store.write();
-                    rebuild_static_mesh_frame(
-                        &mut gw.renderer,
-                        &projection,
-                        &mut gw.default_static_mesh_material,
-                        store.world_mut(),
-                        &mut gw.static_object_scenedb_cache,
-                    );
-                    drop(store);
-                    rebuild_light_frame(&mut gw.renderer, &projection);
+                    sync_static_mesh_rows(&mut store);
+                    store.scene_db_mut().step();
                 }
 
                 // Camera precedence: a gameplay-pushed bridge camera wins,

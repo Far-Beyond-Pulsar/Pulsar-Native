@@ -22,11 +22,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use engine_backend::scene::{
-    bind_renderer_mesh_projection, ensure_gpu_mirror, rebuild_light_frame,
-    rebuild_static_mesh_frame, step_scene_for_render, LightFrameMaintainer, MeshFrameMaintainer,
-    StaticMeshMaterialProjections, WorldSceneStore,
-};
+use engine_backend::scene::{ensure_gpu_mirror, sync_static_mesh_rows, WorldSceneStore};
 use helio::{Camera, Renderer, RendererBuilder, RendererConfig};
 use parking_lot::RwLock;
 use pulsar_pie_abi::{
@@ -65,16 +61,6 @@ pub struct EmbeddedGame {
     /// from the host and remains SceneDB-resident
     /// for gameplay and rendering.
     scene_store: Arc<RwLock<WorldSceneStore>>,
-    /// Resolved-light-frame maintainer over [`Self::scene_store`]'s world.
-    light_frames: LightFrameMaintainer,
-    /// Same for static-mesh instance frames (#638).
-    mesh_frames: MeshFrameMaintainer,
-    /// Lazily-minted shared default material (same cache the editor renderer
-    /// keeps; see `engine_backend::scene::rebuild_static_mesh_frame`).
-    default_static_mesh_material: StaticMeshMaterialProjections,
-    /// Entities last authored a `StaticObjectComponent` SceneDB row for --
-    /// see `rebuild_static_mesh_frame`'s doc.
-    static_object_scenedb_cache: std::collections::HashSet<pulsar_scenedb::Entity>,
     /// Fallback free-look camera (used until an ECS camera drives the view).
     freecam: FreeCam,
 
@@ -220,15 +206,25 @@ impl EmbeddedGame {
             ensure_gpu_mirror(&mut scene_store.write(), device.clone(), queue.clone());
 
         let config = RendererConfig::new(width, height, color_format);
-        let mut renderer = RendererBuilder::new(config, scene_db_handle.clone())
+        let graph_scene_db = scene_db_handle.clone();
+        let renderer = RendererBuilder::new(config, scene_db_handle)
             .with_external_device()
             .with_editor_mode(false)
             .with_ambient([0.0, 0.0, 0.0], 0.0)
-            .with_graph(Box::new(move |d, q, s, c, ds, cb, csb| {
-                helio_default_graphs::build_default_graph_external(d, q, s, c, ds, cb, csb, None)
+            .with_graph(Box::new(move |d, q, c, ds, cb, dcb, csb| {
+                helio_default_graphs::build_default_graph_external(
+                    d,
+                    q,
+                    cb,
+                    c,
+                    ds,
+                    dcb,
+                    csb,
+                    None,
+                    graph_scene_db.clone(),
+                )
             }))
             .build(device.clone(), queue.clone(), width, height, color_format);
-        bind_renderer_mesh_projection(&scene_db_handle, &mut renderer);
 
         // Under v2 the world comes pre-hydrated by the host, so the old
         // editor-camera file seeding is gone too -- camera selection prefers
@@ -248,10 +244,6 @@ impl EmbeddedGame {
             out_texture,
             out_view,
             scene_store,
-            light_frames: LightFrameMaintainer::new(),
-            mesh_frames: MeshFrameMaintainer::new(),
-            default_static_mesh_material: StaticMeshMaterialProjections::default(),
-            static_object_scenedb_cache: std::collections::HashSet::new(),
             freecam,
             userdata: ctx.userdata,
             log: ctx.log,
@@ -272,36 +264,16 @@ impl EmbeddedGame {
         // guests that don't share that universe.
         self.tick_loop.tick_once();
 
-        // 2. Advance the shared world's render-side state and rebuild the
-        //    frame from it (Pulsar-Native#637): GPU mirror flush +
-        //    subscription-driven light frames under one short write scope,
-        //    then the same static-mesh/light rebuilds the editor renderer
-        //    runs. A runtime-spawned entity or a moved object therefore
-        //    shows up on the very next frame.
-        step_scene_for_render(
-            &mut self.scene_store.write(),
-            &mut self.light_frames,
-            &mut self.mesh_frames,
-        );
+        // 2. Advance the shared world's authoritative SceneDB state and flush
+        //    its GPU mirror. World content is read by Helio passes directly
+        //    from that mirror -- there is no renderer-owned frame projection
+        //    or CPU object cache to rebuild here (same zero-copy seam the
+        //    editor viewport renderer uses). A runtime-spawned entity or a
+        //    moved object therefore shows up on the very next frame.
         {
-            let projection = {
-                let shared = self.scene_store.read();
-                engine_backend::scene::SceneRenderProjection::from_store(&shared)
-                // `shared` dropped here -- `rebuild_static_mesh_frame` below
-                // needs a write lock on the same store, and parking_lot's
-                // RwLock deadlocks if a read guard is still held on this
-                // thread when a write is requested.
-            };
             let mut store = self.scene_store.write();
-            rebuild_static_mesh_frame(
-                &mut self.renderer,
-                &projection,
-                &mut self.default_static_mesh_material,
-                store.world_mut(),
-                &mut self.static_object_scenedb_cache,
-            );
-            drop(store);
-            rebuild_light_frame(&mut self.renderer, &projection);
+            sync_static_mesh_rows(&mut store);
+            store.scene_db_mut().step();
         }
 
         // 3. Camera. A Camera-typed entity in the shared world drives the

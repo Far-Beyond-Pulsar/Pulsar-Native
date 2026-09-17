@@ -18,7 +18,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"
 pulsar_reflection_derive = { path = "../pulsar_reflection_derive" }
-uuid = { version = "1", features = ["serde"] }
+uuid = { version = "1", features = ["serde", "v4"] }
 dashmap = "6"
 glam = { version = "0.29", optional = true }
 gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "98e8438c931e04eff640ecad4d2ca81a64a95bac", optional = true }
