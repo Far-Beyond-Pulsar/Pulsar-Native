@@ -6,6 +6,7 @@
 use std::sync::Mutex;
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
+use engine_backend::services::terrain_edit::TerrainEditApi;
 
 use super::{
     level_edit::LevelEditMode, CameraFrame, ToolModeContext, ToolModeId, ToolPointerEvent,
@@ -43,6 +44,7 @@ impl ToolModeDispatcher {
     pub fn dispatch_pointer(
         state: &mut LevelEditorState,
         gpu_engine: &Mutex<GpuRenderer>,
+        terrain: Option<&TerrainEditApi>,
         event: &ToolPointerEvent,
         camera: CameraFrame,
         viewport: ViewportFrame,
@@ -57,6 +59,7 @@ impl ToolModeDispatcher {
             let mut ctx = ToolModeContext {
                 state,
                 gpu_engine,
+                terrain,
                 camera,
                 viewport,
             };
@@ -99,6 +102,7 @@ impl ToolModeDispatcher {
     pub fn select_tool_mode(
         state: &mut LevelEditorState,
         gpu_engine: &Mutex<GpuRenderer>,
+        terrain: Option<&TerrainEditApi>,
         id: ToolModeId,
         camera: CameraFrame,
         viewport: ViewportFrame,
@@ -116,6 +120,7 @@ impl ToolModeDispatcher {
             let mut ctx = ToolModeContext {
                 state,
                 gpu_engine,
+                terrain,
                 camera,
                 viewport,
             };
@@ -138,6 +143,7 @@ impl ToolModeDispatcher {
             let mut ctx = ToolModeContext {
                 state,
                 gpu_engine,
+                terrain,
                 camera,
                 viewport,
             };

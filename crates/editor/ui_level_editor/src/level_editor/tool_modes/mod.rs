@@ -12,6 +12,7 @@ pub mod terrain;
 use std::sync::Mutex;
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
+use engine_backend::services::terrain_edit::TerrainEditApi;
 
 pub use dispatcher::*;
 pub use level_edit::*;
@@ -129,6 +130,13 @@ pub struct StatusReadout {
 pub struct ToolModeContext<'a> {
     pub state: &'a mut LevelEditorState,
     pub gpu_engine: &'a Mutex<GpuRenderer>,
+    /// Voxel terrain seam (design doc §5.4). `None` when the renderer has not
+    /// initialized yet; modes must treat that as "terrain editing is
+    /// unavailable" and pass the event through, not as an error.
+    ///
+    /// This is what keeps `TerrainMode` off raw `TerrainRuntimeHandle`s: it
+    /// never sees the runtime, only this seam.
+    pub terrain: Option<&'a TerrainEditApi>,
     pub camera: CameraFrame,
     pub viewport: ViewportFrame,
 }

@@ -9,6 +9,7 @@ use helio_component::{PlanetTerrainFrameInput, PlanetTerrainRuntime};
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 use crate::scene::{GizmoType, WorldSceneStore};
+use crate::services::terrain_edit::TerrainEditMailbox;
 use parking_lot::RwLock;
 
 use super::interaction::SceneInteraction;
@@ -183,6 +184,11 @@ pub struct HelioRenderer {
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
     pub pending_errors: Arc<Mutex<Vec<String>>>,
 
+    /// Frame-boundary mailbox for the level editor's terrain tool mode: the
+    /// scene's planet definitions and the brush ring come in, the canonical
+    /// `TerrainRuntimeHandle` goes out. See `services::terrain_edit`.
+    terrain: TerrainEditMailbox,
+
     inner: Option<HelioInner>,
 
     // ── Camera State ──
@@ -249,6 +255,7 @@ impl HelioRenderer {
             reset_taa_next_frame: false,
             inner: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
+            terrain: TerrainEditMailbox::new(),
             cam_pos: Vec3::new(8.0, 6.0, 12.0),
             cam_yaw: -0.5,
             cam_pitch: -0.3,
@@ -483,6 +490,11 @@ impl HelioRenderer {
             self.apply_camera_input(dt);
         }
 
+        // Reconcile the terrain runtime with the scene's planets before the
+        // idle check below reads `planet_terrain` -- creating or retiring a
+        // planet must itself be able to wake the frame up.
+        self.sync_terrain_planets();
+
         let inner = match self.inner.as_mut() {
             Some(i) => i,
             None => return None,
@@ -508,9 +520,15 @@ impl HelioRenderer {
             || self.pending_force_full_resync.load(Ordering::Acquire);
         let camera_stopped = self.cam_local_velocity.length_squared() <= CAMERA_IDLE_EPSILON
             && !self.had_camera_input;
+        // A terrain edit (or a brush-ring move) changes what is on screen
+        // without touching the camera or the scene database, so it has to
+        // defeat the idle early-out itself -- otherwise a sculpt stroke made
+        // while the camera is parked would not appear until the user moved.
+        let has_pending_terrain = self.terrain.wants_advance();
         let is_idle = camera_stopped
             && !has_pending_scene
             && !has_pending_editor
+            && !has_pending_terrain
             && !self.gizmo_dirty
             && !viewport_resized
             && !self.reset_taa_next_frame;
@@ -603,12 +621,14 @@ impl HelioRenderer {
                 10_000.0,
             );
 
-            // Planet terrain advance (only when camera is actually moving).
+            // Planet terrain advance: whenever the camera is moving, or when a
+            // terrain edit is waiting to be streamed back in.
+            let terrain_dirty = self.terrain.take_pending_advance();
             let should_advance_planet = !viewport_resized
                 && inner.planet_terrain.as_ref().is_some_and(|runtime| {
                     runtime.has_active_components() && runtime.renderer_ready(&inner.renderer)
                 })
-                && (!camera_stopped || viewport_resized);
+                && (!camera_stopped || viewport_resized || terrain_dirty);
             if should_advance_planet {
                 let graph_rebuilt = std::mem::take(&mut inner.planet_graph_rebuilt);
                 let planet_terrain = inner
@@ -664,6 +684,20 @@ impl HelioRenderer {
             inner
                 .interaction
                 .draw_gizmo(&mut inner.renderer, &store, self.cam_pos);
+            // Terrain brush ring, from the tool-mode mailbox. Same transient
+            // debug-geometry sink the gizmo uses, so it is rebuilt per frame
+            // and needs no lifetime management of its own.
+            if let Some(brush) = self.terrain.brush_cursor() {
+                inner.renderer.debug_torus(
+                    brush.center_m,
+                    brush.normal,
+                    brush.radius_m,
+                    (brush.radius_m * 0.02).max(0.02),
+                    brush.color,
+                    48,
+                    6,
+                );
+            }
             camera
         };
 
@@ -871,6 +905,78 @@ impl HelioRenderer {
             pending_deselect: self.pending_deselect.clone(),
             pending_force_full_resync: self.pending_force_full_resync.clone(),
         }
+    }
+
+    /// Cheap handle bundle for the terrain tool mode. Like
+    /// [`Self::editor_mailbox`] this is fetched once and never takes the
+    /// renderer's per-frame lock afterwards.
+    pub fn terrain_mailbox(&self) -> TerrainEditMailbox {
+        self.terrain.clone()
+    }
+
+    /// Reconcile the terrain runtime with the planet definitions the editor
+    /// posted, creating the runtime on first use and retiring it when the last
+    /// planet disappears.
+    ///
+    /// This is deliberately driven by an explicit mailbox rather than by the
+    /// generic world-component dispatch: that dispatch was removed with the
+    /// SceneDB nativization work, and the terrain seam must not depend on when
+    /// it comes back.
+    fn sync_terrain_planets(&mut self) {
+        let Some(definitions) = self.terrain.take_pending_planets() else {
+            return;
+        };
+        let Some(inner) = self.inner.as_mut() else {
+            return;
+        };
+
+        if definitions.is_empty() {
+            if inner.planet_terrain.take().is_some() {
+                self.terrain.publish_runtime(None);
+                Self::sync_planet_graph(inner, &self.pending_errors);
+            }
+            return;
+        }
+
+        if inner.planet_terrain.is_none() {
+            match PlanetTerrainRuntime::new() {
+                Ok(runtime) => inner.planet_terrain = Some(runtime),
+                Err(error) => {
+                    let message = format!("Planet terrain runtime initialization failed: {error}");
+                    tracing::error!("{message}");
+                    if let Ok(mut errors) = self.pending_errors.lock() {
+                        errors.push(message);
+                    }
+                    return;
+                }
+            }
+        }
+
+        let Some(planet_terrain) = inner.planet_terrain.as_mut() else {
+            return;
+        };
+        let (runtime, cache) = planet_terrain.component_context_mut();
+        let runtime = runtime.clone();
+        let mut live_keys = pulsar_reflection::LiveKeySet::new();
+        for (source_key, definition) in &definitions {
+            live_keys.insert(source_key.clone());
+            match runtime.upsert_component(source_key.clone(), definition.clone()) {
+                Ok(_) => cache.record(source_key.clone(), definition.planet_id),
+                Err(error) => {
+                    let message = format!("Planet terrain component sync failed: {error}");
+                    tracing::error!("{message}");
+                    if let Ok(mut errors) = self.pending_errors.lock() {
+                        errors.push(message);
+                    }
+                }
+            }
+        }
+        if let Err(error) = planet_terrain.remove_stale_components(&live_keys) {
+            tracing::error!("Planet terrain stale-component cleanup failed: {error}");
+        }
+
+        self.terrain.publish_runtime(Some(runtime));
+        Self::sync_planet_graph(inner, &self.pending_errors);
     }
 
     pub fn set_gizmo_mode(&mut self, mode: GizmoMode) {

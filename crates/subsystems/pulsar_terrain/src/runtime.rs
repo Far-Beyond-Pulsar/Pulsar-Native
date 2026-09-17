@@ -786,6 +786,107 @@ impl TerrainRuntimeHandle {
         })
     }
 
+    /// Canonical definitions of every registered planet.
+    ///
+    /// Authoring front-ends (the level editor's terrain tool mode) need the
+    /// planet's centre and radius in canonical cells to turn a viewport ray
+    /// into an [`EditOp`]. They hold a `TerrainRuntimeHandle`, not the
+    /// scene-side component that produced the definition, so the runtime is
+    /// the only place that answers "what planets exist right now".
+    pub fn planet_definitions(&self) -> Vec<PlanetDefinition> {
+        lock(&self.shared.state)
+            .planets
+            .values()
+            .map(|planet| planet.definition.clone())
+            .collect()
+    }
+
+    /// Replay the canonical value of specific cells: the deterministic
+    /// generator sample with the planet's edit tail applied on top.
+    ///
+    /// This is the same composition page builds perform, evaluated for a
+    /// caller-chosen handful of cells under a single runtime lock. It exists
+    /// so an authoring front-end can refine a ray hit onto *sculpted*
+    /// geometry without waiting for a page build or reading back from the GPU.
+    /// The caller owns the marching policy and therefore the cost: every cell
+    /// passed here replays the edit tail, so pass a bounded, small slice.
+    pub fn sample_cells(
+        &self,
+        planet_id: PlanetId,
+        cells: &[[i64; 3]],
+    ) -> Option<Vec<crate::CellWord>> {
+        use crate::generator::DeterministicGenerator;
+
+        let state = lock(&self.shared.state);
+        let planet = state.planets.get(&planet_id)?;
+        let generator = FixedSphereGenerator {
+            center_cell: planet.definition.center_cell,
+            radius_cells: planet.definition.radius_cells,
+            material: planet.definition.material,
+        };
+        let edits = planet.core.edit_log();
+        Some(
+            cells
+                .iter()
+                .map(|cell| edits.apply(*cell, generator.sample_cell(*cell)))
+                .collect(),
+        )
+    }
+
+    /// Newest canonical mutation sequence for a registered planet.
+    ///
+    /// [`Self::append_edit`] rejects any operation whose sequence is not
+    /// strictly greater than this, so an external edit producer must read it
+    /// to allocate the next one.
+    pub fn latest_sequence(&self, planet_id: PlanetId) -> Option<u64> {
+        lock(&self.shared.state)
+            .planets
+            .get(&planet_id)
+            .map(|planet| planet.core.latest_sequence())
+    }
+
+    /// Clone a planet's canonical state. This is the same capture persistence
+    /// takes; editor undo uses it as a per-stroke restore anchor.
+    pub fn planet_snapshot(&self, planet_id: PlanetId) -> Option<crate::TerrainSnapshot> {
+        lock(&self.shared.state)
+            .planets
+            .get(&planet_id)
+            .map(|planet| planet.core.snapshot())
+    }
+
+    /// Replace a planet's canonical state with a previously captured snapshot.
+    ///
+    /// Rewinding the mutation tail invalidates every page derived from it, so
+    /// this retires the whole planet generation exactly like a planet-wide
+    /// mutation: resident pages are evicted and one `EvictPlanet` event is
+    /// published, which makes the renderer re-request from the restored state.
+    pub fn restore_planet_snapshot(
+        &self,
+        planet_id: PlanetId,
+        snapshot: crate::TerrainSnapshot,
+    ) -> Result<(), TerrainRuntimeError> {
+        if snapshot.planet_id != planet_id {
+            return Err(TerrainRuntimeError::PlanetMissing(snapshot.planet_id));
+        }
+        let definition = {
+            let state = lock(&self.shared.state);
+            state
+                .planets
+                .get(&planet_id)
+                .map(|planet| planet.definition.clone())
+                .ok_or(TerrainRuntimeError::PlanetMissing(planet_id))?
+        };
+        let generator = FixedSphereGenerator {
+            center_cell: definition.center_cell,
+            radius_cells: definition.radius_cells,
+            material: definition.material,
+        };
+        self.apply_mutation(planet_id, None, true, move |core| {
+            *core = TerrainCore::from_snapshot(snapshot, generator)?;
+            Ok(())
+        })
+    }
+
     pub fn append_override(
         &self,
         planet_id: PlanetId,

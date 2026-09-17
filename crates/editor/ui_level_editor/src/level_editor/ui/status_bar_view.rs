@@ -156,6 +156,10 @@ impl Render for StatusBarView {
             let ctx = ToolModeContext {
                 state: &mut state_clone,
                 gpu_engine: &self.gpu_engine,
+                // Presentational only: `status` reads editor state, never the
+                // terrain seam, so this path must not take `gpu_engine` to
+                // fetch one.
+                terrain: None,
                 camera: CameraFrame::default(),
                 viewport: ViewportFrame::default(),
             };

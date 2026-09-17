@@ -1729,14 +1729,23 @@ impl SceneDatabase {
 
     /// Serialize the scene to a JSON level file.
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
-        self.save_to_file_with_editor_camera(path, None)
+        self.save_to_file_with_editor_camera(path, None, None)
     }
 
-    /// Serialize the scene to a JSON level file, optionally persisting editor camera state.
+    /// Serialize the scene to a JSON level file, optionally persisting editor
+    /// camera state and any authored voxel terrain.
+    ///
+    /// `terrain` is the level editor's terrain edit seam. Voxel data does not
+    /// live in the scene database, so it cannot ride along in the `LevelFile`
+    /// the way objects and components do; it is flushed to a sidecar beside
+    /// the level instead (see [`crate::level_editor::core::terrain_sidecar`]).
+    /// Passing `None` — as headless and test callers do — writes the level
+    /// exactly as before.
     pub fn save_to_file_with_editor_camera<P: AsRef<Path>>(
         &self,
         path: P,
         editor_camera: Option<LevelEditorCameraState>,
+        terrain: Option<&engine_backend::services::terrain_edit::TerrainEditApi>,
     ) -> Result<(), String> {
         if let Some(parent_dir) = path.as_ref().parent() {
             virtual_fs::create_dir_all(parent_dir)
@@ -1784,6 +1793,14 @@ impl SceneDatabase {
             .map_err(|e| format!("Failed to serialize: {e}"))?;
         virtual_fs::write_file(path.as_ref(), json.as_bytes())
             .map_err(|e| format!("Failed to write file: {e}"))?;
+
+        // Flush voxel terrain after the level itself is on disk: a terrain
+        // sidecar without its level is meaningless, so the level is the
+        // thing that must land first.
+        if let Some(terrain) = terrain {
+            crate::level_editor::core::terrain_sidecar::save(path.as_ref(), terrain)?;
+        }
+
         tracing::info!("Scene saved to: {}", path.as_ref().display());
         Ok(())
     }
@@ -3168,7 +3185,7 @@ mod blueprint_bindings_preservation_tests {
 
         // An ordinary editor save (fresh LevelFile construction) must keep it.
         let db = SceneDatabase::new();
-        db.save_to_file_with_editor_camera(&path, None)
+        db.save_to_file_with_editor_camera(&path, None, None)
             .expect("save");
 
         let saved: LevelFile = {

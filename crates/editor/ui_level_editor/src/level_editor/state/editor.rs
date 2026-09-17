@@ -148,6 +148,10 @@ pub struct EditorDomain {
     // ── Tool Mode & Terrain Domains ───────────────────────────────────────
     pub tool_mode_registry: crate::level_editor::tool_modes::ToolModeRegistry,
     pub terrain: super::terrain::TerrainDomain,
+    /// Per-stroke voxel terrain undo history. Separate from
+    /// `SceneDomain`'s undo stack on purpose -- that one snapshots the scene
+    /// database, which does not contain voxels at all (design doc §5.5).
+    pub terrain_undo: super::terrain_undo::TerrainUndoDomain,
 }
 
 impl Default for EditorDomain {
@@ -165,6 +169,7 @@ impl Default for EditorDomain {
             feature_materials_enabled: true,
             tool_mode_registry: crate::level_editor::tool_modes::ToolModeRegistry::builtin(),
             terrain: super::terrain::TerrainDomain::default(),
+            terrain_undo: super::terrain_undo::TerrainUndoDomain::default(),
         }
     }
 }

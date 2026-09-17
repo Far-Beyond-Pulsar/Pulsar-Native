@@ -211,6 +211,15 @@ impl GpuRenderer {
         self.helio_renderer.as_ref().map(|r| r.editor_mailbox())
     }
 
+    /// The editor's terrain edit seam -- same "fetch once, never take
+    /// `gpu_engine` again" contract as [`Self::editor_mailbox`]. This is the
+    /// only supported way for a UI crate to reach planetary voxel terrain.
+    pub fn terrain_edit_api(&self) -> Option<crate::services::terrain_edit::TerrainEditApi> {
+        self.helio_renderer.as_ref().map(|r| {
+            crate::services::terrain_edit::TerrainEditApi::new(r.terrain_mailbox())
+        })
+    }
+
     pub fn editor_camera_state(&self) -> Option<EditorCameraState> {
         self.helio_renderer
             .as_ref()

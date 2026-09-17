@@ -15,7 +15,8 @@ pub mod input_state;
 pub mod performance;
 pub mod platform;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
+use std::path::PathBuf;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -66,6 +67,67 @@ impl ViewportCursorCapture {
     fn is_active(self) -> bool {
         self != Self::Released
     }
+}
+
+/// Route one viewport pointer event through the active tool mode (design doc
+/// §4.5).
+///
+/// All three pointer handlers below funnel through here so the dispatch
+/// contract stays in one place: `Consumed` means the mode fully handled the
+/// event and the default pick/gizmo mailbox path must be skipped;
+/// `PassThrough` means carry on exactly as before. `LevelEditMode` always
+/// returns `PassThrough`, so the default mode's behavior is unchanged.
+#[allow(clippy::too_many_arguments)]
+fn dispatch_tool_pointer(
+    state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
+    gpu_engine: &Arc<Mutex<GpuRenderer>>,
+    terrain: Option<&engine_backend::services::terrain_edit::TerrainEditApi>,
+    camera: crate::level_editor::tool_modes::CameraFrame,
+    viewport_size: (f32, f32),
+    kind: crate::level_editor::tool_modes::PointerKind,
+    button: Option<gpui::MouseButton>,
+    norm_x: f32,
+    norm_y: f32,
+    modifiers: gpui::Modifiers,
+) -> crate::level_editor::tool_modes::ToolPointerResult {
+    let pointer_event = crate::level_editor::tool_modes::ToolPointerEvent {
+        kind,
+        button,
+        norm_x,
+        norm_y,
+        holding_mods: modifiers,
+    };
+    let viewport_frame = crate::level_editor::tool_modes::ViewportFrame {
+        width: viewport_size.0,
+        height: viewport_size.1,
+    };
+    let mut state = state_arc.write();
+    crate::level_editor::tool_modes::ToolModeDispatcher::dispatch_pointer(
+        &mut state,
+        gpu_engine,
+        terrain,
+        &pointer_event,
+        camera,
+        viewport_frame,
+    )
+}
+
+/// Build a [`CameraFrame`](crate::level_editor::tool_modes::CameraFrame) from
+/// the renderer's editor camera. Falls back to the default frame when the
+/// state is unavailable, which makes any ray built from it miss -- the correct
+/// failure mode, since a wrong camera would place the brush somewhere the user
+/// did not click.
+fn tool_camera_frame(
+    state: Option<engine_backend::subsystems::render::EditorCameraState>,
+) -> crate::level_editor::tool_modes::CameraFrame {
+    state
+        .map(|c| crate::level_editor::tool_modes::CameraFrame {
+            position: c.position,
+            yaw: c.yaw,
+            pitch: c.pitch,
+            fov: 60.0,
+        })
+        .unwrap_or_default()
 }
 
 /// Viewport panel with zero-copy GPU rendering and professional camera controls.
@@ -125,6 +187,19 @@ pub struct ViewportPanel {
 
     /// Focus handle
     focus_handle: FocusHandle,
+
+    /// Scene revision at the last planet sync. Walking every object's
+    /// components to rebuild `PlanetDefinition`s is far too expensive to do
+    /// per frame, and the answer only changes when the scene does.
+    last_planet_sync_revision: Cell<Option<u64>>,
+
+    /// Level whose stored terrain has already been replayed into the runtime.
+    ///
+    /// The replay cannot happen at load time: the planets it targets are
+    /// registered by the *render* thread, a frame or more after the editor
+    /// posts their definitions. So the restore is attempted on each render
+    /// and latches once it lands.
+    restored_terrain_for: RefCell<Option<PathBuf>>,
 }
 
 impl ViewportPanel {
@@ -163,6 +238,8 @@ impl ViewportPanel {
             keys_pressed: Rc::new(RefCell::new(HashSet::new())),
             alt_pressed: Rc::new(RefCell::new(false)),
             focus_handle,
+            last_planet_sync_revision: Cell::new(None),
+            restored_terrain_for: RefCell::new(None),
         }
     }
 
@@ -192,8 +269,53 @@ impl ViewportPanel {
             state.overlays.state.show_performance_overlay,
         );
 
+        self.sync_terrain_planets_if_scene_changed(state, snapshot.as_ref());
+
         // Build the viewport UI
         self.build_viewport_ui(state, state_arc, snapshot, gpu_engine, cx)
+    }
+
+    /// Hand the terrain runtime the scene's planets whenever the scene
+    /// changes.
+    ///
+    /// This is what actually brings a planet into existence in the editor:
+    /// the runtime is created lazily on the render thread the first time a
+    /// non-empty definition set arrives. Gated on the scene revision because
+    /// collecting the definitions walks every object's component list.
+    fn sync_terrain_planets_if_scene_changed(
+        &self,
+        state: &LevelEditorState,
+        snapshot: Option<&EngineFrameSnapshot>,
+    ) {
+        let Some(api) = snapshot.and_then(|snap| snap.terrain.as_ref()) else {
+            return;
+        };
+
+        let revision = state.scene.revision;
+        if self.last_planet_sync_revision.get() != Some(revision) {
+            self.last_planet_sync_revision.set(Some(revision));
+            crate::level_editor::tool_modes::terrain::scene_planets::sync_scene_planets(
+                &state.scene.database,
+                api,
+            );
+        }
+
+        // Replay this level's stored terrain once its planets exist. Latches
+        // on the level path, so a level opened, edited and re-opened restores
+        // exactly once per open.
+        let Some(level) = state.scene.current_scene.as_ref() else {
+            return;
+        };
+        if self.restored_terrain_for.borrow().as_deref() == Some(level.as_path()) {
+            return;
+        }
+        if api.planets().is_empty() {
+            // The render thread has not registered them yet; try again next
+            // frame rather than latching on an empty runtime.
+            return;
+        }
+        crate::level_editor::core::terrain_sidecar::load(level, api);
+        *self.restored_terrain_for.borrow_mut() = Some(level.clone());
     }
 
     /// Spawn the input processing thread (only once).
@@ -560,6 +682,11 @@ impl ViewportPanel {
         let cursor_capture =
             ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
 
+        // Terrain edit seam for the tool-mode pointer dispatch below. Cloned
+        // out of the same locked pass that produced the pointer queue, so the
+        // pointer closures never take `gpu_engine` for it.
+        let terrain_api = snap.terrain.clone();
+
         // For mouse move tracking
         let element_bounds_move = self.element_bounds.clone();
         let gpu_engine_move = gpu_engine.clone();
@@ -604,8 +731,9 @@ impl ViewportPanel {
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let state_arc_move = state_arc.clone();
+                let terrain_api_for_move = terrain_api.clone();
 
-                move |event, _window, _cx| {
+                move |event: &gpui::MouseMoveEvent, _window, _cx| {
                     let capture =
                         ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
                     let is_rotating = capture == ViewportCursorCapture::Rotate;
@@ -682,33 +810,69 @@ impl ViewportPanel {
 
                     // Update Helio mouse input
                     let bounds_opt = element_bounds_move.borrow();
-                    let (norm_x, norm_y) = if let Some(ref bounds) = *bounds_opt {
-                        let origin_x: f32 = bounds.origin.x.into();
-                        let origin_y: f32 = bounds.origin.y.into();
-                        let width: f32 = bounds.size.width.into();
-                        let height: f32 = bounds.size.height.into();
-                        let pos_x: f32 = event.position.x.into();
-                        let pos_y: f32 = event.position.y.into();
-                        // Subtract viewport origin; event.position is window-relative.
-                        let local_x = pos_x - origin_x;
-                        let local_y = pos_y - origin_y;
-                        (
-                            (local_x / width).clamp(0.0, 1.0),
-                            (local_y / height).clamp(0.0, 1.0),
-                        )
-                    } else {
-                        return;
-                    };
+                    let (norm_x, norm_y, viewport_width, viewport_height) =
+                        if let Some(ref bounds) = *bounds_opt {
+                            let origin_x: f32 = bounds.origin.x.into();
+                            let origin_y: f32 = bounds.origin.y.into();
+                            let width: f32 = bounds.size.width.into();
+                            let height: f32 = bounds.size.height.into();
+                            let pos_x: f32 = event.position.x.into();
+                            let pos_y: f32 = event.position.y.into();
+                            // Subtract viewport origin; event.position is window-relative.
+                            let local_x = pos_x - origin_x;
+                            let local_y = pos_y - origin_y;
+                            (
+                                (local_x / width).clamp(0.0, 1.0),
+                                (local_y / height).clamp(0.0, 1.0),
+                                width,
+                                height,
+                            )
+                        } else {
+                            return;
+                        };
+                    drop(bounds_opt);
 
                     let mut last_pos = last_mouse_pos.borrow_mut();
                     *last_pos = Some((norm_x, norm_y));
                     drop(last_pos);
 
+                    // Read the live camera in the same non-blocking pass that
+                    // forwards the move to Helio, so the tool-mode ray below
+                    // is built from this frame's camera and not a stale one
+                    // captured when the element tree was assembled.
+                    let mut camera_state = None;
                     if let Ok(mut engine) = gpu_engine_move.try_lock() {
+                        camera_state = engine.editor_camera_state();
                         if !is_rotating && !is_panning {
                             engine.handle_mouse_move(norm_x, norm_y);
                         }
                     }
+
+                    // Tool-mode dispatch for continuous input. `Drag` is what
+                    // makes a sculpt stroke continuous; `Hover` only refreshes
+                    // the brush ring. Skipped entirely while the camera has
+                    // the cursor captured -- that is a camera gesture, not an
+                    // authoring one.
+                    if is_rotating || is_panning {
+                        return;
+                    }
+                    let kind = if event.pressed_button == Some(gpui::MouseButton::Left) {
+                        crate::level_editor::tool_modes::PointerKind::Drag
+                    } else {
+                        crate::level_editor::tool_modes::PointerKind::Hover
+                    };
+                    dispatch_tool_pointer(
+                        &state_arc_move,
+                        &gpu_engine_move,
+                        terrain_api_for_move.as_ref(),
+                        tool_camera_frame(camera_state),
+                        (viewport_width, viewport_height),
+                        kind,
+                        event.pressed_button,
+                        norm_x,
+                        norm_y,
+                        event.modifiers,
+                    );
                 }
             })
             // Right-click for camera controls
@@ -929,6 +1093,7 @@ impl ViewportPanel {
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let state_arc_click = state_arc.clone();
                 let gpu_engine_click = gpu_engine.clone();
+                let terrain_api_for_click = terrain_api.clone();
 
                 move |event: &gpui::MouseDownEvent,
                       window: &mut gpui::Window,
@@ -974,38 +1139,24 @@ impl ViewportPanel {
                     // Tool-mode dispatch: give the active mode first refusal on the
                     // click (design doc §4.5). LevelEdit always returns `PassThrough`,
                     // so this is byte-for-byte the prior behavior for today's default mode.
-                    let camera = gpu_engine_click
-                        .lock()
-                        .ok()
-                        .and_then(|e| e.editor_camera_state())
-                        .map(|c| crate::level_editor::tool_modes::CameraFrame {
-                            position: c.position,
-                            yaw: c.yaw,
-                            pitch: c.pitch,
-                            fov: 60.0,
-                        })
-                        .unwrap_or_default();
-                    let viewport_frame = crate::level_editor::tool_modes::ViewportFrame {
-                        width: viewport_width,
-                        height: viewport_height,
-                    };
-                    let pointer_event = crate::level_editor::tool_modes::ToolPointerEvent {
-                        kind: crate::level_editor::tool_modes::PointerKind::Down,
-                        button: Some(gpui::MouseButton::Left),
+                    let camera = tool_camera_frame(
+                        gpu_engine_click
+                            .lock()
+                            .ok()
+                            .and_then(|e| e.editor_camera_state()),
+                    );
+                    let dispatch_result = dispatch_tool_pointer(
+                        &state_arc_click,
+                        &gpu_engine_click,
+                        terrain_api_for_click.as_ref(),
+                        camera,
+                        (viewport_width, viewport_height),
+                        crate::level_editor::tool_modes::PointerKind::Down,
+                        Some(gpui::MouseButton::Left),
                         norm_x,
                         norm_y,
-                        holding_mods: event.modifiers,
-                    };
-                    let dispatch_result = {
-                        let mut state = state_arc_click.write();
-                        crate::level_editor::tool_modes::ToolModeDispatcher::dispatch_pointer(
-                            &mut state,
-                            &gpu_engine_click,
-                            &pointer_event,
-                            camera,
-                            viewport_frame,
-                        )
-                    };
+                        event.modifiers,
+                    );
                     if dispatch_result
                         == crate::level_editor::tool_modes::ToolPointerResult::Consumed
                     {
@@ -1033,8 +1184,10 @@ impl ViewportPanel {
             .on_mouse_up(gpui::MouseButton::Left, {
                 let pointer_events = pointer_events_for_click.clone();
                 let state_arc_up = state_arc.clone();
+                let gpu_engine_up = gpu_engine.clone();
+                let terrain_api_for_up = terrain_api.clone();
 
-                move |_event: &gpui::MouseUpEvent,
+                move |event: &gpui::MouseUpEvent,
                       _window: &mut gpui::Window,
                       _cx: &mut gpui::App| {
                     let mut state = state_arc_up.write();
@@ -1043,6 +1196,28 @@ impl ViewportPanel {
                     state.overlays.positions.camera_drag_start = None;
                     state.overlays.positions.viewport_drag_start = None;
                     drop(state);
+
+                    // Close the active tool-mode gesture before the release
+                    // reaches the renderer. For terrain this is what commits
+                    // the stroke to undo history -- a stroke left open here
+                    // would swallow the next one. No ray is cast for `Up`, so
+                    // the camera/viewport frames are not needed and a default
+                    // frame is correct rather than merely tolerable.
+                    let consumed = dispatch_tool_pointer(
+                        &state_arc_up,
+                        &gpu_engine_up,
+                        terrain_api_for_up.as_ref(),
+                        crate::level_editor::tool_modes::CameraFrame::default(),
+                        (0.0, 0.0),
+                        crate::level_editor::tool_modes::PointerKind::Up,
+                        Some(gpui::MouseButton::Left),
+                        0.0,
+                        0.0,
+                        event.modifiers,
+                    ) == crate::level_editor::tool_modes::ToolPointerResult::Consumed;
+                    if consumed {
+                        return;
+                    }
 
                     // This push is the actual fix for the drag-release
                     // freeze: previously this was `gpu_engine_up.try_lock()`

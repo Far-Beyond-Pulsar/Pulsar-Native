@@ -54,6 +54,9 @@ pub struct LevelEditorPanel {
     // (gizmo mode, deselect, force-full-resync) -- see `HelioEditorMailbox`'s
     // doc. Fetched once at construction, not re-locked per command.
     helio_mailbox: Option<HelioEditorMailbox>,
+    /// Voxel terrain edit seam, fetched once alongside `helio_mailbox`.
+    /// Undo/redo and the save path use it; see `TerrainEditApi`.
+    terrain_api: Option<engine_backend::services::terrain_edit::TerrainEditApi>,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
 
     // Shared state for all panels (single source of truth)
@@ -176,6 +179,7 @@ impl LevelEditorPanel {
                 scene_db.save_to_file_with_editor_camera(
                     &default_path,
                     self.current_editor_camera_state(),
+                    self.terrain_api.as_ref(),
                 )
             };
 
@@ -226,6 +230,7 @@ impl LevelEditorPanel {
             let mut state = panel.shared_state.write();
             state.scene.current_scene = Some(path);
             state.scene.has_unsaved_changes = false;
+            state.editor.terrain_undo.clear();
             state.scene.bump_revision(false);
             if let Some(open_path) = state.scene.current_scene.clone() {
                 ai_sessions::register_open_scene(&open_path, &panel.shared_state);
@@ -380,10 +385,12 @@ impl LevelEditorPanel {
         // somehow arrived pre-torn-down, which the `if let` call sites below
         // degrade out of harmlessly (same "skip this one tick" shape the old
         // `gpu_engine.lock()` sites already had on any lock failure).
-        let helio_mailbox = gpu_engine
-            .lock()
-            .ok()
-            .and_then(|engine| engine.editor_mailbox());
+        // Same "fetch once, never take `gpu_engine` again" contract as
+        // `helio_mailbox` above -- see `TerrainEditApi`'s threading note.
+        let (helio_mailbox, terrain_api) = match gpu_engine.lock().ok() {
+            Some(engine) => (engine.editor_mailbox(), engine.terrain_edit_api()),
+            None => (None, None),
+        };
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -392,6 +399,7 @@ impl LevelEditorPanel {
             viewport,
             gpu_engine: gpu_engine.clone(),
             helio_mailbox,
+            terrain_api,
             render_enabled,
             shared_state,
             workspace: None,
@@ -759,11 +767,17 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let camera = self
-            .gpu_engine
-            .lock()
-            .ok()
-            .and_then(|e| e.editor_camera_state())
+        // One locked pass for both the camera and the terrain seam: the mode
+        // lifecycle hooks need the seam to close any open stroke / clear the
+        // brush ring as they hand over.
+        let (camera, terrain_api) = {
+            let engine = self.gpu_engine.lock().ok();
+            match engine {
+                Some(engine) => (engine.editor_camera_state(), engine.terrain_edit_api()),
+                None => (None, None),
+            }
+        };
+        let camera = camera
             .map(|c| crate::level_editor::tool_modes::CameraFrame {
                 position: c.position,
                 yaw: c.yaw,
@@ -775,6 +789,7 @@ impl LevelEditorPanel {
         crate::level_editor::tool_modes::ToolModeDispatcher::select_tool_mode(
             &mut state,
             &self.gpu_engine,
+            terrain_api.as_ref(),
             action.0,
             camera,
             crate::level_editor::tool_modes::ViewportFrame::default(),
@@ -874,6 +889,14 @@ impl LevelEditorPanel {
     /// can't diff against it correctly -- `force_full_resync` is required
     /// here, not optional; see its doc for why.
     fn on_undo(&mut self, _: &super::actions::Undo, _: &mut Window, cx: &mut Context<Self>) {
+        // Voxel edits do not live in the scene database, so they have their
+        // own history (design doc §5.5). While the Terrain mode is active and
+        // that history has something in it, Ctrl+Z means "undo my sculpt
+        // stroke" -- one whole stroke, never one stamp.
+        if self.undo_terrain_stroke() {
+            cx.notify();
+            return;
+        }
         let mut state = self.shared_state.write();
         if state.scene.undo() {
             state.scene.bump_revision(true);
@@ -889,8 +912,68 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
+    /// Whether Ctrl+Z/Ctrl+Y should be read as a terrain operation.
+    ///
+    /// Only while the Terrain tool mode is selected: a user who has switched
+    /// back to Level Edit is undoing object edits, and silently rewinding
+    /// their voxels instead would be a nasty surprise. Interleaving the two
+    /// histories into one ordered timeline is the better long-term answer and
+    /// is called out as an open question in the design doc (§9, "Undo
+    /// pairing"); this keeps the two unambiguous until that is settled.
+    fn terrain_history_owns_undo(&self) -> bool {
+        use crate::level_editor::tool_modes::ToolModeId;
+        self.shared_state.read().editor.tool_mode_registry.selected_id() == ToolModeId::TERRAIN
+    }
+
+    /// Revert one full sculpt stroke. Returns `false` when terrain has no
+    /// history to give, so the caller falls through to scene undo.
+    fn undo_terrain_stroke(&mut self) -> bool {
+        if !self.terrain_history_owns_undo() {
+            return false;
+        }
+        let Some(api) = self.terrain_api.clone() else {
+            return false;
+        };
+        let mut state = self.shared_state.write();
+        if !state.editor.terrain_undo.can_undo() {
+            return false;
+        }
+        match state.editor.terrain_undo.undo(&api) {
+            Ok(changed) => changed,
+            Err(error) => {
+                tracing::error!(%error, "terrain undo failed");
+                false
+            }
+        }
+    }
+
+    /// Reapply one full sculpt stroke. See [`Self::undo_terrain_stroke`].
+    fn redo_terrain_stroke(&mut self) -> bool {
+        if !self.terrain_history_owns_undo() {
+            return false;
+        }
+        let Some(api) = self.terrain_api.clone() else {
+            return false;
+        };
+        let mut state = self.shared_state.write();
+        if !state.editor.terrain_undo.can_redo() {
+            return false;
+        }
+        match state.editor.terrain_undo.redo(&api) {
+            Ok(changed) => changed,
+            Err(error) => {
+                tracing::error!(%error, "terrain redo failed");
+                false
+            }
+        }
+    }
+
     /// Redo the last undone scene command. See [`Self::on_undo`]'s doc.
     fn on_redo(&mut self, _: &super::actions::Redo, _: &mut Window, cx: &mut Context<Self>) {
+        if self.redo_terrain_stroke() {
+            cx.notify();
+            return;
+        }
         let mut state = self.shared_state.write();
         if state.scene.redo() {
             state.scene.bump_revision(true);
@@ -1136,9 +1219,11 @@ impl LevelEditorPanel {
         };
 
         if let Some(path) = path_opt {
-            match scene_db
-                .save_to_file_with_editor_camera(&path, self.current_editor_camera_state())
-            {
+            match scene_db.save_to_file_with_editor_camera(
+                &path,
+                self.current_editor_camera_state(),
+                self.terrain_api.as_ref(),
+            ) {
                 Ok(_) => {
                     self.shared_state.write().scene.has_unsaved_changes = false;
                     request_thumbnail_capture(&self.shared_state);
@@ -1153,6 +1238,9 @@ impl LevelEditorPanel {
         let state_arc = self.shared_state.clone();
         let scene_db = { state_arc.read().scene.database.clone() };
         let editor_camera = self.current_editor_camera_state();
+        // Cloned into the async task: `self` is not available once the file
+        // dialog await resumes.
+        let terrain_api = self.terrain_api.clone();
         let dialog = rfd::AsyncFileDialog::new()
             .set_title("Save Scene As")
             .add_filter("Level file", &["level", "json"])
@@ -1160,7 +1248,11 @@ impl LevelEditorPanel {
         cx.spawn(async move |_this, cx| {
             if let Some(handle) = dialog.save_file().await {
                 let path = handle.path().to_path_buf();
-                let result = scene_db.save_to_file_with_editor_camera(&path, editor_camera);
+                let result = scene_db.save_to_file_with_editor_camera(
+                    &path,
+                    editor_camera,
+                    terrain_api.as_ref(),
+                );
                 cx.update(|cx| {
                     _this.update(cx, |_, cx| {
                         match result {
@@ -1220,6 +1312,10 @@ impl LevelEditorPanel {
                                 state.scene.has_unsaved_changes = false;
                                 // Deselect so properties panel clears stale data.
                                 state.scene.select_object(None);
+                                // Terrain history anchors snapshots of the
+                                // *previous* level's planets; keeping them
+                                // would offer undos that can only fail.
+                                state.editor.terrain_undo.clear();
                                 if let Some(open_path) = state.scene.current_scene.clone() {
                                     ai_sessions::register_open_scene(&open_path, &state_arc);
                                 }

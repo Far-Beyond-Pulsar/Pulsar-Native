@@ -2948,6 +2948,7 @@ dependencies = [
  "pulsar_scene",
  "pulsar_scenedb",
  "pulsar_script_object_model",
+ "pulsar_terrain",
  "pulsar_world_registry",
  "rapier3d",
  "reqwest 0.13.4",
@@ -13146,6 +13147,7 @@ name = "ui_level_editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.23.1",
  "blueprint_editor_plugin",
  "chrono",
  "core-foundation-sys",

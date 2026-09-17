@@ -28,6 +28,8 @@ impl ToolModeControls {
             let ctx = ToolModeContext {
                 state: &mut state_clone,
                 gpu_engine: &gpu_engine,
+                // Widget data comes from editor state alone.
+                terrain: None,
                 camera: CameraFrame::default(),
                 viewport: ViewportFrame::default(),
             };

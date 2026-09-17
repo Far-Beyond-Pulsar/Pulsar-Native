@@ -81,7 +81,12 @@ pub enum TerrainTarget {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Stroke {
     pub id: u64,
-    pub start_height: f32,
+    /// Altitude the stroke was anchored to, in meters from the planet centre.
+    ///
+    /// `f64`, not `f32`: on an Earth-sized planet this is ~6.4e6, where an
+    /// `f32` step is around half a metre -- enough to make a Flatten stroke
+    /// visibly stair-step instead of levelling.
+    pub start_height: f64,
 }
 
 // ── Terrain Domain ─────────────────────────────────────────────────────────
@@ -120,7 +125,7 @@ impl TerrainDomain {
         self.target = target;
     }
 
-    pub fn begin_stroke(&mut self, id: u64, start_height: f32) {
+    pub fn begin_stroke(&mut self, id: u64, start_height: f64) {
         self.active_stroke = Some(Stroke { id, start_height });
     }
 

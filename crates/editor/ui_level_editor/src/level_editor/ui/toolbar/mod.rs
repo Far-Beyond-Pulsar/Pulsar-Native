@@ -80,6 +80,8 @@ impl ToolbarPanel {
             let ctx = ToolModeContext {
                 state: &mut state_clone,
                 gpu_engine: &gpu_engine,
+                // Widget data comes from editor state alone.
+                terrain: None,
                 camera: CameraFrame::default(),
                 viewport: ViewportFrame::default(),
             };
@@ -184,21 +186,26 @@ impl ToolbarPanel {
 
                 let save_result = {
                     let state = state_clone.read();
-                    let editor_camera = gpu_engine
-                        .lock()
-                        .ok()
-                        .and_then(|engine| engine.editor_camera_state())
-                        .map(|camera| {
-                            crate::level_editor::scene_database::LevelEditorCameraState {
-                                position: camera.position,
-                                yaw: camera.yaw,
-                                pitch: camera.pitch,
-                            }
-                        });
-                    state
-                        .scene
-                        .database
-                        .save_to_file_with_editor_camera(&path, editor_camera)
+                    // One locked pass for both: the terrain seam is what
+                    // flushes authored voxels alongside the level.
+                    let (camera_state, terrain_api) = match gpu_engine.lock().ok() {
+                        Some(engine) => {
+                            (engine.editor_camera_state(), engine.terrain_edit_api())
+                        }
+                        None => (None, None),
+                    };
+                    let editor_camera = camera_state.map(|camera| {
+                        crate::level_editor::scene_database::LevelEditorCameraState {
+                            position: camera.position,
+                            yaw: camera.yaw,
+                            pitch: camera.pitch,
+                        }
+                    });
+                    state.scene.database.save_to_file_with_editor_camera(
+                        &path,
+                        editor_camera,
+                        terrain_api.as_ref(),
+                    )
                 };
 
                 match save_result {
@@ -284,21 +291,26 @@ impl ToolbarPanel {
 
                 let save_result = {
                     let state = state_clone.read();
-                    let editor_camera = gpu_engine
-                        .lock()
-                        .ok()
-                        .and_then(|engine| engine.editor_camera_state())
-                        .map(|camera| {
-                            crate::level_editor::scene_database::LevelEditorCameraState {
-                                position: camera.position,
-                                yaw: camera.yaw,
-                                pitch: camera.pitch,
-                            }
-                        });
-                    state
-                        .scene
-                        .database
-                        .save_to_file_with_editor_camera(&path, editor_camera)
+                    // One locked pass for both: the terrain seam is what
+                    // flushes authored voxels alongside the level.
+                    let (camera_state, terrain_api) = match gpu_engine.lock().ok() {
+                        Some(engine) => {
+                            (engine.editor_camera_state(), engine.terrain_edit_api())
+                        }
+                        None => (None, None),
+                    };
+                    let editor_camera = camera_state.map(|camera| {
+                        crate::level_editor::scene_database::LevelEditorCameraState {
+                            position: camera.position,
+                            yaw: camera.yaw,
+                            pitch: camera.pitch,
+                        }
+                    });
+                    state.scene.database.save_to_file_with_editor_camera(
+                        &path,
+                        editor_camera,
+                        terrain_api.as_ref(),
+                    )
                 };
 
                 match save_result {

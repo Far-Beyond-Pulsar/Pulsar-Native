@@ -48,6 +48,10 @@ glam.workspace = true
 # Standard dependencies
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# Encodes the binary terrain edit log into the level's JSON terrain sidecar
+# (`core::terrain_sidecar`). Already a workspace dependency; nothing new is
+# vendored by this.
+base64 = { workspace = true }
 rfd = { workspace = true }
 parking_lot = { workspace = true }
 tracing.workspace = true
