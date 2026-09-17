@@ -20,6 +20,8 @@ mod mode_indicator;
 mod multiplayer_dropdown;
 mod playback_controls;
 mod time_scale_dropdown;
+mod tool_mode_controls;
+mod tool_mode_dropdown;
 mod view;
 
 pub use actions::*;
@@ -30,13 +32,17 @@ use mode_indicator::ModeIndicator;
 use multiplayer_dropdown::MultiplayerDropdown;
 use playback_controls::PlaybackControls;
 use time_scale_dropdown::TimeScaleDropdown;
+use tool_mode_controls::ToolModeControls;
+use tool_mode_dropdown::ToolModeDropdown;
 pub use view::ToolbarView;
 
+use crate::level_editor::tool_modes::{CameraFrame, ToolModeContext, ViewportFrame};
 use crate::level_editor::{request_thumbnail_capture, LevelEditorState};
 
 /// Premium Toolbar - A beautifully crafted control panel for game development
 ///
 /// Features:
+/// - **Tool Mode**: Dropdown for switching between Level Edit, Terrain, etc.
 /// - **Playback Controls**: Intuitive play/pause/stop for simulation
 /// - **Time Scale**: Smooth dropdown for speed control with checkmarks
 /// - **Multiplayer Mode**: Clean dropdown for networking options
@@ -69,6 +75,22 @@ impl ToolbarPanel {
     {
         let theme = cx.theme();
 
+        let has_mode_controls = {
+            let mut state_clone = state.clone();
+            let ctx = ToolModeContext {
+                state: &mut state_clone,
+                gpu_engine: &gpu_engine,
+                camera: CameraFrame::default(),
+                viewport: ViewportFrame::default(),
+            };
+            !state
+                .editor
+                .tool_mode_registry
+                .selected()
+                .toolbar_controls(&ctx)
+                .is_empty()
+        };
+
         h_flex()
             .w_full()
             .h(px(48.0))
@@ -79,6 +101,17 @@ impl ToolbarPanel {
             .border_b_1()
             .border_color(theme.border.opacity(0.8))
             .shadow_sm()
+            .child(ToolModeDropdown::render(state, state_arc.clone(), cx))
+            .child(self.render_separator(cx))
+            .when(has_mode_controls, |el| {
+                el.child(ToolModeControls::render(
+                    state,
+                    state_arc.clone(),
+                    gpu_engine.clone(),
+                    cx,
+                ))
+                .child(self.render_separator(cx))
+            })
             .child(PlaybackControls::render(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
             .child(TimeScaleDropdown::render(state, state_arc.clone(), cx))

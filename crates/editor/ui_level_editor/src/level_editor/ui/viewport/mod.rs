@@ -927,6 +927,8 @@ impl ViewportPanel {
                 let element_bounds = element_bounds_for_click.clone();
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
+                let state_arc_click = state_arc.clone();
+                let gpu_engine_click = gpu_engine.clone();
 
                 move |event: &gpui::MouseDownEvent,
                       window: &mut gpui::Window,
@@ -940,7 +942,7 @@ impl ViewportPanel {
                     let bounds_opt = element_bounds.borrow();
                     // Normalize cursor to [0,1] relative to the viewport element.
                     // event.position is window-relative; subtract the viewport origin.
-                    let (norm_x, norm_y) = if let Some(ref bounds) = *bounds_opt {
+                    let (norm_x, norm_y, viewport_width, viewport_height) = if let Some(ref bounds) = *bounds_opt {
                         let origin_x: f32 = bounds.origin.x.into();
                         let origin_y: f32 = bounds.origin.y.into();
                         let width: f32 = bounds.size.width.into();
@@ -952,6 +954,8 @@ impl ViewportPanel {
                         (
                             (local_x / width).clamp(0.0, 1.0),
                             (local_y / height).clamp(0.0, 1.0),
+                            width,
+                            height,
                         )
                     } else {
                         let window_size = window.viewport_size();
@@ -962,8 +966,51 @@ impl ViewportPanel {
                         (
                             (pos_x / width).clamp(0.0, 1.0),
                             (pos_y / height).clamp(0.0, 1.0),
+                            width,
+                            height,
                         )
                     };
+
+                    // Tool-mode dispatch: give the active mode first refusal on the
+                    // click (design doc §4.5). LevelEdit always returns `PassThrough`,
+                    // so this is byte-for-byte the prior behavior for today's default mode.
+                    let camera = gpu_engine_click
+                        .lock()
+                        .ok()
+                        .and_then(|e| e.editor_camera_state())
+                        .map(|c| crate::level_editor::tool_modes::CameraFrame {
+                            position: c.position,
+                            yaw: c.yaw,
+                            pitch: c.pitch,
+                            fov: 60.0,
+                        })
+                        .unwrap_or_default();
+                    let viewport_frame = crate::level_editor::tool_modes::ViewportFrame {
+                        width: viewport_width,
+                        height: viewport_height,
+                    };
+                    let pointer_event = crate::level_editor::tool_modes::ToolPointerEvent {
+                        kind: crate::level_editor::tool_modes::PointerKind::Down,
+                        button: Some(gpui::MouseButton::Left),
+                        norm_x,
+                        norm_y,
+                        holding_mods: event.modifiers,
+                    };
+                    let dispatch_result = {
+                        let mut state = state_arc_click.write();
+                        crate::level_editor::tool_modes::ToolModeDispatcher::dispatch_pointer(
+                            &mut state,
+                            &gpu_engine_click,
+                            &pointer_event,
+                            camera,
+                            viewport_frame,
+                        )
+                    };
+                    if dispatch_result
+                        == crate::level_editor::tool_modes::ToolPointerResult::Consumed
+                    {
+                        return;
+                    }
 
                     if let Some(events) = &pointer_events {
                         if let Ok(mut events) = events.lock() {

@@ -27,9 +27,11 @@ use gpui::*;
 use ui::dock::PanelEvent;
 
 use super::ToolbarPanel;
+use crate::level_editor::state::terrain::SculptMode;
 use crate::level_editor::state::{
     BuildConfig, BuildMode, EditorMode, MultiplayerMode, TargetPlatform,
 };
+use crate::level_editor::tool_modes::ToolModeId;
 use crate::level_editor::ui::frame_pump::spawn_frame_pump;
 use crate::level_editor::LevelEditorState;
 
@@ -39,6 +41,13 @@ use crate::level_editor::LevelEditorState;
 /// next to rebuilding the toolbar itself.
 #[derive(Clone, Copy, PartialEq)]
 pub struct ToolbarSignature {
+    // tool_mode_dropdown / mode_indicator
+    tool_mode: ToolModeId,
+    // terrain controls
+    terrain_sculpt_mode: SculptMode,
+    terrain_radius_m: f32,
+    terrain_strength: f32,
+    terrain_falloff: f32,
     // playback_controls / mode_indicator
     editor_mode: EditorMode,
     // time_scale_dropdown
@@ -62,6 +71,11 @@ pub struct ToolbarSignature {
 impl ToolbarSignature {
     fn of(state: &LevelEditorState) -> Self {
         Self {
+            tool_mode: state.editor.tool_mode_registry.selected_id(),
+            terrain_sculpt_mode: state.editor.terrain.sculpt.mode,
+            terrain_radius_m: state.editor.terrain.sculpt.radius_m,
+            terrain_strength: state.editor.terrain.sculpt.strength,
+            terrain_falloff: state.editor.terrain.sculpt.falloff,
             editor_mode: state.scene.editor_mode,
             time_scale: state.play.time_scale,
             multiplayer_mode: state.play.multiplayer_mode,

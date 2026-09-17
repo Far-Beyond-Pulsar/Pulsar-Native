@@ -13,6 +13,7 @@
 /// - Scene Database: Unified write path — updates both SceneDb and Helio
 pub mod core;
 pub mod state;
+pub mod tool_modes;
 mod ui;
 pub mod workspace;
 
@@ -24,8 +25,16 @@ pub use core::world_settings_data;
 // Public API
 pub use core::scene_database::{SceneDatabase, SceneObjectData};
 pub use state::request_thumbnail_capture;
+pub use state::terrain::{
+    FoliageBrush, SculptBrush, SculptMode, Stroke, TerrainDomain, TerrainTarget,
+};
 pub use state::LevelEditorState;
 pub use state::{CameraMode, EditorMode, TransformTool};
+pub use tool_modes::{
+    BrushCursor, CameraFrame, LevelEditMode, PointerKind, StatusReadout, TerrainMode, ToolMode,
+    ToolModeContext, ToolModeDispatcher, ToolModeId, ToolModeRegistry, ToolPointerEvent,
+    ToolPointerResult, ToolWidget, ViewportFrame,
+};
 pub use workspace::panels::*;
 
 // Re-export LevelEditorPanel from ui

@@ -33,6 +33,7 @@ pub mod native_scripts;
 pub mod overlays;
 pub mod play;
 pub mod scene;
+pub mod terrain;
 
 pub use build::BuildDomain;
 pub use editor::EditorDomain;
@@ -40,6 +41,7 @@ pub use hierarchy::HierarchyDomain;
 pub use overlays::OverlayDomain;
 pub use play::{PieControl, PieStartRequest, PlayDomain};
 pub use scene::SceneDomain;
+pub use terrain::TerrainDomain;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -111,3 +113,4 @@ pub use editor::{
 pub use hierarchy::{HierarchyDragPayload, HierarchyDragState};
 pub use overlays::OverlayState;
 pub use scene::EditorMode;
+pub use terrain::{FoliageBrush, SculptBrush, SculptMode, Stroke, TerrainTarget};

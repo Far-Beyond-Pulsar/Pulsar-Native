@@ -1,9 +1,10 @@
 use gpui::*;
-use ui::ActiveTheme;
+use rust_i18n::t;
+use ui::{ActiveTheme, Sizable};
 
 use crate::level_editor::state::LevelEditorState;
 
-/// Mode indicator - Beautiful badge showing Playing/Editing state
+/// Mode indicator - Beautiful badge showing Playing/Editing state and current Tool Mode
 pub struct ModeIndicator;
 
 impl ModeIndicator {
@@ -12,6 +13,9 @@ impl ModeIndicator {
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let theme = cx.theme();
+        let current_mode = state.editor.tool_mode_registry.selected();
+        let tool_icon = current_mode.icon();
+        let tool_label = t!(current_mode.label_key());
 
         div()
             .flex()
@@ -55,6 +59,24 @@ impl ModeIndicator {
                     } else {
                         "Editing"
                     }),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground.opacity(0.4))
+                    .child("·"),
+            )
+            .child(
+                ui::Icon::new(tool_icon)
+                    .size_3p5()
+                    .text_color(theme.muted_foreground),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(theme.foreground.opacity(0.8))
+                    .child(tool_label.into_owned()),
             )
     }
 }

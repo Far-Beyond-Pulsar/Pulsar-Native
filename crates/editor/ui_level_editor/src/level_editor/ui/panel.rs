@@ -371,7 +371,7 @@ impl LevelEditorPanel {
         });
 
         let toolbar = cx.new(|_| ToolbarView::new(shared_state.clone(), gpu_engine.clone()));
-        let status_bar = cx.new(|_| StatusBarView::new(shared_state.clone()));
+        let status_bar = cx.new(|_| StatusBarView::new(shared_state.clone(), gpu_engine.clone()));
 
         // Fetched once here, not re-acquired via `gpu_engine.lock()` per
         // command -- see `HelioEditorMailbox`'s doc. `GpuRendererBuilder::build`
@@ -750,6 +750,36 @@ impl LevelEditorPanel {
         cx: &mut Context<Self>,
     ) {
         self.shared_state.write().build.mode = action.0;
+        cx.notify();
+    }
+
+    fn on_set_tool_mode(
+        &mut self,
+        action: &toolbar::SetToolMode,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let camera = self
+            .gpu_engine
+            .lock()
+            .ok()
+            .and_then(|e| e.editor_camera_state())
+            .map(|c| crate::level_editor::tool_modes::CameraFrame {
+                position: c.position,
+                yaw: c.yaw,
+                pitch: c.pitch,
+                fov: 60.0,
+            })
+            .unwrap_or_default();
+        let mut state = self.shared_state.write();
+        crate::level_editor::tool_modes::ToolModeDispatcher::select_tool_mode(
+            &mut state,
+            &self.gpu_engine,
+            action.0,
+            camera,
+            crate::level_editor::tool_modes::ViewportFrame::default(),
+        );
+        drop(state);
         cx.notify();
     }
 
@@ -1366,6 +1396,7 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_rotate_tool))
             .on_action(cx.listener(Self::on_scale_tool))
             // Toolbar actions
+            .on_action(cx.listener(Self::on_set_tool_mode))
             .on_action(cx.listener(Self::on_set_time_scale))
             .on_action(cx.listener(Self::on_set_multiplayer_mode))
             .on_action(cx.listener(Self::on_set_build_config))

@@ -18,8 +18,10 @@ use ui::dock::PanelEvent;
 use ui_common::StatusBar;
 
 use crate::level_editor::scene_database::ObjectId;
+use crate::level_editor::tool_modes::{CameraFrame, ToolModeContext, ToolModeId, ViewportFrame};
 use crate::level_editor::ui::frame_pump::spawn_frame_pump;
 use crate::level_editor::{CameraMode, LevelEditorState, TransformTool};
+use engine_backend::services::gpu_renderer::GpuRenderer;
 
 /// Everything the status bar's text depends on.
 ///
@@ -35,6 +37,9 @@ struct StatusBarSignature {
     show_grid: bool,
     camera_mode: CameraMode,
     current_tool: TransformTool,
+    tool_mode: ToolModeId,
+    terrain_radius_m: f32,
+    terrain_strength: f32,
 }
 
 impl StatusBarSignature {
@@ -45,12 +50,16 @@ impl StatusBarSignature {
             show_grid: state.editor.show_grid,
             camera_mode: state.editor.camera_mode,
             current_tool: state.editor.current_tool,
+            tool_mode: state.editor.tool_mode_registry.selected_id(),
+            terrain_radius_m: state.editor.terrain.sculpt.radius_m,
+            terrain_strength: state.editor.terrain.sculpt.strength,
         }
     }
 }
 
 pub struct StatusBarView {
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
+    gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
     last_signature: StatusBarSignature,
     /// Root-object count keyed by the store revision it was counted at.
     cached_root_count: Option<(u64, usize)>,
@@ -58,10 +67,14 @@ pub struct StatusBarView {
 }
 
 impl StatusBarView {
-    pub fn new(state: Arc<parking_lot::RwLock<LevelEditorState>>) -> Self {
+    pub fn new(
+        state: Arc<parking_lot::RwLock<LevelEditorState>>,
+        gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
+    ) -> Self {
         let last_signature = StatusBarSignature::of(&state.read());
         Self {
             state,
+            gpu_engine,
             last_signature,
             cached_root_count: None,
             pump_started: false,
@@ -137,12 +150,28 @@ impl Render for StatusBarView {
             TransformTool::Rotate => t!("LevelEditor.Tool.Rotate").to_string(),
             TransformTool::Scale => t!("LevelEditor.Tool.Scale").to_string(),
         };
+
+        let mode_status = {
+            let mut state_clone = state.clone();
+            let ctx = ToolModeContext {
+                state: &mut state_clone,
+                gpu_engine: &self.gpu_engine,
+                camera: CameraFrame::default(),
+                viewport: ViewportFrame::default(),
+            };
+            state.editor.tool_mode_registry.selected().status(&ctx)
+        };
         drop(state);
 
-        StatusBar::new()
+        let mut bar = StatusBar::new()
             .add_left_item(t!("LevelEditor.StatusBar.Objects", count => objects_count).to_string())
-            .add_left_item(t!("LevelEditor.StatusBar.Selected", name => &selected_name).to_string())
-            .add_right_item(camera_mode_str)
+            .add_left_item(t!("LevelEditor.StatusBar.Selected", name => &selected_name).to_string());
+
+        if let Some(status) = mode_status {
+            bar = bar.add_left_item(status.text);
+        }
+
+        bar.add_right_item(camera_mode_str)
             .add_right_item(grid_status)
             .add_right_item(t!("LevelEditor.StatusBar.Tool", name => &tool_name).to_string())
             .render(cx)

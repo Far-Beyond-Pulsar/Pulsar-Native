@@ -144,6 +144,10 @@ pub struct EditorDomain {
     pub feature_shadows_enabled: bool,
     pub feature_bloom_enabled: bool,
     pub feature_materials_enabled: bool,
+
+    // ── Tool Mode & Terrain Domains ───────────────────────────────────────
+    pub tool_mode_registry: crate::level_editor::tool_modes::ToolModeRegistry,
+    pub terrain: super::terrain::TerrainDomain,
 }
 
 impl Default for EditorDomain {
@@ -159,6 +163,8 @@ impl Default for EditorDomain {
             feature_shadows_enabled: true,
             feature_bloom_enabled: true,
             feature_materials_enabled: true,
+            tool_mode_registry: crate::level_editor::tool_modes::ToolModeRegistry::builtin(),
+            terrain: super::terrain::TerrainDomain::default(),
         }
     }
 }
