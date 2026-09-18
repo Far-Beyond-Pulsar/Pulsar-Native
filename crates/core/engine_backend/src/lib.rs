@@ -42,7 +42,7 @@ pub use scene::GizmoType as GizmoMode;
 pub use pulsar_reflection::*;
 
 // Re-export scene types used by UI crates
-pub use scene::{ComponentInstance, EditorObjectId, SceneMetadataDb};
+pub use scene::{ComponentInstance, EditorObjectId};
 
 /// Global instance handle, set once during engine init.
 static GLOBAL_BACKEND: OnceLock<engine_state::ResourceHandle<EngineBackend>> = OnceLock::new();

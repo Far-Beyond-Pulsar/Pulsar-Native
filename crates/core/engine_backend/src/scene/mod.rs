@@ -1,27 +1,11 @@
-//! Shared scene database for the Pulsar engine.
+//! The engine's scene: a `pulsar_scenedb::SceneDb` used directly.
 //!
-//! `WorldSceneStore` (`pulsar_scenedb::World`, plus the stable-id/hierarchy/
-//! dirty-tracking bookkeeping `World` itself doesn't provide) is the live
-//! authoritative store, shared by the editor UI and the renderer.
-//! `SceneComponentStore` accesses `ComponentAttachments` on those same World
-//! entities. Live registered values live in typed components; dormant and
-//! unregistered instance payloads live in the attachment component. The legacy
-//! `SceneMetadataDb`/`ComponentDb` API is not used by the level editor.
-//!
-//! Two earlier, fully-superseded systems used to live in this module and
-//! were deleted rather than kept as dead weight: a lock-free-atomics
-//! `SceneDb`/`SceneEntry` store (confirmed zero production construction
-//! sites) and `HierarchyManager`/`SceneMetadataDb`'s own object/hierarchy/
-//! selection surface (confirmed zero external callers -- `WorldSceneStore`
-//! already reimplements the same hierarchy shape, keyed by `Entity` instead
-//! of `String`, and is the one actually in use).
+//! There is no store or facade around it. Objects are entities carrying the
+//! plain components in [`components`]; [`world_ext`] adds stateless helpers
+//! (identity lookup, hierarchy, selection) that are derived from those
+//! components on demand. The editor, the renderer and the play-mode runtime
+//! all share one [`SharedScene`].
 
-// New metadata system modules
-pub mod component_db;
-pub mod component_store;
-pub use component_store::{ComponentAttachments, SceneComponentStore};
-pub mod metadata;
-pub mod metadata_db;
 
 // Resolved per-light GPU frames (Pulsar-Native#636) -- transform-folded
 // light state maintained at change time from World subscriptions, replacing
@@ -43,7 +27,6 @@ pub mod runtime_level;
 
 // World/Entity-backed scene store (Phase B1, Pulsar-Native#553) -- the live
 // authoritative store. See `world_store`'s own doc for the full picture.
-pub mod world_store;
 
 // Script object model bridge (Pulsar-Native#639) -- `WorldSceneStore` as
 // the StableId⇄Entity resolver + duplicate-instance store the script-facing
@@ -59,7 +42,6 @@ pub mod helio_bridge;
 pub mod editor_rows;
 
 // Re-export new system types for convenience
-pub use component_db::ComponentDb;
 #[cfg(feature = "render")]
 pub use helio_bridge::{ensure_gpu_mirror, sync_static_mesh_rows};
 
@@ -77,92 +59,33 @@ pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
 }
 pub use light_frame::{LightFrameMaintainer, ResolvedLightFrame};
 pub use mesh_frame::{MeshFrameMaintainer, ResolvedMeshFrame};
-pub use metadata::{ComponentInstance, EditorObjectId};
-pub use metadata_db::SceneMetadataDb;
 pub use render_resources::{
     insert_render_resources, MaterialComponent, MaterialResource, MaterialTextureResource,
     MeshObjectComponent, MeshObjectResource, MeshSectionResource, SectionedMeshComponent,
     SectionedMeshResource, TextureComponent, TextureResource,
 };
 pub use runtime_level::{EditorCamera, LevelExtras, RuntimeLevel, RuntimeLevelError};
-pub use world_store::{
-    Name, ObjectSnapshot, Parent, RenderProps, StableId, Transform, Visibility, WorldSceneStore,
-    WorldSceneStoreError,
+pub use pulsar_scene_model::{
+    attachments, components, instance, world_ext, ComponentAttachments, ComponentInstance,
+    EditorObjectId, LightType, MeshType, Name, ObjectId, ObjectType, Parent, RenderProps, SceneError,
+    SceneWorldExt, Selected, SiblingIndex, SpawnObject, StableId, Transform, Visibility,
 };
 
-use bitflags::bitflags;
+/// The scene is a `pulsar_scenedb::SceneDb` shared between the editor UI, the
+/// renderer and the play-mode runtime. This alias only names the sharing.
+pub type SharedScene = std::sync::Arc<parking_lot::RwLock<pulsar_scenedb::SceneDb>>;
+
+/// A fresh scene with a change tracker attached, so [`pulsar_scenedb::World::revision`]
+/// and any subsystem reading `world.change_tracker()` work from the first mutation.
+pub fn new_scene() -> pulsar_scenedb::SceneDb {
+    let mut scene = pulsar_scenedb::SceneDb::new();
+    scene
+        .world
+        .attach_change_tracker(pulsar_scenedb::SharedChangeTracker::new());
+    scene
+}
+
 use glam::Mat4;
-use serde::{Deserialize, Serialize};
-
-// ─── Public types ────────────────────────────────────────────────────────────
-
-/// Same underlying type as [`EditorObjectId`] -- there was never a real
-/// distinction between the two, just two independently-declared aliases
-/// that could drift. `EditorObjectId` (paired with `ComponentInstance`) is
-/// the canonical declaration; this is the alias the rest of the editor
-/// (`SceneDatabase` and its ~50 call sites) already spells it as.
-pub type ObjectId = EditorObjectId;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ObjectType {
-    Empty,
-    Folder,
-    Camera,
-    Light(LightType),
-    Mesh(MeshType),
-    ParticleSystem,
-    AudioSource,
-    Blueprint,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LightType {
-    Directional,
-    Point,
-    Spot,
-    Area,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum MeshType {
-    Cube,
-    Sphere,
-    Cylinder,
-    Plane,
-    Custom,
-}
-
-bitflags! {
-    // `Debug`/`PartialEq`/`Eq` weren't previously derived -- added so
-    // `WorldSceneStore`'s tests (`scene::world_store`) can assert on flag
-    // values directly instead of poking at `.bits()`. Safe, additive:
-    // bitflags-generated types are plain integer wrappers, so these derives
-    // can't change existing behavior anywhere else.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct ObjectDirtyFlags: u8 {
-        const TRANSFORM = 1;
-        const PROPS = 2;
-        const HIERARCHY = 4;
-        const COMPONENTS = 8;
-        const VISIBILITY = 16;
-        const NAME = 32;
-    }
-}
-
-/// A single object update within a SceneDbDelta.
-pub struct ObjectUpdate {
-    pub id: String,
-    pub transform: Option<Mat4>,
-    pub visible: Option<bool>,
-    pub name: Option<String>,
-}
-
-/// Delta snapshot of changes since the last drain.
-pub struct SceneDbDelta {
-    pub added: Vec<String>,
-    pub removed: Vec<String>,
-    pub updated: Vec<ObjectUpdate>,
-}
 
 // ─── Gizmo state ─────────────────────────────────────────────────────────────
 

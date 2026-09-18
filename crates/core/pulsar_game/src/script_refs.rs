@@ -208,18 +208,18 @@ fn log_typed(context: &str, error: impl std::fmt::Display) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine_backend::scene::WorldSceneStore;
+    use engine_backend::scene::SceneWorldExt;
     use pulsar_reflection::RUNTIME_TYPE_REGISTRY;
 
     /// A two-object scene shaped like an editor-hydrated level (`spawn`
     /// attaches StableId + Name exactly like hydration does).
-    fn scene() -> (WorldSceneStore, Entity, Entity) {
-        let mut store = WorldSceneStore::new();
+    fn scene() -> (pulsar_scenedb::SceneDb, Entity, Entity) {
+        let mut store = engine_backend::scene::new_scene();
         let door = store
-            .spawn(Some("door".into()), "Front Door", None)
+            .world.spawn_object(engine_backend::scene::SpawnObject::new("Front Door").with_id("door"))
             .expect("spawn door");
         let lamp = store
-            .spawn(Some("lamp".into()), "Red Lamp", None)
+            .world.spawn_object(engine_backend::scene::SpawnObject::new("Red Lamp").with_id("lamp"))
             .expect("spawn lamp");
         (store, door, lamp)
     }
@@ -228,8 +228,8 @@ mod tests {
     /// what B4's registry serializers produce for the same values.
     #[test]
     fn json_shapes_match_the_reflection_marshalling_rules() {
-        let (store, door, _lamp) = scene();
-        let world = store.world();
+        let (mut store, door, _lamp) = scene();
+        let world = &mut store.world;
 
         let actor = ActorRef::new(door);
         let via_registry = RUNTIME_TYPE_REGISTRY
@@ -249,8 +249,8 @@ mod tests {
 
     #[test]
     fn resolvers_find_objects_and_report_lost_targets_typed() {
-        let (store, door, _lamp) = scene();
-        let world = store.world();
+        let (mut store, door, _lamp) = scene();
+        let world = &mut store.world;
 
         assert_eq!(
             find_object_by_name(world, &json!("Front Door"), "find/name"),
@@ -269,8 +269,8 @@ mod tests {
 
     #[test]
     fn literals_resolve_at_runtime_not_compile_time() {
-        let (store, _door, lamp) = scene();
-        let world = store.world();
+        let (mut store, _door, lamp) = scene();
+        let world = &mut store.world;
 
         let resolved = object_literal_json(world, "lamp", "Light", 1, "literal");
         assert_eq!(
@@ -283,8 +283,8 @@ mod tests {
 
     #[test]
     fn pin_targets_validate_liveness_and_class_match() {
-        let (store, door, lamp) = scene();
-        let world = store.world();
+        let (mut store, door, lamp) = scene();
+        let world = &mut store.world;
 
         // "VmProbe" is registered by the component_ops test inventory;
         // unregistered classes must refuse validation (B's contract).

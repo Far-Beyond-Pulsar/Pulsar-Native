@@ -1,6 +1,8 @@
 #[cfg(test)]
 mod ecs {
     use crate::prelude::*;
+    #[allow(unused_imports)]
+    use engine_backend::scene::SceneWorldExt;
 
     #[derive(Debug, PartialEq)]
     struct Pos {
@@ -94,6 +96,8 @@ mod ecs {
 #[cfg(test)]
 mod actors {
     use crate::prelude::*;
+    #[allow(unused_imports)]
+    use engine_backend::scene::SceneWorldExt;
     use std::sync::{Arc, Mutex};
 
     struct Counter(Arc<Mutex<Vec<&'static str>>>);
@@ -123,12 +127,12 @@ mod actors {
             let mut store = tick_loop.scene_store.write();
             tick_loop
                 .actors
-                .register(Counter(log.clone()), store.world_mut())
+                .register(Counter(log.clone()), &mut store.world)
         };
         tick_loop.tick_once();
         {
             let mut store = tick_loop.scene_store.write();
-            tick_loop.actors.deregister(entity, store.world_mut());
+            tick_loop.actors.deregister(entity, &mut store.world);
         }
         let events = log.lock().unwrap().clone();
         assert_eq!(events, vec!["begin", "tick", "end"]);
@@ -143,10 +147,10 @@ mod actors {
 
         let entity = {
             let mut store = tick_loop.scene_store.write();
-            let e = store.spawn(None, "Runtime", None).unwrap();
+            let e = store.world.spawn_object(engine_backend::scene::SpawnObject::new("Runtime")).unwrap();
             tick_loop
                 .actors
-                .register(Counter(Arc::new(Mutex::new(Vec::new()))), store.world_mut());
+                .register(Counter(Arc::new(Mutex::new(Vec::new()))), &mut store.world);
             e
         };
 
@@ -155,13 +159,15 @@ mod actors {
         // Another handle-holder (what the renderer is) sees the spawned
         // object and its components.
         let store = tick_loop.scene_store.read();
-        assert_eq!(store.name(entity), Some("Runtime"));
+        assert_eq!(store.world.get::<engine_backend::scene::Name>(entity).map(|n| n.0.as_str()), Some("Runtime"));
     }
 }
 
 #[cfg(test)]
 mod schedule_tests {
     use crate::prelude::*;
+    #[allow(unused_imports)]
+    use engine_backend::scene::SceneWorldExt;
     use std::sync::{Arc, Mutex};
 
     #[derive(Debug)]
@@ -214,6 +220,8 @@ mod blueprint_instances {
         BlueprintDispatcher, CompiledBytecode, ExecutorError, VariableDescriptor,
     };
     use crate::prelude::*;
+    #[allow(unused_imports)]
+    use engine_backend::scene::SceneWorldExt;
     use pbgc::bytecode::comp_ops::{
         encode_json_blob, encode_targeted_call_name_blob, encode_targeted_name_blob,
         JSON_BLOB_CAPACITY,
@@ -486,16 +494,16 @@ mod blueprint_instances {
 
         let (ea, eb) = {
             let mut store = game.scene_store.write();
-            let ea = store.spawn(None, "ProbeA", None).expect("spawn A");
-            let eb = store.spawn(None, "ProbeB", None).expect("spawn B");
-            store.world_mut().insert(
+            let ea = store.world.spawn_object(engine_backend::scene::SpawnObject::new("ProbeA")).expect("spawn A");
+            let eb = store.world.spawn_object(engine_backend::scene::SpawnObject::new("ProbeB")).expect("spawn B");
+            store.world.insert(
                 ea,
                 TickProbe {
                     charges: 5,
                     played: false,
                 },
             );
-            store.world_mut().insert(
+            store.world.insert(
                 eb,
                 TickProbe {
                     charges: 50,
@@ -534,8 +542,8 @@ mod blueprint_instances {
         game.tick_once();
 
         let store = game.scene_store.read();
-        let pa = store.world().get::<TickProbe>(ea).expect("A's probe alive");
-        let pb = store.world().get::<TickProbe>(eb).expect("B's probe alive");
+        let pa = store.world.get::<TickProbe>(ea).expect("A's probe alive");
+        let pb = store.world.get::<TickProbe>(eb).expect("B's probe alive");
         assert_eq!(
             pa.charges, 7,
             "instance A mutated only its own entity (5 + 2 ticks)"
@@ -729,7 +737,7 @@ mod blueprint_instances {
     /// probe components already on both bound objects; returns the store,
     /// both entities, and the parsed bindings.
     fn fixture_level_with_probes() -> (
-        std::sync::Arc<parking_lot::RwLock<engine_backend::scene::WorldSceneStore>>,
+        engine_backend::scene::SharedScene,
         pulsar_scenedb::Entity,
         pulsar_scenedb::Entity,
         pulsar_scene::BlueprintBindings,
@@ -737,22 +745,22 @@ mod blueprint_instances {
         let file: pulsar_scene::SceneFile =
             serde_json::from_str(BINDINGS_FIXTURE).expect("#650 fixture parses");
         let level = RuntimeLevel::from_scene_file(file).expect("fixture hydrates");
-        let store = level.store();
+        let store = level.scene();
         let bindings = level.extras().blueprint_bindings.clone();
         drop(level);
 
         let (ea, eb) = {
             let mut guard = store.write();
-            let ea = guard.entity_for("lever_a").expect("lever_a hydrated");
-            let eb = guard.entity_for("lever_b").expect("lever_b hydrated");
-            guard.world_mut().insert(
+            let ea = guard.world.entity_for("lever_a").expect("lever_a hydrated");
+            let eb = guard.world.entity_for("lever_b").expect("lever_b hydrated");
+            guard.world.insert(
                 ea,
                 TickProbe {
                     charges: 5,
                     played: false,
                 },
             );
-            guard.world_mut().insert(
+            guard.world.insert(
                 eb,
                 TickProbe {
                     charges: 50,
@@ -802,15 +810,15 @@ mod blueprint_instances {
         // each instance addressing only its own entity's component.
         {
             let mut guard = store.write();
-            let world = guard.world_mut();
+            let world = &mut guard.world;
             dispatcher.dispatch_pending_begin_play(world);
             dispatcher.dispatch_tick_all(world, 0.016);
             dispatcher.dispatch_tick_all(world, 0.016);
         }
         {
             let guard = store.read();
-            let pa = guard.world().get::<TickProbe>(ea).expect("A alive");
-            let pb = guard.world().get::<TickProbe>(eb).expect("B alive");
+            let pa = guard.world.get::<TickProbe>(ea).expect("A alive");
+            let pb = guard.world.get::<TickProbe>(eb).expect("B alive");
             assert_eq!(pa.charges, 7, "instance A mutated only lever_a (5 + 2)");
             assert_eq!(pb.charges, 52, "instance B mutated only lever_b (50 + 2)");
             assert!(pa.played && pb.played, "begin_play ran per bound entity");
@@ -836,16 +844,16 @@ mod blueprint_instances {
         ));
         {
             let mut guard = store.write();
-            dispatcher.dispatch_tick_all(guard.world_mut(), 0.016);
+            dispatcher.dispatch_tick_all(&mut guard.world, 0.016);
         }
         let guard = store.read();
         assert_eq!(
-            guard.world().get::<TickProbe>(ea).map(|p| p.charges),
+            guard.world.get::<TickProbe>(ea).map(|p| p.charges),
             Some(7),
             "removed binding no longer ticks"
         );
         assert_eq!(
-            guard.world().get::<TickProbe>(eb).map(|p| p.charges),
+            guard.world.get::<TickProbe>(eb).map(|p| p.charges),
             Some(53),
             "sibling unaffected by the removal"
         );

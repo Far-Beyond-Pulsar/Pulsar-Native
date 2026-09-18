@@ -3,8 +3,8 @@
 //!
 //! | File | What |
 //! |------|------|
-//! | `scene_database` | `SceneDatabase` facade over the SceneDB world shared with the renderer |
-//! | `commands` | `SceneCommand` — single auditable mutation path into the database |
+//! | `scene_edit` | Scene operations written directly against the SceneDB world shared with the renderer |
+//! | `commands` | `SceneCommand` — single auditable, undo-tracked mutation path into the scene |
 //! | `terrain_sidecar` | Durable voxel mutation-log sidecar written beside the level |
 //! | `world_settings_data` | World/settings config model (serialized + replicated) |
 //! | `native_scripts` | Script-binding data model (Rust actor records on scene objects) |
@@ -14,6 +14,6 @@
 
 pub mod commands;
 pub mod native_scripts;
-pub mod scene_database;
+pub mod scene_edit;
 pub mod terrain_sidecar;
 pub mod world_settings_data;

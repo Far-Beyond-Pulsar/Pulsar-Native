@@ -35,7 +35,7 @@ impl HierarchyPanelWrapper {
         let last_signature = {
             let state = state.read();
             (
-                state.scene.database.store_revision(),
+                state.scene.world_revision(),
                 state.scene.selected_object(),
             )
         };
@@ -51,7 +51,7 @@ impl HierarchyPanelWrapper {
     fn signature(&self) -> (u64, Option<String>) {
         let state = self.state.read();
         (
-            state.scene.database.store_revision(),
+            state.scene.world_revision(),
             state.scene.selected_object(),
         )
     }
@@ -101,7 +101,7 @@ impl Render for HierarchyPanelWrapper {
             .xsmall()
             .on_click(move |_, _, _cx| {
                 use crate::level_editor::commands::{execute_command, SceneCommand};
-                use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
+                use crate::level_editor::scene_edit::{ObjectType, SceneObjectData, Transform};
 
                 let mut state = state_clone.write();
                 let new_object = SceneObjectData {

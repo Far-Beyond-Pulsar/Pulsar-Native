@@ -176,13 +176,14 @@ impl ToolbarPanel {
                         None => (None, None),
                     };
                     let editor_camera = camera_state.map(|camera| {
-                        crate::level_editor::scene_database::LevelEditorCameraState {
+                        crate::level_editor::scene_edit::LevelEditorCameraState {
                             position: camera.position,
                             yaw: camera.yaw,
                             pitch: camera.pitch,
                         }
                     });
-                    state.scene.database.save_to_file_with_editor_camera(
+                    let world = state.scene.world();
+                    crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(&world,
                         &path,
                         editor_camera,
                         terrain_api.as_ref(),
@@ -281,13 +282,14 @@ impl ToolbarPanel {
                         None => (None, None),
                     };
                     let editor_camera = camera_state.map(|camera| {
-                        crate::level_editor::scene_database::LevelEditorCameraState {
+                        crate::level_editor::scene_edit::LevelEditorCameraState {
                             position: camera.position,
                             yaw: camera.yaw,
                             pitch: camera.pitch,
                         }
                     });
-                    state.scene.database.save_to_file_with_editor_camera(
+                    let world = state.scene.world();
+                    crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(&world,
                         &path,
                         editor_camera,
                         terrain_api.as_ref(),

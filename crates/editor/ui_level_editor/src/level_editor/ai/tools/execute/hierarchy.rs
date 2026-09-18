@@ -24,14 +24,14 @@ pub(super) fn dispatch(
             let state = state_arc.read();
 
             let (child_ids, child_objects) = if let Some(ref parent_id) = parent_id {
-                let ids = state.scene.database.get_children(parent_id);
+                let ids = crate::level_editor::scene_edit::objects::get_children(&state.scene.world(), parent_id);
                 let objects = ids
                     .iter()
-                    .filter_map(|id| state.scene.database.get_object(id))
+                    .filter_map(|id| crate::level_editor::scene_edit::objects::get_object(&state.scene.world(), id))
                     .collect::<Vec<_>>();
                 (ids, objects)
             } else {
-                let objects = state.scene.database.get_root_objects();
+                let objects = crate::level_editor::scene_edit::objects::get_root_objects(&state.scene.world(), );
                 let ids = objects.iter().map(|o| o.id.clone()).collect::<Vec<_>>();
                 (ids, objects)
             };

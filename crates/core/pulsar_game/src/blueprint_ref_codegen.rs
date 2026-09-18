@@ -9,7 +9,8 @@
 //! very calls (drift guard), and a behavior assertion proves the resolved
 //! write lands on the FOUND entity — never the executing instance.
 
-use engine_backend::scene::WorldSceneStore;
+
+use engine_backend::scene::SceneWorldExt;
 use pulsar_scenedb::{Entity, World};
 use serde_json::json;
 
@@ -132,16 +133,16 @@ use pulsar_reflection::RUNTIME_TYPE_REGISTRY;
 
 /// A two-object editor-hydrated-shaped scene: a trigger (the executing
 /// instance's actor) and the lamp it references by display name.
-fn scene() -> (WorldSceneStore, Entity, Entity) {
-    let mut store = WorldSceneStore::new();
+fn scene() -> (pulsar_scenedb::SceneDb, Entity, Entity) {
+    let mut store = engine_backend::scene::new_scene();
     let trigger = store
-        .spawn(Some("trigger".into()), "Trigger", None)
+        .world.spawn_object(engine_backend::scene::SpawnObject::new("Trigger").with_id("trigger"))
         .expect("spawn trigger");
     let lamp = store
-        .spawn(Some("lamp".into()), "Red Lamp", None)
+        .world.spawn_object(engine_backend::scene::SpawnObject::new("Red Lamp").with_id("lamp"))
         .expect("spawn lamp");
-    store.world_mut().insert(trigger, RefProbe { charges: 1 });
-    store.world_mut().insert(lamp, RefProbe { charges: 2 });
+    store.world.insert(trigger, RefProbe { charges: 1 });
+    store.world.insert(lamp, RefProbe { charges: 2 });
     (store, trigger, lamp)
 }
 
@@ -204,16 +205,16 @@ fn sourcegen_twin_writes_the_found_entity_like_the_vm_path() {
 
     // Generated actors receive (_entity, _world) straight from the Actor
     // callback — no VM context involved on this path.
-    let world = store.world_mut();
+    let world = &mut store.world;
     generated_begin_play_twin(trigger, world);
 
     assert_eq!(
-        store.world().get::<RefProbe>(lamp).unwrap().charges,
+        store.world.get::<RefProbe>(lamp).unwrap().charges,
         99,
         "found entity written through the resolved reference"
     );
     assert_eq!(
-        store.world().get::<RefProbe>(trigger).unwrap().charges,
+        store.world.get::<RefProbe>(trigger).unwrap().charges,
         1,
         "executing instance untouched"
     );

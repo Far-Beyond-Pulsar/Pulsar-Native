@@ -1,12 +1,4 @@
-//! Component-instance storage types for the level editor.
-//!
-//! `EditorObjectId`/`ComponentInstance` are the only types still live here --
-//! `SceneObjectMetadata`/`HelioActorHandle`/`HelioObjectId`/`HelioLightId`/
-//! `HelioVirtualObjectId`/`HelioWaterVolumeId` and this module's own
-//! `ObjectType`/`LightType`/`MeshType` (shadow duplicates of the real,
-//! actually-used ones in `scene::mod`) were deleted as confirmed-dead code:
-//! zero callers outside `SceneMetadataDb`'s own now-removed object/
-//! hierarchy surface. See `scene::mod`'s module doc.
+//! Component-instance record types shared by the editor and the level format.
 
 use serde::{Deserialize, Serialize};
 

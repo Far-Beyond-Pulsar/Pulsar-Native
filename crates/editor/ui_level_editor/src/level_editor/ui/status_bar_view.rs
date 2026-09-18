@@ -17,7 +17,7 @@ use rust_i18n::t;
 use ui::dock::PanelEvent;
 use ui_common::StatusBar;
 
-use crate::level_editor::scene_database::ObjectId;
+use crate::level_editor::scene_edit::ObjectId;
 use crate::level_editor::tool_modes::{CameraFrame, ToolModeContext, ToolModeId, ViewportFrame};
 use crate::level_editor::ui::frame_pump::spawn_frame_pump;
 use crate::level_editor::{CameraMode, LevelEditorState, TransformTool};
@@ -48,7 +48,7 @@ struct StatusBarSignature {
 impl StatusBarSignature {
     fn of(state: &LevelEditorState) -> Self {
         Self {
-            store_revision: state.scene.database.store_revision(),
+            store_revision: state.scene.world_revision(),
             selected: state.scene.selected_object(),
             show_grid: state.editor.show_grid,
             camera_mode: state.editor.camera_mode,
@@ -121,17 +121,17 @@ impl Render for StatusBarView {
         self.last_signature = StatusBarSignature::of(&state);
 
         let objects_count = match self.cached_root_count {
-            Some((revision, count)) if revision == state.scene.database.store_revision() => count,
+            Some((revision, count)) if revision == state.scene.world_revision() => count,
             _ => {
-                let count = state.scene.database.root_count();
-                self.cached_root_count = Some((state.scene.database.store_revision(), count));
+                let count = crate::level_editor::scene_edit::objects::root_count(&state.scene.world(), );
+                self.cached_root_count = Some((state.scene.world_revision(), count));
                 count
             }
         };
         let selected_name = state
             .scene
             .selected_object()
-            .and_then(|id| state.scene.database.get_object(&id))
+            .and_then(|id| crate::level_editor::scene_edit::objects::get_object(&state.scene.world(), &id))
             .map(|obj| obj.name.clone())
             .unwrap_or_else(|| t!("LevelEditor.StatusBar.None").to_string());
 

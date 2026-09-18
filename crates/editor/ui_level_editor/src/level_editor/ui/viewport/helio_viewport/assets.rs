@@ -98,7 +98,7 @@ impl HelioViewport {
                 if let Some(id) = add_result.affected_ids.first() {
                     if let Some((class_name, data_field)) = component_class_for_asset(&kind) {
                         if REGISTRY.has_class(class_name) {
-                            state.scene.database.add_component(
+                            crate::level_editor::scene_edit::components::add_component(&mut state.scene.world_mut(), 
                                 id,
                                 class_name.to_string(),
                                 serde_json::json!({ data_field: asset_path }),
@@ -160,7 +160,7 @@ impl HelioViewport {
                 if let Some(id) = add_result.affected_ids.first() {
                     if let Some((class_name, data_field)) = component_class_for_asset(&kind) {
                         if REGISTRY.has_class(class_name) {
-                            state.scene.database.add_component(
+                            crate::level_editor::scene_edit::components::add_component(&mut state.scene.world_mut(), 
                                 id,
                                 class_name.to_string(),
                                 serde_json::json!({ data_field: script_path }),

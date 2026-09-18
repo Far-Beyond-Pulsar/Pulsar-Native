@@ -10,9 +10,9 @@ pub(super) fn dispatch(
     match tool_name {
         "level_editor_query_scene" => {
             let state = state_arc.read();
-            let objects = state.scene.database.get_all_objects();
-            let roots = state.scene.database.get_root_objects();
-            let selected_object_id = state.scene.database.get_selected_object_id();
+            let objects = crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world(), );
+            let roots = crate::level_editor::scene_edit::objects::get_root_objects(&state.scene.world(), );
+            let selected_object_id = crate::level_editor::scene_edit::objects::get_selected_object_id(&state.scene.world(), );
 
             let mut counts_by_type = std::collections::BTreeMap::new();
             for object in &objects {
@@ -36,7 +36,7 @@ pub(super) fn dispatch(
         }
         "level_editor_query_objects" => {
             let state = state_arc.read();
-            let objects = state.scene.database.get_all_objects();
+            let objects = crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world(), );
             let filter = tool_args.get("filter");
             let offset = tool_args
                 .get("offset")
@@ -79,7 +79,7 @@ pub(super) fn dispatch(
                 })?;
 
             let state = state_arc.read();
-            let object = state.scene.database.get_object(&object_id.to_string());
+            let object = crate::level_editor::scene_edit::objects::get_object(&state.scene.world(), &object_id.to_string());
 
             Ok(json!({
                 "ok": true,
@@ -92,8 +92,8 @@ pub(super) fn dispatch(
         }
         "level_editor_query_selection" => {
             let state = state_arc.read();
-            let selected_id = state.scene.database.get_selected_object_id();
-            let selected_object = state.scene.database.get_selected_object();
+            let selected_id = crate::level_editor::scene_edit::objects::get_selected_object_id(&state.scene.world(), );
+            let selected_object = crate::level_editor::scene_edit::objects::get_selected_object(&state.scene.world(), );
 
             Ok(json!({
                 "ok": true,

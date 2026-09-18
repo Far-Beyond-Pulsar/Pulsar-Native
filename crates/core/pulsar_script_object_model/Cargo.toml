@@ -6,6 +6,7 @@ description = "Script-facing object model: ActorRef/ComponentRef handles that ad
 
 [dependencies]
 pulsar_scenedb        = { workspace = true }
+pulsar_scene_model    = { workspace = true }
 pulsar_reflection     = { workspace = true }
 pulsar_world_registry = { workspace = true }
 inventory             = { workspace = true }

@@ -18,7 +18,7 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-use engine_backend::scene::{ensure_gpu_mirror, sync_static_mesh_rows, RuntimeLevel, WorldSceneStore};
+use engine_backend::scene::{ensure_gpu_mirror, sync_static_mesh_rows, RuntimeLevel};
 use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
     RendererConfig,
@@ -55,7 +55,7 @@ impl GameWindow {
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
         desc: &WindowDescriptor,
-        scene_store: &Arc<RwLock<WorldSceneStore>>,
+        scene_store: &engine_backend::scene::SharedScene,
     ) -> Self {
         let surface = instance
             .create_surface(window.clone())
@@ -326,7 +326,7 @@ pub struct PulsarApp {
     /// of the TickLoop, hydrated with the requested level, and read by every
     /// window's per-frame rebuild. Gameplay mutations land here too, so an
     /// actor-spawned entity renders on the next frame.
-    scene_store: Arc<RwLock<WorldSceneStore>>,
+    scene_store: engine_backend::scene::SharedScene,
 
     /// Which window currently owns the cursor (receives mouse-look).
     focused_window: Option<WindowHandle>,
@@ -458,7 +458,7 @@ impl PulsarApp {
             engine_state::set_project_path(self.project_root.display().to_string());
             let load_result = {
                 let mut store = self.scene_store.write();
-                RuntimeLevel::load_into(path, &mut store)
+                RuntimeLevel::load_into(path, &mut store.world)
             };
             match load_result {
                 Ok(extras) => {
@@ -693,7 +693,7 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 {
                     let mut store = self.scene_store.write();
                     sync_static_mesh_rows(&mut store);
-                    store.scene_db_mut().step();
+                    store.step();
                 }
 
                 // Camera precedence: a gameplay-pushed bridge camera wins,

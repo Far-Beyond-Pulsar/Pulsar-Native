@@ -14,7 +14,7 @@ use super::pie::{begin_pie, end_pie};
 use super::LevelEditorPanel;
 
 use crate::ai_sessions;
-use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
+use crate::level_editor::scene_edit::{ObjectType, SceneObjectData, Transform};
 use crate::level_editor::ui::actions::*;
 use crate::level_editor::ui::toolbar;
 use crate::level_editor::{request_thumbnail_capture, CameraMode, TransformTool};

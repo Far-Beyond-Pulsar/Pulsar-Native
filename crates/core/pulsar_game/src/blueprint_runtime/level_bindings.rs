@@ -50,6 +50,7 @@
 //! Author new bindings here; deprecating the old component upstream is
 //! tracked for the editor phase (F).
 
+use engine_backend::scene::SceneWorldExt;
 use super::{BlueprintDispatcher, ExecutorError};
 use pulsar_scene::format::BlueprintBindings;
 use std::collections::HashMap;
@@ -175,7 +176,7 @@ pub struct BindingFailure {
 /// (the dispatcher keys instances by id) — call once per level load.
 pub fn apply_blueprint_bindings(
     dispatcher: &mut BlueprintDispatcher,
-    store: &engine_backend::scene::WorldSceneStore,
+    store: &pulsar_scenedb::SceneDb,
     project_root: &Path,
     bindings: &BlueprintBindings,
 ) -> ApplyReport {
@@ -217,13 +218,13 @@ pub fn apply_blueprint_bindings(
 /// binding (its instance id feeds [`unbind_object_class`]).
 pub fn bind_object_class(
     dispatcher: &mut BlueprintDispatcher,
-    store: &engine_backend::scene::WorldSceneStore,
+    store: &pulsar_scenedb::SceneDb,
     project_root: &Path,
     stable_id: &str,
     class_name: &str,
     overrides: HashMap<String, JsonValue>,
 ) -> Result<AppliedBinding, BindingError> {
-    let Some(entity) = store.entity_for(stable_id) else {
+    let Some(entity) = store.world.entity_for(stable_id) else {
         return Err(BindingError::UnknownObject {
             stable_id: stable_id.to_string(),
         });
@@ -313,7 +314,7 @@ mod tests {
     #[test]
     fn unknown_stable_ids_fail_per_binding() {
         let mut dispatcher = empty_dispatcher();
-        let store = engine_backend::scene::WorldSceneStore::new();
+        let store = engine_backend::scene::new_scene();
         let error = bind_object_class(
             &mut dispatcher,
             &store,
@@ -332,8 +333,8 @@ mod tests {
     #[test]
     fn missing_bytecode_is_typed_not_an_io_surprise() {
         let mut dispatcher = empty_dispatcher();
-        let mut store = engine_backend::scene::WorldSceneStore::new();
-        store.spawn(Some("obj".into()), "Obj", None).expect("spawn");
+        let mut store = engine_backend::scene::new_scene();
+        store.world.spawn_object(engine_backend::scene::SpawnObject::new("Obj").with_id("obj")).expect("spawn");
         let error = bind_object_class(
             &mut dispatcher,
             &store,

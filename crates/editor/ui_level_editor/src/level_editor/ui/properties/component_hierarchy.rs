@@ -9,8 +9,8 @@
 //! - **Shift+Drag** - Remove parent (un-nest to root level)
 //! - **Click chevron** - Expand/collapse components with children
 
-use crate::level_editor::scene_database::SceneDatabase;
 use crate::level_editor::state::LevelEditorState;
+use engine_backend::scene::SharedScene;
 use engine_backend::ComponentInstance;
 use gpui::{prelude::*, *};
 use std::sync::Arc;
@@ -54,7 +54,7 @@ struct ComponentItem {
     index: usize,
     instance: ComponentInstance,
     object_id: String,
-    scene_db: SceneDatabase,
+    scene_db: SharedScene,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     selected: bool,
     children_indices: Vec<usize>,
@@ -138,7 +138,16 @@ impl HierarchyItem for ComponentItem {
             .on_click(move |_, _, cx| {
                 cx.stop_propagation();
                 let mut state = toggle_state.write();
-                if scene_db.set_component_enabled(&toggle_object_id, index, !enabled) {
+                let changed = {
+                    let mut world = scene_db.write();
+                    crate::level_editor::scene_edit::components::set_component_enabled(
+                        &mut world.world,
+                        &toggle_object_id,
+                        index,
+                        !enabled,
+                    )
+                };
+                if changed {
                     state.scene.revision = state.scene.revision.saturating_add(1);
                     state.scene.has_unsaved_changes = true;
                 }
@@ -164,10 +173,15 @@ impl HierarchyItem for ComponentItem {
 
         menu.menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
             let _ = app;
-            if duplicate_scene_db
-                .duplicate_component(&duplicate_object_id, duplicate_index)
-                .is_some()
-            {
+            let duplicated = {
+                let mut world = duplicate_scene_db.write();
+                crate::level_editor::scene_edit::components::duplicate_component(
+                    &mut world.world,
+                    &duplicate_object_id,
+                    duplicate_index,
+                )
+            };
+            if duplicated.is_some() {
                 let mut state = duplicate_state.write();
                 state.scene.revision = state.scene.revision.saturating_add(1);
                 state.scene.has_unsaved_changes = true;
@@ -175,7 +189,14 @@ impl HierarchyItem for ComponentItem {
         })
         .menu_handler_with_icon("Delete", IconName::Trash, move |_, app| {
             let _ = app;
-            delete_scene_db.remove_component(&delete_object_id, delete_index);
+            {
+                let mut world = delete_scene_db.write();
+                crate::level_editor::scene_edit::components::remove_component(
+                    &mut world.world,
+                    &delete_object_id,
+                    delete_index,
+                );
+            }
             let mut state = delete_state.write();
             state.scene.revision = state.scene.revision.saturating_add(1);
             state.scene.has_unsaved_changes = true;
@@ -188,11 +209,11 @@ impl HierarchyItem for ComponentItem {
 /// Component Hierarchy - Shows all components in a tree structure
 pub struct ComponentHierarchyPanel {
     object_id: String,
-    scene_db: SceneDatabase,
+    scene_db: SharedScene,
 }
 
 impl ComponentHierarchyPanel {
-    pub fn new(object_id: String, scene_db: SceneDatabase) -> Self {
+    pub fn new(object_id: String, scene_db: SharedScene) -> Self {
         Self {
             object_id,
             scene_db,
@@ -304,7 +325,9 @@ impl ComponentHierarchyPanel {
                         if payload.object_id != object_id {
                             return;
                         }
-                        scene_db_for_root_drop.set_component_parent(
+                        let mut world = scene_db_for_root_drop.write();
+                        crate::level_editor::scene_edit::components::set_component_parent(
+                            &mut world.world,
                             &object_id,
                             payload.component_index,
                             None,
@@ -368,11 +391,31 @@ impl ComponentHierarchyPanel {
                     }
 
                     if modifiers.shift {
-                        scene_db.set_component_parent(&object_id, from_idx, None);
+                        let mut world = scene_db.write();
+                        crate::level_editor::scene_edit::components::set_component_parent(
+                            &mut world.world,
+                            &object_id,
+                            from_idx,
+                            None,
+                        );
                     } else if modifiers.alt {
-                        scene_db.reorder_component(&object_id, from_idx, to_idx);
+                        let mut world = scene_db.write();
+                        crate::level_editor::scene_edit::components::reorder_component(
+                            &mut world.world,
+                            &object_id,
+                            from_idx,
+                            to_idx,
+                        );
                     } else {
-                        scene_db.set_component_parent(&object_id, from_idx, Some(to_idx));
+                        {
+                            let mut world = scene_db.write();
+                            crate::level_editor::scene_edit::components::set_component_parent(
+                                &mut world.world,
+                                &object_id,
+                                from_idx,
+                                Some(to_idx),
+                            );
+                        }
                         state_arc_for_nest
                             .write()
                             .hierarchy

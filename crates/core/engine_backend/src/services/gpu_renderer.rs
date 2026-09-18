@@ -4,7 +4,6 @@
 //! wgpu resources on the first `render_frame_to_surface` call, once the
 //! WgpuSurface is available.
 
-use crate::scene::WorldSceneStore;
 use crate::subsystems::render::{
     EditorCameraState, HelioRenderer, RenderMetrics, RenderSpikeLogConfig,
 };
@@ -14,7 +13,7 @@ use std::time::Instant;
 
 /// Builder for `GpuRenderer`.
 pub struct GpuRendererBuilder {
-    scene_store: Option<Arc<RwLock<WorldSceneStore>>>,
+    scene_store: Option<crate::scene::SharedScene>,
     #[cfg(feature = "physics")]
     _physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
 }
@@ -28,7 +27,7 @@ impl GpuRendererBuilder {
         }
     }
 
-    pub fn scene_db(mut self, store: Arc<RwLock<WorldSceneStore>>) -> Self {
+    pub fn scene_db(mut self, store: crate::scene::SharedScene) -> Self {
         self.scene_store = Some(store);
         self
     }
@@ -42,7 +41,7 @@ impl GpuRendererBuilder {
     pub fn build(self) -> GpuRenderer {
         let scene_store = self
             .scene_store
-            .unwrap_or_else(|| Arc::new(RwLock::new(WorldSceneStore::new())));
+            .unwrap_or_else(|| Arc::new(RwLock::new(crate::scene::new_scene())));
         GpuRenderer {
             helio_renderer: Some(HelioRenderer::new(scene_store)),
             frame_count: 0,
@@ -310,7 +309,7 @@ impl GpuRenderer {
     }
 
     /// Force the next scene sync to be a full (non-delta) pass. Callers must
-    /// call this after replacing `WorldSceneStore`'s contents wholesale
+    /// call this after replacing `pulsar_scenedb::SceneDb`'s contents wholesale
     /// rather than through its normal mutators -- undo/redo
     /// (Pulsar-Native#554) being the motivating case. See
     /// `HelioRenderer::force_full_resync`'s doc for why this can't be

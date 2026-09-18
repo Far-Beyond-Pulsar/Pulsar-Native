@@ -31,7 +31,7 @@ use ui::{notification::Notification, ContextModal as _};
 use super::actions::*;
 use super::{StatusBarView, ToolbarView, ViewportPanel};
 use crate::ai_sessions;
-use crate::level_editor::scene_database::LevelEditorCameraState;
+use crate::level_editor::scene_edit::LevelEditorCameraState;
 use crate::level_editor::{LevelEditorState, TransformTool};
 use engine_backend::subsystems::render::{EditorCameraState, HelioEditorMailbox};
 use plugin_manager;
@@ -321,19 +321,25 @@ impl Render for LevelEditorPanel {
                 match event.keystroke.key.as_ref() {
                     "up" => {
                         // Move selected object up in hierarchy
-                        if let Some(id) = this.shared_state.read().scene.selected_object() {
-                            this.shared_state.read().scene.database.move_object_up(&id);
+                        let selected = this.shared_state.read().scene.selected_object();
+                        if let Some(id) = selected {
+                            let mut state = this.shared_state.write();
+                            crate::level_editor::scene_edit::objects::move_object_up(
+                                &mut state.scene.world_mut(),
+                                &id,
+                            );
                             cx.notify();
                         }
                     }
                     "down" => {
                         // Move selected object down in hierarchy
-                        if let Some(id) = this.shared_state.read().scene.selected_object() {
-                            this.shared_state
-                                .read()
-                                .scene
-                                .database
-                                .move_object_down(&id);
+                        let selected = this.shared_state.read().scene.selected_object();
+                        if let Some(id) = selected {
+                            let mut state = this.shared_state.write();
+                            crate::level_editor::scene_edit::objects::move_object_down(
+                                &mut state.scene.world_mut(),
+                                &id,
+                            );
                             cx.notify();
                         }
                     }

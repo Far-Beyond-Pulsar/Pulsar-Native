@@ -3,7 +3,8 @@
 //! This module provides a trait-based system for declaratively mapping UI input fields
 //! to scene data fields with automatic bidirectional synchronization and undo/redo support.
 
-use crate::level_editor::scene_database::{ObjectId, SceneDatabase, SceneObjectData};
+use crate::level_editor::scene_edit::{ObjectId, SceneObjectData};
+use engine_backend::scene::SharedScene;
 use std::sync::Arc;
 
 /// Core trait for field bindings that connect UI inputs to scene data
@@ -18,10 +19,10 @@ pub trait FieldBinding: 'static + Send + Sync {
     type Value: Clone + PartialEq + Send + 'static;
 
     /// Get the current value from the scene database for the given object
-    fn get(&self, object_id: &ObjectId, db: &SceneDatabase) -> Option<Self::Value>;
+    fn get(&self, object_id: &ObjectId, db: &SharedScene) -> Option<Self::Value>;
 
     /// Set a new value in the scene database (automatically records to undo/redo history)
-    fn set(&self, object_id: &ObjectId, value: Self::Value, db: &SceneDatabase) -> bool;
+    fn set(&self, object_id: &ObjectId, value: Self::Value, db: &SharedScene) -> bool;
 
     /// Convert value to string for display in UI
     fn to_string(&self, value: &Self::Value) -> String;
@@ -43,15 +44,15 @@ pub trait FieldBinding: 'static + Send + Sync {
 pub struct F32FieldBinding {
     getter: Option<Arc<dyn Fn(&SceneObjectData) -> f32 + Send + Sync>>,
     setter: Option<Arc<dyn Fn(&mut SceneObjectData, f32) + Send + Sync>>,
-    getter_db: Option<Arc<dyn Fn(&ObjectId, &SceneDatabase) -> Option<f32> + Send + Sync>>,
-    setter_db: Option<Arc<dyn Fn(&ObjectId, f32, &SceneDatabase) -> bool + Send + Sync>>,
+    getter_db: Option<Arc<dyn Fn(&ObjectId, &SharedScene) -> Option<f32> + Send + Sync>>,
+    setter_db: Option<Arc<dyn Fn(&ObjectId, f32, &SharedScene) -> bool + Send + Sync>>,
 }
 
 impl F32FieldBinding {
     pub fn new_with_db<G, S>(getter: G, setter: S) -> Self
     where
-        G: Fn(&ObjectId, &SceneDatabase) -> Option<f32> + Send + Sync + 'static,
-        S: Fn(&ObjectId, f32, &SceneDatabase) -> bool + Send + Sync + 'static,
+        G: Fn(&ObjectId, &SharedScene) -> Option<f32> + Send + Sync + 'static,
+        S: Fn(&ObjectId, f32, &SharedScene) -> bool + Send + Sync + 'static,
     {
         Self {
             getter: None,
@@ -65,24 +66,29 @@ impl F32FieldBinding {
 impl FieldBinding for F32FieldBinding {
     type Value = f32;
 
-    fn get(&self, object_id: &ObjectId, db: &SceneDatabase) -> Option<f32> {
+    fn get(&self, object_id: &ObjectId, db: &SharedScene) -> Option<f32> {
         if let Some(getter_db) = &self.getter_db {
             return getter_db(object_id, db);
         }
 
         let getter = self.getter.as_ref()?;
-        db.get_object(object_id).map(|obj| getter(&obj))
+        let world = db.read();
+        crate::level_editor::scene_edit::objects::get_object(&world.world, object_id)
+            .map(|obj| getter(&obj))
     }
 
-    fn set(&self, object_id: &ObjectId, value: f32, db: &SceneDatabase) -> bool {
+    fn set(&self, object_id: &ObjectId, value: f32, db: &SharedScene) -> bool {
         if let Some(setter_db) = &self.setter_db {
             return setter_db(object_id, value, db);
         }
 
-        if let Some(mut obj) = db.get_object(object_id) {
+        let mut world = db.write();
+        if let Some(mut obj) =
+            crate::level_editor::scene_edit::objects::get_object(&world.world, object_id)
+        {
             if let Some(setter) = &self.setter {
                 setter(&mut obj, value);
-                return db.update_object(obj); // Automatically records to undo/redo
+                return crate::level_editor::scene_edit::objects::update_object(&mut world.world, obj);
             }
         }
         false
@@ -107,16 +113,16 @@ impl FieldBinding for F32FieldBinding {
 pub struct StringFieldBinding {
     getter: Option<Arc<dyn Fn(&SceneObjectData) -> String + Send + Sync>>,
     setter: Option<Arc<dyn Fn(&mut SceneObjectData, String) + Send + Sync>>,
-    getter_db: Option<Arc<dyn Fn(&ObjectId, &SceneDatabase) -> Option<String> + Send + Sync>>,
-    setter_db: Option<Arc<dyn Fn(&ObjectId, String, &SceneDatabase) -> bool + Send + Sync>>,
+    getter_db: Option<Arc<dyn Fn(&ObjectId, &SharedScene) -> Option<String> + Send + Sync>>,
+    setter_db: Option<Arc<dyn Fn(&ObjectId, String, &SharedScene) -> bool + Send + Sync>>,
 }
 
 impl StringFieldBinding {
     /// Same shape as `F32FieldBinding::new_with_db` -- see that method's doc.
     pub fn new_with_db<G, S>(getter: G, setter: S) -> Self
     where
-        G: Fn(&ObjectId, &SceneDatabase) -> Option<String> + Send + Sync + 'static,
-        S: Fn(&ObjectId, String, &SceneDatabase) -> bool + Send + Sync + 'static,
+        G: Fn(&ObjectId, &SharedScene) -> Option<String> + Send + Sync + 'static,
+        S: Fn(&ObjectId, String, &SharedScene) -> bool + Send + Sync + 'static,
     {
         Self {
             getter: None,
@@ -130,22 +136,27 @@ impl StringFieldBinding {
 impl FieldBinding for StringFieldBinding {
     type Value = String;
 
-    fn get(&self, object_id: &ObjectId, db: &SceneDatabase) -> Option<String> {
+    fn get(&self, object_id: &ObjectId, db: &SharedScene) -> Option<String> {
         if let Some(getter_db) = &self.getter_db {
             return getter_db(object_id, db);
         }
         let getter = self.getter.as_ref()?;
-        db.get_object(object_id).map(|obj| getter(&obj))
+        let world = db.read();
+        crate::level_editor::scene_edit::objects::get_object(&world.world, object_id)
+            .map(|obj| getter(&obj))
     }
 
-    fn set(&self, object_id: &ObjectId, value: String, db: &SceneDatabase) -> bool {
+    fn set(&self, object_id: &ObjectId, value: String, db: &SharedScene) -> bool {
         if let Some(setter_db) = &self.setter_db {
             return setter_db(object_id, value, db);
         }
-        if let Some(mut obj) = db.get_object(object_id) {
+        let mut world = db.write();
+        if let Some(mut obj) =
+            crate::level_editor::scene_edit::objects::get_object(&world.world, object_id)
+        {
             if let Some(setter) = &self.setter {
                 setter(&mut obj, value);
-                return db.update_object(obj);
+                return crate::level_editor::scene_edit::objects::update_object(&mut world.world, obj);
             }
         }
         false
@@ -168,16 +179,16 @@ impl FieldBinding for StringFieldBinding {
 pub struct BoolFieldBinding {
     getter: Option<Arc<dyn Fn(&SceneObjectData) -> bool + Send + Sync>>,
     setter: Option<Arc<dyn Fn(&mut SceneObjectData, bool) + Send + Sync>>,
-    getter_db: Option<Arc<dyn Fn(&ObjectId, &SceneDatabase) -> Option<bool> + Send + Sync>>,
-    setter_db: Option<Arc<dyn Fn(&ObjectId, bool, &SceneDatabase) -> bool + Send + Sync>>,
+    getter_db: Option<Arc<dyn Fn(&ObjectId, &SharedScene) -> Option<bool> + Send + Sync>>,
+    setter_db: Option<Arc<dyn Fn(&ObjectId, bool, &SharedScene) -> bool + Send + Sync>>,
 }
 
 impl BoolFieldBinding {
     /// Same shape as `F32FieldBinding::new_with_db` -- see that method's doc.
     pub fn new_with_db<G, S>(getter: G, setter: S) -> Self
     where
-        G: Fn(&ObjectId, &SceneDatabase) -> Option<bool> + Send + Sync + 'static,
-        S: Fn(&ObjectId, bool, &SceneDatabase) -> bool + Send + Sync + 'static,
+        G: Fn(&ObjectId, &SharedScene) -> Option<bool> + Send + Sync + 'static,
+        S: Fn(&ObjectId, bool, &SharedScene) -> bool + Send + Sync + 'static,
     {
         Self {
             getter: None,
@@ -191,22 +202,27 @@ impl BoolFieldBinding {
 impl FieldBinding for BoolFieldBinding {
     type Value = bool;
 
-    fn get(&self, object_id: &ObjectId, db: &SceneDatabase) -> Option<bool> {
+    fn get(&self, object_id: &ObjectId, db: &SharedScene) -> Option<bool> {
         if let Some(getter_db) = &self.getter_db {
             return getter_db(object_id, db);
         }
         let getter = self.getter.as_ref()?;
-        db.get_object(object_id).map(|obj| getter(&obj))
+        let world = db.read();
+        crate::level_editor::scene_edit::objects::get_object(&world.world, object_id)
+            .map(|obj| getter(&obj))
     }
 
-    fn set(&self, object_id: &ObjectId, value: bool, db: &SceneDatabase) -> bool {
+    fn set(&self, object_id: &ObjectId, value: bool, db: &SharedScene) -> bool {
         if let Some(setter_db) = &self.setter_db {
             return setter_db(object_id, value, db);
         }
-        if let Some(mut obj) = db.get_object(object_id) {
+        let mut world = db.write();
+        if let Some(mut obj) =
+            crate::level_editor::scene_edit::objects::get_object(&world.world, object_id)
+        {
             if let Some(setter) = &self.setter {
                 setter(&mut obj, value);
-                return db.update_object(obj);
+                return crate::level_editor::scene_edit::objects::update_object(&mut world.world, obj);
             }
         }
         false

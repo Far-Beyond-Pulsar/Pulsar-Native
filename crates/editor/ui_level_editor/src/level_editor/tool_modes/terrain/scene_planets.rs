@@ -15,10 +15,11 @@
 //! so that when the generic dispatch returns, both paths address the same
 //! planet instead of registering a duplicate.
 
+use engine_backend::scene::SharedScene;
 use engine_backend::services::terrain_edit::{PlanetDefinition, TerrainEditApi};
 use helio_component::PlanetTerrainComponent;
 
-use crate::level_editor::core::scene_database::SceneDatabase;
+use crate::level_editor::scene_edit;
 
 /// The component class this module looks for.
 const PLANET_TERRAIN_CLASS: &str = "PlanetTerrainComponent";
@@ -30,10 +31,14 @@ const PLANET_TERRAIN_CLASS: &str = "PlanetTerrainComponent";
 /// fit its hierarchy root) are logged and skipped rather than failing the whole
 /// sync -- one bad component must not take the rest of the scene's terrain
 /// down with it.
-pub fn collect_scene_planets(database: &SceneDatabase) -> Vec<(String, PlanetDefinition)> {
+pub fn collect_scene_planets(scene: &SharedScene) -> Vec<(String, PlanetDefinition)> {
+    let world = scene.read();
     let mut planets = Vec::new();
-    for object in database.get_all_objects() {
-        for (index, instance) in database.get_components(&object.id).into_iter().enumerate() {
+    for object in scene_edit::objects::get_all_objects(&world.world) {
+        for (index, instance) in scene_edit::components::get_components(&world.world, &object.id)
+            .into_iter()
+            .enumerate()
+        {
             if !instance.enabled || instance.class_name != PLANET_TERRAIN_CLASS {
                 continue;
             }
@@ -70,6 +75,6 @@ pub fn collect_scene_planets(database: &SceneDatabase) -> Vec<(String, PlanetDef
 /// Latest-wins and idempotent: the render thread upserts what it is given and
 /// retires any source key that has disappeared, so calling this whenever the
 /// scene revision changes is enough to keep the runtime in step.
-pub fn sync_scene_planets(database: &SceneDatabase, api: &TerrainEditApi) {
-    api.sync_scene_planets(collect_scene_planets(database));
+pub fn sync_scene_planets(scene: &SharedScene, api: &TerrainEditApi) {
+    api.sync_scene_planets(collect_scene_planets(scene));
 }

@@ -130,7 +130,7 @@ impl PropertiesPanelWrapper {
         let (store_revision, selected_object_id) = {
             let state = self.state.read();
             (
-                state.scene.database.store_revision(),
+                state.scene.world_revision(),
                 state.scene.selected_object(),
             )
         };
@@ -148,7 +148,7 @@ impl PropertiesPanelWrapper {
             if let Some(ref object_id) = selected_object_id {
                 let scene_db = {
                     let state = self.state.read();
-                    state.scene.database.clone()
+                    state.scene.shared_scene()
                 };
                 let object_id_clone = object_id.clone();
 
@@ -204,7 +204,7 @@ impl PropertiesPanelWrapper {
             let components_touched = match &self.current_object_id {
                 Some(id) => {
                     let state = self.state.read();
-                    state.scene.database.has_property_changes_for(id)
+                    crate::level_editor::scene_edit::changes::has_property_changes_for(id)
                 }
                 None => false,
             };
@@ -256,7 +256,11 @@ impl PropertiesPanelWrapper {
         use crate::level_editor::commands::{execute_command, SceneCommand};
         let selected = self.state.read().scene.selected_object();
         if let Some(object_id) = selected {
-            let obj_opt = self.state.read().scene.database.get_object(&object_id);
+            let obj_opt = {
+                let state = self.state.read();
+                let world = state.scene.world();
+                crate::level_editor::scene_edit::objects::get_object(&world, &object_id)
+            };
             if let Some(mut obj) = obj_opt {
                 match property_path {
                     "position.x" => obj.transform.position[0] = value,

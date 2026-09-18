@@ -18,7 +18,7 @@ pub(super) fn dispatch(
             let filter = tool_args.get("filter");
 
             let mut state = state_arc.write();
-            let objects = state.scene.database.get_all_objects();
+            let objects = crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world(), );
             let mut updated_ids = Vec::new();
             let mut matched_count = 0usize;
 
@@ -101,7 +101,7 @@ pub(super) fn dispatch(
             let filter = tool_args.get("filter");
 
             let mut state = state_arc.write();
-            let objects = state.scene.database.get_all_objects();
+            let objects = crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world(), );
             let delete_ids = objects
                 .iter()
                 .filter(|object| object_matches_filter(object, filter))

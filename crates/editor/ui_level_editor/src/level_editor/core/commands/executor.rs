@@ -37,7 +37,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
         let state = state_ref;
         match cmd {
             SceneCommand::AddObject { data, parent_id } => {
-                let id = state.scene.database.add_object(data, parent_id);
+                let id = crate::level_editor::scene_edit::objects::add_object(&mut state.scene.world_mut(), data, parent_id);
                 if id.is_empty() {
                     return CommandResult::noop("Object could not be added");
                 }
@@ -46,10 +46,10 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             }
 
             SceneCommand::RemoveObject { ref id } => {
-                let removed = state.scene.database.remove_object(id);
+                let removed = crate::level_editor::scene_edit::objects::remove_object(&mut state.scene.world_mut(), id);
                 if removed {
-                    if state.scene.database.get_selected_object_id().as_deref() == Some(id) {
-                        state.scene.database.select_object(None);
+                    if crate::level_editor::scene_edit::objects::get_selected_object_id(&state.scene.world(), ).as_deref() == Some(id) {
+                        crate::level_editor::scene_edit::objects::select_object(&mut state.scene.world_mut(), None);
                     }
                     state.scene.bump_revision(true);
                     CommandResult::ok(vec![id.clone()])
@@ -60,7 +60,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
 
             SceneCommand::UpdateObject { data } => {
                 let id = data.id.clone();
-                if state.scene.database.update_object(data) {
+                if crate::level_editor::scene_edit::objects::update_object(&mut state.scene.world_mut(), data) {
                     state.scene.bump_revision(true);
                     CommandResult::ok(vec![id])
                 } else {
@@ -72,10 +72,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 ref id,
                 ref new_parent_id,
             } => {
-                let moved = state
-                    .scene
-                    .database
-                    .reparent_object(id, new_parent_id.clone());
+                let moved = crate::level_editor::scene_edit::objects::reparent_object(&mut state.scene.world_mut(), id, new_parent_id.clone());
                 if moved {
                     state.scene.bump_revision(true);
                     CommandResult::ok(vec![id.clone()])
@@ -89,23 +86,20 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 count,
                 position_offset,
             } => {
-                let src_pos = state
-                    .scene
-                    .database
-                    .get_object(source_id)
+                let src_pos = crate::level_editor::scene_edit::objects::get_object(&state.scene.world(), source_id)
                     .map(|o| o.transform.position);
                 let mut created = Vec::new();
                 for i in 0..count {
-                    if let Some(new_id) = state.scene.database.duplicate_object(source_id) {
+                    if let Some(new_id) = crate::level_editor::scene_edit::objects::duplicate_object(&mut state.scene.world_mut(), source_id) {
                         if let (Some(off), Some(src)) = (position_offset, src_pos) {
                             let n = (i + 1) as f32;
-                            if let Some(mut copy) = state.scene.database.get_object(&new_id) {
+                            if let Some(mut copy) = crate::level_editor::scene_edit::objects::get_object(&state.scene.world(), &new_id) {
                                 copy.transform.position = [
                                     src[0] + off[0] * n,
                                     src[1] + off[1] * n,
                                     src[2] + off[2] * n,
                                 ];
-                                state.scene.database.update_object(copy);
+                                crate::level_editor::scene_edit::objects::update_object(&mut state.scene.world_mut(), copy);
                             }
                         }
                         created.push(new_id);
@@ -122,7 +116,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             }
 
             SceneCommand::SelectObject { id } => {
-                state.scene.database.select_object(id.clone());
+                crate::level_editor::scene_edit::objects::select_object(&mut state.scene.world_mut(), id.as_deref());
                 state.scene.bump_revision(false);
                 CommandResult::ok(id.into_iter().collect())
             }
@@ -139,10 +133,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 // re-serialize/re-hydrate of every component on the object --
                 // on every keystroke of a position/rotation/scale field, for a
                 // change that has nothing to do with component data at all.
-                if state
-                    .scene
-                    .database
-                    .set_transform(id, position, rotation, scale)
+                if crate::level_editor::scene_edit::objects::set_transform(&mut state.scene.world_mut(), id, position, rotation, scale)
                 {
                     state.scene.bump_revision(true);
                     CommandResult::ok(vec![id.clone()])
@@ -152,7 +143,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             }
 
             SceneCommand::SetName { ref id, name } => {
-                if state.scene.database.set_name(id, name) {
+                if crate::level_editor::scene_edit::objects::set_name(&mut state.scene.world_mut(), id, name) {
                     state.scene.bump_revision(true);
                     CommandResult::ok(vec![id.clone()])
                 } else {
@@ -167,10 +158,10 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             } => {
                 let mut changed = false;
                 if let Some(v) = visible {
-                    changed |= state.scene.database.set_visible(id, v);
+                    changed |= crate::level_editor::scene_edit::objects::set_visible(&mut state.scene.world_mut(), id, v);
                 }
                 if let Some(l) = locked {
-                    changed |= state.scene.database.set_locked(id, l);
+                    changed |= crate::level_editor::scene_edit::objects::set_locked(&mut state.scene.world_mut(), id, l);
                 }
                 if changed {
                     state.scene.bump_revision(true);
@@ -200,13 +191,14 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 // `MaterialOverrideComponent`) -- is handled inside as an
                 // indexed metadata_db JSON write, so each duplicate keeps its
                 // own field values instead of every edit landing in instance 0.
-                match state.scene.database.update_live_component_property(
+                let update_result = crate::level_editor::scene_edit::components::update_live_component_property(&mut state.scene.world_mut(), 
                     id,
                     class_name,
                     component_index,
                     prop_name,
                     value,
-                ) {
+                );
+                match update_result {
                     Ok(()) => {
                         state.scene.bump_revision(true);
                         CommandResult::ok(vec![id.clone()])
@@ -216,7 +208,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                             .serialize_json_for_any(value.as_ref())
                         {
                             Ok(value_json) => {
-                                state.scene.database.update_component_property(
+                                crate::level_editor::scene_edit::components::update_component_property(&mut state.scene.world_mut(), 
                                     id, class_name, prop_name, value_json,
                                 );
                                 state.scene.bump_revision(true);

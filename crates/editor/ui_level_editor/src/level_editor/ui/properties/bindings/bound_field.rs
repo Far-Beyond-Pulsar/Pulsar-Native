@@ -15,7 +15,7 @@ use ui::{
 };
 
 use super::field_bindings::{BoolFieldBinding, F32FieldBinding, FieldBinding, StringFieldBinding};
-use crate::level_editor::scene_database::SceneDatabase;
+use engine_backend::scene::SharedScene;
 
 // ============================================================================
 // F32 Bound Field - For numeric fields
@@ -27,7 +27,7 @@ pub struct F32BoundField {
     pub input: Entity<InputState>,
     pub label: String,
     object_id: String,
-    scene_db: SceneDatabase,
+    scene_db: SharedScene,
     _subscription: Subscription,
     _step_subscription: Subscription,
 }
@@ -37,7 +37,7 @@ impl F32BoundField {
         binding: F32FieldBinding,
         label: impl Into<String>,
         object_id: String,
-        scene_db: SceneDatabase,
+        scene_db: SharedScene,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -186,7 +186,7 @@ pub struct StringBoundField {
     pub input: Entity<InputState>,
     pub label: String,
     object_id: String,
-    scene_db: SceneDatabase,
+    scene_db: SharedScene,
     _subscription: Subscription,
 }
 
@@ -195,7 +195,7 @@ impl StringBoundField {
         binding: StringFieldBinding,
         label: impl Into<String>,
         object_id: String,
-        scene_db: SceneDatabase,
+        scene_db: SharedScene,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -298,7 +298,7 @@ pub struct BoolBoundField {
     binding: Arc<BoolFieldBinding>,
     label: String,
     object_id: String,
-    scene_db: SceneDatabase,
+    scene_db: SharedScene,
     checked: bool,
 }
 
@@ -307,7 +307,7 @@ impl BoolBoundField {
         binding: BoolFieldBinding,
         label: impl Into<String>,
         object_id: String,
-        scene_db: SceneDatabase,
+        scene_db: SharedScene,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {

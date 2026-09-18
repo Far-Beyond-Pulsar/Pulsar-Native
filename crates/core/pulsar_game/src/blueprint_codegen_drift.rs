@@ -80,7 +80,7 @@ pub(crate) mod reference_actor {
         {
             let mut store = game.scene_store.write();
             game.actors
-                .register(DriftProbeReference::default(), store.world_mut());
+                .register(DriftProbeReference::default(), &mut store.world);
         }
         // Must complete without panicking.
         game.tick_once();

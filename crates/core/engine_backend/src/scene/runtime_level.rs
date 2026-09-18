@@ -1,5 +1,5 @@
 //! Play-mode level bootstrap: hydrate a `.level` file into
-//! [`WorldSceneStore`]/SceneDb (Pulsar-Native#637).
+//! the scene `World` (Pulsar-Native#637).
 //!
 //! This is the runtime counterpart of the editor's own load path
 //! (`SceneDatabase::load_from_file`): one authoritative copy of the scene,
@@ -9,9 +9,8 @@
 //!
 //! Hydration mirrors the editor exactly:
 //!
-//! - Objects/transforms/hierarchy/visibility land via
-//!   [`WorldSceneStore::load_from_snapshots`] (the same bridge undo/redo
-//!   uses).
+//! - Objects/transforms/hierarchy/visibility are spawned straight into the
+//!   world with [`SceneWorldExt::spawn_object`].
 //! - Every enabled component instance whose class is
 //!   `#[register_world_component]`-registered is hydrated to its typed
 //!   World value through `pulsar_world_registry::
@@ -38,9 +37,11 @@ use pulsar_scene::format::{
 };
 use serde_json::Value;
 
+use pulsar_scenedb::{Entity, World};
+
 use crate::scene::{
-    LightType, MeshType, ObjectSnapshot, ObjectType, RenderProps, Transform, Visibility,
-    WorldSceneStore,
+    LightType, MeshType, ObjectType, RenderProps, SceneWorldExt, SharedScene, SpawnObject,
+    Transform, Visibility,
 };
 
 /// Errors from [`RuntimeLevel::load`].
@@ -84,11 +85,11 @@ pub struct LevelExtras {
     pub blueprint_bindings: BlueprintBindings,
 }
 
-/// A scene loaded for runtime use: one shared, SceneDB-owned store plus
+/// A scene loaded for runtime use: one shared SceneDB scene plus
 /// the level-file extras gameplay cares about (editor camera seed, Blueprint
 /// class bindings).
 pub struct RuntimeLevel {
-    store: Arc<RwLock<WorldSceneStore>>,
+    scene: SharedScene,
     extras: LevelExtras,
 }
 
@@ -100,7 +101,7 @@ impl RuntimeLevel {
         let file = load_scene_file(path)?;
         Self::from_scene_file(file)
     }
-    /// Load a level file and hydrate it into an EXISTING store -- the
+    /// Load a level file and hydrate it into an EXISTING world -- the
     /// one-world play-mode path (Pulsar-Native#637/#634): the tick loop's
     /// shared store is authoritative, so the level merges INTO it
     /// (additively; setup-time-registered actors survive) instead of the
@@ -113,14 +114,14 @@ impl RuntimeLevel {
     /// files.
     pub fn load_into(
         path: &Path,
-        store: &mut WorldSceneStore,
+        world: &mut World,
     ) -> Result<LevelExtras, RuntimeLevelError> {
         let file = load_scene_file(path)?;
         let extras = LevelExtras {
             editor_camera: editor_camera(&file.editor),
             blueprint_bindings: file.blueprint_bindings.clone(),
         };
-        Self::hydrate_scene_file(file, store)?;
+        Self::hydrate_scene_file(file, world)?;
         Ok(extras)
     }
     /// Hydrate from an already-parsed [`SceneFile`] into a fresh store
@@ -131,19 +132,19 @@ impl RuntimeLevel {
             editor_camera: editor_camera(&file.editor),
             blueprint_bindings: file.blueprint_bindings.clone(),
         };
-        let mut store = WorldSceneStore::new();
-        Self::hydrate_scene_file(file, &mut store)?;
+        let mut scene = crate::scene::new_scene();
+        Self::hydrate_scene_file(file, &mut scene.world)?;
         Ok(Self {
-            store: Arc::new(RwLock::new(store)),
+            scene: Arc::new(RwLock::new(scene)),
             extras,
         })
     }
 
     /// Shared hydration core: version gate + objects + components into
-    /// `store`.
+    /// `world`.
     fn hydrate_scene_file(
         file: SceneFile,
-        store: &mut WorldSceneStore,
+        world: &mut World,
     ) -> Result<(), RuntimeLevelError> {
         let version = version_string(&file.version);
         // Same accepted set as the editor's own loader: 1.x and 2.x.
@@ -152,22 +153,17 @@ impl RuntimeLevel {
         }
 
         // Parent-before-child order is the format's own DFS guarantee (see
-        // `SceneFile::objects`' doc), which is exactly what insert_snapshots
-        // requires.
+        // `SceneFile::objects` doc), which is what spawning requires.
         // Validate before mutating World so malformed hierarchy/identity data
         // cannot leave a partially hydrated SceneDB.
-        let snapshots: Vec<ObjectSnapshot> = file.objects.iter().map(object_snapshot).collect();
-        validate_snapshots(store, &snapshots)?;
-        store
-            .insert_snapshots(&snapshots)
-            .map_err(|error| RuntimeLevelError::Parse {
-                path: String::new(),
-                message: error.to_string(),
-            })?;
+        validate_objects(world, &file.objects)?;
+        for obj in &file.objects {
+            spawn_file_object(world, obj)?;
+        }
 
         let persisted = persisted_components(&file.components);
         for obj in &file.objects {
-            let Some(entity) = store.entity_for(&obj.id) else {
+            let Some(entity) = world.entity_for(&obj.id) else {
                 continue;
             };
             let (instances, has_component_source) = match persisted.get(&obj.id) {
@@ -196,19 +192,19 @@ impl RuntimeLevel {
             // observe the same enabled/order state without another scene list.
             if has_component_source {
                 let component_instances = component_records_value(&instances);
-                store.update_render_props(&obj.id, |props| {
+                if let Some(mut props) = world.get_mut::<RenderProps>(entity) {
                     props.component_instances = Some(component_instances);
-                });
+                }
             }
-            hydrate_components(store, entity, &obj.id, &instances)?;
+            hydrate_components(world, entity, &obj.id, &instances)?;
         }
         Ok(())
     }
 
-    /// The shared, authoritative scene store. Renderers and (once A2 lands)
-    /// the tick loop all clone this handle.
-    pub fn store(&self) -> Arc<RwLock<WorldSceneStore>> {
-        Arc::clone(&self.store)
+    /// The shared, authoritative scene. Renderers and the tick loop all clone
+    /// this handle.
+    pub fn scene(&self) -> SharedScene {
+        Arc::clone(&self.scene)
     }
 
     /// The level's extras: editor camera seed + Blueprint class bindings
@@ -258,27 +254,47 @@ fn version_string(version: &Value) -> String {
     }
 }
 
-/// Map a file-format object onto the store's snapshot bridge type.
-fn object_snapshot(obj: &pulsar_scene::format::SceneObject) -> ObjectSnapshot {
-    ObjectSnapshot {
-        stable_id: obj.id.clone(),
-        name: obj.name.clone(),
-        parent: obj.parent.clone(),
-        transform: Transform {
-            position: obj.world_position(),
-            rotation: obj.world_rotation(),
-            scale: obj.world_scale(),
-        },
-        visibility: Visibility {
-            visible: obj.visible,
-            locked: obj.locked,
-        },
-        object_type: object_type(obj.object_type),
-        render_props: RenderProps {
-            props: obj.props.clone(),
-            component_instances: obj.component_instances.clone(),
-        },
+/// Spawn one file-format object into the world, with its props and
+/// component-instance JSON attached.
+fn spawn_file_object(
+    world: &mut World,
+    obj: &pulsar_scene::format::SceneObject,
+) -> Result<Entity, RuntimeLevelError> {
+    let parse_error = |message: String| RuntimeLevelError::Parse {
+        path: String::new(),
+        message,
+    };
+    let parent = match &obj.parent {
+        Some(parent_id) => Some(world.entity_for(parent_id).ok_or_else(|| {
+            parse_error(format!(
+                "object '{}' references parent '{}' before it is available",
+                obj.id, parent_id
+            ))
+        })?),
+        None => None,
+    };
+    let entity = world
+        .spawn_object(SpawnObject {
+            stable_id: Some(obj.id.clone()),
+            name: obj.name.clone(),
+            parent,
+            transform: Transform {
+                position: obj.world_position(),
+                rotation: obj.world_rotation(),
+                scale: obj.world_scale(),
+            },
+            visibility: Visibility {
+                visible: obj.visible,
+                locked: obj.locked,
+            },
+            object_type: object_type(obj.object_type),
+        })
+        .map_err(|error| parse_error(error.to_string()))?;
+    if let Some(mut props) = world.get_mut::<RenderProps>(entity) {
+        props.props = obj.props.clone();
+        props.component_instances = obj.component_instances.clone();
     }
+    Ok(entity)
 }
 
 /// `pulsar_scene`'s loader-facing object classification ->
@@ -370,27 +386,25 @@ fn component_records_value(records: &[ComponentRecord]) -> Value {
     )
 }
 
-fn validate_snapshots(
-    store: &WorldSceneStore,
-    snapshots: &[ObjectSnapshot],
+fn validate_objects(
+    world: &World,
+    objects: &[pulsar_scene::format::SceneObject],
 ) -> Result<(), RuntimeLevelError> {
-    let mut seen = HashSet::with_capacity(snapshots.len());
-    for snapshot in snapshots {
-        if store.entity_for(&snapshot.stable_id).is_some()
-            || !seen.insert(snapshot.stable_id.as_str())
-        {
+    let mut seen = HashSet::with_capacity(objects.len());
+    for obj in objects {
+        if world.entity_for(&obj.id).is_some() || !seen.insert(obj.id.as_str()) {
             return Err(RuntimeLevelError::Parse {
                 path: String::new(),
-                message: format!("duplicate stable id '{}'", snapshot.stable_id),
+                message: format!("duplicate stable id '{}'", obj.id),
             });
         }
-        if let Some(parent) = &snapshot.parent {
-            if !seen.contains(parent.as_str()) && store.entity_for(parent).is_none() {
+        if let Some(parent) = &obj.parent {
+            if !seen.contains(parent.as_str()) && world.entity_for(parent).is_none() {
                 return Err(RuntimeLevelError::Parse {
                     path: String::new(),
                     message: format!(
                         "object '{}' references parent '{}' before it is available",
-                        snapshot.stable_id, parent
+                        obj.id, parent
                     ),
                 });
             }
@@ -399,7 +413,7 @@ fn validate_snapshots(
     Ok(())
 }
 fn hydrate_components(
-    store: &mut WorldSceneStore,
+    world: &mut World,
     entity: pulsar_scenedb::Entity,
     object_id: &str,
     instances: &[ComponentRecord],
@@ -412,7 +426,7 @@ fn hydrate_components(
             Some(record) => {
                 pulsar_world_registry::hydrate_world_component_for_class(
                     class_name,
-                    store.world_mut(),
+                    world,
                     entity,
                     &record.data,
                 )
@@ -425,7 +439,7 @@ fn hydrate_components(
             None => {
                 pulsar_world_registry::remove_world_component_for_class(
                     class_name,
-                    store.world_mut(),
+                    world,
                     entity,
                 );
             }
@@ -482,6 +496,13 @@ mod tests {
         "editor": {"camera": {"position": [10.0, 20.0, 30.0], "yaw": 1.0, "pitch": -0.25}}
     }"#;
 
+    fn render_props(world: &World, id: &str) -> RenderProps {
+        world
+            .get::<RenderProps>(world.entity_for(id).unwrap())
+            .cloned()
+            .unwrap()
+    }
+
     fn sample_level() -> RuntimeLevel {
         let file: SceneFile = serde_json::from_str(SAMPLE_LEVEL).expect("sample parses");
         RuntimeLevel::from_scene_file(file).expect("sample hydrates")
@@ -492,24 +513,25 @@ mod tests {
     #[test]
     fn load_hydrates_objects_hierarchy_and_visibility_into_the_store() {
         let level = sample_level();
-        let store = level.store();
-        let store = store.read();
+        let scene = level.scene();
+        let scene = scene.read();
+        let world = &scene.world;
 
-        let sun = store.entity_for("sun").expect("sun loaded");
-        assert_eq!(store.transform(sun).unwrap().position, [1.0, 5.0, 2.0]);
-        assert_eq!(store.visibility(sun).unwrap().visible, true);
+        let sun = world.entity_for("sun").expect("sun loaded");
+        assert_eq!(world.get::<Transform>(sun).unwrap().position, [1.0, 5.0, 2.0]);
+        assert_eq!(world.get::<Visibility>(sun).unwrap().visible, true);
 
-        let cube = store.entity_for("cube").expect("cube loaded");
+        let cube = world.entity_for("cube").expect("cube loaded");
         assert_eq!(
-            store.visibility(cube).unwrap(),
+            *world.get::<Visibility>(cube).unwrap(),
             Visibility {
                 visible: false,
                 locked: true
             }
         );
-        let group = store.entity_for("group").unwrap();
-        assert_eq!(store.parent_of(cube), Some(group));
-        assert_eq!(store.children_of(Some(group)), &[cube]);
+        let group = world.entity_for("group").unwrap();
+        assert_eq!(world.parent_of(cube), Some(group));
+        assert_eq!(world.children_of(Some(group)), vec![cube]);
     }
 
     /// Build the component-instance array the way the editor itself writes
@@ -540,16 +562,15 @@ mod tests {
     fn registered_component_classes_hydrate_to_typed_values() {
         let file = level_with_sun_components(Value::Null, Some(light_instances_json(750.0)));
         let level = RuntimeLevel::from_scene_file(file).unwrap();
-        let store = level.store();
-        let store = store.read();
+        let scene = level.scene();
+        let scene = scene.read();
+        let world = &scene.world;
 
-        let sun = store.entity_for("sun").unwrap();
-        let light = store.world().get::<LightComponent>(sun).expect("hydrated");
+        let sun = world.entity_for("sun").unwrap();
+        let light = world.get::<LightComponent>(sun).expect("hydrated");
         assert_eq!(light.intensity.intensity, 750.0);
         assert!(
-            store
-                .world()
-                .get::<helio_component::components::LightComponentGpuMirror>(sun)
+            world.get::<helio_component::components::LightComponentGpuMirror>(sun)
                 .is_some(),
             "an enabled light carries its GPU mirror"
         );
@@ -563,14 +584,15 @@ mod tests {
         ]);
         let file = level_with_sun_components(Value::Null, Some(instances));
         let level = RuntimeLevel::from_scene_file(file).unwrap();
-        let store = level.store();
-        let store = store.read();
+        let scene = level.scene();
+        let scene = scene.read();
+        let world = &scene.world;
 
-        let sun = store.entity_for("sun").unwrap();
-        let props = store.render_props("sun").unwrap();
+        let sun = world.entity_for("sun").unwrap();
+        let props = render_props(world, "sun");
         let instances = props.component_instances.expect("kept as JSON");
         assert!(instances.to_string().contains("NotARealComponent"));
-        assert!(store.world().get::<LightComponent>(sun).is_none());
+        assert!(world.get::<LightComponent>(sun).is_none());
     }
 
     /// #637: a non-empty persisted `components` map is authoritative over
@@ -594,12 +616,12 @@ mod tests {
         });
         let file = level_with_sun_components(components, Some(stale_inline));
         let level = RuntimeLevel::from_scene_file(file).unwrap();
-        let store = level.store();
-        let store = store.read();
+        let scene = level.scene();
+        let scene = scene.read();
+        let world = &scene.world;
 
-        let light = store
-            .entity_for("sun")
-            .and_then(|e| store.world().get::<LightComponent>(e))
+        let light = world.entity_for("sun")
+            .and_then(|e| world.get::<LightComponent>(e))
             .expect("persisted map drove hydration");
         assert_eq!(
             light.intensity.intensity, 99.0,
@@ -614,16 +636,17 @@ mod tests {
             Some(light_instances_json(1111.0)),
         );
         let level = RuntimeLevel::from_scene_file(file).unwrap();
-        let store = level.store();
-        let store = store.read();
-        let sun = store.entity_for("sun").unwrap();
+        let scene = level.scene();
+        let scene = scene.read();
+        let world = &scene.world;
+        let sun = world.entity_for("sun").unwrap();
 
         assert!(
-            store.world().get::<LightComponent>(sun).is_none(),
+            world.get::<LightComponent>(sun).is_none(),
             "an explicit empty persisted list removes the inline component"
         );
         assert_eq!(
-            store.render_props("sun").unwrap().component_instances,
+            render_props(world, "sun").component_instances,
             Some(serde_json::json!([])),
             "the removal remains visible in SceneDB metadata"
         );
@@ -663,11 +686,10 @@ mod tests {
             Some(light_instances_json(1111.0)),
         );
         let level = RuntimeLevel::from_scene_file(file).unwrap();
-        let store = level.store();
-        let store = store.read();
-        let records = store
-            .render_props("sun")
-            .unwrap()
+        let scene = level.scene();
+        let scene = scene.read();
+        let world = &scene.world;
+        let records = render_props(world, "sun")
             .component_instances
             .unwrap();
         let records = records.as_array().unwrap();
@@ -698,7 +720,7 @@ mod tests {
         let file: SceneFile = serde_json::from_str(&json).unwrap();
         // `.err().unwrap()` rather than `.unwrap_err()` -- the latter needs
         // `RuntimeLevel: Debug` (the `Ok` type), which it doesn't implement
-        // (it holds a `WorldSceneStore`, which doesn't either).
+        // (it holds a `SceneDb`, which doesn't either).
         assert_eq!(
             RuntimeLevel::from_scene_file(file).err().unwrap(),
             RuntimeLevelError::UnsupportedVersion("9.9".into())
@@ -710,11 +732,12 @@ mod tests {
     #[test]
     fn stable_ids_round_trip_as_authored() {
         let level = sample_level();
-        let store = level.store();
-        let store = store.read();
-        let cube = store.entity_for("cube").unwrap();
+        let scene = level.scene();
+        let scene = scene.read();
+        let world = &scene.world;
+        let cube = world.entity_for("cube").unwrap();
         assert_eq!(
-            store.world().get::<StableId>(cube).map(|s| s.0.clone()),
+            world.get::<StableId>(cube).map(|s| s.0.clone()),
             Some("cube".into())
         );
     }

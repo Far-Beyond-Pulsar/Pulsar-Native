@@ -43,7 +43,12 @@ pub(crate) fn begin_pie(
 
     // Reflect unsaved edits: write the live SceneDb to a temp level file.
     let scene_path = root.join("target").join("pie").join("play.level");
-    if let Err(e) = shared_state.read().scene.database.save_to_file(&scene_path) {
+    let save_result = {
+        let state = shared_state.read();
+        let world = state.scene.world();
+        crate::level_editor::scene_edit::level_io::save_to_file(&world, &scene_path)
+    };
+    if let Err(e) = save_result {
         window.push_notification(
             Notification::error(t!("Notification.Title.PlayInEditor").to_string()).message(
                 t!(

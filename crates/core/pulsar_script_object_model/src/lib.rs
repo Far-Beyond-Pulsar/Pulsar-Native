@@ -58,6 +58,7 @@ pub mod refs;
 pub mod resolution;
 pub mod routing;
 pub mod subscribe;
+pub mod world_host;
 
 #[cfg(test)]
 mod property_tests;

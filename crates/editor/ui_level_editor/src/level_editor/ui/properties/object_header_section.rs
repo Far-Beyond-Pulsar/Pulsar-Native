@@ -9,8 +9,8 @@ use ui::{h_flex, v_flex, ActiveTheme};
 
 use super::bindings::bound_field::{BoolBoundField, StringBoundField};
 use crate::level_editor::core::commands::{execute_command, SceneCommand};
-use crate::level_editor::scene_database::SceneDatabase;
 use crate::level_editor::state::LevelEditorState;
+use engine_backend::scene::SharedScene;
 
 /// Object header section showing name, visibility, and locked status
 pub struct ObjectHeaderSection {
@@ -23,7 +23,7 @@ pub struct ObjectHeaderSection {
 impl ObjectHeaderSection {
     pub fn new(
         object_id: String,
-        scene_db: SceneDatabase,
+        scene_db: SharedScene,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -43,7 +43,10 @@ impl ObjectHeaderSection {
             let state_arc = state_arc.clone();
             StringBoundField::new(
                 StringFieldBinding::new_with_db(
-                    |id, db| db.get_object_name(id),
+                    |id, db| {
+                        let world = db.read();
+                        crate::level_editor::scene_edit::objects::get_object_name(&world.world, id)
+                    },
                     move |id, name, _db| {
                         execute_command(
                             &mut state_arc.write(),
@@ -68,7 +71,14 @@ impl ObjectHeaderSection {
             let state_arc = state_arc.clone();
             BoolBoundField::new(
                 BoolFieldBinding::new_with_db(
-                    |id, db| db.get_object_visibility(id).map(|(visible, _)| visible),
+                    |id, db| {
+                        let world = db.read();
+                        crate::level_editor::scene_edit::objects::get_object_visibility(
+                            &world.world,
+                            id,
+                        )
+                        .map(|(visible, _)| visible)
+                    },
                     move |id, visible, _db| {
                         execute_command(
                             &mut state_arc.write(),
@@ -93,7 +103,14 @@ impl ObjectHeaderSection {
         let locked_field = cx.new(|cx| {
             BoolBoundField::new(
                 BoolFieldBinding::new_with_db(
-                    |id, db| db.get_object_visibility(id).map(|(_, locked)| locked),
+                    |id, db| {
+                        let world = db.read();
+                        crate::level_editor::scene_edit::objects::get_object_visibility(
+                            &world.world,
+                            id,
+                        )
+                        .map(|(_, locked)| locked)
+                    },
                     move |id, locked, _db| {
                         execute_command(
                             &mut state_arc.write(),

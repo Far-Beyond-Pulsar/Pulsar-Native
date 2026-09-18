@@ -16,7 +16,7 @@ use gpui::AppContext;
 mod level_editor;
 pub use level_editor::ai::sessions as ai_sessions;
 pub use level_editor::ai::tools as ai_tools;
-pub use level_editor::{LevelEditorPanel, LevelEditorState, SceneDatabase, SceneObjectData};
+pub use level_editor::{LevelEditorPanel, LevelEditorState, SceneObjectData};
 
 /// Get current locale
 pub fn locale() -> String {

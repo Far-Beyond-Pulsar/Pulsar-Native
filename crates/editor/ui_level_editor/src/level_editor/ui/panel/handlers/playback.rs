@@ -68,17 +68,22 @@ impl LevelEditorPanel {
         let (scene_db, path_opt) = {
             let state = self.shared_state.read();
             (
-                state.scene.database.clone(),
+                state.scene.shared_scene(),
                 state.scene.current_scene.clone(),
             )
         };
 
         if let Some(path) = path_opt {
-            match scene_db.save_to_file_with_editor_camera(
-                &path,
-                self.current_editor_camera_state(),
-                self.terrain_api.as_ref(),
-            ) {
+            let save_result = {
+                let world = scene_db.read();
+                crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(
+                    &world.world,
+                    &path,
+                    self.current_editor_camera_state(),
+                    self.terrain_api.as_ref(),
+                )
+            };
+            match save_result {
                 Ok(_) => {
                     self.shared_state.write().scene.has_unsaved_changes = false;
                     request_thumbnail_capture(&self.shared_state);
@@ -91,7 +96,7 @@ impl LevelEditorPanel {
 
     pub(in crate::level_editor::ui::panel) fn on_save_scene_as(&mut self, _: &SaveSceneAs, _window: &mut Window, cx: &mut Context<Self>) {
         let state_arc = self.shared_state.clone();
-        let scene_db = { state_arc.read().scene.database.clone() };
+        let scene_db = { state_arc.read().scene.shared_scene() };
         let editor_camera = self.current_editor_camera_state();
         // Cloned into the async task: `self` is not available once the file
         // dialog await resumes.
@@ -103,11 +108,15 @@ impl LevelEditorPanel {
         cx.spawn(async move |_this, cx| {
             if let Some(handle) = dialog.save_file().await {
                 let path = handle.path().to_path_buf();
-                let result = scene_db.save_to_file_with_editor_camera(
-                    &path,
-                    editor_camera,
-                    terrain_api.as_ref(),
-                );
+                let result = {
+                    let world = scene_db.read();
+                    crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(
+                        &world.world,
+                        &path,
+                        editor_camera,
+                        terrain_api.as_ref(),
+                    )
+                };
                 cx.update(|cx| {
                     _this.update(cx, |_, cx| {
                         match result {

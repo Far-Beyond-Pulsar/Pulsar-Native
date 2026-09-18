@@ -3,7 +3,7 @@
 //!
 //! Data-model level only, mirroring how Blueprint objects carry a
 //! `ScriptComponent` with `script_asset` (see
-//! `scene_database::find_script_path`): a Rust actor object carries a
+//! `scene_edit::find_script_path`): a Rust actor object carries a
 //! `ScriptComponent` instance whose `data` uses the documented RUST mode:
 //!
 //! ```json
@@ -21,7 +21,7 @@
 
 use serde_json::{json, Value};
 
-use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
+use crate::level_editor::scene_edit::{ObjectType, SceneObjectData, Transform};
 
 /// Class name of the component instance that carries script bindings.
 ///

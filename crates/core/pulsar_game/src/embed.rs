@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use engine_backend::scene::{ensure_gpu_mirror, sync_static_mesh_rows, WorldSceneStore};
+use engine_backend::scene::{ensure_gpu_mirror, sync_static_mesh_rows};
 use helio::{Camera, Renderer, RendererBuilder, RendererConfig};
 use parking_lot::RwLock;
 use pulsar_pie_abi::{
@@ -60,7 +60,7 @@ pub struct EmbeddedGame {
     /// ABI v2 requires the host's shared-world token; this store is adopted
     /// from the host and remains SceneDB-resident
     /// for gameplay and rendering.
-    scene_store: Arc<RwLock<WorldSceneStore>>,
+    scene_store: engine_backend::scene::SharedScene,
     /// Fallback free-look camera (used until an ECS camera drives the view).
     freecam: FreeCam,
 
@@ -171,7 +171,7 @@ impl EmbeddedGame {
             );
         } else {
             let host_store =
-                unsafe { Arc::from_raw(ctx.shared_world as *const RwLock<WorldSceneStore>) };
+                unsafe { Arc::from_raw(ctx.shared_world as *const RwLock<pulsar_scenedb::SceneDb>) };
             TickLoop::with_scene_store(host_store, TickMode::default(), threads)
         };
         let mut tick_loop = tick_loop;
@@ -273,7 +273,7 @@ impl EmbeddedGame {
         {
             let mut store = self.scene_store.write();
             sync_static_mesh_rows(&mut store);
-            store.scene_db_mut().step();
+            store.step();
         }
 
         // 3. Camera. A Camera-typed entity in the shared world drives the

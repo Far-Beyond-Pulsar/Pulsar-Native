@@ -1,18 +1,21 @@
 //! Scene Domain — the actual level data (objects, hierarchy, play-mode snapshots)
 //!
-//! This is the only domain that directly wraps [`SceneDatabase`] and is therefore
-//! the bridge to the `RwLock<WorldSceneStore>` shared with the renderer.
+//! It holds the [`SharedScene`] (the `pulsar_scenedb::SceneDb` shared with the
+//! renderer) plus the editor-only state around it: mode, file path, undo history.
 //!
 //! The `revision` counter is bumped on every mutation so that observer tasks
 //! (running on the GPUI main thread) can detect changes made by background
 //! threads (AI tools, asset import, etc.) and trigger a re-render.
 
-use crate::level_editor::scene_database::{ObjectId, SceneHistorySnapshot, SceneObjectData};
-use crate::level_editor::SceneDatabase;
+use crate::level_editor::scene_edit::{self, ObjectId, SceneHistorySnapshot, SceneObjectData};
+use engine_backend::scene::SharedScene;
+use parking_lot::{MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use pulsar_scenedb::World;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Undo/redo history depth cap (Pulsar-Native#554). Each entry is a full
-/// scene snapshot (`SceneDatabase::capture_history_snapshot`'s cost is
+/// scene snapshot (`scene_edit::history::capture_history_snapshot`'s cost is
 /// O(scene size) -- see that method's doc), so this bounds memory rather
 /// than letting an unbounded session-long history grow forever. Not tuned
 /// against a real project yet; a reasonable starting point for a v1.
@@ -34,7 +37,7 @@ pub enum EditorMode {
 /// Scene-level state — the authoritative source for all scene object data.
 ///
 /// Fields:
-/// - `database` — the `SceneDatabase` (wraps `Arc<RwLock<WorldSceneStore>>` + `SceneMetadataDb`).
+/// - `scene` — the SceneDB scene shared with the renderer; read/edit its world directly.
 /// - `editor_mode` — `Edit` or `Play`.
 /// - `current_scene` — path to the currently open `.level` file on disk.
 /// - `has_unsaved_changes` — set by every mutation, cleared on save.
@@ -42,12 +45,16 @@ pub enum EditorMode {
 /// - `snapshot` — play-mode snapshot captured on `enter_play_mode`.
 #[derive(Clone)]
 pub struct SceneDomain {
-    /// Scene database — single source of truth for all scene data.
-    pub database: SceneDatabase,
+    /// The scene — single source of truth for all scene data. Panels read and
+    /// edit its `World` directly (see [`Self::world`] / [`Self::world_mut`]).
+    pub scene: SharedScene,
+    /// Bumped whenever the whole scene is rebuilt in place (undo/redo, leaving
+    /// play mode). Subscriptions die with the entities they watched, so anything
+    /// caching against them must re-arm when this moves.
+    pub rebuild_epoch: u64,
     /// Snapshot of scene state when entering play mode (for reset on stop).
-    /// Immutable SceneDB snapshot captured before PIE.  Keep the database's
-    /// native snapshot here instead of a second object-shaped store; it
-    /// carries parent links and component metadata atomically.
+    /// Immutable snapshot captured before PIE; it carries parent links and
+    /// component instances atomically.
     pub snapshot: Option<SceneHistorySnapshot>,
     /// Current editor mode.
     pub editor_mode: EditorMode,
@@ -70,9 +77,9 @@ pub struct SceneDomain {
 
 impl Default for SceneDomain {
     fn default() -> Self {
-        let database = SceneDatabase::new();
         Self {
-            database,
+            scene: Arc::new(RwLock::new(engine_backend::scene::new_scene())),
+            rebuild_epoch: 0,
             snapshot: None,
             editor_mode: EditorMode::Edit,
             current_scene: None,
@@ -85,24 +92,55 @@ impl Default for SceneDomain {
 }
 
 impl SceneDomain {
+    // ── The world ─────────────────────────────────────────────────────────
+
+    /// Read access to the scene's `World`. Holds the scene lock for as long as
+    /// the guard lives; do not hold it across a call that also locks the scene.
+    pub fn world(&self) -> MappedRwLockReadGuard<'_, World> {
+        RwLockReadGuard::map(self.scene.read(), |scene| &scene.world)
+    }
+
+    /// Write access to the scene's `World`. Same locking rule as [`Self::world`].
+    pub fn world_mut(&self) -> MappedRwLockWriteGuard<'_, World> {
+        RwLockWriteGuard::map(self.scene.write(), |scene| &mut scene.world)
+    }
+
+    /// Monotonic count of every mutation the world has recorded -- what panel
+    /// frame pumps compare to notice the scene changed.
+    pub fn world_revision(&self) -> u64 {
+        self.scene.read().world.revision()
+    }
+
+    /// The shared scene handle, for consumers that must hold the same world the
+    /// editor mutates (the PIE host handing its world to the guest, the renderer).
+    pub fn shared_scene(&self) -> SharedScene {
+        Arc::clone(&self.scene)
+    }
+
+    /// Rebuild generation; see [`Self::rebuild_epoch`]. Subscriptions armed against an
+    /// older generation are dead and must be re-armed.
+    pub fn subscriptions_epoch(&self) -> u64 {
+        self.rebuild_epoch
+    }
+
     // ── Selection ─────────────────────────────────────────────────────────
 
     pub fn selected_object(&self) -> Option<ObjectId> {
-        self.database.get_selected_object_id()
+        scene_edit::objects::get_selected_object_id(&self.world())
     }
 
     pub fn select_object(&mut self, object_id: Option<ObjectId>) {
-        self.database.select_object(object_id);
+        scene_edit::objects::select_object(&mut self.world_mut(), object_id.as_deref());
     }
 
     pub fn get_selected_object(&self) -> Option<SceneObjectData> {
-        self.database.get_selected_object()
+        scene_edit::objects::get_selected_object(&self.world())
     }
 
     // ── Scene traversal ───────────────────────────────────────────────────
 
     pub fn scene_objects(&self) -> Vec<SceneObjectData> {
-        self.database.get_root_objects()
+        scene_edit::objects::get_root_objects(&self.world())
     }
 
     // ── Editor mode helpers ──────────────────────────────────────────────
@@ -150,7 +188,7 @@ impl SceneDomain {
     /// `execute_command` can capture *before* running a command (the state
     /// undo should return to), not after.
     pub fn capture_history_snapshot(&self) -> SceneHistorySnapshot {
-        self.database.capture_history_snapshot()
+        scene_edit::history::capture_history_snapshot(&self.world())
     }
 
     /// Commit a previously captured pre-state onto the undo stack and clear
@@ -181,8 +219,8 @@ impl SceneDomain {
         let Some(previous) = self.undo_stack.pop() else {
             return false;
         };
-        let current = self.database.capture_history_snapshot();
-        if self.database.restore_history_snapshot(&previous).is_err() {
+        let current = self.capture_history_snapshot();
+        if !self.restore(&previous) {
             // Restore failed (malformed snapshot) -- put it back so the
             // entry isn't silently lost, and leave the redo stack alone.
             self.undo_stack.push(previous);
@@ -198,8 +236,8 @@ impl SceneDomain {
         let Some(next) = self.redo_stack.pop() else {
             return false;
         };
-        let current = self.database.capture_history_snapshot();
-        if self.database.restore_history_snapshot(&next).is_err() {
+        let current = self.capture_history_snapshot();
+        if !self.restore(&next) {
             self.redo_stack.push(next);
             return false;
         }
@@ -207,24 +245,37 @@ impl SceneDomain {
         true
     }
 
+    /// Rebuild the scene from `snapshot` in place. Bumps [`Self::rebuild_epoch`]
+    /// on success; on failure the live scene is untouched.
+    fn restore(&mut self, snapshot: &SceneHistorySnapshot) -> bool {
+        let result = scene_edit::history::restore_history_snapshot(&mut self.world_mut(), snapshot);
+        match result {
+            Ok(()) => {
+                self.rebuild_epoch = self.rebuild_epoch.wrapping_add(1);
+                true
+            }
+            Err(error) => {
+                tracing::error!(%error, "scene restore rejected");
+                false
+            }
+        }
+    }
+
     // ── Play mode ─────────────────────────────────────────────────────────
 
     /// Enter play mode — snapshot scene and start game thread.
     pub fn enter_play_mode(&mut self) {
-        self.snapshot = Some(self.database.capture_history_snapshot());
+        self.snapshot = Some(self.capture_history_snapshot());
         self.editor_mode = EditorMode::Play;
     }
 
     /// Exit play mode — restore scene state from snapshot.
     pub fn exit_play_mode(&mut self) {
         if let Some(snapshot) = self.snapshot.take() {
-            // WorldSceneStore restores the complete hierarchy in one
-            // transaction and rehydrates registered components together with
-            // the object data. This avoids the old clear-and-readd loop,
-            // which turned every object into a root and silently regenerated
-            // IDs when cleanup was incomplete.
-            if let Err(error) = self.database.restore_history_snapshot(&snapshot) {
-                tracing::error!(%error, "failed to restore the editor scene after play mode");
+            // The restore rebuilds the complete hierarchy and rehydrates registered
+            // components together with the object data.
+            if !self.restore(&snapshot) {
+                tracing::error!("failed to restore the editor scene after play mode");
             }
         }
         self.editor_mode = EditorMode::Edit;

@@ -2948,6 +2948,7 @@ dependencies = [
  "pulsar_pie_abi",
  "pulsar_reflection",
  "pulsar_scene",
+ "pulsar_scene_model",
  "pulsar_scenedb",
  "pulsar_script_object_model",
  "pulsar_terrain",
@@ -8999,19 +9000,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_scene_model"
+version = "0.1.0"
+dependencies = [
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "wgpu",
+]
+
+[[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+file:///D:/GitHub/SceneDB-inspector-send-sync?rev=ebf469324a4b4949b3148c1c83eb069e83adada4#ebf469324a4b4949b3148c1c83eb069e83adada4"
+source = "git+file:///D:/GitHub/SceneDB-inspector-send-sync?rev=1453cfa77c91ce98d084e74b98ba30763a853abc#1453cfa77c91ce98d084e74b98ba30763a853abc"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=12424a5f75166332f9f1d2741281f6fc4847b44d)",
  "pulsar_reflection",
- "pulsar_scenedb_derive 0.1.0 (git+file:///D:/GitHub/SceneDB-inspector-send-sync?rev=ebf469324a4b4949b3148c1c83eb069e83adada4)",
+ "pulsar_scenedb_derive 0.1.0 (git+file:///D:/GitHub/SceneDB-inspector-send-sync?rev=1453cfa77c91ce98d084e74b98ba30763a853abc)",
  "serde",
  "serde_json",
  "socket2 0.5.10",
  "tracing",
  "wgpu",
+]
+
+[[package]]
+name = "pulsar_scenedb_derive"
+version = "0.1.0"
+source = "git+file:///D:/GitHub/SceneDB-inspector-send-sync?rev=1453cfa77c91ce98d084e74b98ba30763a853abc#1453cfa77c91ce98d084e74b98ba30763a853abc"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -9025,21 +9048,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "pulsar_scenedb_derive"
-version = "0.1.0"
-source = "git+file:///D:/GitHub/SceneDB-inspector-send-sync?rev=ebf469324a4b4949b3148c1c83eb069e83adada4#ebf469324a4b4949b3148c1c83eb069e83adada4"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "pulsar_script_object_model"
 version = "0.1.0"
 dependencies = [
  "inventory",
  "pulsar_reflection",
+ "pulsar_scene_model",
  "pulsar_scenedb",
  "pulsar_world_registry",
  "serde",

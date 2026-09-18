@@ -1,7 +1,7 @@
 use crate::blueprint_runtime::BlueprintDispatcher;
 use crate::time::to_scenedb_time;
 use crate::window::{WindowBridge, WindowCommand, WindowDescriptor, WindowHandle, WindowManager};
-use engine_backend::scene::WorldSceneStore;
+
 use parking_lot::RwLock;
 use pulsar_core::{Clock, GameTime, TaskPool, TickMode};
 use pulsar_scenedb::{ActorRegistry, Schedule};
@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 /// 3. A `TaskPool` — background async tasks.
 ///
 /// All three run against ONE authoritative world state:
-/// `scene_store`, an `Arc<RwLock<WorldSceneStore>>` wrapping SceneDB --
+/// `scene_store`, an `engine_backend::scene::SharedScene` wrapping SceneDB --
 /// the same store renderers read (Pulsar-Native#634). A mutation made by a
 /// system or actor is visible to the renderer's next frame rebuild, and a
 /// level hydrated into the store after `setup()` is visible to gameplay on
@@ -44,7 +44,7 @@ pub struct TickLoop {
     /// renderer and editor surface that holds the same handle. Systems and
     /// actors receive `&mut World` borrows of `scene_store.write().world`
     /// per phase; anything they spawn/mutate is globally visible.
-    pub scene_store: Arc<RwLock<WorldSceneStore>>,
+    pub scene_store: engine_backend::scene::SharedScene,
     pub schedule: Schedule,
     pub actors: ActorRegistry,
     pub tasks: Arc<TaskPool>,
@@ -86,7 +86,7 @@ impl TickLoop {
         };
         let running = Arc::new(AtomicBool::new(false));
         Self {
-            scene_store: Arc::new(RwLock::new(WorldSceneStore::new())),
+            scene_store: Arc::new(RwLock::new(engine_backend::scene::new_scene())),
             schedule: Schedule::new(),
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
@@ -108,7 +108,7 @@ impl TickLoop {
     /// one world. The handle must be the same `Arc` the host transferred;
     /// see `pulsar_pie_abi`'s module doc for the single-count transfer rule.
     pub fn with_scene_store(
-        scene_store: Arc<RwLock<WorldSceneStore>>,
+        scene_store: engine_backend::scene::SharedScene,
         mode: TickMode,
         task_threads: usize,
     ) -> Self {
@@ -160,7 +160,7 @@ impl TickLoop {
         // hold it across phases.
         {
             let mut store = self.scene_store.write();
-            self.schedule.run(store.world_mut(), scenedb_time);
+            self.schedule.run(&mut store.world, scenedb_time);
         }
 
         // Phase 2: actor lifecycle ticks (`Actor::tick` is deliberately
@@ -172,9 +172,9 @@ impl TickLoop {
         // — same callbacks, same world, one lock acquisition.
         {
             let mut store = self.scene_store.write();
-            self.actors.tick_all(store.world_mut());
+            self.actors.tick_all(&mut store.world);
             for shell in &mut self.rebinding {
-                shell.tick(store.world_mut());
+                shell.tick(&mut store.world);
             }
         }
 
@@ -191,7 +191,7 @@ impl TickLoop {
         if let Some(dispatcher) = &self.blueprint_dispatcher {
             let mut dispatcher = dispatcher.lock().unwrap();
             let mut store = self.scene_store.write();
-            let world = store.world_mut();
+            let world = &mut store.world;
             dispatcher.dispatch_pending_begin_play(world);
             dispatcher.dispatch_tick_all(world, time.delta.as_secs_f32());
         }
@@ -228,7 +228,7 @@ impl TickLoop {
             dispatcher
                 .lock()
                 .unwrap()
-                .dispatch_end_play_all(store.world_mut());
+                .dispatch_end_play_all(&mut store.world);
         }
     }
 

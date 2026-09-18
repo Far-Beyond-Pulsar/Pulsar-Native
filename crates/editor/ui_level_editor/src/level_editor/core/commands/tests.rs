@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod undo_redo_tests {
     use super::super::*;
-    use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
+    use crate::level_editor::scene_edit::{ObjectType, SceneObjectData, Transform};
     use crate::level_editor::state::LevelEditorState;
 
     fn object(name: &str) -> SceneObjectData {
@@ -34,10 +34,10 @@ mod undo_redo_tests {
         );
         assert!(result.changed);
         assert!(state.scene.can_undo());
-        assert_eq!(state.scene.database.get_all_objects().len(), 1);
+        assert_eq!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).len(), 1);
 
         assert!(state.scene.undo());
-        assert!(state.scene.database.get_all_objects().is_empty());
+        assert!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
         assert!(!state.scene.can_undo());
         assert!(state.scene.can_redo());
     }
@@ -53,11 +53,11 @@ mod undo_redo_tests {
             },
         );
         state.scene.undo();
-        assert!(state.scene.database.get_all_objects().is_empty());
+        assert!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
 
         assert!(state.scene.redo());
 
-        assert_eq!(state.scene.database.get_all_objects().len(), 1);
+        assert_eq!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).len(), 1);
         assert!(state.scene.can_undo());
         assert!(!state.scene.can_redo());
     }
@@ -117,7 +117,7 @@ mod undo_redo_tests {
         // Still exactly the one checkpoint from AddObject -- undoing once
         // now must remove the object, not merely revert the selection.
         assert!(state.scene.undo());
-        assert!(state.scene.database.get_all_objects().is_empty());
+        assert!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
         assert!(!state.scene.can_undo());
     }
 
@@ -147,10 +147,10 @@ mod undo_redo_tests {
                 data: SceneObjectData {
                     id: String::new(),
                     name: "Light".to_string(),
-                    object_type: crate::level_editor::scene_database::ObjectType::Light(
-                        crate::level_editor::scene_database::LightType::Point,
+                    object_type: crate::level_editor::scene_edit::ObjectType::Light(
+                        crate::level_editor::scene_edit::LightType::Point,
                     ),
-                    transform: crate::level_editor::scene_database::Transform::default(),
+                    transform: crate::level_editor::scene_edit::Transform::default(),
                     visible: true,
                     locked: false,
                     parent: None,
@@ -167,10 +167,15 @@ mod undo_redo_tests {
 
         let default_light_json =
             serde_json::to_value(helio_component::LightComponent::default()).unwrap();
-        state
-            .scene
-            .database
-            .add_component(&id, "LightComponent".to_string(), default_light_json);
+        {
+            let mut world = state.scene.world_mut();
+            crate::level_editor::scene_edit::components::add_component(
+                &mut world,
+                &id,
+                "LightComponent".to_string(),
+                default_light_json,
+            );
+        }
 
         // The widget layer's actual contract: a boxed, already-typed value --
         // never JSON. `intensity` is a leaf of the `#[sub_props]`-nested
@@ -191,22 +196,32 @@ mod undo_redo_tests {
             "typed live write must succeed, not fall through to the JSON path"
         );
 
-        let live = state
-            .scene
-            .database
-            .read_live_component_property(&id, "LightComponent", "intensity")
-            .expect("intensity must be live-readable after the edit");
+        let live = {
+            let world = state.scene.world();
+            crate::level_editor::scene_edit::components::read_live_component_property(
+                &world,
+                &id,
+                "LightComponent",
+                "intensity",
+            )
+        }
+        .expect("intensity must be live-readable after the edit");
         assert_eq!(live.downcast_ref::<f32>(), Some(&4242.0));
 
         // Undo-tracked like every other command: restoring the pre-edit
         // snapshot must revert the live World value too, not just
         // `metadata_db`'s mirror.
         assert!(state.scene.undo());
-        let reverted = state
-            .scene
-            .database
-            .read_live_component_property(&id, "LightComponent", "intensity")
-            .expect("intensity must still be live-readable after undo");
+        let reverted = {
+            let world = state.scene.world();
+            crate::level_editor::scene_edit::components::read_live_component_property(
+                &world,
+                &id,
+                "LightComponent",
+                "intensity",
+            )
+        }
+        .expect("intensity must still be live-readable after undo");
         assert_eq!(reverted.downcast_ref::<f32>(), Some(&1000.0)); // IntensityLightProps::default()
     }
 }

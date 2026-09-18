@@ -77,7 +77,7 @@ pub(super) fn dispatch(
                 .to_string();
 
             let mut state = state_arc.write();
-            let Some(mut object) = state.scene.database.get_object(&object_id) else {
+            let Some(mut object) = crate::level_editor::scene_edit::objects::get_object(&state.scene.world(), &object_id) else {
                 return Ok(Some(Ok(json!({
                     "ok": false,
                     "apply_mode": "editor_state",
@@ -133,7 +133,11 @@ pub(super) fn dispatch(
                 }))));
             };
 
-            match state.scene.database.save_to_file(&path) {
+            let save_result = {
+                let world = state.scene.world();
+                crate::level_editor::scene_edit::level_io::save_to_file(&world, &path)
+            };
+            match save_result {
                 Ok(_) => {
                     state.scene.has_unsaved_changes = false;
                     state.scene.revision = state.scene.revision.saturating_add(1);

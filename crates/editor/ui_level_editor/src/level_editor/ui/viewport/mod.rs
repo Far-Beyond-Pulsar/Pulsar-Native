@@ -299,7 +299,7 @@ impl ViewportPanel {
         if self.last_planet_sync_revision.get() != Some(revision) {
             self.last_planet_sync_revision.set(Some(revision));
             crate::level_editor::tool_modes::terrain::scene_planets::sync_scene_planets(
-                &state.scene.database,
+                &state.scene.shared_scene(),
                 api,
             );
         }

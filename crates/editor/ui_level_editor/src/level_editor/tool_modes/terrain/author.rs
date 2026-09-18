@@ -19,7 +19,7 @@ use glam::{EulerRot, Quat, Vec3};
 use helio_component::StaticMeshComponent;
 
 use super::scatter::{scatter, tangent_basis, InstanceSpec};
-use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
+use crate::level_editor::scene_edit::{ObjectType, SceneObjectData, Transform};
 use crate::level_editor::state::LevelEditorState;
 
 /// How far above the intended ground point the projection ray starts. The
@@ -63,10 +63,7 @@ pub fn stamp_foliage_sets(
             continue;
         };
         let object = instance_object(spec, transform);
-        if !state
-            .scene
-            .database
-            .add_object(object, Some(parent))
+        if !crate::level_editor::scene_edit::objects::add_object(&mut state.scene.world_mut(), object, Some(parent))
             .is_empty()
         {
             added += 1;
@@ -127,7 +124,7 @@ fn instance_object(spec: &InstanceSpec, transform: &PlacedTransform) -> SceneObj
     SceneObjectData {
         id: String::new(),
         name: file_stem(&spec.mesh),
-        object_type: ObjectType::Mesh(crate::level_editor::scene_database::MeshType::Custom),
+        object_type: ObjectType::Mesh(crate::level_editor::scene_edit::MeshType::Custom),
         transform: Transform {
             position: transform.position,
             rotation: transform.rotation_deg,
@@ -165,10 +162,7 @@ pub fn set_folder_name(set_name: &str) -> String {
 /// The folder object for `set_name`, created on first use.
 fn ensure_set_folder(state: &mut LevelEditorState, set_name: &str) -> Option<String> {
     let name = set_folder_name(set_name);
-    if let Some(existing) = state
-        .scene
-        .database
-        .get_all_objects()
+    if let Some(existing) = crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world(), )
         .into_iter()
         .find(|o| o.object_type == ObjectType::Folder && o.name == name)
     {
@@ -187,7 +181,7 @@ fn ensure_set_folder(state: &mut LevelEditorState, set_name: &str) -> Option<Str
         props: Default::default(),
         component_instances: None,
     };
-    let id = state.scene.database.add_object(folder, None);
+    let id = crate::level_editor::scene_edit::objects::add_object(&mut state.scene.world_mut(), folder, None);
     (!id.is_empty()).then_some(id)
 }
 
@@ -207,7 +201,7 @@ pub fn erase_foliage(
     erase_density: f32,
     seed: u64,
 ) -> usize {
-    let all = state.scene.database.get_all_objects();
+    let all = crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world(), );
     let folder_ids: std::collections::HashSet<&str> = all
         .iter()
         .filter(|o| o.object_type == ObjectType::Folder && o.name.starts_with(SET_FOLDER_PREFIX))
@@ -245,7 +239,7 @@ pub fn erase_foliage(
     let pre = state.scene.capture_history_snapshot();
     let mut removed = 0;
     for id in &victims {
-        if state.scene.database.remove_object(id) {
+        if crate::level_editor::scene_edit::objects::remove_object(&mut state.scene.world_mut(), id) {
             removed += 1;
         }
     }

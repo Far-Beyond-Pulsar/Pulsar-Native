@@ -12,6 +12,7 @@
 //! has been removed.  Component behaviour now drives all object logic.
 
 use engine_backend::scene::ComponentInstance;
+use engine_backend::scene::SharedScene;
 use gpui::{prelude::*, *};
 use pulsar_reflection::{PropertyMetadata, REGISTRY, RUNTIME_TYPE_REGISTRY};
 use pulsar_scenedb::SubscriptionId;
@@ -24,7 +25,6 @@ use ui::dropdown::{SearchableList, SearchableListEvent};
 use ui::{v_flex, ActiveTheme};
 use ui_common::{MeshAssetPicker, PropertyStateManager};
 
-use crate::level_editor::scene_database::SceneDatabase;
 use crate::level_editor::state::LevelEditorState;
 
 mod category_section;
@@ -43,7 +43,7 @@ pub(super) struct PropertyMetadataCacheEntry {
 
 pub struct ObjectTypeFieldsSection {
     pub(super) object_id: String,
-    pub(super) scene_db: SceneDatabase,
+    pub(super) scene_db: SharedScene,
     /// Currently selected component index (reserved for future highlight use).
     pub(super) selected_component: Option<usize>,
     /// Searchable component list for the add-component popover.
@@ -108,7 +108,7 @@ pub struct ObjectTypeFieldsSection {
 impl ObjectTypeFieldsSection {
     pub fn new(
         object_id: String,
-        scene_db: SceneDatabase,
+        scene_db: SharedScene,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -175,8 +175,16 @@ impl ObjectTypeFieldsSection {
     /// `Drop` (section teardown on selection change) and from the
     /// structural/store-swap invalidation paths.
     fn release_world_subscriptions(&mut self) {
-        for (_, sub) in self.world_subs.drain() {
-            self.scene_db.unsubscribe_component(sub);
+        let subs: Vec<_> = self.world_subs.drain().map(|(_, sub)| sub).collect();
+        if subs.is_empty() {
+            return;
+        }
+        let mut world = self.scene_db.write();
+        for sub in subs {
+            crate::level_editor::scene_edit::components::unsubscribe_component(
+                &mut world.world,
+                sub,
+            );
         }
     }
 
@@ -189,11 +197,11 @@ impl ObjectTypeFieldsSection {
         self.world_value_cache.clear();
         self.dirty_classes.clear();
         self.unsubscribable_classes.clear();
-        self.subs_epoch = self.scene_db.subscriptions_epoch();
+        self.subs_epoch = self.state_arc.read().scene.subscriptions_epoch();
     }
 
     fn add_component(
-        scene_db: &SceneDatabase,
+        scene_db: &SharedScene,
         object_id: &String,
         class_name: &str,
         _cx: &mut Context<Self>,
@@ -210,7 +218,15 @@ impl ObjectTypeFieldsSection {
                         .unwrap_or(serde_json::json!(null));
                     map.insert(prop.name.to_string(), json_value);
                 }
-                scene_db.add_component(object_id, class_name, Value::Object(map));
+                {
+                    let mut world = scene_db.write();
+                    crate::level_editor::scene_edit::components::add_component(
+                        &mut world.world,
+                        object_id,
+                        class_name,
+                        Value::Object(map),
+                    );
+                }
             }
         } else if let Some(instance) = engine_backend::EngineBackend::global().and_then(|b| {
             let guard = b.read();
@@ -225,7 +241,15 @@ impl ObjectTypeFieldsSection {
                     .unwrap_or(serde_json::json!(null));
                 map.insert(prop.name.to_string(), json_value);
             }
-            scene_db.add_component(object_id, class_name, Value::Object(map));
+            {
+                let mut world = scene_db.write();
+                crate::level_editor::scene_edit::components::add_component(
+                    &mut world.world,
+                    object_id,
+                    class_name,
+                    Value::Object(map),
+                );
+            }
         }
     }
 
@@ -284,11 +308,17 @@ impl Render for ObjectTypeFieldsSection {
         use ui::{IconName, Sizable as _};
 
         // ── Drain change set (once per frame) ──────────────────────────────
-        let property_changes = self.scene_db.drain_property_changes();
+        let property_changes = crate::level_editor::scene_edit::changes::drain_property_changes();
         let structural = property_changes.components_added_or_removed();
 
         // ── Detect structural changes without full get_components() ────────
-        let current_count = self.scene_db.component_count(&self.object_id);
+        let current_count = {
+            let world = self.scene_db.read();
+            crate::level_editor::scene_edit::components::component_count(
+                &world.world,
+                &self.object_id,
+            )
+        };
         let count_changed = current_count != self.cached_component_count;
         self.cached_component_count = current_count;
 
@@ -306,7 +336,7 @@ impl Render for ObjectTypeFieldsSection {
         // outstanding subscription died without an event ever firing. The
         // epoch check is the only signal -- see
         // `SceneDatabase::subscriptions_epoch`.
-        if self.subs_epoch != self.scene_db.subscriptions_epoch() {
+        if self.subs_epoch != self.state_arc.read().scene.subscriptions_epoch() {
             self.reset_world_subscription_state();
         }
 
@@ -334,7 +364,13 @@ impl Render for ObjectTypeFieldsSection {
         // property cards below batch-read straight from World — so paying
         // `get_components`' per-component `to_json()` serialization on every
         // render would only make this panel's complexity set the framerate.
-        let attached = self.scene_db.get_components_metadata(&self.object_id);
+        let attached = {
+            let world = self.scene_db.read();
+            crate::level_editor::scene_edit::components::get_components_metadata(
+                &world.world,
+                &self.object_id,
+            )
+        };
 
         let component_hierarchy =
             ComponentHierarchyPanel::new(self.object_id.clone(), self.scene_db.clone());
@@ -373,7 +409,13 @@ impl Render for ObjectTypeFieldsSection {
         // subscribable) must not pay that on every render pass. SceneDB's
         // own cap bounds the undrained queue meanwhile.
         if !self.world_subs.is_empty() {
-            for event in self.scene_db.take_world_component_events() {
+            let events = {
+                let mut world = self.scene_db.write();
+                crate::level_editor::scene_edit::components::take_world_component_events(
+                    &mut world.world,
+                )
+            };
+            for event in events {
                 for (card, sub) in &self.world_subs {
                     if *sub == event.subscription {
                         self.dirty_classes.insert(card.clone());

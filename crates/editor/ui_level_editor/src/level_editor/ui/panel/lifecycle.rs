@@ -62,12 +62,22 @@ impl LevelEditorPanel {
             }
         }
 
-        let scene_db = { self.shared_state.read().scene.database.clone() };
+        let scene_db = { self.shared_state.read().scene.shared_scene() };
 
         if default_path.exists() {
             // File already on disk — load it into the shared scene db.
-            scene_db.clear();
-            match scene_db.load_from_file_with_editor_camera(&default_path) {
+            {
+                let mut world = scene_db.write();
+                crate::level_editor::scene_edit::objects::clear(&mut world.world);
+            }
+            let load_result = {
+                let mut world = scene_db.write();
+                crate::level_editor::scene_edit::level_io::load_from_file_with_editor_camera(
+                    &mut world.world,
+                    &default_path,
+                )
+            };
+            match load_result {
                 Ok(editor_camera) => {
                     self.apply_editor_camera_state(editor_camera.as_ref());
                     let mut w = self.shared_state.write();
@@ -97,7 +107,9 @@ impl LevelEditorPanel {
             } else {
                 // No embedded asset yet — persist the current empty scene so the
                 // path is stable for future saves.
-                scene_db.save_to_file_with_editor_camera(
+                let world = scene_db.read();
+                crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(
+                    &world.world,
                     &default_path,
                     self.current_editor_camera_state(),
                     self.terrain_api.as_ref(),
@@ -107,8 +119,18 @@ impl LevelEditorPanel {
             match seed_result {
                 Ok(_) => {
                     // Load back what we just wrote so the editor shows the correct scene.
-                    scene_db.clear();
-                    match scene_db.load_from_file_with_editor_camera(&default_path) {
+                    {
+                        let mut world = scene_db.write();
+                        crate::level_editor::scene_edit::objects::clear(&mut world.world);
+                    }
+                    let load_result = {
+                        let mut world = scene_db.write();
+                        crate::level_editor::scene_edit::level_io::load_from_file_with_editor_camera(
+                            &mut world.world,
+                            &default_path,
+                        )
+                    };
+                    match load_result {
                         Ok(editor_camera) => {
                             self.apply_editor_camera_state(editor_camera.as_ref());
                             tracing::info!("Default level seeded at {:?}", default_path)
@@ -143,9 +165,18 @@ impl LevelEditorPanel {
     ) -> Result<Self, String> {
         let mut panel = Self::new_internal(None, window, cx);
         // Clear the default scene that was just populated, then load from file.
-        let scene_db = { panel.shared_state.read().scene.database.clone() };
-        scene_db.clear();
-        let editor_camera = scene_db.load_from_file_with_editor_camera(&path)?;
+        let scene_db = { panel.shared_state.read().scene.shared_scene() };
+        {
+            let mut world = scene_db.write();
+            crate::level_editor::scene_edit::objects::clear(&mut world.world);
+        }
+        let editor_camera = {
+            let mut world = scene_db.write();
+            crate::level_editor::scene_edit::level_io::load_from_file_with_editor_camera(
+                &mut world.world,
+                &path,
+            )?
+        };
         panel.apply_editor_camera_state(editor_camera.as_ref());
         {
             let mut state = panel.shared_state.write();
@@ -178,7 +209,7 @@ impl LevelEditorPanel {
         // Construct editor state first: SceneDatabase owns the SceneDB-backed
         // store, and the renderer receives only its shared access handle.
         let state = LevelEditorState::new();
-        let scene_store = state.scene.database.shared_store();
+        let scene_store = state.scene.shared_scene();
 
         // Create GPU render engine sharing the scene store Arc and physics query service
         let mut renderer_builder = GpuRendererBuilder::new(1600, 900).scene_db(scene_store.clone());

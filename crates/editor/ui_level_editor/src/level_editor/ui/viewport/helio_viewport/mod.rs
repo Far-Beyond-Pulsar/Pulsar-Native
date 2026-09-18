@@ -18,7 +18,7 @@ use rust_i18n::t;
 use ui::{notification::Notification, ActiveTheme as _, ContextModal};
 
 use crate::level_editor::commands::{execute_command, SceneCommand};
-use crate::level_editor::scene_database::{MeshType, ObjectType, SceneObjectData, Transform};
+use crate::level_editor::scene_edit::{MeshType, ObjectType, SceneObjectData, Transform};
 use crate::level_editor::state::LevelEditorState;
 use helio_component::asset_component::component_class_for_asset;
 use pulsar_reflection::REGISTRY;

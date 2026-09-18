@@ -1,5 +1,5 @@
-use crate::level_editor::scene_database::SceneObjectData;
-use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
+use crate::level_editor::scene_edit::SceneObjectData;
+use crate::level_editor::scene_edit::ObjectType;
 use crate::level_editor::state::{HierarchyDragPayload, LevelEditorState};
 use gpui::{prelude::*, *};
 use rust_i18n::t;
@@ -133,7 +133,11 @@ impl HierarchyItem for SceneObjectItem {
             .on_click(move |_, _, cx| {
                 use crate::level_editor::commands::{execute_command, SceneCommand};
                 let mut state = visibility_state.write();
-                if let Some(mut obj) = state.scene.database.get_object(&visibility_id) {
+                let found = {
+                    let world = state.scene.world();
+                    crate::level_editor::scene_edit::objects::get_object(&world, &visibility_id)
+                };
+                if let Some(mut obj) = found {
                     obj.visible = !obj.visible;
                     execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
                 }
@@ -263,12 +267,12 @@ impl HierarchyPanel {
         state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
     ) {
         let selected = state.scene.selected_object();
-        let key = (state.scene.database.store_revision(), selected.clone());
+        let key = (state.scene.world_revision(), selected.clone());
         if self.cache_key.as_ref() == Some(&key) {
             return;
         }
 
-        let (all_objects, root_ids) = state.scene.database.get_hierarchy_snapshot();
+        let (all_objects, root_ids) = crate::level_editor::scene_edit::objects::get_hierarchy_snapshot(&state.scene.world(), );
         self.cached_items = all_objects
             .into_iter()
             .map(|obj| {
@@ -324,7 +328,7 @@ impl HierarchyPanel {
                     .tooltip(t!("LevelEditor.Hierarchy.AddFolder"))
                     .on_click(move |_, _, _| {
                         use crate::level_editor::commands::{execute_command, SceneCommand};
-                        use crate::level_editor::scene_database::{
+                        use crate::level_editor::scene_edit::{
                             ObjectType, SceneObjectData, Transform,
                         };
                         let mut state = state_clone.write();
@@ -469,11 +473,7 @@ impl HierarchyPanel {
                             // directly. The store's own mutation counter
                             // (`store_revision`) advances, so the hierarchy panel's
                             // frame pump picks the change up without any manual
-                            // revision bookkeeping here.
-                            state
-                                .scene
-                                .database
-                                .reorder_object_siblings(&object_id, &target_id);
+                            // revision bookkeeping crate::level_editor::scene_edit::objects::reorder_object_siblings(&mut here.state.scene.world_mut(), &object_id, &target_id);
                         } else {
                             let result = execute_command(
                                 &mut state,

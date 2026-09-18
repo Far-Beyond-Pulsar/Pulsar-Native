@@ -4,14 +4,13 @@ use helio_pass_billboard::BillboardComponent;
 use helio_pass_forward_lit::LightComponent as LightRow;
 use pulsar_world_registry::GpuMirrored;
 
-use super::{Transform, Visibility, WorldSceneStore};
+use super::{Transform, Visibility};
 
 /// Marks rows owned by this projection, so removing a light also removes
 /// its draw data without touching independently authored pass components.
 struct EditorLightRows;
 
-pub fn sync_editor_light_rows(store: &mut WorldSceneStore, editor_mode: bool) {
-    let world = store.world_mut();
+pub fn sync_editor_light_rows(world: &mut pulsar_scenedb::World, editor_mode: bool) {
     let stale: Vec<_> = world
         .query::<&EditorLightRows>()
         .filter(|(entity, _)| world.get::<LightComponent>(*entity).is_none())
@@ -83,57 +82,55 @@ pub fn sync_editor_light_rows(store: &mut WorldSceneStore, editor_mode: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scene::SceneWorldExt;
 
     #[test]
     fn light_rows_follow_world_edits_and_are_removed_with_the_source() {
-        let mut store = WorldSceneStore::new();
-        let entity = store.spawn(Some("light".into()), "light", None).unwrap();
+        let mut world = pulsar_scenedb::World::new();
+        let entity = world
+            .spawn_object(crate::scene::SpawnObject::new("light").with_id("light"))
+            .unwrap();
         let mut light = LightComponent::default();
         light.general.enabled = true;
-        store.world_mut().insert(entity, light);
-        sync_editor_light_rows(&mut store, true);
-        assert!(store.world().get::<LightRow>(entity).is_some());
-        assert!(store.world().get::<BillboardComponent>(entity).is_some());
-        store
-            .world_mut()
+        world.insert(entity, light);
+        sync_editor_light_rows(&mut world, true);
+        assert!(world.get::<LightRow>(entity).is_some());
+        assert!(world.get::<BillboardComponent>(entity).is_some());
+        world
             .get_mut::<Transform>(entity)
             .unwrap()
             .position = [2.0, 3.0, 4.0];
-        sync_editor_light_rows(&mut store, true);
+        sync_editor_light_rows(&mut world, true);
         assert_eq!(
-            store
-                .world()
+            world
                 .get::<LightRow>(entity)
                 .unwrap()
                 .position_range[..3],
             [2.0, 3.0, 4.0]
         );
         assert_eq!(
-            store
-                .world()
+            world
                 .get::<BillboardComponent>(entity)
                 .unwrap()
                 .world_pos[..3],
             [2.0, 3.0, 4.0]
         );
-        store
-            .world_mut()
+        world
             .get_mut::<Visibility>(entity)
             .unwrap()
             .visible = false;
-        sync_editor_light_rows(&mut store, true);
-        assert!(store.world().get::<LightRow>(entity).is_none());
-        assert!(store.world().get::<BillboardComponent>(entity).is_none());
-        store
-            .world_mut()
+        sync_editor_light_rows(&mut world, true);
+        assert!(world.get::<LightRow>(entity).is_none());
+        assert!(world.get::<BillboardComponent>(entity).is_none());
+        world
             .get_mut::<Visibility>(entity)
             .unwrap()
             .visible = true;
-        sync_editor_light_rows(&mut store, false);
-        assert!(store.world().get::<LightRow>(entity).is_some());
-        assert!(store.world().get::<BillboardComponent>(entity).is_none());
-        store.world_mut().remove::<LightComponent>(entity);
-        sync_editor_light_rows(&mut store, true);
-        assert!(store.world().get::<LightRow>(entity).is_none());
+        sync_editor_light_rows(&mut world, false);
+        assert!(world.get::<LightRow>(entity).is_some());
+        assert!(world.get::<BillboardComponent>(entity).is_none());
+        world.remove::<LightComponent>(entity);
+        sync_editor_light_rows(&mut world, true);
+        assert!(world.get::<LightRow>(entity).is_none());
     }
 }

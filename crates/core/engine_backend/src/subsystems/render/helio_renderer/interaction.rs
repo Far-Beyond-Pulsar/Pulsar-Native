@@ -1,7 +1,7 @@
 //! SceneDB-owned viewport interaction.
 //!
 //! This module deliberately contains no renderer scene mirror.  Picking reads
-//! the current [`WorldSceneStore`] snapshot and gizmo drags write transforms
+//! the current scene `World` and gizmo drags write transforms
 //! back to that same store.  The only state retained between pointer events is
 //! the mathematical state of an in-progress drag; it is revalidated against
 //! the World before every write.
@@ -10,7 +10,10 @@ use glam::{EulerRot, Mat3, Quat, Vec3};
 use helio::Renderer;
 use pulsar_scenedb::Entity;
 
-use crate::scene::{GizmoAxis, GizmoType, ObjectType, Transform, WorldSceneStore};
+use crate::scene::{
+    GizmoAxis, GizmoType, ObjectType, SceneWorldExt, StableId, Transform, Visibility,
+};
+use pulsar_scenedb::World;
 
 const AXIS_HIT_RADIUS: f32 = 0.16;
 const GIZMO_LENGTH: f32 = 1.25;
@@ -66,19 +69,23 @@ impl SceneInteraction {
 
     /// Pick the nearest visible mesh/light by testing conservative world-space
     /// bounds derived from the authoritative SceneDB transform and type.
-    pub fn pick(&self, store: &WorldSceneStore, origin: Vec3, direction: Vec3) -> Option<String> {
+    pub fn pick(&self, world: &World, origin: Vec3, direction: Vec3) -> Option<String> {
         let direction = direction.normalize_or_zero();
         if direction == Vec3::ZERO {
             return None;
         }
 
-        store
-            .get_all_snapshots()
-            .into_iter()
-            .filter(|snapshot| snapshot.visibility.visible && is_pickable(snapshot.object_type))
-            .filter_map(|snapshot| {
-                let (min, max) = world_bounds(&snapshot.object_type, snapshot.transform);
-                ray_aabb(origin, direction, min, max).map(|distance| (distance, snapshot.stable_id))
+        world
+            .query::<&StableId>()
+            .filter_map(|(entity, id)| {
+                let visibility = world.get::<Visibility>(entity)?;
+                let object_type = *world.get::<ObjectType>(entity)?;
+                if !visibility.visible || !is_pickable(object_type) {
+                    return None;
+                }
+                let transform = *world.get::<Transform>(entity)?;
+                let (min, max) = world_bounds(&object_type, transform);
+                ray_aabb(origin, direction, min, max).map(|distance| (distance, id.0.clone()))
             })
             .min_by(|(left, left_id), (right, right_id)| {
                 left.partial_cmp(right)
@@ -91,18 +98,18 @@ impl SceneInteraction {
     /// Begin a gizmo drag using only the selected SceneDB entity's transform.
     pub fn try_start_drag(
         &mut self,
-        store: &WorldSceneStore,
+        world: &World,
         origin: Vec3,
         direction: Vec3,
         camera_position: Vec3,
     ) -> bool {
-        let Some(entity) = store.get_selected_entity() else {
+        let Some(entity) = world.selected_entity() else {
             return false;
         };
-        let Some(initial) = store.transform(entity) else {
+        let Some(initial) = world.get::<Transform>(entity).copied() else {
             return false;
         };
-        let Some(visibility) = store.visibility(entity) else {
+        let Some(visibility) = world.get::<Visibility>(entity).copied() else {
             return false;
         };
         if !visibility.visible || visibility.locked || self.mode == GizmoType::None {
@@ -134,7 +141,7 @@ impl SceneInteraction {
     /// operation without touching any stale renderer state.
     pub fn update_drag(
         &mut self,
-        store: &mut WorldSceneStore,
+        world: &mut World,
         origin: Vec3,
         direction: Vec3,
         camera_position: Vec3,
@@ -142,11 +149,11 @@ impl SceneInteraction {
         let Some(drag) = self.drag else {
             return;
         };
-        let Some(current) = store.transform(drag.entity) else {
+        let Some(current) = world.get::<Transform>(drag.entity).copied() else {
             self.cancel_drag();
             return;
         };
-        let Some(visibility) = store.visibility(drag.entity) else {
+        let Some(visibility) = world.get::<Visibility>(drag.entity).copied() else {
             self.cancel_drag();
             return;
         };
@@ -203,22 +210,24 @@ impl SceneInteraction {
         // selected transform fields, while every write still goes through the
         // normal SceneDB dirty/mirror path.
         if current != next {
-            store.set_transform(drag.entity, next);
+            if let Some(mut transform) = world.get_mut::<Transform>(drag.entity) {
+                *transform = next;
+            }
         }
     }
 
     pub fn update_hover(
         &mut self,
-        store: &WorldSceneStore,
+        world: &World,
         origin: Vec3,
         direction: Vec3,
         camera_position: Vec3,
     ) {
-        let Some(entity) = store.get_selected_entity() else {
+        let Some(entity) = world.selected_entity() else {
             self.hovered_axis = None;
             return;
         };
-        let Some(transform) = store.transform(entity) else {
+        let Some(transform) = world.get::<Transform>(entity).copied() else {
             self.hovered_axis = None;
             return;
         };
@@ -239,16 +248,16 @@ impl SceneInteraction {
     pub fn draw_gizmo(
         &self,
         renderer: &mut Renderer,
-        store: &WorldSceneStore,
+        world: &World,
         camera_position: Vec3,
     ) {
-        let Some(entity) = store.get_selected_entity() else {
+        let Some(entity) = world.selected_entity() else {
             return;
         };
-        let Some(transform) = store.transform(entity) else {
+        let Some(transform) = world.get::<Transform>(entity).copied() else {
             return;
         };
-        let Some(visibility) = store.visibility(entity) else {
+        let Some(visibility) = world.get::<Visibility>(entity).copied() else {
             return;
         };
         if !visibility.visible || self.mode == GizmoType::None {
@@ -460,51 +469,51 @@ fn axis_color(axis: GizmoAxis) -> [f32; 4] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scene::WorldSceneStore;
+    use crate::scene::{MeshType, SpawnObject};
+
+    fn spawn_cube(world: &mut World, id: &str, z: f32) {
+        world
+            .spawn_object(
+                SpawnObject::new(id)
+                    .with_id(id)
+                    .with_object_type(ObjectType::Mesh(MeshType::Cube))
+                    .with_transform(Transform {
+                        position: [0.0, 0.0, z],
+                        ..Default::default()
+                    }),
+            )
+            .unwrap();
+    }
 
     #[test]
     fn nearest_visible_mesh_is_picked_from_world() {
-        let mut store = WorldSceneStore::new();
-        let far = store.spawn(Some("far".into()), "Far", None).unwrap();
-        store.set_object_type(far, ObjectType::Mesh(crate::scene::MeshType::Cube));
-        store.set_transform(
-            far,
-            Transform {
-                position: [0.0, 0.0, -10.0],
-                ..Default::default()
-            },
-        );
-        let near = store.spawn(Some("near".into()), "Near", None).unwrap();
-        store.set_object_type(near, ObjectType::Mesh(crate::scene::MeshType::Cube));
-        store.set_transform(
-            near,
-            Transform {
-                position: [0.0, 0.0, -3.0],
-                ..Default::default()
-            },
-        );
+        let mut world = World::new();
+        spawn_cube(&mut world, "far", -10.0);
+        spawn_cube(&mut world, "near", -3.0);
 
         let interaction = SceneInteraction::default();
         assert_eq!(
-            interaction.pick(&store, Vec3::ZERO, -Vec3::Z),
+            interaction.pick(&world, Vec3::ZERO, -Vec3::Z),
             Some("near".into())
         );
     }
 
     #[test]
     fn hidden_mesh_is_not_pickable() {
-        let mut store = WorldSceneStore::new();
-        let entity = store.spawn(Some("hidden".into()), "Hidden", None).unwrap();
-        store.set_object_type(entity, ObjectType::Mesh(crate::scene::MeshType::Cube));
-        store.set_visibility(
-            entity,
-            crate::scene::Visibility {
-                visible: false,
-                locked: false,
-            },
-        );
+        let mut world = World::new();
+        world
+            .spawn_object(
+                SpawnObject::new("Hidden")
+                    .with_id("hidden")
+                    .with_object_type(ObjectType::Mesh(MeshType::Cube))
+                    .with_visibility(Visibility {
+                        visible: false,
+                        locked: false,
+                    }),
+            )
+            .unwrap();
         assert_eq!(
-            SceneInteraction::default().pick(&store, Vec3::ZERO, -Vec3::Z),
+            SceneInteraction::default().pick(&world, Vec3::ZERO, -Vec3::Z),
             None
         );
     }

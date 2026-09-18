@@ -1,4 +1,4 @@
-use crate::level_editor::scene_database::SceneObjectData;
+use crate::level_editor::scene_edit::SceneObjectData;
 use std::any::Any;
 
 // ── Command types ─────────────────────────────────────────────────────────────

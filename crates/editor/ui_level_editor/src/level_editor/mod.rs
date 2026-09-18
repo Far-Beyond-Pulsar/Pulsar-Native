@@ -20,11 +20,11 @@ pub mod workspace;
 
 // Module aliases so existing `crate::level_editor::X::Y` paths still compile
 pub use core::commands;
-pub use core::scene_database;
+pub use core::scene_edit;
 pub use core::world_settings_data;
 
 // Public API
-pub use core::scene_database::{SceneDatabase, SceneObjectData};
+pub use core::scene_edit::SceneObjectData;
 pub use state::request_thumbnail_capture;
 pub use state::spline::SplineDomain;
 pub use state::terrain::{

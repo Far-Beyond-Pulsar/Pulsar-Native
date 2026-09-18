@@ -3,7 +3,7 @@ use super::*;
 impl LevelEditorPanel {
     pub(in crate::level_editor::ui::panel) fn on_open_scene(&mut self, _: &OpenScene, _window: &mut Window, cx: &mut Context<Self>) {
         let state_arc = self.shared_state.clone();
-        let scene_db = { state_arc.read().scene.database.clone() };
+        let scene_db = { state_arc.read().scene.shared_scene() };
         let default_dir = state_arc
             .read()
             .scene
@@ -19,7 +19,13 @@ impl LevelEditorPanel {
             if let Some(handle) = dialog.pick_file().await {
                 let path = handle.path().to_path_buf();
                 // Load into the existing shared SceneDb (renderer keeps its Arc).
-                let result = scene_db.load_from_file_with_editor_camera(&path);
+                let result = {
+                    let mut world = scene_db.write();
+                    crate::level_editor::scene_edit::level_io::load_from_file_with_editor_camera(
+                        &mut world.world,
+                        &path,
+                    )
+                };
                 cx.update(|cx| {
                     this.update(cx, |this, cx| {
                         match result {
@@ -59,9 +65,12 @@ impl LevelEditorPanel {
     pub(in crate::level_editor::ui::panel) fn on_new_scene(&mut self, _: &NewScene, _: &mut Window, cx: &mut Context<Self>) {
         // Warn if unsaved changes (TODO: modal dialog)
         // Clear the scene IN-PLACE so the renderer keeps its Arc<SceneDb>.
-        let scene_db = { self.shared_state.read().scene.database.clone() };
+        let scene_db = { self.shared_state.read().scene.shared_scene() };
         let mut editor_camera = None;
-        scene_db.clear();
+        {
+            let mut world = scene_db.write();
+            crate::level_editor::scene_edit::objects::clear(&mut world.world);
+        }
 
         // Load from the embedded default.level if available, otherwise start empty.
         if let Some(bytes) = engine_state::EngineContext::global()
@@ -69,7 +78,14 @@ impl LevelEditorPanel {
         {
             let tmp = std::env::temp_dir().join("pulsar_new_scene_seed.level");
             if engine_fs::virtual_fs::write_file(&tmp, &bytes).is_ok() {
-                match scene_db.load_from_file_with_editor_camera(&tmp) {
+                let load_result = {
+                    let mut world = scene_db.write();
+                    crate::level_editor::scene_edit::level_io::load_from_file_with_editor_camera(
+                        &mut world.world,
+                        &tmp,
+                    )
+                };
+                match load_result {
                     Ok(loaded_camera) => editor_camera = loaded_camera,
                     Err(e) => {
                         tracing::warn!("New scene: could not load embedded default.level: {e}")

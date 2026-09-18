@@ -8,7 +8,7 @@ use helio::{Camera, Renderer, RendererConfig};
 use helio_component::{PlanetTerrainFrameInput, PlanetTerrainRuntime};
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
-use crate::scene::{GizmoType, WorldSceneStore};
+use crate::scene::{GizmoType, SceneWorldExt};
 use crate::services::terrain_edit::TerrainEditMailbox;
 use parking_lot::RwLock;
 
@@ -159,7 +159,7 @@ impl Drop for WgpuiProfileBridge {
 pub struct HelioRenderer {
     // ── Scene & Input ──
     pub camera_input: Arc<Mutex<CameraInput>>,
-    pub scene_store: Arc<RwLock<WorldSceneStore>>,
+    pub scene_store: crate::scene::SharedScene,
 
     // ── Legacy (unused) ──
     pub command_sender: mpsc::Sender<RendererCommand>,
@@ -241,7 +241,7 @@ struct HelioInner {
 }
 
 impl HelioRenderer {
-    pub fn new(scene_store: Arc<RwLock<WorldSceneStore>>) -> Self {
+    pub fn new(scene_store: crate::scene::SharedScene) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
         Self {
             camera_input: Arc::new(Mutex::new(CameraInput::new())),
@@ -507,7 +507,7 @@ impl HelioRenderer {
         // background loop to skip present/publish — the compositor holds the last
         // frame on screen.
         let viewport_resized = needs_resize || self.viewport_size != (width, height);
-        let scene_revision = self.scene_store.read().render_revision();
+        let scene_revision = self.scene_store.read().world.revision();
         // A newly-created/loaded SceneDB can have revision 0. The first
         // renderer frame still steps the database so its GPU mirror is current
         // before Helio reads it.
@@ -562,7 +562,7 @@ impl HelioRenderer {
 
         // ── Pending editor commands ─────────────────────────────────────────────
         if self.pending_deselect.swap(false, Ordering::AcqRel) {
-            self.scene_store.write().select_object(None);
+            self.scene_store.write().world.select(None);
             inner.interaction.cancel_drag();
             self.gizmo_dirty = true;
         }
@@ -584,7 +584,7 @@ impl HelioRenderer {
         // No GPU work, no gizmo rebuild, no planet terrain tick, no profiler reads.
         if is_idle {
             // Idle frames must still serve inspector requests.
-            self.scene_store.read().world().publish_inspector_snapshot();
+            self.scene_store.read().world.publish_inspector_snapshot();
             if let Ok(mut m) = self.metrics.lock() {
                 m.fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
                 m.frame_time_ms = dt * 1000.0;
@@ -603,16 +603,16 @@ impl HelioRenderer {
             profiling::profile_scope!("helio_scene_db_step");
             let t_sync = Instant::now();
             let mut scene_store = self.scene_store.write();
-            crate::scene::editor_rows::sync_editor_light_rows(&mut scene_store, true);
+            crate::scene::editor_rows::sync_editor_light_rows(&mut scene_store.world, true);
             crate::scene::sync_static_mesh_rows(&mut scene_store);
-            scene_store.scene_db_mut().step();
+            scene_store.step();
             sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
             inner.last_scene_revision = scene_revision;
         }
 
         // SceneDB Inspector bridge: throttled inside SceneDB, and a no-op unless
         // an inspector launched this process. After the GPU flush above.
-        self.scene_store.read().world().publish_inspector_snapshot();
+        self.scene_store.read().world.publish_inspector_snapshot();
 
         // ── Camera / planet / gizmo / render ────────────────────────────────────
         let t_prepare = Instant::now();
@@ -696,7 +696,7 @@ impl HelioRenderer {
             let store = self.scene_store.read();
             inner
                 .interaction
-                .draw_gizmo(&mut inner.renderer, &store, self.cam_pos);
+                .draw_gizmo(&mut inner.renderer, &store.world, self.cam_pos);
             // Terrain brush ring, from the tool-mode mailbox. Same transient
             // debug-geometry sink the gizmo uses, so it is rebuilt per frame
             // and needs no lifetime management of its own.
@@ -742,7 +742,7 @@ impl HelioRenderer {
             // that the zero-central-knowledge architecture mandate says
             // shouldn't exist here -- flagged for a follow-up pass, not
             // fixed now.
-            self.scene_store.read().world().flush_gpu_mirror(&inner.queue);
+            self.scene_store.read().world.flush_gpu_mirror(&inner.queue);
             if let Err(e) = inner.renderer.render(&camera, &view) {
                 tracing::error!("Helio render error: {:?}", e);
             }
@@ -920,7 +920,7 @@ impl HelioRenderer {
     }
 
     pub fn get_scene_db_selected_id(&self) -> Option<String> {
-        self.scene_store.read().get_selected_id()
+        self.scene_store.read().world.selected_id()
     }
 
     pub fn force_full_resync(&mut self) {
@@ -1023,7 +1023,7 @@ impl HelioRenderer {
     }
 
     pub fn get_selected_object(&self) -> Option<pulsar_scenedb::Entity> {
-        self.scene_store.read().get_selected_entity()
+        self.scene_store.read().world.selected_entity()
     }
 
     pub fn get_selected_scene_db_id(&self) -> Option<String> {
@@ -1031,18 +1031,18 @@ impl HelioRenderer {
     }
 
     pub fn select_by_scene_db_id(&mut self, scene_db_id: &str) -> bool {
-        let exists = self.scene_store.read().entity_for(scene_db_id).is_some();
-        if exists {
-            self.scene_store
-                .write()
-                .select_object(Some(scene_db_id.to_owned()));
+        let mut scene = self.scene_store.write();
+        let entity = scene.world.entity_for(scene_db_id);
+        if entity.is_some() {
+            scene.world.select(entity);
+            drop(scene);
             self.gizmo_dirty = true;
         }
-        exists
+        entity.is_some()
     }
 
     pub fn deselect(&mut self) {
-        self.scene_store.write().select_object(None);
+        self.scene_store.write().world.select(None);
         if let Some(inner) = &mut self.inner {
             inner.interaction.cancel_drag();
         }
@@ -1054,10 +1054,12 @@ impl HelioRenderer {
     }
 
     pub fn select_object_atomic(&mut self, scene_db_id: Option<String>) -> bool {
-        let exists = scene_db_id
-            .as_deref()
-            .is_none_or(|id| self.scene_store.read().entity_for(id).is_some());
-        self.scene_store.write().select_object(scene_db_id);
+        let exists = {
+            let mut scene = self.scene_store.write();
+            let entity = scene_db_id.as_deref().and_then(|id| scene.world.entity_for(id));
+            scene.world.select(entity);
+            scene_db_id.is_none() || entity.is_some()
+        };
         if let Some(inner) = &mut self.inner {
             inner.interaction.cancel_drag();
         }
@@ -1092,11 +1094,11 @@ impl HelioRenderer {
         let store = self.scene_store.read();
         if inner
             .interaction
-            .try_start_drag(&store, ray_origin, ray_direction, self.cam_pos)
+            .try_start_drag(&store.world, ray_origin, ray_direction, self.cam_pos)
         {
             return;
         }
-        let target = inner.interaction.pick(&store, ray_origin, ray_direction);
+        let target = inner.interaction.pick(&store.world, ray_origin, ray_direction);
         drop(store);
         self.select_object_atomic(target);
     }
@@ -1108,11 +1110,11 @@ impl HelioRenderer {
         let mut store = self.scene_store.write();
         inner
             .interaction
-            .update_hover(&store, ray_origin, ray_direction, self.cam_pos);
+            .update_hover(&store.world, ray_origin, ray_direction, self.cam_pos);
         if inner.interaction.is_dragging() {
             inner
                 .interaction
-                .update_drag(&mut store, ray_origin, ray_direction, self.cam_pos);
+                .update_drag(&mut store.world, ray_origin, ray_direction, self.cam_pos);
         }
     }
 

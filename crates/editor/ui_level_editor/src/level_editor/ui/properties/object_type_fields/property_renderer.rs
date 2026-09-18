@@ -24,6 +24,7 @@
 use engine_backend::scene::ComponentInstance;
 use gpui::{prelude::*, *};
 use pulsar_reflection::{PropertyMetadata, REGISTRY, RUNTIME_TYPE_REGISTRY};
+use pulsar_scenedb::World;
 use std::any::Any;
 use std::sync::Arc;
 use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
@@ -36,16 +37,20 @@ use crate::level_editor::core::commands::{execute_command, SceneCommand};
 /// fallbacks.  Used only when the batch read (via `with_world_component`)
 /// fails — e.g. the entity doesn't exist in the World.
 fn read_property_from_world(
-    scene_db: &crate::level_editor::scene_database::SceneDatabase,
-    object_id: &crate::level_editor::scene_database::ObjectId,
+    world: &World,
+    object_id: &crate::level_editor::scene_edit::ObjectId,
     class_name: &str,
     prop: &PropertyMetadata,
     component: &ComponentInstance,
     default_instance: &dyn pulsar_reflection::EngineClass,
 ) -> Box<dyn Any> {
-    scene_db
-        .read_live_component_property(object_id, class_name, prop.name)
-        .or_else(|| {
+    crate::level_editor::scene_edit::components::read_live_component_property(
+        world,
+        object_id,
+        class_name,
+        prop.name,
+    )
+    .or_else(|| {
             component
                 .data
                 .get(prop.name)
@@ -93,26 +98,31 @@ fn read_card_values_from_metadata(
 /// is the only place a clean render still touches `World` — every other
 /// render serves from [`ObjectTypeFieldsSection::world_value_cache`].
 fn read_card_values_fresh(
-    scene_db: &crate::level_editor::scene_database::SceneDatabase,
-    object_id: &crate::level_editor::scene_database::ObjectId,
+    world: &World,
+    object_id: &crate::level_editor::scene_edit::ObjectId,
     class_name: &str,
     properties: &[PropertyMetadata],
     component: &ComponentInstance,
     default_instance: &dyn pulsar_reflection::EngineClass,
 ) -> Vec<Box<dyn Any>> {
-    let batch = scene_db.with_world_component(object_id, class_name, |instance| {
-        properties
-            .iter()
-            .map(|prop| (prop.getter)(instance))
-            .collect::<Vec<_>>()
-    });
+    let batch = crate::level_editor::scene_edit::components::with_world_component(
+        world,
+        object_id,
+        class_name,
+        |instance| {
+            properties
+                .iter()
+                .map(|prop| (prop.getter)(instance))
+                .collect::<Vec<_>>()
+        },
+    );
     match batch {
         Some(values) => values,
         None => properties
             .iter()
             .map(|prop| {
                 read_property_from_world(
-                    scene_db,
+                    world,
                     object_id,
                     class_name,
                     prop,
@@ -219,7 +229,14 @@ impl ObjectTypeFieldsSection {
                 // instance reads and writes its own metadata JSON blob --
                 // `World` physically holds one typed value per
                 // `(entity, ComponentId)`, so duplicates cannot share it.
-                let live_idx = scene_db.live_typed_component_index(&object_id, class_name);
+                let live_idx = {
+                    let world = scene_db.read();
+                    crate::level_editor::scene_edit::components::live_typed_component_index(
+                        &world.world,
+                        &object_id,
+                        class_name,
+                    )
+                };
 
                 // ── Cache-until-signaled value fetch (Pulsar-Native#575) ──
                 //
@@ -244,15 +261,20 @@ impl ObjectTypeFieldsSection {
                     {
                         if pulsar_world_registry::component_id_for_class(class_name).is_none() {
                             self.unsubscribable_classes.insert(class_name.clone());
-                        } else if let Some(sub) =
-                            scene_db.subscribe_component(&object_id, class_name)
-                        {
+                        } else if let Some(sub) = {
+                            let mut world = scene_db.write();
+                            crate::level_editor::scene_edit::components::subscribe_component(
+                                &mut world.world,
+                                &object_id,
+                                class_name,
+                            )
+                        } {
                             self.world_subs.insert(card_key.clone(), sub);
                         }
                     }
                     values = Some(if live_idx == Some(idx) {
                         read_card_values_fresh(
-                            &scene_db,
+                            &scene_db.read().world,
                             &object_id,
                             class_name,
                             &properties,

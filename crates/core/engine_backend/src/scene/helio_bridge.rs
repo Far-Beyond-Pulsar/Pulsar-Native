@@ -12,15 +12,14 @@ use pulsar_scenedb::gpu::{
     BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
 
-use crate::scene::{Transform, Visibility, WorldSceneStore};
+use crate::scene::{Transform, Visibility};
 
 struct EditorMeshRow;
 
 /// Author the GPU draw rows directly in SceneDB from the live mesh entities.
 /// The object-batch pass reads these rows and the mesh ranges from the same
 /// SceneDB mirror; no renderer object table or CPU frame cache is involved.
-pub fn sync_static_mesh_rows(store: &mut WorldSceneStore) {
-    let scene_db = store.scene_db_mut();
+pub fn sync_static_mesh_rows(scene_db: &mut pulsar_scenedb::SceneDb) {
     let stale: Vec<_> = scene_db
         .world
         .query::<&EditorMeshRow>()
@@ -177,11 +176,10 @@ pub fn sync_static_mesh_rows(store: &mut WorldSceneStore) {
 /// writes into a mirror that did not exist yet. The values are copied only for
 /// that one-time re-dispatch; they are never retained by the bridge.
 pub fn ensure_gpu_mirror(
-    store: &mut WorldSceneStore,
+    scene_db: &mut pulsar_scenedb::SceneDb,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
 ) -> GpuMirrorHandle {
-    let scene_db = store.scene_db_mut();
     if let Some(existing) = scene_db.world.gpu_mirror() {
         return existing.clone();
     }
@@ -390,8 +388,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_new_store_does_not_have_a_gpu_mirror() {
-        let store = WorldSceneStore::new();
-        assert!(!store.world().has_gpu_mirror());
+    fn a_new_scene_does_not_have_a_gpu_mirror() {
+        let scene_db = pulsar_scenedb::SceneDb::new();
+        assert!(!scene_db.world.has_gpu_mirror());
     }
 }

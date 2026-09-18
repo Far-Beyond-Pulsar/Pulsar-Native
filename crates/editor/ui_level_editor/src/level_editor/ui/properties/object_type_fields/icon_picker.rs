@@ -19,8 +19,8 @@ const OBJECT_ICON_PROP_KEY: &str = "icon_asset";
 impl ObjectTypeFieldsSection {
     /// Reads the icon asset path from the object's prop map.
     pub(super) fn read_object_icon_path(&self) -> String {
-        self.scene_db
-            .get_object(&self.object_id)
+        let world = self.scene_db.read();
+        crate::level_editor::scene_edit::objects::get_object(&world.world, &self.object_id)
             .and_then(|obj| obj.props.get(OBJECT_ICON_PROP_KEY).cloned())
             .and_then(|v| v.as_str().map(str::to_string))
             .unwrap_or_default()
@@ -28,7 +28,10 @@ impl ObjectTypeFieldsSection {
 
     /// Persists an icon asset path into the object's prop map.
     pub(super) fn write_object_icon_path(&self, path: String) {
-        let Some(mut obj) = self.scene_db.get_object(&self.object_id) else {
+        let mut world = self.scene_db.write();
+        let Some(mut obj) =
+            crate::level_editor::scene_edit::objects::get_object(&world.world, &self.object_id)
+        else {
             return;
         };
 
@@ -39,7 +42,7 @@ impl ObjectTypeFieldsSection {
                 .insert(OBJECT_ICON_PROP_KEY.to_string(), Value::String(path));
         }
 
-        let _ = self.scene_db.update_object(obj);
+        crate::level_editor::scene_edit::objects::update_object(&mut world.world, obj);
     }
 
     /// Creates the [`MeshAssetPicker`] entity the first time it is needed.

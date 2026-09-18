@@ -1,5 +1,5 @@
-//! #639 integration: script references survive save/load through the REAL
-//! `WorldSceneStore` round trip.
+//! #639 integration: script references survive save/load through a REAL
+//! save/load round trip of the scene world.
 //!
 //! Registers one small component class (`BridgeGizmo`) into both registries
 //! so the full hydrate/edit path runs exactly as it would for a real
@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use engine_backend::scene::{ObjectSnapshot, RenderProps, Transform, Visibility, WorldSceneStore};
+use engine_backend::scene::{SceneWorldExt, SharedScene, SpawnObject};
 use parking_lot::RwLock;
 use pulsar_reflection::{EngineClass, PropertyMetadata, RuntimeTypeInfo, RUNTIME_TYPE_REGISTRY};
 use pulsar_scenedb::World;
@@ -137,31 +137,51 @@ pulsar_reflection::inventory::submit! {
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-fn snap(stable_id: &str, parent: Option<&str>) -> ObjectSnapshot {
-    ObjectSnapshot {
-        stable_id: stable_id.to_string(),
-        name: stable_id.to_string(),
-        parent: parent.map(str::to_string),
-        transform: Transform::default(),
-        visibility: Visibility::default(),
-        object_type: engine_backend::scene::ObjectType::Empty,
-        render_props: RenderProps::default(),
+/// A saved object list: `(stable id, parent stable id)` in parent-before-child order.
+type Saved = Vec<(String, Option<String>)>;
+
+fn scene_from(saved: &Saved) -> World {
+    let mut world = World::new();
+    for (id, parent) in saved {
+        let parent = parent.as_deref().map(|p| world.entity_for(p).unwrap());
+        world
+            .spawn_object(SpawnObject::new(id.as_str()).with_id(id.as_str()).with_parent(parent))
+            .unwrap();
     }
+    world
 }
 
-/// A saved session: snapshots + the serialized reference a graph held.
-fn session_with_door_and_chest() -> (Vec<ObjectSnapshot>, SerializedComponentRef) {
-    let mut store =
-        WorldSceneStore::load_from_snapshots(&[snap("door", None), snap("chest", None)]).unwrap();
-    let door = store.entity_for("door").unwrap();
+fn save(world: &World) -> Saved {
+    // Parent-before-child DFS, exactly what a level writer produces.
+    fn walk(world: &World, parent: Option<pulsar_scenedb::Entity>, out: &mut Saved) {
+        for entity in world.children_of(parent) {
+            let id = world.stable_id_of(entity).unwrap().to_string();
+            let parent_id = parent.map(|p| world.stable_id_of(p).unwrap().to_string());
+            out.push((id, parent_id));
+            walk(world, Some(entity), out);
+        }
+    }
+    let mut out = Vec::new();
+    walk(world, None, &mut out);
+    out
+}
+
+fn flat(ids: &[&str]) -> Saved {
+    ids.iter().map(|id| (id.to_string(), None)).collect()
+}
+
+/// A saved session: the object list + the serialized reference a graph held.
+fn session_with_door_and_chest() -> (Saved, SerializedComponentRef) {
+    let mut world = scene_from(&flat(&["door", "chest"]));
+    let door = world.entity_for("door").unwrap();
 
     // The gameplay state a graph would reference and mutate.
-    store.world_mut().insert(door, BridgeGizmo { charge: 10 });
+    world.insert(door, BridgeGizmo { charge: 10 });
 
     let r = ComponentRef::live(door.into(), "BridgeGizmo");
-    let saved = r.to_serialized(&store).expect("door has a stable id");
+    let saved = r.to_serialized(&world).expect("door has a stable id");
 
-    (store.to_snapshots(), saved)
+    (save(&world), saved)
 }
 
 // ── the #639 acceptance tests ──────────────────────────────────────────────
@@ -171,41 +191,42 @@ fn session_with_door_and_chest() -> (Vec<ObjectSnapshot>, SerializedComponentRef
 /// inherited the old entity bits.
 #[test]
 fn reference_survives_save_load_and_still_targets_the_intended_component() {
-    let (snapshots, saved) = session_with_door_and_chest();
+    let (saved_objects, saved) = session_with_door_and_chest();
 
-    // Reload into a fresh store -- entity bits are free to differ entirely.
-    let mut store = WorldSceneStore::load_from_snapshots(&snapshots).unwrap();
-    let door = store.entity_for("door").unwrap();
-    let chest = store.entity_for("chest").unwrap();
-    store.world_mut().insert(door, BridgeGizmo { charge: 10 });
-    store.world_mut().insert(chest, BridgeGizmo { charge: 99 });
+    // Reload into a fresh world -- entity bits are free to differ entirely.
+    let mut world = scene_from(&saved_objects);
+    let door = world.entity_for("door").unwrap();
+    let chest = world.entity_for("chest").unwrap();
+    world.insert(door, BridgeGizmo { charge: 10 });
+    world.insert(chest, BridgeGizmo { charge: 99 });
 
     let resolved = saved
-        .resolve(&store)
+        .resolve(&world)
         .expect("reference resolves after load");
     assert_eq!(resolved.class_name, "BridgeGizmo");
     assert_eq!(resolved.component_index, 0);
 
     resolved
-        .set_property(store.world_mut(), "charge", serde_json::json!(42))
+        .set_property(&mut world, "charge", serde_json::json!(42))
         .expect("writes");
 
-    let door = store.entity_for("door").unwrap();
-    let chest = store.entity_for("chest").unwrap();
-    assert_eq!(store.world().get::<BridgeGizmo>(door).unwrap().charge, 42);
+    let door = world.entity_for("door").unwrap();
+    let chest = world.entity_for("chest").unwrap();
+    assert_eq!(world.get::<BridgeGizmo>(door).unwrap().charge, 42);
     assert_eq!(
-        store.world().get::<BridgeGizmo>(chest).map(|g| g.charge),
+        world.get::<BridgeGizmo>(chest).map(|g| g.charge),
         Some(99),
         "the sibling was never touched"
     );
 
-    // And the shared-store handle pattern works end to end (#634 contract):
-    let shared: Arc<RwLock<WorldSceneStore>> = Arc::new(RwLock::new(store));
-    let again = saved.resolve(&*shared.read()).unwrap();
+    // And the shared-scene handle pattern works end to end (#634 contract):
+    let scene = pulsar_scenedb::SceneDb::new();
+    let mut scene = scene;
+    scene.world = world;
+    let shared: SharedScene = Arc::new(RwLock::new(scene));
+    let again = saved.resolve(&shared.read().world).unwrap();
     assert_eq!(
-        again
-            .get_property(&shared.read().world(), "charge")
-            .unwrap(),
+        again.get_property(&shared.read().world, "charge").unwrap(),
         serde_json::json!(42)
     );
 }
@@ -214,14 +235,14 @@ fn reference_survives_save_load_and_still_targets_the_intended_component() {
 /// silent rebinding onto another object that happens to occupy nearby slots.
 #[test]
 fn deleted_target_reports_reference_lost_after_load() {
-    let (mut snapshots, saved) = session_with_door_and_chest();
+    let (mut saved_objects, saved) = session_with_door_and_chest();
 
     // The "door" object no longer exists in the next session's file.
-    snapshots.retain(|s| s.stable_id != "door");
-    let store = WorldSceneStore::load_from_snapshots(&snapshots).unwrap();
+    saved_objects.retain(|(id, _)| id != "door");
+    let world = scene_from(&saved_objects);
 
     assert_eq!(
-        saved.resolve(&store),
+        saved.resolve(&world),
         Err(ResolveRefError::ReferenceLost {
             stable_id: "door".into()
         })
@@ -233,42 +254,41 @@ fn deleted_target_reports_reference_lost_after_load() {
 /// resolution is lazy, per access, against the CURRENT table.
 #[test]
 fn reparenting_between_sessions_does_not_disturb_references() {
-    let (snapshots, saved) = session_with_door_and_chest();
+    let (saved_objects, saved) = session_with_door_and_chest();
 
     // Next session the editor moved "chest" under "door" before loading.
-    let mut edited = snapshots.clone();
-    for snapshot in edited.iter_mut() {
-        if snapshot.stable_id == "chest" {
-            snapshot.parent = Some("door".into());
+    let mut edited = saved_objects.clone();
+    for (id, parent) in edited.iter_mut() {
+        if id == "chest" {
+            *parent = Some("door".into());
         }
     }
-    let store = WorldSceneStore::load_from_snapshots(&edited).unwrap();
+    let world = scene_from(&edited);
 
     let resolved = saved
-        .resolve(&store)
+        .resolve(&world)
         .expect("reparenting must not lose references");
-    assert_eq!(resolved.actor().entity(), store.entity_for("door").unwrap());
+    assert_eq!(resolved.actor().entity(), world.entity_for("door").unwrap());
 }
 
 /// Stale-session references (target despawned BEFORE freezing) fail at
 /// freeze time rather than persisting garbage.
 #[test]
 fn freezing_a_despawned_target_is_a_typed_error() {
-    let mut store =
-        WorldSceneStore::load_from_snapshots(&[snap("door", None), snap("chest", None)]).unwrap();
-    let door = store.entity_for("door").unwrap();
-    store.despawn(door);
+    let mut world = scene_from(&flat(&["door", "chest"]));
+    let door = world.entity_for("door").unwrap();
+    world.despawn_tree(door);
 
     let dangling = ComponentRef::live(door.into(), "BridgeGizmo");
     assert_eq!(
-        dangling.to_serialized(&store),
+        dangling.to_serialized(&world),
         Err(ResolveRefError::ReferenceLost {
             stable_id: String::new()
         })
     );
     // Per-access staleness stays the #641 taxonomy:
     assert!(matches!(
-        dangling.validate(store.world()),
+        dangling.validate(&world),
         Err(ScriptRefError::ReferenceDespawned { .. })
     ));
 }

@@ -40,6 +40,7 @@ engine_state.workspace = true
 # scene store is moving onto this instead of the hand-rolled SceneDb/
 # SceneMetadataDb/ComponentDb in `src/scene/`. See `src/scene/world_store.rs`.
 pulsar_scenedb.workspace = true
+pulsar_scene_model = { workspace = true }
 pulsar_world_registry.workspace = true
 # Script object model bridge (#639): StableIdResolver + ComponentInstanceStore impls.
 pulsar_script_object_model.workspace = true

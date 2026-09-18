@@ -105,6 +105,7 @@ pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflect
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
 pulsar_world_registry              = { path = "crates/core/pulsar_world_registry" }
+pulsar_scene_model                 = { path = "crates/core/pulsar_scene_model" }
 pulsar_script_object_model         = { path = "crates/core/pulsar_script_object_model" }
 pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
 pulsar_terrain                     = { path = "crates/subsystems/pulsar_terrain" }
@@ -388,4 +389,4 @@ pulsar_reflection_derive = { path = "crates/third-party/pulsar-reflection/pulsar
 # `inspector-send-sync` in the local worktree D:/GitHub/SceneDB-inspector-send-sync).
 # This `file://` URL is LOCAL ONLY -- push that branch and repoint this to the
 # GitHub URL + pushed rev before anyone else builds. Supersedes the 72291d0 pin above.
-pulsar_scenedb = { git = "file:///D:/GitHub/SceneDB-inspector-send-sync", rev = "ebf469324a4b4949b3148c1c83eb069e83adada4" }
+pulsar_scenedb = { git = "file:///D:/GitHub/SceneDB-inspector-send-sync", rev = "1453cfa77c91ce98d084e74b98ba30763a853abc" }

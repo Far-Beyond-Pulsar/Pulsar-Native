@@ -14,9 +14,10 @@
 //! lands (projection fields, per-camera near/far), this module is the one
 //! place that switches over.
 
+use engine_backend::scene::SceneWorldExt;
 use crate::freecam::FreeCam;
 use crate::window::RenderCamera;
-use engine_backend::scene::WorldSceneStore;
+
 
 /// Resolve the shared-world camera, if any: the first live
 /// `ObjectType::Camera` entity's transform as a [`RenderCamera`].
@@ -24,9 +25,9 @@ use engine_backend::scene::WorldSceneStore;
 /// Rotation convention matches the scene format's (`Transform.rotation` =
 /// Euler degrees YXZ, `[pitch, yaw, roll]`), reusing [`FreeCam`]'s look-dir
 /// math so a world camera and the freecam agree on orientation semantics.
-pub fn select_world_camera(store: &WorldSceneStore) -> Option<RenderCamera> {
-    let world = store.world();
-    for entity in store.camera_entities() {
+pub fn select_world_camera(store: &pulsar_scenedb::SceneDb) -> Option<RenderCamera> {
+    let world = &store.world;
+    for entity in world.camera_entities() {
         let Some(transform) = world.get::<engine_backend::scene::Transform>(entity) else {
             continue;
         };
@@ -56,10 +57,10 @@ mod tests {
     /// drives the view.
     #[test]
     fn a_camera_typed_entity_drives_the_view_from_the_shared_world() {
-        let mut store = WorldSceneStore::new();
-        let cam = store.spawn(Some("view".into()), "View", None).unwrap();
-        store.set_object_type(cam, ObjectType::Camera);
-        store.set_transform(
+        let mut store = engine_backend::scene::new_scene();
+        let cam = store.world.spawn_object(engine_backend::scene::SpawnObject::new("View").with_id("view")).unwrap();
+        store.world.insert(cam, ObjectType::Camera);
+        store.world.insert(
             cam,
             Transform {
                 position: [3.0, 4.0, 5.0],
@@ -79,12 +80,12 @@ mod tests {
 
     #[test]
     fn non_camera_objects_and_empty_worlds_yield_none() {
-        let mut store = WorldSceneStore::new();
+        let mut store = engine_backend::scene::new_scene();
         assert!(select_world_camera(&store).is_none());
 
-        let plain = store.spawn(None, "Cube", None).unwrap();
-        store.set_object_type(plain, ObjectType::Mesh(MeshType::Cube));
-        store.set_visibility(
+        let plain = store.world.spawn_object(engine_backend::scene::SpawnObject::new("Cube")).unwrap();
+        store.world.insert(plain, ObjectType::Mesh(MeshType::Cube));
+        store.world.insert(
             plain,
             Visibility {
                 visible: true,
@@ -102,10 +103,10 @@ mod tests {
     /// hiding the camera object doesn't blank the viewport.
     #[test]
     fn a_hidden_camera_still_drives_the_view() {
-        let mut store = WorldSceneStore::new();
-        let cam = store.spawn(None, "Cam", None).unwrap();
-        store.set_object_type(cam, ObjectType::Camera);
-        store.set_visibility(
+        let mut store = engine_backend::scene::new_scene();
+        let cam = store.world.spawn_object(engine_backend::scene::SpawnObject::new("Cam")).unwrap();
+        store.world.insert(cam, ObjectType::Camera);
+        store.world.insert(
             cam,
             Visibility {
                 visible: false,

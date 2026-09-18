@@ -228,14 +228,14 @@ fn generated_actor_shape_writes_the_shared_world_and_fires_subscriptions() {
     let entity = {
         let mut store = game.scene_store.write();
         game.actors
-            .register(LiveDispatchReference::default(), store.world_mut())
+            .register(LiveDispatchReference::default(), &mut store.world)
     };
 
     // begin_play ran inside register: hydration + dispatcher write landed.
     assert_eq!(
         game.scene_store
             .read()
-            .world()
+            .world
             .get::<LiveDispatchProbe>(entity)
             .expect("prefab component hydrated onto the actor's scene entity")
             .intensity,
@@ -246,7 +246,7 @@ fn generated_actor_shape_writes_the_shared_world_and_fires_subscriptions() {
     // then the loop ticks: phase 2 hands the SAME world to Actor::tick.
     {
         let mut store = game.scene_store.write();
-        let world = store.world_mut();
+        let world = &mut store.world;
         world
             .subscribe_id(entity, component_id::<LiveDispatchProbe>())
             .expect("subscription armed");
@@ -256,7 +256,7 @@ fn generated_actor_shape_writes_the_shared_world_and_fires_subscriptions() {
     assert_eq!(
         game.scene_store
             .read()
-            .world()
+            .world
             .get::<LiveDispatchProbe>(entity)
             .unwrap()
             .intensity,
@@ -266,7 +266,7 @@ fn generated_actor_shape_writes_the_shared_world_and_fires_subscriptions() {
     let events = game
         .scene_store
         .write()
-        .world_mut()
+        .world
         .take_component_change_events();
     assert!(
         events.iter().any(|e| e.entity == entity

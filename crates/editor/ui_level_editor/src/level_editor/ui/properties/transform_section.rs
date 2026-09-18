@@ -9,8 +9,8 @@ use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
 
 use super::bindings::bound_field::F32BoundField;
 use crate::level_editor::core::commands::{execute_command, SceneCommand};
-use crate::level_editor::scene_database::SceneDatabase;
 use crate::level_editor::state::LevelEditorState;
+use engine_backend::scene::SharedScene;
 
 #[derive(Clone, Copy)]
 enum Axis {
@@ -50,14 +50,20 @@ fn axis_binding(
             // whole-object read cloned the props map and merged every
             // component's JSON per field per bump — cost that scaled with
             // how complex the inspected object was.
-            db.get_object_transform(id).map(|t| match axis {
+            let world = db.read();
+            let transform =
+                crate::level_editor::scene_edit::objects::get_object_transform(&world.world, id);
+            transform.map(|t| match axis {
                 Axis::Position => t.position[index],
                 Axis::Rotation => t.rotation[index],
                 Axis::Scale => t.scale[index],
             })
         },
         move |id, val, db| {
-            let Some(t) = db.get_object_transform(id) else {
+            let Some(t) = ({
+                let world = db.read();
+                crate::level_editor::scene_edit::objects::get_object_transform(&world.world, id)
+            }) else {
                 return false;
             };
             let mut position = None;
@@ -123,7 +129,7 @@ pub struct TransformSection {
 impl TransformSection {
     pub fn new(
         object_id: String,
-        scene_db: SceneDatabase,
+        scene_db: SharedScene,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         window: &mut Window,
         cx: &mut Context<Self>,

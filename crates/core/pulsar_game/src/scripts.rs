@@ -97,15 +97,15 @@ impl crate::tick::TickLoop {
                 actor: Box::new(actor),
             };
             let mut store = self.scene_store.write();
-            shell.begin(store.world_mut());
+            shell.begin(&mut store.world);
             drop(store);
             self.rebinding.push(shell);
             return entity;
         }
 
         let mut store = self.scene_store.write();
-        let entity = self.actors.register(actor, store.world_mut());
-        store.world_mut().insert(entity, ScriptTag { type_path });
+        let entity = self.actors.register(actor, &mut store.world);
+        store.world.insert(entity, ScriptTag { type_path });
         entity
     }
 
@@ -118,7 +118,7 @@ impl crate::tick::TickLoop {
         let targets: Vec<RebindTarget> = {
             let store = self.scene_store.read();
             store
-                .world()
+                .world
                 .query::<&ScriptTag>()
                 .map(|(entity, tag)| RebindTarget {
                     entity,
@@ -192,7 +192,7 @@ mod tests {
         {
             let store = g.scene_store.read();
             assert_eq!(
-                store.world().get::<ScriptTag>(e),
+                store.world.get::<ScriptTag>(e),
                 Some(&expected),
                 "registration must stamp the actor's full type path"
             );
@@ -218,7 +218,7 @@ mod tests {
         // session mutated. Reload must not disturb it.
         {
             let mut store = g.scene_store.write();
-            store.world_mut().insert(
+            store.world.insert(
                 original,
                 Transform {
                     position: [7.5, 0.0, 2.0],
@@ -237,7 +237,7 @@ mod tests {
         // ...without spawning anything extra nor touching state.
         {
             let store = g.scene_store.read();
-            let world = store.world();
+            let world = &store.world;
             assert_eq!(
                 world.get::<Transform>(original).map(|t| t.position),
                 Some([7.5, 0.0, 2.0]),
@@ -291,7 +291,7 @@ mod tests {
         let gone = g.register_actor(Probe::default());
         {
             let mut store = g.scene_store.write();
-            store.world_mut().remove::<ScriptTag>(gone);
+            store.world.remove::<ScriptTag>(gone);
         }
 
         g.begin_script_reload();
@@ -299,7 +299,7 @@ mod tests {
         assert_ne!(added, gone, "no tag to claim ⇒ fresh spawn");
 
         assert!(
-            g.scene_store.read().world().is_alive(gone),
+            g.scene_store.read().world.is_alive(gone),
             "orphaned entity keeps living; nothing despawns behind the user's back"
         );
     }

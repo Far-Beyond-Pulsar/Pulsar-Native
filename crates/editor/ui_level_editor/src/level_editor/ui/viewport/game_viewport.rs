@@ -207,7 +207,7 @@ impl GameViewport {
             // transferred for the session; the editor keeps its own. The
             // guest adopts it, so mid-session edits and gameplay mutations
             // meet in one world.
-            let shared_world = self.shared_state.read().scene.database.shared_store();
+            let shared_world = self.shared_state.read().scene.shared_scene();
             let loaded = unsafe {
                 PieHost::load(
                     &req.dylib_path,
