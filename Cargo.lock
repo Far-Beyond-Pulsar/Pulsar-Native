@@ -4594,7 +4594,7 @@ dependencies = [
  "helio-core",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -4606,7 +4606,7 @@ dependencies = [
  "helio-core",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -4629,7 +4629,7 @@ dependencies = [
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -4644,7 +4644,7 @@ dependencies = [
  "helio-pass-shadow-matrix",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -4688,7 +4688,7 @@ dependencies = [
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "pulsar_scenedb_derive",
  "serde_json",
  "wgpu",
 ]
@@ -4705,7 +4705,7 @@ dependencies = [
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "pulsar_scenedb_derive",
  "serde_json",
  "wgpu",
 ]
@@ -4732,7 +4732,7 @@ dependencies = [
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "pulsar_scenedb_derive",
  "serde_json",
  "wgpu",
 ]
@@ -4843,7 +4843,7 @@ dependencies = [
  "log",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -4869,7 +4869,7 @@ dependencies = [
  "helio-core",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -4944,7 +4944,7 @@ dependencies = [
  "helio-core",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "pulsar_scenedb_derive",
  "serde_json",
  "wgpu",
 ]
@@ -5008,7 +5008,7 @@ dependencies = [
  "helio-pass-shadow-matrix",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -5033,7 +5033,7 @@ dependencies = [
  "helio-pass-hiz",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -5074,7 +5074,7 @@ dependencies = [
  "pulsar_events",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_scenedb_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83)",
+ "pulsar_scenedb_derive",
  "pulsar_terrain",
  "pulsar_world_registry",
  "serde",
@@ -9014,12 +9014,12 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+file:///D:/GitHub/SceneDB-inspector-send-sync?rev=1453cfa77c91ce98d084e74b98ba30763a853abc#1453cfa77c91ce98d084e74b98ba30763a853abc"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=214cb5319fcef099f2413005e472d86aaf1046b3#214cb5319fcef099f2413005e472d86aaf1046b3"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=12424a5f75166332f9f1d2741281f6fc4847b44d)",
  "pulsar_reflection",
- "pulsar_scenedb_derive 0.1.0 (git+file:///D:/GitHub/SceneDB-inspector-send-sync?rev=1453cfa77c91ce98d084e74b98ba30763a853abc)",
+ "pulsar_scenedb_derive",
  "serde",
  "serde_json",
  "socket2 0.5.10",
@@ -9030,17 +9030,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+file:///D:/GitHub/SceneDB-inspector-send-sync?rev=1453cfa77c91ce98d084e74b98ba30763a853abc#1453cfa77c91ce98d084e74b98ba30763a853abc"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "pulsar_scenedb_derive"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=8f98f83#8f98f831e53f8d85fd6e7c1abbc2206aab55c6f3"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=214cb5319fcef099f2413005e472d86aaf1046b3#214cb5319fcef099f2413005e472d86aaf1046b3"
 dependencies = [
  "proc-macro2",
  "quote",

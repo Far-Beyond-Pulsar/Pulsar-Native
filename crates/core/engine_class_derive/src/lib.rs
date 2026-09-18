@@ -1722,7 +1722,7 @@ fn gpu_mirror_codegen(
         // constraint nothing here actually needs (see `pulsar_world_
         // registry::GpuMirrored`'s trait bound, which dropped it for the
         // same reason).
-        #[derive(pulsar_scenedb::SceneStore, Clone, Copy, pulsar_scenedb::pulsar_reflection::Reflectable)]
+        #[derive(pulsar_scenedb::SceneStore, Clone, Copy)]
         #[gpu(layout = packed)]
         #[repr(C)]
         #[allow(non_snake_case)]
