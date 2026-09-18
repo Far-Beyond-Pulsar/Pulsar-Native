@@ -14,11 +14,25 @@ use pulsar_scenedb::gpu::{
 
 use crate::scene::{Transform, Visibility, WorldSceneStore};
 
+struct EditorMeshRow;
+
 /// Author the GPU draw rows directly in SceneDB from the live mesh entities.
 /// The object-batch pass reads these rows and the mesh ranges from the same
 /// SceneDB mirror; no renderer object table or CPU frame cache is involved.
 pub fn sync_static_mesh_rows(store: &mut WorldSceneStore) {
     let scene_db = store.scene_db_mut();
+    let stale: Vec<_> = scene_db
+        .world
+        .query::<&EditorMeshRow>()
+        .filter(|(entity, _)| scene_db.world.get::<StaticMeshComponent>(*entity).is_none())
+        .map(|(entity, _)| entity)
+        .collect();
+    for entity in stale {
+        scene_db
+            .world
+            .remove::<helio_pass_gbuffer::StaticObjectComponent>(entity);
+        scene_db.world.remove::<EditorMeshRow>(entity);
+    }
     tracing::info!(
         mesh_components = scene_db.world.query::<&StaticMeshComponent>().count(),
         object_rows = scene_db
@@ -56,6 +70,14 @@ pub fn sync_static_mesh_rows(store: &mut WorldSceneStore) {
                 .remove::<helio_pass_gbuffer::StaticObjectComponent>(entity);
             continue;
         }
+        // Real, geometry-derived local bounds (see `bounds_local`'s doc) --
+        // computed once at hydrate time from the mesh's actual vertex
+        // positions, not guessed from the transform's scale.
+        let bounds_local = scene_db
+            .world
+            .get::<StaticMeshComponent>(entity)
+            .map(|c| c.bounds_local)
+            .unwrap_or([0.0, 0.0, 0.0, 0.5]);
         let Some(vertices) =
             StaticMeshComponent::vertices_gpu_handle(mirror.store(), entity.index())
                 .filter(|r| r.count != 0)
@@ -105,7 +127,17 @@ pub fn sync_static_mesh_rows(store: &mut WorldSceneStore) {
             ),
             glam::Vec3::from_array(transform.position),
         );
-        let radius = glam::Vec3::from_array(transform.scale).length().max(0.2) * 0.5;
+        // World-space bounding sphere: transform the mesh's local-space
+        // bounds center through `model`, and scale the local radius by the
+        // largest axis scale factor -- conservative under non-uniform scale
+        // (the scaled ellipsoid's farthest extent along its longest axis is
+        // `radius * max_scale_component`, so a sphere of that radius fully
+        // contains it, even though it isn't the tightest possible bound).
+        let local_center =
+            glam::Vec3::from_array([bounds_local[0], bounds_local[1], bounds_local[2]]);
+        let world_center = model.transform_point3(local_center);
+        let world_radius =
+            bounds_local[3] * glam::Vec3::from_array(transform.scale).abs().max_element();
         scene_db.world.insert(
             entity,
             helio_pass_gbuffer::StaticObjectComponent::new(
@@ -114,12 +146,7 @@ pub fn sync_static_mesh_rows(store: &mut WorldSceneStore) {
                 entity.index(),
                 entity.generation().wrapping_add(1),
                 model,
-                [
-                    transform.position[0],
-                    transform.position[1],
-                    transform.position[2],
-                    radius,
-                ],
+                [world_center.x, world_center.y, world_center.z, world_radius],
                 indices.count,
                 indices.offset,
                 vertices.offset as i32,
@@ -128,6 +155,9 @@ pub fn sync_static_mesh_rows(store: &mut WorldSceneStore) {
                 0,
             ),
         );
+        if scene_db.world.get::<EditorMeshRow>(entity).is_none() {
+            scene_db.world.insert(entity, EditorMeshRow);
+        }
     }
 }
 
@@ -155,6 +185,27 @@ pub fn ensure_gpu_mirror(
     if let Some(existing) = scene_db.world.gpu_mirror() {
         return existing.clone();
     }
+
+    let existing_lights: Vec<_> = scene_db
+        .world
+        .query::<&helio_pass_forward_lit::LightComponent>()
+        .map(|(entity, component)| (entity, *component))
+        .collect();
+    let existing_billboards: Vec<_> = scene_db
+        .world
+        .query::<&helio_pass_billboard::BillboardComponent>()
+        .map(|(entity, component)| (entity, *component))
+        .collect();
+    let existing_transforms: Vec<_> = scene_db
+        .world
+        .query::<&Transform>()
+        .map(|(entity, component)| (entity, *component))
+        .collect();
+    let existing_materials: Vec<_> = scene_db
+        .world
+        .query::<&helio_pass_gbuffer::MaterialComponent>()
+        .map(|(entity, component)| (entity, *component))
+        .collect();
 
     let existing_static_meshes: Vec<_> = scene_db
         .world
@@ -202,6 +253,17 @@ pub fn ensure_gpu_mirror(
         max_cells_metadata: 16,
     };
     let mut gpu_store = SceneGpuStore::new(&ctx, gpu_cfg);
+    // Register before the first write, as in the Cathedral/Billboard demos.
+    helio_pass_forward_lit::LightComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        helio_pass_forward_lit::MAX_LIGHTS,
+        &device,
+    );
+    helio_pass_billboard::BillboardComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        1024,
+        &device,
+    );
 
     // These are SceneDB component columns. Capacities are initial capacities
     // only; growable registration remains the sole owner of GPU storage and
@@ -279,6 +341,19 @@ pub fn ensure_gpu_mirror(
 
     let mirror = GpuMirrorHandle::new(Arc::new(gpu_store), queue);
     scene_db.world.attach_gpu_mirror(mirror.clone());
+
+    for (entity, component) in existing_lights {
+        scene_db.world.insert(entity, component);
+    }
+    for (entity, component) in existing_billboards {
+        scene_db.world.insert(entity, component);
+    }
+    for (entity, component) in existing_transforms {
+        scene_db.world.insert(entity, component);
+    }
+    for (entity, component) in existing_materials {
+        scene_db.world.insert(entity, component);
+    }
 
     // Re-dispatch existing typed rows exactly once so the newly attached
     // mirror receives their component data. No row is retained after

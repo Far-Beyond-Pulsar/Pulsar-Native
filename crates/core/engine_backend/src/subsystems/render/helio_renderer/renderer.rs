@@ -513,8 +513,9 @@ impl HelioRenderer {
         // before Helio reads it.
 
         let needs_initial_scene_sync = !inner.has_rendered_frame;
+        let force_scene_sync = self.pending_force_full_resync.swap(false, Ordering::AcqRel);
         let has_pending_scene =
-            needs_initial_scene_sync || scene_revision != inner.last_scene_revision;
+            needs_initial_scene_sync || force_scene_sync || scene_revision != inner.last_scene_revision;
         let has_pending_editor = self.pending_deselect.load(Ordering::Acquire)
             || self.pending_gizmo_mode.lock().is_ok_and(|g| g.is_some())
             || self.pending_force_full_resync.load(Ordering::Acquire);
@@ -569,7 +570,7 @@ impl HelioRenderer {
         // Inlined rather than calling `self.force_full_resync()` -- `inner`
         // above is already a live `&mut` borrow of `self.inner` at this
         // point, and `force_full_resync` needs the same borrow itself.
-        if self.pending_force_full_resync.swap(false, Ordering::AcqRel) {
+        if force_scene_sync {
             inner.last_scene_revision = 0;
             inner.has_rendered_frame = false;
         }
@@ -595,6 +596,7 @@ impl HelioRenderer {
             profiling::profile_scope!("helio_scene_db_step");
             let t_sync = Instant::now();
             let mut scene_store = self.scene_store.write();
+            crate::scene::editor_rows::sync_editor_light_rows(&mut scene_store, true);
             crate::scene::sync_static_mesh_rows(&mut scene_store);
             scene_store.scene_db_mut().step();
             sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
@@ -711,6 +713,25 @@ impl HelioRenderer {
             #[cfg(feature = "editor-ui")]
             gpui::flamegraph_span!("pulsar: HelioRenderer::render_submit");
             profiling::profile_scope!("helio_render_submit");
+            // `SceneDb::step()` above (behind `has_pending_scene`) already
+            // flushes the World's GPU mirror when it runs, but that gate
+            // exists to skip the *simulation* step on an idle frame, not to
+            // gate GPU visibility of writes queued elsewhere this frame
+            // (gizmo drag, script/tool mutation, a `World::insert` from
+            // outside this renderer's own sync point). An explicit,
+            // unconditional flush right before every render call is a cheap
+            // no-op `RwLock` read plus a `queue.write_buffer` per dirty row
+            // when there IS nothing new -- and it's the one thing proven,
+            // empirically (Helio's own examples showed a fully black/empty
+            // render with valid SceneDB rows and zero GPU-side errors until
+            // this call was added), to be required for CPU-side SceneDB
+            // writes to ever become visible on the GPU at all. TODO(review):
+            // this and the `material_textures`/`template_registry` fallback
+            // buffers in `helio::Renderer::setup` are centrally-owned state
+            // that the zero-central-knowledge architecture mandate says
+            // shouldn't exist here -- flagged for a follow-up pass, not
+            // fixed now.
+            self.scene_store.read().world().flush_gpu_mirror(&inner.queue);
             if let Err(e) = inner.renderer.render(&camera, &view) {
                 tracing::error!("Helio render error: {:?}", e);
             }

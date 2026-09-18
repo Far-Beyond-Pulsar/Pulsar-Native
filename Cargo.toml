@@ -162,6 +162,8 @@ helio-asset-compat         = { path = "crates/renderer/helio/crates/helio-asset-
 helio-default-graphs       = { path = "crates/renderer/helio/crates/helio-default-graphs" }
 helio-planet-voxel-core    = { path = "crates/renderer/helio/crates/helio-planet-voxel-core" }
 helio-pass-planetary-voxel = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-planetary-voxel" }
+helio-pass-billboard = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-billboard" }
+helio-pass-forward-lit = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-forward-lit" }
 helio-pass-decal = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-decal" }
 helio-pass-gbuffer = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-gbuffer" }
 helio-pass-water-sim = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-water-sim" }

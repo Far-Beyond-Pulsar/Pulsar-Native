@@ -3,9 +3,10 @@
 //! `WorldSceneStore` (`pulsar_scenedb::World`, plus the stable-id/hierarchy/
 //! dirty-tracking bookkeeping `World` itself doesn't provide) is the live
 //! authoritative store, shared by the editor UI and the renderer.
-//! `SceneMetadataDb`/`ComponentDb` hold per-object JSON component-instance
-//! data for any class not yet migrated onto a typed `World` component via
-//! `pulsar_world_registry`.
+//! `SceneComponentStore` accesses `ComponentAttachments` on those same World
+//! entities. Live registered values live in typed components; dormant and
+//! unregistered instance payloads live in the attachment component. The legacy
+//! `SceneMetadataDb`/`ComponentDb` API is not used by the level editor.
 //!
 //! Two earlier, fully-superseded systems used to live in this module and
 //! were deleted rather than kept as dead weight: a lock-free-atomics
@@ -17,6 +18,8 @@
 
 // New metadata system modules
 pub mod component_db;
+pub mod component_store;
+pub use component_store::{ComponentAttachments, SceneComponentStore};
 pub mod metadata;
 pub mod metadata_db;
 
@@ -52,6 +55,8 @@ pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 // Shared WorldSceneStore <-> helio::Renderer operations (#637): GPU seam
 // attach + per-frame static-mesh/light frame assembly.
 pub mod helio_bridge;
+#[cfg(feature = "render")]
+pub mod editor_rows;
 
 // Re-export new system types for convenience
 pub use component_db::ComponentDb;

@@ -52,6 +52,8 @@ pulsar_scene.workspace = true
 # edits without taking their own `pulsar_terrain` dependency.
 pulsar_terrain.workspace = true
 helio_component.workspace = true
+helio-pass-billboard = { workspace = true, optional = true }
+helio-pass-forward-lit = { workspace = true, optional = true }
 helio-pass-decal = { workspace = true, optional = true }
 helio-pass-gbuffer = { workspace = true, optional = true }
 helio-pass-water-sim = { workspace = true, optional = true }
@@ -103,7 +105,7 @@ default = ["render", "editor-ui", "pie", "networking", "vcs", "physics"]
 # documented there first. Implied by `render` (GPU-column registration is
 # meaningless without wgpu anyway), not standalone-selectable.
 gpu        = []
-render     = ["dep:helio", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:helio-pass-decal", "dep:helio-pass-gbuffer", "dep:helio-pass-water-sim", "dep:wgpu", "dep:bytemuck", "gpu"]
+render     = ["dep:helio", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:helio-pass-decal", "dep:helio-pass-billboard", "dep:helio-pass-forward-lit", "dep:helio-pass-gbuffer", "dep:helio-pass-water-sim", "dep:wgpu", "dep:bytemuck", "gpu"]
 editor-ui  = ["dep:gpui-ce", "dep:ui", "dep:pulsar_lsp", "dep:lsp-types", "dep:ropey", "dep:flume"]
 pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "dep:wgpu"]
 networking = ["dep:reqwest", "dep:async-tungstenite", "dep:futures"]
