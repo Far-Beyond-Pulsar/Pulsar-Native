@@ -24,7 +24,7 @@ use engine_backend::services::terrain_edit::{
 };
 
 use super::{
-    BrushCursor, PointerKind, StatusReadout, ToolMode, ToolModeContext, ToolModeId,
+    BrushCursor, ModeLayout, PointerKind, StatusReadout, ToolMode, ToolModeContext, ToolModeId,
     ToolPointerEvent, ToolPointerResult, ToolWidget,
 };
 use crate::level_editor::core::commands::{execute_command, SceneCommand};
@@ -287,6 +287,19 @@ impl ToolMode for TerrainMode {
 
     fn brush_cursor(&self, _ctx: &ToolModeContext) -> Option<BrushCursor> {
         self.cursor
+    }
+
+    fn layout(&self) -> ModeLayout {
+        // Sculpt + foliage controls (create-world action, sculpt-mode picker,
+        // radius/strength/falloff, foliage toggle + its own three sliders) are
+        // too many to sit comfortably in the horizontal toolbar strip — they
+        // move to a dedicated left-hand panel instead. The right dock stays:
+        // picking objects and inspecting World Settings while sculpting is a
+        // normal part of the workflow (e.g. selecting the planet object).
+        ModeLayout {
+            show_right_dock: true,
+            show_mode_panel: true,
+        }
     }
 
     fn toolbar_controls(&self, ctx: &ToolModeContext) -> Vec<ToolWidget> {

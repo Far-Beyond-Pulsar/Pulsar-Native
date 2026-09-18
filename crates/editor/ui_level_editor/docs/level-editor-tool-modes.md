@@ -1,11 +1,14 @@
 # Level Editor — Tool Modes, Voxel Terrain & Foliage (Design)
 
-Status: IMPLEMENTED (Milestones 1-5 done, tracked by epic #709). The
+Status: IMPLEMENTED (Milestones 1-6 done, tracked by epic #709). The
 extensibility contract this doc describes (§4.2) is proven out by Milestone 5
 (issue #714); see [`adding-a-tool-mode.md`](./adding-a-tool-mode.md) for the
 practical "how to add a mode" walkthrough, including two real gaps this doc's
 original sketch didn't anticipate (§9 below, and the `ToolModeDispatcher`
-limitation documented in that file's §5).
+limitation documented in that file's §5). Milestone 6 (§10) extends the
+extensibility contract from toolbar widgets to whole dock panels: a mode can
+now hide the right dock or claim a left-hand tools panel of its own instead of
+crowding every control into the horizontal toolbar strip.
 Scope: `crates/editor/ui_level_editor` (+ seams into `engine_backend`, `pulsar_terrain`,
 `helio-component` foliage stack, and a new flat voxel terrain runtime).
 
@@ -378,14 +381,23 @@ pulsar_terrain/src/…               TerrainShape axis + EditShape::Box (flat-vo
    `ui/viewport/mod.rs`, giving the active mode first refusal before the standard pick/gizmo
    mailbox path; `LevelEditMode::on_pointer` always returns `PassThrough` so behavior is
    unchanged. i18n keys added for all 16 locales. No behavior change (ship-safe).
-2. **Voxel seam** — `TerrainEditApi` in `engine_backend`; thread the active planet's
-   `TerrainRuntimeHandle` in. Planet hit-test + sculpt (raise/lower/flatten/paint) with
-   brush cursor; per-stroke undo via terrain snapshots.
-3. **Flat voxel terrain** — `TerrainShape` axis / `EditShape::Box` + volume creation,
-   or (if (b) chosen) `pulsar_flat_terrain`; editor gains "create flat world" in Terrain
-   mode; same brush pipeline.
-4. **Foliage painting** — `FoliageBrush` stamping foliage components; density/slope
-   controls; save-path coordination.
+2. **Voxel seam** — ✅ **Done** (issue #711). `TerrainEditApi` in `engine_backend`
+   (`services/terrain_edit.rs`); a narrow scene-authored activation bridge
+   (`sync_scene_planets`) re-supplies the planet runtime the in-flight SceneDB
+   nativization work disconnected. Planet hit-test + sculpt (raise/lower/flatten/paint)
+   with brush cursor; per-stroke undo via `TerrainUndoDomain`; terrain persists to a
+   `.terrain` sidecar.
+3. **Flat voxel terrain** — ✅ **Done** (issue #712). Approach (a): a `TerrainShape` axis
+   (`Planet` | `Volume`) and `EditShape::Box` in `pulsar_terrain` (`body.rs`'s
+   `TerrainBodyDefinition`), so flat `VolumeDefinition`/`FlatTerrain` worlds share the
+   exact sculpt/undo/sidecar pipeline planets use — no shape branching above
+   `pulsar_terrain`/`TerrainEditApi`. "Create Flat World" toolbar action in Terrain mode.
+4. **Foliage painting** — ✅ **Done** (issue #713). `FoliageBrush` (scaffolded since
+   Milestone 1) wired to a real paint stamp: a "Paint Foliage" toggle sub-mode of Terrain
+   stamps `FoliageComponent`-carrying scene objects (not the doc's original
+   `FoliageTypeComponent`/`FoliageLayerComponent` sketch — those are GPU-internal, derived
+   automatically from one `FoliageComponent`) via the ordinary `SceneCommand`/scene-undo
+   path, kept independent of `TerrainUndoDomain`.
 5. **Extensibility demo** — ✅ **Done** (issue #714). Added `SplineMode`
    (`tool_modes/spline.rs`): click to place points in the viewport, Shift-click to
    clear, point count + total length surfaced on the toolbar and status bar. Registered
@@ -428,3 +440,98 @@ pulsar_terrain/src/…               TerrainShape axis + EditShape::Box (flat-vo
    rather than generic over `ToolMode` implementors, so a registered mode's interactive
    toolbar controls (`Toggle`/`Action`/editable `Slider`/`Segmented`) do not work out of
    the box the way `on_pointer` does — see `adding-a-tool-mode.md` §5.
+6. **Mode-defined panels & layout** — ✅ **Done.** `ModeLayout` added to the `ToolMode`
+   trait (`show_right_dock`, `show_mode_panel`); `TerrainMode` opts into its own left-hand
+   `ModeToolsPanel`, decluttering the toolbar of its now-considerable sculpt+foliage
+   control count. `LevelEditorPanel::sync_mode_layout` reconciles the dock area on mode
+   switch, mirroring `sync_game_tab`'s guarded-signature shape. See §10.
+
+## 10. Mode-defined panels & layout (Milestone 6)
+
+**Problem this addendum solves**: §4.1's `toolbar_controls()` puts every mode-specific
+control into one horizontal strip. That's fine for a handful of widgets (Level Edit has
+none, Spline has two read-only chips) but not for Terrain, whose sculpt *and* foliage
+controls together would otherwise crowd the toolbar. The fix generalizes the same idea
+one level up: a mode can declare a whole **panel layout**, not just a widget list.
+
+### 10.1 `ModeLayout` (the new part of the registry contract)
+
+```rust
+// level_editor/tool_modes/mod.rs
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModeLayout {
+    /// Show the right-hand dock (Hierarchy / Properties / World Settings)?
+    pub show_right_dock: bool,
+    /// Render this mode's `toolbar_controls()` in a dedicated left-hand dock
+    /// panel instead of the horizontal toolbar strip?
+    pub show_mode_panel: bool,
+}
+```
+
+Added to the `ToolMode` trait as `fn layout(&self) -> ModeLayout`, defaulting to
+`{ show_right_dock: true, show_mode_panel: false }` — today's behavior for every mode
+that doesn't override it (`LevelEditMode`, `SplineMode`). `TerrainMode` overrides it to
+`{ show_right_dock: true, show_mode_panel: true }`: picking objects and checking World
+Settings while sculpting is still a normal workflow, so the right dock stays, but the
+sculpt/foliage controls move to their own panel.
+
+Pure data, same contract as `ToolWidget`/`StatusReadout` — a mode never touches a dock
+panel entity directly, only describes what it wants.
+
+### 10.2 Rendering: one widget-to-element mapping, two layouts
+
+`ui/mode_widgets.rs` (new, promoted out of `ui/toolbar/` since it is no longer
+toolbar-exclusive) holds the single function that turns a `Vec<ToolWidget>` into GPUI
+elements, parameterized by `WidgetLayout::{Toolbar, Panel}` (horizontal row vs. vertical
+column — same widget variants, same dispatcher calls, different flex axis and divider
+orientation). Both call sites — the toolbar (`ui/toolbar/mod.rs`) and the new dock panel
+(`workspace/panels/mode_tools.rs`) — read the *same* `toolbar_controls()` data through
+this one function, so a mode's controls can never drift between the two renderings. The
+toolbar skips rendering a mode's widgets entirely when `layout().show_mode_panel` is
+true, so they never appear in both places at once.
+
+### 10.3 `ModeToolsPanel`: one generic left-hand panel, not one per mode
+
+`workspace/panels/mode_tools.rs`'s `ModeToolsPanel` is a single `ui::dock::Panel` that
+renders *whichever* mode is currently active's widgets — it never names `TerrainMode` or
+any other concrete mode. It is a self-refreshing panel like `HierarchyPanelWrapper`/
+`PropertiesPanelWrapper` (a frame pump comparing `(ToolModeId, Vec<ToolWidget>)` each
+tick), so a mode that changes its own widget values (e.g. dragging the brush radius) or
+switches mode entirely both invalidate it correctly with no coupling to any specific
+mode's state shape.
+
+### 10.4 Dock reconciliation: `LevelEditorPanel::sync_mode_layout`
+
+`ui/panel.rs` already had exactly this shape of problem once — `sync_game_tab` opens/
+closes the Play-In-Editor tab based on state, guarded by a cheap signature check so the
+several-times-a-second render loop doesn't touch the dock area for nothing.
+`sync_mode_layout` follows the identical pattern, guarded on the active `ToolModeId`:
+
+- Right dock: `dock_area.toggle_dock(DockPlacement::Right, ..)` when its current
+  open/closed state disagrees with `layout.show_right_dock`.
+- Left "mode tools" dock: created lazily via `set_left_dock` the first time any mode
+  asks for one, and thereafter only **toggled** open/closed to match
+  `layout.show_mode_panel` — never torn down and recreated. `set_left_dock`/
+  `set_right_dock` construct a brand new `Dock` entity from scratch; doing that on every
+  mode switch would needlessly discard `PropertiesPanelWrapper`'s cached section
+  entities on an unrelated dock and rebuild `ModeToolsPanel` for no reason `toggle_dock`
+  doesn't already avoid.
+
+### 10.5 File layout (target, extends §7)
+
+```
+ui/
+  mode_widgets.rs                  ← NEW: shared ToolWidget → element rendering
+  toolbar/
+    mod.rs                         (renders mode widgets via mode_widgets, Toolbar layout)
+    tool_mode_dropdown.rs
+workspace/
+  panels/                          ← was a single panels.rs, split one file per panel
+    mod.rs
+    hierarchy.rs
+    properties.rs
+    viewport.rs
+    world_settings.rs
+    mode_tools.rs                  ← NEW: ModeToolsPanel (Panel layout)
+ui/panel.rs                        + sync_mode_layout, mode_tools_panel/applied_mode_layout fields
+```

@@ -137,6 +137,43 @@ pub struct StatusReadout {
     pub tooltip: Option<String>,
 }
 
+// ── Mode Layout ─────────────────────────────────────────────────────────────
+
+/// Declarative panel layout a tool mode wants the editor shell to show.
+///
+/// Pure data, like [`ToolWidget`]/[`StatusReadout`] — modes never touch dock
+/// panel entities directly, keeping the trait object-safe and GPUI-agnostic
+/// (§4.1's contract). The shell (`ui/panel.rs`'s `LevelEditorPanel::sync_mode_layout`)
+/// reconciles the actual dock area to match whenever the active mode changes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ModeLayout {
+    /// Whether the right-hand dock (Hierarchy / Properties / World Settings)
+    /// should be visible while this mode is active. `false` lets a mode that
+    /// wants the whole window for itself (e.g. a full-viewport paint tool)
+    /// ask for a cleaner canvas.
+    pub show_right_dock: bool,
+    /// Whether this mode wants its `toolbar_controls()` widgets rendered in a
+    /// dedicated left-hand dock panel instead of the horizontal toolbar
+    /// strip. Use this once a mode's control count would otherwise crowd the
+    /// toolbar (see design doc's tool-modes-layout addendum) — the shell
+    /// renders the *same* `toolbar_controls()` data either way, just
+    /// vertically, and skips adding it to the toolbar so it never appears in
+    /// both places at once.
+    pub show_mode_panel: bool,
+}
+
+impl Default for ModeLayout {
+    /// Today's behavior for every mode that doesn't override `layout()`:
+    /// right dock visible, controls in the toolbar. Matches `LevelEditMode`
+    /// exactly, so adding this method to the trait was a no-op for it.
+    fn default() -> Self {
+        Self {
+            show_right_dock: true,
+            show_mode_panel: false,
+        }
+    }
+}
+
 // ── Mode Context ───────────────────────────────────────────────────────────
 
 /// Execution context provided to tool mode operations.
@@ -189,6 +226,11 @@ pub trait ToolMode: Send + Sync {
     /// Status readout to surface on the status bar when active.
     fn status(&self, _ctx: &ToolModeContext) -> Option<StatusReadout> {
         None
+    }
+
+    /// Panel layout this mode wants while active. See [`ModeLayout`].
+    fn layout(&self) -> ModeLayout {
+        ModeLayout::default()
     }
 
     /// Handle pointer events occurring within the viewport.

@@ -20,7 +20,6 @@ mod mode_indicator;
 mod multiplayer_dropdown;
 mod playback_controls;
 mod time_scale_dropdown;
-mod tool_mode_controls;
 mod tool_mode_dropdown;
 mod view;
 
@@ -32,11 +31,10 @@ use mode_indicator::ModeIndicator;
 use multiplayer_dropdown::MultiplayerDropdown;
 use playback_controls::PlaybackControls;
 use time_scale_dropdown::TimeScaleDropdown;
-use tool_mode_controls::ToolModeControls;
 use tool_mode_dropdown::ToolModeDropdown;
 pub use view::ToolbarView;
 
-use crate::level_editor::tool_modes::{CameraFrame, ToolModeContext, ViewportFrame};
+use crate::level_editor::ui::mode_widgets::{active_mode_widgets, render_mode_widgets, WidgetLayout};
 use crate::level_editor::{request_thumbnail_capture, LevelEditorState};
 
 /// Premium Toolbar - A beautifully crafted control panel for game development
@@ -75,23 +73,16 @@ impl ToolbarPanel {
     {
         let theme = cx.theme();
 
-        let has_mode_controls = {
-            let mut state_clone = state.clone();
-            let ctx = ToolModeContext {
-                state: &mut state_clone,
-                gpu_engine: &gpu_engine,
-                // Widget data comes from editor state alone.
-                terrain: None,
-                camera: CameraFrame::default(),
-                viewport: ViewportFrame::default(),
-            };
-            !state
-                .editor
-                .tool_mode_registry
-                .selected()
-                .toolbar_controls(&ctx)
-                .is_empty()
+        // A mode that asked for its own left-hand panel (`ModeLayout::show_mode_panel`)
+        // renders its widgets there instead — never in both places at once.
+        // See `ui/mode_widgets.rs` and `workspace/panels/mode_tools.rs`.
+        let mode_wants_panel = state.editor.tool_mode_registry.selected().layout().show_mode_panel;
+        let mode_controls = if mode_wants_panel {
+            Vec::new()
+        } else {
+            active_mode_widgets(state, &gpu_engine)
         };
+        let has_mode_controls = !mode_controls.is_empty();
 
         h_flex()
             .w_full()
@@ -106,8 +97,9 @@ impl ToolbarPanel {
             .child(ToolModeDropdown::render(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
             .when(has_mode_controls, |el| {
-                el.child(ToolModeControls::render(
-                    state,
+                el.child(render_mode_widgets(
+                    mode_controls,
+                    WidgetLayout::Toolbar,
                     state_arc.clone(),
                     gpu_engine.clone(),
                     cx,
