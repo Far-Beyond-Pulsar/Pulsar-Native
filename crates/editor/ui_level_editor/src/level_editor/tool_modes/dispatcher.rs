@@ -14,7 +14,7 @@ use super::{
     level_edit::LevelEditMode, CameraFrame, ToolModeContext, ToolModeId, ToolPointerEvent,
     ToolPointerResult, ViewportFrame,
 };
-use crate::level_editor::state::terrain::{SculptMode, TerrainTarget};
+use crate::level_editor::state::terrain::{BrushShape, SculptMode, TerrainTarget};
 use crate::level_editor::state::LevelEditorState;
 
 /// Hierarchy root a flat world is created at.
@@ -154,32 +154,55 @@ impl ToolModeDispatcher {
     /// Dispatches a widget edit from a toolbar control into editor state.
     pub fn dispatch_widget_edit(state: &mut LevelEditorState, edit: &ToolWidgetEdit) {
         match edit {
-            ToolWidgetEdit::SetSegmented { id, value } => {
-                if *id == "sculpt_mode" || *id == "mode" {
-                    match *value {
-                        "raise" => state.editor.terrain.set_sculpt_mode(SculptMode::Raise),
-                        "lower" => state.editor.terrain.set_sculpt_mode(SculptMode::Lower),
-                        "flatten" => state.editor.terrain.set_sculpt_mode(SculptMode::Flatten),
-                        "paint" => state.editor.terrain.set_sculpt_mode(SculptMode::Paint),
-                        _ => {}
-                    }
-                }
-            }
+            ToolWidgetEdit::SetSegmented { id, value } => match *id {
+                "sculpt_mode" | "mode" => match *value {
+                    "raise" => state.editor.terrain.set_sculpt_mode(SculptMode::Raise),
+                    "lower" => state.editor.terrain.set_sculpt_mode(SculptMode::Lower),
+                    "flatten" => state.editor.terrain.set_sculpt_mode(SculptMode::Flatten),
+                    "paint" => state.editor.terrain.set_sculpt_mode(SculptMode::Paint),
+                    _ => {}
+                },
+                "brush_shape" => match *value {
+                    "sphere" => state.editor.terrain.set_brush_shape(BrushShape::Sphere),
+                    "box" => state.editor.terrain.set_brush_shape(BrushShape::Box),
+                    _ => {}
+                },
+                _ => {}
+            },
             ToolWidgetEdit::SetSlider { id, value } => match *id {
                 "radius" => state.editor.terrain.set_brush_radius(*value),
                 "strength" => state.editor.terrain.set_brush_strength(*value),
                 "falloff" => state.editor.terrain.set_brush_falloff(*value),
+                "material" => state.editor.terrain.set_brush_material(value.round() as u32),
                 "foliage_density" => state.editor.terrain.set_foliage_density(*value),
                 "foliage_radius" => state.editor.terrain.set_foliage_radius(*value),
                 "foliage_slope_min" => state.editor.terrain.set_foliage_slope_min(*value),
                 "foliage_slope_max" => state.editor.terrain.set_foliage_slope_max(*value),
+                "foliage_height_min" => state.editor.terrain.set_foliage_height_min(*value),
+                "foliage_height_max" => state.editor.terrain.set_foliage_height_max(*value),
+                "foliage_width_min" => state.editor.terrain.set_foliage_width_min(*value),
+                "foliage_width_max" => state.editor.terrain.set_foliage_width_max(*value),
+                "foliage_roughness" => state.editor.terrain.set_foliage_roughness(*value),
+                "foliage_metallic" => state.editor.terrain.set_foliage_metallic(*value),
+                "foliage_lod_distance" => state.editor.terrain.set_foliage_lod_distance(*value),
+                "foliage_trunk_sway" => state.editor.terrain.set_foliage_trunk_sway(*value),
+                "foliage_branch_flutter" => {
+                    state.editor.terrain.set_foliage_branch_flutter(*value)
+                }
+                "foliage_leaf_jitter" => state.editor.terrain.set_foliage_leaf_jitter(*value),
+                "foliage_wind_speed" => state.editor.terrain.set_foliage_wind_speed(*value),
+                "foliage_interactor_radius" => {
+                    state.editor.terrain.set_foliage_interactor_radius(*value)
+                }
                 _ => {}
             },
-            ToolWidgetEdit::SetToggle { id, on } => {
-                if *id == PAINT_FOLIAGE_TOGGLE {
-                    state.editor.terrain.set_paint_foliage(*on);
-                }
-            }
+            ToolWidgetEdit::SetToggle { id, on } => match *id {
+                PAINT_FOLIAGE_TOGGLE => state.editor.terrain.set_paint_foliage(*on),
+                "foliage_two_sided" => state.editor.terrain.set_foliage_two_sided(*on),
+                "foliage_casts_shadow" => state.editor.terrain.set_foliage_casts_shadow(*on),
+                "foliage_wind_enabled" => state.editor.terrain.set_foliage_wind_enabled(*on),
+                _ => {}
+            },
             // Actions need the terrain seam; routed by
             // `dispatch_widget_edit_with_terrain`.
             ToolWidgetEdit::Invoke { .. } => {}

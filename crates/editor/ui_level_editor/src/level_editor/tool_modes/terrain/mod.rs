@@ -24,11 +24,11 @@ use engine_backend::services::terrain_edit::{
 };
 
 use super::{
-    BrushCursor, ModeLayout, PointerKind, StatusReadout, ToolMode, ToolModeContext, ToolModeId,
-    ToolPointerEvent, ToolPointerResult, ToolWidget,
+    BrushCursor, ModeLayout, PanelTab, PointerKind, StatusReadout, ToolMode, ToolModeContext,
+    ToolModeId, ToolPointerEvent, ToolPointerResult, ToolWidget,
 };
 use crate::level_editor::core::commands::{execute_command, SceneCommand};
-use crate::level_editor::state::terrain::{SculptMode, TerrainTarget};
+use crate::level_editor::state::terrain::{BrushShape, SculptMode, TerrainTarget};
 
 /// Brush ring colour per sculpt mode, so the mode is readable at a glance
 /// without looking back at the toolbar.
@@ -302,31 +302,127 @@ impl ToolMode for TerrainMode {
         }
     }
 
-    fn toolbar_controls(&self, ctx: &ToolModeContext) -> Vec<ToolWidget> {
+    fn toolbar_controls(&self, _ctx: &ToolModeContext) -> Vec<ToolWidget> {
+        // `layout()` sets `show_mode_panel: true` unconditionally, so the
+        // toolbar never renders this mode's widgets (`ui/toolbar/mod.rs`
+        // skips the call entirely) — all of Terrain's real content lives in
+        // `panel_tabs` instead, organized into Sculpt/Foliage tabs. Empty,
+        // not removed: `ToolMode::toolbar_controls` has no default that
+        // would make omitting the method itself meaningful, and a future
+        // mode auditing "what does every mode put in the toolbar" should see
+        // an explicit, documented empty answer rather than infer one.
+        Vec::new()
+    }
+
+    fn panel_tabs(&self, ctx: &ToolModeContext) -> Vec<PanelTab> {
         let terrain = &ctx.state.editor.terrain;
 
-        let mut widgets = vec![
-            // Creating terrain comes before shaping it, so it leads.
-            ToolWidget::Action {
-                id: super::dispatcher::CREATE_FLAT_WORLD,
-                label_key: "LevelEditor.Terrain.CreateFlatWorld",
-            },
-            ToolWidget::Divider,
-            // Foliage is a sub-tab/toggle of Terrain (design doc §6), not a
-            // separate `ToolMode`: it reuses this mode's brush-cursor and
-            // pointer-dispatch plumbing, just swapping which stamp a click
-            // produces. See `on_pointer`.
-            ToolWidget::Toggle {
-                id: super::dispatcher::PAINT_FOLIAGE_TOGGLE,
-                label_key: "LevelEditor.Terrain.PaintFoliage",
-                on: terrain.paint_foliage,
-            },
-            ToolWidget::Divider,
-        ];
+        // Shown at the top of both tabs (not tab-specific) so the user can
+        // switch which brush a click fires without hunting for a control
+        // that lives on only one page. See `on_pointer`/`TerrainDomain::
+        // paint_foliage` for what this actually switches.
+        let brush_switch = ToolWidget::Toggle {
+            id: super::dispatcher::PAINT_FOLIAGE_TOGGLE,
+            label_key: "LevelEditor.Terrain.PaintFoliage",
+            on: terrain.paint_foliage,
+        };
 
-        if terrain.paint_foliage {
-            let foliage = &terrain.foliage;
-            widgets.extend([
+        let sculpt = &terrain.sculpt;
+        let selected_mode_str = match sculpt.mode {
+            SculptMode::Raise => "raise",
+            SculptMode::Lower => "lower",
+            SculptMode::Flatten => "flatten",
+            SculptMode::Paint => "paint",
+        };
+        let selected_shape_str = match sculpt.shape {
+            BrushShape::Sphere => "sphere",
+            BrushShape::Box => "box",
+        };
+        let sculpt_tab = PanelTab {
+            id: "sculpt",
+            label_key: "LevelEditor.Terrain.Tab.Sculpt",
+            widgets: vec![
+                brush_switch.clone(),
+                ToolWidget::Divider,
+                ToolWidget::Action {
+                    id: super::dispatcher::CREATE_FLAT_WORLD,
+                    label_key: "LevelEditor.Terrain.CreateFlatWorld",
+                },
+                ToolWidget::Section {
+                    label_key: "LevelEditor.Terrain.Section.Brush",
+                },
+                ToolWidget::Segmented {
+                    id: "sculpt_mode",
+                    options: vec![
+                        ("LevelEditor.Terrain.Raise", "raise"),
+                        ("LevelEditor.Terrain.Lower", "lower"),
+                        ("LevelEditor.Terrain.Flatten", "flatten"),
+                        ("LevelEditor.Terrain.Paint", "paint"),
+                    ],
+                    selected: selected_mode_str,
+                },
+                // Only meaningful for Raise/Lower/Paint -- Flatten always
+                // picks the shape that matches the body being levelled (see
+                // `sculpt.rs`'s `build_stamp`), so this has no effect there.
+                // Shown regardless of mode rather than hidden/disabled: a
+                // widget that vanishes based on another widget's value is a
+                // worse surprise than one that is occasionally a no-op.
+                ToolWidget::Segmented {
+                    id: "brush_shape",
+                    options: vec![
+                        ("LevelEditor.Terrain.Shape.Sphere", "sphere"),
+                        ("LevelEditor.Terrain.Shape.Box", "box"),
+                    ],
+                    selected: selected_shape_str,
+                },
+                ToolWidget::Slider {
+                    id: "radius",
+                    label_key: "LevelEditor.Terrain.Radius",
+                    value: sculpt.radius_m,
+                    min: 1.0,
+                    max: 64.0,
+                    step: 0.5,
+                },
+                ToolWidget::Slider {
+                    id: "strength",
+                    label_key: "LevelEditor.Terrain.Strength",
+                    value: sculpt.strength,
+                    min: 0.1,
+                    max: 10.0,
+                    step: 0.1,
+                },
+                ToolWidget::Slider {
+                    id: "falloff",
+                    label_key: "LevelEditor.Terrain.Falloff",
+                    value: sculpt.falloff,
+                    min: 0.0,
+                    max: 1.0,
+                    step: 0.05,
+                },
+                ToolWidget::Section {
+                    label_key: "LevelEditor.Terrain.Section.Material",
+                },
+                ToolWidget::Slider {
+                    id: "material",
+                    label_key: "LevelEditor.Terrain.Material",
+                    value: sculpt.material as f32,
+                    min: 1.0,
+                    max: 15.0,
+                    step: 1.0,
+                },
+            ],
+        };
+
+        let foliage = &terrain.foliage;
+        let foliage_tab = PanelTab {
+            id: "foliage",
+            label_key: "LevelEditor.Terrain.Tab.Foliage",
+            widgets: vec![
+                brush_switch,
+                ToolWidget::Divider,
+                ToolWidget::Section {
+                    label_key: "LevelEditor.Terrain.Section.General",
+                },
                 ToolWidget::Slider {
                     id: "foliage_density",
                     label_key: "LevelEditor.Terrain.FoliageDensity",
@@ -334,6 +430,9 @@ impl ToolMode for TerrainMode {
                     min: 0.0,
                     max: 2048.0,
                     step: 1.0,
+                },
+                ToolWidget::Section {
+                    label_key: "LevelEditor.Terrain.Section.Placement",
                 },
                 ToolWidget::Slider {
                     id: "foliage_radius",
@@ -359,55 +458,130 @@ impl ToolMode for TerrainMode {
                     max: 90.0,
                     step: 0.5,
                 },
-            ]);
-            return widgets;
-        }
-
-        let sculpt = &terrain.sculpt;
-        let selected_mode_str = match sculpt.mode {
-            SculptMode::Raise => "raise",
-            SculptMode::Lower => "lower",
-            SculptMode::Flatten => "flatten",
-            SculptMode::Paint => "paint",
+                ToolWidget::Slider {
+                    id: "foliage_height_min",
+                    label_key: "LevelEditor.Terrain.FoliageHeightMin",
+                    value: foliage.height_range.0,
+                    min: 0.01,
+                    max: 10.0,
+                    step: 0.01,
+                },
+                ToolWidget::Slider {
+                    id: "foliage_height_max",
+                    label_key: "LevelEditor.Terrain.FoliageHeightMax",
+                    value: foliage.height_range.1,
+                    min: 0.01,
+                    max: 10.0,
+                    step: 0.01,
+                },
+                ToolWidget::Slider {
+                    id: "foliage_width_min",
+                    label_key: "LevelEditor.Terrain.FoliageWidthMin",
+                    value: foliage.width_range.0,
+                    min: 0.001,
+                    max: 5.0,
+                    step: 0.001,
+                },
+                ToolWidget::Slider {
+                    id: "foliage_width_max",
+                    label_key: "LevelEditor.Terrain.FoliageWidthMax",
+                    value: foliage.width_range.1,
+                    min: 0.001,
+                    max: 5.0,
+                    step: 0.001,
+                },
+                ToolWidget::Section {
+                    label_key: "LevelEditor.Terrain.Section.Rendering",
+                },
+                ToolWidget::Toggle {
+                    id: "foliage_two_sided",
+                    label_key: "LevelEditor.Terrain.FoliageTwoSided",
+                    on: foliage.two_sided,
+                },
+                ToolWidget::Toggle {
+                    id: "foliage_casts_shadow",
+                    label_key: "LevelEditor.Terrain.FoliageCastsShadow",
+                    on: foliage.casts_shadow,
+                },
+                ToolWidget::Slider {
+                    id: "foliage_roughness",
+                    label_key: "LevelEditor.Terrain.FoliageRoughness",
+                    value: foliage.roughness,
+                    min: 0.0,
+                    max: 1.0,
+                    step: 0.05,
+                },
+                ToolWidget::Slider {
+                    id: "foliage_metallic",
+                    label_key: "LevelEditor.Terrain.FoliageMetallic",
+                    value: foliage.metallic,
+                    min: 0.0,
+                    max: 1.0,
+                    step: 0.05,
+                },
+                ToolWidget::Slider {
+                    id: "foliage_lod_distance",
+                    label_key: "LevelEditor.Terrain.FoliageLodDistance",
+                    value: foliage.lod_distance,
+                    min: 1.0,
+                    max: 500.0,
+                    step: 1.0,
+                },
+                ToolWidget::Section {
+                    label_key: "LevelEditor.Terrain.Section.Wind",
+                },
+                ToolWidget::Toggle {
+                    id: "foliage_wind_enabled",
+                    label_key: "LevelEditor.Terrain.FoliageWindEnabled",
+                    on: foliage.wind_enabled,
+                },
+                ToolWidget::Slider {
+                    id: "foliage_trunk_sway",
+                    label_key: "LevelEditor.Terrain.FoliageTrunkSway",
+                    value: foliage.trunk_sway,
+                    min: 0.0,
+                    max: 5.0,
+                    step: 0.05,
+                },
+                ToolWidget::Slider {
+                    id: "foliage_branch_flutter",
+                    label_key: "LevelEditor.Terrain.FoliageBranchFlutter",
+                    value: foliage.branch_flutter,
+                    min: 0.0,
+                    max: 5.0,
+                    step: 0.05,
+                },
+                ToolWidget::Slider {
+                    id: "foliage_leaf_jitter",
+                    label_key: "LevelEditor.Terrain.FoliageLeafJitter",
+                    value: foliage.leaf_jitter,
+                    min: 0.0,
+                    max: 5.0,
+                    step: 0.05,
+                },
+                ToolWidget::Slider {
+                    id: "foliage_wind_speed",
+                    label_key: "LevelEditor.Terrain.FoliageWindSpeed",
+                    value: foliage.wind_speed,
+                    min: 0.0,
+                    max: 20.0,
+                    step: 0.1,
+                },
+                ToolWidget::Section {
+                    label_key: "LevelEditor.Terrain.Section.Interaction",
+                },
+                ToolWidget::Slider {
+                    id: "foliage_interactor_radius",
+                    label_key: "LevelEditor.Terrain.FoliageInteractorRadius",
+                    value: foliage.interactor_radius,
+                    min: 0.0,
+                    max: 10.0,
+                    step: 0.1,
+                },
+            ],
         };
-        widgets.extend([
-            ToolWidget::Segmented {
-                id: "sculpt_mode",
-                options: vec![
-                    ("LevelEditor.Terrain.Raise", "raise"),
-                    ("LevelEditor.Terrain.Lower", "lower"),
-                    ("LevelEditor.Terrain.Flatten", "flatten"),
-                    ("LevelEditor.Terrain.Paint", "paint"),
-                ],
-                selected: selected_mode_str,
-            },
-            ToolWidget::Divider,
-            ToolWidget::Slider {
-                id: "radius",
-                label_key: "LevelEditor.Terrain.Radius",
-                value: sculpt.radius_m,
-                min: 1.0,
-                max: 64.0,
-                step: 0.5,
-            },
-            ToolWidget::Slider {
-                id: "strength",
-                label_key: "LevelEditor.Terrain.Strength",
-                value: sculpt.strength,
-                min: 0.1,
-                max: 10.0,
-                step: 0.1,
-            },
-            ToolWidget::Slider {
-                id: "falloff",
-                label_key: "LevelEditor.Terrain.Falloff",
-                value: sculpt.falloff,
-                min: 0.0,
-                max: 1.0,
-                step: 0.05,
-            },
-        ]);
-        widgets
+
+        vec![sculpt_tab, foliage_tab]
     }
 
     fn status(&self, ctx: &ToolModeContext) -> Option<StatusReadout> {

@@ -22,7 +22,9 @@ use ui::{
 
 use crate::level_editor::state::LevelEditorState;
 use crate::level_editor::tool_modes::dispatcher::{ToolModeDispatcher, ToolWidgetEdit};
-use crate::level_editor::tool_modes::{CameraFrame, ToolModeContext, ToolWidget, ViewportFrame};
+use crate::level_editor::tool_modes::{
+    CameraFrame, PanelTab, ToolModeContext, ToolWidget, ViewportFrame,
+};
 
 /// Which strip a mode's widgets are being rendered into. Only affects layout
 /// (flex axis, divider orientation, alignment) — the widget-to-element
@@ -57,6 +59,25 @@ pub fn active_mode_widgets(
         .tool_mode_registry
         .selected()
         .toolbar_controls(&ctx)
+}
+
+/// The active tool mode's `panel_tabs()` — the left-hand mode-tools panel's
+/// content. See [`active_mode_widgets`] for the toolbar-strip equivalent;
+/// both build the same kind of throwaway [`ToolModeContext`] since neither
+/// `toolbar_controls`/`status`/`panel_tabs` reads `ctx.terrain`.
+pub fn active_mode_tabs(
+    state: &LevelEditorState,
+    gpu_engine: &Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+) -> Vec<PanelTab> {
+    let mut state_clone = state.clone();
+    let ctx = ToolModeContext {
+        state: &mut state_clone,
+        gpu_engine,
+        terrain: None,
+        camera: CameraFrame::default(),
+        viewport: ViewportFrame::default(),
+    };
+    state.editor.tool_mode_registry.selected().panel_tabs(&ctx)
 }
 
 /// Render one mode's widget list as either a toolbar strip or a panel column.
@@ -248,6 +269,17 @@ where
                     WidgetLayout::Toolbar => div().h_5().w_px().bg(theme.border.opacity(0.4)),
                     WidgetLayout::Panel => div().w_full().h_px().bg(theme.border.opacity(0.4)),
                 });
+            }
+            ToolWidget::Section { label_key } => {
+                container = container.child(
+                    div()
+                        .w_full()
+                        .pt_2()
+                        .text_xs()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(theme.muted_foreground)
+                        .child(t!(label_key).to_string().to_uppercase()),
+                );
             }
         }
     }

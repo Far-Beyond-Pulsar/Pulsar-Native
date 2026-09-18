@@ -70,16 +70,44 @@ const DEFAULT_ALTITUDE_ABOVE_M: f32 = 50.0;
 /// #713), so this is a deliberately narrow bridge, not a real type system.
 pub fn build_component(brush: &FoliageBrush, hit_position_m: [f32; 3]) -> FoliageComponent {
     let mut foliage = FoliageComponent::default();
+
+    // General
     foliage.general.enabled = true;
     foliage.general.density = brush.density.max(0.0);
     if let Ok(layer) = brush.type_id.parse::<u64>() {
         foliage.general.density_layer = layer;
     }
-    let (lo, hi) = brush.slope_limit;
-    foliage.placement.slope_min_degrees = lo.min(hi).clamp(0.0, 90.0);
-    foliage.placement.slope_max_degrees = hi.max(lo).clamp(0.0, 90.0);
+
+    // Placement
+    let (slope_lo, slope_hi) = brush.slope_limit;
+    foliage.placement.slope_min_degrees = slope_lo.min(slope_hi).clamp(0.0, 90.0);
+    foliage.placement.slope_max_degrees = slope_hi.max(slope_lo).clamp(0.0, 90.0);
     foliage.placement.layer_extent = brush.radius_m.max(1.0);
+    let (height_lo, height_hi) = brush.height_range;
+    foliage.placement.height_min = height_lo.min(height_hi).max(0.0);
+    foliage.placement.height_max = height_hi.max(height_lo).max(0.0);
+    let (width_lo, width_hi) = brush.width_range;
+    foliage.placement.width_min = width_lo.min(width_hi).max(0.0);
+    foliage.placement.width_max = width_hi.max(width_lo).max(0.0);
     recenter_altitude_band(&mut foliage, hit_position_m[1]);
+
+    // Rendering
+    foliage.rendering.two_sided = brush.two_sided;
+    foliage.rendering.casts_shadow = brush.casts_shadow;
+    foliage.rendering.roughness = brush.roughness.clamp(0.0, 1.0);
+    foliage.rendering.metallic = brush.metallic.clamp(0.0, 1.0);
+    foliage.rendering.lod_distance_0 = brush.lod_distance.max(0.0);
+
+    // Wind
+    foliage.wind.wind_enabled = brush.wind_enabled;
+    foliage.wind.trunk_sway = brush.trunk_sway.max(0.0);
+    foliage.wind.branch_flutter = brush.branch_flutter.max(0.0);
+    foliage.wind.leaf_jitter = brush.leaf_jitter.max(0.0);
+    foliage.wind.wind_speed = brush.wind_speed.max(0.0);
+
+    // Interaction
+    foliage.interaction.interactor_radius = brush.interactor_radius.max(0.0);
+
     foliage
 }
 
@@ -174,6 +202,7 @@ mod tests {
             density: 512.0,
             radius_m: 12.0,
             slope_limit: (5.0, 40.0),
+            ..FoliageBrush::default()
         }
     }
 

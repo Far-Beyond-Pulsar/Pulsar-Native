@@ -136,14 +136,23 @@ pub fn build_stamp(
     };
 
     let center_cell = meters_to_cell(sphere_center);
-    // Only levelling needs a primitive whose top is flat with respect to the
-    // body's datum; every other brush is a round stroke on either shape.
+    // Flatten always needs a primitive whose top is flat with respect to the
+    // body's datum -- that is a correctness requirement of levelling, not a
+    // style choice, so `brush.shape` (the user's Sphere/Box preference) is
+    // only consulted for the other three modes, where either primitive
+    // sculpts a valid stroke and the choice is purely aesthetic.
     let shape = if matches!(brush.mode, SculptMode::Flatten) {
         definition.flatten_shape(center_cell, radius_cells)
     } else {
-        EditShape::Sphere {
-            center_cell,
-            radius_cells,
+        match brush.shape {
+            crate::level_editor::state::terrain::BrushShape::Sphere => EditShape::Sphere {
+                center_cell,
+                radius_cells,
+            },
+            crate::level_editor::state::terrain::BrushShape::Box => EditShape::Box {
+                center_cell,
+                half_extent_cells: [radius_cells; 3],
+            },
         }
     };
 
@@ -240,6 +249,7 @@ mod tests {
     fn brush(mode: SculptMode) -> SculptBrush {
         SculptBrush {
             mode,
+            shape: crate::level_editor::state::terrain::BrushShape::default(),
             radius_m: 8.0,
             falloff: 0.0,
             strength: 2.0,

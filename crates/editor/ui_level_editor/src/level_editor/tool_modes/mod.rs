@@ -126,6 +126,32 @@ pub enum ToolWidget {
         label_key: &'static str,
     },
     Divider,
+    /// A section heading with no control of its own — groups the widgets
+    /// that follow it under a label within one tab. Unlike [`PanelTab`],
+    /// this doesn't split content into separate switchable pages; it is for
+    /// a tab whose own content is long enough to want internal structure
+    /// (e.g. Foliage's "Rendering" / "Wind" groups within one tab).
+    Section { label_key: &'static str },
+}
+
+// ── Panel Tabs ──────────────────────────────────────────────────────────────
+
+/// One page of a mode's dedicated left-hand panel
+/// ([`ModeLayout::show_mode_panel`]).
+///
+/// A mode with a small, single-purpose control set doesn't need this — the
+/// default [`ToolMode::panel_tabs`] wraps `toolbar_controls()` in one
+/// unnamed tab. Override it once a mode's panel content is large enough to
+/// want its own categories (Terrain's Sculpt vs. Foliage, each with many
+/// more controls than would fit — or make sense — in a single flat list).
+#[derive(Clone, Debug, PartialEq)]
+pub struct PanelTab {
+    /// Stable identity for the tab, used only to remember which tab was
+    /// selected across re-renders — never shown to the user.
+    pub id: &'static str,
+    /// i18n key for the tab's label.
+    pub label_key: &'static str,
+    pub widgets: Vec<ToolWidget>,
 }
 
 // ── Status Bar Readout ─────────────────────────────────────────────────────
@@ -231,6 +257,21 @@ pub trait ToolMode: Send + Sync {
     /// Panel layout this mode wants while active. See [`ModeLayout`].
     fn layout(&self) -> ModeLayout {
         ModeLayout::default()
+    }
+
+    /// Tabs for this mode's dedicated left-hand panel. Only consulted when
+    /// [`ModeLayout::show_mode_panel`] is `true`; ignored otherwise (the
+    /// toolbar strip always reads `toolbar_controls()` directly, never this).
+    ///
+    /// Default: one unlabeled tab wrapping `toolbar_controls()`, so a mode
+    /// that turns on `show_mode_panel` without overriding this still gets a
+    /// working (if unorganized) panel rather than an empty one.
+    fn panel_tabs(&self, ctx: &ToolModeContext) -> Vec<PanelTab> {
+        vec![PanelTab {
+            id: "default",
+            label_key: "LevelEditor.ModeTools.DefaultTab",
+            widgets: self.toolbar_controls(ctx),
+        }]
     }
 
     /// Handle pointer events occurring within the viewport.
