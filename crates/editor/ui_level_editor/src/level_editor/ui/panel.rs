@@ -75,16 +75,15 @@ pub struct LevelEditorPanel {
     /// those renders would take a write lock on the shared state for nothing.
     applied_pie_signature: Option<(bool, bool, bool, bool)>,
 
-    /// The left-hand mode-tools dock panel, created lazily the first time any
-    /// [`ToolMode`](crate::level_editor::tool_modes::ToolMode) asks for one
-    /// (`ModeLayout::show_mode_panel`) and thereafter only shown/hidden, never
-    /// torn down — see [`Self::sync_mode_layout`].
-    mode_tools_panel: Option<Entity<crate::level_editor::ModeToolsPanel>>,
-
     /// Last tool-mode id [`Self::sync_mode_layout`] reconciled the dock area
     /// against, guarding it the same way `applied_pie_signature` guards
     /// `sync_game_tab` — this runs on every render, so a plain `!=` check on
     /// a `Copy` id is what keeps it from touching the dock area for nothing.
+    /// Because this only fires on an actual mode switch (a rare, deliberate
+    /// user action), `sync_mode_layout` is free to fully rebuild the left
+    /// dock's panel set each time rather than caching individual panel
+    /// entities — unlike `sync_game_tab`, there is no per-render cost to
+    /// avoid here.
     applied_mode_layout: Option<crate::level_editor::tool_modes::ToolModeId>,
 
     // Keeps the polling task alive for the lifetime of the panel.
@@ -417,7 +416,6 @@ impl LevelEditorPanel {
             workspace: None,
             game_panel: None,
             applied_pie_signature: None,
-            mode_tools_panel: None,
             applied_mode_layout: None,
             _root_input_poller: poller,
         }
@@ -603,13 +601,21 @@ impl LevelEditorPanel {
     /// Reconcile the dock area against the active tool mode's [`ModeLayout`].
     ///
     /// Same shape as [`Self::sync_game_tab`]: a cheap signature guard first
-    /// (render runs several times a second), then act only on a real change.
-    /// Both docks this touches are toggled open/closed, never torn down and
-    /// rebuilt — `set_left_dock`/`set_right_dock` recreate the `Dock` entity
-    /// from scratch, which would needlessly discard `PropertiesPanelWrapper`'s
-    /// cached section entities on the right, and would make `ModeToolsPanel`
-    /// on the left re-run its constructor (and lose nothing today, but there
-    /// is no reason to pay for a rebuild `toggle_dock` already avoids).
+    /// (render runs several times a second), then act only on a real change
+    /// — i.e. an actual mode switch, a rare, deliberate user action.
+    ///
+    /// The right dock is toggled open/closed, never torn down — that one
+    /// holds `PropertiesPanelWrapper`'s cached section entities, which a
+    /// rebuild would needlessly discard. The left dock is different: each
+    /// [`PanelTab`](crate::level_editor::tool_modes::PanelTab) the active mode
+    /// returns becomes its own real dock panel (`ModeToolsPanel`), grouped
+    /// into the left dock's native tab strip via `DockItem::tabs` — the same
+    /// mechanism the right dock already uses for Properties/World Settings —
+    /// so switching modes rebuilds *which panels exist*, not just whether
+    /// they're visible. That's a full `set_left_dock` every time a mode with
+    /// `show_mode_panel: true` becomes active, but since this only runs on a
+    /// mode switch (not every render), the cost `PropertiesPanelWrapper`'s
+    /// caching exists to avoid does not apply here.
     ///
     /// [`ModeLayout`]: crate::level_editor::tool_modes::ModeLayout
     fn sync_mode_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -618,13 +624,15 @@ impl LevelEditorPanel {
             return;
         }
 
-        let layout = self
-            .shared_state
-            .read()
-            .editor
-            .tool_mode_registry
-            .selected()
-            .layout();
+        let (layout, tabs) = {
+            let state = self.shared_state.read();
+            let layout = state.editor.tool_mode_registry.selected().layout();
+            let tabs = crate::level_editor::ui::mode_widgets::active_mode_tabs(
+                &state,
+                &self.gpu_engine,
+            );
+            (layout, tabs)
+        };
 
         let Some(workspace) = self.workspace.clone() else {
             return;
@@ -645,31 +653,27 @@ impl LevelEditorPanel {
                 });
             }
 
-            if layout.show_mode_panel {
-                if let Some(existing) = self.mode_tools_panel.clone() {
-                    let _ = existing;
-                    let left_open = dock_area.read(cx).is_dock_open(DockPlacement::Left, cx);
-                    if !left_open {
-                        dock_area.update(cx, |da, cx| {
-                            da.toggle_dock(DockPlacement::Left, window, cx);
+            if layout.show_mode_panel && !tabs.is_empty() {
+                let panels: Vec<std::sync::Arc<dyn ui::dock::PanelView>> = tabs
+                    .iter()
+                    .map(|tab| {
+                        let panel = cx.new(|cx| {
+                            crate::level_editor::ModeToolsPanel::new(
+                                shared_state.clone(),
+                                gpu_engine.clone(),
+                                tab.id,
+                                tab.label_key,
+                                cx,
+                            )
                         });
-                    }
-                } else {
-                    let panel = cx.new(|cx| {
-                        crate::level_editor::ModeToolsPanel::new(
-                            shared_state.clone(),
-                            gpu_engine.clone(),
-                            cx,
-                        )
-                    });
-                    self.mode_tools_panel = Some(panel.clone());
-                    let view: std::sync::Arc<dyn ui::dock::PanelView> = std::sync::Arc::new(panel);
-                    let item = DockItem::tabs(vec![view], Some(0), &dock_area_weak, window, cx);
-                    dock_area.update(cx, |da, cx| {
-                        da.set_left_dock(item, Some(px(280.0)), true, window, cx);
-                    });
-                }
-            } else if self.mode_tools_panel.is_some() {
+                        std::sync::Arc::new(panel) as std::sync::Arc<dyn ui::dock::PanelView>
+                    })
+                    .collect();
+                let item = DockItem::tabs(panels, Some(0), &dock_area_weak, window, cx);
+                dock_area.update(cx, |da, cx| {
+                    da.set_left_dock(item, Some(px(280.0)), true, window, cx);
+                });
+            } else {
                 let left_open = dock_area.read(cx).is_dock_open(DockPlacement::Left, cx);
                 if left_open {
                     dock_area.update(cx, |da, cx| {

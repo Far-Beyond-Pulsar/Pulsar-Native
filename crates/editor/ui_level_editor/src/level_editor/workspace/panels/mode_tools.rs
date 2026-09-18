@@ -1,34 +1,38 @@
-//! Mode Tools dock panel — the left-hand panel a [`ToolMode`] renders its
-//! [`PanelTab`]s into when [`ModeLayout::show_mode_panel`] is `true` (see
-//! design doc's tool-modes-layout addendum, §10).
+//! Mode Tools dock panels — one real `ui::dock::Panel` per [`PanelTab`] a
+//! [`ToolMode`] returns from `panel_tabs()`, shown when
+//! [`ModeLayout::show_mode_panel`] is `true` (see design doc's
+//! tool-modes-layout addendum, §10).
 //!
-//! Generic over every mode: it never names `TerrainMode` or any other
-//! concrete mode, it just asks the registry for whichever mode is active and
-//! renders that mode's `panel_tabs()` — a mode with a small control set gets
-//! one unnamed tab for free (the trait's default), a mode with a lot to show
-//! (Terrain's Sculpt/Foliage split) gets real tab navigation. A mode that
-//! never sets `show_mode_panel` never causes this panel to be shown (see
-//! `ui/panel.rs`'s `sync_mode_layout`), so adding a mode that doesn't use it
-//! costs this file nothing.
+//! Each tab is its own dock panel, grouped into the left dock's native tab
+//! strip via `DockItem::tabs` — the same mechanism the right dock already
+//! uses for Properties/World Settings — rather than a bespoke tab bar drawn
+//! inside one panel. This gets drag-reorder, floating, and closing for free
+//! from the dock system, and keeps every panel in this editor behaving the
+//! same way.
+//!
+//! Generic over every mode: `ModeToolsPanel` never names `TerrainMode` or any
+//! other concrete mode, it just renders whichever `PanelTab` (by id) it was
+//! constructed for. A mode that never sets `show_mode_panel` never causes any
+//! of these to be created (see `ui/panel.rs`'s `sync_mode_layout`), so adding
+//! a mode that doesn't use it costs this file nothing.
 //!
 //! [`ToolMode`]: crate::level_editor::tool_modes::ToolMode
 //! [`ModeLayout::show_mode_panel`]: crate::level_editor::tool_modes::ModeLayout::show_mode_panel
 
 use crate::level_editor::state::LevelEditorState;
-use crate::level_editor::tool_modes::{PanelTab, ToolModeId};
+use crate::level_editor::tool_modes::{ToolModeId, ToolWidget};
 use crate::level_editor::ui::mode_widgets::{active_mode_tabs, render_mode_widgets, WidgetLayout};
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::*;
 use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
-    button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
-    v_flex, ActiveTheme, Sizable,
+    v_flex, ActiveTheme,
 };
 
-/// Self-refreshing left-hand panel showing the active tool mode's tabbed
-/// controls.
+/// Self-refreshing dock panel showing one tab's worth of the active tool
+/// mode's controls.
 ///
 /// Like `HierarchyPanelWrapper`/`PropertiesPanelWrapper`, invalidates itself
 /// via a frame pump rather than relying on GPUI's entity-access tracking
@@ -39,16 +43,23 @@ pub struct ModeToolsPanel {
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
     focus_handle: FocusHandle,
-    /// `(active mode id, that mode's current tabs)`. Comparing the whole tab
-    /// list (not just the id) is what catches a brush-value change
-    /// repainting this panel's sliders while staying on the same mode.
-    last_signature: (ToolModeId, Vec<PanelTab>),
-    /// Id of the selected tab. Reset to the first tab whenever the active
-    /// mode id changes (switching from Terrain to Level Edit and back must
-    /// not leave a stale tab selected against Level Edit's own — currently
-    /// empty — tab list), but preserved across a same-mode tab-content
-    /// change (a brush value changing must not silently switch tabs).
-    active_tab: &'static str,
+    /// Which tab (by [`PanelTab::id`](crate::level_editor::tool_modes::PanelTab::id))
+    /// this panel instance renders. Fixed at construction: a panel never
+    /// repurposes itself to show a different tab — `sync_mode_layout` rebuilds
+    /// the whole left-dock tab set (one `ModeToolsPanel` per current tab)
+    /// whenever the active mode changes instead.
+    tab_id: &'static str,
+    /// This tab's label, cached at construction for `title()` — the dock's
+    /// tab strip calls `title()` on every paint, so this avoids a lock plus a
+    /// linear scan of `panel_tabs()` per frame just to find our own label.
+    label_key: &'static str,
+    /// `(active mode id, this tab's current widget list)`. Comparing the
+    /// widget list (not just the mode id) is what catches a brush-value
+    /// change repainting this panel's sliders while staying on the same tab.
+    /// If the mode changes away from whoever owns `tab_id`, the widget list
+    /// resolves to empty — this panel renders nothing until
+    /// `sync_mode_layout` removes it from the dock on the next mode switch.
+    last_signature: (ToolModeId, Vec<ToolWidget>),
     pump_started: bool,
 }
 
@@ -56,20 +67,18 @@ impl ModeToolsPanel {
     pub fn new(
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
         gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
+        tab_id: &'static str,
+        label_key: &'static str,
         cx: &mut Context<Self>,
     ) -> Self {
-        let last_signature = Self::signature(&state, &gpu_engine);
-        let active_tab = last_signature
-            .1
-            .first()
-            .map(|tab| tab.id)
-            .unwrap_or("default");
+        let last_signature = Self::signature(&state, &gpu_engine, tab_id);
         Self {
             state,
             gpu_engine,
             focus_handle: cx.focus_handle(),
+            tab_id,
+            label_key,
             last_signature,
-            active_tab,
             pump_started: false,
         }
     }
@@ -77,30 +86,16 @@ impl ModeToolsPanel {
     fn signature(
         state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
         gpu_engine: &Arc<std::sync::Mutex<GpuRenderer>>,
-    ) -> (ToolModeId, Vec<PanelTab>) {
+        tab_id: &'static str,
+    ) -> (ToolModeId, Vec<ToolWidget>) {
         let state = state_arc.read();
         let id = state.editor.tool_mode_registry.selected_id();
-        (id, active_mode_tabs(&state, gpu_engine))
-    }
-
-    /// Bring `active_tab` in line with a freshly observed signature: reset
-    /// to the first tab only when the mode itself changed, or when the
-    /// previously selected tab id no longer exists in the new tab list
-    /// (a mode that changes its own tab set dynamically must not leave this
-    /// panel pointed at a tab that vanished).
-    fn reconcile_active_tab(&mut self, new_signature: &(ToolModeId, Vec<PanelTab>)) {
-        let mode_changed = new_signature.0 != self.last_signature.0;
-        let tab_still_exists = new_signature
-            .1
-            .iter()
-            .any(|tab| tab.id == self.active_tab);
-        if mode_changed || !tab_still_exists {
-            self.active_tab = new_signature
-                .1
-                .first()
-                .map(|tab| tab.id)
-                .unwrap_or("default");
-        }
+        let widgets = active_mode_tabs(&state, gpu_engine)
+            .into_iter()
+            .find(|tab| tab.id == tab_id)
+            .map(|tab| tab.widgets)
+            .unwrap_or_default();
+        (id, widgets)
     }
 
     fn start_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -113,9 +108,8 @@ impl ModeToolsPanel {
             &cx.entity(),
             window,
             |this, _window, cx| {
-                let signature = Self::signature(&this.state, &this.gpu_engine);
+                let signature = Self::signature(&this.state, &this.gpu_engine, this.tab_id);
                 if signature != this.last_signature {
-                    this.reconcile_active_tab(&signature);
                     this.last_signature = signature;
                     cx.notify();
                 }
@@ -138,59 +132,21 @@ impl Render for ModeToolsPanel {
         // Record what we are about to paint, same reasoning as every other
         // frame-pumped panel in this editor: avoids the pump re-notifying for
         // a change this render already picked up.
-        let signature = Self::signature(&self.state, &self.gpu_engine);
-        self.reconcile_active_tab(&signature);
-        self.last_signature = signature;
-        let tabs = self.last_signature.1.clone();
+        self.last_signature = Self::signature(&self.state, &self.gpu_engine, self.tab_id);
+        let widgets = self.last_signature.1.clone();
 
-        let theme = cx.theme();
-        let show_tab_bar = tabs.len() > 1;
-        let active_widgets = tabs
-            .iter()
-            .find(|tab| tab.id == self.active_tab)
-            .map(|tab| tab.widgets.clone())
-            .unwrap_or_default();
-
-        let mut root = v_flex().size_full().bg(theme.sidebar);
-
-        if show_tab_bar {
-            let mut tab_bar = ui::h_flex()
-                .w_full()
-                .gap_1()
-                .p_1()
-                .border_b_1()
-                .border_color(theme.border.opacity(0.6));
-            for tab in &tabs {
-                let is_active = tab.id == self.active_tab;
-                let entity = cx.entity();
-                let tab_id = tab.id;
-                let btn = Button::new(format!("mode_tools_tab_{}", tab.id))
-                    .label(t!(tab.label_key))
-                    .small()
-                    .on_click(move |_, _, cx| {
-                        entity.update(cx, |this, cx| {
-                            this.active_tab = tab_id;
-                            cx.notify();
-                        });
-                    });
-                tab_bar = tab_bar.child(if is_active { btn.primary() } else { btn.ghost() });
-            }
-            root = root.child(tab_bar);
-        }
-
-        root.child(
-            v_flex()
-                .size_full()
-                .p_2()
-                .gap_2()
-                .child(render_mode_widgets(
-                    active_widgets,
-                    WidgetLayout::Panel,
-                    self.state.clone(),
-                    self.gpu_engine.clone(),
-                    cx,
-                )),
-        )
+        v_flex()
+            .size_full()
+            .bg(cx.theme().sidebar)
+            .p_2()
+            .gap_2()
+            .child(render_mode_widgets(
+                widgets,
+                WidgetLayout::Panel,
+                self.state.clone(),
+                self.gpu_engine.clone(),
+                cx,
+            ))
     }
 }
 
@@ -200,10 +156,6 @@ impl Panel for ModeToolsPanel {
     }
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
-        let state = self.state.read();
-        let label = t!(state.editor.tool_mode_registry.selected().label_key());
-        t!("LevelEditor.ModeTools.Title", mode => label.to_string())
-            .to_string()
-            .into_any_element()
+        t!(self.label_key).to_string().into_any_element()
     }
 }
