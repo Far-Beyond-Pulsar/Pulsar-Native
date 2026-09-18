@@ -98,7 +98,7 @@ impl TerrainMode {
         if !sculpt::should_stamp(self.last_stamp_center_m, hit.position_m, radius_m) {
             return false;
         }
-        let Some(definition) = api.planet_definition(hit.target) else {
+        let Some(definition) = api.body_definition(hit.target) else {
             return false;
         };
         let anchor = ctx
@@ -126,7 +126,7 @@ impl TerrainMode {
     /// altitude, and remember which planet is being edited.
     fn begin_stroke(&mut self, api: &TerrainEditApi, ctx: &mut ToolModeContext, hit: &TerrainHit) {
         let start_height = api
-            .planet_definition(hit.target)
+            .body_definition(hit.target)
             .map(|definition| sculpt::altitude_m(&definition, hit.position_m))
             .unwrap_or_default();
 
@@ -170,7 +170,10 @@ fn mode_color(mode: SculptMode) -> [f32; 4] {
 
 /// Engine-side target → the editor domain's display form.
 fn editor_target(target: PlanetTarget) -> TerrainTarget {
-    TerrainTarget::Planet(target.planet_id().to_hex())
+    match target {
+        PlanetTarget::Planet(_) => TerrainTarget::Planet(target.to_hex()),
+        PlanetTarget::Volume(_) => TerrainTarget::Volume(target.to_hex()),
+    }
 }
 
 impl ToolMode for TerrainMode {
@@ -224,6 +227,12 @@ impl ToolMode for TerrainMode {
         };
 
         vec![
+            // Creating terrain comes before shaping it, so it leads.
+            ToolWidget::Action {
+                id: super::dispatcher::CREATE_FLAT_WORLD,
+                label_key: "LevelEditor.Terrain.CreateFlatWorld",
+            },
+            ToolWidget::Divider,
             ToolWidget::Segmented {
                 id: "sculpt_mode",
                 options: vec![

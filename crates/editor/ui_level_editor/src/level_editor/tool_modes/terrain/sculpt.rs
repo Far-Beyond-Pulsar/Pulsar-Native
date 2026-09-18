@@ -1,9 +1,8 @@
 //! Brush math: a terrain hit plus brush settings become one `EditOp` stamp.
 //!
-//! `pulsar_terrain` has exactly one brush primitive today,
-//! [`EditShape::Sphere`], combined with the terrain field by one of four
-//! [`EditMode`]s. Everything a sculpt brush expresses therefore has to be
-//! encoded as *where the sphere is placed and how big it is*:
+//! A brush is a primitive placed relative to the surface and combined with the
+//! terrain field by one of four [`EditMode`]s. Everything a sculpt brush
+//! expresses is therefore *where the primitive is placed and how big it is*:
 //!
 //! | Brush | Mode | Placement |
 //! |---|---|---|
@@ -11,10 +10,18 @@
 //! | Lower | `Subtract` | raised above the surface so it bites in by `strength` |
 //! | Flatten | `Replace` | anchored to the altitude sampled at stroke start |
 //! | Paint | `Paint` | centred on the hit; only the material channel moves |
+//!
+//! # Nothing here knows whether it is sculpting a planet or a flat world
+//!
+//! Everything shape-dependent is asked of the [`TerrainBodyDefinition`]:
+//! "height" (`altitude_m`), "the point at that height" (`point_at_altitude_m`),
+//! and "the primitive that levels this body" (`flatten_shape`). That is the
+//! whole difference, and it lives in `pulsar_terrain` where the shape axis is
+//! defined — this module has no branch on target kind at all.
 
 use engine_backend::services::terrain_edit::{
-    cell_to_meters, meters_to_cell, meters_to_radius_cells, EditMode, EditOp, EditShape,
-    PlanetDefinition, TerrainHit, LOD0_CELL_SIZE_METERS,
+    meters_to_cell, meters_to_radius_cells, EditMode, EditOp, EditShape, TerrainBodyDefinition,
+    TerrainHit, LOD0_CELL_SIZE_METERS,
 };
 
 use crate::level_editor::state::terrain::{SculptBrush, SculptMode};
@@ -48,16 +55,17 @@ pub fn should_stamp(last_center_m: Option<[f32; 3]>, center_m: [f32; 3], radius_
     travelled_squared >= threshold * threshold
 }
 
-/// Distance from the planet's centre to a world point, in meters — the
-/// planetary equivalent of "height".
-pub fn altitude_m(definition: &PlanetDefinition, point_m: [f32; 3]) -> f64 {
-    let center = cell_to_meters(definition.center_cell);
-    let delta = [
-        f64::from(point_m[0]) - center[0],
-        f64::from(point_m[1]) - center[1],
-        f64::from(point_m[2]) - center[2],
-    ];
-    (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt()
+/// Height of a world point above the body's datum, in meters.
+///
+/// For a planet that is the distance from its centre; for a flat world it is
+/// the offset from its ground plane. The body answers, so a Flatten stroke
+/// means the same thing on both.
+pub fn altitude_m(definition: &TerrainBodyDefinition, point_m: [f32; 3]) -> f64 {
+    definition.altitude_m([
+        f64::from(point_m[0]),
+        f64::from(point_m[1]),
+        f64::from(point_m[2]),
+    ])
 }
 
 /// One brush stamp, ready to hand to `TerrainEditApi::apply_edit`.
@@ -67,7 +75,7 @@ pub fn altitude_m(definition: &PlanetDefinition, point_m: [f32; 3]) -> f64 {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SculptStamp {
     pub op: EditOp,
-    /// Where the stamp's sphere was centred, in world meters. Coalescing
+    /// Where the stamp's primitive was centred, in world meters. Coalescing
     /// compares against the *hit* point rather than this, so it is carried
     /// separately for the brush cursor and for diagnostics.
     pub sphere_center_m: [f64; 3],
@@ -81,7 +89,7 @@ pub struct SculptStamp {
 /// the surface it is already modifying.
 pub fn build_stamp(
     hit: &TerrainHit,
-    definition: &PlanetDefinition,
+    definition: &TerrainBodyDefinition,
     brush: &SculptBrush,
     anchor_altitude_m: Option<f64>,
 ) -> SculptStamp {
@@ -102,8 +110,6 @@ pub fn build_stamp(
         f64::from(hit.normal[1]),
         f64::from(hit.normal[2]),
     ];
-    let planet_center = cell_to_meters(definition.center_cell);
-
     let (mode, sphere_center) = match brush.mode {
         // Sink the sphere so exactly `strength` metres of it stand proud of
         // the surface, then union it in.
@@ -116,27 +122,36 @@ pub fn build_stamp(
             EditMode::Subtract,
             offset_along(hit_point, normal, radius_m - strength_m),
         ),
-        // Put the sphere's outer surface at the stroke's anchor altitude, so
-        // every stamp in the stroke resolves to the same level.
+        // Put the primitive's outer surface at the stroke's anchor altitude,
+        // so every stamp in the stroke resolves to the same level.
         SculptMode::Flatten => {
             let anchor = anchor_altitude_m.unwrap_or_else(|| altitude_m(definition, hit.position_m));
             (
                 EditMode::Replace,
-                offset_along(planet_center, normal, anchor - radius_m),
+                definition.point_at_altitude_m(hit_point, normal, anchor - radius_m),
             )
         }
         // Material-only: leave the density field where it is.
         SculptMode::Paint => (EditMode::Paint, hit_point),
     };
 
+    let center_cell = meters_to_cell(sphere_center);
+    // Only levelling needs a primitive whose top is flat with respect to the
+    // body's datum; every other brush is a round stroke on either shape.
+    let shape = if matches!(brush.mode, SculptMode::Flatten) {
+        definition.flatten_shape(center_cell, radius_cells)
+    } else {
+        EditShape::Sphere {
+            center_cell,
+            radius_cells,
+        }
+    };
+
     SculptStamp {
         op: EditOp {
             sequence: 0,
             stable_id: [0; 16],
-            shape: EditShape::Sphere {
-                center_cell: meters_to_cell(sphere_center),
-                radius_cells,
-            },
+            shape,
             mode,
             material: brush_material(brush),
         },
@@ -171,10 +186,12 @@ fn offset_along(point: [f64; 3], direction: [f64; 3], distance: f64) -> [f64; 3]
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine_backend::services::terrain_edit::{PlanetId, TerrainTarget};
+    use engine_backend::services::terrain_edit::{
+        FlatTerrain, PlanetDefinition, PlanetId, TerrainTarget, VolumeDefinition, VolumeId,
+    };
 
-    fn definition() -> PlanetDefinition {
-        PlanetDefinition {
+    fn definition() -> TerrainBodyDefinition {
+        TerrainBodyDefinition::Planet(PlanetDefinition {
             planet_id: PlanetId::from_stable_name("test"),
             center_cell: [0; 3],
             // 100 m radius.
@@ -182,6 +199,29 @@ mod tests {
             material: 1,
             root_lod: 12,
             max_resident_pages: 64,
+        })
+    }
+
+    /// A flat world whose ground plane sits at y = 0.
+    fn flat_definition() -> TerrainBodyDefinition {
+        TerrainBodyDefinition::Volume(VolumeDefinition {
+            volume_id: VolumeId::from_stable_name("flat"),
+            flat: FlatTerrain::centered_on([0; 3]),
+            material: 1,
+            root_lod: 12,
+            max_resident_pages: 4_096,
+        })
+    }
+
+    /// A hit on the ground plane of the flat world, 20 m from its centre.
+    fn flat_hit() -> TerrainHit {
+        TerrainHit {
+            target: TerrainTarget::Volume(VolumeId::from_stable_name("flat")),
+            position_m: [20.0, 0.0, -5.0],
+            cell: [200, 0, -50],
+            normal: [0.0, 1.0, 0.0],
+            material: 1,
+            distance_m: 30.0,
         }
     }
 
@@ -314,5 +354,107 @@ mod tests {
     fn altitude_is_measured_from_the_planet_centre() {
         assert!((altitude_m(&definition(), [0.0, 100.0, 0.0]) - 100.0).abs() < 1e-9);
         assert!((altitude_m(&definition(), [30.0, 40.0, 0.0]) - 50.0).abs() < 1e-9);
+    }
+
+    // ── The same pipeline, against a flat volume ───────────────────────────
+    //
+    // These are deliberately the *same* assertions as the planet cases above,
+    // run through the same `build_stamp` with only the body swapped. That is
+    // the milestone's acceptance bar: no branch on target kind anywhere above
+    // `TerrainBodyDefinition`.
+
+    #[test]
+    fn raise_on_a_flat_world_sinks_the_stamp_the_same_way_it_does_on_a_planet() {
+        let stamp = build_stamp(
+            &flat_hit(),
+            &flat_definition(),
+            &brush(SculptMode::Raise),
+            None,
+        );
+        assert_eq!(stamp.op.mode, EditMode::Union);
+        // radius 8, strength 2 => centre 6 m below the ground plane.
+        assert!((stamp.sphere_center_m[1] + 6.0).abs() < 1e-6, "{stamp:?}");
+        assert!(matches!(stamp.op.shape, EditShape::Sphere { .. }));
+    }
+
+    #[test]
+    fn lower_on_a_flat_world_lifts_the_stamp_by_the_brush_strength() {
+        let stamp = build_stamp(
+            &flat_hit(),
+            &flat_definition(),
+            &brush(SculptMode::Lower),
+            None,
+        );
+        assert_eq!(stamp.op.mode, EditMode::Subtract);
+        assert!((stamp.sphere_center_m[1] - 6.0).abs() < 1e-6, "{stamp:?}");
+    }
+
+    #[test]
+    fn a_flat_worlds_altitude_is_its_height_above_the_ground_plane() {
+        assert!((altitude_m(&flat_definition(), [20.0, 3.0, -5.0]) - 3.0).abs() < 1e-9);
+        assert!((altitude_m(&flat_definition(), [999.0, -2.0, 0.0]) + 2.0).abs() < 1e-9);
+    }
+
+    /// A sphere's cap is level on a planet but domed on a flat world, so a
+    /// flat world levels with a box instead. The brush code does not choose —
+    /// the body does.
+    #[test]
+    fn flatten_uses_a_box_on_a_flat_world_and_a_sphere_on_a_planet() {
+        let anchor = Some(4.0_f64);
+        let flat = build_stamp(
+            &flat_hit(),
+            &flat_definition(),
+            &brush(SculptMode::Flatten),
+            anchor,
+        );
+        assert_eq!(flat.op.mode, EditMode::Replace);
+        match flat.op.shape {
+            EditShape::Box {
+                half_extent_cells, ..
+            } => assert_eq!(half_extent_cells, [80; 3], "8 m brush at 10 cm cells"),
+            other => panic!("a flat world must level with a box, got {other:?}"),
+        }
+        // Box top face at the anchor: centre is 8 m (the radius) below it.
+        assert!((flat.sphere_center_m[1] + 4.0).abs() < 1e-6, "{flat:?}");
+        // The stamp stays under the cursor rather than moving to a datum.
+        assert_eq!([flat.sphere_center_m[0], flat.sphere_center_m[2]], [20.0, -5.0]);
+
+        let planet = build_stamp(&hit(), &definition(), &brush(SculptMode::Flatten), anchor);
+        assert!(matches!(planet.op.shape, EditShape::Sphere { .. }));
+    }
+
+    #[test]
+    fn flatten_on_a_flat_world_does_not_chase_the_surface_it_is_levelling() {
+        let anchor = Some(0.0_f64);
+        let first = build_stamp(
+            &flat_hit(),
+            &flat_definition(),
+            &brush(SculptMode::Flatten),
+            anchor,
+        );
+        let raised = TerrainHit {
+            position_m: [20.0, 12.0, -5.0],
+            ..flat_hit()
+        };
+        let second = build_stamp(
+            &raised,
+            &flat_definition(),
+            &brush(SculptMode::Flatten),
+            anchor,
+        );
+        assert_eq!(first.sphere_center_m[1], second.sphere_center_m[1]);
+    }
+
+    #[test]
+    fn paint_on_a_flat_world_centres_on_the_hit_like_it_does_on_a_planet() {
+        let stamp = build_stamp(
+            &flat_hit(),
+            &flat_definition(),
+            &brush(SculptMode::Paint),
+            None,
+        );
+        assert_eq!(stamp.op.mode, EditMode::Paint);
+        assert_eq!(stamp.sphere_center_m, [20.0, 0.0, -5.0]);
+        assert_eq!(stamp.op.material, 3);
     }
 }

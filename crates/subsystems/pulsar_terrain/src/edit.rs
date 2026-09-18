@@ -1,9 +1,20 @@
-use crate::generator::sphere_signed_distance_bounds;
+use crate::generator::{
+    box_signed_distance, box_signed_distance_bounds, sphere_signed_distance_bounds,
+};
 use crate::{CellWord, ContentHash, MaterialId, PageKey};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
-const EDIT_LOG_MAGIC: &[u8; 8] = b"PTEDIT01";
+/// Record layout v1: sphere-only, 56 bytes per operation. Still decoded so
+/// terrain authored before [`EditShape::Box`] existed keeps replaying.
+const EDIT_LOG_MAGIC_V1: &[u8; 8] = b"PTEDIT01";
+/// Record layout v2: 64 bytes per operation, wide enough for a box's
+/// three-axis half-extent. Everything encodes as v2.
+const EDIT_LOG_MAGIC: &[u8; 8] = b"PTEDIT02";
+const RECORD_BYTES_V1: usize = 56;
+const RECORD_BYTES: usize = 64;
+const SHAPE_TAG_SPHERE: u8 = 0;
+const SHAPE_TAG_BOX: u8 = 1;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EditMode {
@@ -13,11 +24,22 @@ pub enum EditMode {
     Paint,
 }
 
+/// Brush primitives a mutation can carry.
+///
+/// A shape is independent of the body it lands on: either primitive is valid
+/// against either [`crate::TerrainShape`], because both are just signed
+/// distance fields evaluated in canonical LOD0 cell space.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EditShape {
     Sphere {
         center_cell: [i64; 3],
         radius_cells: u32,
+    },
+    /// Axis-aligned box. `half_extent_cells` is measured from `center_cell`,
+    /// so the covered span on an axis is `2 * half + 1` cells.
+    Box {
+        center_cell: [i64; 3],
+        half_extent_cells: [u32; 3],
     },
 }
 
@@ -74,7 +96,25 @@ impl EditShape {
                     center_cell.map(|axis| axis.saturating_add(radius).saturating_add(1)),
                 )
             }
+            Self::Box {
+                center_cell,
+                half_extent_cells,
+            } => (
+                std::array::from_fn(|axis| {
+                    center_cell[axis].saturating_sub(i64::from(half_extent_cells[axis]))
+                }),
+                std::array::from_fn(|axis| {
+                    center_cell[axis]
+                        .saturating_add(i64::from(half_extent_cells[axis]))
+                        .saturating_add(1)
+                }),
+            ),
         }
+    }
+
+    /// Half-extent of a box shape in `i64` cells, for the distance helpers.
+    fn box_half_extent(half_extent_cells: [u32; 3]) -> [i64; 3] {
+        half_extent_cells.map(i64::from)
     }
 
     /// Conservative count of LOD0 pages intersected by the shape's integer
@@ -119,6 +159,15 @@ impl EditShape {
             } => Ok(Some(sphere_signed_distance_bounds(
                 center_cell,
                 u64::from(radius_cells),
+                intersection_min,
+                intersection_max,
+            ))),
+            Self::Box {
+                center_cell,
+                half_extent_cells,
+            } => Ok(Some(box_signed_distance_bounds(
+                center_cell,
+                Self::box_half_extent(half_extent_cells),
                 intersection_min,
                 intersection_max,
             ))),
@@ -181,6 +230,14 @@ impl EditShape {
                 let distance = integer_sqrt(squared).min(i32::MAX as u128) as i32;
                 distance.saturating_sub(radius_cells.min(i32::MAX as u32) as i32)
             }
+            Self::Box {
+                center_cell,
+                half_extent_cells,
+            } => box_signed_distance(
+                center_cell,
+                Self::box_half_extent(half_extent_cells),
+                cell_xyz,
+            ),
         }
     }
 }
@@ -423,11 +480,17 @@ impl EditLog {
         cell
     }
 
+    /// Canonical encoding (layout v2).
+    ///
+    /// Every record is fixed-width so the operation count alone validates the
+    /// buffer length. A sphere's payload is shorter than a box's and is
+    /// zero-padded, which keeps the format seekable and its hash stable.
     pub fn encode(&self) -> Vec<u8> {
-        let mut output = Vec::with_capacity(12 + self.operations.len() * 56);
+        let mut output = Vec::with_capacity(12 + self.operations.len() * RECORD_BYTES);
         output.extend_from_slice(EDIT_LOG_MAGIC);
         output.extend_from_slice(&(self.operations.len() as u32).to_le_bytes());
         for operation in &self.operations {
+            let record_start = output.len();
             output.extend_from_slice(&operation.sequence.to_le_bytes());
             output.extend_from_slice(&operation.stable_id);
             output.push(match operation.mode {
@@ -442,25 +505,47 @@ impl EditLog {
                     center_cell,
                     radius_cells,
                 } => {
-                    output.push(0);
+                    output.push(SHAPE_TAG_SPHERE);
                     output.push(0);
                     for axis in center_cell {
                         output.extend_from_slice(&axis.to_le_bytes());
                     }
                     output.extend_from_slice(&radius_cells.to_le_bytes());
                 }
+                EditShape::Box {
+                    center_cell,
+                    half_extent_cells,
+                } => {
+                    output.push(SHAPE_TAG_BOX);
+                    output.push(0);
+                    for axis in center_cell {
+                        output.extend_from_slice(&axis.to_le_bytes());
+                    }
+                    for axis in half_extent_cells {
+                        output.extend_from_slice(&axis.to_le_bytes());
+                    }
+                }
             }
+            output.resize(record_start + RECORD_BYTES, 0);
         }
         output
     }
 
+    /// Decode either layout. `PTEDIT01` buffers predate [`EditShape::Box`] and
+    /// carry sphere records only; they are still read so terrain authored
+    /// before flat volumes existed replays unchanged.
     pub fn decode(bytes: &[u8]) -> Result<Self, EditError> {
-        if bytes.get(..8) != Some(EDIT_LOG_MAGIC) || bytes.len() < 12 {
+        let record_bytes = match bytes.get(..8) {
+            Some(magic) if magic == EDIT_LOG_MAGIC => RECORD_BYTES,
+            Some(magic) if magic == EDIT_LOG_MAGIC_V1 => RECORD_BYTES_V1,
+            _ => return Err(EditError::Codec),
+        };
+        if bytes.len() < 12 {
             return Err(EditError::Codec);
         }
         let count = read_u32(bytes, 8)? as usize;
         let expected = 12_usize
-            .checked_add(count.checked_mul(56).ok_or(EditError::Codec)?)
+            .checked_add(count.checked_mul(record_bytes).ok_or(EditError::Codec)?)
             .ok_or(EditError::Codec)?;
         if bytes.len() != expected {
             return Err(EditError::Codec);
@@ -482,25 +567,39 @@ impl EditLog {
                 _ => return Err(EditError::Codec),
             };
             let material = *bytes.get(cursor + 25).ok_or(EditError::Codec)?;
-            if bytes.get(cursor + 26..cursor + 28) != Some(&[0, 0]) {
+            let shape_tag = *bytes.get(cursor + 26).ok_or(EditError::Codec)?;
+            if bytes.get(cursor + 27) != Some(&0) {
                 return Err(EditError::Codec);
             }
             let mut center_cell = [0_i64; 3];
             for (axis, value) in center_cell.iter_mut().enumerate() {
                 *value = read_i64(bytes, cursor + 28 + axis * 8)?;
             }
-            let radius_cells = read_u32(bytes, cursor + 52)?;
+            let shape = match shape_tag {
+                SHAPE_TAG_SPHERE => EditShape::Sphere {
+                    center_cell,
+                    radius_cells: read_u32(bytes, cursor + 52)?,
+                },
+                SHAPE_TAG_BOX if record_bytes == RECORD_BYTES => {
+                    let mut half_extent_cells = [0_u32; 3];
+                    for (axis, value) in half_extent_cells.iter_mut().enumerate() {
+                        *value = read_u32(bytes, cursor + 52 + axis * 4)?;
+                    }
+                    EditShape::Box {
+                        center_cell,
+                        half_extent_cells,
+                    }
+                }
+                _ => return Err(EditError::Codec),
+            };
             log.push(EditOp {
                 sequence,
                 stable_id,
-                shape: EditShape::Sphere {
-                    center_cell,
-                    radius_cells,
-                },
+                shape,
                 mode,
                 material,
             })?;
-            cursor += 56;
+            cursor += record_bytes;
         }
         Ok(log)
     }
@@ -612,6 +711,146 @@ mod tests {
                 forward.apply(coordinate, CellWord::AIR),
                 reverse.apply(coordinate, CellWord::AIR)
             );
+        }
+    }
+
+    #[test]
+    fn a_box_shape_round_trips_and_keeps_the_log_canonical() {
+        let box_op = EditOp {
+            sequence: 3,
+            stable_id: [3; 16],
+            shape: EditShape::Box {
+                center_cell: [-40, 7, 900],
+                half_extent_cells: [4, 12, 4],
+            },
+            mode: EditMode::Replace,
+            material: 6,
+        };
+        let sphere_op = EditOp {
+            sequence: 5,
+            stable_id: [5; 16],
+            shape: EditShape::Sphere {
+                center_cell: [1, 2, 3],
+                radius_cells: 9,
+            },
+            mode: EditMode::Union,
+            material: 2,
+        };
+        let mut log = EditLog::default();
+        log.push(box_op).unwrap();
+        log.push(sphere_op).unwrap();
+        let decoded = EditLog::decode(&log.encode()).unwrap();
+        assert_eq!(decoded.operations(), log.operations());
+        assert_eq!(decoded.content_hash(), log.content_hash());
+    }
+
+    /// Terrain authored before boxes existed was written with the 56-byte
+    /// record layout. Losing it on upgrade would silently delete a sculpt.
+    #[test]
+    fn a_v1_sphere_log_still_decodes_under_the_wider_layout() {
+        let operation = EditOp {
+            sequence: 1,
+            stable_id: [1; 16],
+            shape: EditShape::Sphere {
+                center_cell: [-9, 2, 17],
+                radius_cells: 6,
+            },
+            mode: EditMode::Subtract,
+            material: 0,
+        };
+        let mut legacy = Vec::new();
+        legacy.extend_from_slice(EDIT_LOG_MAGIC_V1);
+        legacy.extend_from_slice(&1_u32.to_le_bytes());
+        legacy.extend_from_slice(&operation.sequence.to_le_bytes());
+        legacy.extend_from_slice(&operation.stable_id);
+        legacy.push(1);
+        legacy.push(operation.material);
+        legacy.extend_from_slice(&[0, 0]);
+        for axis in [-9_i64, 2, 17] {
+            legacy.extend_from_slice(&axis.to_le_bytes());
+        }
+        legacy.extend_from_slice(&6_u32.to_le_bytes());
+        assert_eq!(legacy.len(), 12 + RECORD_BYTES_V1);
+
+        let decoded = EditLog::decode(&legacy).unwrap();
+        assert_eq!(decoded.operations(), &[operation]);
+    }
+
+    #[test]
+    fn a_box_carves_and_fills_exactly_its_extent() {
+        let shape = EditShape::Box {
+            center_cell: [0; 3],
+            half_extent_cells: [2, 1, 2],
+        };
+        let (min, max) = shape.bounds();
+        assert_eq!(min, [-2, -1, -2]);
+        assert_eq!(max, [3, 2, 3]);
+
+        let fill = EditOp {
+            sequence: 1,
+            stable_id: [1; 16],
+            shape,
+            mode: EditMode::Union,
+            material: 4,
+        };
+        // Inside the box the union writes solid; a cell one step outside the
+        // y half-extent is untouched.
+        assert!(fill.apply([0, 1, 0], CellWord::AIR).is_solid());
+        assert_eq!(fill.apply([0, 1, 0], CellWord::AIR).material(), 4);
+        assert!(!fill.apply([0, 3, 0], CellWord::AIR).is_solid());
+    }
+
+    /// Either brush primitive has to be usable on either body shape — that is
+    /// what makes the sculpt pipeline shape-blind.
+    #[test]
+    fn both_shapes_are_ordinary_signed_distance_fields() {
+        let sphere = EditShape::Sphere {
+            center_cell: [0; 3],
+            radius_cells: 4,
+        };
+        let cube = EditShape::Box {
+            center_cell: [0; 3],
+            half_extent_cells: [4, 4, 4],
+        };
+        for shape in [sphere, cube] {
+            assert!(shape.signed_distance([0; 3]) < 0, "centre is inside");
+            assert_eq!(shape.signed_distance([4, 0, 0]), 0, "face is the surface");
+            assert!(shape.signed_distance([9, 0, 0]) > 0, "outside is positive");
+        }
+        // The corner distinguishes them: it is inside the cube, outside the ball.
+        assert!(cube.signed_distance([4, 4, 4]) <= 0);
+        assert!(sphere.signed_distance([4, 4, 4]) > 0);
+    }
+
+    #[test]
+    fn box_page_bounds_contain_every_sampled_distance() {
+        let shape = EditShape::Box {
+            center_cell: [40, -8, 16],
+            half_extent_cells: [20, 6, 33],
+        };
+        for page in [[0, 0, 0], [1, -1, 0], [2, 0, 1], [-1, 0, -1]] {
+            let key = PageKey::new(0, page);
+            let Ok(Some((min, max))) = shape.signed_distance_bounds_in_page(key) else {
+                continue;
+            };
+            let page_min = key.lod0_cell_min().unwrap();
+            for dz in [0, 16, 31] {
+                for dy in [0, 16, 31] {
+                    for dx in [0, 16, 31] {
+                        let cell = [page_min[0] + dx, page_min[1] + dy, page_min[2] + dz];
+                        if (0..3).any(|axis| {
+                            cell[axis] < shape.bounds().0[axis] || cell[axis] >= shape.bounds().1[axis]
+                        }) {
+                            continue;
+                        }
+                        let distance = shape.signed_distance(cell);
+                        assert!(
+                            min <= distance && distance <= max,
+                            "{key:?} bounds ({min}, {max}) missed {distance} at {cell:?}"
+                        );
+                    }
+                }
+            }
         }
     }
 

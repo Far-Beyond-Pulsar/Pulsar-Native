@@ -1,5 +1,5 @@
 use crate::{
-    FixedSphereGenerator, PlanetDefinition, PlanetId, PlanetView, TerrainCore,
+    PlanetId, PlanetView, TerrainBodyDefinition, TerrainCore,
     TerrainPlanningSnapshot, TerrainRuntimeError, TerrainRuntimeHandle, TerrainStreamingConfig,
     TerrainStreamingError, TerrainStreamingPlan, TerrainStreamingPlanner,
 };
@@ -530,11 +530,7 @@ fn planning_worker_loop(shared: Arc<PlanningShared>, runtime: TerrainRuntimeHand
             continue;
         };
         let capture_elapsed = capture_started.elapsed();
-        let generator = FixedSphereGenerator {
-            center_cell: capture.definition.center_cell,
-            radius_cells: capture.definition.radius_cells,
-            material: capture.definition.material,
-        };
+        let generator = capture.definition.generator();
         let started = Instant::now();
         let plan = TerrainCore::from_planning_snapshot(capture.snapshot, generator)
             .map_err(|error| TerrainStreamingError::TerrainSummary(error.to_string()))
@@ -583,7 +579,7 @@ pub(crate) struct TerrainPlanningIdentity {
 }
 
 pub(crate) struct TerrainPlanningCapture {
-    pub(crate) definition: PlanetDefinition,
+    pub(crate) definition: TerrainBodyDefinition,
     pub(crate) terrain_sequence: u64,
     pub(crate) snapshot: TerrainPlanningSnapshot,
 }
@@ -603,8 +599,8 @@ mod tests {
     use engine_subsystems::{Subsystem, SubsystemContext};
     use std::thread;
 
-    fn definition(id: u8) -> PlanetDefinition {
-        PlanetDefinition {
+    fn definition(id: u8) -> crate::PlanetDefinition {
+        crate::PlanetDefinition {
             planet_id: PlanetId([id; 16]),
             center_cell: [0; 3],
             radius_cells: 1_000,

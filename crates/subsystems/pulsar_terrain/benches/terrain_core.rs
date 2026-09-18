@@ -207,7 +207,7 @@ fn main() {
     for _ in 0..20 {
         let started = Instant::now();
         let plan = planner
-            .plan_with_classifier(&planet, view, &planning_core)
+            .plan_with_classifier(&pulsar_terrain::TerrainBodyDefinition::Planet(planet), view, &planning_core)
             .unwrap();
         authoritative_plan_times.push(started.elapsed());
         latest_authoritative_plan = Some(plan);

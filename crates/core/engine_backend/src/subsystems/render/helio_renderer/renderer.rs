@@ -914,16 +914,20 @@ impl HelioRenderer {
         self.terrain.clone()
     }
 
-    /// Reconcile the terrain runtime with the planet definitions the editor
+    /// Reconcile the terrain runtime with the terrain bodies the editor
     /// posted, creating the runtime on first use and retiring it when the last
-    /// planet disappears.
+    /// body disappears.
+    ///
+    /// A body is a planet or a flat voxel volume; this path does not care
+    /// which, because `upsert_body_component` registers either one the same
+    /// way and the component cache keys off the shared body identity.
     ///
     /// This is deliberately driven by an explicit mailbox rather than by the
     /// generic world-component dispatch: that dispatch was removed with the
     /// SceneDB nativization work, and the terrain seam must not depend on when
     /// it comes back.
     fn sync_terrain_planets(&mut self) {
-        let Some(definitions) = self.terrain.take_pending_planets() else {
+        let Some(definitions) = self.terrain.take_pending_bodies() else {
             return;
         };
         let Some(inner) = self.inner.as_mut() else {
@@ -960,8 +964,8 @@ impl HelioRenderer {
         let mut live_keys = pulsar_reflection::LiveKeySet::new();
         for (source_key, definition) in &definitions {
             live_keys.insert(source_key.clone());
-            match runtime.upsert_component(source_key.clone(), definition.clone()) {
-                Ok(_) => cache.record(source_key.clone(), definition.planet_id),
+            match runtime.upsert_body_component(source_key.clone(), *definition) {
+                Ok(_) => cache.record(source_key.clone(), definition.body_id()),
                 Err(error) => {
                     let message = format!("Planet terrain component sync failed: {error}");
                     tracing::error!("{message}");

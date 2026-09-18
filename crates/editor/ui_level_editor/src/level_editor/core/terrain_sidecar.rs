@@ -31,7 +31,11 @@ use engine_fs::virtual_fs;
 /// Extension appended to the level's own file name.
 const SIDECAR_EXTENSION: &str = "terrain";
 
-/// On-disk shape: planet id (hex) → base64 of the encoded edit log.
+/// On-disk shape: terrain body id (hex) → base64 of the encoded edit log.
+///
+/// Planets and flat volumes share one identity space, so the same map covers
+/// both with no format change: the sidecar stores *what was sculpted*, and the
+/// shape of the body it was sculpted on is the runtime's business.
 type SidecarMap = BTreeMap<String, String>;
 
 /// Where a level's terrain sidecar lives.
@@ -52,18 +56,18 @@ pub fn sidecar_path(level_path: &Path) -> PathBuf {
 /// a fully-undone sculpt does not resurrect itself on the next load.
 pub fn save(level_path: &Path, api: &TerrainEditApi) -> Result<(), String> {
     let mut stored = SidecarMap::new();
-    for definition in api.planets() {
-        let target = TerrainTarget::Planet(definition.planet_id);
+    for definition in api.bodies() {
+        let target = TerrainTarget::of(&definition);
         let Some(encoded) = api.export_edits(target) else {
             continue;
         };
         // An edit log with no operations still encodes to a valid header;
-        // skip those so an untouched planet writes nothing.
+        // skip those so an untouched body writes nothing.
         if !has_operations(&encoded) {
             continue;
         }
         stored.insert(
-            definition.planet_id.to_hex(),
+            target.to_hex(),
             base64::engine::general_purpose::STANDARD.encode(&encoded),
         );
     }
@@ -92,9 +96,9 @@ pub fn save(level_path: &Path, api: &TerrainEditApi) -> Result<(), String> {
 
 /// Replay a level's stored terrain edits into the runtime.
 ///
-/// Planets in the sidecar that are not registered are skipped rather than
+/// Bodies in the sidecar that are not registered are skipped rather than
 /// treated as an error: the scene may have dropped the component, or the
-/// planets may not have been synced to the runtime yet. Returns the number of
+/// bodies may not have been synced to the runtime yet. Returns the number of
 /// operations replayed.
 pub fn load(level_path: &Path, api: &TerrainEditApi) -> usize {
     let path = sidecar_path(level_path);
@@ -110,19 +114,15 @@ pub fn load(level_path: &Path, api: &TerrainEditApi) -> usize {
         return 0;
     };
 
-    let registered: Vec<_> = api
-        .planets()
-        .into_iter()
-        .map(|definition| definition.planet_id)
-        .collect();
+    let registered: Vec<TerrainTarget> = api.bodies().iter().map(TerrainTarget::of).collect();
     let mut replayed = 0;
     for (planet_hex, encoded) in stored {
-        let Some(planet_id) = registered
+        let Some(target) = registered
             .iter()
             .copied()
-            .find(|id| id.to_hex() == planet_hex)
+            .find(|target| target.to_hex() == planet_hex)
         else {
-            tracing::debug!(planet = %planet_hex, "skipping stored terrain for an unregistered planet");
+            tracing::debug!(planet = %planet_hex, "skipping stored terrain for an unregistered body");
             continue;
         };
         let Ok(decoded) = base64::engine::general_purpose::STANDARD.decode(encoded.as_bytes())
@@ -130,7 +130,7 @@ pub fn load(level_path: &Path, api: &TerrainEditApi) -> usize {
             tracing::warn!(planet = %planet_hex, "stored terrain edits were not valid base64");
             continue;
         };
-        match api.import_edits(TerrainTarget::Planet(planet_id), &decoded) {
+        match api.import_edits(target, &decoded) {
             Ok(count) => replayed += count,
             Err(error) => {
                 tracing::error!(planet = %planet_hex, %error, "failed to replay stored terrain edits")

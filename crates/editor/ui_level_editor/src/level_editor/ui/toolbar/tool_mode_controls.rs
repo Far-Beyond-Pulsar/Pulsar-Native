@@ -156,6 +156,32 @@ impl ToolModeControls {
                     let btn = if on { btn.primary() } else { btn.ghost() };
                     container = container.child(btn);
                 }
+                ToolWidget::Action { id, label_key } => {
+                    let state_clone = state_arc.clone();
+                    // The terrain seam is fetched inside the click, not per
+                    // render: the same one-locked-pass shape `on_set_tool_mode`
+                    // already uses for a user action.
+                    let engine = gpu_engine.clone();
+                    container = container.child(
+                        Button::new(id)
+                            .icon(IconName::Plus)
+                            .label(t!(label_key))
+                            .small()
+                            .ghost()
+                            .on_click(move |_, _, _| {
+                                let terrain = engine
+                                    .lock()
+                                    .ok()
+                                    .and_then(|engine| engine.terrain_edit_api());
+                                let mut st = state_clone.write();
+                                ToolModeDispatcher::dispatch_widget_edit_with_terrain(
+                                    &mut st,
+                                    terrain.as_ref(),
+                                    &ToolWidgetEdit::Invoke { id },
+                                );
+                            }),
+                    );
+                }
                 ToolWidget::Divider => {
                     container = container.child(
                         div().h_5().w_px().bg(theme.border.opacity(0.4)),

@@ -40,11 +40,13 @@ use thiserror::Error;
 // `SparseBrickTree` are here because they are `TerrainSnapshot`'s own fields --
 // holding a snapshot is meaningless without them.
 pub use pulsar_terrain::{
-    CellWord, ContentHash, EditMode, EditOp, EditShape, MaterialId, NodeState, PlanetDefinition,
-    PlanetId, PlanetIdParseError, SparseBrickTree, TerrainRuntimeError, TerrainSnapshot,
-    LOD0_CELL_SIZE_METERS,
+    CellWord, ContentHash, EditMode, EditOp, EditShape, FlatTerrain, MaterialId, NodeState,
+    PlanetDefinition, PlanetId, PlanetIdParseError, SparseBrickTree, TerrainBodyDefinition,
+    TerrainRuntimeError, TerrainShape, TerrainSnapshot, VolumeDefinition, VolumeDefinitionError,
+    VolumeId, LOD0_CELL_SIZE_METERS,
 };
 use pulsar_terrain::TerrainRuntimeHandle;
+use std::collections::BTreeMap;
 
 /// Cells sampled when refining an analytic sphere hit onto sculpted geometry.
 ///
@@ -74,19 +76,37 @@ pub struct Ray3 {
 
 /// Which terrain body an edit addresses.
 ///
-/// Only planets exist today. Milestone 3's flat voxel volumes add a
-/// `Volume(..)` arm here, and `TerrainEditApi`'s surface is shaped so that
-/// addition does not change any caller's control flow.
+/// Both arms resolve to one body identity through [`Self::body_id`], which is
+/// the whole point: every operation on this seam takes a `TerrainTarget` and
+/// none of them branch on which arm it is. Only hit-testing geometry — ray
+/// against a sphere or against a box — ever cares.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TerrainTarget {
     Planet(PlanetId),
+    Volume(VolumeId),
 }
 
 impl TerrainTarget {
-    pub fn planet_id(self) -> PlanetId {
+    /// The identity the runtime registered this body under.
+    pub fn body_id(self) -> PlanetId {
         match self {
             Self::Planet(id) => id,
+            Self::Volume(id) => id.body_id(),
         }
+    }
+
+    /// The target addressing a registered body definition.
+    pub fn of(definition: &TerrainBodyDefinition) -> Self {
+        match definition {
+            TerrainBodyDefinition::Planet(planet) => Self::Planet(planet.planet_id),
+            TerrainBodyDefinition::Volume(volume) => Self::Volume(volume.volume_id),
+        }
+    }
+
+    /// Hex form of the body identity, for display and for the editor domain's
+    /// string-keyed target.
+    pub fn to_hex(self) -> String {
+        self.body_id().to_hex()
     }
 }
 
@@ -137,6 +157,8 @@ pub enum TerrainEditError {
     /// [`TerrainEditApi::create_planet`].
     #[error("planets are created by scene components, not through the edit seam")]
     CreationUnsupported,
+    #[error("invalid flat volume definition: {0}")]
+    InvalidVolume(#[from] VolumeDefinitionError),
 }
 
 // ── Render-thread mailbox ──────────────────────────────────────────────────
@@ -151,10 +173,10 @@ pub struct TerrainEditMailbox {
     /// Published by the render thread once it owns a terrain runtime; read by
     /// the UI thread on every edit. `None` until a planet exists.
     runtime: Arc<Mutex<Option<TerrainRuntimeHandle>>>,
-    /// Latest-wins: the full set of planets the scene currently defines, each
-    /// keyed by the stable scene source that authored it. The render thread
-    /// upserts them and drops any source that disappeared.
-    pending_planets: Arc<Mutex<Option<Vec<(String, PlanetDefinition)>>>>,
+    /// Latest-wins: the full set of terrain bodies the editor currently wants
+    /// live, each keyed by the stable source that authored it. The render
+    /// thread upserts them and drops any source that disappeared.
+    pending_bodies: Arc<Mutex<Option<Vec<(String, TerrainBodyDefinition)>>>>,
     /// Latest-wins: the brush ring to draw, or `None` to draw nothing.
     brush_cursor: Arc<Mutex<Option<BrushCursorRequest>>>,
     /// Set after a mutation so the render thread advances planet streaming
@@ -177,9 +199,9 @@ impl TerrainEditMailbox {
         }
     }
 
-    /// Take the scene's planet definitions, if the UI thread posted a new set.
-    pub fn take_pending_planets(&self) -> Option<Vec<(String, PlanetDefinition)>> {
-        self.pending_planets.lock().ok().and_then(|mut s| s.take())
+    /// Take the editor's terrain body set, if the UI thread posted a new one.
+    pub fn take_pending_bodies(&self) -> Option<Vec<(String, TerrainBodyDefinition)>> {
+        self.pending_bodies.lock().ok().and_then(|mut s| s.take())
     }
 
     /// The brush ring to draw this frame, if any.
@@ -214,11 +236,22 @@ impl TerrainEditMailbox {
 #[derive(Clone, Default)]
 pub struct TerrainEditApi {
     mailbox: TerrainEditMailbox,
+    /// Flat volumes created through [`Self::create_volume`], keyed by source.
+    ///
+    /// A planet exists because a scene component says so, and the scene is
+    /// re-collected on every revision. A volume has no scene component yet
+    /// (see [`Self::create_volume`]), so the seam has to remember it — without
+    /// this, the next scene sync would post a body set that does not contain
+    /// the volume and the render thread would dutifully retire it.
+    authored_volumes: Arc<Mutex<BTreeMap<String, VolumeDefinition>>>,
 }
 
 impl TerrainEditApi {
     pub fn new(mailbox: TerrainEditMailbox) -> Self {
-        Self { mailbox }
+        Self {
+            mailbox,
+            authored_volumes: Arc::new(Mutex::new(BTreeMap::new())),
+        }
     }
 
     /// Whether a terrain runtime is live. `false` means there is no planet in
@@ -233,6 +266,17 @@ impl TerrainEditApi {
         guard.as_ref().map(f)
     }
 
+    /// Every terrain body currently registered with the runtime — planets and
+    /// flat volumes alike.
+    ///
+    /// This is what authoring code should read: it hit-tests, sculpts and
+    /// saves whatever terrain the level has, and the shape only decides which
+    /// analytic intersection runs inside this module.
+    pub fn bodies(&self) -> Vec<TerrainBodyDefinition> {
+        self.with_runtime(|runtime| runtime.body_definitions())
+            .unwrap_or_default()
+    }
+
     /// Every planet currently registered with the runtime.
     pub fn planets(&self) -> Vec<PlanetDefinition> {
         self.with_runtime(|runtime| runtime.planet_definitions())
@@ -240,25 +284,45 @@ impl TerrainEditApi {
     }
 
     /// The definition backing a target, if it is still registered.
-    pub fn planet_definition(&self, target: TerrainTarget) -> Option<PlanetDefinition> {
-        let planet_id = target.planet_id();
-        self.planets()
-            .into_iter()
-            .find(|definition| definition.planet_id == planet_id)
+    pub fn body_definition(&self, target: TerrainTarget) -> Option<TerrainBodyDefinition> {
+        self.with_runtime(|runtime| runtime.body_definition(target.body_id()))
+            .flatten()
     }
 
-    /// The planet a sculpt should default to when the user has not picked one.
+    /// The body a sculpt should default to when the user has not picked one.
     pub fn default_target(&self) -> Option<TerrainTarget> {
-        self.planets()
-            .first()
-            .map(|definition| TerrainTarget::Planet(definition.planet_id))
+        self.bodies().first().map(TerrainTarget::of)
     }
 
-    /// Post the full set of planets the scene defines, each paired with the
-    /// stable key of the scene component that authored it. Latest wins; source
-    /// keys absent from `definitions` are retired on the render thread.
+    /// Post the full set of terrain bodies the scene defines, each paired with
+    /// the stable key of the scene component that authored it. Latest wins;
+    /// source keys absent from `definitions` are retired on the render thread.
+    ///
+    /// Volumes created through [`Self::create_volume`] are merged in here, so
+    /// a scene revision cannot retire one the scene does not know about.
     pub fn sync_scene_planets(&self, definitions: Vec<(String, PlanetDefinition)>) {
-        if let Ok(mut slot) = self.mailbox.pending_planets.lock() {
+        self.sync_scene_bodies(
+            definitions
+                .into_iter()
+                .map(|(key, definition)| (key, TerrainBodyDefinition::Planet(definition)))
+                .collect(),
+        );
+    }
+
+    /// Post the scene's bodies, merged with every volume this session created.
+    pub fn sync_scene_bodies(&self, mut definitions: Vec<(String, TerrainBodyDefinition)>) {
+        if let Ok(authored) = self.authored_volumes.lock() {
+            for (source_key, volume) in authored.iter() {
+                if definitions.iter().any(|(key, _)| key == source_key) {
+                    continue;
+                }
+                definitions.push((
+                    source_key.clone(),
+                    TerrainBodyDefinition::Volume(*volume),
+                ));
+            }
+        }
+        if let Ok(mut slot) = self.mailbox.pending_bodies.lock() {
             *slot = Some(definitions);
         }
     }
@@ -276,15 +340,69 @@ impl TerrainEditApi {
         Err(TerrainEditError::CreationUnsupported)
     }
 
+    /// Create a flat voxel world and make it live.
+    ///
+    /// Unlike a planet, a volume has no scene component authoring it, so this
+    /// *is* the creation door: the definition is remembered here and posted to
+    /// the render thread with the next body set, which registers it in the
+    /// terrain runtime exactly like a planet. From that moment the volume is
+    /// an ordinary target — the same hit test, the same `EditOp`s, the same
+    /// snapshots, the same sidecar.
+    ///
+    /// The definition is validated up front so a bad extent or a non-canonical
+    /// cell size fails here, at the call site that can report it, rather than
+    /// silently on the render thread a frame later.
+    ///
+    /// Persistence caveat: because there is no component, the volume's
+    /// *definition* lives for the session only — the sculpt on it persists via
+    /// the terrain sidecar, but reopening the level does not re-create the
+    /// world. Authoring a scene component for volumes is follow-up work.
+    pub fn create_volume(
+        &self,
+        definition: VolumeDefinition,
+    ) -> Result<VolumeId, TerrainEditError> {
+        definition.validate()?;
+        let volume_id = definition.volume_id;
+        let source_key = volume_source_key(volume_id);
+        if let Ok(mut authored) = self.authored_volumes.lock() {
+            authored.insert(source_key, definition);
+        }
+        // Push the merged set immediately: the caller expects the world to
+        // exist now, not at the next scene revision.
+        self.sync_scene_bodies(Vec::new());
+        self.mark_dirty();
+        Ok(volume_id)
+    }
+
+    /// Flat worlds created this session, in creation order.
+    pub fn authored_volumes(&self) -> Vec<VolumeDefinition> {
+        self.authored_volumes
+            .lock()
+            .map(|authored| authored.values().copied().collect())
+            .unwrap_or_default()
+    }
+
+    /// Forget every volume this session created. Called when a different level
+    /// is opened, so a flat world does not follow the user into it.
+    pub fn clear_authored_volumes(&self) {
+        if let Ok(mut authored) = self.authored_volumes.lock() {
+            authored.clear();
+        }
+    }
+
     // ── Hit testing ────────────────────────────────────────────────────
 
     /// Intersect a world-space ray with the active terrain.
     ///
-    /// Two stages: an exact analytic intersection against the planet's
-    /// canonical sphere, then a bounded march along the ray that snaps the hit
-    /// onto sculpted geometry (raised or carved away from that sphere). The
-    /// march costs at most [`REFINE_SAMPLES`] canonical cell evaluations, so
-    /// this is cheap enough to run per pointer event.
+    /// Two stages: an exact analytic intersection against the body's canonical
+    /// surface — a sphere for a planet, the solid box for a flat volume — then
+    /// a bounded march along the ray that snaps the hit onto sculpted geometry
+    /// (raised or carved away from that surface). The march costs at most
+    /// [`REFINE_SAMPLES`] canonical cell evaluations, so this is cheap enough
+    /// to run per pointer event.
+    ///
+    /// This is the one place shape genuinely matters, which is why the issue's
+    /// acceptance bar allows it here and nowhere above.
     pub fn hit_terrain(&self, ray: Ray3) -> Option<TerrainHit> {
         let direction = normalize(ray.direction)?;
         let origin = [
@@ -298,29 +416,36 @@ impl TerrainEditApi {
             f64::from(direction[2]),
         ];
 
-        let mut best: Option<(f64, PlanetDefinition)> = None;
-        for definition in self.planets() {
-            let Some(distance) = intersect_planet(origin, direction, &definition) else {
+        let mut best: Option<(AnalyticHit, TerrainBodyDefinition)> = None;
+        for definition in self.bodies() {
+            let Some(hit) = intersect_body(origin, direction, &definition) else {
                 continue;
             };
-            if best.as_ref().is_none_or(|(closest, _)| distance < *closest) {
-                best = Some((distance, definition));
+            if best
+                .as_ref()
+                .is_none_or(|(closest, _)| hit.distance_m < closest.distance_m)
+            {
+                best = Some((hit, definition));
             }
         }
-        let (distance, definition) = best?;
-        Some(self.refine_hit(origin, direction, distance, &definition))
+        let (analytic, definition) = best?;
+        Some(self.refine_hit(origin, direction, analytic, &definition))
     }
 
-    /// Snap an analytic sphere intersection onto the sculpted surface by
+    /// Snap an analytic surface intersection onto the sculpted surface by
     /// marching the canonical density field around it.
+    ///
+    /// Shape-blind: the march reads the same density field for either body,
+    /// and only the surface normal is recomputed per shape.
     fn refine_hit(
         &self,
         origin: [f64; 3],
         direction: [f64; 3],
-        analytic_distance: f64,
-        definition: &PlanetDefinition,
+        analytic: AnalyticHit,
+        definition: &TerrainBodyDefinition,
     ) -> TerrainHit {
-        let planet_id = definition.planet_id;
+        let body_id = definition.body_id();
+        let analytic_distance = analytic.distance_m;
         let step_m = (2.0 * REFINE_HALF_SPAN_CELLS as f64 * LOD0_CELL_SIZE_METERS)
             / REFINE_SAMPLES as f64;
         let start_m = analytic_distance - REFINE_HALF_SPAN_CELLS as f64 * LOD0_CELL_SIZE_METERS;
@@ -335,7 +460,7 @@ impl TerrainEditApi {
             .collect();
 
         let refined = self
-            .with_runtime(|runtime| runtime.sample_cells(planet_id, &cells))
+            .with_runtime(|runtime| runtime.sample_cells(body_id, &cells))
             .flatten()
             .and_then(|samples| {
                 // First sample along the ray that is inside solid terrain.
@@ -347,20 +472,32 @@ impl TerrainEditApi {
 
         let (distance, cell, material) = refined.unwrap_or_else(|| {
             let point = point_at(origin, direction, analytic_distance);
-            (analytic_distance, meters_to_cell(point), definition.material)
+            (
+                analytic_distance,
+                meters_to_cell(point),
+                definition.material(),
+            )
         });
 
         let point = point_at(origin, direction, distance);
-        let center_m = cell_to_meters(definition.center_cell);
-        let normal = normalize([
-            (point[0] - center_m[0]) as f32,
-            (point[1] - center_m[1]) as f32,
-            (point[2] - center_m[2]) as f32,
-        ])
-        .unwrap_or([0.0, 1.0, 0.0]);
+        let normal = match definition {
+            // A planet's outward direction is radial, recomputed at the
+            // refined point so a sculpted slope still reads correctly.
+            TerrainBodyDefinition::Planet(planet) => {
+                let center_m = cell_to_meters(planet.center_cell);
+                normalize([
+                    (point[0] - center_m[0]) as f32,
+                    (point[1] - center_m[1]) as f32,
+                    (point[2] - center_m[2]) as f32,
+                ])
+                .unwrap_or([0.0, 1.0, 0.0])
+            }
+            // A box face's normal is constant, so the analytic one is exact.
+            TerrainBodyDefinition::Volume(_) => analytic.normal,
+        };
 
         TerrainHit {
-            target: TerrainTarget::Planet(planet_id),
+            target: TerrainTarget::of(definition),
             position_m: [point[0] as f32, point[1] as f32, point[2] as f32],
             cell,
             normal,
@@ -383,7 +520,7 @@ impl TerrainEditApi {
         target: TerrainTarget,
         op: EditOp,
     ) -> Result<EditOp, TerrainEditError> {
-        let planet_id = target.planet_id();
+        let planet_id = target.body_id();
         let committed = self
             .with_runtime(|runtime| {
                 let latest = runtime
@@ -439,7 +576,7 @@ impl TerrainEditApi {
 
     /// Capture a planet's canonical state, for use as an undo anchor.
     pub fn snapshot(&self, target: TerrainTarget) -> Option<TerrainSnapshot> {
-        self.with_runtime(|runtime| runtime.planet_snapshot(target.planet_id()))
+        self.with_runtime(|runtime| runtime.planet_snapshot(target.body_id()))
             .flatten()
     }
 
@@ -449,7 +586,7 @@ impl TerrainEditApi {
         target: TerrainTarget,
         snapshot: TerrainSnapshot,
     ) -> Result<(), TerrainEditError> {
-        self.with_runtime(|runtime| runtime.restore_planet_snapshot(target.planet_id(), snapshot))
+        self.with_runtime(|runtime| runtime.restore_planet_snapshot(target.body_id(), snapshot))
             .ok_or(TerrainEditError::NoRuntime)??;
         self.mark_dirty();
         Ok(())
@@ -514,6 +651,118 @@ pub fn cell_to_meters(cell: [i64; 3]) -> [f64; 3] {
 pub fn meters_to_radius_cells(meters: f32) -> u32 {
     let cells = (f64::from(meters.max(0.0)) / LOD0_CELL_SIZE_METERS).ceil();
     cells.clamp(1.0, f64::from(u32::MAX)) as u32
+}
+
+/// Stable source key for a volume the seam authored.
+fn volume_source_key(volume_id: VolumeId) -> String {
+    format!("volume:{}", volume_id.to_hex())
+}
+
+/// The analytic (pre-refinement) intersection of a ray with a body's canonical
+/// surface.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct AnalyticHit {
+    distance_m: f64,
+    normal: [f32; 3],
+}
+
+/// Intersect a ray with a body's canonical surface, whatever its shape.
+fn intersect_body(
+    origin: [f64; 3],
+    direction: [f64; 3],
+    definition: &TerrainBodyDefinition,
+) -> Option<AnalyticHit> {
+    match definition {
+        TerrainBodyDefinition::Planet(planet) => {
+            let distance_m = intersect_planet(origin, direction, planet)?;
+            let point = point_at(origin, direction, distance_m);
+            let center = cell_to_meters(planet.center_cell);
+            let normal = normalize([
+                (point[0] - center[0]) as f32,
+                (point[1] - center[1]) as f32,
+                (point[2] - center[2]) as f32,
+            ])
+            .unwrap_or([0.0, 1.0, 0.0]);
+            Some(AnalyticHit { distance_m, normal })
+        }
+        TerrainBodyDefinition::Volume(volume) => intersect_volume(origin, direction, volume),
+    }
+}
+
+/// Smallest positive ray distance at which the ray meets a flat world's solid
+/// region, plus the face normal there.
+///
+/// The solid region is the volume's box clipped to its ground plane, so this
+/// is an ordinary slab test against that AABB. Looking down at a flat world
+/// from above hits the top face and yields a `+Y` normal, which is what makes
+/// a sculpt brush behave the way the user expects.
+fn intersect_volume(
+    origin: [f64; 3],
+    direction: [f64; 3],
+    definition: &VolumeDefinition,
+) -> Option<AnalyticHit> {
+    let (min_cell, max_cell) = definition.flat.cell_bounds();
+    let min = cell_to_meters(min_cell);
+    // The ground plane is the *top* of the origin cell, and the box's far
+    // corner is the far side of its last cell, hence the one-cell extension.
+    let max = cell_to_meters([
+        max_cell[0] + 1,
+        definition.flat.origin[1] + 1,
+        max_cell[2] + 1,
+    ]);
+    if (0..3).any(|axis| max[axis] <= min[axis]) {
+        return None;
+    }
+
+    let mut enter = f64::NEG_INFINITY;
+    let mut exit = f64::INFINITY;
+    // Faces are recorded as (axis, outward sign) so the hit carries a real
+    // surface normal rather than a guess.
+    let mut enter_face = (1_usize, 1.0_f64);
+    let mut exit_face = (1_usize, 1.0_f64);
+    for axis in 0..3 {
+        if direction[axis].abs() < 1e-12 {
+            if origin[axis] < min[axis] || origin[axis] > max[axis] {
+                return None;
+            }
+            continue;
+        }
+        let inverse = 1.0 / direction[axis];
+        let near_at_min = direction[axis] > 0.0;
+        let mut near = (min[axis] - origin[axis]) * inverse;
+        let mut far = (max[axis] - origin[axis]) * inverse;
+        if !near_at_min {
+            std::mem::swap(&mut near, &mut far);
+        }
+        // Entering through the min face means the outward normal is -axis.
+        let near_sign = if near_at_min { -1.0 } else { 1.0 };
+        if near > enter {
+            enter = near;
+            enter_face = (axis, near_sign);
+        }
+        if far < exit {
+            exit = far;
+            exit_face = (axis, -near_sign);
+        }
+        if enter > exit {
+            return None;
+        }
+    }
+
+    // A ray starting inside the solid region still needs a surface to work
+    // against, so fall through to the exit face exactly as the planet path
+    // falls through to the far root.
+    let (distance_m, (axis, sign)) = if enter > 0.0 {
+        (enter, enter_face)
+    } else if exit > 0.0 {
+        (exit, exit_face)
+    } else {
+        return None;
+    };
+
+    let mut normal = [0.0_f32; 3];
+    normal[axis] = sign as f32;
+    Some(AnalyticHit { distance_m, normal })
 }
 
 /// Smallest positive ray distance at which the ray meets the planet's
@@ -645,8 +894,101 @@ mod tests {
         let mailbox = TerrainEditMailbox::new();
         let api = TerrainEditApi::new(mailbox.clone());
         api.sync_scene_planets(vec![("earth:0".to_string(), test_planet())]);
-        assert_eq!(mailbox.take_pending_planets().unwrap().len(), 1);
-        assert!(mailbox.take_pending_planets().is_none());
+        assert_eq!(mailbox.take_pending_bodies().unwrap().len(), 1);
+        assert!(mailbox.take_pending_bodies().is_none());
+    }
+
+    fn test_volume() -> VolumeDefinition {
+        VolumeDefinition {
+            volume_id: VolumeId::from_stable_name("flat"),
+            flat: FlatTerrain::centered_on([0, 0, 0]),
+            material: 1,
+            root_lod: 12,
+            max_resident_pages: 4_096,
+        }
+    }
+
+    #[test]
+    fn creating_a_volume_posts_it_and_keeps_it_across_scene_syncs() {
+        let mailbox = TerrainEditMailbox::new();
+        let api = TerrainEditApi::new(mailbox.clone());
+        let id = api.create_volume(test_volume()).unwrap();
+        assert_eq!(id, VolumeId::from_stable_name("flat"));
+
+        let posted = mailbox.take_pending_bodies().expect("creation posts at once");
+        assert_eq!(posted.len(), 1);
+        assert_eq!(posted[0].1.shape(), TerrainShape::Volume);
+
+        // A later scene sync carrying only planets must not retire the volume.
+        api.sync_scene_planets(vec![("earth:0".to_string(), test_planet())]);
+        let posted = mailbox.take_pending_bodies().unwrap();
+        assert_eq!(posted.len(), 2);
+        let mut shapes: Vec<_> = posted.iter().map(|(_, body)| body.shape()).collect();
+        shapes.sort();
+        assert_eq!(shapes, vec![TerrainShape::Planet, TerrainShape::Volume]);
+
+        api.clear_authored_volumes();
+        api.sync_scene_planets(vec![("earth:0".to_string(), test_planet())]);
+        assert_eq!(mailbox.take_pending_bodies().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn an_invalid_volume_is_refused_at_the_call_site() {
+        let api = TerrainEditApi::default();
+        let mut definition = test_volume();
+        definition.flat.extent = (0, 0, 0);
+        assert!(matches!(
+            api.create_volume(definition).unwrap_err(),
+            TerrainEditError::InvalidVolume(_)
+        ));
+        assert!(api.authored_volumes().is_empty());
+    }
+
+    #[test]
+    fn a_ray_from_above_hits_a_flat_worlds_ground_plane_with_an_upward_normal() {
+        let definition = TerrainBodyDefinition::Volume(test_volume());
+        let hit = intersect_body([0.0, 50.0, 0.0], [0.0, -1.0, 0.0], &definition).unwrap();
+        // The ground plane is the top of cell y=0, i.e. 0.1 m up.
+        assert!(
+            (hit.distance_m - 49.9).abs() < 1e-6,
+            "got {}",
+            hit.distance_m
+        );
+        assert_eq!(hit.normal, [0.0, 1.0, 0.0]);
+    }
+
+    #[test]
+    fn a_ray_past_a_flat_worlds_edge_misses_it() {
+        let definition = TerrainBodyDefinition::Volume(test_volume());
+        // The default world is +/-102.4 m; look down well outside that.
+        assert!(intersect_body([500.0, 50.0, 0.0], [0.0, -1.0, 0.0], &definition).is_none());
+        // And a ray pointing away from it never meets it.
+        assert!(intersect_body([0.0, 50.0, 0.0], [0.0, 1.0, 0.0], &definition).is_none());
+    }
+
+    #[test]
+    fn a_ray_from_inside_a_flat_world_still_finds_a_surface() {
+        let definition = TerrainBodyDefinition::Volume(test_volume());
+        let hit = intersect_body([0.0, -10.0, 0.0], [0.0, 1.0, 0.0], &definition).unwrap();
+        assert!((hit.distance_m - 10.1).abs() < 1e-6, "got {}", hit.distance_m);
+        assert_eq!(hit.normal, [0.0, 1.0, 0.0]);
+    }
+
+    #[test]
+    fn a_target_resolves_to_one_body_identity_whatever_its_shape() {
+        let volume_id = VolumeId::from_stable_name("flat");
+        assert_eq!(
+            TerrainTarget::Volume(volume_id).body_id(),
+            volume_id.body_id()
+        );
+        assert_eq!(
+            TerrainTarget::of(&TerrainBodyDefinition::Volume(test_volume())),
+            TerrainTarget::Volume(volume_id)
+        );
+        assert_eq!(
+            TerrainTarget::of(&TerrainBodyDefinition::Planet(test_planet())),
+            TerrainTarget::Planet(test_planet().planet_id)
+        );
     }
 
     #[test]

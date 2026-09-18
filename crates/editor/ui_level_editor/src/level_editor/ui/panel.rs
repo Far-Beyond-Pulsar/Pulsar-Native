@@ -1316,6 +1316,11 @@ impl LevelEditorPanel {
                                 // *previous* level's planets; keeping them
                                 // would offer undos that can only fail.
                                 state.editor.terrain_undo.clear();
+                                // Flat worlds created in the previous level
+                                // must not follow the user into this one.
+                                if let Some(api) = this.terrain_api.as_ref() {
+                                    api.clear_authored_volumes();
+                                }
                                 if let Some(open_path) = state.scene.current_scene.clone() {
                                     ai_sessions::register_open_scene(&open_path, &state_arc);
                                 }

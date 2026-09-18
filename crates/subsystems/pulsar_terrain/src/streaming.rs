@@ -1,6 +1,7 @@
 use crate::{
     DeterministicGenerator, FixedSphereGenerator, PageKey, PlanetDefinition, PlanetId,
-    PlanetPosition, TerrainNodeSummary, TerrainRequestClass, LOD0_CELL_SIZE_METERS,
+    PlanetPosition, TerrainBodyDefinition, TerrainNodeSummary, TerrainRequestClass,
+    LOD0_CELL_SIZE_METERS,
 };
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet};
@@ -529,23 +530,32 @@ impl TerrainStreamingPlanner {
             radius_cells: definition.radius_cells,
             material: definition.material,
         };
-        self.plan_with_classifier(definition, view, &classifier)
+        self.plan_with_classifier(
+            &TerrainBodyDefinition::Planet(*definition),
+            view,
+            &classifier,
+        )
     }
 
+    /// Plan page demand for any terrain body.
+    ///
+    /// Nothing here reads the body's shape: demand comes from the view
+    /// geometry and the classifier's per-region summaries, so a flat volume
+    /// streams through exactly the planet path.
     pub fn plan_with_classifier<C: TerrainRegionClassifier>(
         &self,
-        definition: &PlanetDefinition,
+        definition: &TerrainBodyDefinition,
         view: PlanetView,
         classifier: &C,
     ) -> Result<TerrainStreamingPlan, TerrainStreamingError> {
         validate_planet_root(definition)?;
-        let page_budget = self.config.max_pages.min(definition.max_resident_pages);
+        let page_budget = self.config.max_pages.min(definition.max_resident_pages());
         let geometry = ViewGeometry::new(view, self.config)?;
         let mut state = PlannerState {
             classifier,
             geometry,
             config: self.config,
-            root_lod: definition.root_lod,
+            root_lod: definition.root_lod(),
             evaluations: HashMap::new(),
             counters: TerrainStreamingCounters::default(),
             limits: BTreeSet::new(),
@@ -553,7 +563,7 @@ impl TerrainStreamingPlanner {
 
         let mut leaves = HashMap::new();
         let mut leaf_keys = HashSet::new();
-        let root_child_lod = definition.root_lod - 1;
+        let root_child_lod = definition.root_lod() - 1;
         for z in -1..=0 {
             for y in -1..=0 {
                 for x in -1..=0 {
@@ -677,8 +687,8 @@ impl TerrainStreamingPlanner {
         });
 
         let plan = TerrainStreamingPlan::from_parts(
-            definition.planet_id,
-            definition.root_lod,
+            definition.body_id(),
+            definition.root_lod(),
             demands,
             state.limits.into_iter().collect(),
             state.counters,
@@ -1020,10 +1030,10 @@ impl RelativeAabb {
     }
 }
 
-fn validate_planet_root(definition: &PlanetDefinition) -> Result<(), TerrainStreamingError> {
-    if !(1..=58).contains(&definition.root_lod) {
+fn validate_planet_root(definition: &TerrainBodyDefinition) -> Result<(), TerrainStreamingError> {
+    if !(1..=58).contains(&definition.root_lod()) {
         return Err(TerrainStreamingError::UnsupportedRootLod(
-            definition.root_lod,
+            definition.root_lod(),
         ));
     }
     if !definition.fits_centered_root() {
@@ -1345,10 +1355,10 @@ mod tests {
         let view = view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]);
         let direct = planner.plan_fixed_sphere(&definition, view).unwrap();
         let authoritative = planner
-            .plan_with_classifier(&definition, view, &core)
+            .plan_with_classifier(&TerrainBodyDefinition::Planet(definition), view, &core)
             .unwrap();
         let unknown = planner
-            .plan_with_classifier(&definition, view, &UnknownVolume)
+            .plan_with_classifier(&TerrainBodyDefinition::Planet(definition), view, &UnknownVolume)
             .unwrap();
 
         assert_eq!(authoritative, direct);
@@ -1393,7 +1403,7 @@ mod tests {
         let view = view([620, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]);
         let procedural = planner.plan_fixed_sphere(&definition, view).unwrap();
         let authoritative = planner
-            .plan_with_classifier(&definition, view, &core)
+            .plan_with_classifier(&TerrainBodyDefinition::Planet(definition), view, &core)
             .unwrap();
         let edited_page = PageKey::address_lod0_cell(0, [600, 0, 0]).unwrap().0;
 

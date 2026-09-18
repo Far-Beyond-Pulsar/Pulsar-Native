@@ -309,7 +309,7 @@ impl ViewportPanel {
         if self.restored_terrain_for.borrow().as_deref() == Some(level.as_path()) {
             return;
         }
-        if api.planets().is_empty() {
+        if api.bodies().is_empty() {
             // The render thread has not registered them yet; try again next
             // frame rather than latching on an empty runtime.
             return;

@@ -1,6 +1,6 @@
 use crate::PlanetId;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PlanetDefinition {
     pub planet_id: PlanetId,
     pub center_cell: [i64; 3],

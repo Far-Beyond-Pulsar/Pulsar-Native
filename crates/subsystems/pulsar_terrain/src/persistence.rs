@@ -1,5 +1,5 @@
 use crate::{
-    ContentHash, DeterministicGenerator, FixedSphereGenerator, PlanetDefinition, PlanetId,
+    ContentHash, DeterministicGenerator, PlanetId, TerrainBodyDefinition, TerrainGenerator,
     TerrainCore, TerrainPlanningHandle, TerrainRuntimeError, TerrainRuntimeHandle, TerrainSnapshot,
     TerrainStore,
 };
@@ -176,7 +176,7 @@ pub enum TerrainPersistenceError {
 
 #[derive(Clone)]
 pub(crate) struct TerrainPersistenceCapture {
-    pub(crate) definition: PlanetDefinition,
+    pub(crate) definition: TerrainBodyDefinition,
     pub(crate) planet_generation: u64,
     pub(crate) terrain_sequence: u64,
     pub(crate) snapshot: TerrainSnapshot,
@@ -184,7 +184,7 @@ pub(crate) struct TerrainPersistenceCapture {
 
 #[derive(Clone)]
 pub(crate) struct TerrainPersistenceIdentity {
-    pub(crate) definition: PlanetDefinition,
+    pub(crate) definition: TerrainBodyDefinition,
     pub(crate) planet_generation: u64,
     pub(crate) terrain_sequence: u64,
 }
@@ -197,7 +197,7 @@ pub(crate) struct TerrainPersistenceRestoreCommit {
 
 #[derive(Clone)]
 struct PersistenceIdentity {
-    definition: PlanetDefinition,
+    definition: TerrainBodyDefinition,
     planet_generation: u64,
     terrain_sequence: u64,
 }
@@ -225,7 +225,7 @@ struct RestoreReady {
     record_generation: u64,
     snapshot_hash: ContentHash,
     retained_bytes: usize,
-    core: Option<TerrainCore<FixedSphereGenerator>>,
+    core: Option<TerrainCore<TerrainGenerator>>,
 }
 
 enum PersistenceWorkerResult {
@@ -840,19 +840,15 @@ fn execute_job(job: &PersistenceJob, max_snapshot_bytes: usize) -> PersistenceWo
                         ),
                     };
                 }
-                if snapshot.planet_id != job.identity.definition.planet_id {
+                if snapshot.planet_id != job.identity.definition.body_id() {
                     return PersistenceWorkerResult::Failed {
                         kind: TerrainPersistenceFailureKind::PlanetIdentity,
                         message: "stored snapshot belongs to a different planet".to_string(),
                     };
                 }
-                let generator = FixedSphereGenerator {
-                    center_cell: job.identity.definition.center_cell,
-                    radius_cells: job.identity.definition.radius_cells,
-                    material: job.identity.definition.material,
-                };
+                let generator = job.identity.definition.generator();
                 if snapshot.generator_hash != generator.hash()
-                    || snapshot.hierarchy.root_lod() != job.identity.definition.root_lod
+                    || snapshot.hierarchy.root_lod() != job.identity.definition.root_lod()
                 {
                     return PersistenceWorkerResult::Failed {
                         kind: TerrainPersistenceFailureKind::GeneratorDefinition,
@@ -910,8 +906,8 @@ mod tests {
         }
     }
 
-    fn planet(id: u8) -> PlanetDefinition {
-        PlanetDefinition {
+    fn planet(id: u8) -> crate::PlanetDefinition {
+        crate::PlanetDefinition {
             planet_id: PlanetId([id; 16]),
             center_cell: [0; 3],
             radius_cells: 100,

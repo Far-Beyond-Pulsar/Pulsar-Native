@@ -6,14 +6,30 @@
 use std::sync::Mutex;
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
-use engine_backend::services::terrain_edit::TerrainEditApi;
+use engine_backend::services::terrain_edit::{
+    FlatTerrain, TerrainEditApi, VolumeDefinition, VolumeId,
+};
 
 use super::{
     level_edit::LevelEditMode, CameraFrame, ToolModeContext, ToolModeId, ToolPointerEvent,
     ToolPointerResult, ViewportFrame,
 };
-use crate::level_editor::state::terrain::SculptMode;
+use crate::level_editor::state::terrain::{SculptMode, TerrainTarget};
 use crate::level_editor::state::LevelEditorState;
+
+/// Hierarchy root a flat world is created at.
+///
+/// LOD 12 covers +/-65 536 canonical cells (+/-6.5 km) — comfortably past the
+/// default +/-102.4 m extent, and past the widest `i16` extent too, so the
+/// same root serves every flat world the type can express.
+const FLAT_WORLD_ROOT_LOD: u8 = 12;
+
+/// Resident-page budget for one flat world.
+///
+/// Matches the live runtime's own 8192-page (1 GiB) residency cap: the
+/// streaming controller keeps far fewer than this actually refined, so this is
+/// a ceiling, not an allocation.
+const FLAT_WORLD_MAX_RESIDENT_PAGES: usize = 8_192;
 
 // ── Tool Widget Edit ───────────────────────────────────────────────────────
 
@@ -32,7 +48,14 @@ pub enum ToolWidgetEdit {
         id: &'static str,
         on: bool,
     },
+    /// A [`super::ToolWidget::Action`] button was pressed.
+    Invoke {
+        id: &'static str,
+    },
 }
+
+/// Identifier of the Terrain mode's "create flat world" action.
+pub const CREATE_FLAT_WORLD: &str = "create_flat_world";
 
 // ── ToolModeDispatcher ─────────────────────────────────────────────────────
 
@@ -75,6 +98,56 @@ impl ToolModeDispatcher {
     }
 
     /// Dispatches a widget edit from a toolbar control into editor state.
+    ///
+    /// `terrain` is only consulted by actions that create or address terrain
+    /// bodies; value-setting widgets never need it, which is why it is
+    /// optional rather than threaded everywhere.
+    pub fn dispatch_widget_edit_with_terrain(
+        state: &mut LevelEditorState,
+        terrain: Option<&TerrainEditApi>,
+        edit: &ToolWidgetEdit,
+    ) {
+        if let ToolWidgetEdit::Invoke { id } = edit {
+            if *id == CREATE_FLAT_WORLD {
+                Self::create_flat_world(state, terrain);
+            }
+            return;
+        }
+        Self::dispatch_widget_edit(state, edit);
+    }
+
+    /// Create a flat voxel world and make it the terrain mode's target.
+    ///
+    /// The volume is created through [`TerrainEditApi::create_volume`], which
+    /// is the only door: the editor never touches a terrain runtime handle.
+    /// It is centred on the world origin, which is where a level's first flat
+    /// world belongs and is trivially findable with the camera-frame key.
+    fn create_flat_world(state: &mut LevelEditorState, terrain: Option<&TerrainEditApi>) {
+        let Some(api) = terrain else {
+            tracing::warn!("cannot create a flat world before the renderer is ready");
+            return;
+        };
+        let index = api.authored_volumes().len();
+        let definition = VolumeDefinition {
+            volume_id: VolumeId::from_stable_name(&format!("flat-world:{index}")),
+            flat: FlatTerrain::centered_on([0; 3]),
+            material: 1,
+            root_lod: FLAT_WORLD_ROOT_LOD,
+            max_resident_pages: FLAT_WORLD_MAX_RESIDENT_PAGES,
+        };
+        match api.create_volume(definition) {
+            Ok(volume_id) => {
+                state
+                    .editor
+                    .terrain
+                    .set_target(TerrainTarget::Volume(volume_id.to_hex()));
+                tracing::info!(volume = %volume_id.to_hex(), "created a flat voxel world");
+            }
+            Err(error) => tracing::error!(%error, "failed to create a flat world"),
+        }
+    }
+
+    /// Dispatches a widget edit from a toolbar control into editor state.
     pub fn dispatch_widget_edit(state: &mut LevelEditorState, edit: &ToolWidgetEdit) {
         match edit {
             ToolWidgetEdit::SetSegmented { id, value } => {
@@ -95,6 +168,9 @@ impl ToolModeDispatcher {
                 _ => {}
             },
             ToolWidgetEdit::SetToggle { .. } => {}
+            // Actions need the terrain seam; routed by
+            // `dispatch_widget_edit_with_terrain`.
+            ToolWidgetEdit::Invoke { .. } => {}
         }
     }
 

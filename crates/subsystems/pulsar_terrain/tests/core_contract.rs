@@ -256,8 +256,15 @@ fn removed_planet_cancels_background_plan_without_publishing_a_miss() {
         .unwrap();
     assert!(runtime.remove_planet(definition.planet_id).unwrap());
 
+    // `pending` drops to 0 as soon as the worker *dequeues* the job into
+    // `in_flight` -- well before it discovers the planet is gone and records
+    // the cancellation. Waiting on `pending` alone races: it can (and does)
+    // read 0 in the gap between dequeue and `finish_missing`. Wait for the
+    // job to fully retire (`in_flight` clear too) before asserting on it.
     let deadline = Instant::now() + Duration::from_secs(5);
-    while planning.counters().pending != 0 && Instant::now() < deadline {
+    while (planning.counters().pending != 0 || planning.counters().in_flight != 0)
+        && Instant::now() < deadline
+    {
         std::thread::yield_now();
     }
     let counters = planning.counters();

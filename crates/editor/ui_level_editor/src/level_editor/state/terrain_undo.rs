@@ -236,10 +236,14 @@ impl TerrainUndoDomain {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine_backend::services::terrain_edit::{EditMode, EditShape, PlanetId};
+    use engine_backend::services::terrain_edit::{EditMode, EditShape, PlanetId, VolumeId};
 
     fn target() -> TerrainTarget {
         TerrainTarget::Planet(PlanetId::from_stable_name("test"))
+    }
+
+    fn volume_target() -> TerrainTarget {
+        TerrainTarget::Volume(VolumeId::from_stable_name("flat"))
     }
 
     fn op(sequence: u64) -> EditOp {
@@ -361,6 +365,57 @@ mod tests {
         undo.clear();
         assert!(!undo.has_unsaved_edits());
         assert!(undo.dirty_targets().is_empty());
+    }
+
+    /// Terrain history is keyed by `TerrainTarget`, which resolves a planet
+    /// and a flat volume to one body identity. Nothing in this domain reads
+    /// the shape, and this is the test that keeps it that way.
+    #[test]
+    fn a_flat_volume_stroke_is_one_history_entry_like_a_planet_stroke() {
+        let mut undo = TerrainUndoDomain::default();
+        undo.open = Some(OpenStroke {
+            target: volume_target(),
+            before: dummy_snapshot(),
+            ops: Vec::new(),
+        });
+        undo.record_stamp(box_op(1));
+        undo.record_stamp(box_op(2));
+
+        let committed = undo.end_stroke().expect("a stroke with stamps commits");
+        assert_eq!(committed.stamp_count(), 2);
+        assert_eq!(committed.target, volume_target());
+        assert_eq!(undo.undo_depth(), 1);
+        assert!(undo.has_unsaved_edits());
+    }
+
+    #[test]
+    fn dirty_targets_reports_planets_and_volumes_side_by_side() {
+        let mut undo = TerrainUndoDomain::default();
+        for stroke_target in [target(), volume_target()] {
+            undo.open = Some(OpenStroke {
+                target: stroke_target,
+                before: dummy_snapshot(),
+                ops: Vec::new(),
+            });
+            undo.record_stamp(op(1));
+            undo.end_stroke();
+        }
+        let dirty = undo.dirty_targets();
+        assert_eq!(dirty.len(), 2, "{dirty:?}");
+        assert!(dirty.contains(&target()));
+        assert!(dirty.contains(&volume_target()));
+    }
+
+    /// Box stamps are what a Flatten stroke on a flat world emits, so history
+    /// has to carry them as readily as spheres.
+    fn box_op(sequence: u64) -> EditOp {
+        EditOp {
+            shape: EditShape::Box {
+                center_cell: [0; 3],
+                half_extent_cells: [8; 3],
+            },
+            ..op(sequence)
+        }
     }
 
     /// A structurally valid but empty snapshot. These tests exercise history

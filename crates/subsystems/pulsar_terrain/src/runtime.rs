@@ -6,9 +6,10 @@ use crate::planning::{
     TerrainPlanningCapture, TerrainPlanningHandle, TerrainPlanningIdentity, TerrainPlanningService,
 };
 use crate::{
-    CompactedPageRecord, EditOp, FixedSphereGenerator, PageBuildCommitOutcome,
-    PageBuildPreparation, PageBuildRequest, PageBuildResult, PageKey, PlanetDefinition, PlanetId,
-    TerrainCore, TerrainCoreError, TerrainOverrideOp, TerrainOverrideTarget, CELL_COUNT,
+    CompactedPageRecord, EditOp, PageBuildCommitOutcome, PageBuildPreparation, PageBuildRequest,
+    PageBuildResult, PageKey, PlanetDefinition, PlanetId, TerrainBodyDefinition, TerrainCore,
+    TerrainCoreError, TerrainGenerator, TerrainOverrideOp, TerrainOverrideTarget, VolumeDefinition,
+    CELL_COUNT,
 };
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use engine_subsystems::{Subsystem, SubsystemContext, SubsystemError, SubsystemId};
@@ -301,7 +302,7 @@ struct ActiveRequest {
 
 struct WorkJob {
     identity: RequestIdentity,
-    request: PageBuildRequest<FixedSphereGenerator>,
+    request: PageBuildRequest<TerrainGenerator>,
     class: TerrainRequestClass,
     deadline_tick: u64,
     order: u64,
@@ -408,21 +409,23 @@ impl WorkQueue {
     }
 }
 
+/// One registered terrain body — planet or flat volume — and its derived
+/// state. The shape lives entirely in `definition`'s generator; nothing else
+/// in this struct, or anything that reads it, knows the difference.
 struct PlanetRuntime {
-    definition: PlanetDefinition,
+    definition: TerrainBodyDefinition,
     generation: u64,
-    core: TerrainCore<FixedSphereGenerator>,
+    core: TerrainCore<TerrainGenerator>,
     page_generations: BTreeMap<PageKey, u64>,
 }
 
 impl PlanetRuntime {
-    fn new(definition: PlanetDefinition, generation: u64) -> Result<Self, TerrainCoreError> {
-        let generator = FixedSphereGenerator {
-            center_cell: definition.center_cell,
-            radius_cells: definition.radius_cells,
-            material: definition.material,
-        };
-        let core = TerrainCore::new(definition.planet_id, definition.root_lod, generator)?;
+    fn new(definition: TerrainBodyDefinition, generation: u64) -> Result<Self, TerrainCoreError> {
+        let core = TerrainCore::new(
+            definition.body_id(),
+            definition.root_lod(),
+            definition.generator(),
+        )?;
         Ok(Self {
             definition,
             generation,
@@ -619,12 +622,27 @@ impl TerrainRuntimeHandle {
     }
 
     pub fn upsert_planet(&self, definition: PlanetDefinition) -> Result<u64, TerrainRuntimeError> {
+        self.upsert_body(TerrainBodyDefinition::Planet(definition))
+    }
+
+    /// Register (or replace) a flat voxel volume. Same contract as
+    /// [`Self::upsert_planet`]; volumes are bodies in the same table.
+    pub fn upsert_volume(&self, definition: VolumeDefinition) -> Result<u64, TerrainRuntimeError> {
+        self.upsert_body(TerrainBodyDefinition::Volume(definition))
+    }
+
+    /// Register (or replace) any terrain body, whatever its shape.
+    pub fn upsert_body(
+        &self,
+        definition: TerrainBodyDefinition,
+    ) -> Result<u64, TerrainRuntimeError> {
         validate_definition(&definition, &self.shared.config)?;
+        let body_id = definition.body_id();
         let mut state = lock(&self.shared.state);
         if !state.running {
             return Err(TerrainRuntimeError::NotRunning);
         }
-        if let Some(existing) = state.planets.get(&definition.planet_id) {
+        if let Some(existing) = state.planets.get(&body_id) {
             if existing.definition == definition {
                 return Ok(existing.generation);
             }
@@ -638,7 +656,7 @@ impl TerrainRuntimeHandle {
             record_backpressure(
                 &mut state,
                 &self.shared.config,
-                Some(definition.planet_id),
+                Some(body_id),
                 None,
                 TerrainBackpressure::PlanetCapacity,
             );
@@ -647,24 +665,21 @@ impl TerrainRuntimeHandle {
             });
         }
 
-        let retired = state
-            .planets
-            .get(&definition.planet_id)
-            .map(|planet| planet.generation);
+        let retired = state.planets.get(&body_id).map(|planet| planet.generation);
         let generation = state.allocate_planet_generation()?;
-        let runtime = PlanetRuntime::new(definition.clone(), generation)?;
+        let runtime = PlanetRuntime::new(definition, generation)?;
         let cancelled = self
             .shared
             .queue
-            .cancel_where(|job| job.identity.planet_id == definition.planet_id);
+            .cancel_where(|job| job.identity.planet_id == body_id);
         for job in cancelled {
             state.cancel_active(job.identity);
         }
-        state.planets.insert(definition.planet_id, runtime);
+        state.planets.insert(body_id, runtime);
         if let Some(retired_generation) = retired {
             let pushed = state.push_event(
                 TerrainRuntimeEvent::EvictPlanet {
-                    planet_id: definition.planet_id,
+                    planet_id: body_id,
                     retired_generation,
                 },
                 self.shared.config.event_capacity,
@@ -719,6 +734,20 @@ impl TerrainRuntimeHandle {
         source_key: String,
         definition: PlanetDefinition,
     ) -> Result<u64, TerrainRuntimeError> {
+        self.upsert_body_component(source_key, TerrainBodyDefinition::Planet(definition))
+    }
+
+    /// Bind a scene source key to any terrain body, planet or volume.
+    ///
+    /// The source key is the authoring identity: rebinding it to a different
+    /// body retires the old one, and [`Self::remove_component`] drops a body
+    /// once no source key owns it any more.
+    pub fn upsert_body_component(
+        &self,
+        source_key: String,
+        definition: TerrainBodyDefinition,
+    ) -> Result<u64, TerrainRuntimeError> {
+        let body_id = definition.body_id();
         let previous = {
             let mut state = lock(&self.shared.state);
             if !state.running {
@@ -730,7 +759,7 @@ impl TerrainRuntimeHandle {
                 record_backpressure(
                     &mut state,
                     &self.shared.config,
-                    Some(definition.planet_id),
+                    Some(body_id),
                     None,
                     TerrainBackpressure::ComponentCapacity,
                 );
@@ -741,8 +770,8 @@ impl TerrainRuntimeHandle {
             state.component_sources.get(&source_key).copied()
         };
 
-        let generation = self.upsert_planet(definition.clone())?;
-        if let Some(previous) = previous.filter(|planet_id| *planet_id != definition.planet_id) {
+        let generation = self.upsert_body(definition)?;
+        if let Some(previous) = previous.filter(|planet_id| *planet_id != body_id) {
             let has_other_owner = lock(&self.shared.state)
                 .component_sources
                 .iter()
@@ -753,7 +782,7 @@ impl TerrainRuntimeHandle {
         }
         lock(&self.shared.state)
             .component_sources
-            .insert(source_key, definition.planet_id);
+            .insert(source_key, body_id);
         Ok(generation)
     }
 
@@ -797,8 +826,31 @@ impl TerrainRuntimeHandle {
         lock(&self.shared.state)
             .planets
             .values()
-            .map(|planet| planet.definition.clone())
+            .filter_map(|planet| planet.definition.as_planet().copied())
             .collect()
+    }
+
+    /// Canonical definitions of every registered body, planets and flat
+    /// volumes alike.
+    ///
+    /// This is what an authoring front-end wants: it hit-tests and sculpts
+    /// whatever terrain is in the level, and the shape only decides which
+    /// analytic intersection to run. [`Self::planet_definitions`] remains the
+    /// planet-only view for callers that genuinely cannot act on a volume.
+    pub fn body_definitions(&self) -> Vec<TerrainBodyDefinition> {
+        lock(&self.shared.state)
+            .planets
+            .values()
+            .map(|planet| planet.definition)
+            .collect()
+    }
+
+    /// The definition registered under a body identity, if any.
+    pub fn body_definition(&self, body_id: PlanetId) -> Option<TerrainBodyDefinition> {
+        lock(&self.shared.state)
+            .planets
+            .get(&body_id)
+            .map(|planet| planet.definition)
     }
 
     /// Replay the canonical value of specific cells: the deterministic
@@ -819,11 +871,7 @@ impl TerrainRuntimeHandle {
 
         let state = lock(&self.shared.state);
         let planet = state.planets.get(&planet_id)?;
-        let generator = FixedSphereGenerator {
-            center_cell: planet.definition.center_cell,
-            radius_cells: planet.definition.radius_cells,
-            material: planet.definition.material,
-        };
+        let generator = planet.definition.generator();
         let edits = planet.core.edit_log();
         Some(
             cells
@@ -868,18 +916,13 @@ impl TerrainRuntimeHandle {
         if snapshot.planet_id != planet_id {
             return Err(TerrainRuntimeError::PlanetMissing(snapshot.planet_id));
         }
-        let definition = {
+        let generator = {
             let state = lock(&self.shared.state);
             state
                 .planets
                 .get(&planet_id)
-                .map(|planet| planet.definition.clone())
+                .map(|planet| planet.definition.generator())
                 .ok_or(TerrainRuntimeError::PlanetMissing(planet_id))?
-        };
-        let generator = FixedSphereGenerator {
-            center_cell: definition.center_cell,
-            radius_cells: definition.radius_cells,
-            material: definition.material,
         };
         self.apply_mutation(planet_id, None, true, move |core| {
             *core = TerrainCore::from_snapshot(snapshot, generator)?;
@@ -926,7 +969,7 @@ impl TerrainRuntimeHandle {
         publish: F,
     ) -> Result<(), TerrainRuntimeError>
     where
-        F: FnOnce(&mut TerrainCore<FixedSphereGenerator>) -> Result<(), TerrainCoreError>,
+        F: FnOnce(&mut TerrainCore<TerrainGenerator>) -> Result<(), TerrainCoreError>,
     {
         let bounds = match target {
             TerrainOverrideTarget::Root => None,
@@ -956,7 +999,7 @@ impl TerrainRuntimeHandle {
         publish: F,
     ) -> Result<(), TerrainRuntimeError>
     where
-        F: FnOnce(&mut TerrainCore<FixedSphereGenerator>) -> Result<(), TerrainCoreError>,
+        F: FnOnce(&mut TerrainCore<TerrainGenerator>) -> Result<(), TerrainCoreError>,
     {
         let mut state = lock(&self.shared.state);
         if !state.running {
@@ -1175,7 +1218,7 @@ impl TerrainRuntimeHandle {
                 planet.core.prepare_page_build(page_key)?,
                 planet.core.page(page_key).is_none(),
                 planet.core.memory_counters().resident_pages,
-                planet.definition.max_resident_pages,
+                planet.definition.max_resident_pages(),
             )
         };
 
@@ -1586,7 +1629,7 @@ impl TerrainRuntimeHandle {
             .get(&planet_id)
             .ok_or(TerrainRuntimeError::PlanetMissing(planet_id))?;
         Ok(TerrainPersistenceIdentity {
-            definition: planet.definition.clone(),
+            definition: planet.definition,
             planet_generation: planet.generation,
             terrain_sequence: planet.core.latest_sequence(),
         })
@@ -1605,7 +1648,7 @@ impl TerrainRuntimeHandle {
             .get(&planet_id)
             .ok_or(TerrainRuntimeError::PlanetMissing(planet_id))?;
         Ok(TerrainPersistenceCapture {
-            definition: planet.definition.clone(),
+            definition: planet.definition,
             planet_generation: planet.generation,
             terrain_sequence: planet.core.latest_sequence(),
             snapshot: planet.core.snapshot(),
@@ -1614,12 +1657,12 @@ impl TerrainRuntimeHandle {
 
     pub(crate) fn commit_persistence_restore(
         &self,
-        definition: PlanetDefinition,
+        definition: TerrainBodyDefinition,
         expected_planet_generation: u64,
         expected_terrain_sequence: u64,
-        restored: &mut Option<TerrainCore<FixedSphereGenerator>>,
+        restored: &mut Option<TerrainCore<TerrainGenerator>>,
     ) -> Result<TerrainPersistenceRestoreCommit, TerrainRuntimeError> {
-        let planet_id = definition.planet_id;
+        let planet_id = definition.body_id();
         let mut state = lock(&self.shared.state);
         if !state.running {
             return Err(TerrainRuntimeError::NotRunning);
@@ -1635,7 +1678,7 @@ impl TerrainRuntimeHandle {
             || current.generation != expected_planet_generation
             || current.core.latest_sequence() != expected_terrain_sequence
             || restored_ref.planet_id() != planet_id
-            || restored_ref.hierarchy().root_lod() != definition.root_lod
+            || restored_ref.hierarchy().root_lod() != definition.root_lod()
         {
             return Err(TerrainRuntimeError::StalePersistenceRestore { planet_id });
         }
@@ -1721,7 +1764,7 @@ impl TerrainRuntimeHandle {
             return None;
         }
         Some(TerrainPlanningCapture {
-            definition: planet.definition.clone(),
+            definition: planet.definition,
             terrain_sequence: planet.core.latest_sequence(),
             snapshot: planet.core.planning_snapshot(),
         })
@@ -2059,18 +2102,22 @@ fn worker_loop(shared: Arc<RuntimeShared>) {
 }
 
 fn validate_definition(
-    definition: &PlanetDefinition,
+    definition: &TerrainBodyDefinition,
     config: &TerrainRuntimeConfig,
 ) -> Result<(), TerrainRuntimeError> {
-    if definition.radius_cells == 0
-        || definition.material == 0
-        || !(1..=62).contains(&definition.root_lod)
+    let shape_is_valid = match definition {
+        TerrainBodyDefinition::Planet(planet) => planet.radius_cells != 0,
+        TerrainBodyDefinition::Volume(volume) => volume.validate().is_ok(),
+    };
+    if !shape_is_valid
+        || definition.material() == 0
+        || !(1..=62).contains(&definition.root_lod())
         || !definition.fits_centered_root()
-        || definition.max_resident_pages == 0
-        || definition.max_resident_pages > config.max_resident_pages
+        || definition.max_resident_pages() == 0
+        || definition.max_resident_pages() > config.max_resident_pages
     {
         return Err(TerrainRuntimeError::InvalidConfig(
-            "planet definition exceeds the runtime contract",
+            "terrain body definition exceeds the runtime contract",
         ));
     }
     Ok(())
@@ -2157,6 +2204,124 @@ mod tests {
         let mut subsystem = TerrainSubsystem::new(config(worker_count)).unwrap();
         subsystem.init(&SubsystemContext::new()).unwrap();
         subsystem
+    }
+
+    fn flat_volume(id: u8) -> VolumeDefinition {
+        VolumeDefinition {
+            volume_id: crate::VolumeId(PlanetId([id; 16])),
+            flat: crate::FlatTerrain {
+                cell_size_m: crate::LOD0_CELL_SIZE_METERS,
+                extent: (256, 256, 256),
+                origin: [0; 3],
+            },
+            material: id.max(1),
+            root_lod: 12,
+            max_resident_pages: 8,
+        }
+    }
+
+    /// The acceptance bar for "shared voxel model": a volume goes through the
+    /// same registration, mutation, snapshot and restore doors as a planet.
+    #[test]
+    fn a_flat_volume_registers_and_sculpts_through_the_planet_path() {
+        let mut subsystem = start(1);
+        let handle = subsystem.runtime_handle();
+        let definition = flat_volume(1);
+        let id = definition.volume_id.body_id();
+        handle.upsert_volume(definition).unwrap();
+
+        assert!(
+            handle.planet_definitions().is_empty(),
+            "a volume is not a planet"
+        );
+        assert_eq!(handle.body_definitions().len(), 1);
+        assert_eq!(
+            handle.body_definition(id).map(|body| body.shape()),
+            Some(crate::TerrainShape::Volume)
+        );
+
+        // Ground plane solid, one cell up air -- straight from the generator.
+        let samples = handle.sample_cells(id, &[[0, 0, 0], [0, 1, 0]]).unwrap();
+        assert!(samples[0].is_solid());
+        assert!(!samples[1].is_solid());
+
+        let before = handle.planet_snapshot(id).unwrap();
+        handle
+            .append_edit(
+                id,
+                EditOp {
+                    sequence: 1,
+                    stable_id: [1; 16],
+                    shape: EditShape::Box {
+                        center_cell: [0, 2, 0],
+                        half_extent_cells: [3, 3, 3],
+                    },
+                    mode: EditMode::Union,
+                    material: 4,
+                },
+            )
+            .unwrap();
+        let raised = handle.sample_cells(id, &[[0, 4, 0]]).unwrap();
+        assert!(raised[0].is_solid(), "the box edit raised the ground");
+        assert_eq!(raised[0].material(), 4);
+
+        handle.restore_planet_snapshot(id, before).unwrap();
+        let restored = handle.sample_cells(id, &[[0, 4, 0]]).unwrap();
+        assert!(!restored[0].is_solid(), "restore rewound the box edit");
+
+        subsystem.shutdown().unwrap();
+    }
+
+    #[test]
+    fn a_level_can_hold_a_planet_and_a_volume_at_once() {
+        let mut subsystem = start(1);
+        let handle = subsystem.runtime_handle();
+        handle.upsert_planet(planet(1)).unwrap();
+        handle.upsert_volume(flat_volume(2)).unwrap();
+
+        let bodies = handle.body_definitions();
+        assert_eq!(bodies.len(), 2);
+        assert_eq!(handle.planet_definitions().len(), 1);
+        let mut shapes: Vec<_> = bodies.iter().map(|body| body.shape()).collect();
+        shapes.sort();
+        assert_eq!(
+            shapes,
+            vec![crate::TerrainShape::Planet, crate::TerrainShape::Volume]
+        );
+
+        // Editing one leaves the other alone.
+        handle
+            .append_edit(
+                PlanetId([2; 16]),
+                EditOp {
+                    sequence: 1,
+                    stable_id: [9; 16],
+                    shape: EditShape::Box {
+                        center_cell: [0, 2, 0],
+                        half_extent_cells: [3, 3, 3],
+                    },
+                    mode: EditMode::Union,
+                    material: 4,
+                },
+            )
+            .unwrap();
+        assert_eq!(handle.latest_sequence(PlanetId([1; 16])), Some(0));
+        assert_eq!(handle.latest_sequence(PlanetId([2; 16])), Some(1));
+
+        subsystem.shutdown().unwrap();
+    }
+
+    #[test]
+    fn a_volume_with_a_non_canonical_cell_size_is_refused() {
+        let mut subsystem = start(1);
+        let handle = subsystem.runtime_handle();
+        let mut invalid = flat_volume(1);
+        invalid.flat.cell_size_m = 1.0;
+        assert!(matches!(
+            handle.upsert_volume(invalid),
+            Err(TerrainRuntimeError::InvalidConfig(_))
+        ));
+        subsystem.shutdown().unwrap();
     }
 
     #[test]

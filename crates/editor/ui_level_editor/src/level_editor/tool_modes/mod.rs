@@ -112,6 +112,17 @@ pub enum ToolWidget {
         label_key: &'static str,
         on: bool,
     },
+    /// A one-shot command button. Unlike the other widgets it carries no
+    /// value: pressing it is the whole message, dispatched as
+    /// [`ToolWidgetEdit::Invoke`].
+    ///
+    /// No icon field on purpose — `ui::IconName` is not `PartialEq`, and this
+    /// enum's `PartialEq` is what `ToolbarSignature` uses to notice that a
+    /// mode's controls changed.
+    Action {
+        id: &'static str,
+        label_key: &'static str,
+    },
     Divider,
 }
 

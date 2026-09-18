@@ -5,6 +5,7 @@
 //! snapshots. Rendering and physics consume derived data and never become the
 //! source of truth.
 
+mod body;
 mod controller;
 mod core;
 mod edit;
@@ -23,6 +24,10 @@ mod store;
 mod streaming;
 mod types;
 
+pub use body::{
+    FlatTerrain, TerrainBodyDefinition, TerrainShape, VolumeDefinition, VolumeDefinitionError,
+    VolumeId,
+};
 pub use controller::{
     TerrainControllerConfig, TerrainControllerError, TerrainControllerFrame,
     TerrainPlanningFailure, TerrainStreamingController,
@@ -32,7 +37,9 @@ pub use core::{
     TerrainCoreError, TerrainMemoryCounters, TerrainPlanningSnapshot, TerrainWorkCounters,
 };
 pub use edit::{EditError, EditLog, EditMode, EditOp, EditShape};
-pub use generator::{DeterministicGenerator, FixedSphereGenerator};
+pub use generator::{
+    DeterministicGenerator, FixedSphereGenerator, FixedVolumeGenerator, TerrainGenerator,
+};
 pub use hierarchy::{HierarchyError, SparseBrickTree};
 pub use mutation::{
     TerrainOverrideError, TerrainOverrideLog, TerrainOverrideOp, TerrainOverrideTarget,
