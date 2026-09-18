@@ -14,6 +14,10 @@ pub struct ToolModeId(pub &'static str);
 impl ToolModeId {
     pub const LEVEL_EDIT: Self = Self("level_edit");
     pub const TERRAIN: Self = Self("terrain");
+    /// Milestone 5's extensibility-demo mode (`tool_modes::spline::SplineMode`).
+    /// Registered via [`register_tool_modes`], never added to
+    /// [`ToolModeRegistry::builtin`].
+    pub const SPLINE: Self = Self("spline");
 }
 
 // ── ToolModeRegistry ───────────────────────────────────────────────────────
@@ -135,4 +139,20 @@ impl Default for ToolModeRegistry {
     fn default() -> Self {
         Self::builtin()
     }
+}
+
+// ── Registration surface for external modes ───────────────────────────────
+
+/// Registers every non-builtin tool mode. This is the design doc's §9 open
+/// question ("Registration surface for future external modes"), resolved by
+/// Milestone 5 (issue #714): a plain function, called once at editor
+/// construction right after [`ToolModeRegistry::builtin`], that adds modes
+/// purely through [`ToolModeRegistry::register`].
+///
+/// `builtin()` itself never grows a third entry -- that it doesn't is the
+/// actual point of this milestone. A future out-of-tree/plugin mode would
+/// hook in here (or from an equivalent function in its own crate called from
+/// this one) rather than by editing `builtin()`.
+pub fn register_tool_modes(registry: &mut ToolModeRegistry) {
+    registry.register(Box::new(super::spline::SplineMode::default()));
 }

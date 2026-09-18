@@ -54,6 +54,9 @@ pub struct ToolbarSignature {
     terrain_foliage_radius_m: f32,
     terrain_foliage_slope_min: f32,
     terrain_foliage_slope_max: f32,
+    // spline mode controls (Milestone 5 extensibility demo)
+    spline_point_count: usize,
+    spline_length_m: f32,
     // playback_controls / mode_indicator
     editor_mode: EditorMode,
     // time_scale_dropdown
@@ -87,6 +90,8 @@ impl ToolbarSignature {
             terrain_foliage_radius_m: state.editor.terrain.foliage.radius_m,
             terrain_foliage_slope_min: state.editor.terrain.foliage.slope_limit.0,
             terrain_foliage_slope_max: state.editor.terrain.foliage.slope_limit.1,
+            spline_point_count: state.editor.spline.points.len(),
+            spline_length_m: state.editor.spline.total_length_m(),
             editor_mode: state.scene.editor_mode,
             time_scale: state.play.time_scale,
             multiplayer_mode: state.play.multiplayer_mode,

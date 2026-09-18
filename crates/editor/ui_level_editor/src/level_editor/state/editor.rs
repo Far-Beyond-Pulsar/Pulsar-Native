@@ -152,10 +152,23 @@ pub struct EditorDomain {
     /// `SceneDomain`'s undo stack on purpose -- that one snapshots the scene
     /// database, which does not contain voxels at all (design doc §5.5).
     pub terrain_undo: super::terrain_undo::TerrainUndoDomain,
+    /// State for the Milestone 5 extensibility-demo `SplineMode`. Lives here
+    /// (rather than as a field on `SplineMode` itself) because the toolbar
+    /// and status bar both need to read it without going through the mode
+    /// instance -- see `state/spline.rs`'s doc comment.
+    pub spline: super::spline::SplineDomain,
 }
 
 impl Default for EditorDomain {
     fn default() -> Self {
+        // `builtin()` registers the two Milestone 1-4 modes (LevelEdit,
+        // Terrain); `register_tool_modes` then adds every mode registered
+        // after them -- currently just Milestone 5's `SplineMode` -- purely
+        // through `ToolModeRegistry::register`, with `builtin()`'s own two
+        // entries untouched (design doc §9 / issue #714).
+        let mut tool_mode_registry = crate::level_editor::tool_modes::ToolModeRegistry::builtin();
+        crate::level_editor::tool_modes::register_tool_modes(&mut tool_mode_registry);
+
         Self {
             current_tool: TransformTool::Move,
             camera_mode: CameraMode::Perspective,
@@ -167,9 +180,10 @@ impl Default for EditorDomain {
             feature_shadows_enabled: true,
             feature_bloom_enabled: true,
             feature_materials_enabled: true,
-            tool_mode_registry: crate::level_editor::tool_modes::ToolModeRegistry::builtin(),
+            tool_mode_registry,
             terrain: super::terrain::TerrainDomain::default(),
             terrain_undo: super::terrain_undo::TerrainUndoDomain::default(),
+            spline: super::spline::SplineDomain::default(),
         }
     }
 }

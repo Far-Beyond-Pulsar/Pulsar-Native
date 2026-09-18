@@ -33,6 +33,7 @@ pub mod native_scripts;
 pub mod overlays;
 pub mod play;
 pub mod scene;
+pub mod spline;
 pub mod terrain;
 pub mod terrain_undo;
 
@@ -42,6 +43,7 @@ pub use hierarchy::HierarchyDomain;
 pub use overlays::OverlayDomain;
 pub use play::{PieControl, PieStartRequest, PlayDomain};
 pub use scene::SceneDomain;
+pub use spline::SplineDomain;
 pub use terrain::TerrainDomain;
 pub use terrain_undo::{TerrainStrokeRecord, TerrainUndoDomain, MAX_TERRAIN_UNDO_HISTORY};
 

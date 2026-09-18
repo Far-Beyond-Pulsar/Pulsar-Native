@@ -1,6 +1,11 @@
 # Level Editor — Tool Modes, Voxel Terrain & Foliage (Design)
 
-Status: DRAFT
+Status: IMPLEMENTED (Milestones 1-5 done, tracked by epic #709). The
+extensibility contract this doc describes (§4.2) is proven out by Milestone 5
+(issue #714); see [`adding-a-tool-mode.md`](./adding-a-tool-mode.md) for the
+practical "how to add a mode" walkthrough, including two real gaps this doc's
+original sketch didn't anticipate (§9 below, and the `ToolModeDispatcher`
+limitation documented in that file's §5).
 Scope: `crates/editor/ui_level_editor` (+ seams into `engine_backend`, `pulsar_terrain`,
 `helio-component` foliage stack, and a new flat voxel terrain runtime).
 
@@ -381,9 +386,23 @@ pulsar_terrain/src/…               TerrainShape axis + EditShape::Box (flat-vo
    mode; same brush pipeline.
 4. **Foliage painting** — `FoliageBrush` stamping foliage components; density/slope
    controls; save-path coordination.
-5. **Extensibility demo** — one more mode (e.g. Decals or a test "Spline") via
-   `registry.register(...)` to prove the contract, then document it as the template.
-   Plugin/workspace-external contribution point can follow later.
+5. **Extensibility demo** — ✅ **Done** (issue #714). Added `SplineMode`
+   (`tool_modes/spline.rs`): click to place points in the viewport, Shift-click to
+   clear, point count + total length surfaced on the toolbar and status bar. Registered
+   purely via a new `register_tool_modes(&mut ToolModeRegistry)` hook
+   (`tool_modes/registry.rs`), called from `EditorDomain::default()` right after
+   `ToolModeRegistry::builtin()` — `builtin()`'s own two entries, `ToolModeDispatcher`,
+   `ToolModeContext`, and `LevelEditMode`/`TerrainMode`'s logic were not touched. See
+   [`adding-a-tool-mode.md`](./adding-a-tool-mode.md) for the worked-example writeup,
+   including the state-placement rule (mode-internal field vs. new `EditorDomain`
+   sub-struct), the `ToolbarSignature`/`StatusBarSignature` staleness gotcha, and a real
+   limitation this milestone surfaced: `ToolWidgetEdit` write-back
+   (`ToolModeDispatcher::dispatch_widget_edit[_with_terrain]`) is a hardcoded switch over
+   `TerrainDomain`-specific widget ids, not actually generic over `ToolMode`
+   implementors as §4.1 implies — a mode's interactive toolbar widgets need a (small,
+   additive) dispatcher edit to do anything; `SplineMode` avoids this entirely by doing
+   all of its real work through the already-generic `on_pointer`. A true out-of-tree
+   plugin/workspace-external contribution point is still open (§9).
 
 ## 9. Open questions
 
@@ -397,5 +416,15 @@ pulsar_terrain/src/…               TerrainShape axis + EditShape::Box (flat-vo
 - **`ToolModeContext` locking:** the shell holds the state write lock during
    `on_pointer`. Confirm no mode needs to re-enter that lock (design says no; enforce by
    passing `state` directly).
-- **Registration surface for future external modes:** defer until the milestone-5 demo
-   proves the contract; likely a `fn register_tool_modes(registry)` hook at editor boot.
+- **Registration surface for future external modes:** ✅ **Resolved by Milestone 5**
+   (issue #714) for in-tree modes: `fn register_tool_modes(registry: &mut ToolModeRegistry)`
+   in `tool_modes/registry.rs`, called from `EditorDomain::default()` right after
+   `ToolModeRegistry::builtin()`. What remains genuinely open is a true *out-of-tree*
+   (plugin/workspace-external, i.e. a different crate or a dynamically loaded module)
+   contribution point — `register_tool_modes` today is a plain function call compiled
+   into this crate, not a discovery mechanism. Also newly surfaced by Milestone 5 (not
+   previously called out in this doc): `ToolWidgetEdit` write-back
+   (`ToolModeDispatcher::dispatch_widget_edit[_with_terrain]`) is hardcoded per widget id
+   rather than generic over `ToolMode` implementors, so a registered mode's interactive
+   toolbar controls (`Toggle`/`Action`/editable `Slider`/`Segmented`) do not work out of
+   the box the way `on_pointer` does — see `adding-a-tool-mode.md` §5.

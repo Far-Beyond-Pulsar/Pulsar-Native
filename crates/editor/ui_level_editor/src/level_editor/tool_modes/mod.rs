@@ -7,6 +7,7 @@
 pub mod dispatcher;
 pub mod level_edit;
 pub mod registry;
+pub mod spline;
 pub mod terrain;
 
 use std::sync::Mutex;
@@ -17,6 +18,7 @@ use engine_backend::services::terrain_edit::TerrainEditApi;
 pub use dispatcher::*;
 pub use level_edit::*;
 pub use registry::*;
+pub use spline::*;
 pub use terrain::*;
 
 use crate::level_editor::state::LevelEditorState;
