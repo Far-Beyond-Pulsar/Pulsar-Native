@@ -35,8 +35,7 @@ signatures):
 | `clone_box` | Yes | `Box::new(self.clone())` (or `Box::new(*self)` for a `Copy` mode) — needed because `ToolModeRegistry` is `Clone` and the modes are trait objects. |
 | `on_mode_entered` / `on_mode_exited` | Has a default (no-op) | Override to reset transient state or close an in-progress gesture when switching away. |
 | `toolbar_controls` | Has a default (empty) | Declarative widgets (`ToolWidget::{Slider,Segmented,Toggle,Action,Divider}`) the toolbar renders while this mode is active. |
-| `layout` | Has a default (right dock on, no mode panel) | `ModeLayout{ show_right_dock, show_mode_panel }` — hide the right dock or claim the left-hand tools panel (§10 of the design doc). |
-| `panel_tabs` | Has a default (one unnamed tab) | Pages of the mode's left-hand panel when `show_mode_panel: true`. |
+| `layout` | Has a default (right dock on) | `ModeLayout{ show_right_dock }` — hide the right dock for a cleaner canvas. |
 | `contributes_panels` / `build_panel` | Has a default (none) | Opt into *real* GPUI dock panels of your own (§7 below / design doc §11). |
 | `status` | Has a default (`None`) | One-line status bar readout + tooltip. |
 | `brush_cursor` | Has a default (`None`) | **Currently dead code** — well, see the note at the end of this doc before you rely on it. (§6.) |
@@ -156,7 +155,7 @@ is left for whoever needs it next.
 
 ## 7. Want your own GPUI dock panel? (Milestone 7)
 
-`toolbar_controls`/`panel_tabs` describe widgets the shell renders. If you
+`toolbar_controls` describes widgets the shell renders. If you
 need a panel that is *not* a flat widget list — real layout, headers, gaps,
 interactive background — opt into `contributes_panels` + `build_panel` (the
 §11 contract in the design doc; the one deliberate place a mode builds GPUI).
@@ -211,8 +210,7 @@ Notes:
   mutate domain state from inside the mode's `toolbar_controls`/`status` and
   expect a panel to notice; the panel's own frame pump watches the state
   itself.
-- `Left` contributions share the native tab strip with the `ModeToolsPanel`
-  pages; `Right` contributions join the Properties/World Settings bottom tab
+- `Left` contributions share one native tab strip; `Right` contributions join the Properties/World Settings bottom tab
   group (surfaced first). Right-dock contributions make `sync_mode_layout`
   rebuild the right dock — the only cost is rebuilding the cached
   `PropertiesPanelWrapper` sections, and only on the switch in/out.

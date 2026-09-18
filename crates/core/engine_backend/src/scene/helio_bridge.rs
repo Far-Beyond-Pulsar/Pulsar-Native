@@ -341,6 +341,7 @@ pub fn ensure_gpu_mirror(
 
     let mirror = GpuMirrorHandle::new(Arc::new(gpu_store), queue);
     scene_db.world.attach_gpu_mirror(mirror.clone());
+    crate::scene::install_scenedb_inspector(&mut scene_db.world);
 
     for (entity, component) in existing_lights {
         scene_db.world.insert(entity, component);

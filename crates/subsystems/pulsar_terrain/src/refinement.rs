@@ -576,10 +576,58 @@ fn choose_replacement(
             return Ok(Some(stage));
         }
     }
+    // The target frontier is not a partition of the whole body: it only names
+    // the pages the current view wants. As the camera moves, committed pages
+    // fall out of it entirely and newly wanted pages appear with no committed
+    // ancestor or descendant. Neither is a refinement or a coarsening, so
+    // handle them directly. Retire the pages the view no longer relates to
+    // first; that frees transition budget for the additions.
+    let unrelated_committed = committed
+        .keys()
+        .copied()
+        .filter(|key| {
+            !target
+                .plan
+                .residency_identity()
+                .iter()
+                .any(|(wanted, _)| is_ancestor(*key, *wanted) || is_ancestor(*wanted, *key))
+        })
+        .collect::<BTreeSet<_>>();
+    if !unrelated_committed.is_empty() {
+        let stage = StagedReplacement {
+            additions: BTreeMap::new(),
+            removals: unrelated_committed,
+        };
+        if replacement_is_safe(committed, &stage) {
+            return Ok(Some(stage));
+        }
+    }
+
+    let unrelated_wanted = target
+        .plan
+        .residency_identity()
+        .iter()
+        .filter(|(wanted, _)| {
+            !committed
+                .keys()
+                .any(|key| is_ancestor(*key, *wanted) || is_ancestor(*wanted, *key))
+        })
+        .map(|(wanted, class)| (*wanted, *class))
+        .collect::<BTreeMap<_, _>>();
+    if !unrelated_wanted.is_empty() {
+        let stage = StagedReplacement {
+            additions: unrelated_wanted,
+            removals: BTreeSet::new(),
+        };
+        if replacement_is_safe(committed, &stage) {
+            return Ok(Some(stage));
+        }
+    }
     Ok(None)
 }
 
-fn retarget_stage_classes(stage: &mut StagedReplacement, target: &TargetFrontier) {
+fn retarget_stage_classes(
+stage: &mut StagedReplacement, target: &TargetFrontier) {
     for (page_key, request_class) in &mut stage.additions {
         let next_class = target.plan.class_for_related(*page_key);
         if let Some(next_class) = next_class {

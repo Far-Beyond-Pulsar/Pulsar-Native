@@ -7,7 +7,7 @@ use gpui::{prelude::*, *};
 use std::sync::Arc;
 use ui::{h_flex, v_flex, ActiveTheme};
 
-use super::super::bindings::bound_field::{BoolBoundField, StringBoundField};
+use super::bindings::bound_field::{BoolBoundField, StringBoundField};
 use crate::level_editor::core::commands::{execute_command, SceneCommand};
 use crate::level_editor::scene_database::SceneDatabase;
 use crate::level_editor::state::LevelEditorState;
@@ -28,7 +28,7 @@ impl ObjectHeaderSection {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        use super::super::bindings::field_bindings::{BoolFieldBinding, StringFieldBinding};
+        use super::bindings::field_bindings::{BoolFieldBinding, StringFieldBinding};
 
         // Name/visible/locked all go through `SceneCommand`/`execute_command`
         // now (Pulsar-Native#561), not `SceneDatabase::update_object`

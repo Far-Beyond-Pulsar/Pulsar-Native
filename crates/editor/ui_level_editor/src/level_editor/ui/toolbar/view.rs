@@ -63,7 +63,7 @@ pub struct ToolbarSignature {
     time_scale: f32,
     // multiplayer_dropdown
     multiplayer_mode: MultiplayerMode,
-    // build_dropdowns / build_core
+    // build/ dropdowns + core
     build_config: BuildConfig,
     target_platform: TargetPlatform,
     build_mode: BuildMode,

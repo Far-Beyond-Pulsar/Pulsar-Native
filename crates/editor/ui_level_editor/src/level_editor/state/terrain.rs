@@ -184,6 +184,25 @@ pub struct TerrainDomain {
     /// the toolbar's `ToolWidget::Toggle` and read by
     /// `TerrainMode::on_pointer` to pick which stamp a brush click produces.
     pub paint_foliage: bool,
+    /// The sets/members the foliage brush paints from. See
+    /// [`super::foliage_sets`].
+    pub foliage_sets: super::foliage_sets::FoliageSetLibrary,
+    /// Foliage brush density multiplier (0 = paints nothing, 1 = each
+    /// member's own density), applied on top of per-member density.
+    pub foliage_paint_density: super::foliage_sets::BrushDensity,
+    /// What a foliage-brush click does: place instances or remove them.
+    pub foliage_tool: FoliageTool,
+    /// Fraction of instances inside the brush an erase stroke removes
+    /// (1 removes everything under the brush).
+    pub foliage_erase_density: super::foliage_sets::BrushDensity,
+}
+
+/// Foliage brush action.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum FoliageTool {
+    #[default]
+    Paint,
+    Erase,
 }
 
 impl TerrainDomain {
@@ -213,6 +232,26 @@ impl TerrainDomain {
 
     pub fn set_paint_foliage(&mut self, on: bool) {
         self.paint_foliage = on;
+    }
+
+    /// Choose a sculpt tool and make the *terrain* brush the live one (a
+    /// tool button both selects and activates, like Unreal's tool row).
+    pub fn activate_sculpt_tool(&mut self, mode: SculptMode) {
+        self.sculpt.mode = mode;
+        self.paint_foliage = false;
+    }
+
+    /// Choose a paint material: switches to the Paint tool with that
+    /// material and makes the terrain brush live.
+    pub fn activate_paint_material(&mut self, material: u32) {
+        self.sculpt.material = material;
+        self.activate_sculpt_tool(SculptMode::Paint);
+    }
+
+    /// Choose a foliage action and make the foliage brush the live one.
+    pub fn activate_foliage_tool(&mut self, tool: FoliageTool) {
+        self.foliage_tool = tool;
+        self.paint_foliage = true;
     }
 
     pub fn set_foliage_density(&mut self, density: f32) {
@@ -303,5 +342,43 @@ impl TerrainDomain {
 
     pub fn end_stroke(&mut self) -> Option<Stroke> {
         self.active_stroke.take()
+    }
+}
+
+#[cfg(test)]
+mod tool_activation_tests {
+    use super::*;
+
+    #[test]
+    fn a_sculpt_tool_selects_its_mode_and_makes_the_terrain_brush_live() {
+        let mut domain = TerrainDomain::default();
+        domain.paint_foliage = true;
+        domain.activate_sculpt_tool(SculptMode::Lower);
+        assert_eq!(domain.sculpt.mode, SculptMode::Lower);
+        assert!(!domain.paint_foliage);
+    }
+
+    #[test]
+    fn picking_a_material_switches_to_the_paint_tool_with_that_material() {
+        let mut domain = TerrainDomain::default();
+        domain.activate_paint_material(7);
+        assert_eq!(domain.sculpt.mode, SculptMode::Paint);
+        assert_eq!(domain.sculpt.material, 7);
+        assert!(!domain.paint_foliage);
+    }
+
+    #[test]
+    fn a_foliage_tool_selects_the_action_and_makes_the_foliage_brush_live() {
+        let mut domain = TerrainDomain::default();
+        domain.activate_foliage_tool(FoliageTool::Erase);
+        assert_eq!(domain.foliage_tool, FoliageTool::Erase);
+        assert!(domain.paint_foliage);
+    }
+
+    #[test]
+    fn erase_and_paint_density_default_to_full_strength() {
+        let domain = TerrainDomain::default();
+        assert_eq!(domain.foliage_paint_density.0, 1.0);
+        assert_eq!(domain.foliage_erase_density.0, 1.0);
     }
 }

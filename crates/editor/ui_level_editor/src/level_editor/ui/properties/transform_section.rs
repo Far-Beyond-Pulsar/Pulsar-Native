@@ -7,7 +7,7 @@ use gpui::{prelude::*, *};
 use std::sync::Arc;
 use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
 
-use super::super::bindings::bound_field::F32BoundField;
+use super::bindings::bound_field::F32BoundField;
 use crate::level_editor::core::commands::{execute_command, SceneCommand};
 use crate::level_editor::scene_database::SceneDatabase;
 use crate::level_editor::state::LevelEditorState;
@@ -39,8 +39,8 @@ fn axis_binding(
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     axis: Axis,
     index: usize,
-) -> super::super::bindings::field_bindings::F32FieldBinding {
-    use super::super::bindings::field_bindings::F32FieldBinding;
+) -> super::bindings::field_bindings::F32FieldBinding {
+    use super::bindings::field_bindings::F32FieldBinding;
 
     F32FieldBinding::new_with_db(
         move |id, db| {

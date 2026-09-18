@@ -1,3 +1,3 @@
-pub mod replicated;
+pub mod panel;
 
-pub use replicated::WorldSettingsReplicated;
+pub use panel::WorldSettingsPanelImpl;

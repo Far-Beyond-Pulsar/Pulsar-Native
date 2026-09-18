@@ -599,6 +599,68 @@ pub struct NoGpuMirror;
 
 unsafe impl pulsar_scenedb::Pod for NoGpuMirror {}
 
+// `SceneGpuStore::register_gpu_buffer` keys shared buffers on an element type
+// that must be `Reflectable`, so the inspector can describe a buffer's layout.
+// `GpuRepr<T>` is a transparent wrapper: it reflects exactly as `T` does.
+impl<T> pulsar_reflection::Reflectable for GpuRepr<T>
+where
+    T: Copy + pulsar_reflection::Reflectable,
+{
+    fn type_info() -> &'static pulsar_reflection::RuntimeTypeInfo {
+        <T as pulsar_reflection::Reflectable>::type_info()
+    }
+
+    fn serialize(
+        &self,
+        serializer: &mut dyn pulsar_reflection::TypeSerializer,
+    ) -> pulsar_reflection::ReflectResult<()> {
+        <T as pulsar_reflection::Reflectable>::serialize(&self.0, serializer)
+    }
+
+    fn deserialize(
+        deserializer: &mut dyn pulsar_reflection::TypeDeserializer,
+    ) -> pulsar_reflection::ReflectResult<Self> {
+        <T as pulsar_reflection::Reflectable>::deserialize(deserializer).map(GpuRepr)
+    }
+
+    fn clone_any(&self) -> Box<dyn std::any::Any> {
+        Box::new(*self)
+    }
+}
+
+static NO_GPU_MIRROR_TYPE_INFO: pulsar_reflection::RuntimeTypeInfo =
+    pulsar_reflection::RuntimeTypeInfo {
+        type_id: std::any::TypeId::of::<NoGpuMirror>(),
+        type_name: "NoGpuMirror",
+        size: 0,
+        align: 1,
+        structure: pulsar_reflection::TypeStructure::Struct { fields: &[] },
+        color: None,
+    };
+
+impl pulsar_reflection::Reflectable for NoGpuMirror {
+    fn type_info() -> &'static pulsar_reflection::RuntimeTypeInfo {
+        &NO_GPU_MIRROR_TYPE_INFO
+    }
+
+    fn serialize(
+        &self,
+        _serializer: &mut dyn pulsar_reflection::TypeSerializer,
+    ) -> pulsar_reflection::ReflectResult<()> {
+        Ok(())
+    }
+
+    fn deserialize(
+        _deserializer: &mut dyn pulsar_reflection::TypeDeserializer,
+    ) -> pulsar_reflection::ReflectResult<Self> {
+        Ok(NoGpuMirror)
+    }
+
+    fn clone_any(&self) -> Box<dyn std::any::Any> {
+        Box::new(*self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

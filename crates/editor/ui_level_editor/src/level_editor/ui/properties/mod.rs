@@ -1,3 +1,4 @@
+pub mod bindings;
 pub mod component_hierarchy;
 pub mod object_header_section;
 pub mod object_type_fields;

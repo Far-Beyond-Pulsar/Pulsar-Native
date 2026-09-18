@@ -38,6 +38,7 @@ pub mod type_traits;
 // Primitive type implementations
 pub mod prims;
 
+pub use serde_json;
 use serde_json::Value;
 use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet};

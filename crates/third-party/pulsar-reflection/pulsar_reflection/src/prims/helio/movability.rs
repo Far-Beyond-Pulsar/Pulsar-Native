@@ -112,7 +112,7 @@ fn deserialize_movability_json(value: serde_json::Value) -> ReflectResult<Box<dy
 
 crate::inventory::submit! {
     RuntimeTypeRegistration {
-        type_info: &MOVABILITY_TYPE_INFO,
+        type_info: || &MOVABILITY_TYPE_INFO,
         serialize_json: serialize_movability_json,
         deserialize_json: deserialize_movability_json,
     }

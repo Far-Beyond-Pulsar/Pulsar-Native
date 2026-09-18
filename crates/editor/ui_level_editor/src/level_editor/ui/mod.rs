@@ -1,5 +1,4 @@
 mod actions;
-pub mod bindings;
 pub(crate) mod frame_pump;
 pub(crate) mod hierarchy;
 pub(crate) mod mode_widgets;
@@ -19,4 +18,4 @@ pub use properties::{
 pub use status_bar_view::StatusBarView;
 pub use toolbar::{ToolbarPanel, ToolbarView};
 pub use viewport::ViewportPanel;
-pub use world_settings::WorldSettingsReplicated;
+pub use world_settings::WorldSettingsPanelImpl;

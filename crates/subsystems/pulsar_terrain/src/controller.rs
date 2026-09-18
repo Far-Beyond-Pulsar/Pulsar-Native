@@ -540,3 +540,107 @@ mod tests {
         subsystem.shutdown().unwrap();
     }
 }
+
+#[cfg(test)]
+mod volume_streaming_repro {
+    use super::*;
+    use crate::{
+        FlatTerrain, PlanetPosition, TerrainBodyDefinition, TerrainRenderCommandDisposition,
+        TerrainRenderCommandFeedback, TerrainRuntimeConfig, TerrainStreamingConfig,
+        TerrainSubsystem, VolumeDefinition, VolumeId,
+    };
+    use engine_subsystems::{Subsystem, SubsystemContext};
+
+    #[test]
+    fn flat_volume_streams_while_the_camera_moves() {
+        let mut subsystem = TerrainSubsystem::new(TerrainRuntimeConfig {
+            worker_count: 2,
+            max_planets: 4,
+            max_component_sources: 16,
+            max_resident_pages: 8_192,
+            max_resident_dense_bytes: 8_192 * crate::CELL_COUNT * 4,
+            ..TerrainRuntimeConfig::default()
+        })
+        .unwrap();
+        subsystem.init(&SubsystemContext::new()).unwrap();
+        let runtime = subsystem.runtime_handle();
+        let volume = VolumeDefinition {
+            volume_id: VolumeId::from_stable_name("flat-world:0"),
+            flat: FlatTerrain::centered_on([0; 3]),
+            material: 1,
+            root_lod: 12,
+            max_resident_pages: 8_192,
+        };
+        let definition = TerrainBodyDefinition::Volume(volume);
+        let id = definition.body_id();
+        runtime
+            .upsert_body_component("v:0".to_string(), definition)
+            .unwrap();
+        let config = TerrainControllerConfig {
+            planning: TerrainPlanningConfig {
+                streaming: TerrainStreamingConfig {
+                    max_pages: 96,
+                    ..TerrainStreamingConfig::default()
+                },
+                ..TerrainPlanningConfig::default()
+            },
+            refinement: TerrainRefinementConfig {
+                max_active_pages: 96,
+                max_transition_pages: 120,
+                initial_coarse_pages: 32,
+                max_requests_per_reconcile: 16,
+                max_commits_per_reconcile: 8,
+                ..TerrainRefinementConfig::default()
+            },
+            rendering: TerrainRenderDeltaConfig {
+                max_events_per_delta: 128,
+                max_commands_per_delta: 128,
+                max_upload_bytes_per_delta: 16 * 1024 * 1024,
+                max_tracked_pages: 480,
+                max_visible_pages: 384,
+            },
+            max_planets: 4,
+            max_planning_results_per_frame: 4,
+        };
+        let mut controller = TerrainStreamingController::new(
+            runtime.clone(),
+            subsystem.planning_handle(),
+            config,
+        )
+        .unwrap();
+        for frame_index in 0..3000u64 {
+            let x = 300 + (frame_index as i64) * 11;
+            let view = PlanetView::new(
+                PlanetPosition::from_lod0_cell([x, 40, 500]),
+                [0.0, -0.2, -1.0],
+                [0.0, 1.0, 0.0],
+                std::f64::consts::FRAC_PI_4,
+                [1280, 720],
+                0.1,
+                10_000.0,
+                [0.0; 3],
+            )
+            .unwrap();
+            controller.submit_view(id, view).unwrap();
+            runtime.pump(64);
+            let events = runtime.drain_events(128);
+            let frame = controller
+                .process_frame(&events, frame_index, frame_index)
+                .unwrap_or_else(|e| panic!("frame {frame_index}: {e}"));
+            let feedback = TerrainRenderFeedback {
+                commands: frame
+                    .render_delta
+                    .commands
+                    .iter()
+                    .map(|command| TerrainRenderCommandFeedback {
+                        command: command.id(),
+                        disposition: TerrainRenderCommandDisposition::Applied,
+                    })
+                    .collect(),
+                cache_evictions: Vec::new(),
+            };
+            controller.acknowledge_render_feedback(&feedback).unwrap();
+            std::thread::sleep(std::time::Duration::from_micros(500));
+        }
+    }
+}

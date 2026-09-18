@@ -58,7 +58,8 @@ Scope: `crates/editor/ui_level_editor` (+ seams into `engine_backend`, `pulsar_t
   → `SceneInteraction::pick` / `try_start_drag` / `update_drag` (`interaction.rs:69/92/135`).
   Gizmo mode is mapped `TransformTool -> (SceneGizmoType, GizmoMode)` in
   `ui/panel.rs:601..625`, pushed via `queue_gizmo_mode`.
-- Scene mutations: `SceneCommand` + `execute_command` (`core/commands.rs`), snapshot-based
+- Scene mutations: `SceneCommand` + `execute_command` (`core/commands/`: `types.rs`,
+  `executor.rs`), snapshot-based
   undo (`SceneDomain::undo_stack`, `state/scene.rs`).
 - Terrain: `pulsar_terrain` = authoritative **spherical planetary voxels**.
   `EditOp { shape: EditShape::Sphere { center_cell, radius_cells }, mode:
@@ -464,6 +465,13 @@ pulsar_terrain/src/…               TerrainShape axis + EditShape::Box (flat-vo
 
 ## 10. Mode-defined panels & layout (Milestone 6)
 
+> **Superseded in part.** The generic `ModeToolsPanel` ("Tools" tab), `panel_tabs()` and
+> `PanelTab`, `ModeLayout::show_mode_panel`, `WidgetLayout::Panel` and `ToolWidget::Section`
+> described in 10.1-10.4 were removed: modes now contribute real panels through
+> `contributes_panels()` + `build_panel()` (section 11), and `toolbar_controls()` only feeds
+> the horizontal toolbar strip. `ModeLayout` is just `{ show_right_dock }`. The text below is
+> kept as history.
+
 **Problem this addendum solves**: §4.1's `toolbar_controls()` puts every mode-specific
 control into one horizontal strip. That's fine for a handful of widgets (Level Edit has
 none, Spline has two read-only chips) but not for Terrain, whose sculpt *and* foliage
@@ -546,6 +554,24 @@ ui/
   toolbar/
     mod.rs                         (renders mode widgets via mode_widgets, Toolbar layout)
     tool_mode_dropdown.rs
+    build/                         ← build family: split-button + target dropdowns + cargo progress
+      build_core/                  ← split-button core (split per concern)
+        mod.rs
+        quick.rs
+        pipeline.rs
+        crash.rs
+      build_dropdowns/             ← config + 290-target platform dropdowns
+        mod.rs
+        platform.rs                ← label/icon tables
+        platform_options.rs        ← platform_menu (all target submenus)
+        config.rs                  ← build-config button
+        render.rs                  ← h_flex assembly
+      cargo_progress.rs
+  world_settings/
+    panel/                         ← WorldSettingsPanelImpl (renders under the dock wrapper)
+      mod.rs
+      sections.rs
+      fields.rs
 workspace/
   panels/                          ← was a single panels.rs, split one file per panel
     mod.rs
@@ -666,3 +692,65 @@ crate's `rust_i18n!` config resolves the rest). Terrain's palette added
 `LevelEditor.TerrainPalette.Title` and
 `LevelEditor.TerrainPalette.NoTarget`; label renderers take dynamic
 `&'static str` keys through `t!` exactly like `ui/mode_widgets.rs` already does.
+## 12. Terrain panels rebuilt: Sculpt + Foliage Sets
+
+Terrain's control content moved from flat `ToolWidget` lists to two real panels
+built on §11 (`tool_modes/terrain/panels/`): `SculptPanel` (Tool → Brush →
+Material) and `FoliageSetsPanel` (Brush → Sets → Inspector), sharing
+`panels/widgets.rs`. `layout.rs` lists both (`terrain.sculpt`,
+`terrain.foliage`, docked left). A small declarative **World** tab remains for
+the create-flat-world action, which needs the renderer's terrain seam. Each
+panel has an *active tool* switch — both brushes exist at once and exactly one
+fires on a viewport click (`TerrainDomain::paint_foliage`).
+
+### 12.1 Foliage Sets model (`state/foliage_sets.rs`)
+
+`FoliageSetLibrary` → `FoliageSet { name, enabled, expanded, members }` →
+`FoliageMember { mesh, enabled, placement: MemberPlacement }`. Placement is
+per member: density (per 100 m²), scale range, random yaw, align-to-normal,
+ground offset. A brush stamp paints **every enabled member of every enabled
+set** by that member's own rules (`paintable_members`). Pure editor config:
+no scene database, renderer, or GPUI types.
+
+### 12.2 Painting pipeline (three files, one seam each)
+
+- `scatter.rs` — pure, seeded, unit-tested: library + brush radius/density →
+  `InstanceSpec`s in the brush's tangent plane (capped at
+  `MAX_INSTANCES_PER_STAMP`).
+- `author.rs` — the **only** file that touches the scene: projects each
+  instance onto terrain via `TerrainEditApi::hit_terrain`, then creates
+  content (today: one `StaticMeshComponent` object per instance under a
+  `Foliage · <set>` folder, one undo step per stamp). Swapping in
+  `pulsar_scenedb` or the renderer's mesh-foliage path changes this file only.
+- `TerrainMode::stamp_foliage` glues them with coalescing (`should_stamp`).
+
+### 12.3 Known gaps
+
+- No erase tool yet (needs instance identity in the authoring backend).
+- Slope limits are not in the model: `hit_terrain` returns the radial normal,
+  not the sculpted surface normal.
+- Sets are not persisted with the project yet.
+- Legacy grass-brush fields on `FoliageBrush` (density/slope/wind…) are unused
+  by the panels; remove with the scene-database migration.
+
+### 12.4 Revision: one Terrain panel, Unreal-style
+
+The separate Sculpt panel was folded into a single `TerrainPanel`
+(`panels/terrain.rs`, id `terrain.panel`) with in-panel tabs **Manage**
+(terrain actors: create flat world, pick the edit target, inspect), **Sculpt**
+(Raise/Lower/Flatten tool grid + brush options) and **Paint** (Paint tool +
+brush options + 15-slot material palette). Foliage stays its own panel — it is
+a content-placement tool, not a terrain property. Both follow the Unreal
+Landscape/Foliage panel vocabulary via `panels/widgets.rs`: an icon-over-label
+**tool grid** with the active tool highlighted, collapsible sections, inset
+`− value +` boxes, and a search box + set list for foliage. Choosing a tool or
+material both selects *and activates* it (`TerrainDomain::activate_*`), so the
+old "active tool" switch is gone. Foliage gained an **Erase** tool
+(`author::erase_foliage`: only removes objects parented under `Foliage · …`
+set folders, never hand-placed content) with its own erase density.
+
+Manage reads the terrain seam through `EditorDomain::terrain_api`, which
+`TerrainMode::on_mode_entered` fills from `ToolModeContext::terrain` (panels
+built by `build_panel` only receive the shared state).
+Material swatches are generated colours: `pulsar_terrain` has material ids but
+no authored names or colours yet.

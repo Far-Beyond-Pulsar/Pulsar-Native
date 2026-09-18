@@ -15,7 +15,9 @@ use std::collections::HashMap;
 ///
 /// Automatically submitted by the `#[derive(Reflectable)]` macro
 pub struct RuntimeTypeRegistration {
-    pub type_info: &'static RuntimeTypeInfo,
+    /// A function pointer (not a resolved reference): `inventory::submit!` needs a
+    /// const-constructible payload, and a function item always is.
+    pub type_info: fn() -> &'static RuntimeTypeInfo,
     pub serialize_json: fn(&dyn Any) -> ReflectResult<Value>,
     pub deserialize_json: fn(Value) -> ReflectResult<Box<dyn Any>>,
 }
@@ -49,7 +51,7 @@ impl RuntimeTypeRegistry {
 
         // Auto-discover all RuntimeTypeRegistration entries via inventory
         for registration in inventory::iter::<RuntimeTypeRegistration> {
-            let type_info = registration.type_info;
+            let type_info = (registration.type_info)();
 
             types.insert(
                 type_info.type_id,

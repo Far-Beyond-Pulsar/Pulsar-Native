@@ -128,32 +128,6 @@ pub enum ToolWidget {
         label_key: &'static str,
     },
     Divider,
-    /// A section heading with no control of its own — groups the widgets
-    /// that follow it under a label within one tab. Unlike [`PanelTab`],
-    /// this doesn't split content into separate switchable pages; it is for
-    /// a tab whose own content is long enough to want internal structure
-    /// (e.g. Foliage's "Rendering" / "Wind" groups within one tab).
-    Section { label_key: &'static str },
-}
-
-// ── Panel Tabs ──────────────────────────────────────────────────────────────
-
-/// One page of a mode's dedicated left-hand panel
-/// ([`ModeLayout::show_mode_panel`]).
-///
-/// A mode with a small, single-purpose control set doesn't need this — the
-/// default [`ToolMode::panel_tabs`] wraps `toolbar_controls()` in one
-/// unnamed tab. Override it once a mode's panel content is large enough to
-/// want its own categories (Terrain's Sculpt vs. Foliage, each with many
-/// more controls than would fit — or make sense — in a single flat list).
-#[derive(Clone, Debug, PartialEq)]
-pub struct PanelTab {
-    /// Stable identity for the tab, used only to remember which tab was
-    /// selected across re-renders — never shown to the user.
-    pub id: &'static str,
-    /// i18n key for the tab's label.
-    pub label_key: &'static str,
-    pub widgets: Vec<ToolWidget>,
 }
 
 // ── Status Bar Readout ─────────────────────────────────────────────────────
@@ -180,24 +154,15 @@ pub struct ModeLayout {
     /// wants the whole window for itself (e.g. a full-viewport paint tool)
     /// ask for a cleaner canvas.
     pub show_right_dock: bool,
-    /// Whether this mode wants its `toolbar_controls()` widgets rendered in a
-    /// dedicated left-hand dock panel instead of the horizontal toolbar
-    /// strip. Use this once a mode's control count would otherwise crowd the
-    /// toolbar (see design doc's tool-modes-layout addendum) — the shell
-    /// renders the *same* `toolbar_controls()` data either way, just
-    /// vertically, and skips adding it to the toolbar so it never appears in
-    /// both places at once.
-    pub show_mode_panel: bool,
 }
 
 impl Default for ModeLayout {
     /// Today's behavior for every mode that doesn't override `layout()`:
-    /// right dock visible, controls in the toolbar. Matches `LevelEditMode`
+    /// right dock visible. Matches `LevelEditMode`
     /// exactly, so adding this method to the trait was a no-op for it.
     fn default() -> Self {
         Self {
             show_right_dock: true,
-            show_mode_panel: false,
         }
     }
 }
@@ -207,9 +172,8 @@ impl Default for ModeLayout {
 /// Which dock a mode-contributed panel ([`ModePanelDescriptor`]) joins.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ModePanelPlacement {
-    /// Join the left-hand mode-tools dock, sharing its native tab strip with
-    /// the [`ModeToolsPanel`](crate::level_editor::workspace::panels::mode_tools::ModeToolsPanel)
-    /// tabs (Terrain's brush palette lands here).
+    /// Join the left-hand dock, sharing its native tab strip with the mode's
+    /// other left panels (Terrain's panels land here).
     Left,
     /// Join the right-hand dock alongside Hierarchy / Properties / World
     /// Settings.
@@ -221,7 +185,7 @@ pub enum ModePanelPlacement {
 /// The declarative half of the "full GPUI in a mode" extension point — a
 /// descriptor only says *what* panel exists and where it docks; the actual
 /// GPUI view comes from [`ToolMode::build_panel`]. Modes that only need a
-/// control strip keep using `layout()`/`panel_tabs()`/`toolbar_controls()`
+/// control strip keep using `layout()`/`toolbar_controls()`
 /// and never return any of these (see the design doc's §11).
 #[derive(Clone, Debug)]
 pub struct ModePanelDescriptor {
@@ -297,21 +261,6 @@ pub trait ToolMode: Send + Sync {
     /// Panel layout this mode wants while active. See [`ModeLayout`].
     fn layout(&self) -> ModeLayout {
         ModeLayout::default()
-    }
-
-    /// Tabs for this mode's dedicated left-hand panel. Only consulted when
-    /// [`ModeLayout::show_mode_panel`] is `true`; ignored otherwise (the
-    /// toolbar strip always reads `toolbar_controls()` directly, never this).
-    ///
-    /// Default: one unlabeled tab wrapping `toolbar_controls()`, so a mode
-    /// that turns on `show_mode_panel` without overriding this still gets a
-    /// working (if unorganized) panel rather than an empty one.
-    fn panel_tabs(&self, ctx: &ToolModeContext) -> Vec<PanelTab> {
-        vec![PanelTab {
-            id: "default",
-            label_key: "LevelEditor.ModeTools.DefaultTab",
-            widgets: self.toolbar_controls(ctx),
-        }]
     }
 
     /// Dock panels this mode contributes to the level editor while active.

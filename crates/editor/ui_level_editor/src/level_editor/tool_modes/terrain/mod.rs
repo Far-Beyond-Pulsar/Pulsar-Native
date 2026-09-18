@@ -14,12 +14,14 @@
 //! through — it only refreshes the brush ring, and the renderer still needs it
 //! for its own hover feedback.
 
-pub mod foliage;
+pub mod author;
 pub mod layout;
 pub mod panels;
 pub mod ray;
+pub mod scatter;
 pub mod scene_planets;
 pub mod sculpt;
+mod trait_impl;
 
 use engine_backend::services::terrain_edit::{
     BrushCursorRequest, TerrainEditApi, TerrainHit, TerrainTarget as PlanetTarget,
@@ -28,11 +30,10 @@ use engine_backend::services::terrain_edit::{
 use gpui::AppContext;
 
 use super::{
-    BrushCursor, ModeLayout, ModePanelDescriptor, PanelTab, PointerKind, StatusReadout, ToolMode,
+    BrushCursor, ModeLayout, ModePanelDescriptor, PointerKind, StatusReadout, ToolMode,
     ToolModeContext, ToolModeId, ToolPointerEvent, ToolPointerResult, ToolWidget,
 };
-use crate::level_editor::core::commands::{execute_command, SceneCommand};
-use crate::level_editor::state::terrain::{BrushShape, SculptMode, TerrainTarget};
+use crate::level_editor::state::terrain::{SculptMode, TerrainTarget};
 
 /// Brush ring colour per sculpt mode, so the mode is readable at a glance
 /// without looking back at the toolbar.
@@ -65,6 +66,9 @@ pub struct TerrainMode {
     cursor_normal: [f32; 3],
     /// Monotonic stroke id handed to `TerrainDomain::begin_stroke`.
     next_stroke_id: u64,
+    /// Stamps placed in the current foliage stroke; mixed into the scatter
+    /// seed so consecutive stamps differ.
+    foliage_stamp_index: u32,
 }
 
 impl TerrainMode {
@@ -207,29 +211,31 @@ impl TerrainMode {
     /// add a `FoliageComponent`-carrying scene object at the hit through the
     /// ordinary undo-tracked command path. Returns `true` only when an
     /// object was actually added.
-    fn stamp_foliage(&mut self, ctx: &mut ToolModeContext, hit: &TerrainHit) -> bool {
-        let brush = ctx.state.editor.terrain.foliage.clone();
-        let radius_m = brush.radius_m.max(1.0);
+    fn stamp_foliage(
+        &mut self,
+        api: &TerrainEditApi,
+        ctx: &mut ToolModeContext,
+        hit: &TerrainHit,
+    ) -> bool {
+        let radius_m = ctx.state.editor.terrain.foliage.radius_m.max(1.0);
         if !sculpt::should_stamp(self.last_foliage_stamp_center_m, hit.position_m, radius_m) {
             return false;
         }
-        let data = foliage::stamp_object_data(&brush, hit);
-        let result = execute_command(
-            ctx.state,
-            SceneCommand::AddObject {
-                data,
-                parent_id: None,
-            },
-        );
-        if result.changed {
-            self.last_foliage_stamp_center_m = Some(hit.position_m);
-        } else {
-            tracing::warn!(
-                reason = result.no_op_reason,
-                "foliage stamp was rejected"
-            );
-        }
-        result.changed
+        // Seed from the stroke and a per-stroke stamp counter so a stamp's
+        // scatter is reproducible but no two stamps in a stroke repeat.
+        self.foliage_stamp_index = self.foliage_stamp_index.wrapping_add(1);
+        let seed = self.next_stroke_id.wrapping_mul(0x9E37_79B9) ^ u64::from(self.foliage_stamp_index);
+        let placed = match ctx.state.editor.terrain.foliage_tool {
+            crate::level_editor::state::terrain::FoliageTool::Paint => {
+                author::stamp_foliage_sets(ctx.state, api, hit, seed)
+            }
+            crate::level_editor::state::terrain::FoliageTool::Erase => {
+                let density = ctx.state.editor.terrain.foliage_erase_density.0;
+                author::erase_foliage(ctx.state, hit, radius_m, density, seed)
+            }
+        };
+        self.last_foliage_stamp_center_m = Some(hit.position_m);
+        placed > 0
     }
 }
 
@@ -247,467 +253,5 @@ fn editor_target(target: PlanetTarget) -> TerrainTarget {
     match target {
         PlanetTarget::Planet(_) => TerrainTarget::Planet(target.to_hex()),
         PlanetTarget::Volume(_) => TerrainTarget::Volume(target.to_hex()),
-    }
-}
-
-impl ToolMode for TerrainMode {
-    fn id(&self) -> ToolModeId {
-        ToolModeId::TERRAIN
-    }
-
-    fn label_key(&self) -> &'static str {
-        "LevelEditor.ToolMode.Terrain"
-    }
-
-    fn icon(&self) -> ui::IconName {
-        ui::IconName::Globe
-    }
-
-    fn description_key(&self) -> &'static str {
-        "LevelEditor.ToolMode.TerrainDesc"
-    }
-
-    fn on_mode_entered(&mut self, ctx: &mut ToolModeContext) {
-        self.last_stamp_center_m = None;
-        self.last_foliage_stamp_center_m = None;
-        // Adopt whichever planet the runtime has, so the status bar is honest
-        // before the user's first click.
-        if let Some(api) = ctx.terrain {
-            if let Some(target) = api.default_target() {
-                ctx.state.editor.terrain.set_target(editor_target(target));
-            }
-        }
-    }
-
-    fn on_mode_exited(&mut self, ctx: &mut ToolModeContext) {
-        // Leaving mid-drag must not strand an open stroke: drop both the
-        // domain's stroke marker and the undo anchor together.
-        ctx.state.editor.terrain.end_stroke();
-        ctx.state.editor.terrain_undo.abort_stroke();
-        self.last_stamp_center_m = None;
-        self.last_foliage_stamp_center_m = None;
-        self.clear_cursor(ctx.terrain);
-    }
-
-    fn brush_cursor(&self, _ctx: &ToolModeContext) -> Option<BrushCursor> {
-        self.cursor
-    }
-
-    fn layout(&self) -> ModeLayout {
-        // Sculpt + foliage controls (create-world action, sculpt-mode picker,
-        // radius/strength/falloff, foliage toggle + its own three sliders) are
-        // too many to sit comfortably in the horizontal toolbar strip — they
-        // move to a dedicated left-hand panel instead. The right dock stays:
-        // picking objects and inspecting World Settings while sculpting is a
-        // normal part of the workflow (e.g. selecting the planet object).
-        ModeLayout {
-            show_right_dock: true,
-            show_mode_panel: true,
-        }
-    }
-
-    fn toolbar_controls(&self, _ctx: &ToolModeContext) -> Vec<ToolWidget> {
-        // `layout()` sets `show_mode_panel: true` unconditionally, so the
-        // toolbar never renders this mode's widgets (`ui/toolbar/mod.rs`
-        // skips the call entirely) — all of Terrain's real content lives in
-        // `panel_tabs` instead, organized into Sculpt/Foliage tabs. Empty,
-        // not removed: `ToolMode::toolbar_controls` has no default that
-        // would make omitting the method itself meaningful, and a future
-        // mode auditing "what does every mode put in the toolbar" should see
-        // an explicit, documented empty answer rather than infer one.
-        Vec::new()
-    }
-
-    fn panel_tabs(&self, ctx: &ToolModeContext) -> Vec<PanelTab> {
-        let terrain = &ctx.state.editor.terrain;
-
-        // Shown at the top of both tabs (not tab-specific) so the user can
-        // switch which brush a click fires without hunting for a control
-        // that lives on only one page. See `on_pointer`/`TerrainDomain::
-        // paint_foliage` for what this actually switches.
-        let brush_switch = ToolWidget::Toggle {
-            id: super::dispatcher::PAINT_FOLIAGE_TOGGLE,
-            label_key: "LevelEditor.Terrain.PaintFoliage",
-            on: terrain.paint_foliage,
-        };
-
-        let sculpt = &terrain.sculpt;
-        let selected_mode_str = match sculpt.mode {
-            SculptMode::Raise => "raise",
-            SculptMode::Lower => "lower",
-            SculptMode::Flatten => "flatten",
-            SculptMode::Paint => "paint",
-        };
-        let selected_shape_str = match sculpt.shape {
-            BrushShape::Sphere => "sphere",
-            BrushShape::Box => "box",
-        };
-        let sculpt_tab = PanelTab {
-            id: "sculpt",
-            label_key: "LevelEditor.Terrain.Tab.Sculpt",
-            widgets: vec![
-                brush_switch.clone(),
-                ToolWidget::Divider,
-                ToolWidget::Action {
-                    id: super::dispatcher::CREATE_FLAT_WORLD,
-                    label_key: "LevelEditor.Terrain.CreateFlatWorld",
-                },
-                ToolWidget::Section {
-                    label_key: "LevelEditor.Terrain.Section.Brush",
-                },
-                ToolWidget::Segmented {
-                    id: "sculpt_mode",
-                    options: vec![
-                        ("LevelEditor.Terrain.Raise", "raise"),
-                        ("LevelEditor.Terrain.Lower", "lower"),
-                        ("LevelEditor.Terrain.Flatten", "flatten"),
-                        ("LevelEditor.Terrain.Paint", "paint"),
-                    ],
-                    selected: selected_mode_str,
-                },
-                // Only meaningful for Raise/Lower/Paint -- Flatten always
-                // picks the shape that matches the body being levelled (see
-                // `sculpt.rs`'s `build_stamp`), so this has no effect there.
-                // Shown regardless of mode rather than hidden/disabled: a
-                // widget that vanishes based on another widget's value is a
-                // worse surprise than one that is occasionally a no-op.
-                ToolWidget::Segmented {
-                    id: "brush_shape",
-                    options: vec![
-                        ("LevelEditor.Terrain.Shape.Sphere", "sphere"),
-                        ("LevelEditor.Terrain.Shape.Box", "box"),
-                    ],
-                    selected: selected_shape_str,
-                },
-                ToolWidget::Slider {
-                    id: "radius",
-                    label_key: "LevelEditor.Terrain.Radius",
-                    value: sculpt.radius_m,
-                    min: 1.0,
-                    max: 64.0,
-                    step: 0.5,
-                },
-                ToolWidget::Slider {
-                    id: "strength",
-                    label_key: "LevelEditor.Terrain.Strength",
-                    value: sculpt.strength,
-                    min: 0.1,
-                    max: 10.0,
-                    step: 0.1,
-                },
-                ToolWidget::Slider {
-                    id: "falloff",
-                    label_key: "LevelEditor.Terrain.Falloff",
-                    value: sculpt.falloff,
-                    min: 0.0,
-                    max: 1.0,
-                    step: 0.05,
-                },
-                ToolWidget::Section {
-                    label_key: "LevelEditor.Terrain.Section.Material",
-                },
-                ToolWidget::Slider {
-                    id: "material",
-                    label_key: "LevelEditor.Terrain.Material",
-                    value: sculpt.material as f32,
-                    min: 1.0,
-                    max: 15.0,
-                    step: 1.0,
-                },
-            ],
-        };
-
-        let foliage = &terrain.foliage;
-        let foliage_tab = PanelTab {
-            id: "foliage",
-            label_key: "LevelEditor.Terrain.Tab.Foliage",
-            widgets: vec![
-                brush_switch,
-                ToolWidget::Divider,
-                ToolWidget::Section {
-                    label_key: "LevelEditor.Terrain.Section.General",
-                },
-                ToolWidget::Slider {
-                    id: "foliage_density",
-                    label_key: "LevelEditor.Terrain.FoliageDensity",
-                    value: foliage.density,
-                    min: 0.0,
-                    max: 2048.0,
-                    step: 1.0,
-                },
-                ToolWidget::Section {
-                    label_key: "LevelEditor.Terrain.Section.Placement",
-                },
-                ToolWidget::Slider {
-                    id: "foliage_radius",
-                    label_key: "LevelEditor.Terrain.Radius",
-                    value: foliage.radius_m,
-                    min: 1.0,
-                    max: 64.0,
-                    step: 0.5,
-                },
-                ToolWidget::Slider {
-                    id: "foliage_slope_min",
-                    label_key: "LevelEditor.Terrain.FoliageSlopeMin",
-                    value: foliage.slope_limit.0,
-                    min: 0.0,
-                    max: 90.0,
-                    step: 0.5,
-                },
-                ToolWidget::Slider {
-                    id: "foliage_slope_max",
-                    label_key: "LevelEditor.Terrain.FoliageSlopeMax",
-                    value: foliage.slope_limit.1,
-                    min: 0.0,
-                    max: 90.0,
-                    step: 0.5,
-                },
-                ToolWidget::Slider {
-                    id: "foliage_height_min",
-                    label_key: "LevelEditor.Terrain.FoliageHeightMin",
-                    value: foliage.height_range.0,
-                    min: 0.01,
-                    max: 10.0,
-                    step: 0.01,
-                },
-                ToolWidget::Slider {
-                    id: "foliage_height_max",
-                    label_key: "LevelEditor.Terrain.FoliageHeightMax",
-                    value: foliage.height_range.1,
-                    min: 0.01,
-                    max: 10.0,
-                    step: 0.01,
-                },
-                ToolWidget::Slider {
-                    id: "foliage_width_min",
-                    label_key: "LevelEditor.Terrain.FoliageWidthMin",
-                    value: foliage.width_range.0,
-                    min: 0.001,
-                    max: 5.0,
-                    step: 0.001,
-                },
-                ToolWidget::Slider {
-                    id: "foliage_width_max",
-                    label_key: "LevelEditor.Terrain.FoliageWidthMax",
-                    value: foliage.width_range.1,
-                    min: 0.001,
-                    max: 5.0,
-                    step: 0.001,
-                },
-                ToolWidget::Section {
-                    label_key: "LevelEditor.Terrain.Section.Rendering",
-                },
-                ToolWidget::Toggle {
-                    id: "foliage_two_sided",
-                    label_key: "LevelEditor.Terrain.FoliageTwoSided",
-                    on: foliage.two_sided,
-                },
-                ToolWidget::Toggle {
-                    id: "foliage_casts_shadow",
-                    label_key: "LevelEditor.Terrain.FoliageCastsShadow",
-                    on: foliage.casts_shadow,
-                },
-                ToolWidget::Slider {
-                    id: "foliage_roughness",
-                    label_key: "LevelEditor.Terrain.FoliageRoughness",
-                    value: foliage.roughness,
-                    min: 0.0,
-                    max: 1.0,
-                    step: 0.05,
-                },
-                ToolWidget::Slider {
-                    id: "foliage_metallic",
-                    label_key: "LevelEditor.Terrain.FoliageMetallic",
-                    value: foliage.metallic,
-                    min: 0.0,
-                    max: 1.0,
-                    step: 0.05,
-                },
-                ToolWidget::Slider {
-                    id: "foliage_lod_distance",
-                    label_key: "LevelEditor.Terrain.FoliageLodDistance",
-                    value: foliage.lod_distance,
-                    min: 1.0,
-                    max: 500.0,
-                    step: 1.0,
-                },
-                ToolWidget::Section {
-                    label_key: "LevelEditor.Terrain.Section.Wind",
-                },
-                ToolWidget::Toggle {
-                    id: "foliage_wind_enabled",
-                    label_key: "LevelEditor.Terrain.FoliageWindEnabled",
-                    on: foliage.wind_enabled,
-                },
-                ToolWidget::Slider {
-                    id: "foliage_trunk_sway",
-                    label_key: "LevelEditor.Terrain.FoliageTrunkSway",
-                    value: foliage.trunk_sway,
-                    min: 0.0,
-                    max: 5.0,
-                    step: 0.05,
-                },
-                ToolWidget::Slider {
-                    id: "foliage_branch_flutter",
-                    label_key: "LevelEditor.Terrain.FoliageBranchFlutter",
-                    value: foliage.branch_flutter,
-                    min: 0.0,
-                    max: 5.0,
-                    step: 0.05,
-                },
-                ToolWidget::Slider {
-                    id: "foliage_leaf_jitter",
-                    label_key: "LevelEditor.Terrain.FoliageLeafJitter",
-                    value: foliage.leaf_jitter,
-                    min: 0.0,
-                    max: 5.0,
-                    step: 0.05,
-                },
-                ToolWidget::Slider {
-                    id: "foliage_wind_speed",
-                    label_key: "LevelEditor.Terrain.FoliageWindSpeed",
-                    value: foliage.wind_speed,
-                    min: 0.0,
-                    max: 20.0,
-                    step: 0.1,
-                },
-                ToolWidget::Section {
-                    label_key: "LevelEditor.Terrain.Section.Interaction",
-                },
-                ToolWidget::Slider {
-                    id: "foliage_interactor_radius",
-                    label_key: "LevelEditor.Terrain.FoliageInteractorRadius",
-                    value: foliage.interactor_radius,
-                    min: 0.0,
-                    max: 10.0,
-                    step: 0.1,
-                },
-            ],
-        };
-
-        vec![sculpt_tab, foliage_tab]
-    }
-
-    fn contributes_panels(&self) -> Vec<ModePanelDescriptor> {
-        // Declarative half of the mode's own dock contributions — ids, tabs,
-        // placements. The GPUI half lives in `super::panels`; see that file
-        // and the design doc's §11 for why the two are split.
-        layout::contributed_panels()
-    }
-
-    fn build_panel(
-        &self,
-        state: std::sync::Arc<parking_lot::RwLock<crate::level_editor::state::LevelEditorState>>,
-        panel: &ModePanelDescriptor,
-        window: &mut gpui::Window,
-        cx: &mut gpui::App,
-    ) -> Option<Box<dyn ui::dock::PanelView>> {
-        if panel.id != layout::TERRAIN_PALETTE {
-            return None;
-        }
-        let view = cx.new(|cx| panels::TerrainPalettePanel::new(state.clone(), window, cx));
-        Some(Box::new(view) as Box<dyn ui::dock::PanelView>)
-    }
-
-    fn status(&self, ctx: &ToolModeContext) -> Option<StatusReadout> {
-        let terrain = &ctx.state.editor.terrain;
-        let text = if terrain.paint_foliage {
-            format!(
-                "Foliage | Radius: {:.1}m | Density: {:.0}",
-                terrain.foliage.radius_m, terrain.foliage.density
-            )
-        } else {
-            format!(
-                "Radius: {:.1}m | Strength: {:.1}",
-                terrain.sculpt.radius_m, terrain.sculpt.strength
-            )
-        };
-        // Read from the domain's target rather than from `ctx.terrain`: the
-        // toolbar and status bar build a context without the seam (they only
-        // need widget data), and a seam-derived readout would flicker between
-        // "active" and "no runtime" depending on which caller rendered it.
-        // `on_mode_entered`/`begin_stroke` keep the target current.
-        let tooltip = match &terrain.target {
-            TerrainTarget::Planet(id) => Some(format!("Editing planet {id}")),
-            TerrainTarget::Volume(id) => Some(format!("Editing volume {id}")),
-            TerrainTarget::None => {
-                Some("No terrain target — add a PlanetTerrainComponent to the scene".to_string())
-            }
-        };
-        Some(StatusReadout { text, tooltip })
-    }
-
-    fn on_pointer(
-        &mut self,
-        event: &ToolPointerEvent,
-        ctx: &mut ToolModeContext,
-    ) -> ToolPointerResult {
-        let Some(api) = ctx.terrain else {
-            return ToolPointerResult::PassThrough;
-        };
-
-        match event.kind {
-            PointerKind::Hover => {
-                // Cursor feedback only; the renderer still wants this event.
-                match self.hit_at(api, ctx, event) {
-                    Some(hit) => self.update_cursor(api, ctx, &hit),
-                    None => self.clear_cursor(Some(api)),
-                }
-                ToolPointerResult::PassThrough
-            }
-
-            PointerKind::Down => {
-                if event.button != Some(gpui::MouseButton::Left) {
-                    return ToolPointerResult::PassThrough;
-                }
-                let Some(hit) = self.hit_at(api, ctx, event) else {
-                    // Nothing under the brush: let the click select objects.
-                    self.clear_cursor(Some(api));
-                    return ToolPointerResult::PassThrough;
-                };
-                self.update_cursor(api, ctx, &hit);
-                if ctx.state.editor.terrain.paint_foliage {
-                    self.begin_foliage_stroke(ctx, &hit);
-                    self.stamp_foliage(ctx, &hit);
-                } else {
-                    self.begin_stroke(api, ctx, &hit);
-                    self.stamp(api, ctx, &hit);
-                }
-                ToolPointerResult::Consumed
-            }
-
-            PointerKind::Drag => {
-                if ctx.state.editor.terrain.active_stroke.is_none() {
-                    return ToolPointerResult::PassThrough;
-                }
-                let Some(hit) = self.hit_at(api, ctx, event) else {
-                    // Dragged off the planet: hold the stroke open (the user
-                    // may drag back on) but stop drawing a ring nowhere.
-                    self.clear_cursor(Some(api));
-                    return ToolPointerResult::Consumed;
-                };
-                self.update_cursor(api, ctx, &hit);
-                if ctx.state.editor.terrain.paint_foliage {
-                    self.stamp_foliage(ctx, &hit);
-                } else {
-                    self.stamp(api, ctx, &hit);
-                }
-                ToolPointerResult::Consumed
-            }
-
-            PointerKind::Up => {
-                if ctx.state.editor.terrain.active_stroke.is_none() {
-                    return ToolPointerResult::PassThrough;
-                }
-                self.end_stroke(ctx);
-                ToolPointerResult::Consumed
-            }
-
-            PointerKind::Scroll { .. } => ToolPointerResult::PassThrough,
-        }
-    }
-
-    fn clone_box(&self) -> Box<dyn ToolMode> {
-        Box::new(self.clone())
     }
 }

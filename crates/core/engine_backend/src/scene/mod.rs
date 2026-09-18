@@ -62,6 +62,19 @@ pub mod editor_rows;
 pub use component_db::ComponentDb;
 #[cfg(feature = "render")]
 pub use helio_bridge::{ensure_gpu_mirror, sync_static_mesh_rows};
+
+/// Hook a `World` up to the SceneDB Inspector (CPU + GPU live view). Inert
+/// unless this process was launched by `scenedb_inspector`; safe to call for
+/// every replacement world (undo/redo, level load).
+#[cfg(feature = "render")]
+pub fn install_scenedb_inspector(world: &mut pulsar_scenedb::World) -> bool {
+    scenedb_inspector_agent::install_world(world)
+}
+
+#[cfg(not(feature = "render"))]
+pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
+    false
+}
 pub use light_frame::{LightFrameMaintainer, ResolvedLightFrame};
 pub use mesh_frame::{MeshFrameMaintainer, ResolvedMeshFrame};
 pub use metadata::{ComponentInstance, EditorObjectId};

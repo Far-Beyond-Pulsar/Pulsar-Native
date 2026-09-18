@@ -152,6 +152,11 @@ pub struct EditorDomain {
     /// `SceneDomain`'s undo stack on purpose -- that one snapshots the scene
     /// database, which does not contain voxels at all (design doc §5.5).
     pub terrain_undo: super::terrain_undo::TerrainUndoDomain,
+    /// Handle to the renderer's terrain seam, stored by `TerrainMode::
+    /// on_mode_entered` so mode-owned panels (which only receive the shared
+    /// state) can list and create terrain bodies. `None` until Terrain mode
+    /// has been entered with a live renderer.
+    pub terrain_api: Option<engine_backend::services::terrain_edit::TerrainEditApi>,
     /// State for the Milestone 5 extensibility-demo `SplineMode`. Lives here
     /// (rather than as a field on `SplineMode` itself) because the toolbar
     /// and status bar both need to read it without going through the mode
@@ -183,6 +188,7 @@ impl Default for EditorDomain {
             tool_mode_registry,
             terrain: super::terrain::TerrainDomain::default(),
             terrain_undo: super::terrain_undo::TerrainUndoDomain::default(),
+            terrain_api: None,
             spline: super::spline::SplineDomain::default(),
         }
     }

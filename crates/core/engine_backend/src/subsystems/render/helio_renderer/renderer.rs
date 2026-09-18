@@ -525,7 +525,12 @@ impl HelioRenderer {
         // without touching the camera or the scene database, so it has to
         // defeat the idle early-out itself -- otherwise a sculpt stroke made
         // while the camera is parked would not appear until the user moved.
-        let has_pending_terrain = self.terrain.wants_advance();
+        // Also true while a body is still streaming in: that work only progresses
+        // on rendered frames, so a parked camera must not idle it to a halt.
+        let terrain_streaming = inner.planet_terrain.as_ref().is_some_and(|runtime| {
+            runtime.renderer_ready(&inner.renderer) && runtime.has_pending_work(&inner.renderer)
+        });
+        let has_pending_terrain = self.terrain.wants_advance() || terrain_streaming;
         let is_idle = camera_stopped
             && !has_pending_scene
             && !has_pending_editor
@@ -578,6 +583,8 @@ impl HelioRenderer {
         // ── Early out when idle ─────────────────────────────────────────────────
         // No GPU work, no gizmo rebuild, no planet terrain tick, no profiler reads.
         if is_idle {
+            // Idle frames must still serve inspector requests.
+            self.scene_store.read().world().publish_inspector_snapshot();
             if let Ok(mut m) = self.metrics.lock() {
                 m.fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
                 m.frame_time_ms = dt * 1000.0;
@@ -602,6 +609,10 @@ impl HelioRenderer {
             sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
             inner.last_scene_revision = scene_revision;
         }
+
+        // SceneDB Inspector bridge: throttled inside SceneDB, and a no-op unless
+        // an inspector launched this process. After the GPU flush above.
+        self.scene_store.read().world().publish_inspector_snapshot();
 
         // ── Camera / planet / gizmo / render ────────────────────────────────────
         let t_prepare = Instant::now();
@@ -630,7 +641,7 @@ impl HelioRenderer {
                 && inner.planet_terrain.as_ref().is_some_and(|runtime| {
                     runtime.has_active_components() && runtime.renderer_ready(&inner.renderer)
                 })
-                && (!camera_stopped || viewport_resized || terrain_dirty);
+                && (!camera_stopped || viewport_resized || terrain_dirty || terrain_streaming);
             if should_advance_planet {
                 let graph_rebuilt = std::mem::take(&mut inner.planet_graph_rebuilt);
                 let planet_terrain = inner
@@ -1129,7 +1140,11 @@ impl HelioRenderer {
             queue: &inner.queue,
             config: inner.renderer.renderer_config(),
             debug_state: inner.renderer.debug_state(),
-            camera_buffer: inner.renderer.debug_camera_buf(),
+            // The *scene* camera buffer. This used to pass `debug_camera_buf()`
+            // (64-byte UNIFORM-only), so the first planet/volume created in
+            // the editor rebuilt the graph with a buffer `ShadowMatrixPass`
+            // binds as storage -> wgpu validation panic on the render thread.
+            camera_buffer: inner.renderer.camera_buf(),
             cull_stats_buffer: inner.renderer.cull_stats_buf(),
             owns_device: false,
             scene_db: inner.renderer.scene_db(),

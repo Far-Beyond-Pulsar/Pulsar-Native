@@ -1,44 +1,23 @@
-//! Shared rendering for a [`ToolMode`](crate::level_editor::tool_modes::ToolMode)'s
-//! declarative [`ToolWidget`] list.
-//!
-//! One rendering function, two call sites: the horizontal toolbar strip
-//! (`ui/toolbar/tool_mode_controls.rs`, used when [`ModeLayout::show_mode_panel`]
-//! is `false`) and the vertical left-hand mode-tools dock panel
-//! (`workspace/panels/mode_tools.rs`, used when it's `true`). Both read the
-//! *same* `toolbar_controls()` data — only the container's flex axis and the
-//! divider element differ — so a mode's widgets can never drift between the
-//! two layouts, and there is exactly one place that knows how to turn a
-//! `ToolWidget` into GPUI elements.
-//!
-//! [`ModeLayout::show_mode_panel`]: crate::level_editor::tool_modes::ModeLayout::show_mode_panel
+//! Rendering for a [`ToolMode`](crate::level_editor::tool_modes::ToolMode)'s
+//! declarative [`ToolWidget`] list in the horizontal toolbar strip
+//! (`ui/toolbar/mod.rs`).
 
 use gpui::*;
 use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme, Disableable, IconName, Sizable,
+    h_flex, ActiveTheme, Disableable, IconName, Sizable,
 };
 
 use crate::level_editor::state::LevelEditorState;
 use crate::level_editor::tool_modes::dispatcher::{ToolModeDispatcher, ToolWidgetEdit};
 use crate::level_editor::tool_modes::{
-    CameraFrame, PanelTab, ToolModeContext, ToolWidget, ViewportFrame,
+    CameraFrame, ToolModeContext, ToolWidget, ViewportFrame,
 };
 
-/// Which strip a mode's widgets are being rendered into. Only affects layout
-/// (flex axis, divider orientation, alignment) — the widget-to-element
-/// mapping itself is identical either way.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum WidgetLayout {
-    /// The horizontal toolbar strip: compact, single row.
-    Toolbar,
-    /// A vertical left-hand dock panel: one widget per row, full width.
-    Panel,
-}
-
 /// The active tool mode's `toolbar_controls()`, or `None` if it returned
-/// nothing (both call sites treat that as "render nothing").
+/// nothing (the toolbar treats that as "render nothing").
 pub fn active_mode_widgets(
     state: &LevelEditorState,
     gpu_engine: &Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
@@ -49,7 +28,7 @@ pub fn active_mode_widgets(
         gpu_engine,
         // Widget data comes from editor state alone; no mode's
         // `toolbar_controls`/`status` impl reads `ctx.terrain` today (only
-        // `on_pointer` does), so the toolbar/panel never need a live seam.
+        // `on_pointer` does), so the toolbar never needs a live seam.
         terrain: None,
         camera: CameraFrame::default(),
         viewport: ViewportFrame::default(),
@@ -61,32 +40,12 @@ pub fn active_mode_widgets(
         .toolbar_controls(&ctx)
 }
 
-/// The active tool mode's `panel_tabs()` — the left-hand mode-tools panel's
-/// content. See [`active_mode_widgets`] for the toolbar-strip equivalent;
-/// both build the same kind of throwaway [`ToolModeContext`] since neither
-/// `toolbar_controls`/`status`/`panel_tabs` reads `ctx.terrain`.
-pub fn active_mode_tabs(
-    state: &LevelEditorState,
-    gpu_engine: &Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
-) -> Vec<PanelTab> {
-    let mut state_clone = state.clone();
-    let ctx = ToolModeContext {
-        state: &mut state_clone,
-        gpu_engine,
-        terrain: None,
-        camera: CameraFrame::default(),
-        viewport: ViewportFrame::default(),
-    };
-    state.editor.tool_mode_registry.selected().panel_tabs(&ctx)
-}
-
-/// Render one mode's widget list as either a toolbar strip or a panel column.
+/// Render one mode's widget list as a toolbar strip.
 ///
 /// Returns an empty, zero-size element when `controls` is empty so callers
 /// can render this unconditionally without their own emptiness check.
 pub fn render_mode_widgets<V>(
     controls: Vec<ToolWidget>,
-    layout: WidgetLayout,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
     cx: &mut Context<V>,
@@ -99,10 +58,7 @@ where
     }
 
     let theme = cx.theme();
-    let mut container = match layout {
-        WidgetLayout::Toolbar => h_flex().gap_2().items_center(),
-        WidgetLayout::Panel => v_flex().gap_3().items_start().w_full(),
-    };
+    let mut container = h_flex().gap_2().items_center();
 
     for widget in controls {
         match widget {
@@ -117,9 +73,6 @@ where
                     .bg(theme.muted.opacity(0.1))
                     .p(px(2.0))
                     .gap_1();
-                if layout == WidgetLayout::Panel {
-                    seg_group = seg_group.w_full().justify_center();
-                }
 
                 for (opt_label_key, opt_value) in options {
                     let is_sel = opt_value == selected;
@@ -158,9 +111,6 @@ where
                 let inc_val = (value + step).clamp(min, max);
 
                 let mut slider_widget = h_flex().gap_1().items_center();
-                if layout == WidgetLayout::Panel {
-                    slider_widget = slider_widget.w_full().justify_between();
-                }
 
                 slider_widget = slider_widget
                     .child(
@@ -229,9 +179,6 @@ where
                             &ToolWidgetEdit::SetToggle { id, on: !on },
                         );
                     });
-                if layout == WidgetLayout::Panel {
-                    btn = btn.w_full();
-                }
 
                 let btn = if on { btn.primary() } else { btn.ghost() };
                 container = container.child(btn);
@@ -259,27 +206,10 @@ where
                             &ToolWidgetEdit::Invoke { id },
                         );
                     });
-                if layout == WidgetLayout::Panel {
-                    btn = btn.w_full();
-                }
                 container = container.child(btn);
             }
             ToolWidget::Divider => {
-                container = container.child(match layout {
-                    WidgetLayout::Toolbar => div().h_5().w_px().bg(theme.border.opacity(0.4)),
-                    WidgetLayout::Panel => div().w_full().h_px().bg(theme.border.opacity(0.4)),
-                });
-            }
-            ToolWidget::Section { label_key } => {
-                container = container.child(
-                    div()
-                        .w_full()
-                        .pt_2()
-                        .text_xs()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(theme.muted_foreground)
-                        .child(t!(label_key).to_string().to_uppercase()),
-                );
+                container = container.child(div().h_5().w_px().bg(theme.border.opacity(0.4)));
             }
         }
     }

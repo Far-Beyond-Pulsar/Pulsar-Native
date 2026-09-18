@@ -4,6 +4,10 @@
 
 project := "pulsar_engine"
 
+# Windows has no `sh`; every recipe here is a plain command line, so PowerShell
+# runs them unchanged and no recipe needs a platform-specific variant.
+set windows-shell := ["pwsh.exe", "-NoLogo", "-NoProfile", "-Command"]
+
 # ── Build ────────────────────────────────────────────────────────────────────
 
 # Build the engine (default)
@@ -79,7 +83,7 @@ vendor-pull path:
 
 # Show all workspace members
 members:
-    cargo metadata --format-version 1 --no-deps | python3 -c "import json,sys; ms=json.load(sys.stdin)['packages']; [print(m['name'],m['manifest_path']) for m in ms]"
+    cargo tree --workspace --depth 0
 
 # Show the crate tree for the engine
 tree:
@@ -89,3 +93,13 @@ tree:
 
 clean:
     cargo clean
+
+# ── SceneDB inspector ────────────────────────────────────────────────────────
+
+# Checkout of https://github.com/Far-Beyond-Pulsar/SceneDB (override with SCENEDB_DIR)
+scenedb_dir := env_var_or_default("SCENEDB_DIR", "../SceneDB")
+exe := if os() == "windows" { ".exe" } else { "" }
+
+# Build the engine, then launch it under the SceneDB inspector (live CPU + GPU view)
+inspect: build
+    cargo run --release --manifest-path {{scenedb_dir}}/crates/scenedb_inspector/Cargo.toml -- target/debug/{{project}}{{exe}}

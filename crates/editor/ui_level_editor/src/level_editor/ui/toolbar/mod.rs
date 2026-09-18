@@ -12,9 +12,7 @@ use ui::{
 };
 
 mod actions;
-mod build_core;
-mod build_dropdowns;
-mod cargo_progress;
+mod build;
 mod feature_toggles;
 mod mode_indicator;
 mod multiplayer_dropdown;
@@ -24,8 +22,8 @@ mod tool_mode_dropdown;
 mod view;
 
 pub use actions::*;
-use build_core::BuildCoreButton;
-use build_dropdowns::BuildDropdowns;
+use build::build_core::BuildCoreButton;
+use build::build_dropdowns::BuildDropdowns;
 use feature_toggles::FeatureToggles;
 use mode_indicator::ModeIndicator;
 use multiplayer_dropdown::MultiplayerDropdown;
@@ -34,7 +32,7 @@ use time_scale_dropdown::TimeScaleDropdown;
 use tool_mode_dropdown::ToolModeDropdown;
 pub use view::ToolbarView;
 
-use crate::level_editor::ui::mode_widgets::{active_mode_widgets, render_mode_widgets, WidgetLayout};
+use crate::level_editor::ui::mode_widgets::{active_mode_widgets, render_mode_widgets};
 use crate::level_editor::{request_thumbnail_capture, LevelEditorState};
 
 /// Premium Toolbar - A beautifully crafted control panel for game development
@@ -73,15 +71,7 @@ impl ToolbarPanel {
     {
         let theme = cx.theme();
 
-        // A mode that asked for its own left-hand panel (`ModeLayout::show_mode_panel`)
-        // renders its widgets there instead — never in both places at once.
-        // See `ui/mode_widgets.rs` and `workspace/panels/mode_tools.rs`.
-        let mode_wants_panel = state.editor.tool_mode_registry.selected().layout().show_mode_panel;
-        let mode_controls = if mode_wants_panel {
-            Vec::new()
-        } else {
-            active_mode_widgets(state, &gpu_engine)
-        };
+        let mode_controls = active_mode_widgets(state, &gpu_engine);
         let has_mode_controls = !mode_controls.is_empty();
 
         h_flex()
@@ -99,7 +89,6 @@ impl ToolbarPanel {
             .when(has_mode_controls, |el| {
                 el.child(render_mode_widgets(
                     mode_controls,
-                    WidgetLayout::Toolbar,
                     state_arc.clone(),
                     gpu_engine.clone(),
                     cx,

@@ -1,7 +1,7 @@
 //! World Settings dock panel.
 
 use crate::level_editor::state::LevelEditorState;
-use crate::level_editor::ui::WorldSettingsReplicated;
+use crate::level_editor::ui::WorldSettingsPanelImpl;
 use gpui::*;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use ui::{
 
 /// World Settings Panel (replaced Scene Browser)
 pub struct WorldSettingsPanel {
-    pub(crate) world_settings: WorldSettingsReplicated,
+    pub(crate) world_settings: WorldSettingsPanelImpl,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
     /// Tracks which sections are collapsed (by section name)
@@ -34,7 +34,7 @@ impl WorldSettingsPanel {
         collapsed_sections.insert("Audio".to_string());
 
         Self {
-            world_settings: WorldSettingsReplicated::new(window, cx),
+            world_settings: WorldSettingsPanelImpl::new(window, cx),
             state,
             focus_handle: cx.focus_handle(),
             collapsed_sections,

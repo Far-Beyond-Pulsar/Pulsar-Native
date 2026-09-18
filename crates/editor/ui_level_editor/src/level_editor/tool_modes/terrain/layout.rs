@@ -8,17 +8,27 @@
 
 use super::super::{ModePanelDescriptor, ModePanelPlacement};
 
-/// Stable panel id for Terrain's brush palette dock panel. `TerrainMode::
-/// build_panel` matches on this to construct the view; the shell uses it to
-/// track the panel across mode switches.
-pub const TERRAIN_PALETTE: &str = "terrain.palette";
+/// Stable panel id for the Terrain panel (Manage / Sculpt / Paint tabs).
+pub const TERRAIN_PANEL: &str = "terrain.panel";
+
+/// Stable panel id for the foliage sets panel.
+pub const TERRAIN_FOLIAGE: &str = "terrain.foliage";
 
 /// Dock panels Terrain adds to the level editor while this mode is active.
+/// Both dock on the left, sharing one native tab strip.
 pub fn contributed_panels() -> Vec<ModePanelDescriptor> {
-    vec![ModePanelDescriptor {
-        id: TERRAIN_PALETTE,
-        title_key: "LevelEditor.TerrainPalette.Title",
-        icon: Some(ui::IconName::Globe),
-        placement: ModePanelPlacement::Left,
-    }]
+    vec![
+        ModePanelDescriptor {
+            id: TERRAIN_PANEL,
+            title_key: "LevelEditor.TerrainPanel.Title",
+            icon: Some(ui::IconName::Globe),
+            placement: ModePanelPlacement::Left,
+        },
+        ModePanelDescriptor {
+            id: TERRAIN_FOLIAGE,
+            title_key: "LevelEditor.FoliagePanel.Title",
+            icon: None,
+            placement: ModePanelPlacement::Left,
+        },
+    ]
 }
