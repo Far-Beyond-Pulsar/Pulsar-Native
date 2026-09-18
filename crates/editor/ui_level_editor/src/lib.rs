@@ -13,11 +13,9 @@ use pulsar_physics as _;
 
 use gpui::AppContext;
 
-pub mod ai_sessions;
-pub mod ai_tools;
 mod level_editor;
-
-// Re-export main types
+pub use level_editor::ai::sessions as ai_sessions;
+pub use level_editor::ai::tools as ai_tools;
 pub use level_editor::{LevelEditorPanel, LevelEditorState, SceneDatabase, SceneObjectData};
 
 /// Get current locale

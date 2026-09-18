@@ -1,6 +1,6 @@
 # Adding a Level Editor Tool Mode
 
-Status: current as of Milestone 5 (issue #714, part of epic #709).
+Status: current as of Milestone 7 (issue #714, part of epic #709).
 
 This is the practical walkthrough the design doc's §9 open question ("Registration
 surface for future external modes") promised: how to add a 6th (7th, …) `ToolMode`
@@ -17,7 +17,11 @@ implementations:
 - `tool_modes/level_edit.rs` — `LevelEditMode`, the simplest possible mode (every
   method either does nothing or returns a default).
 - `tool_modes/terrain/mod.rs` — `TerrainMode`, the complex end of the spectrum
-  (brush strokes, the `TerrainEditApi` seam, undo coalescing).
+  (brush strokes, the `TerrainEditApi` seam, undo coalescing). Its *dock
+  contribution* lives in two sibling files that keep their own concerns out of
+  the controller: `tool_modes/terrain/layout.rs` (the declarative manifest —
+  panel ids + placements) and `tool_modes/terrain/panels.rs` (the actual GPUI
+  views, §7 below).
 - `tool_modes/spline.rs` — `SplineMode` (Milestone 5), a minimal-but-real mode
   in between: real per-frame state, no renderer seam.
 
@@ -31,8 +35,11 @@ signatures):
 | `clone_box` | Yes | `Box::new(self.clone())` (or `Box::new(*self)` for a `Copy` mode) — needed because `ToolModeRegistry` is `Clone` and the modes are trait objects. |
 | `on_mode_entered` / `on_mode_exited` | Has a default (no-op) | Override to reset transient state or close an in-progress gesture when switching away. |
 | `toolbar_controls` | Has a default (empty) | Declarative widgets (`ToolWidget::{Slider,Segmented,Toggle,Action,Divider}`) the toolbar renders while this mode is active. |
+| `layout` | Has a default (right dock on, no mode panel) | `ModeLayout{ show_right_dock, show_mode_panel }` — hide the right dock or claim the left-hand tools panel (§10 of the design doc). |
+| `panel_tabs` | Has a default (one unnamed tab) | Pages of the mode's left-hand panel when `show_mode_panel: true`. |
+| `contributes_panels` / `build_panel` | Has a default (none) | Opt into *real* GPUI dock panels of your own (§7 below / design doc §11). |
 | `status` | Has a default (`None`) | One-line status bar readout + tooltip. |
-| `brush_cursor` | Has a default (`None`) | **Currently dead code** — see the note at the end of this doc before you rely on it. |
+| `brush_cursor` | Has a default (`None`) | **Currently dead code** — well, see the note at the end of this doc before you rely on it. (§6.) |
 
 ## 2. Decide where the mode's state lives
 
@@ -147,12 +154,79 @@ real, necessary exception to "only touch your own files," and the actual
 generic fix (routing unhandled widget ids through the active mode itself)
 is left for whoever needs it next.
 
-## 6. `brush_cursor` is currently unused
+## 7. Want your own GPUI dock panel? (Milestone 7)
+
+`toolbar_controls`/`panel_tabs` describe widgets the shell renders. If you
+need a panel that is *not* a flat widget list — real layout, headers, gaps,
+interactive background — opt into `contributes_panels` + `build_panel` (the
+§11 contract in the design doc; the one deliberate place a mode builds GPUI).
+Terrain's brush palette is the worked example, split across two files so the
+controller stays clean:
+
+- **`tool_modes/terrain/layout.rs`** — the manifest. Define a stable panel id
+  and a `contributed_panels()` that returns `Vec<ModePanelDescriptor>`
+  (`{ id, title_key, icon, placement: ModePanelPlacement::Left }`). The shell
+  reads this to reconcile the docks; it never calls the GPUI half just to
+  know *what* exists.
+- **`tool_modes/terrain/panels.rs`** — the view. A `ui::dock::Panel` built
+  like every other editor panel: `panel_boilerplate!` (gives `Focusable` +
+  `EventEmitter<ui_common::panel::PanelEvent>`), an explicit
+  `impl EventEmitter<ui::dock::PanelEvent>`, a localized `title()`, and a
+  frame pump started from `render` (`start_pump` + `spawn_frame_pump`
+  diffing a small `Clone + PartialEq` signature copied out of the domain,
+  `cx.notify()` only on change). It writes through the clamped domain
+  setters (`state.editor.terrain.set_brush_radius(..)`, …) straight from
+  `on_click`, bypassing `ToolModeDispatcher` entirely — the §3 staleness
+  gotcha does not apply because the panel frame-pumps the very state it
+  reads.
+
+Wire it up in the mode file with two small methods:
+
+```rust
+fn contributes_panels(&self) -> Vec<ModePanelDescriptor> {
+    layout::contributed_panels()
+}
+
+fn build_panel(
+    &self,
+    state: Arc<parking_lot::RwLock<LevelEditorState>>,
+    panel: &ModePanelDescriptor,
+    window: &mut gpui::Window,
+    cx: &mut gpui::App,
+) -> Option<Box<dyn ui::dock::PanelView>> {
+    if panel.id != layout::TERRAIN_PALETTE {
+        return None;
+    }
+    // `cx.new` is an `AppContext` trait method; `use gpui::AppContext;` is needed.
+    let view = cx.new(|cx| panels::TerrainPalettePanel::new(state.clone(), window, cx));
+    Some(Box::new(view))
+}
+```
+
+Notes:
+
+- `build_panel` receives the **full** `LevelEditorState` Arc, not a thin
+  `ToolModeContext` — the panel can read/write any domain and frame-pump it,
+  exactly like `HierarchyPanelWrapper`/`PropertiesPanelWrapper`. Do **not**
+  mutate domain state from inside the mode's `toolbar_controls`/`status` and
+  expect a panel to notice; the panel's own frame pump watches the state
+  itself.
+- `Left` contributions share the native tab strip with the `ModeToolsPanel`
+  pages; `Right` contributions join the Properties/World Settings bottom tab
+  group (surfaced first). Right-dock contributions make `sync_mode_layout`
+  rebuild the right dock — the only cost is rebuilding the cached
+  `PropertiesPanelWrapper` sections, and only on the switch in/out.
+- Keep `build_panel` construction-only. Per-frame work belongs in the panel's
+  frame pump, not here.
+- Add your panel's title/label keys to `locales/en.yml` (Terrain's palette
+  uses `LevelEditor.TerrainPalette.Title` / `LevelEditor.TerrainPalette.NoTarget`).
+
+## 8. `brush_cursor` is currently unused
 
 `ToolMode::brush_cursor()` is never called anywhere in the shell — the
 in-viewport brush ring is instead drawn by `TerrainMode` pushing directly to
 the renderer's mailbox (`TerrainEditApi::set_brush_cursor`), bypassing the
 trait method entirely. Overriding `brush_cursor` costs nothing and may be
-useful as a hook for a future generic renderer, but as of Milestone 5 it has
+useful as a hook for a future generic renderer, but as of Milestone 7 it has
 no effect on what's drawn — don't rely on it for actual on-screen feedback
 without first wiring a caller for it.

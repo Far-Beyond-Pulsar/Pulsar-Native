@@ -1,6 +1,6 @@
 # Level Editor — Tool Modes, Voxel Terrain & Foliage (Design)
 
-Status: IMPLEMENTED (Milestones 1-6 done, tracked by epic #709). The
+Status: IMPLEMENTED (Milestones 1-7 done, tracked by epic #709). The
 extensibility contract this doc describes (§4.2) is proven out by Milestone 5
 (issue #714); see [`adding-a-tool-mode.md`](./adding-a-tool-mode.md) for the
 practical "how to add a mode" walkthrough, including two real gaps this doc's
@@ -8,7 +8,10 @@ original sketch didn't anticipate (§9 below, and the `ToolModeDispatcher`
 limitation documented in that file's §5). Milestone 6 (§10) extends the
 extensibility contract from toolbar widgets to whole dock panels: a mode can
 now hide the right dock or claim a left-hand tools panel of its own instead of
-crowding every control into the horizontal toolbar strip.
+crowding every control into the horizontal toolbar strip. Milestone 7 (§11)
+extends it one level further — from *declared* panels the shell renders to
+*real GPUI panels a mode builds itself*, with the mode receiving the full
+shared editor state.
 Scope: `crates/editor/ui_level_editor` (+ seams into `engine_backend`, `pulsar_terrain`,
 `helio-component` foliage stack, and a new flat voxel terrain runtime).
 
@@ -69,9 +72,14 @@ Scope: `crates/editor/ui_level_editor` (+ seams into `engine_backend`, `pulsar_t
 
 ### 4.1 The `ToolMode` trait (the registry contract)
 
-Modes are **data-in/data-out strategies**. They never build GPUI elements directly and never
-hold `Context<V>`; the GPUI shell owns rendering. This keeps the trait object-safe and lets
-future modes (including plugin modes) stay UI-agnostic.
+Modes are **data-in/data-out strategies**. None of the *core* trait methods
+(`identity`, `layout()`, `toolbar_controls()`, `panel_tabs()`, `on_pointer`)
+ever build GPUI elements directly or hold `Context<V>`; the GPUI shell owns
+rendering. This keeps the core contract object-safe and lets future modes
+(including plugin modes) stay UI-agnostic. The one deliberate exception is
+`build_panel` (§11): a mode that opts into real dock panels builds arbitrary
+`ui::dock::PanelView`s there and receives the shared editor state — full GPUI
+behind an opt-in method, so `LevelEditMode`/`SplineMode` never touch it.
 
 ```rust
 // level_editor/tool_modes/mod.rs
@@ -445,6 +453,14 @@ pulsar_terrain/src/…               TerrainShape axis + EditShape::Box (flat-vo
    `ModeToolsPanel`, decluttering the toolbar of its now-considerable sculpt+foliage
    control count. `LevelEditorPanel::sync_mode_layout` reconciles the dock area on mode
    switch, mirroring `sync_game_tab`'s guarded-signature shape. See §10.
+7. **Mode-owned GPUI dock panels** — ✅ **Done.** The bundled Milestone 7 hardening of
+   the mode-panel system: `ModePanelDescriptor`/`ModePanelPlacement` plus the
+   `contributes_panels()`/`build_panel()` trait pair let a mode build *real* dock
+   panels (full GPUI + the shared state Arc), the deliberate exception to §4.1.
+   Terrain's brush palette (`tool_modes/terrain/{layout,panels}.rs`) is the worked
+   example; `sync_mode_layout` folds left contributions into the mode-tools tab strip
+   and right contributions into the Properties/World tab group (rebuilt only when the
+   contributed set changes, §11.3). See §11.
 
 ## 10. Mode-defined panels & layout (Milestone 6)
 
@@ -508,14 +524,19 @@ several-times-a-second render loop doesn't touch the dock area for nothing.
 `sync_mode_layout` follows the identical pattern, guarded on the active `ToolModeId`:
 
 - Right dock: `dock_area.toggle_dock(DockPlacement::Right, ..)` when its current
-  open/closed state disagrees with `layout.show_right_dock`.
-- Left "mode tools" dock: created lazily via `set_left_dock` the first time any mode
-  asks for one, and thereafter only **toggled** open/closed to match
-  `layout.show_mode_panel` — never torn down and recreated. `set_left_dock`/
-  `set_right_dock` construct a brand new `Dock` entity from scratch; doing that on every
-  mode switch would needlessly discard `PropertiesPanelWrapper`'s cached section
-  entities on an unrelated dock and rebuild `ModeToolsPanel` for no reason `toggle_dock`
-  doesn't already avoid.
+  open/closed state disagrees with `layout.show_right_dock`. (§11) additionally
+  rebuilds the right dock *only* when the set of mode-contributed right panels
+  changes — tracked in `LevelEditorPanel::mode_right_panels` — so the common
+  case (no contributions) leaves the Properties/World Settings tab group and
+  its cached section entities untouched.
+- Left "mode tools" dock: rebuilt wholesale on a mode switch via `set_left_dock`,
+  with each `PanelTab` the active mode returns becoming its own real dock panel
+  (`ModeToolsPanel`) in one native tab strip — and any panel the mode
+  contributes to the left dock (§11) joining that same strip. That is a full
+  `set_left_dock` every time a mode with `show_mode_panel: true` becomes
+  active, which is fine precisely because it only runs on a mode switch (the
+  expensive rebuild `PropertiesPanelWrapper`'s caching exists to avoid does not
+  apply to a fresh, throwaway hot-swap panel).
 
 ### 10.5 File layout (target, extends §7)
 
@@ -535,3 +556,113 @@ workspace/
     mode_tools.rs                  ← NEW: ModeToolsPanel (Panel layout)
 ui/panel.rs                        + sync_mode_layout, mode_tools_panel/applied_mode_layout fields
 ```
+
+## 11. Mode-owned GPUI dock panels (Milestone 7)
+
+**Problem this addendum solves**: §10 gave a mode a *declared* panel whose
+content is still restricted to `toolbar_controls()`-shaped widgets
+(`ToolWidget`). That covers sliders, segmented pickers, toggles — but not a
+real palette UI with its own layout, gaps, and headers. The line between "a
+mode is UI-agnostic data" (§4.1) and "the shell owns all rendering" breaks
+the moment a mode wants a panel that is not a flat widget list. §11 draws
+the line again, one step further out: **a mode may build real GPUI dock
+panels, as an explicit opt-in, receiving the shared editor state.**
+
+### 11.1 The extension point
+
+Two trait methods, both defaulted to inert (`tool_modes/mod.rs`):
+
+```rust
+pub enum ModePanelPlacement { Left, Right }
+
+pub struct ModePanelDescriptor {
+    pub id: &'static str,        // stable identity; build_panel matches on it
+    pub title_key: &'static str, // i18n key for the dock tab title
+    pub icon: Option<ui::IconName>,
+    pub placement: ModePanelPlacement,
+}
+
+fn contributes_panels(&self) -> Vec<ModePanelDescriptor> { Vec::new() }
+
+fn build_panel(
+    &self,
+    state: Arc<parking_lot::RwLock<LevelEditorState>>, // full editor state, same Arc
+                                                        // every other panel holds
+    panel: &ModePanelDescriptor,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<Box<dyn ui::dock::PanelView>> { None }
+```
+
+- `contributes_panels` is the *declarative half*: what panels exist and where
+  they dock. `build_panel` is the *constructive half*: the actual GPUI view.
+  Keeping the two apart means the shell can reconcile the dock area from pure
+  descriptors (a `Vec` of `&str` ids + placements) without touching gpui, and
+  only calls `build_panel` for the active mode, on mode switch.
+- `build_panel` is the deliberate §4.1 exception: it is the one place a mode
+  builds GPUI. It gets the entire `LevelEditorState` (not a thin context) so
+  the panel can frame-pump the same `Arc<RwLock<...>>` every other editor
+  panel does and stay honest about arbitrary state writes. Modes that never
+  override it (`LevelEditMode`, `SplineMode`, and any plugin mode that wants
+  to stay pure) inherit no gpui dependency — the exception is opt-in.
+- Because `ui::IconName` is `Clone + Debug` but *not* `PartialEq`, the
+  descriptor deliberately keeps the icon out of any signature struct the
+  shell compares; `Option<IconName>` lives on the descriptor only.
+
+### 11.2 Two files per panel-having mode
+
+The worked example `TerrainMode` is a real mode (688-line `tool_modes/terrain/mod.rs`
+at Milestone 6), so it keeps its own concerns out of the mode file entirely:
+
+```
+tool_modes/terrain/
+  mod.rs        controller: on_pointer, layout(), panel_tabs(), status() — no GPUI
+  layout.rs     NEW: published manifest — panel ids + contributed_panels()
+  panels.rs     NEW: the GPUI views (TerrainPalettePanel) — no state logic
+```
+
+`layout.rs` reads like a manifest (stable id, title key, icon, placement);
+`panels.rs` is where full GPUI lives (segmented pickers, stepper sliders,
+headers, a frame pump). `TerrainMode::contributes_panels` returns
+`layout::contributed_panels()` and `TerrainMode::build_panel` matches on
+`layout::TERRAIN_PALETTE` then constructs `panels::TerrainPalettePanel` via
+`cx.new(...)`, boxing the `Entity<T>` as `Box<dyn ui::dock::PanelView>`. The
+palette panel follows the crate's ordinary panel conventions: `panel_boilerplate!`
+for `Focusable`+`EventEmitter<PanelEvent>`, an explicit
+`impl EventEmitter<ui::dock::PanelEvent>`, a localized `title()`, a frame
+pump (`start_pump`) diffing a small `PaletteSignature` copied out of the
+domain so it only `cx.notify()`s when something it paints actually changed —
+identical in spirit to `HierarchyPanelWrapper`/`PropertiesPanelWrapper`.
+
+### 11.3 Dock reconciliation
+
+`LevelEditorPanel::sync_mode_layout` (guarded on the active `ToolModeId`,
+same shape as `sync_game_tab`) now:
+
+- clones the selected mode via `clone_box()` so the shared-state read lock is
+  dropped before any gpui construction;
+- iterates `contributes_panels()`, calling `build_panel` for each; `&mut
+  Context<Self>` satisfies `build_panel`'s `&mut App` parameter via `DerefMut`;
+  returned views are `Arc::<dyn PanelView>::from(Box<..>)`;
+- **Left** contributions join the left dock's native tab strip alongside the
+  `ModeToolsPanel` pages (one reused `DockItem::tabs`), which is rebuilt
+  wholesale on the switch anyway;
+- **Right** contributions are folded into the bottom Properties/World
+  Settings tab group (surfaced first, so the mode's own panel activates);
+  because the right dock holds `PropertiesPanelWrapper`'s cached sections, it
+  is only rebuilt when the contributed right-panel id set changes
+  (`mode_right_panels` field), toggling teardown and re-add symmetrically;
+- builds nothing for modes that return an empty manifest — the default, so
+  `LevelEditMode`/`SplineMode` behavior is byte-for-byte unchanged.
+
+Left panels need no teardown tracking (the left dock is replaced wholesale on
+each switch); right panels do, which is what `mode_right_panels: Vec<&'static str>`
+on `LevelEditorPanel` is for.
+
+### 11.4 i18n
+
+Every new title/label goes into `locales/en.yml` (the fallback locale; the
+crate's `rust_i18n!` config resolves the rest). Terrain's palette added
+`LevelEditor.TerrainPalette.Title` and
+`LevelEditor.TerrainPalette.NoTarget`; label renderers take dynamic
+`&'static str` keys through `t!` exactly like `ui/mode_widgets.rs` already does.

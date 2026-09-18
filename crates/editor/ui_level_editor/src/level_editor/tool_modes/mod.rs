@@ -10,6 +10,8 @@ pub mod registry;
 pub mod spline;
 pub mod terrain;
 
+use gpui::{App, Window};
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
@@ -200,6 +202,44 @@ impl Default for ModeLayout {
     }
 }
 
+// ── Contributed Dock Panels ──────────────────────────────────────────────────
+
+/// Which dock a mode-contributed panel ([`ModePanelDescriptor`]) joins.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ModePanelPlacement {
+    /// Join the left-hand mode-tools dock, sharing its native tab strip with
+    /// the [`ModeToolsPanel`](crate::level_editor::workspace::panels::mode_tools::ModeToolsPanel)
+    /// tabs (Terrain's brush palette lands here).
+    Left,
+    /// Join the right-hand dock alongside Hierarchy / Properties / World
+    /// Settings.
+    Right,
+}
+
+/// One dock panel a tool mode wants the editor shell to add while it is active.
+///
+/// The declarative half of the "full GPUI in a mode" extension point — a
+/// descriptor only says *what* panel exists and where it docks; the actual
+/// GPUI view comes from [`ToolMode::build_panel`]. Modes that only need a
+/// control strip keep using `layout()`/`panel_tabs()`/`toolbar_controls()`
+/// and never return any of these (see the design doc's §11).
+#[derive(Clone, Debug)]
+pub struct ModePanelDescriptor {
+    /// Stable identity for the panel. `build_panel` matches on it to decide
+    /// what to construct, and the shell uses it to track which contributed
+    /// panels are currently open so it can tear them down on mode switch.
+    pub id: &'static str,
+    /// i18n key for the panel's dock title.
+    pub title_key: &'static str,
+    /// Tab icon, if any. `Option<IconName>` rather than a bare icon so a
+    /// panel that only wants a text tab needs no expensive lookups, and —
+    /// because `IconName` is not `PartialEq` — this stays out of any
+    /// signature struct the shell compares.
+    pub icon: Option<ui::IconName>,
+    /// Which dock the panel should be added to.
+    pub placement: ModePanelPlacement,
+}
+
 // ── Mode Context ───────────────────────────────────────────────────────────
 
 /// Execution context provided to tool mode operations.
@@ -272,6 +312,40 @@ pub trait ToolMode: Send + Sync {
             label_key: "LevelEditor.ModeTools.DefaultTab",
             widgets: self.toolbar_controls(ctx),
         }]
+    }
+
+    /// Dock panels this mode contributes to the level editor while active.
+    ///
+    /// Default: none. Modes that want their own panels (not just control
+    /// strips) override this together with [`Self::build_panel`] — see
+    /// [`ModePanelDescriptor`] and the design doc's §11. The shell reconciles
+    /// the dock area to match this set whenever the active mode changes
+    /// (`ui/panel.rs`'s `LevelEditorPanel::sync_mode_layout`), so this is
+    /// consulted only on mode switches, never per frame.
+    fn contributes_panels(&self) -> Vec<ModePanelDescriptor> {
+        Vec::new()
+    }
+
+    /// Build the GPUI view for one panel this mode contributes.
+    ///
+    /// This is the deliberate exception to the "modes are GPUI-agnostic"
+    /// rule from §4.1: the core trait stays pure (identity, `layout()`,
+    /// `toolbar_controls()`, `on_pointer`), but a mode that opts into real
+    /// panels implements this to construct arbitrary `ui::dock::PanelView`s.
+    /// It receives the shared editor state so a panel can frame-pump the same
+    /// `Arc<RwLock<LevelEditorState>>` every other panel does.
+    ///
+    /// Return `None` for descriptors this mode doesn't recognize (the shell
+    /// silently skips them). Only called for ids returned by
+    /// [`Self::contributes_panels`], and only while the mode is active.
+    fn build_panel(
+        &self,
+        _state: Arc<parking_lot::RwLock<LevelEditorState>>,
+        _panel: &ModePanelDescriptor,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> Option<Box<dyn ui::dock::PanelView>> {
+        None
     }
 
     /// Handle pointer events occurring within the viewport.

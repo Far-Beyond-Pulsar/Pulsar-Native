@@ -86,6 +86,18 @@ pub struct LevelEditorPanel {
     /// avoid here.
     applied_mode_layout: Option<crate::level_editor::tool_modes::ToolModeId>,
 
+    /// Mode-contributed right-dock panels currently inserted, by panel id.
+    ///
+    /// `sync_mode_layout` rebuilds the right dock only when this set actually
+    /// changes between mode switches — the common case (modes contributing no
+    /// right panels) shares the empty set, so the Properties/World Settings
+    /// tab group and `PropertiesPanelWrapper`'s cached sections survive
+    /// untouched. Only a mode that newly contributes right panels (or stops
+    /// doing so) pays for a right-dock rebuild, and only on the switch itself.
+    /// Left-dock contributions need no such tracking: the left dock is a full
+    /// `set_left_dock` rebuild on every mode switch already.
+    mode_right_panels: Vec<&'static str>,
+
     // Keeps the polling task alive for the lifetime of the panel.
     _root_input_poller: gpui::Task<()>,
 }
@@ -417,6 +429,7 @@ impl LevelEditorPanel {
             game_panel: None,
             applied_pie_signature: None,
             applied_mode_layout: None,
+            mode_right_panels: Vec::new(),
             _root_input_poller: poller,
         }
     }
@@ -604,12 +617,15 @@ impl LevelEditorPanel {
     /// (render runs several times a second), then act only on a real change
     /// — i.e. an actual mode switch, a rare, deliberate user action.
     ///
-    /// The right dock is toggled open/closed, never torn down — that one
-    /// holds `PropertiesPanelWrapper`'s cached section entities, which a
-    /// rebuild would needlessly discard. The left dock is different: each
-    /// [`PanelTab`](crate::level_editor::tool_modes::PanelTab) the active mode
-    /// returns becomes its own real dock panel (`ModeToolsPanel`), grouped
-    /// into the left dock's native tab strip via `DockItem::tabs` — the same
+    /// The right dock is rebuilt *only* when the set of mode-contributed right
+    /// panels changes (`self.mode_right_panels`) — that dock holds
+    /// `PropertiesPanelWrapper`'s cached section entities, and tearing them
+    /// down on every switch would needlessly discard the cache. The left dock
+    /// is the inverse: each [`PanelTab`](crate::level_editor::tool_modes::PanelTab)
+    /// the active mode returns becomes its own real dock panel
+    /// (`ModeToolsPanel`), grouped into the left dock's native tab strip via
+    /// `DockItem::tabs`, and any panels the mode contributes to the left dock
+    /// (`contributes_panels` + `build_panel`) join that same strip — the same
     /// mechanism the right dock already uses for Properties/World Settings —
     /// so switching modes rebuilds *which panels exist*, not just whether
     /// they're visible. That's a full `set_left_dock` every time a mode with
@@ -617,22 +633,63 @@ impl LevelEditorPanel {
     /// mode switch (not every render), the cost `PropertiesPanelWrapper`'s
     /// caching exists to avoid does not apply here.
     ///
+    /// Mode-contributed panels are created here, on the switch, from the
+    /// mode's `build_panel` — the "full GPUI in a tool mode" contract — typed
+    /// only by their descriptors, placed left or right, and torn down
+    /// wholesale when the mode stops contributing them (left: implicit in the
+    /// `set_left_dock` rebuild; right: gated on `mode_right_panels`).
+    ///
     /// [`ModeLayout`]: crate::level_editor::tool_modes::ModeLayout
     fn sync_mode_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::level_editor::tool_modes::ModePanelPlacement;
+        use ui::dock::{DockItem, DockPlacement};
+
         let current = self.shared_state.read().editor.tool_mode_registry.selected_id();
         if Some(current) == self.applied_mode_layout {
             return;
         }
 
-        let (layout, tabs) = {
+        let (layout, tabs, mode) = {
             let state = self.shared_state.read();
             let layout = state.editor.tool_mode_registry.selected().layout();
             let tabs = crate::level_editor::ui::mode_widgets::active_mode_tabs(
                 &state,
                 &self.gpu_engine,
             );
-            (layout, tabs)
+            // Clone the mode up so the read lock can be dropped before any
+            // `build_panel` call — gpui view construction must not happen
+            // while the shared state is locked.
+            let mode = state.editor.tool_mode_registry.selected().clone_box();
+            (layout, tabs, mode)
         };
+
+        // Build the mode's own panels up front, outside the workspace lock.
+        // `&mut Context<Self>` derefs to `&mut App`, so it satisfies
+        // `build_panel`'s app parameter directly. Right ids are tracked so a
+        // subsequent switch can tear the panels down (or keep them) without
+        // rebuilding the right dock every time.
+        let mut left_contributions: Vec<std::sync::Arc<dyn ui::dock::PanelView>> = Vec::new();
+        let mut right_contributions: Vec<std::sync::Arc<dyn ui::dock::PanelView>> = Vec::new();
+        let mut right_ids: Vec<&'static str> = Vec::new();
+        for desc in mode.contributes_panels() {
+            if let Some(view) = mode.build_panel(self.shared_state.clone(), &desc, window, cx) {
+                let view: std::sync::Arc<dyn ui::dock::PanelView> = std::sync::Arc::from(view);
+                match desc.placement {
+                    ModePanelPlacement::Right => {
+                        right_ids.push(desc.id);
+                        right_contributions.push(view);
+                    }
+                    ModePanelPlacement::Left => left_contributions.push(view),
+                }
+            }
+        }
+
+        // Rebuild the right dock only when the contributed set actually
+        // changed — the common case (both empty) shares the equal vec, so the
+        // Properties/World Settings tab group and its cached sections survive
+        // untouched. Transitions to *and* from a right-paneled mode both read
+        // as inequality, so the teardown-shape rebuild is covered too.
+        let right_needs_rebuild = right_ids != self.mode_right_panels;
 
         let Some(workspace) = self.workspace.clone() else {
             return;
@@ -641,8 +698,6 @@ impl LevelEditorPanel {
         let gpu_engine = self.gpu_engine.clone();
 
         workspace.update(cx, |ws, cx| {
-            use ui::dock::{DockItem, DockPlacement};
-
             let dock_area = ws.dock_area().clone();
             let dock_area_weak = dock_area.downgrade();
 
@@ -653,22 +708,96 @@ impl LevelEditorPanel {
                 });
             }
 
-            if layout.show_mode_panel && !tabs.is_empty() {
-                let panels: Vec<std::sync::Arc<dyn ui::dock::PanelView>> = tabs
-                    .iter()
-                    .map(|tab| {
-                        let panel = cx.new(|cx| {
-                            crate::level_editor::ModeToolsPanel::new(
-                                shared_state.clone(),
-                                gpu_engine.clone(),
-                                tab.id,
-                                tab.label_key,
-                                cx,
-                            )
-                        });
-                        std::sync::Arc::new(panel) as std::sync::Arc<dyn ui::dock::PanelView>
-                    })
-                    .collect();
+            // Right dock: rebuild only when the contributed set changed. The
+            // rebuild reproduces `initialize_workspace`'s vertical split
+            // (hierarchy top, Properties/World Settings bottom) with any
+            // right-mode panels folded into the bottom tab group, surfaced
+            // first so the mode's own panel is the one that activates. An
+            // empty contribution set yields the default layout — i.e. the
+            // teardown shape after a right-paneled mode.
+            if right_needs_rebuild {
+                let hierarchy_panel = cx.new(|cx| {
+                    crate::level_editor::HierarchyPanelWrapper::new(
+                        shared_state.clone(),
+                        window,
+                        cx,
+                    )
+                });
+                let properties_panel = cx.new(|cx| {
+                    crate::level_editor::PropertiesPanelWrapper::new(
+                        shared_state.clone(),
+                        window,
+                        cx,
+                    )
+                });
+                let world_settings_panel = cx.new(|cx| {
+                    crate::level_editor::WorldSettingsPanel::new(
+                        shared_state.clone(),
+                        window,
+                        cx,
+                    )
+                });
+
+                let mut bottom_views: Vec<std::sync::Arc<dyn ui::dock::PanelView>> =
+                    right_contributions; // mode's own panels first
+                bottom_views.push(std::sync::Arc::new(properties_panel));
+                bottom_views.push(std::sync::Arc::new(world_settings_panel));
+
+                let bottom_tabs = DockItem::tabs(
+                    bottom_views,
+                    Some(0),
+                    &dock_area_weak,
+                    window,
+                    cx,
+                );
+                let top_hierarchy = DockItem::tabs(
+                    vec![std::sync::Arc::new(hierarchy_panel)
+                        as std::sync::Arc<dyn ui::dock::PanelView>],
+                    Some(0),
+                    &dock_area_weak,
+                    window,
+                    cx,
+                );
+                let right = DockItem::split_with_sizes(
+                    gpui::Axis::Vertical,
+                    vec![top_hierarchy, bottom_tabs],
+                    vec![Some(px(150.0)), Some(px(550.0))],
+                    &dock_area_weak,
+                    window,
+                    cx,
+                );
+                dock_area.update(cx, |da, cx| {
+                    da.set_right_dock(right, Some(px(400.0)), true, window, cx);
+                });
+            }
+
+            // Left dock: contributions join the ModeToolsPanel strips in one
+            // native tab group. A full rebuild here is fine — it only happens
+            // on a mode switch.
+            let show_left = (layout.show_mode_panel && !tabs.is_empty())
+                || !left_contributions.is_empty();
+            if show_left {
+                let panels: Vec<std::sync::Arc<dyn ui::dock::PanelView>> = {
+                    let mut panels = tabs
+                        .iter()
+                        .map(|tab| {
+                            let panel = cx.new(|cx| {
+                                crate::level_editor::ModeToolsPanel::new(
+                                    shared_state.clone(),
+                                    gpu_engine.clone(),
+                                    tab.id,
+                                    tab.label_key,
+                                    cx,
+                                )
+                            });
+                            std::sync::Arc::new(panel)
+                                as std::sync::Arc<dyn ui::dock::PanelView>
+                        })
+                        .collect::<Vec<_>>();
+                    panels.extend(left_contributions);
+                    panels
+                };
+
                 let item = DockItem::tabs(panels, Some(0), &dock_area_weak, window, cx);
                 dock_area.update(cx, |da, cx| {
                     da.set_left_dock(item, Some(px(280.0)), true, window, cx);
@@ -684,6 +813,7 @@ impl LevelEditorPanel {
         });
 
         self.applied_mode_layout = Some(current);
+        self.mode_right_panels = right_ids;
     }
 
     /// Cheap read-only snapshot of the Play-In-Editor state this panel acts on.

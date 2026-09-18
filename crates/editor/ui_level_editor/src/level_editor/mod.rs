@@ -11,6 +11,7 @@
 /// - Asset Browser: Browse and preview project assets
 /// - Toolbar: Transform tools and quick actions
 /// - Scene Database: Unified write path — updates both SceneDb and Helio
+pub mod ai;
 pub mod core;
 pub mod state;
 pub mod tool_modes;
@@ -32,9 +33,10 @@ pub use state::terrain::{
 pub use state::LevelEditorState;
 pub use state::{CameraMode, EditorMode, TransformTool};
 pub use tool_modes::{
-    register_tool_modes, BrushCursor, CameraFrame, LevelEditMode, PointerKind, SplineMode,
-    StatusReadout, TerrainMode, ToolMode, ToolModeContext, ToolModeDispatcher, ToolModeId,
-    ToolModeRegistry, ToolPointerEvent, ToolPointerResult, ToolWidget, ViewportFrame,
+    register_tool_modes, BrushCursor, CameraFrame, LevelEditMode, ModePanelDescriptor,
+    ModePanelPlacement, PointerKind, SplineMode, StatusReadout, TerrainMode, ToolMode,
+    ToolModeContext, ToolModeDispatcher, ToolModeId, ToolModeRegistry, ToolPointerEvent,
+    ToolPointerResult, ToolWidget, ViewportFrame,
 };
 pub use workspace::panels::*;
 

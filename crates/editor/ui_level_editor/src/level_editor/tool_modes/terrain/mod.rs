@@ -15,6 +15,8 @@
 //! for its own hover feedback.
 
 pub mod foliage;
+pub mod layout;
+pub mod panels;
 pub mod ray;
 pub mod scene_planets;
 pub mod sculpt;
@@ -23,9 +25,11 @@ use engine_backend::services::terrain_edit::{
     BrushCursorRequest, TerrainEditApi, TerrainHit, TerrainTarget as PlanetTarget,
 };
 
+use gpui::AppContext;
+
 use super::{
-    BrushCursor, ModeLayout, PanelTab, PointerKind, StatusReadout, ToolMode, ToolModeContext,
-    ToolModeId, ToolPointerEvent, ToolPointerResult, ToolWidget,
+    BrushCursor, ModeLayout, ModePanelDescriptor, PanelTab, PointerKind, StatusReadout, ToolMode,
+    ToolModeContext, ToolModeId, ToolPointerEvent, ToolPointerResult, ToolWidget,
 };
 use crate::level_editor::core::commands::{execute_command, SceneCommand};
 use crate::level_editor::state::terrain::{BrushShape, SculptMode, TerrainTarget};
@@ -582,6 +586,27 @@ impl ToolMode for TerrainMode {
         };
 
         vec![sculpt_tab, foliage_tab]
+    }
+
+    fn contributes_panels(&self) -> Vec<ModePanelDescriptor> {
+        // Declarative half of the mode's own dock contributions — ids, tabs,
+        // placements. The GPUI half lives in `super::panels`; see that file
+        // and the design doc's §11 for why the two are split.
+        layout::contributed_panels()
+    }
+
+    fn build_panel(
+        &self,
+        state: std::sync::Arc<parking_lot::RwLock<crate::level_editor::state::LevelEditorState>>,
+        panel: &ModePanelDescriptor,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> Option<Box<dyn ui::dock::PanelView>> {
+        if panel.id != layout::TERRAIN_PALETTE {
+            return None;
+        }
+        let view = cx.new(|cx| panels::TerrainPalettePanel::new(state.clone(), window, cx));
+        Some(Box::new(view) as Box<dyn ui::dock::PanelView>)
     }
 
     fn status(&self, ctx: &ToolModeContext) -> Option<StatusReadout> {

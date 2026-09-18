@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use tool_registry::{ChatTool, ToolContext, ToolRegistry};
 
-use crate::ai_sessions;
+use super::sessions;
 use crate::level_editor::commands::{execute_command, SceneCommand};
 use engine_backend::scene::{LightType, MeshType, ObjectType};
 
@@ -21,7 +21,7 @@ fn open_state_for(
     file_path: &Path,
 ) -> Result<std::sync::Arc<parking_lot::RwLock<crate::level_editor::LevelEditorState>>, PluginError>
 {
-    ai_sessions::get_open_scene_state(file_path).ok_or_else(|| PluginError::Other {
+    sessions::get_open_scene_state(file_path).ok_or_else(|| PluginError::Other {
         message: format!(
             "Level is not open in editor: {}. Call open_file_in_default_editor first.",
             file_path.display()
