@@ -48,6 +48,12 @@ pub struct ToolbarSignature {
     terrain_radius_m: f32,
     terrain_strength: f32,
     terrain_falloff: f32,
+    // terrain foliage sub-mode controls
+    terrain_paint_foliage: bool,
+    terrain_foliage_density: f32,
+    terrain_foliage_radius_m: f32,
+    terrain_foliage_slope_min: f32,
+    terrain_foliage_slope_max: f32,
     // playback_controls / mode_indicator
     editor_mode: EditorMode,
     // time_scale_dropdown
@@ -76,6 +82,11 @@ impl ToolbarSignature {
             terrain_radius_m: state.editor.terrain.sculpt.radius_m,
             terrain_strength: state.editor.terrain.sculpt.strength,
             terrain_falloff: state.editor.terrain.sculpt.falloff,
+            terrain_paint_foliage: state.editor.terrain.paint_foliage,
+            terrain_foliage_density: state.editor.terrain.foliage.density,
+            terrain_foliage_radius_m: state.editor.terrain.foliage.radius_m,
+            terrain_foliage_slope_min: state.editor.terrain.foliage.slope_limit.0,
+            terrain_foliage_slope_max: state.editor.terrain.foliage.slope_limit.1,
             editor_mode: state.scene.editor_mode,
             time_scale: state.play.time_scale,
             multiplayer_mode: state.play.multiplayer_mode,

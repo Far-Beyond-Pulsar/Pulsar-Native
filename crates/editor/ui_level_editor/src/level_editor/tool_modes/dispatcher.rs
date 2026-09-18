@@ -57,6 +57,10 @@ pub enum ToolWidgetEdit {
 /// Identifier of the Terrain mode's "create flat world" action.
 pub const CREATE_FLAT_WORLD: &str = "create_flat_world";
 
+/// Identifier of the Terrain mode's foliage sub-mode toggle (design doc §6:
+/// a toggle/sub-tab of Terrain, not a separate `ToolMode`).
+pub const PAINT_FOLIAGE_TOGGLE: &str = "paint_foliage";
+
 // ── ToolModeDispatcher ─────────────────────────────────────────────────────
 
 /// Centralized dispatcher for tool mode operations.
@@ -165,9 +169,17 @@ impl ToolModeDispatcher {
                 "radius" => state.editor.terrain.set_brush_radius(*value),
                 "strength" => state.editor.terrain.set_brush_strength(*value),
                 "falloff" => state.editor.terrain.set_brush_falloff(*value),
+                "foliage_density" => state.editor.terrain.set_foliage_density(*value),
+                "foliage_radius" => state.editor.terrain.set_foliage_radius(*value),
+                "foliage_slope_min" => state.editor.terrain.set_foliage_slope_min(*value),
+                "foliage_slope_max" => state.editor.terrain.set_foliage_slope_max(*value),
                 _ => {}
             },
-            ToolWidgetEdit::SetToggle { .. } => {}
+            ToolWidgetEdit::SetToggle { id, on } => {
+                if *id == PAINT_FOLIAGE_TOGGLE {
+                    state.editor.terrain.set_paint_foliage(*on);
+                }
+            }
             // Actions need the terrain seam; routed by
             // `dispatch_widget_edit_with_terrain`.
             ToolWidgetEdit::Invoke { .. } => {}

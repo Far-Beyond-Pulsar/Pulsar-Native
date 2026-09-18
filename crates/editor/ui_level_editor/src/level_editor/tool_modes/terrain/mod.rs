@@ -14,6 +14,7 @@
 //! through — it only refreshes the brush ring, and the renderer still needs it
 //! for its own hover feedback.
 
+pub mod foliage;
 pub mod ray;
 pub mod scene_planets;
 pub mod sculpt;
@@ -26,6 +27,7 @@ use super::{
     BrushCursor, PointerKind, StatusReadout, ToolMode, ToolModeContext, ToolModeId,
     ToolPointerEvent, ToolPointerResult, ToolWidget,
 };
+use crate::level_editor::core::commands::{execute_command, SceneCommand};
 use crate::level_editor::state::terrain::{SculptMode, TerrainTarget};
 
 /// Brush ring colour per sculpt mode, so the mode is readable at a glance
@@ -34,13 +36,24 @@ const RAISE_COLOR: [f32; 4] = [0.35, 0.95, 0.45, 0.9];
 const LOWER_COLOR: [f32; 4] = [0.95, 0.45, 0.35, 0.9];
 const FLATTEN_COLOR: [f32; 4] = [0.45, 0.65, 0.95, 0.9];
 const PAINT_COLOR: [f32; 4] = [0.95, 0.85, 0.35, 0.9];
+/// Brush ring colour while the Foliage sub-mode is active, distinct from
+/// every sculpt-mode colour (which are all green/red/blue/yellow) so the
+/// toggle is readable at a glance.
+const FOLIAGE_COLOR: [f32; 4] = [0.85, 0.35, 0.85, 0.9];
 
 /// Tool mode for voxel terrain editing and foliage painting.
 #[derive(Clone, Default)]
 pub struct TerrainMode {
-    /// Hit point of the last committed stamp, for drag coalescing. Cleared at
-    /// stroke boundaries so the first stamp of every stroke always commits.
+    /// Hit point of the last committed sculpt stamp, for drag coalescing.
+    /// Cleared at stroke boundaries so the first stamp of every stroke
+    /// always commits.
     last_stamp_center_m: Option<[f32; 3]>,
+    /// Hit point of the last committed foliage stamp. Tracked separately
+    /// from `last_stamp_center_m` even though the two brushes are mutually
+    /// exclusive (the `paint_foliage` toggle), so switching sub-modes
+    /// mid-drag can never let one brush's coalescing state leak into the
+    /// other's.
+    last_foliage_stamp_center_m: Option<[f32; 3]>,
     /// Latest brush ring, refreshed on every pointer event that hit terrain.
     cursor: Option<BrushCursor>,
     /// Surface normal at `cursor`, needed to orient the drawn ring. Not part
@@ -65,9 +78,15 @@ impl TerrainMode {
     /// Publish the brush ring for this hit, both to the mode (for
     /// [`ToolMode::brush_cursor`]) and to the renderer's debug-draw mailbox.
     fn update_cursor(&mut self, api: &TerrainEditApi, ctx: &ToolModeContext, hit: &TerrainHit) {
-        let brush = &ctx.state.editor.terrain.sculpt;
-        let radius_m = sculpt::effective_radius_m(brush);
-        let color = mode_color(brush.mode);
+        let terrain = &ctx.state.editor.terrain;
+        let (radius_m, color) = if terrain.paint_foliage {
+            (terrain.foliage.radius_m.max(1.0), FOLIAGE_COLOR)
+        } else {
+            (
+                sculpt::effective_radius_m(&terrain.sculpt),
+                mode_color(terrain.sculpt.mode),
+            )
+        };
         self.cursor = Some(BrushCursor {
             center: hit.position_m,
             radius: radius_m,
@@ -152,10 +171,61 @@ impl TerrainMode {
     }
 
     /// Close a stroke and commit it to terrain undo history.
+    ///
+    /// Shared by both brushes: `terrain_undo.end_stroke()` is a no-op when
+    /// no anchor was ever opened (see [`Self::begin_foliage_stroke`]), so
+    /// calling it unconditionally after a foliage stroke is harmless.
     fn end_stroke(&mut self, ctx: &mut ToolModeContext) {
         ctx.state.editor.terrain.end_stroke();
         ctx.state.editor.terrain_undo.end_stroke();
         self.last_stamp_center_m = None;
+        self.last_foliage_stamp_center_m = None;
+    }
+
+    /// Open a foliage stroke: unlike [`Self::begin_stroke`], this never
+    /// touches `TerrainUndoDomain` -- foliage painting mutates no voxels, so
+    /// there is nothing for that history to snapshot. Each stamp is its own
+    /// `SceneCommand::AddObject`, already undo-tracked by the scene's own
+    /// snapshot undo (`execute_command`). See this module's `foliage`
+    /// submodule doc and issue #713's "undo pairing" question for why the
+    /// two undo systems are deliberately kept independent rather than
+    /// merged into one stroke-level unit here.
+    fn begin_foliage_stroke(&mut self, ctx: &mut ToolModeContext, hit: &TerrainHit) {
+        self.next_stroke_id = self.next_stroke_id.wrapping_add(1);
+        let stroke_id = self.next_stroke_id;
+        ctx.state.editor.terrain.begin_stroke(stroke_id, 0.0);
+        ctx.state.editor.terrain.set_target(editor_target(hit.target));
+        self.last_foliage_stamp_center_m = None;
+    }
+
+    /// Apply one foliage brush stamp: coalesce like sculpt does (reusing
+    /// `sculpt::should_stamp` rather than a second coalescing rule), then
+    /// add a `FoliageComponent`-carrying scene object at the hit through the
+    /// ordinary undo-tracked command path. Returns `true` only when an
+    /// object was actually added.
+    fn stamp_foliage(&mut self, ctx: &mut ToolModeContext, hit: &TerrainHit) -> bool {
+        let brush = ctx.state.editor.terrain.foliage.clone();
+        let radius_m = brush.radius_m.max(1.0);
+        if !sculpt::should_stamp(self.last_foliage_stamp_center_m, hit.position_m, radius_m) {
+            return false;
+        }
+        let data = foliage::stamp_object_data(&brush, hit);
+        let result = execute_command(
+            ctx.state,
+            SceneCommand::AddObject {
+                data,
+                parent_id: None,
+            },
+        );
+        if result.changed {
+            self.last_foliage_stamp_center_m = Some(hit.position_m);
+        } else {
+            tracing::warn!(
+                reason = result.no_op_reason,
+                "foliage stamp was rejected"
+            );
+        }
+        result.changed
     }
 }
 
@@ -195,6 +265,7 @@ impl ToolMode for TerrainMode {
 
     fn on_mode_entered(&mut self, ctx: &mut ToolModeContext) {
         self.last_stamp_center_m = None;
+        self.last_foliage_stamp_center_m = None;
         // Adopt whichever planet the runtime has, so the status bar is honest
         // before the user's first click.
         if let Some(api) = ctx.terrain {
@@ -210,6 +281,7 @@ impl ToolMode for TerrainMode {
         ctx.state.editor.terrain.end_stroke();
         ctx.state.editor.terrain_undo.abort_stroke();
         self.last_stamp_center_m = None;
+        self.last_foliage_stamp_center_m = None;
         self.clear_cursor(ctx.terrain);
     }
 
@@ -218,21 +290,74 @@ impl ToolMode for TerrainMode {
     }
 
     fn toolbar_controls(&self, ctx: &ToolModeContext) -> Vec<ToolWidget> {
-        let sculpt = &ctx.state.editor.terrain.sculpt;
-        let selected_mode_str = match sculpt.mode {
-            SculptMode::Raise => "raise",
-            SculptMode::Lower => "lower",
-            SculptMode::Flatten => "flatten",
-            SculptMode::Paint => "paint",
-        };
+        let terrain = &ctx.state.editor.terrain;
 
-        vec![
+        let mut widgets = vec![
             // Creating terrain comes before shaping it, so it leads.
             ToolWidget::Action {
                 id: super::dispatcher::CREATE_FLAT_WORLD,
                 label_key: "LevelEditor.Terrain.CreateFlatWorld",
             },
             ToolWidget::Divider,
+            // Foliage is a sub-tab/toggle of Terrain (design doc §6), not a
+            // separate `ToolMode`: it reuses this mode's brush-cursor and
+            // pointer-dispatch plumbing, just swapping which stamp a click
+            // produces. See `on_pointer`.
+            ToolWidget::Toggle {
+                id: super::dispatcher::PAINT_FOLIAGE_TOGGLE,
+                label_key: "LevelEditor.Terrain.PaintFoliage",
+                on: terrain.paint_foliage,
+            },
+            ToolWidget::Divider,
+        ];
+
+        if terrain.paint_foliage {
+            let foliage = &terrain.foliage;
+            widgets.extend([
+                ToolWidget::Slider {
+                    id: "foliage_density",
+                    label_key: "LevelEditor.Terrain.FoliageDensity",
+                    value: foliage.density,
+                    min: 0.0,
+                    max: 2048.0,
+                    step: 1.0,
+                },
+                ToolWidget::Slider {
+                    id: "foliage_radius",
+                    label_key: "LevelEditor.Terrain.Radius",
+                    value: foliage.radius_m,
+                    min: 1.0,
+                    max: 64.0,
+                    step: 0.5,
+                },
+                ToolWidget::Slider {
+                    id: "foliage_slope_min",
+                    label_key: "LevelEditor.Terrain.FoliageSlopeMin",
+                    value: foliage.slope_limit.0,
+                    min: 0.0,
+                    max: 90.0,
+                    step: 0.5,
+                },
+                ToolWidget::Slider {
+                    id: "foliage_slope_max",
+                    label_key: "LevelEditor.Terrain.FoliageSlopeMax",
+                    value: foliage.slope_limit.1,
+                    min: 0.0,
+                    max: 90.0,
+                    step: 0.5,
+                },
+            ]);
+            return widgets;
+        }
+
+        let sculpt = &terrain.sculpt;
+        let selected_mode_str = match sculpt.mode {
+            SculptMode::Raise => "raise",
+            SculptMode::Lower => "lower",
+            SculptMode::Flatten => "flatten",
+            SculptMode::Paint => "paint",
+        };
+        widgets.extend([
             ToolWidget::Segmented {
                 id: "sculpt_mode",
                 options: vec![
@@ -268,21 +393,29 @@ impl ToolMode for TerrainMode {
                 max: 1.0,
                 step: 0.05,
             },
-        ]
+        ]);
+        widgets
     }
 
     fn status(&self, ctx: &ToolModeContext) -> Option<StatusReadout> {
-        let sculpt = &ctx.state.editor.terrain.sculpt;
-        let text = format!(
-            "Radius: {:.1}m | Strength: {:.1}",
-            sculpt.radius_m, sculpt.strength
-        );
+        let terrain = &ctx.state.editor.terrain;
+        let text = if terrain.paint_foliage {
+            format!(
+                "Foliage | Radius: {:.1}m | Density: {:.0}",
+                terrain.foliage.radius_m, terrain.foliage.density
+            )
+        } else {
+            format!(
+                "Radius: {:.1}m | Strength: {:.1}",
+                terrain.sculpt.radius_m, terrain.sculpt.strength
+            )
+        };
         // Read from the domain's target rather than from `ctx.terrain`: the
         // toolbar and status bar build a context without the seam (they only
         // need widget data), and a seam-derived readout would flicker between
         // "active" and "no runtime" depending on which caller rendered it.
         // `on_mode_entered`/`begin_stroke` keep the target current.
-        let tooltip = match &ctx.state.editor.terrain.target {
+        let tooltip = match &terrain.target {
             TerrainTarget::Planet(id) => Some(format!("Editing planet {id}")),
             TerrainTarget::Volume(id) => Some(format!("Editing volume {id}")),
             TerrainTarget::None => {
@@ -321,8 +454,13 @@ impl ToolMode for TerrainMode {
                     return ToolPointerResult::PassThrough;
                 };
                 self.update_cursor(api, ctx, &hit);
-                self.begin_stroke(api, ctx, &hit);
-                self.stamp(api, ctx, &hit);
+                if ctx.state.editor.terrain.paint_foliage {
+                    self.begin_foliage_stroke(ctx, &hit);
+                    self.stamp_foliage(ctx, &hit);
+                } else {
+                    self.begin_stroke(api, ctx, &hit);
+                    self.stamp(api, ctx, &hit);
+                }
                 ToolPointerResult::Consumed
             }
 
@@ -337,7 +475,11 @@ impl ToolMode for TerrainMode {
                     return ToolPointerResult::Consumed;
                 };
                 self.update_cursor(api, ctx, &hit);
-                self.stamp(api, ctx, &hit);
+                if ctx.state.editor.terrain.paint_foliage {
+                    self.stamp_foliage(ctx, &hit);
+                } else {
+                    self.stamp(api, ctx, &hit);
+                }
                 ToolPointerResult::Consumed
             }
 

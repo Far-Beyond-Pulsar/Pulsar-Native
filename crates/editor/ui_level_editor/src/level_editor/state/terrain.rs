@@ -98,6 +98,14 @@ pub struct TerrainDomain {
     pub foliage: FoliageBrush,
     pub target: TerrainTarget,
     pub active_stroke: Option<Stroke>,
+    /// Whether Terrain mode's active brush is the foliage stamp rather than
+    /// the voxel sculpt brush.
+    ///
+    /// Design doc §6: foliage painting is a sub-tab/toggle of `TerrainMode`,
+    /// not a separate `ToolMode` -- this is that toggle's state, flipped by
+    /// the toolbar's `ToolWidget::Toggle` and read by
+    /// `TerrainMode::on_pointer` to pick which stamp a brush click produces.
+    pub paint_foliage: bool,
 }
 
 impl TerrainDomain {
@@ -119,6 +127,28 @@ impl TerrainDomain {
 
     pub fn set_brush_material(&mut self, material: u32) {
         self.sculpt.material = material;
+    }
+
+    pub fn set_paint_foliage(&mut self, on: bool) {
+        self.paint_foliage = on;
+    }
+
+    pub fn set_foliage_density(&mut self, density: f32) {
+        self.foliage.density = density.clamp(0.0, 2048.0);
+    }
+
+    pub fn set_foliage_radius(&mut self, radius: f32) {
+        self.foliage.radius_m = radius.clamp(1.0, 64.0);
+    }
+
+    /// Clamped against the current max so the min slider can never cross it
+    /// (the max slider clamps symmetrically against the min below).
+    pub fn set_foliage_slope_min(&mut self, degrees: f32) {
+        self.foliage.slope_limit.0 = degrees.clamp(0.0, 90.0).min(self.foliage.slope_limit.1);
+    }
+
+    pub fn set_foliage_slope_max(&mut self, degrees: f32) {
+        self.foliage.slope_limit.1 = degrees.clamp(0.0, 90.0).max(self.foliage.slope_limit.0);
     }
 
     pub fn set_target(&mut self, target: TerrainTarget) {
