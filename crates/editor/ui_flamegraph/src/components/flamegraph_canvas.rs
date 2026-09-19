@@ -1,5 +1,5 @@
 use crate::constants::*;
-use crate::coordinates::time_to_x;
+use crate::coordinates::{time_to_x, visible_range};
 use crate::lod_tree::{LODTree, MergedSpan};
 use crate::rendering::text::{push_text, CHAR_H, CHAR_W};
 use crate::rendering::types::{GpuSpan, RectInstance};
@@ -356,7 +356,15 @@ pub fn build_frame_boundary_instances(
 ) -> Vec<RectInstance> {
     let mut rects = Vec::new();
     let mut last_x = f32::MIN;
-    for &b in &frame.frame_boundaries_ns {
+    let range = visible_range(frame, viewport_w, vs);
+    let boundaries = &frame.frame_boundaries_ns;
+    let first = boundaries.partition_point(|&boundary| boundary < range.start);
+    let last = boundaries.partition_point(|&boundary| boundary <= range.end);
+
+    // Frame markers are chronological, so never walk history outside the
+    // visible time window. This is the virtualization boundary for markers;
+    // zooming out still gets pixel-spacing culling below.
+    for &b in &boundaries[first..last] {
         let x = time_to_x(b, frame, viewport_w, vs);
         if x < THREAD_LABEL_WIDTH || x > viewport_w {
             continue;
