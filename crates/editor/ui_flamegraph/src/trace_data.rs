@@ -136,13 +136,13 @@ impl TraceFrame {
 
 #[derive(Clone)]
 pub struct TraceData {
-    inner: Arc<RwLock<Arc<TraceFrame>>>,
+    inner: Arc<RwLock<TraceFrame>>,
 }
 
 impl TraceData {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(RwLock::new(Arc::new(TraceFrame::new()))),
+            inner: Arc::new(RwLock::new(TraceFrame::new())),
         }
     }
 
@@ -975,12 +975,17 @@ impl TraceData {
 
     pub fn add_span(&self, span: TraceSpan) {
         let mut guard = self.inner.write();
-        Arc::make_mut(&mut guard).add_span(span);
+        guard.add_span(span);
     }
 
     pub fn add_frame_time(&self, ms: f32) {
         let mut guard = self.inner.write();
-        Arc::make_mut(&mut guard).add_frame_time(ms);
+        guard.add_frame_time(ms);
+    }
+
+    pub fn add_frame_boundary(&self, start_ns: u64) {
+        let mut guard = self.inner.write();
+        guard.add_frame_boundary(start_ns);
     }
 
     pub fn add_frame_boundary(&self, start_ns: u64) {
@@ -989,15 +994,33 @@ impl TraceData {
     }
 
     pub fn get_frame(&self) -> Arc<TraceFrame> {
-        Arc::clone(&self.inner.read())
+        Arc::new(self.inner.read().clone())
     }
 
     pub fn set_frame(&self, frame: TraceFrame) {
-        *self.inner.write() = Arc::new(frame);
+        *self.inner.write() = frame;
     }
 
     pub fn clear(&self) {
-        *self.inner.write() = Arc::new(TraceFrame::new());
+        *self.inner.write() = TraceFrame::new();
+    }
+
+    pub fn append_batch(
+        &self,
+        spans: impl IntoIterator<Item = TraceSpan>,
+        frame_times: impl IntoIterator<Item = f32>,
+        frame_boundaries: impl IntoIterator<Item = u64>,
+    ) {
+        let mut frame = self.inner.write();
+        for span in spans {
+            frame.add_span(span);
+        }
+        for time in frame_times {
+            frame.add_frame_time(time);
+        }
+        for boundary in frame_boundaries {
+            frame.add_frame_boundary(boundary);
+        }
     }
 }
 

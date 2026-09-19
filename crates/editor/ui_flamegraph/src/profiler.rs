@@ -10,7 +10,6 @@ use std::time::Duration;
 pub struct InstrumentationCollector {
     trace_data: Arc<TraceData>,
     running: Arc<parking_lot::RwLock<bool>>,
-    frame_time_running: Arc<parking_lot::RwLock<bool>>,
     update_interval_ms: u64,
 }
 
@@ -24,19 +23,20 @@ impl InstrumentationCollector {
         Self {
             trace_data,
             running: Arc::new(parking_lot::RwLock::new(false)),
-            frame_time_running: Arc::new(parking_lot::RwLock::new(false)),
             update_interval_ms,
         }
     }
 
     /// Start collecting in a background thread
     pub fn start(&self) {
-        let mut running = self.running.write();
-        if *running {
-            tracing::trace!("[PROFILER] Already running, ignoring start request");
-            return; // Already running
+        {
+            let mut running = self.running.write();
+            if *running {
+                tracing::trace!("[PROFILER] Already running, ignoring start request");
+                return; // Already running
+            }
+            *running = true;
         }
-        *running = true;
 
         // Profiling is only live while the Flamegraph panel is actively
         // recording — enabling it here (rather than for the whole process
@@ -49,19 +49,6 @@ impl InstrumentationCollector {
             "[PROFILER] Profiling enabled: {}",
             profiling::is_profiling_enabled()
         );
-
-        *self.frame_time_running.write() = true;
-
-        let frame_time_running = Arc::clone(&self.frame_time_running);
-        thread::spawn(move || {
-            while *frame_time_running.read() {
-                thread::sleep(Duration::from_millis(16));
-
-                if let Some(frame_time_ms) = sample_current_frame_time_ms() {
-                    profiling::record_frame_time(frame_time_ms);
-                }
-            }
-        });
 
         // Drain the producer queue once so the collector can begin from a
         // known boundary. Do not synthesize a test span or sleep here: both
@@ -82,7 +69,6 @@ impl InstrumentationCollector {
     /// Stop collecting
     pub fn stop(&self) {
         *self.running.write() = false;
-        *self.frame_time_running.write() = false;
 
         // Turn instrumentation back off now that nothing is consuming it,
         // so profile_scope! goes back to its (near) no-op fast path instead
@@ -118,52 +104,46 @@ fn collector_loop(
         }
 
         tracing::trace!(
-            "[PROFILER] Collected {} new instrumentation events (total: {})",
-            new_events.len(),
-            profiling::get_all_events().len()
+            "[PROFILER] Collected {} new instrumentation events",
+            new_events.len()
         );
 
-        // Convert ONLY new events to TraceData format
+        // Convert and append ONLY new events. Do not rebuild the accumulated
+        // trace on every tick; that turns profiling into an eventual stall.
+        let mut delta_spans = Vec::new();
+        let mut delta_times = Vec::new();
+        let mut delta_boundaries = Vec::new();
         for event in &new_events {
             accumulator.apply_event(event);
+            if event.name == "__FRAME_MARKER__" {
+                delta_times.push(event.duration_ns as f32 / 1_000_000.0);
+                delta_boundaries.push(event.start_ns);
+            } else {
+                delta_spans.push(TraceSpan {
+                    name: event.name.clone(),
+                    start_ns: event.start_ns,
+                    duration_ns: event.duration_ns,
+                    depth: event.depth,
+                    thread_id: if event.name.starts_with("GPU::")
+                        || event
+                            .thread_name
+                            .as_deref()
+                            .is_some_and(|name| name.contains("GPU"))
+                    {
+                        0
+                    } else {
+                        event.thread_id
+                    },
+                    color_index: (delta_spans.len() % 16) as u8,
+                });
+            }
         }
-
-        if let Err(e) = accumulator.publish(&trace_data) {
-            tracing::error!("[PROFILER] Failed to convert events: {}", e);
-        }
+        trace_data.append_batch(delta_spans, delta_times, delta_boundaries);
     }
 
     // Profiling itself is disabled by InstrumentationCollector::stop(), which
     // runs concurrently with this loop exiting.
     tracing::trace!("[PROFILER] Instrumentation collector stopped");
-}
-
-fn sample_current_frame_time_ms() -> Option<f32> {
-    let engine_context = engine_state::EngineContext::global()?;
-
-    for window_id in engine_context.renderers.window_ids() {
-        let handle = engine_context.renderers.get(window_id)?;
-        let Some(renderer) = handle
-            .as_helio::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>()
-        else {
-            continue;
-        };
-
-        if let Some(frame_time_ms) = sample_renderer_frame_time(renderer).filter(|ms| *ms > 0.0) {
-            return Some(frame_time_ms);
-        }
-    }
-
-    None
-}
-
-fn sample_renderer_frame_time(
-    renderer: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
-) -> Option<f32> {
-    let engine = renderer.try_lock().ok()?;
-    engine
-        .get_render_metrics()
-        .map(|metrics| metrics.frame_time_ms)
 }
 
 #[derive(Default)]

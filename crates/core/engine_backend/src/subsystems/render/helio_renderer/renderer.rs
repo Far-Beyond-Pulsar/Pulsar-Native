@@ -756,6 +756,10 @@ impl HelioRenderer {
         inner.has_rendered_frame = true;
         let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
         let frame_ms = frame_start.elapsed().as_secs_f32() * 1_000.0;
+        // Emit the boundary from the render thread. The profiler collector
+        // must not inspect the renderer registry or GPU mutex from a second
+        // thread just to obtain this value.
+        profiling::record_frame_time(frame_ms);
 
         // ── GPU profiler (throttled to every 30 frames) ─────────────────────────
         if self.profiler_frame_counter >= 30 {
