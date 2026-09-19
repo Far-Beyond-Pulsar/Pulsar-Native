@@ -137,12 +137,21 @@ impl TraceFrame {
 #[derive(Clone)]
 pub struct TraceData {
     inner: Arc<RwLock<TraceFrame>>,
+    pending: Arc<parking_lot::Mutex<Vec<TraceDelta>>>,
+}
+
+struct TraceDelta {
+    thread_names: Vec<(u64, String)>,
+    spans: Vec<TraceSpan>,
+    frame_times: Vec<f32>,
+    frame_boundaries: Vec<u64>,
 }
 
 impl TraceData {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(RwLock::new(TraceFrame::new())),
+            pending: Arc::new(parking_lot::Mutex::new(Vec::new())),
         }
     }
 
@@ -989,7 +998,33 @@ impl TraceData {
     }
 
     pub fn get_frame(&self) -> Arc<TraceFrame> {
+        self.flush_pending();
         Arc::new(self.inner.read().clone())
+    }
+
+    fn flush_pending(&self) {
+        let pending = {
+            let mut queue = self.pending.lock();
+            std::mem::take(&mut *queue)
+        };
+        if pending.is_empty() {
+            return;
+        }
+        let mut frame = self.inner.write();
+        for delta in pending {
+            for (id, name) in delta.thread_names {
+                frame.threads.entry(id).or_insert(ThreadInfo { id, name });
+            }
+            for span in delta.spans {
+                frame.add_span(span);
+            }
+            for time in delta.frame_times {
+                frame.add_frame_time(time);
+            }
+            for boundary in delta.frame_boundaries {
+                frame.add_frame_boundary(boundary);
+            }
+        }
     }
 
     pub fn set_frame(&self, frame: TraceFrame) {
@@ -1007,19 +1042,12 @@ impl TraceData {
         frame_times: impl IntoIterator<Item = f32>,
         frame_boundaries: impl IntoIterator<Item = u64>,
     ) {
-        let mut frame = self.inner.write();
-        for (id, name) in thread_names {
-            frame.threads.insert(id, ThreadInfo { id, name });
-        }
-        for span in spans {
-            frame.add_span(span);
-        }
-        for time in frame_times {
-            frame.add_frame_time(time);
-        }
-        for boundary in frame_boundaries {
-            frame.add_frame_boundary(boundary);
-        }
+        self.pending.lock().push(TraceDelta {
+            thread_names: thread_names.into_iter().collect(),
+            spans: spans.into_iter().collect(),
+            frame_times: frame_times.into_iter().collect(),
+            frame_boundaries: frame_boundaries.into_iter().collect(),
+        });
     }
 }
 
