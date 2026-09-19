@@ -120,30 +120,15 @@ fn collector_loop(
                 delta_times.push(event.duration_ns as f32 / 1_000_000.0);
                 delta_boundaries.push(event.start_ns);
             } else {
-                let thread_id = if event.name.starts_with("GPU::")
-                    || event
-                        .thread_name
-                        .as_deref()
-                        .is_some_and(|name| {
-                            let name = name.to_ascii_lowercase();
-                            name.contains("gpu") || name.contains("renderer")
-                        })
-                {
-                    0
-                } else {
-                    event.thread_id
-                };
-                delta_thread_names.push((
-                    thread_id,
-                    if thread_id == 0 {
-                        "GPU".to_string()
-                    } else {
-                        event
-                            .thread_name
-                            .clone()
-                            .unwrap_or_else(|| format!("Thread {}", event.thread_id))
-                    },
-                ));
+                let thread_id = normalized_thread_id(event);
+                if thread_id == 0 {
+                    delta_thread_names.push((0, "GPU".to_string()));
+                } else if let Some(name) = accumulator.thread_names.get(&event.thread_id) {
+                    // Only publish a fallback name when the profiler actually
+                    // knows one. A later unnamed event must never erase a
+                    // meaningful name already associated with this lane.
+                    delta_thread_names.push((thread_id, name.name.clone()));
+                }
                 delta_spans.push(TraceSpan {
                     name: event.name.clone(),
                     start_ns: event.start_ns,
@@ -165,6 +150,29 @@ fn collector_loop(
     // Profiling itself is disabled by InstrumentationCollector::stop(), which
     // runs concurrently with this loop exiting.
     tracing::trace!("[PROFILER] Instrumentation collector stopped");
+}
+
+fn normalized_thread_id(event: &profiling::ProfileEvent) -> u64 {
+    let mut text = event.name.to_ascii_lowercase();
+    if let Some(thread_name) = event.thread_name.as_deref() {
+        text.push(' ');
+        text.push_str(&thread_name.to_ascii_lowercase());
+    }
+
+    // Renderer/GPU work is one logical timeline. The instrumentation thread
+    // id is an implementation detail (and may be a hashed OS id), so it must
+    // not become a visible flamegraph lane.
+    if text.contains("gpu")
+        || text.contains("renderer")
+        || text.contains("render_thread")
+        || text.contains("helio_")
+        || text.starts_with("render::")
+        || text.starts_with("render_")
+    {
+        0
+    } else {
+        event.thread_id
+    }
 }
 
 #[derive(Default)]
