@@ -93,7 +93,6 @@ pub struct SpanCache {
     /// single O(spans) pass together with `thread_offsets`.
     pub thread_rows: Arc<Vec<ThreadRowLayout>>,
     pub lod_tree: Arc<LODTree>,
-    pub tile_cache: Arc<parking_lot::Mutex<SpanTileCache>>,
     /// Span indices sorted by `end_ns`, for O(log n) window lookups when
     /// finding cross-thread wait/block dependencies on double-click.
     pub spans_sorted_by_end: Arc<Vec<u32>>,
@@ -117,7 +116,6 @@ impl SpanCache {
             thread_offsets: Arc::new(thread_offsets),
             thread_rows: Arc::new(thread_rows),
             lod_tree: Arc::new(lod_tree),
-            tile_cache: Arc::new(parking_lot::Mutex::new(SpanTileCache::new())),
             spans_sorted_by_end: Arc::new(sorted_by_end),
         }
     }

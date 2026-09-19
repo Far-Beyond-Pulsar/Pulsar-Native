@@ -8,23 +8,38 @@ use crate::state::{SpanCache, ViewState};
 use crate::trace_data::{TraceData, TraceFrame};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use std::sync::Arc;
+use std::sync::{atomic::{AtomicU32, Ordering}, Arc};
 use ui::v_flex;
 use ui::ActiveTheme;
 use ui::PixelsExt;
 
 const SPAN_HOVER_HEIGHT_SCALE: f32 = 0.8;
 
+#[inline]
+fn atomic_f32(value: f32) -> Arc<AtomicU32> {
+    Arc::new(AtomicU32::new(value.to_bits()))
+}
+
+#[inline]
+fn load_f32(value: &AtomicU32) -> f32 {
+    f32::from_bits(value.load(Ordering::Relaxed))
+}
+
+#[inline]
+fn store_f32(value: &AtomicU32, next: f32) {
+    value.store(next.to_bits(), Ordering::Relaxed);
+}
+
 pub struct FlamegraphView {
     trace_data: TraceData,
     view_state: ViewState,
     cache: Option<(Arc<TraceFrame>, Arc<SpanCache>)>,
-    viewport_width: Arc<std::sync::RwLock<f32>>,
-    viewport_height: Arc<std::sync::RwLock<f32>>,
-    viewport_origin_x: Arc<std::sync::RwLock<f32>>,
-    viewport_origin_y: Arc<std::sync::RwLock<f32>>,
-    graph_width: Arc<std::sync::RwLock<f32>>,
-    graph_origin_x: Arc<std::sync::RwLock<f32>>,
+    viewport_width: Arc<AtomicU32>,
+    viewport_height: Arc<AtomicU32>,
+    viewport_origin_x: Arc<AtomicU32>,
+    viewport_origin_y: Arc<AtomicU32>,
+    graph_width: Arc<AtomicU32>,
+    graph_origin_x: Arc<AtomicU32>,
     surface: Option<WgpuSurfaceHandle>,
     renderer: FlamegraphRenderer,
     /// Current LOD level index (cached from last paint).
@@ -106,12 +121,12 @@ impl FlamegraphView {
             trace_data,
             view_state: ViewState::default(),
             cache: None,
-            viewport_width: Arc::new(std::sync::RwLock::new(1920.0)),
-            viewport_height: Arc::new(std::sync::RwLock::new(1080.0)),
-            viewport_origin_x: Arc::new(std::sync::RwLock::new(0.0)),
-            viewport_origin_y: Arc::new(std::sync::RwLock::new(0.0)),
-            graph_width: Arc::new(std::sync::RwLock::new(1920.0)),
-            graph_origin_x: Arc::new(std::sync::RwLock::new(0.0)),
+            viewport_width: atomic_f32(1920.0),
+            viewport_height: atomic_f32(1080.0),
+            viewport_origin_x: atomic_f32(0.0),
+            viewport_origin_y: atomic_f32(0.0),
+            graph_width: atomic_f32(1920.0),
+            graph_origin_x: atomic_f32(0.0),
             surface: None,
             renderer: FlamegraphRenderer::new(),
             lod_level: None,
@@ -126,7 +141,7 @@ impl FlamegraphView {
             return None;
         }
 
-        let width = (*self.graph_width.read().unwrap()).max(1.0);
+        let width = load_f32(&self.graph_width).max(1.0);
         let clamped_x = local_x.clamp(0.0, width);
         let ratio = clamped_x / width;
         Some(frame.min_time_ns + (ratio * duration_ns as f32) as u64)
@@ -138,7 +153,7 @@ impl FlamegraphView {
             return;
         }
 
-        let viewport_width = *self.viewport_width.read().unwrap();
+        let viewport_width = load_f32(&self.viewport_width);
         let effective_width = (viewport_width - THREAD_LABEL_WIDTH).max(1.0);
         let zoom = if self.view_state.zoom == 0.0 {
             effective_width / duration_ns as f32
@@ -163,7 +178,7 @@ impl FlamegraphView {
             return;
         }
 
-        let viewport_width = *self.viewport_width.read().unwrap();
+        let viewport_width = load_f32(&self.viewport_width);
         let effective_width = (viewport_width - THREAD_LABEL_WIDTH).max(1.0);
         let new_zoom = effective_width / selected_duration as f32;
 
@@ -172,6 +187,7 @@ impl FlamegraphView {
     }
 
     fn get_or_build_cache(&mut self) -> (Arc<TraceFrame>, Arc<SpanCache>) {
+        let started = std::time::Instant::now();
         let frame = self.trace_data.get_frame();
 
         let needs_rebuild = match &self.cache {
@@ -180,6 +196,7 @@ impl FlamegraphView {
         };
 
         if needs_rebuild {
+            let cache_started = std::time::Instant::now();
             let cache = Arc::new(SpanCache::build(&frame));
 
             if self.view_state.zoom == 0.0 && frame.duration_ns() > 0 {
@@ -189,6 +206,22 @@ impl FlamegraphView {
             }
 
             self.cache = Some((Arc::clone(&frame), cache));
+            tracing::warn!(
+                target: "flamegraph.workload",
+                spans = frame.spans.len(),
+                threads = frame.threads.len(),
+                cache_ms = cache_started.elapsed().as_secs_f64() * 1000.0,
+                "flamegraph cache rebuild"
+            );
+        }
+
+        if started.elapsed() >= std::time::Duration::from_millis(5) {
+            tracing::warn!(
+                target: "flamegraph.workload",
+                total_ms = started.elapsed().as_secs_f64() * 1000.0,
+                spans = frame.spans.len(),
+                "slow flamegraph frame acquisition"
+            );
         }
 
         let (frame_ref, cache_ref) = self
@@ -209,8 +242,8 @@ impl FlamegraphView {
         local_x: f32,
         local_y: f32,
     ) -> Option<usize> {
-        let viewport_width = *self.viewport_width.read().unwrap();
-        let viewport_height = *self.viewport_height.read().unwrap();
+        let viewport_width = load_f32(&self.viewport_width);
+        let viewport_height = load_f32(&self.viewport_height);
         if local_x < THREAD_LABEL_WIDTH || local_x > viewport_width {
             return None;
         }
@@ -301,8 +334,16 @@ impl Render for FlamegraphView {
                         }
                     });
                 },
-                move |_bounds, _pre, _window, cx| {
+                move |_bounds, _pre, window, cx| {
                     entity_paint.update(cx, |view, cx| {
+                        // Window resize/fullscreen reconfiguration takes the
+                        // device's exclusive submit side. Do not submit a
+                        // flamegraph frame while the window is in that
+                        // transition; the compositor will repaint once the
+                        // new size is committed.
+                        if window.is_window_resizing() {
+                            return;
+                        }
                         // ── Clone surface handle to avoid borrow conflicts ──
                         let surface_clone = match &view.surface {
                             Some(s) => s.clone(),
@@ -311,6 +352,22 @@ impl Render for FlamegraphView {
                         if surface_clone.is_resize_pending() {
                             return;
                         }
+                        // The flamegraph shares the application's WGPU
+                        // device with the main viewport. Never enqueue a new
+                        // frame while the compositor still owns the previous
+                        // one. Without this gate GPUI repaint cadence can
+                        // outrun composition, growing GPU work until Helio
+                        // stops presenting; opening another surface then
+                        // makes the entire app appear deadlocked.
+                        if surface_clone.has_unconsumed_frame() {
+                            return;
+                        }
+                        // Surface reconfiguration and external rendering use
+                        // the same device. Hold the shared submit guard for
+                        // the entire acquire/encode/submit/publish sequence
+                        // so an exclusive resize cannot observe in-flight
+                        // flamegraph work.
+                        let _gpu_submit_guard = surface_clone.submit_guard();
                         let Some((tex_view, (w, h))) = surface_clone.back_view_with_size() else {
                             return;
                         };
@@ -476,8 +533,8 @@ impl Render for FlamegraphView {
                         let graph_origin_x = self.graph_origin_x.clone();
                         move |bounds: Vec<Bounds<Pixels>>, _window: &mut Window, _cx: &mut App| {
                             if let Some(graph_bounds) = bounds.first() {
-                                *graph_width.write().unwrap() = graph_bounds.size.width.into();
-                                *graph_origin_x.write().unwrap() = graph_bounds.origin.x.into();
+                                store_f32(&graph_width, graph_bounds.size.width.into());
+                                store_f32(&graph_origin_x, graph_bounds.origin.x.into());
                             }
                         }
                     })
@@ -495,7 +552,7 @@ impl Render for FlamegraphView {
                                     self.view_state.crop_end_time_ns,
                                 ) {
                                     let duration = frame.duration_ns().max(1) as f32;
-                                    let graph_width = *self.graph_width.read().unwrap();
+                                    let graph_width = load_f32(&self.graph_width);
                                     let start_ratio =
                                         (start.min(end).saturating_sub(frame.min_time_ns)) as f32
                                             / duration;
@@ -524,7 +581,7 @@ impl Render for FlamegraphView {
                                 MouseButton::Left,
                                 cx.listener(|view, event: &MouseDownEvent, _window, cx| {
                                     let window_x: f32 = event.position.x.into();
-                                    let local_x = window_x - *view.graph_origin_x.read().unwrap();
+                                    let local_x = window_x - load_f32(&view.graph_origin_x);
                                     let frame = view.trace_data.get_frame();
 
                                     if let Some(time_ns) = view.graph_x_to_time_ns(&frame, local_x)
@@ -545,7 +602,7 @@ impl Render for FlamegraphView {
                                     }
 
                                     let window_x: f32 = event.position.x.into();
-                                    let local_x = window_x - *view.graph_origin_x.read().unwrap();
+                                    let local_x = window_x - load_f32(&view.graph_origin_x);
                                     let frame = view.trace_data.get_frame();
 
                                     if let Some(time_ns) = view.graph_x_to_time_ns(&frame, local_x)
@@ -563,7 +620,7 @@ impl Render for FlamegraphView {
                                     }
 
                                     let window_x: f32 = event.position.x.into();
-                                    let local_x = window_x - *view.graph_origin_x.read().unwrap();
+                                    let local_x = window_x - load_f32(&view.graph_origin_x);
                                     let drag_distance =
                                         (local_x - view.view_state.graph_drag_start_x).abs();
                                     let frame = view.trace_data.get_frame();
@@ -632,11 +689,10 @@ impl Render for FlamegraphView {
                         let viewport_origin_y = self.viewport_origin_y.clone();
                         move |bounds: Vec<Bounds<Pixels>>, _window: &mut Window, _cx: &mut App| {
                             if let Some(canvas_bounds) = bounds.first() {
-                                *viewport_width.write().unwrap() = canvas_bounds.size.width.into();
-                                *viewport_height.write().unwrap() =
-                                    canvas_bounds.size.height.into();
-                                *viewport_origin_x.write().unwrap() = canvas_bounds.origin.x.into();
-                                *viewport_origin_y.write().unwrap() = canvas_bounds.origin.y.into();
+                                store_f32(&viewport_width, canvas_bounds.size.width.into());
+                                store_f32(&viewport_height, canvas_bounds.size.height.into());
+                                store_f32(&viewport_origin_x, canvas_bounds.origin.x.into());
+                                store_f32(&viewport_origin_y, canvas_bounds.origin.y.into());
                             }
                         }
                     })
@@ -667,8 +723,8 @@ impl Render for FlamegraphView {
                             let pos: Point<Pixels> = event.position;
                             let window_x: f32 = pos.x.into();
                             let window_y: f32 = pos.y.into();
-                            let local_x = window_x - *view.viewport_origin_x.read().unwrap();
-                            let local_y = window_y - *view.viewport_origin_y.read().unwrap();
+                            let local_x = window_x - load_f32(&view.viewport_origin_x);
+                            let local_y = window_y - load_f32(&view.viewport_origin_y);
 
                             if event.click_count >= 2 {
                                 // Double-click a box → show cross-thread wait/block
@@ -688,8 +744,8 @@ impl Render for FlamegraphView {
                         let pos: Point<Pixels> = event.position;
                         let window_x: f32 = pos.x.into();
                         let window_y: f32 = pos.y.into();
-                        let local_x = window_x - *view.viewport_origin_x.read().unwrap();
-                        let local_y = window_y - *view.viewport_origin_y.read().unwrap();
+                        let local_x = window_x - load_f32(&view.viewport_origin_x);
+                        let local_y = window_y - load_f32(&view.viewport_origin_y);
 
                         view.view_state.mouse_x = local_x;
                         view.view_state.mouse_y = local_y;
@@ -715,7 +771,7 @@ impl Render for FlamegraphView {
                         if event.modifiers.control || event.modifiers.platform {
                             let cursor_pos: Point<Pixels> = event.position;
                             let cursor_x: f32 = cursor_pos.x.into();
-                            let local_cursor_x = cursor_x - *view.viewport_origin_x.read().unwrap();
+                            let local_cursor_x = cursor_x - load_f32(&view.viewport_origin_x);
 
                             let old_zoom = view.view_state.zoom;
                             let zoom_factor = 1.0 - (delta_y * 0.01);
@@ -734,18 +790,14 @@ impl Render for FlamegraphView {
                         cx.notify();
                     }))
                     .child({
-                        let viewport_h = self
-                            .viewport_height
-                            .read()
-                            .map(|h| *h)
-                            .unwrap_or(0.0);
+                        let viewport_h = load_f32(&self.viewport_height);
                         render_thread_labels(&frame, &thread_offsets, &view_state, viewport_h, cx)
                     })
                     .children({
                         let popup = render_hover_popup(
                             &frame,
                             &view_state,
-                            *self.viewport_width.read().unwrap(),
+                            load_f32(&self.viewport_width),
                             cx,
                         );
                         popup

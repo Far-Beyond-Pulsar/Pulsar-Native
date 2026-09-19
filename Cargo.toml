@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/profiling",
     "crates/core/*",
     "crates/editor/*",
     "crates/subsystems/*",
@@ -80,7 +81,7 @@ ui-macros    = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 
 # ---------- Core Engine ----------
 # Profiling - instrumentation-based
-profiling                          = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling", rev = "988521c84d1e0d259b9c33e10e2f504eaed53dfc", default-features = false }
+profiling                          = { path = "crates/profiling", default-features = false }
 crossbeam-queue                    = "0.3"
 arc-swap                           = "1.9"
 # Tracy frontend: crates.io `profiling` v1, kept separate from the custom

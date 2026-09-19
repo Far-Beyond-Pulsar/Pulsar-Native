@@ -2,7 +2,7 @@
 
 use glam::{Mat4, Vec3};
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use helio::{Camera, Renderer, RendererConfig};
 use helio_component::{PlanetTerrainFrameInput, PlanetTerrainRuntime};
@@ -10,7 +10,6 @@ use helio_component::{PlanetTerrainFrameInput, PlanetTerrainRuntime};
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 use crate::scene::{GizmoType, SceneWorldExt};
 use crate::services::terrain_edit::TerrainEditMailbox;
-use parking_lot::RwLock;
 
 use super::interaction::SceneInteraction;
 type GizmoMode = GizmoType;
@@ -96,61 +95,29 @@ impl HelioEditorMailbox {
     }
 }
 
-/// Bridges the engine's existing instrumentation stream into the Inspector's
-/// WGPUI capture when one is active. The bridge is intentionally scoped to a
-/// render frame: it drains only after all engine scopes have closed, so their
-/// absolute Unix timestamps and nesting metadata can be attached to the same
-/// bounded capture without adding work to the idle path.
+/// Render-frame marker retained for the editor-ui integration point.
+///
+/// The custom instrumentation stream has a single owner: the flamegraph
+/// collector. This type must remain a no-op with respect to profiling state;
+/// render-frame code must never drain or toggle the global collector.
 #[cfg(feature = "editor-ui")]
-struct WgpuiProfileBridge {
-    active: bool,
-    owns_profiler: bool,
-}
+struct WgpuiProfileBridge;
 
 #[cfg(feature = "editor-ui")]
 impl WgpuiProfileBridge {
     fn begin() -> Self {
-        if !gpui::capture_enabled() {
-            return Self {
-                active: false,
-                owns_profiler: false,
-            };
-        }
-
-        // The legacy SQLite collector may already own the engine profiler.
-        // In that case leave its lifecycle untouched and only drain the
-        // events it has made available so far. Normal Inspector captures own
-        // the profiler for this frame and clean up after importing it.
-        let owns_profiler = !profiling::is_profiling_enabled();
-        if owns_profiler {
-            profiling::clear_events();
-            profiling::enable_profiling();
-        }
-
-        Self {
-            active: true,
-            owns_profiler,
-        }
+        // The flamegraph collector is the sole owner of the custom
+        // instrumentation stream. This render-frame bridge intentionally does
+        // not enable, disable, or drain it: doing so from the render thread
+        // races the collector and takes the profiling store lock during GPU
+        // submission.
+        Self
     }
 }
 
 #[cfg(feature = "editor-ui")]
 impl Drop for WgpuiProfileBridge {
-    fn drop(&mut self) {
-        if !self.active {
-            return;
-        }
-
-        for event in profiling::collect_events() {
-            if event.name != "__FRAME_MARKER__" {
-                tracing::trace!(name = %event.name, duration_ns = event.duration_ns, "helio profile event");
-            }
-        }
-
-        if self.owns_profiler {
-            profiling::disable_profiling();
-        }
-    }
+    fn drop(&mut self) {}
 }
 
 // ── HelioRenderer ─────────────────────────────────────────────────────────────
@@ -326,6 +293,7 @@ impl HelioRenderer {
         let _wgpui_profile_bridge = WgpuiProfileBridge::begin();
         #[cfg(feature = "editor-ui")]
         gpui::flamegraph_span!("pulsar: HelioRenderer::render_frame");
+        profiling::set_track_name("Helio Render");
         profiling::profile_scope!("helio_frame");
         let frame_start = Instant::now();
         let now = Instant::now();
@@ -756,13 +724,30 @@ impl HelioRenderer {
         inner.has_rendered_frame = true;
         let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
         let frame_ms = frame_start.elapsed().as_secs_f32() * 1_000.0;
+        if frame_ms >= 50.0 {
+            tracing::warn!(
+                target: "flamegraph.workload",
+                frame_ms,
+                render_ms,
+                frame_index = self.profiler_frame_counter,
+                profiling_enabled = profiling::is_profiling_enabled(),
+                producer_queue = profiling::init_profiler().pending_event_count(),
+                retained_events = profiling::init_profiler().retained_event_count(),
+                dropped_events = profiling::init_profiler().dropped_event_count(),
+                "slow Helio frame"
+            );
+        }
         // Emit the boundary from the render thread. The profiler collector
         // must not inspect the renderer registry or GPU mutex from a second
         // thread just to obtain this value.
         profiling::record_frame_time(frame_ms);
 
-        // ── GPU profiler (throttled to every 30 frames) ─────────────────────────
-        if self.profiler_frame_counter >= 30 {
+        // ── GPU profiler ───────────────────────────────────────────────────────
+        // Continuous flamegraph capture needs every completed asynchronous
+        // readback. Keep the old 30-frame cadence only for the cheap
+        // always-on diagnostic cache when no instrumentation capture owns the
+        // profiler.
+        if profiling::is_profiling_enabled() || self.profiler_frame_counter >= 30 {
             self.profiler_frame_counter = 0;
             self.gpu_profiler
                 .update_from_snapshot(inner.renderer.timing_snapshot());
@@ -770,6 +755,9 @@ impl HelioRenderer {
 
         let gpu_frame = self.gpu_profiler.gpu_frame_count;
         let new_gpu_result = gpu_frame.is_some() && gpu_frame != self.last_reported_gpu_frame;
+        if new_gpu_result {
+            emit_helio_gpu_passes(&self.gpu_profiler);
+        }
         let gpu_spike = new_gpu_result
             && self
                 .gpu_profiler
@@ -1178,5 +1166,69 @@ impl HelioRenderer {
                 }
             }
         }
+    }
+}
+
+/// Publish completed Helio timestamp-query results into the shared trace.
+///
+/// These are deliberately submitted as GPU-track events rather than pretending
+/// that the asynchronous query result ran on the render thread. `parent_name`
+/// gives the viewer a stable relationship to the Helio frame scope, while the
+/// GPU thread identity keeps the samples on the dedicated GPU lane.
+fn emit_helio_gpu_passes(data: &GpuProfilerData) {
+    if !profiling::is_profiling_enabled() {
+        return;
+    }
+
+    let Some(total_gpu_ms) = data.total_gpu_ms else {
+        return;
+    };
+    let now_ns = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos() as u64)
+        .unwrap_or(0);
+    let mut cursor_ns = now_ns.saturating_sub((total_gpu_ms * 1_000_000.0) as u64);
+    let profiler = profiling::init_profiler();
+    let total_duration_ns = (total_gpu_ms * 1_000_000.0) as u64;
+    let gpu_frame_scope_id = profiling::allocate_scope_id();
+    let logical_parent = profiling::current_scope_context().parent_scope_id;
+
+    profiler.submit_event(profiling::ProfileEvent {
+        scope_id: gpu_frame_scope_id,
+        parent_scope_id: logical_parent,
+        name: "helio_frame".to_string(),
+        thread_id: 0,
+        thread_name: Some("GPU".to_string()),
+        process_id: profiler.get_process_id(),
+        parent_name: None,
+        start_ns: cursor_ns,
+        duration_ns: total_duration_ns,
+        depth: 0,
+        location: None,
+        metadata: Some("domain=helio;track=gpu".to_string()),
+        track_name: Some("GPU".to_string()),
+    });
+
+    for pass in &data.render_metrics {
+        let Some(gpu_ms) = pass.gpu_ms else {
+            continue;
+        };
+        let duration_ns = (gpu_ms * 1_000_000.0) as u64;
+        profiler.submit_event(profiling::ProfileEvent {
+            scope_id: profiling::allocate_scope_id(),
+            parent_scope_id: Some(gpu_frame_scope_id),
+            name: pass.name.to_string(),
+            thread_id: 0,
+            thread_name: Some("GPU".to_string()),
+            process_id: profiler.get_process_id(),
+            parent_name: Some("helio_frame".to_string()),
+            start_ns: cursor_ns,
+            duration_ns,
+            depth: 1,
+            location: None,
+            metadata: Some("domain=helio;track=gpu".to_string()),
+            track_name: Some("GPU".to_string()),
+        });
+        cursor_ns = cursor_ns.saturating_add(duration_ns);
     }
 }

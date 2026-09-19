@@ -18,7 +18,7 @@ pub struct FlamegraphWindow {
     trace_data: Arc<TraceData>,
     is_profiling: bool,
     current_db_path: Option<std::path::PathBuf>,
-    db_connection: Option<Arc<parking_lot::Mutex<rusqlite::Connection>>>,
+    db_connection: Option<rusqlite::Connection>,
     flamegraph_panel: Option<Entity<FlamegraphPanel>>,
     statistics_panel: Option<Entity<StatisticsPanel>>,
     resizable_state: Entity<ResizableState>,
@@ -65,7 +65,7 @@ impl FlamegraphWindow {
                         Ok(conn) => {
                             tracing::trace!("[PROFILER] Created database: {}", db_path.display());
                             self.current_db_path = Some(db_path);
-                            self.db_connection = Some(Arc::new(parking_lot::Mutex::new(conn)));
+                            self.db_connection = Some(conn);
                         }
                         Err(e) => {
                             tracing::error!("[PROFILER] Failed to create database: {}", e);
@@ -104,7 +104,7 @@ impl FlamegraphWindow {
         // Save all events to database before stopping
         if let Some(db_conn) = &self.db_connection {
             let events = profiling::get_all_events();
-            if let Err(e) = profiling::database::save_events(&db_conn.lock(), &events) {
+            if let Err(e) = profiling::database::save_events(db_conn, &events) {
                 tracing::error!("[PROFILER] Failed to save events to database: {}", e);
             } else {
                 tracing::trace!("[PROFILER] Saved {} events to database", events.len());
@@ -156,13 +156,20 @@ impl FlamegraphWindow {
     }
 
     fn load_from_database(&mut self, db_path: std::path::PathBuf, _cx: &mut Context<Self>) {
+        let load_started = std::time::Instant::now();
+        tracing::warn!(
+            target: "flamegraph.workload",
+            path = %db_path.display(),
+            "beginning flamegraph database load"
+        );
         match rusqlite::Connection::open(&db_path) {
             Ok(conn) => {
                 match profiling::database::load_events(&conn) {
                     Ok(events) => {
+                        let event_count = events.len();
                         tracing::trace!(
                             "[PROFILER] Loaded {} events from {}",
-                            events.len(),
+                            event_count,
                             db_path.display()
                         );
 
@@ -175,6 +182,13 @@ impl FlamegraphWindow {
                         }
 
                         self.current_db_path = Some(db_path);
+                        tracing::warn!(
+                            target: "flamegraph.workload",
+                            events = event_count,
+                            total_ms = load_started.elapsed().as_secs_f64() * 1000.0,
+                            trace_stats = ?self.trace_data.debug_stats(),
+                            "completed flamegraph database load"
+                        );
                         _cx.notify();
                     }
                     Err(e) => {

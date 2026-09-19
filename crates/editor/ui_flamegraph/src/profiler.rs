@@ -70,9 +70,9 @@ impl InstrumentationCollector {
     pub fn stop(&self) {
         self.running.store(false, Ordering::Release);
 
-        // Turn instrumentation back off now that nothing is consuming it,
-        // so profile_scope! goes back to its (near) no-op fast path instead
-        // of continuing to feed the event channel.
+        // Do not join from the UI thread. The collector only owns lock-free
+        // queues and will observe this flag on its next tick; joining here
+        // created a UI/render shutdown dependency and was a deadlock vector.
         profiling::disable_profiling();
     }
 
@@ -91,6 +91,8 @@ fn collector_loop(
     tracing::trace!("[PROFILER] Starting instrumentation collector");
 
     let mut accumulator = TraceAccumulator::from_frame(&trace_data.get_frame());
+    let mut last_report = std::time::Instant::now();
+    let mut batches = 0u64;
     while running.load(Ordering::Acquire) {
         thread::sleep(Duration::from_millis(update_interval_ms));
 
@@ -102,6 +104,8 @@ fn collector_loop(
         if new_events.is_empty() {
             continue;
         }
+        let batch_started = std::time::Instant::now();
+        batches += 1;
 
         tracing::trace!(
             "[PROFILER] Collected {} new instrumentation events",
@@ -123,6 +127,8 @@ fn collector_loop(
                 let thread_id = normalized_thread_id(event);
                 if thread_id == 0 {
                     delta_thread_names.push((0, "GPU".to_string()));
+                } else if let Some(track_name) = event.track_name.as_deref() {
+                    delta_thread_names.push((thread_id, track_name.to_string()));
                 } else if let Some(name) = accumulator.thread_names.get(&event.thread_id) {
                     // Only publish a fallback name when the profiler actually
                     // knows one. A later unnamed event must never erase a
@@ -145,6 +151,32 @@ fn collector_loop(
             delta_times,
             delta_boundaries,
         );
+
+        if last_report.elapsed() >= Duration::from_secs(1) {
+            let (spans, threads, pending, boundaries) = trace_data.debug_stats();
+            tracing::warn!(
+                target: "flamegraph.workload",
+                batches,
+                events = new_events.len(),
+                producer_queue = profiling::init_profiler().pending_event_count(),
+                retained_events = profiling::init_profiler().retained_event_count(),
+                dropped_events = profiling::init_profiler().dropped_event_count(),
+                trace_spans = spans,
+                trace_threads = threads,
+                pending_deltas = pending,
+                frame_boundaries = boundaries,
+                batch_ms = batch_started.elapsed().as_secs_f64() * 1000.0,
+                "flamegraph collector workload"
+            );
+            last_report = std::time::Instant::now();
+        } else if batch_started.elapsed() >= Duration::from_millis(10) {
+            tracing::warn!(
+                target: "flamegraph.workload",
+                batch_ms = batch_started.elapsed().as_secs_f64() * 1000.0,
+                events = new_events.len(),
+                "slow flamegraph collector batch"
+            );
+        }
     }
 
     // Profiling itself is disabled by InstrumentationCollector::stop(), which
@@ -152,28 +184,54 @@ fn collector_loop(
     tracing::trace!("[PROFILER] Instrumentation collector stopped");
 }
 
+impl Drop for InstrumentationCollector {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
 fn normalized_thread_id(event: &profiling::ProfileEvent) -> u64 {
+    if let Some(track_name) = event.track_name.as_deref() {
+        return logical_track_id(track_name);
+    }
+
     let mut text = event.name.to_ascii_lowercase();
     if let Some(thread_name) = event.thread_name.as_deref() {
         text.push(' ');
         text.push_str(&thread_name.to_ascii_lowercase());
     }
 
-    // Renderer/GPU work is one logical timeline. The instrumentation thread
-    // id is an implementation detail (and may be a hashed OS id), so it must
-    // not become a visible flamegraph lane.
-    if text.contains("gpu")
-        || text.contains("renderer")
-        || text.contains("render_thread")
-        || text.contains("helio_")
-        || text.starts_with("render::")
-        || text.starts_with("render_")
+    if event
+        .metadata
+        .as_deref()
+        .is_some_and(|metadata| metadata.contains("track=gpu"))
     {
+        return 0;
+    }
+
+    // Track ids are semantic lanes, not OS/thread ids. Helio's RenderGraph
+    // executes passes on worker threads, so using event.thread_id here turns
+    // LightCull/WaterSim into a forest of anonymous rows. Keep CPU-side Helio
+    // work on one stable named lane; reserve lane 0 for actual GPU events.
+    if text.contains("gpu") {
         0
     } else {
         event.thread_id
     }
 }
+
+fn logical_track_id(name: &str) -> u64 {
+    if name.eq_ignore_ascii_case("gpu") {
+        return 0;
+    }
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in name.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    if hash == 0 { 1 } else { hash }
+}
+
 
 #[derive(Default)]
 struct TraceAccumulator {
@@ -263,7 +321,7 @@ pub fn convert_profile_events_to_trace(
 
     // Add new events to existing spans and extract frame times
     for (idx, event) in events.iter().enumerate() {
-        let thread_id = event.thread_id;
+        let thread_id = normalized_thread_id(event);
 
         // Check if this is a frame marker event
         if event.name == "__FRAME_MARKER__" {
@@ -280,10 +338,16 @@ pub fn convert_profile_events_to_trace(
         }
 
         // Use the thread name from the event if available
-        let thread_name = event
-            .thread_name
-            .clone()
-            .unwrap_or_else(|| format!("Thread {}", thread_id));
+        let thread_name = if thread_id == 0 {
+            "GPU".to_string()
+        } else if let Some(track_name) = event.track_name.as_deref() {
+            track_name.to_string()
+        } else {
+            event
+                .thread_name
+                .clone()
+                .unwrap_or_else(|| format!("Thread {}", event.thread_id))
+        };
 
         thread_names.insert(thread_id, thread_name);
 

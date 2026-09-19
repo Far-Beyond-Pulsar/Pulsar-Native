@@ -2,7 +2,11 @@ use crossbeam_queue::SegQueue;
 use arc_swap::ArcSwap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{atomic::{AtomicU64, Ordering}, Arc};
+use std::time::Instant;
+
+static FLUSH_COUNT: AtomicU64 = AtomicU64::new(0);
+static FLUSHED_SPANS: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TraceSpan {
@@ -1006,9 +1010,31 @@ impl TraceData {
         self.inner.load_full()
     }
 
+    /// Cheap diagnostic snapshot. This intentionally does not flush pending
+    /// deltas, so instrumentation can report backlog pressure without doing
+    /// the expensive publication work it is measuring.
+    pub fn debug_stats(&self) -> (usize, usize, usize, usize) {
+        let frame = self.inner.load();
+        (
+            frame.spans.len(),
+            frame.threads.len(),
+            self.pending.len(),
+            frame.frame_boundaries_ns.len(),
+        )
+    }
+
     fn flush_pending(&self) {
+        if self.pending.is_empty() {
+            return;
+        }
+        let started = Instant::now();
         let mut frame = (*self.inner.load_full()).clone();
+        let old_span_count = frame.spans.len();
+        let mut changed = false;
+        let mut delta_count = 0usize;
         while let Some(delta) = self.pending.pop() {
+            changed = true;
+            delta_count += 1;
             for (id, name) in delta.thread_names {
                 frame.threads.entry(id).or_insert(ThreadInfo { id, name });
             }
@@ -1022,7 +1048,26 @@ impl TraceData {
                 frame.add_frame_boundary(boundary);
             }
         }
-        self.inner.store(Arc::new(frame));
+        if changed {
+            let new_span_count = frame.spans.len();
+            self.inner.store(Arc::new(frame));
+            let flushes = FLUSH_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+            FLUSHED_SPANS.fetch_add(new_span_count as u64, Ordering::Relaxed);
+            let elapsed = started.elapsed();
+            if elapsed >= std::time::Duration::from_millis(5) || flushes % 60 == 0 {
+                tracing::warn!(
+                    target: "flamegraph.workload",
+                    flushes,
+                    delta_count,
+                    old_span_count,
+                    new_span_count,
+                    pending_after = self.pending.len(),
+                    elapsed_ms = elapsed.as_secs_f64() * 1000.0,
+                    cumulative_copied_spans = FLUSHED_SPANS.load(Ordering::Relaxed),
+                    "trace publication cloned the accumulated history"
+                );
+            }
+        }
     }
 
     pub fn set_frame(&self, frame: TraceFrame) {
