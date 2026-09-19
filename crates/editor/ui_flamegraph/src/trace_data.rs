@@ -1006,8 +1006,15 @@ impl TraceData {
     }
 
     pub fn get_frame(&self) -> Arc<TraceFrame> {
-        self.flush_pending();
         self.inner.load_full()
+    }
+
+    /// Publish queued collector deltas without making a UI render pay the
+    /// copy-on-write cost. The collector owns this work: `get_frame()` is now
+    /// a pure ArcSwap load and therefore cannot stall the editor while a trace
+    /// grows.
+    pub fn publish_pending(&self) {
+        self.flush_pending();
     }
 
     /// Cheap diagnostic snapshot. This intentionally does not flush pending

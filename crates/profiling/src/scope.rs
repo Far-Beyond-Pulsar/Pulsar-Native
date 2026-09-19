@@ -64,7 +64,11 @@ thread_local! {
 
 /// RAII scope guard for profiling
 pub struct ProfileScope {
-    start: Instant,
+    /// Only present for an active scope. Keeping this optional lets the
+    /// disabled path avoid touching the platform clock at all; profiling
+    /// instrumentation is present throughout the engine and must be almost
+    /// free when the viewer is not recording.
+    start: Option<Instant>,
     start_ns: u64,
     depth: u32,
     thread_id: u64,
@@ -127,7 +131,7 @@ impl ProfileScope {
     ) -> Self {
         if !init_profiler().is_enabled() {
             return Self {
-                start: Instant::now(),
+                start: None,
                 start_ns: 0,
                 depth: 0,
                 thread_id: 0,
@@ -153,7 +157,7 @@ impl ProfileScope {
         let scope_id = THREAD_STATE.with(|ts| ts.borrow().scope_stack.last().map(|frame| frame.id).unwrap_or(0));
 
         Self {
-            start,
+            start: Some(start),
             start_ns,
             depth,
             thread_id,
@@ -172,7 +176,10 @@ impl Drop for ProfileScope {
             return;
         }
 
-        let duration_ns = self.start.elapsed().as_nanos() as u64;
+        let Some(start) = self.start else {
+            return;
+        };
+        let duration_ns = start.elapsed().as_nanos() as u64;
 
         let (name, parent_name) = THREAD_STATE.with(|ts| {
             let mut state = ts.borrow_mut();

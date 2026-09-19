@@ -151,6 +151,10 @@ fn collector_loop(
             delta_times,
             delta_boundaries,
         );
+        // Trace publication clones the immutable snapshot. Keep that work on
+        // the collector thread; the UI must only load the completed ArcSwap
+        // snapshot during render and never flush an ever-growing history.
+        trace_data.publish_pending();
 
         if last_report.elapsed() >= Duration::from_secs(1) {
             let (spans, threads, pending, boundaries) = trace_data.debug_stats();
