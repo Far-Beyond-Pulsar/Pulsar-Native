@@ -2,14 +2,14 @@
 
 use crate::trace_data::{ThreadInfo, TraceData, TraceFrame, TraceSpan};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 use std::thread;
 use std::time::Duration;
 
 /// Background collector that periodically grabs instrumentation events
 pub struct InstrumentationCollector {
     trace_data: Arc<TraceData>,
-    running: Arc<parking_lot::RwLock<bool>>,
+    running: Arc<AtomicBool>,
     update_interval_ms: u64,
 }
 
@@ -22,20 +22,20 @@ impl InstrumentationCollector {
     pub fn new(trace_data: Arc<TraceData>, update_interval_ms: u64) -> Self {
         Self {
             trace_data,
-            running: Arc::new(parking_lot::RwLock::new(false)),
+            running: Arc::new(AtomicBool::new(false)),
             update_interval_ms,
         }
     }
 
     /// Start collecting in a background thread
     pub fn start(&self) {
+        if self
+            .running
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
         {
-            let mut running = self.running.write();
-            if *running {
-                tracing::trace!("[PROFILER] Already running, ignoring start request");
-                return; // Already running
-            }
-            *running = true;
+            tracing::trace!("[PROFILER] Already running, ignoring start request");
+            return;
         }
 
         // Profiling is only live while the Flamegraph panel is actively
@@ -68,7 +68,7 @@ impl InstrumentationCollector {
 
     /// Stop collecting
     pub fn stop(&self) {
-        *self.running.write() = false;
+        self.running.store(false, Ordering::Release);
 
         // Turn instrumentation back off now that nothing is consuming it,
         // so profile_scope! goes back to its (near) no-op fast path instead
@@ -78,20 +78,20 @@ impl InstrumentationCollector {
 
     /// Check if collector is running
     pub fn is_running(&self) -> bool {
-        *self.running.read()
+        self.running.load(Ordering::Acquire)
     }
 }
 
 /// The collector loop that periodically fetches events
 fn collector_loop(
     trace_data: Arc<TraceData>,
-    running: Arc<parking_lot::RwLock<bool>>,
+    running: Arc<AtomicBool>,
     update_interval_ms: u64,
 ) {
     tracing::trace!("[PROFILER] Starting instrumentation collector");
 
     let mut accumulator = TraceAccumulator::from_frame(&trace_data.get_frame());
-    while *running.read() {
+    while running.load(Ordering::Acquire) {
         thread::sleep(Duration::from_millis(update_interval_ms));
 
         // `collect_events` returns exactly the events drained on this tick.

@@ -1,4 +1,5 @@
-use parking_lot::RwLock;
+use crossbeam_queue::SegQueue;
+use arc_swap::ArcSwap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -136,8 +137,8 @@ impl TraceFrame {
 
 #[derive(Clone)]
 pub struct TraceData {
-    inner: Arc<RwLock<TraceFrame>>,
-    pending: Arc<parking_lot::Mutex<Vec<TraceDelta>>>,
+    inner: Arc<ArcSwap<TraceFrame>>,
+    pending: Arc<SegQueue<TraceDelta>>,
 }
 
 struct TraceDelta {
@@ -150,8 +151,8 @@ struct TraceDelta {
 impl TraceData {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(RwLock::new(TraceFrame::new())),
-            pending: Arc::new(parking_lot::Mutex::new(Vec::new())),
+            inner: Arc::new(ArcSwap::from_pointee(TraceFrame::new())),
+            pending: Arc::new(SegQueue::new()),
         }
     }
 
@@ -983,35 +984,31 @@ impl TraceData {
     }
 
     pub fn add_span(&self, span: TraceSpan) {
-        let mut guard = self.inner.write();
-        guard.add_span(span);
+        let mut frame = (*self.inner.load_full()).clone();
+        frame.add_span(span);
+        self.inner.store(Arc::new(frame));
     }
 
     pub fn add_frame_time(&self, ms: f32) {
-        let mut guard = self.inner.write();
-        guard.add_frame_time(ms);
+        let mut frame = (*self.inner.load_full()).clone();
+        frame.add_frame_time(ms);
+        self.inner.store(Arc::new(frame));
     }
 
     pub fn add_frame_boundary(&self, start_ns: u64) {
-        let mut guard = self.inner.write();
-        guard.add_frame_boundary(start_ns);
+        let mut frame = (*self.inner.load_full()).clone();
+        frame.add_frame_boundary(start_ns);
+        self.inner.store(Arc::new(frame));
     }
 
     pub fn get_frame(&self) -> Arc<TraceFrame> {
         self.flush_pending();
-        Arc::new(self.inner.read().clone())
+        self.inner.load_full()
     }
 
     fn flush_pending(&self) {
-        let pending = {
-            let mut queue = self.pending.lock();
-            std::mem::take(&mut *queue)
-        };
-        if pending.is_empty() {
-            return;
-        }
-        let mut frame = self.inner.write();
-        for delta in pending {
+        let mut frame = (*self.inner.load_full()).clone();
+        while let Some(delta) = self.pending.pop() {
             for (id, name) in delta.thread_names {
                 frame.threads.entry(id).or_insert(ThreadInfo { id, name });
             }
@@ -1025,14 +1022,15 @@ impl TraceData {
                 frame.add_frame_boundary(boundary);
             }
         }
+        self.inner.store(Arc::new(frame));
     }
 
     pub fn set_frame(&self, frame: TraceFrame) {
-        *self.inner.write() = frame;
+        self.inner.store(Arc::new(frame));
     }
 
     pub fn clear(&self) {
-        *self.inner.write() = TraceFrame::new();
+        self.inner.store(Arc::new(TraceFrame::new()));
     }
 
     pub fn append_batch(
@@ -1042,7 +1040,7 @@ impl TraceData {
         frame_times: impl IntoIterator<Item = f32>,
         frame_boundaries: impl IntoIterator<Item = u64>,
     ) {
-        self.pending.lock().push(TraceDelta {
+        self.pending.push(TraceDelta {
             thread_names: thread_names.into_iter().collect(),
             spans: spans.into_iter().collect(),
             frame_times: frame_times.into_iter().collect(),

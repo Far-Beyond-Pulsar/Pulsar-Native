@@ -18,6 +18,8 @@ bytemuck = "1"
 
 # Profiling - instrumentation-based (Unreal Insights style)
 profiling = { workspace = true }
+crossbeam-queue = { workspace = true }
+arc-swap = { workspace = true }
 parking_lot = { workspace = true }
 rusqlite = { workspace = true, features = ["bundled"] }
 engine_state = { workspace = true }
