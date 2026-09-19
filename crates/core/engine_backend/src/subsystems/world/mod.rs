@@ -324,6 +324,7 @@ impl World {
     /// - The method provides progress feedback using a progress bar.
     /// - All existing points in the database are cleared before persisting the current state.
     pub fn save_world(&self) -> Result<(), String> {
+        profiling::profile_scope!("Subsystem::World::save_world");
         self.vault.persist_to_disk()
     }
 }

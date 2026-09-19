@@ -9,11 +9,13 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use ui::ActiveTheme;
 
-/// Render the thread labels on the left side
+/// Render the thread labels on the left side — vertically virtualized so a
+/// trace with thousands of threads only ever mounts the rows in view.
 pub fn render_thread_labels(
     frame: &Arc<TraceFrame>,
     thread_offsets: &BTreeMap<u64, f32>,
     view_state: &ViewState,
+    viewport_h: f32,
     cx: &mut Context<impl Render>,
 ) -> impl IntoElement {
     let _setup_start = std::time::Instant::now();
@@ -32,38 +34,43 @@ pub fn render_thread_labels(
         .border_r_2()
         .border_color(theme.sidebar_border)
         .overflow_hidden()
-        .children(thread_offsets.iter().map(|(thread_id, y_offset)| {
-            let thread = frame.threads.get(thread_id).unwrap();
-            // Apply the same y_adj as the WGPU span renderer (-GRAPH_HEIGHT)
-            // so thread labels align with span rows
+        .children(thread_offsets.iter().filter_map(|(thread_id, y_offset)| {
+            // Same y_adj as the WGPU span renderer (-GRAPH_HEIGHT) so thread
+            // labels align with span rows.
             let y = y_offset - GRAPH_HEIGHT + view_state.pan_y;
+            if y + ROW_HEIGHT < 0.0 || y > viewport_h {
+                return None;
+            }
+            let thread = frame.threads.get(thread_id)?;
             let thread_color = get_thread_color(*thread_id);
 
-            div()
-                .absolute()
-                .top(px(y))
-                .left_0()
-                .w_full()
-                .h(px(ROW_HEIGHT))
-                .flex()
-                .items_center()
-                .gap_2()
-                .px_3()
-                .child(
-                    // Color indicator dot
-                    div()
-                        .w(px(8.0))
-                        .h(px(8.0))
-                        .rounded(px(4.0))
-                        .bg(thread_color),
-                )
-                .child(
-                    div()
-                        .text_xs()
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(theme.sidebar_foreground)
-                        .child(thread.name.clone()),
-                )
+            Some(
+                div()
+                    .absolute()
+                    .top(px(y))
+                    .left_0()
+                    .w_full()
+                    .h(px(ROW_HEIGHT))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .px_3()
+                    .child(
+                        // Color indicator dot
+                        div()
+                            .w(px(8.0))
+                            .h(px(8.0))
+                            .rounded(px(4.0))
+                            .bg(thread_color),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(theme.sidebar_foreground)
+                            .child(thread.name.clone()),
+                    ),
+            )
         }));
     result
 }

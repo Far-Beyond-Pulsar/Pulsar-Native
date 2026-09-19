@@ -95,6 +95,7 @@ pub(super) fn collect_dfs(world: &World, parent: Option<Entity>, out: &mut Vec<S
 
 /// All objects in depth-first order.
 pub fn get_all_objects(world: &World) -> Vec<SceneObjectData> {
+    profiling::profile_scope!("scene_edit::get_all_objects");
     let mut out = Vec::new();
     collect_dfs(world, None, &mut out);
     for obj in &mut out {
@@ -116,6 +117,7 @@ pub fn get_root_objects(world: &World) -> Vec<SceneObjectData> {
 /// root ids. Keeping them together prevents the UI from observing two different
 /// revisions during a background mutation.
 pub fn get_hierarchy_snapshot(world: &World) -> (Vec<SceneObjectData>, Vec<ObjectId>) {
+    profiling::profile_scope!("scene_edit::get_hierarchy_snapshot");
     let objects = get_all_objects(world);
     let root_ids = world
         .children_of(None)
@@ -206,6 +208,7 @@ pub fn get_selected_object(world: &World) -> Option<SceneObjectData> {
 /// blueprint directory: the projection rebuilds `__component_instances` from the
 /// attachments, so it must live there.
 pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
+    profiling::profile_scope!("scene_edit::add_object");
     if !obj.id.is_empty() && world.entity_for(&obj.id).is_some() {
         tracing::error!(id = %obj.id, "rejected duplicate object ID");
         return String::new();
@@ -339,6 +342,7 @@ pub fn add_folder(world: &mut World, name: &str, parent: Option<ObjectId>) -> Ob
 
 /// Remove an object and all of its descendants. Returns `true` if found.
 pub fn remove_object(world: &mut World, id: &str) -> bool {
+    profiling::profile_scope!("scene_edit::remove_object");
     let Some(entity) = world.entity_for(id) else {
         return false;
     };
@@ -355,6 +359,7 @@ pub fn remove_object(world: &mut World, id: &str) -> bool {
 
 /// Remove every object. Despawn is recursive, so one pass over all ids is enough.
 pub fn clear(world: &mut World) {
+    profiling::profile_scope!("scene_edit::clear");
     let ids: Vec<ObjectId> = world
         .query::<&StableId>()
         .map(|(_, id)| id.0.clone())
@@ -369,6 +374,7 @@ pub fn clear(world: &mut World) {
 
 /// Write updated transform, name, visibility and props back to an existing object.
 pub fn update_object(world: &mut World, obj: SceneObjectData) -> bool {
+    profiling::profile_scope!("scene_edit::update_object");
     let id = obj.id.clone();
     let Some(entity) = world.entity_for(&id) else {
         return false;
@@ -433,6 +439,7 @@ pub fn set_transform(
     rotation: Option<[f32; 3]>,
     scale: Option<[f32; 3]>,
 ) -> bool {
+    profiling::profile_scope!("scene_edit::set_transform");
     let Some(entity) = world.entity_for(id) else {
         return false;
     };
@@ -457,6 +464,7 @@ pub fn set_transform(
 
 /// Re-parent an object (cycle-safe).
 pub fn reparent_object(world: &mut World, id: &str, new_parent: Option<ObjectId>) -> bool {
+    profiling::profile_scope!("scene_edit::reparent_object");
     let Some(entity) = world.entity_for(id) else {
         return false;
     };

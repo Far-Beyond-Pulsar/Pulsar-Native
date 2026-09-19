@@ -20,6 +20,7 @@ struct EditorMeshRow;
 /// The object-batch pass reads these rows and the mesh ranges from the same
 /// SceneDB mirror; no renderer object table or CPU frame cache is involved.
 pub fn sync_static_mesh_rows(scene_db: &mut pulsar_scenedb::SceneDb) {
+    profiling::profile_scope!("HelioBridge::sync_static_mesh_rows");
     let stale: Vec<_> = scene_db
         .world
         .query::<&EditorMeshRow>()

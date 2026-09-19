@@ -46,6 +46,10 @@ pub struct TraceFrame {
     pub max_depth: u32,
     pub threads: HashMap<u64, ThreadInfo>,
     pub frame_times_ms: Vec<f32>, // History of frame times
+    /// Start timestamps of each recorded frame (one per `__FRAME_MARKER__`
+    /// event, or the frame starts emitted by the trace generators). Sorted
+    /// chronologically. Each marks where a frame ends and the next begins.
+    pub frame_boundaries_ns: Vec<u64>,
 }
 
 impl TraceFrame {
@@ -122,6 +126,12 @@ impl TraceFrame {
             self.frame_times_ms.remove(0);
         }
     }
+
+    /// Record the start timestamp of a frame boundary. Callers are expected to
+    /// push boundaries in chronological order.
+    pub fn add_frame_boundary(&mut self, start_ns: u64) {
+        self.frame_boundaries_ns.push(start_ns);
+    }
 }
 
 #[derive(Clone)]
@@ -152,6 +162,7 @@ impl TraceData {
             let frame_duration = (base_frame_time as i64 + frame_variance).max(8_000_000) as u64;
 
             trace.add_frame_time(frame_duration as f32 / 1_000_000.0);
+            trace.add_frame_boundary(frame_start);
 
             // === THREAD 0: GPU ===
             let gpu_start = frame_start + rng.random_range(1_000_000..3_000_000);
@@ -870,6 +881,7 @@ impl TraceData {
         let mut current_time = 0u64;
         let mut all_spans = Vec::new();
         let mut frame_times = Vec::new();
+        let mut frame_boundaries = Vec::new();
 
         let thread_names: Vec<String> = (0..num_threads)
             .map(|t| match t {
@@ -890,6 +902,7 @@ impl TraceData {
                 .max(8_000_000) as u64;
 
             frame_times.push(frame_dur as f32 / 1_000_000.0);
+            frame_boundaries.push(frame_start);
 
             // Distribute ~spans_per_frame across threads
             let spans_per_thread = (spans_per_frame / num_threads as usize).max(1);
@@ -937,6 +950,7 @@ impl TraceData {
 
         let mut frame = TraceFrame::new();
         frame.frame_times_ms = frame_times;
+        frame.frame_boundaries_ns = frame_boundaries;
 
         let threads: HashMap<u64, String> = thread_names
             .into_iter()
@@ -967,6 +981,11 @@ impl TraceData {
     pub fn add_frame_time(&self, ms: f32) {
         let mut guard = self.inner.write();
         Arc::make_mut(&mut guard).add_frame_time(ms);
+    }
+
+    pub fn add_frame_boundary(&self, start_ns: u64) {
+        let mut guard = self.inner.write();
+        Arc::make_mut(&mut guard).add_frame_boundary(start_ns);
     }
 
     pub fn get_frame(&self) -> Arc<TraceFrame> {

@@ -33,6 +33,7 @@ pub fn save_to_file_with_editor_camera<P: AsRef<Path>>(
     editor_camera: Option<LevelEditorCameraState>,
     terrain: Option<&engine_backend::services::terrain_edit::TerrainEditApi>,
 ) -> Result<(), String> {
+    profiling::profile_scope!("scene_edit::save_to_file");
     if let Some(parent_dir) = path.as_ref().parent() {
         virtual_fs::create_dir_all(parent_dir)
             .map_err(|e| format!("Failed to create directory: {e}"))?;
@@ -101,6 +102,7 @@ pub fn load_from_file_with_editor_camera<P: AsRef<Path>>(
     world: &mut World,
     path: P,
 ) -> Result<Option<LevelEditorCameraState>, String> {
+    profiling::profile_scope!("scene_edit::load_from_file");
     let bytes =
         virtual_fs::read_file(path.as_ref()).map_err(|e| format!("Failed to read file: {e}"))?;
     let json = String::from_utf8(bytes).map_err(|e| format!("File is not valid UTF-8: {e}"))?;

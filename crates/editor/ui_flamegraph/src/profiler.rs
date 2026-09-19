@@ -171,6 +171,7 @@ struct TraceAccumulator {
     spans: Vec<TraceSpan>,
     thread_names: HashMap<u64, ThreadInfo>,
     frame_times: Vec<f32>,
+    frame_boundaries: Vec<u64>,
 }
 
 impl TraceAccumulator {
@@ -179,6 +180,7 @@ impl TraceAccumulator {
             spans: frame.spans.clone(),
             thread_names: frame.threads.clone(),
             frame_times: frame.frame_times_ms.clone(),
+            frame_boundaries: frame.frame_boundaries_ns.clone(),
         }
     }
 
@@ -186,6 +188,8 @@ impl TraceAccumulator {
         if event.name == "__FRAME_MARKER__" {
             self.frame_times
                 .push(event.duration_ns as f32 / 1_000_000.0);
+            // The marker's start timestamp is where the new frame begins.
+            self.frame_boundaries.push(event.start_ns);
             return;
         }
 
@@ -221,6 +225,7 @@ impl TraceAccumulator {
             .collect();
         let mut frame = TraceFrame::with_data(self.spans.clone(), thread_names);
         frame.frame_times_ms = self.frame_times.clone();
+        frame.frame_boundaries_ns = self.frame_boundaries.clone();
         trace_data.set_frame(frame);
         Ok(())
     }
@@ -243,6 +248,7 @@ pub fn convert_profile_events_to_trace(
         .map(|(id, info)| (*id, info.name.clone()))
         .collect();
     let mut frame_times = current_frame.frame_times_ms.clone();
+    let mut frame_boundaries = current_frame.frame_boundaries_ns.clone();
 
     tracing::trace!("[PROFILER] BEFORE: {} existing spans", existing_span_count);
 
@@ -255,6 +261,7 @@ pub fn convert_profile_events_to_trace(
             // Extract frame time from duration field (stored in nanoseconds)
             let frame_time_ms = event.duration_ns as f32 / 1_000_000.0;
             frame_times.push(frame_time_ms);
+            frame_boundaries.push(event.start_ns);
             tracing::trace!(
                 "[PROFILER] Frame marker: {:.2}ms ({:.1} FPS)",
                 frame_time_ms,
@@ -304,6 +311,7 @@ pub fn convert_profile_events_to_trace(
     // Update the trace data with accumulated spans and frame times
     let mut frame = TraceFrame::with_data(spans.clone(), thread_names.clone());
     frame.frame_times_ms = frame_times;
+    frame.frame_boundaries_ns = frame_boundaries;
     trace_data.set_frame(frame);
 
     // Verify it was set correctly

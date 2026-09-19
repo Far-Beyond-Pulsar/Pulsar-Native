@@ -215,6 +215,7 @@ pub fn take_world_component_events(world: &mut World) -> Vec<pulsar_scenedb::Com
 // ── Attach / remove / enable / reorder ─────────────────────────────────────
 
 pub fn add_component(world: &mut World, object_id: &str, class_name: String, data: Value) {
+    profiling::profile_scope!("scene_edit::add_component");
     attach_component_instance(
         world,
         object_id,
@@ -241,6 +242,7 @@ pub(super) fn attach_component_instance(
     mut component: ComponentInstance,
     record_change: bool,
 ) {
+    profiling::profile_scope!("scene_edit::attach_component_instance");
     let class_name = component.class_name.clone();
     if component.enabled
         && is_scenedb_authority_class(&class_name)
@@ -273,6 +275,7 @@ pub(super) fn clear_components(world: &mut World, object_id: &str) {
 }
 
 pub fn remove_component(world: &mut World, object_id: &str, component_index: usize) {
+    profiling::profile_scope!("scene_edit::remove_component");
     // Preserve the old representative before changing instance order.
     let mut components = get_components(world, object_id);
     if component_index >= components.len() {
@@ -302,6 +305,7 @@ pub fn set_component_enabled(
     component_index: usize,
     enabled: bool,
 ) -> bool {
+    profiling::profile_scope!("scene_edit::set_component_enabled");
     let class_name = get_components_metadata(world, object_id)
         .get(component_index)
         .map(|c| c.class_name.clone());
@@ -475,6 +479,7 @@ pub fn update_component(
     component_index: usize,
     data: Value,
 ) {
+    profiling::profile_scope!("scene_edit::update_component");
     let component = get_components_metadata(world, object_id)
         .get(component_index)
         .cloned();
@@ -567,6 +572,7 @@ pub fn update_live_component_property(
     prop_name: &str,
     new_value: Box<dyn Any + Send>,
 ) -> Result<(), Box<dyn Any + Send>> {
+    profiling::profile_scope!("scene_edit::update_live_component_property");
     // The index IS the identity: a stale or mismatched one must never land an
     // edit into some OTHER instance's storage.
     let components = get_components(world, object_id);

@@ -193,6 +193,7 @@ impl SubsystemRegistry {
         for id in &order {
             let subsystem = self.subsystems.get_mut(id).unwrap();
             tracing::debug!("Initializing subsystem: {}", id.as_str());
+            profiling::profile_scope!(format!("Subsystem::{}::init", id.as_str()));
             subsystem
                 .init(context)
                 .map_err(|e| SubsystemError::InitFailed(format!("{}: {}", id.as_str(), e)))?;
@@ -217,6 +218,7 @@ impl SubsystemRegistry {
         for id in self.init_order.iter().rev() {
             if let Some(subsystem) = self.subsystems.get_mut(id) {
                 tracing::debug!("Shutting down subsystem: {}", id.as_str());
+                profiling::profile_scope!(format!("Subsystem::{}::shutdown", id.as_str()));
                 subsystem.shutdown().map_err(|e| {
                     SubsystemError::ShutdownFailed(format!("{}: {}", id.as_str(), e))
                 })?;
@@ -236,8 +238,10 @@ impl SubsystemRegistry {
             return;
         }
 
+        profiling::profile_scope!("SubsystemRegistry::update_all");
         for id in &self.init_order {
             if let Some(subsystem) = self.subsystems.get_mut(id) {
+                profiling::profile_scope!(format!("Subsystem::{}::on_frame", id.as_str()));
                 subsystem.on_frame(delta_time);
             }
         }

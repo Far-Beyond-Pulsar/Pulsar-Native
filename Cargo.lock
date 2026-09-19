@@ -3052,6 +3052,7 @@ dependencies = [
 name = "engine_subsystems"
 version = "0.1.0"
 dependencies = [
+ "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=988521c84d1e0d259b9c33e10e2f504eaed53dfc)",
  "thiserror 2.0.20",
  "tracing",
 ]
@@ -4522,6 +4523,7 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "naga",
+ "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=988521c84d1e0d259b9c33e10e2f504eaed53dfc)",
  "pulsar_scenedb",
  "thiserror 2.0.20",
  "wgpu",

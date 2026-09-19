@@ -188,6 +188,7 @@ impl EventEmitter<PanelEvent> for LevelEditorPanel {}
 
 impl Render for LevelEditorPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        profiling::profile_scope!("LevelEditorPanel::render");
         // Outermost cached view in the level editor. Its rebuild scope contains
         // every nested one, so if this tracks the draw count the whole tree is
         // being walked every frame no matter how well the panels below cache.

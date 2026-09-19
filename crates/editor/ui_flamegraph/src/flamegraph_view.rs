@@ -29,7 +29,12 @@ pub struct FlamegraphView {
     renderer: FlamegraphRenderer,
     /// Current LOD level index (cached from last paint).
     lod_level: Option<usize>,
-    /// Cached GpuSpans for the current LOD level — rebuilt only when LOD changes.
+    /// Vertical window key `(level, vertical_tile)` used to decide when the
+    /// cached `lod_spans` need rebuilding. Quantizes pan to one vertical tile
+    /// so smooth scrolling does not re-upload spans every frame.
+    lod_vertical_key: Option<(usize, i64)>,
+    /// Cached GpuSpans for the current LOD level + vertical window — rebuilt
+    /// only when either changes.
     lod_spans: Option<Arc<Vec<GpuSpan>>>,
 }
 
@@ -75,10 +80,25 @@ impl FlamegraphView {
         best
     }
 
-    /// Rebuild cached spans from the LOD tree at the given level.
-    fn rebuild_lod(&mut self, level: usize, frame: &TraceFrame, lod_tree: &LODTree) {
-        let spans = Arc::new(lod_tree.collect_level_gpu_spans(level, frame.min_time_ns));
+    /// Rebuild cached spans from the LOD tree at the given level, limited to
+    /// `[y_min, y_max]` (a padded vertical window around the viewport).
+    fn rebuild_lod(
+        &mut self,
+        level: usize,
+        vertical_tile: i64,
+        frame: &TraceFrame,
+        lod_tree: &LODTree,
+        y_min: f32,
+        y_max: f32,
+    ) {
+        let spans = Arc::new(lod_tree.collect_level_gpu_spans_ybounded(
+            level,
+            frame.min_time_ns,
+            y_min,
+            y_max,
+        ));
         self.lod_level = Some(level);
+        self.lod_vertical_key = Some((level, vertical_tile));
         self.lod_spans = Some(spans);
     }
     pub fn new(trace_data: TraceData) -> Self {
@@ -95,6 +115,7 @@ impl FlamegraphView {
             surface: None,
             renderer: FlamegraphRenderer::new(),
             lod_level: None,
+            lod_vertical_key: None,
             lod_spans: None,
         }
     }
@@ -176,6 +197,71 @@ impl FlamegraphView {
             .expect("Cache should be populated by get_or_build_cache");
         (Arc::clone(frame_ref), Arc::clone(cache_ref))
     }
+
+    /// Virtualized span pick: returns the span under the given canvas-local
+    /// coordinates, or None. Mirrors the hover logic — binary-search the thread
+    /// row by world Y, then scan that row's start-sorted spans backward from
+    /// the cursor's time window — instead of scanning every span.
+    fn pick_span_at(
+        &self,
+        frame: &TraceFrame,
+        cache: &SpanCache,
+        local_x: f32,
+        local_y: f32,
+    ) -> Option<usize> {
+        let viewport_width = *self.viewport_width.read().unwrap();
+        let viewport_height = *self.viewport_height.read().unwrap();
+        if local_x < THREAD_LABEL_WIDTH || local_x > viewport_width {
+            return None;
+        }
+        if local_y < 0.0 || local_y > viewport_height {
+            return None;
+        }
+
+        let vs = &self.view_state;
+        let rows = &cache.thread_rows;
+        // Rows are ordered by ascending world Y, so the row under the cursor is
+        // `rows[last]`, found by binary search on its screen top.
+        let last = rows.partition_point(|layout| layout.row.y - GRAPH_HEIGHT + vs.pan_y < local_y);
+        let Some(layout) = last.checked_sub(1).and_then(|l| rows.get(l)) else {
+            return None;
+        };
+        let row_bottom = layout.row.y - GRAPH_HEIGHT + vs.pan_y + layout.row.height;
+        if local_y > row_bottom {
+            return None;
+        }
+
+        let mouse_time = {
+            let duration_ns = frame.duration_ns().max(1);
+            let zoom = if vs.zoom == 0.0 {
+                let ew = (viewport_width - THREAD_LABEL_WIDTH).max(1.0);
+                ew / duration_ns as f32
+            } else {
+                vs.zoom
+            };
+            let world_x = (local_x - THREAD_LABEL_WIDTH) - vs.pan_x;
+            frame.min_time_ns + ((world_x / zoom.max(1e-10)).max(0.0) as u64)
+        };
+        // Lower bound on candidate window: spans that started near the cursor time.
+        const HOVER_SCAN_LIMIT: usize = 1024;
+        let hi = layout
+            .span_indices
+            .partition_point(|i| frame.spans[*i as usize].start_ns <= mouse_time);
+        let lo = hi.saturating_sub(HOVER_SCAN_LIMIT);
+        for k in (lo..hi).rev() {
+            let idx = layout.span_indices[k] as usize;
+            let span = &frame.spans[idx];
+            let y = layout.row.y - GRAPH_HEIGHT + (span.depth as f32 * ROW_HEIGHT) + vs.pan_y;
+            if local_y >= y && local_y <= y + ((ROW_HEIGHT - PADDING) * SPAN_HOVER_HEIGHT_SCALE) {
+                let x1 = time_to_x(span.start_ns, frame, viewport_width, vs);
+                let x2 = time_to_x(span.end_ns(), frame, viewport_width, vs);
+                if local_x >= x1 && local_x <= x2 {
+                    return Some(idx);
+                }
+            }
+        }
+        None
+    }
 }
 
 impl Render for FlamegraphView {
@@ -237,8 +323,26 @@ impl Render for FlamegraphView {
 
                         // ── LOD selection ──
                         let level = view.lod_level_for(w as f32, &frame);
-                        if view.lod_level != Some(level) {
-                            view.rebuild_lod(level, &frame, &cache.lod_tree);
+                        // Vertical world-Y window visible to the canvas,
+                        // padded by a full tile so panning within a tile never
+                        // pops spans. Mirrors `build_text_instances`'s math.
+                        let y_adj = -GRAPH_HEIGHT;
+                        let y_min_world = -y_adj - view.view_state.pan_y - ROW_HEIGHT;
+                        let y_max_world = (h as f32) - y_adj - view.view_state.pan_y;
+                        let vertical_tile =
+                            (crate::state::TILE_ROW_HEIGHT.max(1.0).recip() * y_min_world).floor()
+                                as i64;
+                        if view.lod_level != Some(level)
+                            || view.lod_vertical_key != Some((level, vertical_tile))
+                        {
+                            view.rebuild_lod(
+                                level,
+                                vertical_tile,
+                                &frame,
+                                &cache.lod_tree,
+                                y_min_world - crate::state::TILE_ROW_HEIGHT,
+                                y_max_world + crate::state::TILE_ROW_HEIGHT,
+                            );
                         }
 
                         // GPU spans — cached per-LOD, zero per-frame work
@@ -276,6 +380,21 @@ impl Render for FlamegraphView {
                                 &frame, vs, w as f32,
                             );
 
+                        // Frame boundary lines (thin vertical lines marking end/start
+                        // of each frame, across all threads)
+                        let frame_line_rects = crate::components::flamegraph_canvas::
+                            build_frame_boundary_instances(&frame, vs, w as f32, h as f32);
+
+                        // Cross-thread wait/block arrows for the double-clicked span
+                        let arrow_rects = vs
+                            .selected_span
+                            .map(|sel| {
+                                crate::components::flamegraph_canvas::build_dependency_arrows(
+                                    &frame, &cache, sel, vs, w as f32, h as f32,
+                                )
+                            })
+                            .unwrap_or_default();
+
                         // Debug overlay (stats)
                         let debug_rects = crate::components::flamegraph_canvas::build_debug_overlay(
                             &frame,
@@ -285,11 +404,14 @@ impl Render for FlamegraphView {
                             w as f32,
                         );
 
-                        // Combine overlays + ruler + text + debug into one rects vec
+                        // Combine overlays + frame lines + labels + arrows + debug into
+                        // one rects vec (drawn in order, arrows last = on top).
                         let text_all = {
                             let mut combined = ruler_rects;
                             combined.extend(overlay_rects);
+                            combined.extend(frame_line_rects);
                             combined.extend(text_rects);
+                            combined.extend(arrow_rects);
                             combined.extend(debug_rects);
                             combined
                         };
@@ -539,6 +661,29 @@ impl Render for FlamegraphView {
                             cx.notify();
                         }),
                     )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|view, event: &MouseDownEvent, _window, cx| {
+                            let pos: Point<Pixels> = event.position;
+                            let window_x: f32 = pos.x.into();
+                            let window_y: f32 = pos.y.into();
+                            let local_x = window_x - *view.viewport_origin_x.read().unwrap();
+                            let local_y = window_y - *view.viewport_origin_y.read().unwrap();
+
+                            if event.click_count >= 2 {
+                                // Double-click a box → show cross-thread wait/block
+                                // dependency arrows to and from it. Single clicks
+                                // (including the first half of a double-click)
+                                // clear the selection.
+                                let (frame, cache) = view.get_or_build_cache();
+                                view.view_state.selected_span =
+                                    view.pick_span_at(&frame, &cache, local_x, local_y);
+                            } else {
+                                view.view_state.selected_span = None;
+                            }
+                            cx.notify();
+                        }),
+                    )
                     .on_mouse_move(cx.listener(|view, event: &MouseMoveEvent, _window, cx| {
                         let pos: Point<Pixels> = event.position;
                         let window_x: f32 = pos.x.into();
@@ -556,55 +701,9 @@ impl Render for FlamegraphView {
                             view.view_state.pan_x = view.view_state.drag_pan_start_x + delta_x;
                             view.view_state.pan_y = view.view_state.drag_pan_start_y + delta_y;
                         } else {
-                            let view_state_copy = view.view_state.clone();
-                            let viewport_width = *view.viewport_width.read().unwrap();
-                            let viewport_height = *view.viewport_height.read().unwrap();
                             let (frame, cache) = view.get_or_build_cache();
-
-                            let mut new_hovered_span = None;
-
-                            if local_x >= THREAD_LABEL_WIDTH
-                                && local_x <= viewport_width
-                                && local_y >= 0.0
-                                && local_y <= viewport_height
-                            {
-                                for (idx, span) in frame.spans.iter().enumerate() {
-                                    let thread_y_offset = cache
-                                        .thread_offsets
-                                        .get(&span.thread_id)
-                                        .copied()
-                                        .unwrap_or(0.0);
-                                    let y = thread_y_offset - GRAPH_HEIGHT
-                                        + (span.depth as f32 * ROW_HEIGHT)
-                                        + view_state_copy.pan_y;
-
-                                    if local_y >= y
-                                        && local_y
-                                            <= y + ((ROW_HEIGHT - PADDING)
-                                                * SPAN_HOVER_HEIGHT_SCALE)
-                                    {
-                                        let x1 = time_to_x(
-                                            span.start_ns,
-                                            &frame,
-                                            viewport_width,
-                                            &view_state_copy,
-                                        );
-                                        let x2 = time_to_x(
-                                            span.end_ns(),
-                                            &frame,
-                                            viewport_width,
-                                            &view_state_copy,
-                                        );
-
-                                        if local_x >= x1 && local_x <= x2 {
-                                            new_hovered_span = Some(idx);
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-
-                            view.view_state.hovered_span = new_hovered_span;
+                            view.view_state.hovered_span =
+                                view.pick_span_at(&frame, &cache, local_x, local_y);
                         }
 
                         cx.notify();
@@ -634,7 +733,14 @@ impl Render for FlamegraphView {
 
                         cx.notify();
                     }))
-                    .child({ render_thread_labels(&frame, &thread_offsets, &view_state, cx) })
+                    .child({
+                        let viewport_h = self
+                            .viewport_height
+                            .read()
+                            .map(|h| *h)
+                            .unwrap_or(0.0);
+                        render_thread_labels(&frame, &thread_offsets, &view_state, viewport_h, cx)
+                    })
                     .children({
                         let popup = render_hover_popup(
                             &frame,

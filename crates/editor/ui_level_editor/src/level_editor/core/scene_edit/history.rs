@@ -28,6 +28,7 @@ pub struct SceneHistorySnapshot {
 /// transform / hierarchy / render props plus its component instances, taken
 /// together so a restore can't reintroduce one half stale relative to the other.
 pub fn capture_history_snapshot(world: &World) -> SceneHistorySnapshot {
+    profiling::profile_scope!("scene_edit::capture_history_snapshot");
     let mut objects = Vec::new();
     collect_dfs(world, None, &mut objects);
     let components = objects

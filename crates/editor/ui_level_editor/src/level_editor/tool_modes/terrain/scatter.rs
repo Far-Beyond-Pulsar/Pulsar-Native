@@ -65,6 +65,7 @@ pub fn scatter(
     brush_density: f32,
     seed: u64,
 ) -> Vec<InstanceSpec> {
+    profiling::profile_scope!("terrain::scatter");
     let radius = radius_m.max(0.0);
     let area_m2 = std::f32::consts::PI * radius * radius;
     let mut rng = Rng(seed);

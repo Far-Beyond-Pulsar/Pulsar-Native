@@ -259,6 +259,7 @@ impl EngineFrameSnapshot {
         move_speed: f32,
         zoom_delta: f32,
     ) -> Option<Self> {
+        profiling::profile_scope!("EngineFrameSnapshot::gather");
         let engine = gpu_engine.try_lock().ok()?;
         let metrics_opt = engine.get_render_metrics();
         let (memory_mb, draw_calls, vertices, frame_time_ms) = match metrics_opt {

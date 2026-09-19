@@ -35,5 +35,9 @@ pub struct RectInstance {
     pub size: [f32; 2],
     pub color: [f32; 4],
     pub kind: u32,
-    pub _pad: [u32; 3],
+    /// Rotation angle in radians (f32 bit pattern). Only consumed for `kind`
+    /// 1 (rotated quad) and `kind` 2 (rotated triangle); must be 0 for the
+    /// default axis-aligned quad (`kind` 0).
+    pub rot: u32,
+    pub _pad: [u32; 2],
 }

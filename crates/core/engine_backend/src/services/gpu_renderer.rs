@@ -87,6 +87,7 @@ impl GpuRenderer {
         height: u32,
         format: wgpu::TextureFormat,
     ) -> Option<wgpu::SubmissionIndex> {
+        profiling::profile_scope!("GpuRenderer::render_frame_to_surface");
         let result = if let Some(ref mut r) = self.helio_renderer {
             r.render_frame(device, queue, view, width, height, format)
         } else {

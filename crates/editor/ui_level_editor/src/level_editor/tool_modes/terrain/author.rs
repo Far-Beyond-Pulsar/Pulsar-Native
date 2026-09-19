@@ -35,6 +35,7 @@ pub fn stamp_foliage_sets(
     hit: &TerrainHit,
     seed: u64,
 ) -> usize {
+    profiling::profile_scope!("terrain::stamp_foliage_sets");
     let (radius_m, density) = {
         let terrain = &state.editor.terrain;
         (terrain.foliage.radius_m, terrain.foliage_paint_density.0)

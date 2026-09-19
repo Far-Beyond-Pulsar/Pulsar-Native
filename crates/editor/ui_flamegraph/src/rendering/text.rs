@@ -275,7 +275,8 @@ pub fn push_text(
                             size: [pixel_scale, pixel_scale],
                             color,
                             kind: 0,
-                            _pad: [0; 3],
+                            rot: 0,
+                            _pad: [0; 2],
                         });
                     }
                     c += 1;

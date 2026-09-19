@@ -258,6 +258,8 @@ impl ViewportPanel {
     where
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
+        profiling::profile_scope!("ViewportPanel::render");
+
         // Spawn dedicated input thread (once)
         self.spawn_input_thread_once(gpu_engine);
 

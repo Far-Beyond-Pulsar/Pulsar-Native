@@ -75,27 +75,27 @@ impl LODLevel {
             }
         }
 
-        // Merge adjacent spans within each bucket
+        // Merge adjacent spans within each bucket (single pass, no removals —
+        // the previous `spans_list.remove(j)` rebuild loop was O(n^2) inside a
+        // hot bucket).
         for bucket in &mut self.buckets {
             for spans_list in bucket.values_mut() {
                 spans_list.sort_by_key(|s| s.start_ns);
 
-                let mut i = 0;
-                while i < spans_list.len() {
-                    let j = i + 1;
-                    while j < spans_list.len() {
-                        let gap = spans_list[j].start_ns - spans_list[i].end_ns;
+                let mut merged: Vec<MergedSpan> = Vec::with_capacity(spans_list.len());
+                for span in spans_list.drain(..) {
+                    if let Some(last) = merged.last_mut() {
+                        let gap = span.start_ns.saturating_sub(last.end_ns);
                         // Merge if gap < 1 pixel worth of time (at this LOD level)
                         if gap < self.bucket_size_ns / 10 {
-                            spans_list[i].end_ns = spans_list[j].end_ns;
-                            spans_list[i].span_count += spans_list[j].span_count;
-                            spans_list.remove(j);
-                        } else {
-                            break;
+                            last.end_ns = last.end_ns.max(span.end_ns);
+                            last.span_count += span.span_count;
+                            continue;
                         }
                     }
-                    i += 1;
+                    merged.push(span);
                 }
+                *spans_list = merged;
             }
         }
     }
@@ -221,18 +221,26 @@ impl LODTree {
         best_level
     }
 
-    /// Collect all merged spans from a specific LOD level as GpuSpans.
-    /// Called once when the LOD level changes — cached thereafter.
-    pub fn collect_level_gpu_spans(
+    /// Collect merged spans from a specific LOD level as GpuSpans, restricted
+    /// to a vertical world-Y window. This is the virtualized path: only the
+    /// thread rows currently in view are uploaded, so a trace with thousands
+    /// of threads never builds a gigabyte vertex buffer.
+    /// Called when the LOD level or the vertical window changes.
+    pub fn collect_level_gpu_spans_ybounded(
         &self,
         level_idx: usize,
         min_time_ns: u64,
+        y_min: f32,
+        y_max: f32,
     ) -> Vec<crate::rendering::types::GpuSpan> {
         let level = &self.levels[level_idx.min(self.levels.len() - 1)];
         let mut out = Vec::with_capacity(65536);
         for bucket in &level.buckets {
             for spans in bucket.values() {
                 for span in spans {
+                    if span.y + ROW_HEIGHT < y_min || span.y > y_max {
+                        continue;
+                    }
                     out.push(crate::rendering::types::GpuSpan {
                         start_rel_ns: (span.start_ns - min_time_ns) as f32,
                         end_rel_ns: (span.end_ns - min_time_ns) as f32,
