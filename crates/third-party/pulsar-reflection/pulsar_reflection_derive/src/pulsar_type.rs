@@ -128,7 +128,7 @@ pub fn expand_primitive_alias(
     // this macro's behavior stays uniform for every caller.
     let editor_submit = if let Some(editor_fn) = override_editor {
         quote! {
-            #[cfg(any())] ::pulsar_reflection::inventory::submit! {
+            ::pulsar_reflection::inventory::submit! {
                 ::pulsar_reflection::UiPropertyEditorHint {
                     type_id: ::std::any::TypeId::of::<#target_ty>(),
                     fn_ptr: ::pulsar_reflection::erase_property_editor_fn_ptr(

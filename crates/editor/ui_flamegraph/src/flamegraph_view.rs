@@ -367,7 +367,9 @@ impl Render for FlamegraphView {
                         // the entire acquire/encode/submit/publish sequence
                         // so an exclusive resize cannot observe in-flight
                         // flamegraph work.
-                        let _gpu_submit_guard = surface_clone.submit_guard();
+                        let Some(_gpu_submit_guard) = surface_clone.try_submit_guard() else {
+                            return;
+                        };
                         let Some((tex_view, (w, h))) = surface_clone.back_view_with_size() else {
                             return;
                         };

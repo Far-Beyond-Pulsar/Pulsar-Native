@@ -1,6 +1,5 @@
 //! Global profiler state management
 
-use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
 use crossbeam_queue::SegQueue;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
@@ -9,8 +8,9 @@ use crate::events::ProfileEvent;
 /// Global profiler state
 pub struct Profiler {
     enabled: AtomicBool,
-    sender: Sender<ProfileEvent>,
-    receiver: Receiver<ProfileEvent>,
+    /// Lock-free producer queue. Profile scopes publish directly here; there
+    /// is no channel mutex, rendezvous, or producer-side capacity wait.
+    pending: SegQueue<ProfileEvent>,
     events: SegQueue<ProfileEvent>,
     retained_count: AtomicUsize,
     max_events: usize,
@@ -18,8 +18,7 @@ pub struct Profiler {
     process_id: u32,
 }
 
-/// The producer path must remain bounded: a busy render thread must never be
-/// able to grow the process indefinitely just because the viewer is paused.
+/// Kept for source compatibility with embedders that configure the old queue.
 pub const DEFAULT_EVENT_QUEUE_CAPACITY: usize = 131_072;
 
 /// Retain enough data for a useful session while keeping `get_all_events()` a
@@ -40,11 +39,10 @@ impl Profiler {
     /// This is primarily useful for embedding and tests. Production callers
     /// should normally use [`Profiler::new`].
     pub fn with_capacity(queue_capacity: usize, max_events: usize) -> Self {
-        let (sender, receiver) = bounded(queue_capacity.max(1));
+        let _ = queue_capacity;
         Self {
             enabled: AtomicBool::new(false),
-            sender,
-            receiver,
+            pending: SegQueue::new(),
             events: SegQueue::new(),
             retained_count: AtomicUsize::new(0),
             max_events: max_events.max(1),
@@ -66,14 +64,12 @@ impl Profiler {
     }
 
     pub fn submit_event(&self, event: ProfileEvent) {
-        if let Err(TrySendError::Full(_)) = self.sender.try_send(event) {
-            self.dropped_events.fetch_add(1, Ordering::Relaxed);
-        }
+        self.pending.push(event);
     }
 
     pub fn collect_events(&self) -> Vec<ProfileEvent> {
         let mut collected = Vec::new();
-        while let Ok(event) = self.receiver.try_recv() {
+        while let Some(event) = self.pending.pop() {
             collected.push(event);
         }
 
@@ -111,7 +107,7 @@ impl Profiler {
         while self.events.pop().is_some() {
             self.retained_count.fetch_sub(1, Ordering::Relaxed);
         }
-        while self.receiver.try_recv().is_ok() {}
+        while self.pending.pop().is_some() {}
         self.dropped_events.store(0, Ordering::Relaxed);
     }
 
@@ -122,7 +118,7 @@ impl Profiler {
 
     /// Number of events waiting to be collected by the consumer.
     pub fn pending_event_count(&self) -> usize {
-        self.receiver.len()
+        self.pending.len()
     }
 
     /// Number of events currently retained in memory.
@@ -185,15 +181,16 @@ mod tests {
     }
 
     #[test]
-    fn full_queue_drops_events_and_reports_the_count() {
+    fn producer_queue_never_blocks_or_drops_events() {
         let profiler = Profiler::with_capacity(1, 16);
         profiler.enable();
         for index in 0..64 {
             profiler.submit_event(event(index));
         }
 
-        assert!(profiler.dropped_event_count() > 0);
-        assert!(profiler.pending_event_count() <= 1);
+        assert_eq!(profiler.dropped_event_count(), 0);
+        assert_eq!(profiler.pending_event_count(), 64);
+        assert_eq!(profiler.collect_events().len(), 64);
         profiler.clear();
         assert_eq!(profiler.dropped_event_count(), 0);
     }
