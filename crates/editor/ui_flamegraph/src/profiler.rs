@@ -111,6 +111,7 @@ fn collector_loop(
         // Convert and append ONLY new events. Do not rebuild the accumulated
         // trace on every tick; that turns profiling into an eventual stall.
         let mut delta_spans = Vec::new();
+        let mut delta_thread_names = Vec::new();
         let mut delta_times = Vec::new();
         let mut delta_boundaries = Vec::new();
         for event in &new_events {
@@ -119,26 +120,46 @@ fn collector_loop(
                 delta_times.push(event.duration_ns as f32 / 1_000_000.0);
                 delta_boundaries.push(event.start_ns);
             } else {
+                let thread_id = if event.name.starts_with("GPU::")
+                    || event
+                        .thread_name
+                        .as_deref()
+                        .is_some_and(|name| {
+                            let name = name.to_ascii_lowercase();
+                            name.contains("gpu") || name.contains("renderer")
+                        })
+                {
+                    0
+                } else {
+                    event.thread_id
+                };
+                delta_thread_names.push((
+                    thread_id,
+                    if thread_id == 0 {
+                        "GPU".to_string()
+                    } else {
+                        event
+                            .thread_name
+                            .clone()
+                            .unwrap_or_else(|| format!("Thread {}", event.thread_id))
+                    },
+                ));
                 delta_spans.push(TraceSpan {
                     name: event.name.clone(),
                     start_ns: event.start_ns,
                     duration_ns: event.duration_ns,
                     depth: event.depth,
-                    thread_id: if event.name.starts_with("GPU::")
-                        || event
-                            .thread_name
-                            .as_deref()
-                            .is_some_and(|name| name.contains("GPU"))
-                    {
-                        0
-                    } else {
-                        event.thread_id
-                    },
+                    thread_id,
                     color_index: (delta_spans.len() % 16) as u8,
                 });
             }
         }
-        trace_data.append_batch(delta_spans, delta_times, delta_boundaries);
+        trace_data.append_batch(
+            delta_thread_names,
+            delta_spans,
+            delta_times,
+            delta_boundaries,
+        );
     }
 
     // Profiling itself is disabled by InstrumentationCollector::stop(), which

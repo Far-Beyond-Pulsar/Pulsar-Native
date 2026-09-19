@@ -988,11 +988,6 @@ impl TraceData {
         guard.add_frame_boundary(start_ns);
     }
 
-    pub fn add_frame_boundary(&self, start_ns: u64) {
-        let mut guard = self.inner.write();
-        Arc::make_mut(&mut guard).add_frame_boundary(start_ns);
-    }
-
     pub fn get_frame(&self) -> Arc<TraceFrame> {
         Arc::new(self.inner.read().clone())
     }
@@ -1007,11 +1002,15 @@ impl TraceData {
 
     pub fn append_batch(
         &self,
+        thread_names: impl IntoIterator<Item = (u64, String)>,
         spans: impl IntoIterator<Item = TraceSpan>,
         frame_times: impl IntoIterator<Item = f32>,
         frame_boundaries: impl IntoIterator<Item = u64>,
     ) {
         let mut frame = self.inner.write();
+        for (id, name) in thread_names {
+            frame.threads.insert(id, ThreadInfo { id, name });
+        }
         for span in spans {
             frame.add_span(span);
         }
