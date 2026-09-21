@@ -1200,6 +1200,9 @@ impl HelioRenderer {
             // the editor rebuilt the graph with a buffer `ShadowMatrixPass`
             // binds as storage -> wgpu validation panic on the render thread.
             camera_buffer: inner.renderer.camera_buf(),
+            // Helio's `PassBuildContext` carries the debug-draw camera uniform
+            // separately from the scene camera above (see the note there).
+            debug_camera_buffer: inner.renderer.debug_camera_buf(),
             cull_stats_buffer: inner.renderer.cull_stats_buf(),
             owns_device: false,
             scene_db: inner.renderer.scene_db(),

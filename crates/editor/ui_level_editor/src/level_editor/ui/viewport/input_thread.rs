@@ -3,6 +3,50 @@
 
 use super::*;
 
+/// Keys the viewport camera reads, with their Windows virtual-key codes.
+#[cfg(target_os = "windows")]
+const CAMERA_KEYS: [(i32, Keycode); 11] = [
+    (0x57, Keycode::W),
+    (0x41, Keycode::A),
+    (0x53, Keycode::S),
+    (0x44, Keycode::D),
+    (0x45, Keycode::E),
+    (0x51, Keycode::Q),
+    (0x20, Keycode::Space),
+    (0xA2, Keycode::LControl),
+    (0xA3, Keycode::RControl),
+    (0xA0, Keycode::LShift),
+    (0xA1, Keycode::RShift),
+];
+
+/// Which of the camera's keys are held right now.
+///
+/// `DeviceState::get_keys()` on Windows queries all 256 virtual keys with a
+/// `GetAsyncKeyState` syscall each (plus two `Vec` allocations), every poll. The
+/// camera only needs eleven. The syscalls go into win32k, which the UI thread
+/// shares, so the full sweep made this poll bimodal: ~0.1 ms usually but 2-6 ms
+/// on a fifth of polls, on a thread that runs every ~2 ms while the camera is
+/// captured -- each slow poll delays key state reaching the camera.
+fn held_camera_keys(device_state: &DeviceState) -> Vec<Keycode> {
+    #[cfg(target_os = "windows")]
+    {
+        use winapi::um::winuser::GetAsyncKeyState;
+        let _ = device_state;
+        let mut held = Vec::with_capacity(4);
+        for (vk, keycode) in CAMERA_KEYS {
+            // High bit set == key is down.
+            if unsafe { GetAsyncKeyState(vk) } as u16 & 0x8000 != 0 {
+                held.push(keycode);
+            }
+        }
+        held
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        device_state.get_keys()
+    }
+}
+
 impl ViewportPanel {
     /// Spawn the input processing thread (only once).
     pub(super) fn spawn_input_thread_once(
@@ -88,7 +132,7 @@ impl ViewportPanel {
                 // Poll keyboard
                 {
                     profiling::profile_scope!("keyboard_poll");
-                    let keys: Vec<Keycode> = device_state.get_keys();
+                    let keys: Vec<Keycode> = held_camera_keys(&device_state);
                     let forward = if keys.contains(&Keycode::W) {
                         1
                     } else if keys.contains(&Keycode::S) {

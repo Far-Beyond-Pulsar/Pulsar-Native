@@ -160,9 +160,11 @@ impl Subsystem for PhysicsEngine {
                 profiling::set_thread_name("Physics Thread");
 
                 while running.load(Ordering::Relaxed) {
-                    profiling::profile_scope!("Physics::Step");
-
                     {
+                        // Scope covers the step only. It used to span the sleep
+                        // below as well, so the flamegraph showed this thread
+                        // "busy" for 8 ms at a time, 100% of the time.
+                        profiling::profile_scope!("Physics::Step");
                         let mut w = world.lock().unwrap_or_else(|e| e.into_inner());
                         let mut bodies = rigid_body_set.lock().unwrap_or_else(|e| e.into_inner());
                         let mut colliders = collider_set.lock().unwrap_or_else(|e| e.into_inner());
