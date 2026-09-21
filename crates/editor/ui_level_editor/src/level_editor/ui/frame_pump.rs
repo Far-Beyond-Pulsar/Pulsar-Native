@@ -48,7 +48,17 @@ where
             // View is gone; stop pumping.
             return;
         };
-        entity.update(cx, |view, cx| poll(view, window, cx));
+        {
+            // Runs on every platform frame for each pumped view; name it by view
+            // type so a pump that starts costing real time is attributable.
+            let _pump_scope = profiling::is_profiling_enabled().then(|| {
+                profiling::ProfileScope::new(format!(
+                    "frame pump poll: {}",
+                    std::any::type_name::<V>()
+                ))
+            });
+            entity.update(cx, |view, cx| poll(view, window, cx));
+        }
         schedule(weak, poll, window);
     });
 }

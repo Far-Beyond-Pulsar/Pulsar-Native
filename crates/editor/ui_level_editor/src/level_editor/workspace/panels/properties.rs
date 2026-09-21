@@ -7,6 +7,7 @@ use crate::level_editor::ui::{
 use gpui::*;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use ui::{
     dock::{Panel, PanelEvent},
     input::InputState,
@@ -38,8 +39,18 @@ pub struct PropertiesPanelWrapper {
     collapsed_sections: HashSet<String>,
     /// Store revision the section editors were last synced against.
     last_store_revision: u64,
+    /// When the section editors last re-read scene data. Data-only refreshes
+    /// (no selection change) are rate-limited by `DATA_REFRESH_INTERVAL`.
+    last_data_refresh: Option<Instant>,
     pump_started: bool,
 }
+
+/// Scene data shown by the panel (transform, header, component values) only
+/// needs to refresh a few times a second. Selection changes and scrolling are
+/// not affected: selection is handled immediately, and scrolling invalidates the
+/// view through its own path. Gizmo drags bump the store revision at input rate,
+/// which without this limit re-read and re-rendered the whole panel every frame.
+const DATA_REFRESH_INTERVAL: Duration = Duration::from_millis(250);
 
 impl PropertiesPanelWrapper {
     pub fn new(
@@ -74,6 +85,7 @@ impl PropertiesPanelWrapper {
             property_input,
             collapsed_sections,
             last_store_revision: 0,
+            last_data_refresh: None,
             pump_started: false,
         }
     }
@@ -141,6 +153,19 @@ impl PropertiesPanelWrapper {
 
         if !revision_changed && !selection_changed {
             return false;
+        }
+
+        // A pure data change is throttled. `last_store_revision` is left stale
+        // on purpose so the change is picked up (trailing refresh) by the first
+        // poll after the interval, rather than being dropped.
+        if !selection_changed {
+            if self
+                .last_data_refresh
+                .is_some_and(|at| at.elapsed() < DATA_REFRESH_INTERVAL)
+            {
+                return false;
+            }
+            self.last_data_refresh = Some(Instant::now());
         }
         self.last_store_revision = store_revision;
 

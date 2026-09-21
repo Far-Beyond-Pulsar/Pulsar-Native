@@ -24,7 +24,7 @@ pub mod utilities;
 pub use events::ProfileEvent;
 pub use macros::*;
 pub use profiler::Profiler;
-pub use scope::{allocate_scope_id, current_scope_context, init_profiler, ProfileScope, ScopeContext};
+pub use scope::{allocate_scope_id, current_scope_context, init_profiler, record_elapsed, ProfileScope, ScopeContext};
 pub use utilities::*;
 
 #[inline]

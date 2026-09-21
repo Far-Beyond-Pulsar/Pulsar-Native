@@ -154,6 +154,8 @@ fn main() {
     gpui::render_stats::set_scope_hook(gpui::render_stats::ScopeHook {
         enabled: profiling::is_profiling_enabled,
         begin: |name| Box::new(profiling::ProfileScope::new_static(name)),
+        begin_owned: |name| Box::new(profiling::ProfileScope::new(name)),
+        record_elapsed: |name, elapsed| profiling::record_elapsed(name, elapsed),
     });
 
     // Profiling is intentionally NOT enabled here. Instrumentation

@@ -33,7 +33,7 @@ pub fn sync_static_mesh_rows(scene_db: &mut pulsar_scenedb::SceneDb) {
             .remove::<helio_pass_gbuffer::StaticObjectComponent>(entity);
         scene_db.world.remove::<EditorMeshRow>(entity);
     }
-    tracing::info!(
+    tracing::debug!(
         mesh_components = scene_db.world.query::<&StaticMeshComponent>().count(),
         object_rows = scene_db
             .world
@@ -138,23 +138,32 @@ pub fn sync_static_mesh_rows(scene_db: &mut pulsar_scenedb::SceneDb) {
         let world_center = model.transform_point3(local_center);
         let world_radius =
             bounds_local[3] * glam::Vec3::from_array(transform.scale).abs().max_element();
-        scene_db.world.insert(
-            entity,
-            helio_pass_gbuffer::StaticObjectComponent::new(
-                entity.index(),
-                entity.generation().wrapping_add(1),
-                entity.index(),
-                entity.generation().wrapping_add(1),
-                model,
-                [world_center.x, world_center.y, world_center.z, world_radius],
-                indices.count,
-                indices.offset,
-                vertices.offset as i32,
-                0,
-                0,
-                0,
-            ),
+        let object_row = helio_pass_gbuffer::StaticObjectComponent::new(
+            entity.index(),
+            entity.generation().wrapping_add(1),
+            entity.index(),
+            entity.generation().wrapping_add(1),
+            model,
+            [world_center.x, world_center.y, world_center.z, world_radius],
+            indices.count,
+            indices.offset,
+            vertices.offset as i32,
+            0,
+            0,
+            0,
         );
+        // Write only on change. Every `insert` bumps the SceneDB revision, and
+        // that revision is what the status bar / hierarchy / properties panels
+        // and the renderer's own idle check poll: an unconditional write here
+        // made the world look edited on every render frame, dirtying those
+        // panels and defeating idle detection.
+        if scene_db
+            .world
+            .get::<helio_pass_gbuffer::StaticObjectComponent>(entity)
+            != Some(&object_row)
+        {
+            scene_db.world.insert(entity, object_row);
+        }
         if scene_db.world.get::<EditorMeshRow>(entity).is_none() {
             scene_db.world.insert(entity, EditorMeshRow);
         }

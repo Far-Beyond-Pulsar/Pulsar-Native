@@ -265,3 +265,43 @@ pub fn current_scope_context() -> ScopeContext {
         track_name: TRACK_NAME.with(|track| track.borrow().clone()),
     }
 }
+
+/// Record an already-finished span that ended just now and lasted `elapsed`, at
+/// the calling thread's current stack depth (a child of whatever scope is
+/// open). For call sites that time themselves cheaply and only want a flamegraph
+/// entry when the work turned out to be slow, e.g. one per listener or callback.
+pub fn record_elapsed(name: impl Into<String>, elapsed: std::time::Duration) {
+    let profiler = init_profiler();
+    if !profiler.is_enabled() {
+        return;
+    }
+    let duration_ns = elapsed.as_nanos() as u64;
+    let start_ns = get_time_ns().saturating_sub(duration_ns);
+    let (depth, thread_id, parent_scope_id, parent_name) = THREAD_STATE.with(|ts| {
+        let mut state = ts.borrow_mut();
+        let thread_id = *state.thread_id.get_or_insert_with(get_thread_id);
+        (
+            state.scope_stack.len() as u32,
+            thread_id,
+            state.scope_stack.last().map(|frame| frame.id),
+            state.scope_stack.last().map(|frame| frame.name.as_str().to_owned()),
+        )
+    });
+    profiler.submit_event(ProfileEvent {
+        scope_id: allocate_scope_id(),
+        parent_scope_id,
+        name: name.into(),
+        thread_id,
+        thread_name: THREAD_NAME
+            .with(|tn| tn.borrow().clone())
+            .or_else(|| thread::current().name().map(str::to_owned)),
+        process_id: profiler.get_process_id(),
+        parent_name,
+        start_ns,
+        duration_ns,
+        depth,
+        location: None,
+        metadata: None,
+        track_name: None,
+    });
+}
