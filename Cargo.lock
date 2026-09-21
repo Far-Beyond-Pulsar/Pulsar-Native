@@ -13220,6 +13220,7 @@ dependencies = [
  "engine_state",
  "glam 0.33.5",
  "gpui-ce",
+ "helio",
  "helio-asset-compat",
  "helio_component",
  "image",

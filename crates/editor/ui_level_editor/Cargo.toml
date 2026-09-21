@@ -74,5 +74,8 @@ objc2-foundation = "0.3"  # separate crate for Foundation types
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winuser", "shellapi"] }
 
+[dev-dependencies]
+helio.workspace = true
+
 [lints]
 workspace = true

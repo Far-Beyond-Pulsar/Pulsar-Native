@@ -30,6 +30,8 @@ pub mod objects;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod hlfs_cathedral;
 
 pub use changes::PropertyChangeSet;
 pub use engine_backend::scene::{LightType, MeshType, ObjectId, ObjectType};
