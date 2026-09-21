@@ -77,6 +77,16 @@ impl FramePacer {
         }
     }
 
+    /// Run one frame with no pacing (the profiler's "uncap frame rate" option).
+    /// Re-anchors the deadline to now so that turning the cap back on resumes at
+    /// the target rate instead of bursting frames to catch up on the deadlines it
+    /// skipped, and clears the adaptation streaks that no longer describe anything.
+    pub(super) fn skip_wait(&mut self) {
+        self.next_deadline = Instant::now();
+        self.late_streak = 0;
+        self.on_time_streak = 0;
+    }
+
     /// Sleep until this frame is due. Returns immediately when uncapped or when
     /// the deadline has already passed.
     pub(super) fn wait_for_next_frame(&mut self) {

@@ -17,12 +17,14 @@
 pub mod database;
 pub mod events;
 pub mod macros;
+pub mod options;
 pub mod profiler;
 pub mod scope;
 pub mod utilities;
 
 pub use events::ProfileEvent;
 pub use macros::*;
+pub use options::{set_uncap_frame_rate, uncap_frame_rate};
 pub use profiler::Profiler;
 pub use scope::{allocate_scope_id, current_scope_context, init_profiler, record_elapsed, ProfileScope, ScopeContext};
 pub use utilities::*;

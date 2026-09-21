@@ -7,6 +7,7 @@ use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
     button::Button,
+    checkbox::Checkbox,
     h_flex,
     resizable::{h_resizable, resizable_panel, ResizableState},
     v_flex, ActiveTheme, Icon, IconName, TitleBar,
@@ -22,6 +23,17 @@ pub struct FlamegraphWindow {
     flamegraph_panel: Option<Entity<FlamegraphPanel>>,
     statistics_panel: Option<Entity<StatisticsPanel>>,
     resizable_state: Entity<ResizableState>,
+    /// "Uncap frame rate while recording": lifts the engine's frame-rate target and
+    /// vsync for the duration of the next recording.
+    uncap_frame_rate: bool,
+}
+
+impl Drop for FlamegraphWindow {
+    fn drop(&mut self) {
+        // Closing the window mid-recording must not leave the engine uncapped.
+        profiling::set_uncap_frame_rate(false);
+        gpui::render_stats::set_uncapped_presentation(false);
+    }
 }
 
 impl FlamegraphWindow {
@@ -43,8 +55,18 @@ impl FlamegraphWindow {
                 flamegraph_panel: None,
                 statistics_panel: None,
                 resizable_state,
+                uncap_frame_rate: false,
             }
         })
+    }
+
+    /// Push the "uncap frame rate" choice to the engine: on only while a recording
+    /// is running with the box ticked. Sets both halves of the cap: the Helio
+    /// render thread's frame pacer, and vsync on the window swapchain.
+    fn apply_frame_rate_cap(&self) {
+        let uncapped = self.is_profiling && self.uncap_frame_rate;
+        profiling::set_uncap_frame_rate(uncapped);
+        gpui::render_stats::set_uncapped_presentation(uncapped);
     }
 
     fn start_profiling(&mut self, _cx: &mut Context<Self>) {
@@ -87,6 +109,7 @@ impl FlamegraphWindow {
         collector.start();
         self.collector = Some(collector);
         self.is_profiling = true;
+        self.apply_frame_rate_cap();
 
         tracing::trace!("[PROFILER] Instrumentation profiling started");
         _cx.notify();
@@ -100,6 +123,11 @@ impl FlamegraphWindow {
         if let Some(collector) = &self.collector {
             collector.stop();
         }
+
+        // Restore the normal frame-rate cap before anything slow (the save below)
+        // so the editor is not left running uncapped.
+        profiling::set_uncap_frame_rate(false);
+        gpui::render_stats::set_uncapped_presentation(false);
 
         // Save all events to database before stopping
         if let Some(db_conn) = &self.db_connection {
@@ -340,6 +368,48 @@ impl FlamegraphWindow {
                                                 .child(
                                                     t!("Flamegraph.StartRecordingDesc").to_string(),
                                                 ),
+                                        ),
+                                ),
+                        )
+                        .child(
+                            // Recording option, shown with the start card it applies to.
+                            // Not inside the clickable start card: clicking the checkbox
+                            // must toggle the option, not start a recording.
+                            h_flex()
+                                .w_full()
+                                .px_5()
+                                .py_3()
+                                .gap_3()
+                                .items_start()
+                                .rounded(px(10.0))
+                                .bg(theme.muted.opacity(0.08))
+                                .border_1()
+                                .border_color(theme.border.opacity(0.5))
+                                .child(
+                                    Checkbox::new("uncap-frame-rate")
+                                        .checked(self.uncap_frame_rate)
+                                        .on_click(cx.listener(|this, checked: &bool, _window, cx| {
+                                            this.uncap_frame_rate = *checked;
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    v_flex()
+                                        .flex_1()
+                                        .gap_1()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .text_color(theme.foreground)
+                                                .child(t!("Flamegraph.UncapFrameRate").to_string()),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(theme.muted_foreground)
+                                                .line_height(relative(1.4))
+                                                .child(t!("Flamegraph.UncapFrameRateDesc").to_string()),
                                         ),
                                 ),
                         )

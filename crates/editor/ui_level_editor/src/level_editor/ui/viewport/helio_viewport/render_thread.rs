@@ -45,7 +45,13 @@ impl HelioViewport {
 
                         {
                             profiling::profile_scope!("Helio: frame pacer wait");
-                            pacer.wait_for_next_frame();
+                            // The profiler's "uncap frame rate" recording option lifts the
+                            // target entirely: render as fast as the frame can complete.
+                            if profiling::uncap_frame_rate() {
+                                pacer.skip_wait();
+                            } else {
+                                pacer.wait_for_next_frame();
+                            }
                         }
 
                         // NOTE: there is deliberately no backpressure wait here any
@@ -180,6 +186,12 @@ impl HelioViewport {
                                 profiling::profile_scope!("Helio: request UI frame");
                                 surface.request_frame();
                             }
+                        } else if profiling::uncap_frame_rate() {
+                            // Nothing was rendered (the scene is idle, so Helio skipped
+                            // the frame). Normally the pacer keeps this loop from spinning;
+                            // with the cap lifted it would spin flat out and fill the
+                            // recording with empty frames, so back off briefly.
+                            std::thread::sleep(Duration::from_micros(500));
                         }
                     }
                 }));
