@@ -12,7 +12,7 @@ pub enum DiffLineType {
     Spacer,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Diagnostic {
     pub file_path: String,
     pub line: usize,
@@ -27,7 +27,7 @@ pub struct Diagnostic {
     pub loading_actions: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Hint {
     pub message: String,
     pub before_content: Option<String>,

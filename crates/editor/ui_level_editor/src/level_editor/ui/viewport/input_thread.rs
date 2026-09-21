@@ -72,6 +72,9 @@ impl ViewportPanel {
 
         self.input_thread_handle = Some(std::thread::spawn(move || {
             profiling::set_thread_name("Input Thread");
+            // Lets the render thread wake this thread for a fresh sample right
+            // before it reads the camera (see `input_latch`).
+            super::input_latch::register_input_thread();
             tracing::debug!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
             let device_state = DeviceState::new();
             let mut _last_mouse_pos: Option<(i32, i32)> = None;
@@ -80,6 +83,7 @@ impl ViewportPanel {
             loop {
                 if stop_flag.load(Ordering::Acquire) {
                     tracing::debug!("[INPUT-THREAD] shutdown requested, exiting");
+                    super::input_latch::set_capturing(false);
                     return;
                 }
 
@@ -92,11 +96,18 @@ impl ViewportPanel {
                 // While capturing, poll at ~500Hz so keypresses and cursor deltas
                 // reach the camera within ~2ms instead of up to 8ms; idle, drop to
                 // ~120Hz so we don't burn CPU.
-                std::thread::sleep(std::time::Duration::from_millis(if capturing {
+                super::input_latch::set_capturing(capturing);
+                // `park_timeout`, not `sleep`: the render thread can `unpark` this
+                // thread to request a fresh sample right before a frame reads the
+                // camera. Without a request it behaves exactly like the sleep.
+                std::thread::park_timeout(std::time::Duration::from_millis(if capturing {
                     2
                 } else {
                     8
                 }));
+                // Signals "one iteration finished" on every path out of this
+                // iteration body, including the early `continue`s below.
+                let _poll_done = super::input_latch::PollDone;
                 profiling::profile_scope!("input_poll");
                 let input_start = std::time::Instant::now();
 

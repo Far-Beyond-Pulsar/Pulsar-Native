@@ -294,18 +294,28 @@ pub fn on_analyzer_event(
                 })
                 .collect();
 
-            // Set the diagnostics (with embedded hints already populated)
-            app.state.problems_drawer.update(cx, |drawer, cx| {
-                drawer.set_diagnostics(problems_diagnostics, cx);
+            // Set the diagnostics (with embedded hints already populated). The
+            // app root only needs to redraw if the drawer's contents changed;
+            // notifying it on every republish rebuilt the whole editor shell.
+            let diagnostics_changed = app.state.problems_drawer.update(cx, |drawer, cx| {
+                drawer.set_diagnostics(problems_diagnostics, cx)
             });
-            cx.notify();
+            if diagnostics_changed {
+                cx.notify();
+            }
 
             // Spawn async task to fetch code actions for diagnostics that don't have embedded actions
-            let diagnostics_needing_fetch: Vec<_> = diagnostic_infos
-                .iter()
-                .filter(|(_, _, _, _, _, _, _, _, has_embedded)| !has_embedded)
-                .cloned()
-                .collect();
+            // An unchanged republish keeps the hints already fetched for it, so
+            // there is nothing to request (one LSP round trip per diagnostic).
+            let diagnostics_needing_fetch: Vec<_> = if diagnostics_changed {
+                diagnostic_infos
+                    .iter()
+                    .filter(|(_, _, _, _, _, _, _, _, has_embedded)| !has_embedded)
+                    .cloned()
+                    .collect()
+            } else {
+                Vec::new()
+            };
 
             tracing::debug!("🚀 Spawning code action fetch task for {} diagnostics (skipping {} with embedded actions)",
                 diagnostics_needing_fetch.len(),

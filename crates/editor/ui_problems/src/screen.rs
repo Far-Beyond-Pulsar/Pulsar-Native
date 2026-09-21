@@ -17,6 +17,10 @@ use crate::utils::types::{Diagnostic, DiagnosticSeverity, Hint, NavigateToDiagno
 pub struct ProblemsDrawer {
     pub(crate) focus_handle: FocusHandle,
     pub(crate) diagnostics: Arc<Mutex<Vec<Diagnostic>>>,
+    /// The last set handed to `set_diagnostics`, before fetched code-action hints were
+    /// added to `diagnostics`. A republish of the same set is compared against this,
+    /// not against the enriched copy (which always differs from a fresh publish).
+    pub(crate) last_published: Vec<Diagnostic>,
     pub(crate) filtered_severity: Option<DiagnosticSeverity>,
     pub(crate) selected_index: Option<usize>,
     pub(crate) search_query: String,
@@ -38,6 +42,7 @@ impl ProblemsDrawer {
         Self {
             focus_handle,
             diagnostics,
+            last_published: Vec::new(),
             filtered_severity: None,
             selected_index: None,
             search_query: String::new(),
@@ -56,17 +61,32 @@ impl ProblemsDrawer {
 
     pub fn clear_diagnostics(&mut self, cx: &mut Context<Self>) {
         self.diagnostics.lock().unwrap().clear();
+        self.last_published.clear();
         self.selected_index = None;
         self.preview_inputs.clear();
         cx.notify();
     }
 
-    pub fn set_diagnostics(&mut self, diagnostics: Vec<Diagnostic>, cx: &mut Context<Self>) {
+    /// Replace the diagnostics. Returns whether anything changed.
+    ///
+    /// The language server republishes the same set repeatedly. Treating each
+    /// publish as a change reset the selection and caches and notified the
+    /// drawer (and, through the caller, the whole app) several times a second
+    /// with nothing new to show -- each notify turning a ~0.5 ms display-only
+    /// frame into a multi-millisecond full draw.
+    pub fn set_diagnostics(&mut self, diagnostics: Vec<Diagnostic>, cx: &mut Context<Self>) -> bool {
+        // Compare with the previous *publish*: the stored copy also carries the
+        // code-action hints fetched since, so it never equals a fresh publish.
+        if self.last_published == diagnostics {
+            return false;
+        }
+        self.last_published = diagnostics.clone();
         *self.diagnostics.lock().unwrap() = diagnostics;
         self.selected_index = None;
         self.preview_inputs.clear();
         self.diff_editors.clear();
         cx.notify();
+        true
     }
 
     pub fn update_diagnostic_hints(
@@ -75,6 +95,11 @@ impl ProblemsDrawer {
         new_hints: Vec<Hint>,
         cx: &mut Context<Self>,
     ) {
+        // Only a real change is worth a redraw: new hints, or clearing a loading
+        // indicator that was showing. The common outcome of a code-action fetch is
+        // "no actions" for a diagnostic that was never shown as loading, and that
+        // used to notify anyway (~27 times a second across a publish).
+        let mut changed = false;
         {
             let mut diagnostics = self.diagnostics.lock().unwrap();
             if let Some(diag) = diagnostics.get_mut(diagnostic_index) {
@@ -82,13 +107,23 @@ impl ProblemsDrawer {
                     for hint in new_hints {
                         diag.hints.push(hint);
                     }
+                    changed = true;
                 }
-                diag.loading_actions = false;
+                if diag.loading_actions {
+                    diag.loading_actions = false;
+                    changed = true;
+                }
             }
         }
+        let editors_before = self.diff_editors.len();
         self.diff_editors
             .retain(|(d_idx, _), _| *d_idx != diagnostic_index);
-        cx.notify();
+        if self.diff_editors.len() != editors_before {
+            changed = true;
+        }
+        if changed {
+            cx.notify();
+        }
     }
 
     pub fn set_diagnostic_loading(

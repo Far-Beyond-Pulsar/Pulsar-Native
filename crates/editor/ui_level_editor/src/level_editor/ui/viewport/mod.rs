@@ -16,6 +16,7 @@ pub mod performance;
 pub mod cursor;
 mod build;
 mod build_handlers;
+pub(crate) mod input_latch;
 mod input_thread;
 mod overlays;
 

@@ -110,6 +110,12 @@ impl HelioViewport {
                             if tab_activated.swap(false, Ordering::AcqRel) {
                                 engine.reset_taa();
                             }
+                            // Sample the camera input as late as possible: right before
+                            // the frame reads it, not on the input thread's own timer.
+                            {
+                                profiling::profile_scope!("Helio: latch camera input");
+                                crate::level_editor::ui::viewport::input_latch::latch_now();
+                            }
                             let _t = gpui::render_stats::scope("helio: render_frame_to_surface");
                             engine.render_frame_to_surface(
                                 device, queue, &view, width, height, format,
