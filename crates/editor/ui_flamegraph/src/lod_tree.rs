@@ -16,6 +16,8 @@ pub struct MergedSpan {
     pub depth: u32,
     pub color_index: usize,
     pub span_count: usize,
+    /// Duration of the member whose label/color this block currently shows.
+    pub label_dur_ns: u64,
 }
 
 /// One level in the LOD hierarchy
@@ -66,6 +68,7 @@ impl LODLevel {
                     depth: span.depth,
                     color_index: span.color_index as usize,
                     span_count: 1,
+                    label_dur_ns: span.end_ns().saturating_sub(span.start_ns),
                 };
 
                 self.buckets[bucket_idx]
@@ -88,6 +91,14 @@ impl LODLevel {
                         let gap = span.start_ns.saturating_sub(last.end_ns);
                         // Merge if gap < 1 pixel worth of time (at this LOD level)
                         if gap < self.bucket_size_ns / 10 {
+                            // Name the block after its longest member, not the
+                            // first one: a ~0ms lock wait that happens to start
+                            // the row must not label the frame it sits beside.
+                            if span.label_dur_ns > last.label_dur_ns {
+                                last.label = span.label;
+                                last.color_index = span.color_index;
+                                last.label_dur_ns = span.label_dur_ns;
+                            }
                             last.end_ns = last.end_ns.max(span.end_ns);
                             last.span_count += span.span_count;
                             continue;

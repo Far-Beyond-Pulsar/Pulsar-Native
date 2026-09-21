@@ -4530,7 +4530,7 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "naga",
- "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=45cda191beb316fee0859ae40d59f0dff986a66a)",
+ "profiling 0.1.0",
  "pulsar_scenedb",
  "thiserror 2.0.20",
  "wgpu",
@@ -8538,33 +8538,6 @@ dependencies = [
 
 [[package]]
 name = "profiling"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=12424a5f75166332f9f1d2741281f6fc4847b44d#12424a5f75166332f9f1d2741281f6fc4847b44d"
-dependencies = [
- "chrono",
- "crossbeam-channel",
- "once_cell",
- "parking_lot",
- "rusqlite",
- "serde",
-]
-
-[[package]]
-name = "profiling"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=45cda191beb316fee0859ae40d59f0dff986a66a#45cda191beb316fee0859ae40d59f0dff986a66a"
-dependencies = [
- "chrono",
- "crossbeam-channel",
- "crossbeam-queue",
- "once_cell",
- "parking_lot",
- "rusqlite",
- "serde",
-]
-
-[[package]]
-name = "profiling"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d595e54a326bc53c1c197b32d295e14b169e3cfeaa8dc82b529f947fba6bcf5"
@@ -9057,7 +9030,7 @@ version = "0.1.0"
 source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=214cb5319fcef099f2413005e472d86aaf1046b3#214cb5319fcef099f2413005e472d86aaf1046b3"
 dependencies = [
  "ahash 0.8.12",
- "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=12424a5f75166332f9f1d2741281f6fc4847b44d)",
+ "profiling 0.1.0",
  "pulsar_reflection",
  "pulsar_scenedb_derive",
  "serde",

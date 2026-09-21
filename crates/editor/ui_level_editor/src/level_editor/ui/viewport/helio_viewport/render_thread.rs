@@ -43,7 +43,10 @@ impl HelioViewport {
                             break;
                         }
 
-                        pacer.wait_for_next_frame();
+                        {
+                            profiling::profile_scope!("Helio: frame pacer wait");
+                            pacer.wait_for_next_frame();
+                        }
 
                         // Backpressure: don't produce a frame the compositor hasn't
                         // asked for yet.
@@ -62,7 +65,11 @@ impl HelioViewport {
                         // consumer's actual rate. The wait is bounded: the fast-blit
                         // presentation path never advances the composited generation,
                         // so an unbounded wait there would stall the viewport for good.
-                        if !wait_for_frame_consumed(&surface, &stop, CONSUMER_WAIT_TIMEOUT) {
+                        let should_render = {
+                            profiling::profile_scope!("Helio: wait for compositor to consume frame");
+                            wait_for_frame_consumed(&surface, &stop, CONSUMER_WAIT_TIMEOUT)
+                        };
+                        if !should_render {
                             continue;
                         }
 
@@ -73,9 +80,18 @@ impl HelioViewport {
                         // theirs concurrently, so frame pacing stays independent.
                         let _frame = gpui::render_stats::scope("helio: FRAME TOTAL");
                         gpui::render_stats::count("helio frames rendered");
-                        let submit_guard = surface.submit_guard();
+                        // Blocks for as long as a window resize holds the
+                        // exclusive side of this lock (`Surface::configure`).
+                        let submit_guard = {
+                            profiling::profile_scope!("Helio: wait gpu_submit_lock (read)");
+                            surface.submit_guard()
+                        };
 
-                        let Some((view, (width, height))) = surface.back_view_with_size() else {
+                        let back = {
+                            profiling::profile_scope!("Helio: acquire back buffer");
+                            surface.back_view_with_size()
+                        };
+                        let Some((view, (width, height))) = back else {
                             gpui::render_stats::count("helio: no back buffer (skipped)");
                             continue;
                         };
@@ -86,7 +102,10 @@ impl HelioViewport {
 
                         let submission_index = {
                             let lock_start = Instant::now();
-                            let locked = engine.lock();
+                            let locked = {
+                                profiling::profile_scope!("Helio: wait for engine lock");
+                                engine.lock()
+                            };
                             gpui::render_stats::record(
                                 "helio: wait for engine lock",
                                 lock_start.elapsed(),
@@ -123,7 +142,10 @@ impl HelioViewport {
                             // sees the change and repaints just this view. Release ordering
                             // pairs with the pump's acquire load so the swapped buffer is
                             // visible before the counter is.
-                            surface.present_synced_silent(idx);
+                            {
+                                profiling::profile_scope!("Helio: present_synced_silent");
+                                surface.present_synced_silent(idx);
+                            }
                             frames_published.fetch_add(1, Ordering::Release);
                         }
 

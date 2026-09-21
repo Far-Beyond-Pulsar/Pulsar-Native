@@ -127,12 +127,11 @@ fn collector_loop(
                 let thread_id = normalized_thread_id(event);
                 if thread_id == 0 {
                     delta_thread_names.push((0, "GPU".to_string()));
-                } else if let Some(track_name) = event.track_name.as_deref() {
-                    delta_thread_names.push((thread_id, track_name.to_string()));
+                } else if event.thread_name.is_some() {
+                    // Only publish a real nickname. A later unnamed event must
+                    // never erase a meaningful name already on this lane.
+                    delta_thread_names.push((thread_id, lane_name(event)));
                 } else if let Some(name) = accumulator.thread_names.get(&event.thread_id) {
-                    // Only publish a fallback name when the profiler actually
-                    // knows one. A later unnamed event must never erase a
-                    // meaningful name already associated with this lane.
                     delta_thread_names.push((thread_id, name.name.clone()));
                 }
                 delta_spans.push(TraceSpan {
@@ -194,46 +193,28 @@ impl Drop for InstrumentationCollector {
     }
 }
 
+/// The lane an event is drawn on: the thread it actually ran on.
+///
+/// Lanes are deliberately NOT semantic groups. A span appears on the real
+/// thread that executed it, in the order it executed, so a blocked or busy
+/// thread is visible as such. Nothing is matched on span or thread *names*
+/// either: CPU scopes such as `helio_flush_gpu_mirror` contain "gpu" and must
+/// stay on their thread. The one non-thread lane is the GPU timeline, whose
+/// synthesized events are emitted with `thread_id == 0` at the source.
 fn normalized_thread_id(event: &profiling::ProfileEvent) -> u64 {
-    if let Some(track_name) = event.track_name.as_deref() {
-        return logical_track_id(track_name);
-    }
-
-    let mut text = event.name.to_ascii_lowercase();
-    if let Some(thread_name) = event.thread_name.as_deref() {
-        text.push(' ');
-        text.push_str(&thread_name.to_ascii_lowercase());
-    }
-
-    if event
-        .metadata
-        .as_deref()
-        .is_some_and(|metadata| metadata.contains("track=gpu"))
-    {
-        return 0;
-    }
-
-    // Track ids are semantic lanes, not OS/thread ids. Helio's RenderGraph
-    // executes passes on worker threads, so using event.thread_id here turns
-    // LightCull/WaterSim into a forest of anonymous rows. Keep CPU-side Helio
-    // work on one stable named lane; reserve lane 0 for actual GPU events.
-    if text.contains("gpu") {
-        0
-    } else {
-        event.thread_id
-    }
+    event.thread_id
 }
 
-fn logical_track_id(name: &str) -> u64 {
-    if name.eq_ignore_ascii_case("gpu") {
-        return 0;
+/// Display name for an event's lane: the thread's nickname when one was set
+/// (`profiling::set_thread_name`) or the OS thread name, else a generic label.
+fn lane_name(event: &profiling::ProfileEvent) -> String {
+    if event.thread_id == 0 {
+        return "GPU".to_string();
     }
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in name.as_bytes() {
-        hash ^= u64::from(*byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    if hash == 0 { 1 } else { hash }
+    event
+        .thread_name
+        .clone()
+        .unwrap_or_else(|| format!("Thread {}", event.thread_id))
 }
 
 
@@ -342,18 +323,7 @@ pub fn convert_profile_events_to_trace(
         }
 
         // Use the thread name from the event if available
-        let thread_name = if thread_id == 0 {
-            "GPU".to_string()
-        } else if let Some(track_name) = event.track_name.as_deref() {
-            track_name.to_string()
-        } else {
-            event
-                .thread_name
-                .clone()
-                .unwrap_or_else(|| format!("Thread {}", event.thread_id))
-        };
-
-        thread_names.insert(thread_id, thread_name);
+        thread_names.insert(thread_id, lane_name(event));
 
         // Create span from event
         spans.push(TraceSpan {

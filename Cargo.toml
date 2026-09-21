@@ -329,6 +329,16 @@ pulsar_std_bundle = { path = "crates/core/pulsar_std_bundle" }
 pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
 pulsar_reflection = { path = "crates/third-party/pulsar-reflection/pulsar_reflection" }
 pulsar_reflection_derive = { path = "crates/third-party/pulsar-reflection/pulsar_reflection_derive" }
+# The flamegraph reads ONE global profiler. Helio pins `profiling` from this
+# repo by git rev; without this patch helio-core links a second copy with its
+# own private `PROFILER` static, so every render-graph pass scope was recorded
+# into a profiler nobody drains.
+profiling         = { path = "crates/profiling" }
+
+# SceneDB depends on the standalone Pulsar-Profiling repo (the fork's origin).
+# Same problem as above: unpatched, its scopes never reach the flamegraph.
+[patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling"]
+profiling = { path = "crates/profiling" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/PBGC"]
 pbgc = { path = "crates/third-party/pbgc" }

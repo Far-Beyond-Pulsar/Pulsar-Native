@@ -88,12 +88,16 @@ impl ProfileScope {
     /// Begin a scope whose logical parent was captured on another thread or
     /// queue. The parent relationship is identity-based, not name-based.
     pub fn new_with_context(name: impl Into<String>, context: ScopeContext) -> Self {
+        // The scope is recorded on the thread that actually runs it, at that
+        // thread's own stack depth. Only the parent *identity* crosses threads;
+        // borrowing the parent thread's depth would float this span above
+        // empty rows on the worker's lane.
         Self::new_name_with_parent(
             ScopeName::Owned(name.into()),
             None,
             context.parent_scope_id,
-            Some(context.depth + 1),
-            context.track_name,
+            None,
+            None,
         )
     }
 
@@ -181,18 +185,20 @@ impl Drop for ProfileScope {
         };
         let duration_ns = start.elapsed().as_nanos() as u64;
 
-        let (name, parent_name) = THREAD_STATE.with(|ts| {
+        // Never panic here: a guard can be embedded in another RAII type and
+        // dropped out of order or on a different thread, and a panic in `drop`
+        // during unwinding aborts the process. Drop the sample instead.
+        let Some((name, parent_name)) = THREAD_STATE.with(|ts| {
             let mut state = ts.borrow_mut();
-            let frame = state
-                .scope_stack
-                .pop()
-                .expect("profiling scope stack must match scope guards");
+            let frame = state.scope_stack.pop()?;
             let parent_name = state
                 .scope_stack
                 .last()
                 .map(|frame| frame.name.as_str().to_owned());
-            (frame.name.into_string(), parent_name)
-        });
+            Some((frame.name.into_string(), parent_name))
+        }) else {
+            return;
+        };
 
         if !init_profiler().is_enabled() {
             return;
@@ -203,7 +209,11 @@ impl Drop for ProfileScope {
             parent_scope_id: self.parent_scope_id,
             name,
             thread_id: self.thread_id,
-            thread_name: THREAD_NAME.with(|tn| tn.borrow().clone()),
+            // Explicit nickname first, then whatever the OS thread was spawned
+            // with, so worker threads get a real lane label with no setup.
+            thread_name: THREAD_NAME
+                .with(|tn| tn.borrow().clone())
+                .or_else(|| thread::current().name().map(str::to_owned)),
             process_id: init_profiler().get_process_id(),
             parent_name,
             start_ns: self.start_ns,

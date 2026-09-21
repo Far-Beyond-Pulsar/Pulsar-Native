@@ -293,7 +293,6 @@ impl HelioRenderer {
         let _wgpui_profile_bridge = WgpuiProfileBridge::begin();
         #[cfg(feature = "editor-ui")]
         gpui::flamegraph_span!("pulsar: HelioRenderer::render_frame");
-        profiling::set_track_name("Helio Render");
         profiling::profile_scope!("helio_frame");
         let frame_start = Instant::now();
         let now = Instant::now();
@@ -404,11 +403,13 @@ impl HelioRenderer {
         // `handle_left_release` already set `self.gizmo_dirty = true`
         // internally, so processing them here needs no extra plumbing to keep
         // this frame from idling out on a drag-release commit.
-        let pending_pointer_events = self
-            .pending_pointer_events
-            .lock()
-            .map(|mut events| std::mem::take(&mut *events))
-            .unwrap_or_default();
+        let pending_pointer_events = {
+            profiling::profile_scope!("helio_take_pending_pointer_events");
+            self.pending_pointer_events
+                .lock()
+                .map(|mut events| std::mem::take(&mut *events))
+                .unwrap_or_default()
+        };
         #[cfg(feature = "editor-ui")]
         let _pointer_events_profile = (!pending_pointer_events.is_empty()).then(|| {
             gpui::enter_span(
@@ -417,19 +418,25 @@ impl HelioRenderer {
                 None,
             )
         });
-        for event in pending_pointer_events {
-            match event {
-                PendingPointerEvent::LeftClick { norm_x, norm_y } => {
-                    self.handle_left_click(norm_x, norm_y);
-                }
-                PendingPointerEvent::LeftRelease => {
-                    self.handle_left_release();
+        if !pending_pointer_events.is_empty() {
+            profiling::profile_scope!("helio_pointer_events");
+            for event in pending_pointer_events {
+                match event {
+                    PendingPointerEvent::LeftClick { norm_x, norm_y } => {
+                        profiling::profile_scope!("helio_handle_left_click");
+                        self.handle_left_click(norm_x, norm_y);
+                    }
+                    PendingPointerEvent::LeftRelease => {
+                        profiling::profile_scope!("helio_handle_left_release");
+                        self.handle_left_release();
+                    }
                 }
             }
         }
 
         // ── Detect input activity BEFORE consuming ──────────────────────────────
         let (had_input, needs_resize) = {
+            profiling::profile_scope!("helio_read_camera_input");
             let Ok(input) = self.camera_input.lock() else {
                 return None;
             };
@@ -461,7 +468,10 @@ impl HelioRenderer {
         // Reconcile the terrain runtime with the scene's planets before the
         // idle check below reads `planet_terrain` -- creating or retiring a
         // planet must itself be able to wake the frame up.
-        self.sync_terrain_planets();
+        {
+            profiling::profile_scope!("helio_sync_terrain_planets");
+            self.sync_terrain_planets();
+        }
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
@@ -475,7 +485,10 @@ impl HelioRenderer {
         // background loop to skip present/publish — the compositor holds the last
         // frame on screen.
         let viewport_resized = needs_resize || self.viewport_size != (width, height);
-        let scene_revision = self.scene_store.read().world.revision();
+        let scene_revision = {
+            profiling::profile_scope!("helio_scene_store_read (revision)");
+            self.scene_store.read().world.revision()
+        };
         // A newly-created/loaded SceneDB can have revision 0. The first
         // renderer frame still steps the database so its GPU mirror is current
         // before Helio reads it.
@@ -552,7 +565,10 @@ impl HelioRenderer {
         // No GPU work, no gizmo rebuild, no planet terrain tick, no profiler reads.
         if is_idle {
             // Idle frames must still serve inspector requests.
-            self.scene_store.read().world.publish_inspector_snapshot();
+            {
+                profiling::profile_scope!("helio_idle_publish_inspector_snapshot");
+                self.scene_store.read().world.publish_inspector_snapshot();
+            }
             if let Ok(mut m) = self.metrics.lock() {
                 m.fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
                 m.frame_time_ms = dt * 1000.0;
@@ -570,17 +586,34 @@ impl HelioRenderer {
             gpui::flamegraph_span!("pulsar: HelioRenderer::scene_db_step");
             profiling::profile_scope!("helio_scene_db_step");
             let t_sync = Instant::now();
-            let mut scene_store = self.scene_store.write();
-            crate::scene::editor_rows::sync_editor_light_rows(&mut scene_store.world, true);
-            crate::scene::sync_static_mesh_rows(&mut scene_store);
-            scene_store.step();
+            // Exclusive lock: contends with the UI thread (inspector, property
+            // edits, hierarchy) for as long as either side holds the scene.
+            let mut scene_store = {
+                profiling::profile_scope!("helio_scene_store_write_lock_wait");
+                self.scene_store.write()
+            };
+            {
+                profiling::profile_scope!("helio_sync_editor_light_rows");
+                crate::scene::editor_rows::sync_editor_light_rows(&mut scene_store.world, true);
+            }
+            {
+                profiling::profile_scope!("helio_sync_static_mesh_rows");
+                crate::scene::sync_static_mesh_rows(&mut scene_store);
+            }
+            {
+                profiling::profile_scope!("helio_scene_store_step");
+                scene_store.step();
+            }
             sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
             inner.last_scene_revision = scene_revision;
         }
 
         // SceneDB Inspector bridge: throttled inside SceneDB, and a no-op unless
         // an inspector launched this process. After the GPU flush above.
-        self.scene_store.read().world.publish_inspector_snapshot();
+        {
+            profiling::profile_scope!("helio_publish_inspector_snapshot");
+            self.scene_store.read().world.publish_inspector_snapshot();
+        }
 
         // ── Camera / planet / gizmo / render ────────────────────────────────────
         let t_prepare = Instant::now();
@@ -611,6 +644,7 @@ impl HelioRenderer {
                 })
                 && (!camera_stopped || viewport_resized || terrain_dirty || terrain_streaming);
             if should_advance_planet {
+                profiling::profile_scope!("helio_planet_terrain_advance");
                 let graph_rebuilt = std::mem::take(&mut inner.planet_graph_rebuilt);
                 let planet_terrain = inner
                     .planet_terrain
@@ -660,11 +694,20 @@ impl HelioRenderer {
 
             // Debug geometry is transient GPU execution state. World content is
             // read by Helio passes directly from the SceneDB GPU mirror.
-            inner.renderer.debug_clear();
-            let store = self.scene_store.read();
-            inner
-                .interaction
-                .draw_gizmo(&mut inner.renderer, &store.world, self.cam_pos);
+            {
+                profiling::profile_scope!("helio_debug_clear");
+                inner.renderer.debug_clear();
+            }
+            let store = {
+                profiling::profile_scope!("helio_scene_store_read_lock_wait (gizmo)");
+                self.scene_store.read()
+            };
+            {
+                profiling::profile_scope!("helio_draw_gizmo");
+                inner
+                    .interaction
+                    .draw_gizmo(&mut inner.renderer, &store.world, self.cam_pos);
+            }
             // Terrain brush ring, from the tool-mode mailbox. Same transient
             // debug-geometry sink the gizmo uses, so it is rebuilt per frame
             // and needs no lifetime management of its own.
@@ -710,10 +753,23 @@ impl HelioRenderer {
             // that the zero-central-knowledge architecture mandate says
             // shouldn't exist here -- flagged for a follow-up pass, not
             // fixed now.
-            self.scene_store.read().world.flush_gpu_mirror(&inner.queue);
-            if let Err(e) = inner.renderer.render(&camera, &view) {
-                tracing::error!("Helio render error: {:?}", e);
+            {
+                profiling::profile_scope!("helio_flush_gpu_mirror");
+                let store = {
+                    profiling::profile_scope!("helio_scene_store_read_lock_wait (flush)");
+                    self.scene_store.read()
+                };
+                store.world.flush_gpu_mirror(&inner.queue);
             }
+            {
+                profiling::profile_scope!("helio_renderer_render");
+                if let Err(e) = inner.renderer.render(&camera, &view) {
+                    tracing::error!("Helio render error: {:?}", e);
+                }
+            }
+            // An empty `queue.submit` still takes the queue lock and can drain
+            // pending work, so it gets its own span.
+            profiling::profile_scope!("helio_queue_submit (fence)");
             Some(
                 inner
                     .queue
@@ -748,6 +804,7 @@ impl HelioRenderer {
         // always-on diagnostic cache when no instrumentation capture owns the
         // profiler.
         if profiling::is_profiling_enabled() || self.profiler_frame_counter >= 30 {
+            profiling::profile_scope!("helio_gpu_profiler_update");
             self.profiler_frame_counter = 0;
             self.gpu_profiler
                 .update_from_snapshot(inner.renderer.timing_snapshot());
@@ -756,6 +813,7 @@ impl HelioRenderer {
         let gpu_frame = self.gpu_profiler.gpu_frame_count;
         let new_gpu_result = gpu_frame.is_some() && gpu_frame != self.last_reported_gpu_frame;
         if new_gpu_result {
+            profiling::profile_scope!("helio_emit_gpu_passes");
             emit_helio_gpu_passes(&self.gpu_profiler);
         }
         let gpu_spike = new_gpu_result
@@ -802,10 +860,13 @@ impl HelioRenderer {
             self.last_reported_gpu_frame = gpu_frame;
         }
 
-        if let Ok(mut m) = self.metrics.lock() {
-            m.fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
-            m.frame_time_ms = dt * 1000.0;
-            m.frames_rendered = self.frame_count;
+        {
+            profiling::profile_scope!("helio_update_metrics");
+            if let Ok(mut m) = self.metrics.lock() {
+                m.fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
+                m.frame_time_ms = dt * 1000.0;
+                m.frames_rendered = self.frame_count;
+            }
         }
 
         submission_index

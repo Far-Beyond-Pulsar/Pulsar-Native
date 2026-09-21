@@ -146,6 +146,16 @@ fn main() {
     // Name the main thread FIRST
     profiling::set_thread_name("Main Thread");
 
+    // Route wgpui's frame-stage scopes (draw/layout/prepaint/paint/present,
+    // swapchain acquire, surface-registry and submit-lock waits, ...) into the
+    // flamegraph's profiler. wgpui links the crates.io `profiling` crate, a
+    // different instance with its own global state, so without this bridge the
+    // entire UI thread is invisible to the flamegraph.
+    gpui::render_stats::set_scope_hook(gpui::render_stats::ScopeHook {
+        enabled: profiling::is_profiling_enabled,
+        begin: |name| Box::new(profiling::ProfileScope::new_static(name)),
+    });
+
     // Profiling is intentionally NOT enabled here. Instrumentation
     // (profile_scope!) submits events into an unbounded channel the moment
     // profiling is enabled, and nothing drains that channel unless the
