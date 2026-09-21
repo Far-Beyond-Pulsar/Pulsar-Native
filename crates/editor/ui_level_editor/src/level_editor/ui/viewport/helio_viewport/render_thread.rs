@@ -165,6 +165,15 @@ impl HelioViewport {
                                 surface.present_synced_silent(idx);
                             }
                             frames_published.fetch_add(1, Ordering::Release);
+                            // Wake the UI thread now instead of leaving it to notice
+                            // on its next idle poll (up to 4 ms later). Ordered after
+                            // the counter bump so the pump sees the new frame when the
+                            // redraw it triggers runs. Does not mark the surface
+                            // `redraw_pending`, so no direct-blit attempt is made.
+                            {
+                                profiling::profile_scope!("Helio: request UI frame");
+                                surface.request_frame();
+                            }
                         }
                     }
                 }));
