@@ -309,11 +309,17 @@ fn main() {{
 /// The source is the engine's own `assets/` directory, located relative to this
 /// crate at compile time.  Missing files are copied; existing files are skipped
 /// so user-overrides aren't clobbered.
-fn ensure_engine_primitives(project_root: &Path) {
+pub fn ensure_engine_primitives(project_root: &Path) {
     // CARGO_MANIFEST_DIR = <repo>/crates/engine_backend  →  ../../  = <repo>
     const ENGINE_ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
+    for (dir, ext) in [("meshes/primitives", ".fbx"), ("meshes/cathedral", ".mesh")] {
+        copy_engine_asset_dir(ENGINE_ASSETS, project_root, dir, ext);
+    }
+}
 
-    let src_prims = std::path::Path::new(ENGINE_ASSETS).join("meshes/primitives");
+/// Copy `<engine assets>/<dir>/*<ext>` into the project, skipping existing files.
+fn copy_engine_asset_dir(engine_assets: &str, project_root: &Path, dir: &str, ext: &str) {
+    let src_prims = std::path::Path::new(engine_assets).join(dir);
     if !src_prims.exists() {
         tracing::debug!(
             "Engine primitives source not found at {}",
@@ -322,7 +328,7 @@ fn ensure_engine_primitives(project_root: &Path) {
         return;
     }
 
-    let dst_prims = project_root.join("assets/meshes/primitives");
+    let dst_prims = project_root.join("assets").join(dir);
     if let Err(e) = virtual_fs::create_dir_all(&dst_prims) {
         tracing::warn!("Could not create primitives dir: {e}");
         return;
@@ -332,7 +338,7 @@ fn ensure_engine_primitives(project_root: &Path) {
         return;
     };
     for entry in entries {
-        if !entry.name.ends_with(".fbx") {
+        if !entry.name.ends_with(ext) {
             continue;
         }
         let src = src_prims.join(&entry.name);

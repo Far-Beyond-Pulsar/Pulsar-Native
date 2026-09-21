@@ -24,7 +24,7 @@ pub mod rust_analyzer_manager {
     pub use pulsar_lsp::rust_analyzer::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
 }
 
-pub use core_project_builder::ensure_core_bootstrap;
+pub use core_project_builder::{ensure_core_bootstrap, ensure_engine_primitives};
 #[cfg(feature = "render")]
 pub use gpu_renderer::GpuRenderer;
 #[cfg(feature = "render")]

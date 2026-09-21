@@ -99,6 +99,12 @@ impl LevelEditorPanel {
             let embedded = engine_state::EngineContext::global()
                 .and_then(|ctx| ctx.store.get_or_init::<Option<Vec<u8>>>().read().clone());
 
+            // The embedded default level references engine meshes (the cathedral
+            // batches) by project-relative path; make sure they exist first.
+            if let Some(root) = default_path.parent().and_then(|p| p.parent()) {
+                engine_backend::services::ensure_engine_primitives(root);
+            }
+
             let seed_result = if let Some(bytes) = embedded {
                 // Write the embedded bytes directly — preserves whatever the developer
                 // designed as the default scene via "Save as Default Level".

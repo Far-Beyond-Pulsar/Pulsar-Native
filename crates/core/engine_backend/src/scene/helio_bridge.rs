@@ -101,21 +101,45 @@ pub fn sync_static_mesh_rows(scene_db: &mut pulsar_scenedb::SceneDb) {
                 .remove::<helio_pass_gbuffer::StaticObjectComponent>(entity);
             continue;
         };
-        if scene_db
+        // A level-authored `MaterialOverrideComponent` defines the surface;
+        // otherwise fall back to a default brown material that is only
+        // inserted once. Rewrites are guarded so unchanged rows stay clean.
+        let desired = match scene_db
+            .world
+            .get::<helio_component::components::MaterialOverrideComponent>(entity)
+        {
+            Some(o) => Some(helio_pass_gbuffer::MaterialComponent::from_surface(
+                [o.base_color[0], o.base_color[1], o.base_color[2]],
+                o.alpha,
+                o.roughness,
+                o.metallic,
+                o.emissive_color,
+                o.emissive_intensity,
+            )),
+            None => None,
+        };
+        let existing = scene_db
             .world
             .get::<helio_pass_gbuffer::MaterialComponent>(entity)
-            .is_none()
-        {
-            scene_db.world.insert(
-                entity,
-                helio_pass_gbuffer::MaterialComponent::new(
-                    [0.22, 0.15, 0.08, 1.0],
-                    0.7,
-                    0.0,
-                    [0.0; 3],
-                    0.0,
-                ),
-            );
+            .copied();
+        match (desired, existing) {
+            (Some(d), Some(e)) if d == e => {}
+            (Some(d), _) => {
+                scene_db.world.insert(entity, d);
+            }
+            (None, None) => {
+                scene_db.world.insert(
+                    entity,
+                    helio_pass_gbuffer::MaterialComponent::new(
+                        [0.22, 0.15, 0.08, 1.0],
+                        0.7,
+                        0.0,
+                        [0.0; 3],
+                        0.0,
+                    ),
+                );
+            }
+            (None, Some(_)) => {}
         }
         let model = glam::Mat4::from_scale_rotation_translation(
             glam::Vec3::from_array(transform.scale),
