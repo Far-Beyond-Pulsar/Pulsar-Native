@@ -4475,6 +4475,7 @@ dependencies = [
  "helio-pass-gbuffer",
  "helio-pass-object-batch",
  "helio-pass-portal-cull",
+ "helio-pass-portal-instances",
  "helio-pass-postprocess",
  "helio-pass-radiance-cascades",
  "helio-pass-shadow-matrix",
@@ -4529,7 +4530,7 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "naga",
- "profiling 0.1.0",
+ "profiling 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=45cda191beb316fee0859ae40d59f0dff986a66a)",
  "pulsar_scenedb",
  "thiserror 2.0.20",
  "wgpu",
@@ -4762,8 +4763,11 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
+ "helio-mats",
  "helio-pass-gbuffer",
+ "helio-pass-object-batch",
  "helio-pass-shadow-matrix",
+ "pulsar_scenedb",
  "wgpu",
 ]
 
@@ -5029,6 +5033,8 @@ dependencies = [
  "helio-core",
  "helio-pass-object-batch",
  "log",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
  "wgpu",
 ]
 
@@ -8537,6 +8543,20 @@ source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling?rev=12424a5f
 dependencies = [
  "chrono",
  "crossbeam-channel",
+ "once_cell",
+ "parking_lot",
+ "rusqlite",
+ "serde",
+]
+
+[[package]]
+name = "profiling"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=45cda191beb316fee0859ae40d59f0dff986a66a#45cda191beb316fee0859ae40d59f0dff986a66a"
+dependencies = [
+ "chrono",
+ "crossbeam-channel",
+ "crossbeam-queue",
  "once_cell",
  "parking_lot",
  "rusqlite",
