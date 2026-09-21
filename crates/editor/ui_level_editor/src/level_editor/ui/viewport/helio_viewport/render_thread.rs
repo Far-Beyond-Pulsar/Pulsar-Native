@@ -245,14 +245,13 @@ impl HelioViewport {
                 // match its element. So a real notify is issued when the
                 // window viewport size changed since the last full render
                 // (window resize / maximize), or once per
-                // `FULL_RENDER_INTERVAL` published frames as the fallback for
+                // `FULL_RENDER_INTERVAL` of wall-clock time as the fallback for
                 // geometry changes with no size signal — panel splits and
                 // undocks. That bounds their pickup latency without letting
                 // the ancestor-chain rebuild dominate idle frames.
-                this.frames_since_full_render += 1;
                 let viewport_resized =
                     Some(window.viewport_size()) != this.viewport_size_at_last_full_render;
-                if this.frames_since_full_render >= FULL_RENDER_INTERVAL
+                if this.last_full_render.elapsed() >= FULL_RENDER_INTERVAL
                     || this.awaiting_render
                     || viewport_resized
                 {
@@ -357,7 +356,8 @@ fn wait_for_frame_consumed(
 /// interval only governs geometry changes with no size signal, such as panel
 /// splits.
 ///
-/// At ~60-85 FPS this is roughly one ancestor-chain rebuild every 2 seconds
-/// instead of ~six per second; those rebuilds were a measurable share of the
-/// editor's frame cost during notify storms.
-const FULL_RENDER_INTERVAL: u32 = 150;
+/// A fixed duration rather than a published-frame count so the cost does not
+/// scale with the frame rate: one ancestor-chain rebuild (~9 ms measured) every
+/// 2.5 seconds at any refresh rate. Counted in frames (150) it fired about once
+/// a second at 165 fps and was a quarter of all remaining full-draw time.
+const FULL_RENDER_INTERVAL: Duration = Duration::from_millis(2500);

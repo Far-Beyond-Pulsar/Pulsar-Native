@@ -61,9 +61,11 @@ pub struct HelioViewport {
     /// A repaint has been requested but `render()` has not run yet. Keeps the
     /// pump from stacking up notifies for a viewport that isn't being rendered.
     awaiting_render: bool,
-    /// Published frames since this view last actually rendered. Drives the
-    /// periodic real notify that keeps surface bounds tracking its element.
-    frames_since_full_render: u32,
+    /// When this view last actually rendered. Drives the periodic real notify that
+    /// keeps surface bounds tracking its element. Wall-clock, not a frame count:
+    /// a count of published frames shrinks as the frame rate rises (150 frames
+    /// was ~2.5 s at 60 fps but under 1 s at 165 fps, each one a ~9 ms rebuild).
+    last_full_render: Instant,
     /// Window viewport size at the last full render. A change means the
     /// element's bounds are likely stale, so the next pump tick promotes a
     /// real notify instead of waiting out the frame interval.
@@ -100,7 +102,7 @@ impl HelioViewport {
             frames_published: Arc::new(AtomicU64::new(0)),
             last_published_frame: 0,
             awaiting_render: false,
-            frames_since_full_render: 0,
+            last_full_render: Instant::now(),
             viewport_size_at_last_full_render: None,
             pump_started: false,
             last_spike_report: Instant::now(),
@@ -213,7 +215,7 @@ impl Render for HelioViewport {
             // the surface element below is also what re-observes bounds, so the
             // periodic-full-render counter restarts here.
             self.awaiting_render = false;
-            self.frames_since_full_render = 0;
+            self.last_full_render = Instant::now();
             self.viewport_size_at_last_full_render = Some(window.viewport_size());
             self.last_published_frame = self.frames_published.load(Ordering::Acquire);
 
