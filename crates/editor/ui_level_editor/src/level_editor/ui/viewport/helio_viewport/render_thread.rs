@@ -48,30 +48,17 @@ impl HelioViewport {
                             pacer.wait_for_next_frame();
                         }
 
-                        // Backpressure: don't produce a frame the compositor hasn't
-                        // asked for yet.
+                        // NOTE: there is deliberately no backpressure wait here any
+                        // more. The wait now sits between render and publish (below),
+                        // so this thread renders frame N+1 *while* the UI thread is
+                        // still compositing frame N. Waiting before the render made
+                        // the two strictly sequential: interval = pacer + UI consume
+                        // + render, instead of max(render, UI).
                         //
-                        // The triple buffer holds exactly one `ready` frame. Publishing
-                        // a second before the first is composited recycles the
-                        // unconsumed buffer as the next render target — those pixels
-                        // are thrown away, so rendering faster than the compositor
-                        // consumes can never raise the displayed frame rate. What it
-                        // does do is keep issuing GPU submissions and per-frame
-                        // allocations that nothing retires at the same rate, which is
-                        // what makes an uncapped render thread climb in memory until
-                        // the process stalls.
-                        //
-                        // Waiting here instead makes the producer self-pace to the
-                        // consumer's actual rate. The wait is bounded: the fast-blit
-                        // presentation path never advances the composited generation,
-                        // so an unbounded wait there would stall the viewport for good.
-                        let should_render = {
-                            profiling::profile_scope!("Helio: wait for compositor to consume frame");
-                            wait_for_frame_consumed(&surface, &stop, CONSUMER_WAIT_TIMEOUT)
-                        };
-                        if !should_render {
-                            continue;
-                        }
+                        // Rendering is safe while `ready` is unconsumed: the triple
+                        // buffer's `rendering` slot is distinct from `ready` and
+                        // `display`, and both threads submit on one queue, so a
+                        // recycled texture's earlier reads execute before our writes.
 
                         // Permission to submit on the shared device. Held across
                         // render + present so a window resize (which reconfigures the
@@ -131,7 +118,38 @@ impl HelioViewport {
 
                         drop(view);
 
+                        // Release the submit permission before any waiting: a
+                        // window resize takes the exclusive side of this lock and
+                        // must not be held up by a backpressure wait.
+                        drop(submit_guard);
+
                         if let Some(idx) = submission_index {
+                            // Backpressure, moved here from before the render.
+                            //
+                            // The triple buffer holds exactly one `ready` frame.
+                            // Publishing a second before the first is composited
+                            // recycles the unconsumed buffer, so rendering faster than
+                            // the compositor consumes can never raise the displayed
+                            // frame rate — it only piles up GPU submissions and
+                            // per-frame allocations that nothing retires, which is
+                            // what made an uncapped render thread climb in memory.
+                            // Bounding the wait *here* keeps at most one frame ahead
+                            // of the consumer (the same guarantee) while letting the
+                            // render itself overlap the UI's compositing. Usually the
+                            // UI finished during our render and this returns at once.
+                            //
+                            // Bounded: the fast-blit presentation path never advances
+                            // the composited generation, so an unbounded wait there
+                            // would stall the viewport for good.
+                            let keep_going = {
+                                profiling::profile_scope!("Helio: wait for compositor to consume frame");
+                                wait_for_frame_consumed(&surface, &stop, CONSUMER_WAIT_TIMEOUT)
+                            };
+                            if !keep_going {
+                                // Stop requested mid-wait; drop this frame.
+                                continue;
+                            }
+
                             // Silent present: publish the frame for the compositor but do
                             // NOT request a window redraw from this thread. Driving
                             // repaints from here would fire a winit `RedrawRequested` per
@@ -148,8 +166,6 @@ impl HelioViewport {
                             }
                             frames_published.fetch_add(1, Ordering::Release);
                         }
-
-                        drop(submit_guard);
                     }
                 }));
 
