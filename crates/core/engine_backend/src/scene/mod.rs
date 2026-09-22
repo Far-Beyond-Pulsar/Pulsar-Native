@@ -43,7 +43,7 @@ pub mod editor_rows;
 
 // Re-export new system types for convenience
 #[cfg(feature = "render")]
-pub use helio_bridge::{ensure_gpu_mirror, sync_static_mesh_rows};
+pub use helio_bridge::{ensure_gpu_mirror, retire_gpu_rows_for_entity, sync_static_mesh_rows};
 
 /// Hook a `World` up to the SceneDB Inspector (CPU + GPU live view). Inert
 /// unless this process was launched by `scenedb_inspector`; safe to call for

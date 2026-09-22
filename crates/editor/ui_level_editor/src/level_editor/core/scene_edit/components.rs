@@ -652,9 +652,17 @@ pub fn update_live_component_property(
 
     // A live migrated class is deliberately not written back: the world is its
     // authority, the attachment keeps only the order/enabled record.
-    if let Some(json) =
-        persisted_json.filter(|_| !(is_live && is_scenedb_authority_class(class_name)))
-    {
+    if is_live && is_scenedb_authority_class(class_name) {
+        // The setter above only touched the one reflected field. Some classes
+        // derive other, non-reflected state from their fields (StaticMeshComponent
+        // reloading `vertices`/`indices` from `mesh_asset`; LightComponent's GPU
+        // mirror) that a raw field write never re-derives -- generically re-run
+        // whatever this class registered for exactly that (a no-op for classes
+        // with nothing to refresh).
+        pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
+            class_name, world, entity,
+        );
+    } else if let Some(json) = persisted_json {
         attach::update_component(world, entity, component_index, json);
     }
     Ok(())

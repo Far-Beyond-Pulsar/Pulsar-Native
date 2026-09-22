@@ -352,6 +352,13 @@ pub fn remove_object(world: &mut World, id: &str) -> bool {
     descendant_ids(world, entity, &mut ids);
     for object_id in &ids {
         clear_components(world, object_id);
+        // Packed/`Pod` GPU-mirrored renderer rows (e.g. a static mesh's
+        // draw row) aren't cleaned up by despawn itself -- see
+        // `retire_gpu_rows_for_entity`'s doc. Must run before `despawn_tree`
+        // below while these entities are still addressable.
+        if let Some(entity) = world.entity_for(object_id) {
+            engine_backend::scene::retire_gpu_rows_for_entity(world, entity);
+        }
     }
     world.despawn_tree(entity);
     true
