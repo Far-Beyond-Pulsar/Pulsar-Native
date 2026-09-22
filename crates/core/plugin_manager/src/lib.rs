@@ -478,11 +478,18 @@ impl PluginManager {
     ) -> Result<PluginId, PluginManagerError> {
         let path = path.as_ref();
 
+        // Resolve to an absolute path before handing it to the OS loader.
+        // Windows `LoadLibraryExW` fails with ERROR_MOD_NOT_FOUND (126) for a
+        // relative path (e.g. `plugins/editor\script_editor_plugin.dll`) even
+        // when the file exists relative to the process CWD, while the absolute
+        // form loads cleanly.
+        let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+
         tracing::debug!("Loading plugin from: {:?}", path);
 
         // Load the library permanently
         let library =
-            PermanentLibrary::new(path).map_err(|e| PluginManagerError::LibraryLoadError {
+            PermanentLibrary::new(&path).map_err(|e| PluginManagerError::LibraryLoadError {
                 path: path.to_path_buf(),
                 message: e.to_string(),
             })?;
