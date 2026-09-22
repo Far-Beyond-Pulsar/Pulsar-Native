@@ -90,6 +90,7 @@ parking_lot = { workspace = true }
 anyhow = { workspace = true }
 # horizon = { git = "https://github.com/Far-Beyond-Dev/Horizon", rev = "b11774f548d50e183b9a452369cda6877fc0abe4" }
 serde_json = { workspace = true }
+rust-embed = { workspace = true, features = ["interpolate-folder-path", "include-exclude"] }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls-no-provider"], optional = true }
 
 # Networking dependencies

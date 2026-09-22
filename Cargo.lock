@@ -2956,6 +2956,7 @@ dependencies = [
  "rapier3d",
  "reqwest 0.13.4",
  "ropey",
+ "rust-embed",
  "scenedb-inspector-agent",
  "serde",
  "serde_json",

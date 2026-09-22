@@ -2,8 +2,16 @@ use std::path::Path;
 
 use engine_fs::virtual_fs;
 use engine_state::{register_default_settings, ProjectSettings};
+use rust_embed::RustEmbed;
 
 use super::native_scripts::{discover_script_crates, ScriptCrate};
+
+/// Engine meshes compiled into the editor so project bootstrapping works from
+/// a standalone distribution with no source checkout beside it.
+#[derive(RustEmbed)]
+#[folder = "$CARGO_MANIFEST_DIR/../../../assets"]
+#[include = "meshes/**"]
+struct EmbeddedEngineMeshes;
 
 /// Helio revision selected by the Pulsar workspace.
 ///
@@ -304,58 +312,39 @@ fn main() {{
     Ok(())
 }
 
-/// Copy engine primitive meshes into `<project>/assets/meshes/primitives/`.
+/// Materialize engine meshes into `<project>/assets/meshes/`.
 ///
-/// The source is the engine's own `assets/` directory, located relative to this
-/// crate at compile time.  Missing files are copied; existing files are skipped
-/// so user-overrides aren't clobbered.
+/// The default level is saved to `<project>/scene/default.level` and references
+/// its cathedral meshes as `meshes/cathedral/*.mesh`, which resolve beneath the
+/// project's `assets` directory. Missing files are written from the bytes
+/// embedded in the engine binary; existing files are left untouched.
 pub fn ensure_engine_primitives(project_root: &Path) {
-    // CARGO_MANIFEST_DIR = <repo>/crates/engine_backend  →  ../../  = <repo>
-    const ENGINE_ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
-    for (dir, ext) in [("meshes/primitives", ".fbx"), ("meshes/cathedral", ".mesh")] {
-        copy_engine_asset_dir(ENGINE_ASSETS, project_root, dir, ext);
-    }
-}
-
-/// Copy `<engine assets>/<dir>/*<ext>` into the project, skipping existing files.
-fn copy_engine_asset_dir(engine_assets: &str, project_root: &Path, dir: &str, ext: &str) {
-    let src_prims = std::path::Path::new(engine_assets).join(dir);
-    if !src_prims.exists() {
-        tracing::debug!(
-            "Engine primitives source not found at {}",
-            src_prims.display()
-        );
-        return;
-    }
-
-    let dst_prims = project_root.join("assets").join(dir);
-    if let Err(e) = virtual_fs::create_dir_all(&dst_prims) {
-        tracing::warn!("Could not create primitives dir: {e}");
-        return;
-    }
-
-    let Ok(entries) = virtual_fs::list_dir(&src_prims) else {
-        return;
-    };
-    for entry in entries {
-        if !entry.name.ends_with(ext) {
-            continue;
-        }
-        let src = src_prims.join(&entry.name);
-        let dst = dst_prims.join(&entry.name);
+    for asset_path in EmbeddedEngineMeshes::iter() {
+        let asset_path = asset_path.as_ref();
+        let dst = project_root.join("assets").join(asset_path);
         if dst.exists() {
             continue;
-        } // don't overwrite user assets
-        match virtual_fs::read_file(&src) {
-            Ok(bytes) => {
-                if let Err(e) = virtual_fs::write_file(&dst, &bytes) {
-                    tracing::warn!("Failed to copy primitive {}: {e}", src.display());
+        }
+
+        let Some(parent) = dst.parent() else {
+            tracing::warn!("Embedded engine mesh has no parent path: {asset_path}");
+            continue;
+        };
+        if let Err(e) = virtual_fs::create_dir_all(parent) {
+            tracing::warn!("Could not create engine mesh directory {}: {e}", parent.display());
+            continue;
+        }
+
+        match EmbeddedEngineMeshes::get(asset_path) {
+            Some(asset) => {
+                if let Err(e) = virtual_fs::write_file(&dst, &asset.data) {
+                    tracing::warn!("Failed to write embedded engine mesh {}: {e}", dst.display());
                 } else {
-                    tracing::debug!("Copied engine primitive → {}", dst.display());
+                    tracing::debug!("Materialized embedded engine mesh → {}", dst.display());
                 }
             }
-            Err(e) => {
-                tracing::warn!("Failed to read primitive {}: {e}", src.display());
+            None => {
+                tracing::warn!("Embedded engine mesh disappeared during iteration: {asset_path}");
             }
         }
     }
@@ -909,8 +898,8 @@ fn ensure_level_json(project_root: &Path) -> Result<(), String> {
 mod tests {
     use super::super::native_scripts::{discover_script_actors, discover_script_crates};
     use super::{
-        cargo_safe_name, ensure_core_cargo_toml, ensure_scripts_crate, splice_script_dependencies,
-        workspace_block, HELIO_GIT_REVISION,
+        cargo_safe_name, ensure_core_cargo_toml, ensure_engine_primitives, ensure_scripts_crate,
+        splice_script_dependencies, workspace_block, HELIO_GIT_REVISION,
     };
 
     #[test]
@@ -1023,5 +1012,26 @@ mod tests {
         // No crates → byte-identical passthrough.
         assert_eq!(splice_script_dependencies(baked, &[]), baked);
         assert!(workspace_block(&[]).is_empty());
+    }
+
+    #[test]
+    fn embedded_meshes_are_materialized_without_overwriting_user_assets() {
+        let project = tempfile::tempdir().unwrap();
+        let limestone = project
+            .path()
+            .join("assets/meshes/cathedral/limestone.mesh");
+
+        ensure_engine_primitives(project.path());
+
+        let embedded = include_bytes!("../../../../../assets/meshes/cathedral/limestone.mesh");
+        assert_eq!(std::fs::read(&limestone).unwrap(), embedded);
+        assert!(project
+            .path()
+            .join("assets/meshes/primitives/SM_Cube.fbx")
+            .exists());
+
+        std::fs::write(&limestone, b"user override").unwrap();
+        ensure_engine_primitives(project.path());
+        assert_eq!(std::fs::read(&limestone).unwrap(), b"user override");
     }
 }
