@@ -20,6 +20,7 @@ These rules are mandatory for every agent, reviewer, and integration step. A pha
 10. **Performance claims require measurements.** The target is total frame time <= 10 ms using the exact documented radius-128 release workload, with hardware, settings, warm-up, percentile, CPU/GPU split, and correctness conditions recorded. Do not claim success from a microbenchmark or an unmeasured design argument.
 11. **Limit each phase to its listed scope.** Do not opportunistically reformat or redesign unrelated renderer passes. Preserve existing unrelated working-tree changes. The phase owner reports touched paths, evidence, unresolved issues, and exact handoff state.
 12. **Integration ownership is centralized.** Parallel contributors work on isolated worktrees/branches. Only the designated integrator changes the shared canonical branch, resolves cross-phase conflicts, and removes superseded code after its replacement is verified.
+13. **The proprietary workload game remains outside this repository.** It is not Pulsar/Helio source and must never be copied, vendored, staged, or committed here. The repo may invoke it externally for testing. If a test harness/build produces game-owned files inside the worktree, identify that exact output path and add a narrow ignore rule before producing them; do not broadly ignore `runtime/` or other engine paths. Keep only benchmark invocation/configuration and integration tooling in this repository.
 
 ## Current Git baseline and safe branch protocol
 
@@ -192,8 +193,8 @@ Update this table after each phase. The integrator owns edits to status and depe
 | Phase | Status | Owner / branch | Output / commit | Blockers or decisions |
 |---|---|---|---|---|
 | 0. Baseline | Complete | Integrator / `main` | Parent docs commit — see Git history | Parent pins Helio `fe7aa140`; no implementation build run in this documentation/baseline step |
-| 1. Code audit | Planned | Research agent | `docs/voxel-system-code-audit.md` | Needs Phase 0 base decision |
-| 2. Spec + Git integration | Planned | Integrator | — | Audit recommendations |
+| 1. Code audit | Complete | Four read-only research workers; closed after result review | `docs/voxel-system-code-audit.md` (this phase) | Benchmark game checkout/flags and timing metric remain external inputs |
+| 2. Spec + Git integration | Awaiting user direction | Integrator | — | Resolve pass replacement scope, component-crate boundary, and whether to import any non-voxel upstream files |
 | 3. SceneDB storage/API | Planned | SceneDB/API agent | — | Finalized data contract |
 | 4. Generic pass seam | Planned | Renderer-boundary agent | — | Audit + chosen base |
 | 5. Voxel pass foundation | Planned | Voxel-pass agent | — | Phases 2–4 interfaces |
@@ -212,6 +213,14 @@ Update this table after each phase. The integrator owns edits to status and depe
 - No source build/test was run: Phase 0 only established Git provenance and documented the baseline, and the submodule working tree is clean. Phase 1 must inspect existing build scripts and report whether checks are feasible before proposing any merge.
 - Validation: Helio `git diff --check` passed; exact parent gitlink and remote commit IDs were read from Git. No merge/rebase or history rewrite was performed.
 
+### Phase 1 verified outcome
+
+- Four parallel, read-only audit slices were reviewed; all four workers were closed after their findings were received. No worker changed files or Git refs.
+- Audit details and evidence are in [`voxel-system-code-audit.md`](voxel-system-code-audit.md). Findings were reconciled against the checked-out Helio tree, the two upstream refs, and the local runtime-path check.
+- Key blocking input: `runtime/Cargo.toml` does not exist in this parent checkout, so the requested game workload and meaning of its flags cannot be verified or benchmarked here.
+- User clarified during Phase 1 that the workload game is proprietary, does not belong to them, and stays outside this repository; this repository uses it only for testing. No game source should be copied here. No `.gitignore` rule is currently needed for the external checkout; if in-repo test outputs later require exclusion, add a narrowly-scoped rule for those exact outputs.
+- No merge/rebase/build/benchmark was performed. Phase 2 is intentionally waiting for user decisions listed in the audit and immediate-next-action section.
+
 ## Immediate next action
 
-Complete Phase 0 by confirming the parent-pinned Helio commit and recording the current baseline. Then assign Phase 1 as a read-only code-audit pass against that exact base and `origin/feat/tiny-voxel-stress-test`. Do not start implementation or merge the upstream branch until Phase 1's path-level report has been reviewed and Phase 2 selects the integration strategy.
+Phase 0 is complete and committed. Phase 1 is complete after the code-backed audit. Before Phase 2, get user direction on the remaining product/boundary choices. Do not start implementation or merge the upstream branch until the integration strategy is explicit.
