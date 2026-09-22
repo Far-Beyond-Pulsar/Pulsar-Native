@@ -7,7 +7,7 @@
 ## Executive findings
 
 1. **Do not merge the upstream branch wholesale as the architecture.** `origin/feat/tiny-voxel-stress-test` is one commit (`a0bf48758b149a40d8058eaa7ee8931f73233662`) directly atop `origin/main` (`022479388c68632d8720557a67f7784d53a9a8f1`). It adds a substantial experimental voxel pass but retains the old planetary pass, documents a one-world prototype, and modifies unrelated renderer passes. Treat it as algorithm/test inspiration and selectively reconcile its useful parts after the base decision.
-2. **There are three current voxel-rendering implementations to disposition:** planetary, voxel mesh, and voxel raymarch. All three are plausible candidates for the user's unified voxel pass, but they represent distinct behaviors and APIs. Replacing planetary alone is not the same as consolidating all three; retain their user-visible capabilities or explicitly retire them with migration evidence.
+2. **The unified pass replaces planetary voxels and absorbs voxelized-mesh rendering; it does not replace conventional static meshes.** User confirmed the voxelized mesh path belongs in scope. Raymarch is an optional internal backend initially, subject to a removal gate after correctness and matched performance evaluation.
 3. **The SceneDB/reflection model supports the broad component shape, but not every claimed performance/atomicity property out of the box.** `#[property]`, `#[gpu]`, `Vec<T>` GPU pools, queued GPU mirroring, world-level revision, and opaque keyed buffer handles exist. The audited APIs do not themselves establish per-entry/chunk revisions, atomic large voxel batches, lockless general mutation, or durable serialization of GPU vectors.
 4. **The existing material path is SceneDB-backed and already consumed as a keyed buffer by rendering.** A voxel palette can reference the existing material records, but the implementation must distinguish stable material IDs/row indices from compact per-voxel palette slots and validate missing/deleted IDs. Do not add a second material database.
 5. **The 10 ms workload cannot be reproduced from this checkout.** `runtime/Cargo.toml` is absent and the `vr-blocks-client` source/flag parser was not located. Helio's profiler provides graph/pass CPU and GPU timing snapshots, not by itself total application frame latency or p50/p95/p99. The target remains an acceptance goal, not a result.
@@ -27,6 +27,8 @@ Observed refs and read-only commands:
 | Left/right commit count | `0 1` — feature is one commit ahead of `origin/main` |
 | Feature diff summary | 66 files; 10,208 insertions; 186 deletions |
 | `git diff --check origin/main...origin/feat/tiny-voxel-stress-test` | No whitespace errors reported |
+
+The local Helio branch has 698 paths changed relative to `origin/main`; a direct working-tree comparison between local `fe7aa140` and the upstream feature tip differs on 759 paths. These are two different comparisons, not contradictory counts. The large direct tree delta is further reason not to merge the feature branch wholesale.
 
 The five path overlaps between the current local Helio branch and upstream are:
 
@@ -87,6 +89,14 @@ At the audited baseline, `crates/passes/3d` contains 47 pass directories; `crate
 
 “Must remain” means out of voxel replacement scope, not that every pass participates in every default graph.
 
+### Resolved product scope
+
+- Replace the planetary voxel pass and absorb `helio-pass-voxel-mesh`'s voxelized surface extraction/meshlet rasterization. Keep ordinary static/conventional mesh rendering and its component/assets/passes intact.
+- The mesh path already has exposed-face and Marching Cubes extraction, so it is the direct source for blocky and smooth voxel surfaces.
+- `helio-pass-voxel-raymarch` is a fullscreen compute DDA renderer over voxel data, not a different canonical terrain representation. Keep its algorithm only as a selectable backend inside the unified pass while proving shared SceneDB data/material/depth integration. There is no evidence it is faster. If tests/profiling show no distinct useful case, remove the backend and its standalone crate/demo; do not preserve a second voxel pass/state API.
+- Reflected `VoxelComponent` and `VoxelTerrainComponent` live in `helio-component`, without depending on the voxel pass. All non-component voxel structures/algorithms and semantic interpretation live in the dedicated voxel pass. Current `PlanetTerrainComponent` adapters and default graph APIs that directly type-reference the old pass are migration targets, not the architecture to copy.
+- Generic core/renderer/default graph remain voxel-agnostic; application composition calls a pass-specific extension hook. SDF and specialized foliage remain independent unless an explicit later decision changes scope.
+
 ### Existing planetary dependency surface
 
 Replacing the pass requires more than deleting its crate:
@@ -141,14 +151,20 @@ These are not net code savings. Adapter/component code, graph wiring, manifests,
 
 Until these inputs are supplied, the 10 ms statement is a test target only and cannot be declared achievable or achieved.
 
-## Decisions needed before Phase 2
+## Phase 2 decisions and integration baseline
 
-1. **Mesh/raymarch scope:** the overall goal reads as unifying every voxel/terrain path. Confirm that the replacement voxel pass should absorb both `helio-pass-voxel-mesh` and `helio-pass-voxel-raymarch`, preserving useful behaviors/demos, or specify any path that must remain separate.
-2. **Component boundary:** can voxel component types/adapters live in `helio-component` as authoring/domain code, while generic renderer crates remain unaware, or must they move to a new domain-specific component crate? Generic renderer crates and render-pass crate boundaries should be named precisely.
-3. **Upstream import:** should Phase 2 bring in only selected voxel algorithms/tests and reject unrelated graphics changes, or is there any explicit desire to include the five overlapping/non-voxel areas? Default recommendation is selective voxel reuse, not wholesale import.
-4. **Benchmark source/metric:** where is the game checkout, and what measurement defines “frame time <= 10 ms”? The runtime command cannot be validated without that code and metric.
-5. **External test integration:** how should this Helio checkout invoke the proprietary game at its external path (environment variable, documented local path, or existing harness)? No game-source ignore is needed while it stays external; only add narrow ignores for exact generated outputs if a test writes them into this worktree.
+User has resolved product/boundary choices as above. Selected baseline is the parent-pinned Helio commit `fe7aa140363d8870549ebad8198941a85d32a6f4`. A clean dedicated branch `codex/unified-voxel-integration` is checked out at that SHA in `crates/renderer/helio`.
+
+**Git decision:** do not merge, rebase, or cherry-pick `origin/feat/tiny-voxel-stress-test` wholesale. Keep it as provenance and selectively port voxel algorithms/tests at Phase 5 after contracts exist. Exclude non-voxel graphics changes and resolve no files now; the five overlapping paths remain untouched. No branch-level conflict resolution is required because no merge was attempted.
+
+Baseline checks on that unchanged content:
+
+- Helio: `cargo check --locked -p helio-default-graphs -p helio-pass-planetary-voxel -p helio-pass-voxel-mesh -p helio-pass-voxel-raymarch` — passed (exit 0; existing warnings).
+- Parent workspace: `cargo check --locked -p helio_component` — passed (exit 0; existing warnings).
+- Tests/benchmark: not run in this phase.
+
+Still open for later Phase 8: external checkout/revision of the proprietary game, exact flag semantics, application frame-time statistic/hardware/sample method, and external invocation path. Game source remains outside the repository.
 
 ## Research method and limits
 
-Four parallel workers performed bounded read-only slices: SceneDB/reflection/generic buffer seam; pass inventory and replacement estimate; upstream Git/code audit; performance/workload feasibility. Findings were reviewed and reconciled against the checked-out tree and Git refs. Workers were closed after their results were validated. No implementation files were changed; no merge, rebase, build, test, or benchmark was run. The parent worktree's pre-existing editor-test and UI-submodule changes were not touched.
+Four parallel workers performed bounded read-only Phase 1 slices, and three parallel workers reviewed the Phase 2 raymarch, component-boundary, and selective-import decisions. Each worker was closed after its result was reviewed. The two baseline `cargo check` commands above passed. No implementation files were changed and no upstream merge/rebase/build import was performed. The parent worktree's pre-existing editor-test and UI-submodule changes were not touched.

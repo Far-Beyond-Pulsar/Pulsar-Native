@@ -19,6 +19,10 @@ The old “one shared `Arc<World>` in a mutex” model is useful as a prototype,
 
 The system exposes two concepts backed by the same voxel encoding, page/chunk addressing, material lookup, editing contract, and render pass.
 
+The reflected `VoxelComponent` and `VoxelTerrainComponent` live alongside the other reflected SceneDB components in Helio's existing `helio-component` crate. Their schemas and authored SceneDB properties are the allowed component-facing declaration of the feature; implementation-only voxel types, algorithms, storage interpretation, and render behavior belong to the dedicated voxel pass crate. Generic core/renderer/graph crates must not acquire voxel semantics. The unified pass may absorb voxelized mesh rendering, but it does not replace ordinary static/conventional mesh rendering.
+
+The existing voxelized mesh path (surface extraction and meshlet rasterization) is in scope for unification. Raymarch is initially a candidate optional rendering backend *inside* the unified pass, not a separate pass or state/API. Its current fullscreen DDA path is behaviorally distinct, so preserve it only until shared-data/material/depth integration and matched profiling show whether it provides a worthwhile mode; retire the backend if not. This is a measurement gate, not a claim that raymarch is faster.
+
 ### `VoxelComponent`
 
 A deliberately small, explicit voxel object. It starts as a cube, can be deformed, and selects from the existing Helio material system.

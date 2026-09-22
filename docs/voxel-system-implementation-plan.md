@@ -86,11 +86,11 @@ Before any integration write, record `git status`, current HEAD, chosen target b
 
 **Owner:** integrator, with review from research agent; only integrator edits design/plan.
 
-**Work:** accept/reject each research recommendation with rationale; update the design summary; decide canonical Helio base and upstream merge strategy; make a clean isolated integration branch/worktree; perform the approved merge/rebase/cherry-pick there; resolve conflicts deliberately; run baseline checks. Rebase only private/unpublished work. Keep a commit mapping for imported upstream work.
+**Work:** accept/reject each research recommendation with rationale and update the design summary. Select the parent-pinned Helio commit as the canonical integration base and create a dedicated integration branch there. Decide explicitly whether upstream history should be merged or only used as a selective source. A no-merge decision is valid when the feature commit bundles unrelated renderer work; record it and preserve the source ref. Do not cherry-pick/import code before the relevant phase contract is agreed. Run baseline checks against the exact selected base from the repository's normal nested workspace location.
 
-**Deliverables:** finalized design/API decision record; selected base and resulting integration SHA; conflict-resolution ledger; build/test baseline; pass disposition approved for implementation.
+**Deliverables:** finalized design/API decision record; selected base, branch, and starting SHA; upstream import/exclusion map; conflict/overlap ledger; build/test baseline; pass disposition approved for implementation.
 
-**Done when:** no unresolved design choice blocks component layout, data ownership, pass integration, material lookup, or batch publication semantics.
+**Done when:** component/pass ownership and mesh/raymarch scope are resolved; the integration branch is clean at the selected base; upstream import policy is explicit; and relevant baseline builds are recorded. Implementation-specific SceneDB batch semantics remain Phase 3 work.
 
 ## Phase 3 — SceneDB storage and external batch API
 
@@ -194,7 +194,7 @@ Update this table after each phase. The integrator owns edits to status and depe
 |---|---|---|---|---|
 | 0. Baseline | Complete | Integrator / `main` | Parent docs commit — see Git history | Parent pins Helio `fe7aa140`; no implementation build run in this documentation/baseline step |
 | 1. Code audit | Complete | Four read-only research workers; closed after result review | `docs/voxel-system-code-audit.md` (this phase) | Benchmark game checkout/flags and timing metric remain external inputs |
-| 2. Spec + Git integration | Awaiting user direction | Integrator | — | Resolve pass replacement scope, component-crate boundary, and whether to import any non-voxel upstream files |
+| 2. Spec + Git integration | Complete | Integrator + three read-only review workers | Parent docs commit — see Git history; Helio branch `codex/unified-voxel-integration` at `fe7aa140` | No upstream merge; selectively port voxel algorithms later; external benchmark context remains for Phase 8 |
 | 3. SceneDB storage/API | Planned | SceneDB/API agent | — | Finalized data contract |
 | 4. Generic pass seam | Planned | Renderer-boundary agent | — | Audit + chosen base |
 | 5. Voxel pass foundation | Planned | Voxel-pass agent | — | Phases 2–4 interfaces |
@@ -219,8 +219,25 @@ Update this table after each phase. The integrator owns edits to status and depe
 - Audit details and evidence are in [`voxel-system-code-audit.md`](voxel-system-code-audit.md). Findings were reconciled against the checked-out Helio tree, the two upstream refs, and the local runtime-path check.
 - Key blocking input: `runtime/Cargo.toml` does not exist in this parent checkout, so the requested game workload and meaning of its flags cannot be verified or benchmarked here.
 - User clarified during Phase 1 that the workload game is proprietary, does not belong to them, and stays outside this repository; this repository uses it only for testing. No game source should be copied here. No `.gitignore` rule is currently needed for the external checkout; if in-repo test outputs later require exclusion, add a narrowly-scoped rule for those exact outputs.
-- No merge/rebase/build/benchmark was performed. Phase 2 is intentionally waiting for user decisions listed in the audit and immediate-next-action section.
+- No merge/rebase was performed during Phase 1. Phase 2 recorded the user decisions and selected an explicit no-wholesale-merge strategy; see the Phase 2 verified outcome below.
+
+### User decisions confirmed for Phase 2
+
+- The unified voxel pass should absorb the **voxelized mesh** path. Ordinary static/conventional mesh rendering is a distinct system and must not be replaced or removed.
+- Keep raymarch initially as an optional rendering backend inside the unified voxel pass, not as a separate pass/crate. Its fullscreen DDA behavior is distinct, but its material/depth integration and performance value are unproven. Retain it only if matched tests/profiling justify it; otherwise retire it.
+- Reflected component types belong in the existing `helio-component` crate. Non-component voxel types, algorithms, and voxel-specific rendering knowledge belong in the dedicated voxel pass crate. Generic renderer/core/graph code must remain voxel-agnostic.
+- The proprietary game source remains outside this repository and is only used by an external test invocation.
+
+### Phase 2 verified outcome
+
+- Canonical base: parent-pinned Helio SHA `fe7aa140363d8870549ebad8198941a85d32a6f4`, identical to the selected local Helio branch tip before integration work.
+- Dedicated Helio branch `codex/unified-voxel-integration` now exists and is checked out in `crates/renderer/helio` at the same clean SHA `fe7aa140363d8870549ebad8198941a85d32a6f4`. This preserves the parent gitlink and starts implementation from the intended local Helio version.
+- **No upstream branch merge/cherry-pick now.** The upstream feature is a single commit on `origin/main` but has 66 changed paths and is 759 paths different from the local Helio tree. It includes unrelated content and five directly overlapping modified paths. Preserve `origin/feat/tiny-voxel-stress-test` as provenance; selectively port voxel algorithms/tests only after the new contracts are agreed. Tooling/docs under `tools/voxel-planet` are optional and not part of the initial pass import.
+- Pass scope: replace planetary voxel; absorb the voxelized mesh path; leave conventional static meshes alone; initially evaluate raymarch as an optional internal backend with explicit correctness/performance retirement gate. Other rendering passes remain independent; preserve SDF/foliage unless a later explicit scope change is approved.
+- Component boundary: reflected SceneDB components in `helio-component`, with no dependency on the voxel pass. All non-component voxel types, algorithms, and semantic interpretation live in the voxel pass. Remove current component-adapter/default-graph direct planetary-pass coupling as part of migration; generic core/renderer/graph remain unaware.
+- Baseline check on the unchanged selected content succeeded: from Helio root, `cargo check --locked -p helio-default-graphs -p helio-pass-planetary-voxel -p helio-pass-voxel-mesh -p helio-pass-voxel-raymarch` (exit 0; existing warnings); from Pulsar-Native root, `cargo check --locked -p helio_component` (exit 0; existing warnings). No tests or benchmark were run.
+- Parent repository commits remain documentation-only; unrelated editor-test and UI-submodule changes remain untouched. No proprietary game source was copied or committed.
 
 ## Immediate next action
 
-Phase 0 is complete and committed. Phase 1 is complete after the code-backed audit. Before Phase 2, get user direction on the remaining product/boundary choices. Do not start implementation or merge the upstream branch until the integration strategy is explicit.
+Phases 0–2 are complete. Start Phase 3 with the SceneDB storage/batch API contract on `codex/unified-voxel-integration`; keep its write scope separate from render-pass algorithms. Do not merge the upstream branch. Keep the proprietary game outside the repository and defer workload integration details until performance qualification.
