@@ -90,10 +90,11 @@ impl<M: InputModeKind> TextElement<M> {
             &[TextRun {
                 len: column,
                 font: style.font(),
-                color: Hsla::default(),
+                color: Hsla::default().into(),
                 background_color: None,
                 strikethrough: None,
                 underline: None,
+                letter_spacing: None,
             }],
             None,
         );

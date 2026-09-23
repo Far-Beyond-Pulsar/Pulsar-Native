@@ -2,9 +2,7 @@ use crate::input::EditorMode;
 use anyhow::Result;
 use gpui::{App, Context, EntityInputHandler, Pixels, Task, Window, px};
 use lsp_types::{
-    CompletionContext, CompletionItem, CompletionResponse, InlineCompletionContext,
-    InlineCompletionItem, InlineCompletionResponse, InlineCompletionTriggerKind,
-    request::Completion,
+    CompletionContext, CompletionItem, CompletionResponse, request::Completion,
 };
 use ropey::Rope;
 use std::{cell::RefCell, ops::Range, rc::Rc, time::Duration};
@@ -13,6 +11,35 @@ use crate::input::InputBaseState;
 
 /// Default debounce duration for inline completions.
 const DEFAULT_INLINE_COMPLETION_DEBOUNCE: Duration = Duration::from_millis(300);
+
+/// Proposed LSP inline-completion types are intentionally kept local until
+/// they are part of the stable `lsp-types` surface used by the engine.
+#[derive(Debug, Clone, Default)]
+pub struct InlineCompletionItem {
+    pub insert_text: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InlineCompletionList {
+    pub items: Vec<InlineCompletionItem>,
+}
+
+#[derive(Debug, Clone)]
+pub enum InlineCompletionResponse {
+    Array(Vec<InlineCompletionItem>),
+    List(InlineCompletionList),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum InlineCompletionTriggerKind {
+    Automatic,
+}
+
+#[derive(Debug, Clone)]
+pub struct InlineCompletionContext {
+    pub trigger_kind: InlineCompletionTriggerKind,
+    pub selected_completion_info: Option<()>,
+}
 
 /// Display options for the LSP completion popover.
 ///

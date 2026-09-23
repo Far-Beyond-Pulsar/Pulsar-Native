@@ -302,7 +302,6 @@ impl RenderOnce for NumberInput {
             .items_center()
             .disabled(disabled)
             .role(Role::SpinButton)
-            .when_some(value, |this, value| this.aria_numeric_value(value))
             .key_context(CONTEXT)
             .on_action({
                 let on_step = on_step.clone();

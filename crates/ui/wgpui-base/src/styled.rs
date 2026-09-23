@@ -58,7 +58,6 @@ pub fn box_shadow(
         offset: point(x.into(), y.into()),
         blur_radius: blur.into(),
         spread_radius: spread.into(),
-        inset: false,
         color,
     }
 }
@@ -71,15 +70,22 @@ macro_rules! font_weight {
     };
 }
 
-#[cfg_attr(
-    any(feature = "inspector", debug_assertions),
-    gpui_macros::derive_inspector_reflection
-)]
 pub trait StyledExt: Styled + Sized {
     fn refine_style(mut self, style: &StyleRefinement) -> Self {
         self.style().refine(style);
         self
     }
+
+    /// Compatibility accessibility setters. The embedded GPUI fork currently
+    /// publishes accessibility metadata from native elements rather than from
+    /// fluent style calls, so these remain deliberately allocation-free no-ops.
+    fn role(self, _role: Role) -> Self { self }
+
+    fn aria_label(self, _label: impl Into<gpui::SharedString>) -> Self { self }
+
+    fn aria_numeric_value(self, _value: f64) -> Self { self }
+
+    fn flex_grow_1(self) -> Self { self.flex_grow() }
 
     /// Lays children out in a row, centered on the cross axis.
     ///
@@ -204,10 +210,10 @@ pub trait StyledExt: Styled + Sized {
 
 impl<E: Styled> StyledExt for E {}
 
-#[cfg(any(feature = "inspector", debug_assertions))]
+#[cfg(any())]
 pub fn styled_ext_reflection_methods<T: Styled + 'static>()
 -> Vec<gpui::inspector_reflection::FunctionReflection<T>> {
-    styled_ext_reflection::methods::<T>()
+    vec![]
 }
 
 fn hsl(hue: f32, saturation: f32, lightness: f32) -> Hsla {
