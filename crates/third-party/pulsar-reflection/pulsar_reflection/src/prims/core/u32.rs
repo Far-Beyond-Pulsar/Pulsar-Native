@@ -143,18 +143,18 @@ mod tests {
     fn test_u32_registered() {
         let info = RUNTIME_TYPE_REGISTRY.get::<u32>().unwrap();
         assert_eq!(info.type_name, "u32");
-        assert_eq!(info.size, 8);
-        assert_eq!(info.align, 8);
+        assert_eq!(info.size, std::mem::size_of::<u32>());
+        assert_eq!(info.align, std::mem::align_of::<u32>());
     }
 
     #[test]
     fn test_u32_serialization() {
-        let value: u32 = 18446744073709551615;
+        let value: u32 = u32::MAX;
         let mut serializer = JsonSerializer::new();
         value.serialize(&mut serializer).unwrap();
 
         let json = serializer.as_json();
-        assert_eq!(json.as_u32().unwrap(), value);
+        assert_eq!(json.as_u64(), Some(u64::from(value)));
     }
 
     #[test]
