@@ -224,4 +224,175 @@ mod undo_redo_tests {
         .expect("intensity must still be live-readable after undo");
         assert_eq!(reverted.downcast_ref::<f32>(), Some(&1000.0)); // IntensityLightProps::default()
     }
+
+// Bool twin of the f32 test above: proves a widget toggling a `bool`
+    // property (`BoolEditor`'s Switch → `SetComponentProperty` with a
+    // `Box::new(bool)`) flips the live `World` value and is undo-tracked.
+    #[test]
+    fn set_component_property_flips_a_live_world_bool() {
+        let mut state = LevelEditorState::new();
+        let id = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: "Light".to_string(),
+                    object_type: crate::level_editor::scene_edit::ObjectType::Light(
+                        crate::level_editor::scene_edit::LightType::Point,
+                    ),
+                    transform: crate::level_editor::scene_edit::Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone();
+
+        let default_light_json =
+            serde_json::to_value(helio_component::LightComponent::default()).unwrap();
+        {
+            let mut world = state.scene.world_mut();
+            crate::level_editor::scene_edit::components::add_component(
+                &mut world,
+                &id,
+                "LightComponent".to_string(),
+                default_light_json,
+            );
+        }
+
+        // `enabled` defaults to `true`; a switch toggle writes `false`.
+        let result = execute_command(
+            &mut state,
+            SceneCommand::SetComponentProperty {
+                id: id.clone(),
+                class_name: "LightComponent".to_string(),
+                component_index: 0,
+                prop_name: "enabled".to_string(),
+                value: Box::new(false),
+            },
+        );
+        assert!(
+            result.changed,
+            "typed live bool write must succeed, not fall through to the JSON path"
+        );
+
+        let live = {
+            let world = state.scene.world();
+            crate::level_editor::scene_edit::components::read_live_component_property(
+                &world,
+                &id,
+                "LightComponent",
+                "enabled",
+            )
+        }
+        .expect("enabled must be live-readable after the toggle");
+        assert_eq!(live.downcast_ref::<bool>(), Some(&false));
+
+        // Undo must revert the live bool back to `true`.
+        assert!(state.scene.undo());
+        let reverted = {
+            let world = state.scene.world();
+            crate::level_editor::scene_edit::components::read_live_component_property(
+                &world,
+                &id,
+                "LightComponent",
+                "enabled",
+            )
+        }
+        .expect("enabled must still be live-readable after undo");
+        assert_eq!(reverted.downcast_ref::<bool>(), Some(&true)); // GeneralLightProps::default()
+    }
+
+    // Mirrors the properties panel's refresh gate: after any component
+    // property command, `has_property_changes_for` must report the object so
+    // the frame pump marks the section dirty and pushes the new value into
+    // the cached editors (Pulsar-Native#575).
+    #[test]
+    fn a_component_property_command_registers_a_property_change_for_the_object() {
+        use crate::level_editor::scene_edit::changes::{drain_property_changes, has_property_changes_for};
+
+        let mut state = LevelEditorState::new();
+        let id = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: "Light".to_string(),
+                    object_type: crate::level_editor::scene_edit::ObjectType::Light(
+                        crate::level_editor::scene_edit::LightType::Point,
+                    ),
+                    transform: crate::level_editor::scene_edit::Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone();
+
+        let default_light_json =
+            serde_json::to_value(helio_component::LightComponent::default()).unwrap();
+        {
+            let mut world = state.scene.world_mut();
+            crate::level_editor::scene_edit::components::add_component(
+                &mut world,
+                &id,
+                "LightComponent".to_string(),
+                default_light_json,
+            );
+        }
+
+        let revision_before = {
+            let world = state.scene.world();
+            world.revision()
+        };
+        execute_command(
+            &mut state,
+            SceneCommand::SetComponentProperty {
+                id: id.clone(),
+                class_name: "LightComponent".to_string(),
+                component_index: 0,
+                prop_name: "enabled".to_string(),
+                value: Box::new(false),
+            },
+        );
+
+        // The panel's frame pump gates on `World::revision()` moving (see
+        // `PropertiesPanelWrapper::sync_sections`). If the live setter path
+        // writes through a raw pointer without touching the change tracker,
+        // the revision never moves and the panel never re-renders -- the
+        // switch stays put even though the World value changed.
+        let revision_after = {
+            let world = state.scene.world();
+            world.revision()
+        };
+        assert!(
+            revision_after > revision_before,
+            "live component writes must move the World change-tracker revision (was {revision_before}, now {revision_after})"
+        );
+
+        assert!(
+            has_property_changes_for(&id),
+            "the panel's refresh gate relies on this peek reporting the just-edited object"
+        );
+
+        let drained = drain_property_changes();
+        assert!(
+            drained.class_changed(&id, "LightComponent"),
+            "the section marks cards dirty via class_changed on the drained set"
+        );
+    }
 }
