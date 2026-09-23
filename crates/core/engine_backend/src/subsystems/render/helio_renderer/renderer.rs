@@ -6,9 +6,10 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use helio::{Camera, Renderer, RendererConfig};
 use helio_component::{PlanetTerrainFrameInput, PlanetTerrainRuntime};
-use helio_pass_voxel_mesh::VoxelMeshPass;
+use helio_pass_voxel_mesh::{VoxelChunkGenerator, VoxelMeshPass};
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
+use crate::scene::voxel_generation::VoxelTerrainGenerationManager;
 use crate::scene::{GizmoType, SceneWorldExt};
 use crate::services::terrain_edit::TerrainEditMailbox;
 
@@ -156,6 +157,7 @@ pub struct HelioRenderer {
     /// scene's planet definitions and the brush ring come in, the canonical
     /// `TerrainRuntimeHandle` goes out. See `services::terrain_edit`.
     terrain: TerrainEditMailbox,
+    voxel_generation: VoxelTerrainGenerationManager,
 
     inner: Option<HelioInner>,
 
@@ -225,6 +227,7 @@ impl HelioRenderer {
             inner: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
             terrain: TerrainEditMailbox::new(),
+            voxel_generation: VoxelTerrainGenerationManager::default(),
             cam_pos: Vec3::new(8.0, 6.0, 12.0),
             cam_yaw: -0.5,
             cam_pitch: -0.3,
@@ -275,6 +278,17 @@ impl HelioRenderer {
 
     pub fn spike_log_config(&self) -> RenderSpikeLogConfig {
         self.spike_log_config
+    }
+
+    /// Register a CPU-only external voxel source by stable descriptor ID and
+    /// version. Components persist only that descriptor, never executable code.
+    pub fn register_voxel_generator_adapter(
+        &mut self,
+        id: impl Into<String>,
+        version: u32,
+        adapter: Arc<dyn VoxelChunkGenerator>,
+    ) -> Result<(), String> {
+        self.voxel_generation.register_adapter(id, version, adapter)
     }
 
     /// Called each GPUI frame from the viewport.
@@ -515,21 +529,31 @@ impl HelioRenderer {
         let terrain_streaming = inner.planet_terrain.as_ref().is_some_and(|runtime| {
             runtime.renderer_ready(&inner.renderer) && runtime.has_pending_work(&inner.renderer)
         });
-        let voxel_streaming = {
-            let scene = self.scene_store.read();
-            let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene.world);
+        let voxel_streaming = if let Some(scene) = self.scene_store.try_read() {
+            let (entries, mut errors) =
+                crate::scene::voxel_frame::project_voxel_entries(&scene.world);
+            let generating = self
+                .voxel_generation
+                .reconcile(&scene.world, self.cam_pos.as_dvec3().to_array());
+            errors.extend(self.voxel_generation.errors().iter().cloned());
             if errors != inner.last_voxel_projection_errors {
                 for error in &errors {
                     tracing::warn!("{error}");
                 }
                 inner.last_voxel_projection_errors = errors;
             }
-            inner
-                .renderer
-                .find_pass_mut::<VoxelMeshPass>()
-                .is_some_and(|pass| {
-                    pass.reconcile_scene_entries(entries, self.cam_pos.as_dvec3().to_array())
-                })
+            let voxel_residency =
+                inner
+                    .renderer
+                    .find_pass_mut::<VoxelMeshPass>()
+                    .is_some_and(|pass| {
+                        pass.reconcile_scene_entries(entries, self.cam_pos.as_dvec3().to_array())
+                    });
+            generating || voxel_residency
+        } else {
+            // A scene writer owns the lock this frame. Keep the renderer awake
+            // and retry without waiting for it on the frame callback.
+            true
         };
         let has_pending_terrain =
             self.terrain.wants_advance() || terrain_streaming || voxel_streaming;

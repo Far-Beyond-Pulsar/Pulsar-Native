@@ -4,7 +4,7 @@
 //! bytes remain in component rows and are selected by the pass's CPU worker.
 
 use helio_component::{VoxelComponent, VoxelTerrainComponent};
-use helio_pass_voxel_mesh::{VoxelDomain, VoxelEntryId, VoxelSceneEntry};
+use helio_pass_voxel_mesh::{VoxelCubeInit, VoxelDomain, VoxelEntryId, VoxelSceneEntry};
 use pulsar_scenedb::{Entity, World};
 
 use crate::scene::Transform;
@@ -52,7 +52,7 @@ fn origin_scale(world: &World, entity: Entity) -> Result<([f64; 3], f64), &'stat
     Ok((transform.position.map(f64::from), f64::from(sx)))
 }
 
-fn object_entry(
+pub(super) fn object_entry(
     world: &World,
     entity: Entity,
     component: &VoxelComponent,
@@ -61,8 +61,19 @@ fn object_entry(
     if component.dimensions.iter().any(|&size| size == 0) {
         return Err("dimensions must be positive");
     }
+    if component.dimensions.iter().any(|&size| size > 256) {
+        return Err("cube dimensions exceed the supported 256 voxels per axis");
+    }
     if !component.voxel_size.is_finite() || component.voxel_size <= 0.0 {
         return Err("voxel_size must be finite and positive");
+    }
+    if component.material_ids.len() > 255 {
+        return Err("voxel material palette exceeds 255 IDs");
+    }
+    if component.default_material_slot == 0
+        || component.default_material_slot as usize > component.material_ids.len()
+    {
+        return Err("default_material_slot must name a material in the palette");
     }
     let max = component.dimensions.map(|size| i64::from((size - 1) / 8));
     Ok(VoxelSceneEntry {
@@ -81,10 +92,15 @@ fn object_entry(
         voxel_size: component.voxel_size * scale,
         material_ids: component.material_ids.clone(),
         smooth_surface: component.smooth_surface,
+        initial_cube: Some(VoxelCubeInit {
+            dimensions: component.dimensions,
+            material_slot: u8::try_from(component.default_material_slot)
+                .map_err(|_| "default_material_slot must fit in one byte")?,
+        }),
     })
 }
 
-fn terrain_entry(
+pub(super) fn terrain_entry(
     world: &World,
     entity: Entity,
     component: &VoxelTerrainComponent,
@@ -92,6 +108,9 @@ fn terrain_entry(
     let (origin, scale) = origin_scale(world, entity)?;
     if !component.voxel_size.is_finite() || component.voxel_size <= 0.0 {
         return Err("voxel_size must be finite and positive");
+    }
+    if component.material_ids.len() > 255 {
+        return Err("voxel material palette exceeds 255 IDs");
     }
     if component.shape_mode > 1 {
         return Err("shape_mode must be plane (0) or planet (1)");
@@ -149,6 +168,7 @@ fn terrain_entry(
         voxel_size,
         material_ids: component.material_ids.clone(),
         smooth_surface: component.smooth_surface,
+        initial_cube: None,
     })
 }
 
@@ -183,5 +203,16 @@ mod tests {
         let (entries, errors) = project_voxel_entries(&world);
         assert_eq!(entries.len(), 1);
         assert_eq!(errors.len(), 1);
+        world
+            .get_mut::<VoxelTerrainComponent>(terrain)
+            .unwrap()
+            .shape_mode = 0;
+        world
+            .get_mut::<VoxelComponent>(object)
+            .unwrap()
+            .default_material_slot = 0;
+        let (entries, errors) = project_voxel_entries(&world);
+        assert_eq!(entries.len(), 1);
+        assert!(errors[0].contains("default_material_slot"));
     }
 }

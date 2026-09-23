@@ -18,6 +18,10 @@ pub mod light_frame;
 pub mod mesh_frame;
 #[cfg(feature = "render")]
 pub mod voxel_frame;
+#[cfg(feature = "render")]
+pub mod voxel_generation;
+#[cfg(feature = "render")]
+pub mod voxel_source;
 
 // Persistent texture/material/sectioned-mesh/object resource components.
 pub mod render_resources;
