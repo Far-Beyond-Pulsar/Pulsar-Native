@@ -6,14 +6,14 @@
 
 ## Non-negotiable ownership rules
 
-1. **SceneDB is the only authority for persistent state.** Authored component properties, generator descriptions, material-ID lists, user edits, and any generated chunk data that must survive or be shared are stored in SceneDB. Persistence, undo, replication, and save/load operate on that state.
+1. **SceneDB owns canonical live component state, not persistence.** Authored component properties, generator descriptions, material-ID lists, user edits, and generated/external chunk data that currently defines the terrain live as SceneDB component state. Helio does not promise durable storage, save/load, undo, replication, or process-restart recovery. Component APIs may expose snapshots/batches for explicit exfiltration/import/export; user scripts/tools own persistence policy, settings, and storage.
 2. **Rendering owns only transient or reproducible derived state.** GPU-resident bricks, extracted surfaces, acceleration trees, page tables, upload staging, work queues, visibility lists, and frame-local coordinates may live in the renderer. They are caches and can be discarded and rebuilt from SceneDB state plus deterministic source descriptions.
 3. **The generic rendering engine does not know what terrain or voxels are.** `helio-core`, the generic renderer, generic SceneDB projection/synchronization, and generic graph scheduler must not contain voxel types, terrain branching, voxel buffers, or terrain-specific lifecycle rules.
 4. **Voxel-specific rendering knowledge lives in the voxel pass crate.** That crate interprets voxel/terrain GPU projections, manages transient GPU voxel resources, performs voxel traversal/surface work, and emits the ordinary renderer outputs expected by the rest of Helio.
 5. **SceneDB entries scale to N.** No application-level `max_planets = 4`, fixed global component count, or fixed per-scene page ceiling. The renderer may impose a device-derived transient-memory/work budget and evict/rebuild cache entries, but those limits do not cap authored SceneDB entries.
-6. **Frame work is bounded and nonblocking.** Script generation, chunk ingestion, persistence, planning, and heavy voxel processing must not synchronously stall the render thread. Updates are revisioned, batched, prioritized, coalesced where safe, and published when complete.
+6. **Frame work is bounded and nonblocking.** Script generation, chunk ingestion, snapshot/export work, planning, and heavy voxel processing must not synchronously stall the render thread. Updates are revisioned, batched, prioritized, coalesced where safe, and published when complete. Any persistence I/O is user-owned and must be scheduled by the user’s script/tool outside the render-thread critical path.
 
-The old “one shared `Arc<World>` in a mutex” model is useful as a prototype, but is not the target authority model. Render work consumes a consistent SceneDB projection/snapshot and keeps no unique durable copy of the world.
+The old “one shared `Arc<World>` in a mutex” model is useful as a prototype, but is not the target authority model. Render work consumes a consistent SceneDB projection/snapshot and keeps no unique authoritative copy of the world. “Canonical” here means current in-memory scene state; it does not imply persistence or durability.
 
 ## Product model: two authorable components
 
@@ -39,9 +39,8 @@ Expected author-facing properties:
 | `material_ids` | `Vec<u32>` | Palette entries. Each ID indexes a material already present in Helio’s existing SceneDB-backed material data/buffer consumed by the material pass. |
 | `initial_material` | `u32` | Palette index/material ID used to initialize the cube. |
 | `editable` | `bool` | Whether external tools/scripts may deform this voxel object. |
-| `persistence` | `VoxelPersistencePolicy` | Whether edits/chunk data are retained in SceneDB and saved. |
 
-The cube’s occupancy and subsequent edits are persistent SceneDB state. The render pass may cache the resulting pages/bricks, but the cache is not the source from which the cube is saved or reconstructed.
+The cube’s occupancy and subsequent edits are canonical live SceneDB component state. The render pass may cache the resulting pages/bricks, but the cache is not the authoritative source. A script may export/import that state and decide whether/how to save it.
 
 ### `VoxelTerrainComponent`
 
@@ -61,7 +60,6 @@ Expected author-facing property groups:
 | LOD | `lod_policy: VoxelLodPolicy`, `target_error_px: f32`, `detail_distance_m: f32` | Screen-space or authored detail policy. Detail is view-driven; it does not imply a finite terrain boundary. |
 | Streaming | `prefetch_distance_m: f32`, `priority: i32` | Predictive work and scheduling priority. These affect transient work allocation, not authored-world existence. |
 | Editing | `editable: bool`, `edit_policy: VoxelEditPolicy` | Whether sculpting is allowed and how edits combine with procedural source data. |
-| Persistence | `persistence: VoxelPersistencePolicy` | Whether canonical edits and externally supplied voxel data are durable SceneDB state. |
 
 The exact property breakdown can be tuned for the property inspector. The important contract is that authorable values are reflected/serialized SceneDB properties, not hidden renderer settings.
 
@@ -72,8 +70,8 @@ Use the existing `#[engine_class(..., scene_store)]` / SceneDB derive pattern to
 - Fields with `#[property]` are reflected and shown in the editor.
 - CPU-only runtime fields without `#[property]` stay out of the inspector.
 - Fixed-layout GPU projection fields use `#[gpu(...)]`, with the appropriate mirror/update policy. They are not editor properties unless separately marked `#[property]`.
-- Variable-length GPU data uses the SceneDB variable-length buffer mechanism where it is a real rendering input. Large durable edits/chunks remain canonical SceneDB data; the GPU projection is a derived mirror/cache.
-- `String`, generator descriptors, enums, edit history, persistence metadata, and source-provider identifiers stay CPU-side unless a compact numeric projection is needed by shaders.
+- Variable-length GPU data uses the SceneDB variable-length buffer mechanism where it is a real rendering input. Canonical live edits/chunks remain SceneDB component data; the GPU projection is a derived mirror/cache.
+- `String`, generator descriptors, enums, edit history, export metadata, and source-provider identifiers stay CPU-side unless a compact numeric projection is needed by shaders.
 - Any GPU row is plain fixed-layout data (`Pod`-compatible fields and padding as required). It contains indices/ranges/flags, not Rust-owned handles or renderer lifetimes.
 
 Conceptual single-struct shape (illustrative, not compile-ready):
@@ -126,8 +124,8 @@ Scripts and other subsystems interact through SceneDB entries and a terrain/voxe
 ### Create and configure
 
 1. Create/insert a `VoxelComponent` or `VoxelTerrainComponent` on a SceneDB entity in an otherwise empty level.
-2. Set its domain, shape, source descriptor, seed/modifiers, material-ID palette, surface mode, and edit/persistence options through ordinary SceneDB component writes.
-3. For a registered procedural source, resolve `generator.type_id + version` through a source registry. The durable component stores only stable source identity and serializable parameters.
+2. Set its domain, shape, source descriptor, seed/modifiers, material-ID palette, surface mode, and edit options through ordinary SceneDB component writes.
+3. For a registered procedural source, resolve `generator.type_id + version` through a source registry. The component stores stable source identity and serializable parameters as live scene state; it does not imply that Helio persists them.
 
 ### Publish external data in batches
 
@@ -139,27 +137,29 @@ let writer = voxel_service.source_writer(entry)?;
 writer.publish_batch(revision, chunk_updates)?;
 ```
 
-Proposed public concepts (names provisional):
+Proposed public concepts (names provisional; voxel semantics live in the dedicated voxel pass/service boundary):
 
 - `VoxelSourceId` / `TerrainEntryId`: stable identity derived from the SceneDB entry plus component identity.
 - `VoxelSourceDescriptor`: registered source kind, version, parameters, seed, and declared domain.
 - `VoxelChunkKey`: signed integer chunk/page coordinate plus LOD and owning entry identity.
 - `VoxelChunkUpdate`: key, source revision, encoding, and a CPU-side immutable payload or deterministic-generation request.
 - `VoxelChunkBatch`: one atomic/revisioned set of updates and invalidations.
-- `VoxelSourceWriter::publish_batch(...)`: validates and commits canonical changes to SceneDB in one batch, then signals derived work.
+- `VoxelSourceWriter::publish_batch(...)`: validates and publishes canonical changes to SceneDB component state in one bounded batch, then signals derived work.
+- `VoxelSourceReader::read_batch(...)` / snapshot API: obtains a consistent view of canonical component/chunk state for scripts, tools, and derived processing.
+- `VoxelSourceSnapshot::export_data(...)` / corresponding import API: exposes a versioned representation users can serialize, transmit, or otherwise store themselves; no engine-owned file format, location, or persistence setting is implied.
 - `VoxelTerrainQuery`: bounded sample/read request for gameplay, collision, editing, or diagnostics. Large queries should support asynchronous results; render passes must not read back the entire field.
 - `VoxelUpdateReceipt`: accepted revision, coalesced/superseded update counts, and asynchronous completion/diagnostic state.
 
-Chunk size and encoding should be canonical and shared by generation, editing, persistence, and rendering. Arbitrary producer chunk sizes can be accepted only if a bounded adapter splits/repackages them without blocking the frame thread.
+Chunk size and encoding should be canonical and shared by generation, editing, user-script export/import, and rendering. Arbitrary producer chunk sizes can be accepted only if a bounded adapter splits/repackages them without blocking the frame thread.
 
 ### Update and publication semantics
 
-- SceneDB commit is the durable state change. It updates component/source revision and canonical changed chunk/edit data in one batch.
+- SceneDB component publication is the canonical live-state change. It updates component/source revision and canonical changed chunk/edit data in one batch; it is not a disk commit or durability guarantee.
 - A batch may supersede older pending work for the same entry/chunk. Work/results carry `(entry identity, source revision, chunk generation)` so stale results are rejected.
 - Render work builds replacement pages/bricks off-thread or on GPU. Keep the last complete resident cut visible until the replacement is ready; do not interpret “not generated yet” as known air.
 - Publish completed derived pages atomically at a generation boundary. After publication, reclaim obsolete transient pages when no current tree references them.
-- If source code is external, it must provide deterministic results for a stable version/seed or explicitly publish the produced chunk data into SceneDB when the data itself is the canonical state.
-- Persistence, undo/redo, collaboration, and replication refer to SceneDB revisions and batches. The render pass does not maintain a second edit journal.
+- If source code is external, it must provide deterministic results for a stable version/seed or explicitly publish the produced chunk data into SceneDB when the data itself is the canonical live state.
+- User-authored persistence, undo/redo, collaboration, and replication tools may consume/export SceneDB revisions and batches. The render pass does not maintain a second edit journal, and Helio does not implement these durability/workflow features as part of this design.
 
 ## Infinite, bounded, and planetary domains
 
@@ -168,7 +168,7 @@ One address and page protocol should support all domains:
 - **Infinite flat/procedural:** unbounded signed chunk coordinates; only demanded regions are generated/resident. “Infinite” means no authored edge, not infinite allocation.
 - **Bounded flat/sculpted:** explicit bounds permit outside-region emptiness and more pruning.
 - **Planet/sphere:** a spherical base field and planet-relative integer coordinates; same page protocol and edit path as other shapes.
-- **Custom field:** registered deterministic source or externally supplied chunks, subject to coordinate/domain and persistence contracts.
+- **Custom field:** registered deterministic source or externally supplied chunks, subject to coordinate/domain and revision contracts.
 
 The current Pulsar terrain hierarchy’s finite `root_lod` and the upstream tiny-voxel prototype’s `i32` coordinate limits are not sufficient as-is for the full unbounded/high-precision goal. The target uses signed wide integer canonical coordinates, page-local/camera-relative GPU coordinates, and checked arithmetic. GPU floats must never represent huge absolute world coordinates.
 
@@ -191,7 +191,7 @@ Existing GBuffer + existing SceneDB-backed material-pass contract
 
 The generic renderer must not contain a `VoxelTerrainComponent` type, `VoxelWorld`, terrain registry, terrain config, voxel page table, or special terrain synchronization branch. Integration should use generic SceneDB GPU buffer handles and the generic pass/plugin/graph-extension mechanism. If today’s default graph builder must instantiate a terrain-specific Rust type directly, that is an architectural leak to remove or contain in a pass-specific extension crate rather than spreading into Helio core.
 
-Only transient/rebuildable rendering data belongs in the render-pass crate: selected trees, resident brick slots, GPU density/material brick data, in-flight generation jobs, visibility, current camera-local origin, and frame counters. No unique durable edits, generator configuration, chunk ownership, or save journal lives there.
+Only transient/rebuildable rendering data belongs in the render-pass crate: selected trees, resident brick slots, GPU density/material brick data, in-flight generation jobs, visibility, current camera-local origin, and frame counters. No unique canonical edits, generator configuration, chunk ownership, or user persistence journal lives there.
 
 ## Upstream implementation to mine
 
@@ -205,7 +205,7 @@ Potentially reusable ideas:
 - Reusing unchanged resident bricks while staging replacement bricks.
 - Exact near-field voxel behavior with coarser distant representation.
 - GPU timestamps/stage profiling and CPU oracle/GPU validation patterns.
-- Coalescing async persistence concepts, moved to SceneDB ownership for the target architecture.
+- Coalescing asynchronous generation/publication concepts, implemented around SceneDB live component state; persistence is left to user scripts/tools.
 
 Do not inherit its product constraints as requirements:
 
@@ -213,7 +213,7 @@ Do not inherit its product constraints as requirements:
 - Fixed Earth/default landform recipe.
 - `i32` cell-space bounds and fixed edit cap.
 - Four two-bit material values.
-- Renderer-owned `World`/edit history or a renderer-local durable journal.
+- Renderer-owned `World`/edit history or a renderer-local authoritative journal.
 - A claim of frame-time qualification based only on unit/GPU tests.
 
 The embedded Helio implementation currently has a `helio-pass-planetary-voxel` with Transvoxel surface extraction, page residency, generation-tagged uploads, LOD transitions, and meshlet drawing. The target decision is to remove that old planetary-only pass and replace it with one pass crate named **voxel pass** (`helio-pass-voxel` or final crate name TBD) that supports arbitrary voxel shapes in theory. Smooth and blocky output are modes/backends of that pass, not separate terrain authorities. Preserve useful protocol, validation, LOD, and material integration ideas where they fit the stored-brick backend.
@@ -245,12 +245,12 @@ Required design controls:
 
 ## Migration outline
 
-1. **Lock the data contract:** component fields, IDs, domain/addressing, edit/chunk encoding, source registry, revision semantics, material-ID resolution, and persistence ownership.
-2. **Establish SceneDB canonical storage:** reflected `VoxelComponent` and `VoxelTerrainComponent`; variable-length/chunk storage and batch commit API; ensure no duplicate authoritative renderer state.
+1. **Lock the data contract:** component fields, IDs, domain/addressing, edit/chunk encoding, source registry, revision semantics, material-ID resolution, and the division between SceneDB live-state ownership and user-owned persistence.
+2. **Establish SceneDB canonical live storage:** reflected `VoxelComponent` and `VoxelTerrainComponent`; variable-length/chunk component data and bounded batch publication/read API; snapshot/import/export API for user scripts; ensure no duplicate authoritative renderer state. Do not add a durable sidecar/blob store or engine persistence settings.
 3. **Extract a terrain-agnostic rendering seam:** generic graph/pass extension and generic SceneDB GPU-buffer access, with no voxel types in Helio core or generic renderer crates.
 4. **Build the new voxel pass:** mine upstream stored-brick selection/residency/traversal; support multi-entry inputs; integrate the existing SceneDB material IDs; add selectable blocky/smooth behavior.
 5. **Connect component projection and source writers:** script-created entries, registered custom generators, batched chunk publication, edit receipts, and stale-work rejection.
-6. **Migrate gameplay and tools:** picking, collision/sample APIs, editor sculpting, save/undo, and scripting use SceneDB-backed services and revisioned batches.
+6. **Migrate gameplay and tools:** picking, collision/sample APIs, editor sculpting, and scripting use SceneDB-backed services and revisioned batches. Any save/undo workflow is implemented by user-facing scripts/tools consuming the component snapshot/export API, not by renderer-owned state or an engine-managed voxel persistence layer.
 7. **Replace the old pass:** update graph/default-graph wiring, examples, component adapters, manifests, locks, and tests; remove the old planetary-only pass after parity for required behavior.
 8. **Qualify:** build the integrated workspace, run CPU/GPU correctness and graph tests, then run the exact release stress command and iterate against the 10 ms budget.
 
@@ -258,12 +258,12 @@ Required design controls:
 
 - Exact canonical chunk/page dimension and CPU/GPU encodings (especially smooth density versus block material occupancy).
 - Whether `VoxelComponent` uses a fixed cube-local grid, chunked sparse grid, or both; define cube default dimensions and deformation granularity.
-- SceneDB representation/API for large persistent chunk payloads and edits, including transaction size, zero-copy/immutable snapshots, and network replication.
+- SceneDB in-memory representation/API for large chunk payloads and edits, including bounded transaction size and zero-copy/immutable snapshots. Durable encoding, storage location/settings, and restart recovery are owned by user scripts/tools and are not Helio requirements.
 - Custom generator registration ABI/versioning and failure behavior when a provider is unavailable.
 - How multiple overlapping voxel/terrain entries compose and how their GBuffer depth/material output is ordered.
 - Whether smooth mode uses a retained extraction path (Transvoxel) or a new stored-density surface method in the replacement pass.
 - Exact SceneDB material handle/index type, buffer key, material channel encoding, and behavior for missing material IDs.
 - Component transform versus canonical world origin ownership for planetary coordinates and floating-origin updates.
-- Whether generated chunks are disposable procedural cache or durable authored data per source policy.
+- Whether generated chunks are reproducible from a source descriptor or must be retained as canonical live supplied data; in either case, cross-run persistence is a user decision implemented outside Helio.
 - How infinite-domain bounds, page coordinates, edit bounds, and physics coordinates avoid finite-root/i32 limits.
 - Which parts of the upstream non-voxel shader changes are intended for the canonical Helio copy.
