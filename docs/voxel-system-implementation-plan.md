@@ -126,7 +126,9 @@ Before any integration write, record `git status`, current HEAD, chosen target b
 
 **Owner:** voxel-pass agent; isolated worktree; depend on Phases 2 and 4, with Phase 3 data contract agreed.
 
-**Scope:** crate skeleton/registration; per-entry resource state keyed by stable identity; bounded transient brick/page cache; generation tags and atomic publication; async job/upload budgeting; eviction and rebuild; material ID lookup through existing SceneDB material records; one basic rendering path and debug instrumentation. No assumption of one global world mutex or fixed authored entry count.
+**Scope:** crate skeleton/registration; per-entry resource state keyed by stable identity; bounded transient brick/page cache; generation tags and atomic publication; an explicitly bounded, wake-driven off-render-thread CPU publication consumer for SceneDB component batches; async job/upload budgeting; eviction and rebuild; material ID lookup through existing SceneDB material records; one basic rendering path and debug instrumentation. No assumption of one global world mutex or fixed authored entry count.
+
+**Publication acceptance:** producer submission must have finite back-pressure and must not wait for the component-store write lock. Accepted work must either reach the canonical SceneDB component store or remain observable/retryable as a failure; shutdown must state whether pending work drains or is discarded. A dedicated worker may block while publishing, but the render thread must never call the blocking writer, build a full terrain snapshot, or upload all changed chunks in one frame. GPU-side `prepare` work must consume a bounded byte/operation budget and retain deferred work without exposing incomplete output as complete. No worker may retain GPU handles.
 
 **Imported code:** selectively port algorithms only after dependency/ownership audit. Keep license notices. Avoid wholesale cherry-picking the upstream pass as the end-state.
 
@@ -197,7 +199,7 @@ Update this table after each phase. The integrator owns edits to status and depe
 | 2. Spec + Git integration | Complete | Integrator + three read-only review workers | Parent docs commit — see Git history; Helio branch `codex/unified-voxel-integration` at `fe7aa140` | No upstream merge; selectively port voxel algorithms later; external benchmark context remains for Phase 8 |
 | 3. SceneDB storage/API | Complete | Integrator + two independent read-only closeout audits | Helio API commit + parent integration/docs commit — see Git history | Raw store remains a low-level trusted capability; aggregate live-memory policy and 10 ms performance qualification remain later work |
 | 4. Generic pass seam | Complete | Integrator | Helio generic-buffer contract test + parent seam docs commit — see Git history | Contract test validates metadata/API seam, not full GPU-frame rendering |
-| 5. Voxel pass foundation | Planned | Voxel-pass agent | — | Phases 2–4 interfaces |
+| 5. Voxel pass foundation | In progress | Integrator + bounded publication worker + independent publication audit | Worker handoffs pending | Fix CPU publication hitch first; keep SceneDB authoritative and GPU residency transient; do not claim 10 ms until Phase 8 |
 | 6. Components/generation | Planned | Component/generator agent | — | Phases 3 and 5 contracts |
 | 7. Replace/migrate | Planned | Integrator / migration agent | — | New path passes integration tests |
 | 8. Qualification | Planned | Performance agent | — | Integrated candidate build |
