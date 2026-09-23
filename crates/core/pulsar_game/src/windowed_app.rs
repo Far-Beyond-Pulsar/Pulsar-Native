@@ -97,25 +97,14 @@ impl GameWindow {
             ensure_gpu_mirror(&mut scene_store.write(), device.clone(), queue.clone());
         let render_config =
             RendererConfig::new(surface_config.width, surface_config.height, surface_format);
-        let graph_scene_db = scene_db_handle.clone();
         let renderer = helio::RendererBuilder::new(render_config, scene_db_handle)
             .with_editor_mode(desc.editor_mode)
             // Kill the default helio ambient ([0.05, 0.05, 0.08] @ 1.0).
             // All illumination comes from lights in the scene file — same as editor.
             .with_ambient([0.0, 0.0, 0.0], 0.0)
-            .with_graph(Box::new(move |d, q, c, ds, cb, dcb, csb| {
-                helio_default_graphs::build_default_graph_external(
-                    d,
-                    q,
-                    cb,
-                    c,
-                    ds,
-                    dcb,
-                    csb,
-                    None,
-                    graph_scene_db.clone(),
-                )
-            }))
+            .with_pass_build_context(Box::new(
+                helio_default_graphs::build_default_graph_external_with_context,
+            ))
             .build(
                 device.clone(),
                 queue.clone(),
