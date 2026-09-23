@@ -5,9 +5,10 @@ use std::sync::Arc;
 use helio_component::{VoxelComponent, VoxelTerrainComponent};
 use helio_pass_voxel_mesh::{
     VoxelChunkBatch, VoxelDomain, VoxelEditClose, VoxelEditJob, VoxelEditTicket, VoxelEditWorker,
-    VoxelEditWorkerStatus, VoxelInboxClose, VoxelInboxLimits, VoxelPublicationOutcome,
-    VoxelPublicationStatus, VoxelPublicationTicket, VoxelPublicationWorker, VoxelSampleEdit,
-    VoxelSceneEntry, VoxelSourceId, VoxelSourceWriter, VoxelTerrainId,
+    VoxelEditWorkerStatus, VoxelInboxBatch, VoxelInboxClose, VoxelInboxLimits,
+    VoxelPublicationOutcome, VoxelPublicationStatus, VoxelPublicationTicket,
+    VoxelPublicationWorker, VoxelSampleEdit, VoxelSceneEntry, VoxelSourceId, VoxelSourceWriter,
+    VoxelTerrainId,
 };
 use pulsar_scenedb::{Entity, World};
 
@@ -30,6 +31,7 @@ pub struct VoxelSourceSession {
     scene: SharedScene,
     entity: Entity,
     kind: VoxelSourceKind,
+    source: VoxelSourceId,
     entry: VoxelSceneEntry,
     material_ids: Arc<[u32]>,
     writer: VoxelSourceWriter,
@@ -67,6 +69,7 @@ impl VoxelSourceSession {
             scene,
             entity,
             kind,
+            source,
             entry,
             material_ids,
             writer,
@@ -119,6 +122,24 @@ impl VoxelSourceSession {
         self.publication
             .try_submit(batch, payloads)
             .map_err(|error| format!("voxel chunk admission: {error:?}"))
+    }
+
+    /// Requeue retained work after the caller reviews its revision and opens
+    /// a fresh session if the previous publisher stopped on an error.
+    pub fn try_retry_chunks(
+        &self,
+        batch: &VoxelInboxBatch,
+    ) -> Result<VoxelPublicationTicket, String> {
+        self.require_attached()?;
+        if batch.terrain != self.terrain_id()
+            || batch.source != self.source
+            || batch.domain != self.entry.domain
+        {
+            return Err("retained batch belongs to another voxel source configuration".into());
+        }
+        self.publication
+            .try_retry(batch)
+            .map_err(|error| format!("voxel retry admission: {error:?}"))
     }
 
     /// Nonblocking sample-edit admission. Edits are grouped into touched
@@ -327,5 +348,75 @@ mod tests {
         assert_eq!(old_store.read().unwrap().0, 1);
         assert_eq!(new_store.read().unwrap().0, 0);
         session.finish(VoxelInboxClose::Drain);
+    }
+
+    #[test]
+    fn failed_batch_can_be_rebased_and_retried_from_new_session() {
+        use helio_pass_voxel_mesh::{
+            VoxelBatchRevision, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload, VoxelChunkUpdate,
+            VoxelPublicationTicketState, VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
+        };
+        let scene: SharedScene = Arc::new(parking_lot::RwLock::new(pulsar_scenedb::SceneDb::new()));
+        let entity = {
+            let mut scene = scene.write();
+            let entity = scene.world.spawn();
+            scene.world.insert(entity, VoxelComponent::default());
+            entity
+        };
+        let open = || {
+            VoxelSourceSession::open(
+                scene.clone(),
+                entity,
+                VoxelSourceKind::Object,
+                VoxelSourceId(4),
+                VoxelInboxLimits::default(),
+            )
+            .unwrap()
+        };
+        let session = open();
+        let payload: Arc<[u8]> = Arc::from([0u8]);
+        let ops = [VoxelChunkOp::Upsert(VoxelChunkUpdate {
+            key: VoxelChunkKey::new(0, 0, 0, 0),
+            payload: VoxelChunkPayload {
+                encoding: VOXEL_CHUNK_ENCODING_RAW,
+                schema_version: VOXEL_CHUNK_SCHEMA_VERSION,
+                bytes: &payload,
+            },
+        })];
+        let ticket = session
+            .try_submit_chunks(
+                &VoxelChunkBatch {
+                    terrain: session.terrain_id(),
+                    source: VoxelSourceId(4),
+                    revision: VoxelBatchRevision {
+                        expected: 1,
+                        publish: 2,
+                    },
+                    domain: session.entry.domain,
+                    ops: &ops,
+                },
+                &[payload.clone()],
+            )
+            .unwrap();
+        assert!(matches!(
+            ticket.wait(),
+            VoxelPublicationTicketState::Failed(_)
+        ));
+        let (outcome, _, panicked) = session.finish(VoxelInboxClose::Drain);
+        assert!(!panicked);
+        let mut retained = outcome.failure.unwrap().batch;
+        retained.revision = VoxelBatchRevision {
+            expected: 0,
+            publish: 1,
+        };
+        let replacement = open();
+        let retry = replacement.try_retry_chunks(&retained).unwrap();
+        assert!(matches!(
+            retry.wait(),
+            VoxelPublicationTicketState::Published(_)
+        ));
+        assert_eq!(replacement.publication_status().unwrap().retried_batches, 1);
+        assert_eq!(replacement.snapshot().unwrap().revision(), 1);
+        replacement.finish(VoxelInboxClose::Drain);
     }
 }
