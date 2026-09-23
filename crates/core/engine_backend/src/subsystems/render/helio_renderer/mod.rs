@@ -2,6 +2,7 @@
 
 pub mod core;
 mod interaction;
+mod gizmo_geometry;
 pub mod renderer;
 
 pub use core::{

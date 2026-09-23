@@ -1,74 +1,103 @@
-//! SceneDB-owned viewport interaction.
-//!
-//! This module deliberately contains no renderer scene mirror.  Picking reads
-//! the current scene `World` and gizmo drags write transforms
-//! back to that same store.  The only state retained between pointer events is
-//! the mathematical state of an in-progress drag; it is revalidated against
-//! the World before every write.
-
-use glam::{EulerRot, Mat3, Quat, Vec3};
+//! Transform handles with shared solid geometry for drawing and picking.
+use super::gizmo_geometry::{meshes, Handle};
+use crate::scene::{GizmoType, ObjectType, SceneWorldExt, StableId, Transform, Visibility};
+use glam::{EulerRot, Mat3, Mat4, Quat, Vec2, Vec3};
 use helio::Renderer;
-use pulsar_scenedb::Entity;
-
-use crate::scene::{
-    GizmoAxis, GizmoType, ObjectType, SceneWorldExt, StableId, Transform, Visibility,
-};
-use pulsar_scenedb::World;
-
-const AXIS_HIT_RADIUS: f32 = 0.16;
-const GIZMO_LENGTH: f32 = 1.25;
-const MIN_SCALE: f32 = 0.001;
-
+use pulsar_scenedb::{Entity, World};
+const HANDLE_PIXELS: f32 = 112.0;
+const PICK_MARGIN: f32 = 7.0;
+#[derive(Clone, Copy, Debug)]
+struct View {
+    position: Vec3,
+    forward: Vec3,
+    matrix: Mat4,
+    size: Vec2,
+}
+impl Default for View {
+    fn default() -> Self {
+        Self {
+            position: Vec3::ZERO,
+            forward: -Vec3::Z,
+            matrix: Mat4::IDENTITY,
+            size: Vec2::new(1600.0, 900.0),
+        }
+    }
+}
+impl View {
+    fn project(self, point: Vec3) -> Option<Vec2> {
+        let p = self.matrix * point.extend(1.0);
+        if p.w <= 0.001 || !p.is_finite() {
+            return None;
+        }
+        Some(Vec2::new(p.x / p.w * 0.5 + 0.5, 0.5 - p.y / p.w * 0.5) * self.size)
+    }
+    fn cursor(self, o: Vec3, d: Vec3) -> Option<Vec2> {
+        self.project(o + d * 100.0)
+    }
+    fn length(self, p: Vec3) -> Option<f32> {
+        let depth = (p - self.position).dot(self.forward);
+        (depth > 0.1).then_some(
+            2.0 * depth * std::f32::consts::FRAC_PI_8.tan() * HANDLE_PIXELS / self.size.y,
+        )
+    }
+}
 #[derive(Clone, Copy, Debug)]
 struct DragState {
     entity: Entity,
-    axis: GizmoAxis,
+    handle: Handle,
     mode: GizmoType,
     initial: Transform,
-    start_axis_parameter: f32,
-    start_rotation_vector: Vec3,
+    view: View,
+    length: f32,
+    start: Vec2,
+    screen_axis: Vec2,
+    plane_normal: Vec3,
+    plane_start: Vec3,
+    previous_angle: f32,
+    angle: f32,
 }
-
-/// Persistent interaction state that is not world state.
 #[derive(Debug)]
 pub struct SceneInteraction {
     mode: GizmoType,
-    hovered_axis: Option<GizmoAxis>,
+    hovered: Option<Handle>,
     drag: Option<DragState>,
+    view: View,
 }
-
 impl Default for SceneInteraction {
     fn default() -> Self {
         Self {
             mode: GizmoType::None,
-            hovered_axis: None,
+            hovered: None,
             drag: None,
+            view: View::default(),
         }
     }
 }
-
 impl SceneInteraction {
     pub fn mode(&self) -> GizmoType {
         self.mode
     }
-
     pub fn set_mode(&mut self, mode: GizmoType) {
-        self.mode = mode;
-        self.hovered_axis = None;
-        self.drag = None;
+        if self.mode != mode {
+            self.cancel_drag();
+            self.mode = mode;
+        }
     }
-
+    pub fn set_view(&mut self, position: Vec3, forward: Vec3, matrix: Mat4, size: Vec2) {
+        self.view = View {
+            position,
+            forward,
+            matrix,
+            size: size.max(Vec2::ONE),
+        };
+    }
     pub fn is_dragging(&self) -> bool {
         self.drag.is_some()
     }
-
     pub fn cancel_drag(&mut self) {
         self.drag = None;
-        self.hovered_axis = None;
+        self.hovered = None;
     }
-
-    /// Pick the nearest visible mesh/light by testing conservative world-space
-    /// bounds derived from the authoritative SceneDB transform and type.
     pub fn pick(&self, world: &World, origin: Vec3, direction: Vec3) -> Option<String> {
         let direction = direction.normalize_or_zero();
         if direction == Vec3::ZERO {
@@ -95,260 +124,280 @@ impl SceneInteraction {
             .map(|(_, stable_id)| stable_id)
     }
 
-    /// Begin a gizmo drag using only the selected SceneDB entity's transform.
-    pub fn try_start_drag(
-        &mut self,
-        world: &World,
-        origin: Vec3,
-        direction: Vec3,
-        camera_position: Vec3,
-    ) -> bool {
-        let Some(entity) = world.selected_entity() else {
-            return false;
-        };
-        let Some(initial) = world.get::<Transform>(entity).copied() else {
-            return false;
-        };
-        let Some(visibility) = world.get::<Visibility>(entity).copied() else {
-            return false;
-        };
-        if !visibility.visible || visibility.locked || self.mode == GizmoType::None {
-            return false;
+    fn selected(&self, world: &World) -> Option<(Entity, Transform)> {
+        let entity = world.selected_entity()?;
+        let v = world.get::<Visibility>(entity)?;
+        if !v.visible || v.locked || self.mode == GizmoType::None {
+            return None;
         }
-
-        let pivot = Vec3::from_array(initial.position);
-        let scale = gizmo_scale(camera_position, pivot);
-        let Some((axis, axis_parameter, rotation_vector)) =
-            self.hit_gizmo(origin, direction, pivot, scale, camera_position)
-        else {
+        Some((entity, *world.get::<Transform>(entity)?))
+    }
+    fn hit(&self, t: Transform, cursor: Vec2) -> Option<Handle> {
+        let pivot = Vec3::from_array(t.position);
+        let length = self.view.length(pivot)?;
+        let basis = rotation_matrix(t);
+        let mut best: Option<(f32, f32, Handle)> = None;
+        for mesh in meshes(self.mode) {
+            for tri in &mesh.triangles {
+                let points = tri.map(|p| pivot + basis * p * length);
+                let [Some(a), Some(b), Some(c)] = points.map(|p| self.view.project(p)) else {
+                    continue;
+                };
+                let distance = triangle_distance(cursor, a, b, c);
+                if distance > PICK_MARGIN {
+                    continue;
+                }
+                let depth = points
+                    .iter()
+                    .map(|p| (*p - self.view.position).dot(self.view.forward))
+                    .sum::<f32>()
+                    / 3.0;
+                if best.is_none_or(|(d, z, _)| {
+                    distance < d - 0.01 || ((distance - d).abs() < 0.01 && depth < z)
+                }) {
+                    best = Some((distance, depth, mesh.handle));
+                }
+            }
+        }
+        best.map(|(_, _, h)| h)
+    }
+    pub fn try_start_drag(&mut self, world: &World, o: Vec3, d: Vec3, _camera: Vec3) -> bool {
+        let Some((entity, initial)) = self.selected(world) else {
             return false;
         };
-
-        self.hovered_axis = Some(axis);
+        let Some(start) = self.view.cursor(o, d) else {
+            return false;
+        };
+        let Some(handle) = self.hit(initial, start) else {
+            return false;
+        };
+        let pivot = Vec3::from_array(initial.position);
+        let length = self.view.length(pivot).unwrap();
+        let basis = rotation_matrix(initial);
+        let center = self.view.project(pivot).unwrap();
+        let axis = match handle {
+            Handle::Axis(i) | Handle::Plane(i) => basis.col(i),
+            Handle::Center => self.view.forward,
+        };
+        let screen_axis = self.view.project(pivot + axis * length).unwrap_or(center) - center;
+        let plane_normal = if matches!(handle, Handle::Plane(_)) {
+            axis
+        } else {
+            self.view.forward
+        };
+        let plane_start = ray_plane_intersection(o, d, pivot, plane_normal).unwrap_or(pivot);
+        let previous_angle = if let Handle::Axis(i) = handle {
+            rotation_angle(o, d, pivot, basis, i).unwrap_or(0.0)
+        } else {
+            0.0
+        };
         self.drag = Some(DragState {
             entity,
-            axis,
+            handle,
             mode: self.mode,
             initial,
-            start_axis_parameter: axis_parameter,
-            start_rotation_vector: rotation_vector,
+            view: self.view,
+            length,
+            start,
+            screen_axis,
+            plane_normal,
+            plane_start,
+            previous_angle,
+            angle: 0.0,
         });
+        self.hovered = Some(handle);
         true
     }
-
-    /// Update the active drag and write the resulting transform directly to
-    /// SceneDB.  A deleted entity or a newly-hidden/locked entity cancels the
-    /// operation without touching any stale renderer state.
-    pub fn update_drag(
-        &mut self,
-        world: &mut World,
-        origin: Vec3,
-        direction: Vec3,
-        camera_position: Vec3,
-    ) {
-        let Some(drag) = self.drag else {
+    pub fn update_drag(&mut self, world: &mut World, o: Vec3, d: Vec3, _camera: Vec3) {
+        let Some(mut drag) = self.drag else {
             return;
         };
+        if world.selected_entity() != Some(drag.entity)
+            || !world
+                .get::<Visibility>(drag.entity)
+                .is_some_and(|v| v.visible && !v.locked)
+        {
+            self.cancel_drag();
+            return;
+        }
         let Some(current) = world.get::<Transform>(drag.entity).copied() else {
             self.cancel_drag();
             return;
         };
-        let Some(visibility) = world.get::<Visibility>(drag.entity).copied() else {
-            self.cancel_drag();
+        let Some(cursor) = drag.view.cursor(o, d) else {
             return;
         };
-        if !visibility.visible || visibility.locked {
-            self.cancel_drag();
-            return;
-        }
-
+        let delta = cursor - drag.start;
         let pivot = Vec3::from_array(drag.initial.position);
-        let scale = gizmo_scale(camera_position, pivot);
-        let Some((_, parameter, rotation_vector)) =
-            self.hit_gizmo_axis(origin, direction, pivot, scale, drag.axis, camera_position)
-        else {
-            return;
+        let basis = rotation_matrix(drag.initial);
+        let amount = if drag.screen_axis.length_squared() > 16.0 {
+            delta.dot(drag.screen_axis) / drag.screen_axis.length_squared()
+        } else {
+            -delta.y / HANDLE_PIXELS
         };
-
-        let mut next = drag.initial;
+        let mut next = current;
         match drag.mode {
             GizmoType::Translate => {
-                let delta = axis_vector(drag.axis) * (parameter - drag.start_axis_parameter);
-                next.position = (pivot + delta).to_array();
+                let movement = match drag.handle {
+                    Handle::Axis(i) => basis.col(i) * amount * drag.length,
+                    _ => {
+                        let Some(p) = ray_plane_intersection(o, d, pivot, drag.plane_normal) else {
+                            return;
+                        };
+                        p - drag.plane_start
+                    }
+                };
+                next.position = (pivot + movement).to_array();
             }
             GizmoType::Scale => {
-                let amount = (parameter - drag.start_axis_parameter) / scale;
-                let axis_index = axis_index(drag.axis);
-                next.scale[axis_index] =
-                    (drag.initial.scale[axis_index] * (1.0 + amount)).max(MIN_SCALE);
+                let factor = (1.0
+                    + if drag.handle == Handle::Center {
+                        (delta.x - delta.y) / HANDLE_PIXELS
+                    } else {
+                        amount
+                    })
+                .max(0.001);
+                next.scale = drag.initial.scale;
+                for i in 0..3 {
+                    if drag.handle == Handle::Center || drag.handle == Handle::Axis(i) {
+                        next.scale[i] = (drag.initial.scale[i] * factor).max(0.001);
+                    }
+                }
             }
             GizmoType::Rotate => {
-                let Some(start) = drag.start_rotation_vector.try_normalize() else {
+                let Handle::Axis(i) = drag.handle else {
                     return;
                 };
-                let Some(current) = rotation_vector.try_normalize() else {
-                    return;
-                };
-                let axis = axis_vector(drag.axis);
-                let angle = start.dot(current).clamp(-1.0, 1.0).acos()
-                    * start.cross(current).dot(axis).signum();
-                let initial_rotation = Quat::from_euler(
-                    EulerRot::YXZ,
-                    drag.initial.rotation[1].to_radians(),
-                    drag.initial.rotation[0].to_radians(),
-                    drag.initial.rotation[2].to_radians(),
-                );
-                let rotated = Quat::from_axis_angle(axis, angle) * initial_rotation;
-                let (yaw, pitch, roll) = rotated.to_euler(EulerRot::YXZ);
-                next.rotation = [pitch.to_degrees(), yaw.to_degrees(), roll.to_degrees()];
+                let axis = basis.col(i);
+                if axis.dot(drag.view.forward).abs() > 0.15 {
+                    let Some(angle) = rotation_angle(o, d, pivot, basis, i) else {
+                        return;
+                    };
+                    let step = (angle - drag.previous_angle + std::f32::consts::PI)
+                        .rem_euclid(std::f32::consts::TAU)
+                        - std::f32::consts::PI;
+                    drag.angle += step;
+                    drag.previous_angle = angle;
+                } else {
+                    // Edge-on rings have an ill-conditioned ray/plane intersection.
+                    // Use a fixed screen tangent for the duration of the gesture.
+                    let radial = (drag.plane_start - pivot).normalize_or_zero();
+                    let tangent = axis.cross(radial).normalize_or_zero();
+                    let center = drag.view.project(pivot).unwrap();
+                    let projected = drag
+                        .view
+                        .project(pivot + tangent * drag.length)
+                        .unwrap_or(center)
+                        - center;
+                    let tangent = projected.try_normalize().unwrap_or(Vec2::X);
+                    drag.angle = delta.dot(tangent) / HANDLE_PIXELS;
+                }
+                let q = Quat::from_axis_angle(axis, drag.angle) * Quat::from_mat3(&basis);
+                let (y, x, z) = q.to_euler(EulerRot::YXZ);
+                next.rotation = [x.to_degrees(), y.to_degrees(), z.to_degrees()];
             }
             GizmoType::None => return,
         }
-
-        // Use the current World transform only to avoid overwriting unrelated
-        // component edits made between pointer events.  The drag owns the
-        // selected transform fields, while every write still goes through the
-        // normal SceneDB dirty/mirror path.
-        if current != next {
-            if let Some(mut transform) = world.get_mut::<Transform>(drag.entity) {
-                *transform = next;
+        self.drag = Some(drag);
+        self.hovered = Some(drag.handle);
+        if next != current {
+            if let Some(mut t) = world.get_mut::<Transform>(drag.entity) {
+                *t = next;
             }
         }
     }
-
-    pub fn update_hover(
-        &mut self,
-        world: &World,
-        origin: Vec3,
-        direction: Vec3,
-        camera_position: Vec3,
-    ) {
-        let Some(entity) = world.selected_entity() else {
-            self.hovered_axis = None;
-            return;
-        };
-        let Some(transform) = world.get::<Transform>(entity).copied() else {
-            self.hovered_axis = None;
-            return;
-        };
-        let pivot = Vec3::from_array(transform.position);
-        self.hovered_axis = self
-            .hit_gizmo(
-                origin,
-                direction,
-                pivot,
-                gizmo_scale(camera_position, pivot),
-                camera_position,
-            )
-            .map(|(axis, _, _)| axis);
+    pub fn update_hover(&mut self, world: &World, o: Vec3, d: Vec3, _camera: Vec3) -> bool {
+        let previous = self.hovered;
+        if let Some(drag) = self.drag {
+            self.hovered = Some(drag.handle);
+            return previous != self.hovered;
+        }
+        self.hovered = self
+            .selected(world)
+            .and_then(|(_, t)| self.view.cursor(o, d).and_then(|p| self.hit(t, p)));
+        previous != self.hovered
     }
-
-    /// Draw the selected gizmo from the current World transform. Helio is used
-    /// only as a transient debug-line sink; it is not queried for scene state.
-    pub fn draw_gizmo(
-        &self,
-        renderer: &mut Renderer,
-        world: &World,
-        camera_position: Vec3,
-    ) {
-        let Some(entity) = world.selected_entity() else {
+    pub fn draw_gizmo(&self, renderer: &mut Renderer, world: &World, _camera: Vec3) {
+        let Some((_, t)) = self.selected(world) else {
             return;
         };
-        let Some(transform) = world.get::<Transform>(entity).copied() else {
+        let pivot = Vec3::from_array(t.position);
+        let Some(length) = self.view.length(pivot) else {
             return;
         };
-        let Some(visibility) = world.get::<Visibility>(entity).copied() else {
-            return;
-        };
-        if !visibility.visible || self.mode == GizmoType::None {
-            return;
-        }
-
-        let pivot = Vec3::from_array(transform.position);
-        let length = gizmo_scale(camera_position, pivot);
-        let rotation = rotation_matrix(transform);
-        for axis in [GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z] {
-            let direction = rotation * axis_vector(axis);
-            let color = if self.hovered_axis == Some(axis) {
-                [1.0, 1.0, 0.2, 1.0]
-            } else {
-                axis_color(axis)
-            };
-            renderer.debug_line(
-                pivot.to_array(),
-                (pivot + direction * length).to_array(),
-                color,
-            );
-        }
-
-        if self.mode == GizmoType::Rotate {
-            for axis in [GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z] {
-                let normal = rotation * axis_vector(axis);
-                renderer.debug_torus(
-                    pivot.to_array(),
-                    normal.to_array(),
-                    length * 0.85,
-                    length * 0.025,
-                    axis_color(axis),
-                    32,
-                    6,
-                );
+        let basis = rotation_matrix(
+            self.drag
+                .filter(|d| d.mode == GizmoType::Rotate)
+                .map(|d| d.initial)
+                .unwrap_or(t),
+        );
+        let active = self.drag.map(|d| d.handle).or(self.hovered);
+        // Submit the complete widget under one lock and upload generation.
+        renderer.debug_batch(|batch| {
+            for mesh in meshes(self.mode) {
+                let base = if active == Some(mesh.handle) {
+                    [1.0, 0.8, 0.12, 1.0]
+                } else {
+                    match mesh.handle {
+                        Handle::Axis(0) | Handle::Plane(0) => [0.95, 0.12, 0.09, 1.0],
+                        Handle::Axis(1) | Handle::Plane(1) => [0.2, 0.85, 0.12, 1.0],
+                        Handle::Axis(_) | Handle::Plane(_) => [0.12, 0.4, 1.0, 1.0],
+                        Handle::Center => [0.88, 0.9, 0.94, 1.0],
+                    }
+                };
+                for tri in &mesh.triangles {
+                    let [a, b, c] = tri.map(|p| pivot + basis * p * length);
+                    let n = (b - a).cross(c - a).normalize_or_zero();
+                    let shade = 0.65 + 0.35 * n.dot(Vec3::new(0.3, 0.8, 0.5).normalize()).abs();
+                    batch.tri(
+                        a.to_array(),
+                        b.to_array(),
+                        c.to_array(),
+                        [base[0] * shade, base[1] * shade, base[2] * shade, base[3]],
+                    );
+                }
             }
-        }
-    }
-
-    fn hit_gizmo(
-        &self,
-        origin: Vec3,
-        direction: Vec3,
-        pivot: Vec3,
-        scale: f32,
-        camera_position: Vec3,
-    ) -> Option<(GizmoAxis, f32, Vec3)> {
-        [GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z]
-            .into_iter()
-            .filter_map(|axis| {
-                self.hit_gizmo_axis(origin, direction, pivot, scale, axis, camera_position)
-                    .map(|(_, parameter, rotation)| (axis, parameter, rotation))
-            })
-            .min_by(|(_, left, _), (_, right, _)| {
-                left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal)
-            })
-    }
-
-    fn hit_gizmo_axis(
-        &self,
-        origin: Vec3,
-        direction: Vec3,
-        pivot: Vec3,
-        scale: f32,
-        axis: GizmoAxis,
-        camera_position: Vec3,
-    ) -> Option<(GizmoAxis, f32, Vec3)> {
-        let direction = direction.normalize_or_zero();
-        let axis_direction = axis_vector(axis);
-        let (ray_t, axis_t) = closest_ray_line(origin, direction, pivot, axis_direction)?;
-        let point_on_ray = origin + direction * ray_t;
-        let point_on_axis = pivot + axis_direction * axis_t;
-        let tolerance = (camera_position - pivot).length() * 0.015 + AXIS_HIT_RADIUS * scale;
-        if ray_t < 0.0
-            || !(0.0..=GIZMO_LENGTH * scale).contains(&axis_t)
-            || point_on_ray.distance(point_on_axis) > tolerance
-        {
-            return None;
-        }
-
-        let plane_normal = direction
-            .cross(axis_direction)
-            .cross(axis_direction)
-            .normalize_or_zero();
-        let rotation_vector = ray_plane_intersection(origin, direction, pivot, plane_normal)
-            .map(|point| point - pivot)
-            .unwrap_or(Vec3::ZERO);
-        Some((axis, axis_t, rotation_vector))
+        });
     }
 }
-
+fn segment_distance(p: Vec2, a: Vec2, b: Vec2) -> f32 {
+    let ab = b - a;
+    let t = ((p - a).dot(ab) / ab.length_squared().max(1e-10)).clamp(0.0, 1.0);
+    p.distance(a + ab * t)
+}
+fn rotation_angle(o: Vec3, d: Vec3, p: Vec3, basis: Mat3, i: usize) -> Option<f32> {
+    let point = ray_plane_intersection(o, d, p, basis.col(i))? - p;
+    if point.length_squared() < 1e-10 {
+        return None;
+    }
+    Some(
+        point
+            .dot(basis.col((i + 2) % 3))
+            .atan2(point.dot(basis.col((i + 1) % 3))),
+    )
+}
+fn triangle_distance(p: Vec2, a: Vec2, b: Vec2, c: Vec2) -> f32 {
+    let area = (b - a).perp_dot(c - a);
+    if area.abs() > 0.001 {
+        if (b - a).perp_dot(p - a) / area >= 0.0
+            && (c - b).perp_dot(p - b) / area >= 0.0
+            && (a - c).perp_dot(p - c) / area >= 0.0
+        {
+            return 0.0;
+        }
+    }
+    segment_distance(p, a, b)
+        .min(segment_distance(p, b, c))
+        .min(segment_distance(p, c, a))
+}
+fn ray_plane_intersection(o: Vec3, d: Vec3, p: Vec3, n: Vec3) -> Option<Vec3> {
+    let denominator = d.dot(n);
+    if denominator.abs() < 1e-5 {
+        return None;
+    }
+    let t = (p - o).dot(n) / denominator;
+    (t >= 0.0 && t.is_finite()).then_some(o + d * t)
+}
 fn is_pickable(object_type: ObjectType) -> bool {
     matches!(object_type, ObjectType::Mesh(_) | ObjectType::Light(_))
 }
@@ -405,71 +454,127 @@ fn ray_aabb(origin: Vec3, direction: Vec3, min: Vec3, max: Vec3) -> Option<f32> 
     (far >= 0.0).then_some(near.max(0.0))
 }
 
-fn closest_ray_line(
-    ray_origin: Vec3,
-    ray_direction: Vec3,
-    line_origin: Vec3,
-    line_direction: Vec3,
-) -> Option<(f32, f32)> {
-    let w0 = ray_origin - line_origin;
-    let a = ray_direction.dot(ray_direction);
-    let b = ray_direction.dot(line_direction);
-    let c = line_direction.dot(line_direction);
-    let d = ray_direction.dot(w0);
-    let e = line_direction.dot(w0);
-    let denominator = a * c - b * b;
-    if denominator.abs() < 1e-6 {
-        return None;
-    }
-    Some(((b * e - c * d) / denominator, (a * e - b * d) / denominator))
-}
-
-fn ray_plane_intersection(
-    origin: Vec3,
-    direction: Vec3,
-    point: Vec3,
-    normal: Vec3,
-) -> Option<Vec3> {
-    let denominator = direction.dot(normal);
-    if denominator.abs() < 1e-6 {
-        return None;
-    }
-    let t = (point - origin).dot(normal) / denominator;
-    (t >= 0.0).then_some(origin + direction * t)
-}
-
-fn gizmo_scale(camera_position: Vec3, pivot: Vec3) -> f32 {
-    ((camera_position - pivot).length() * 0.1).clamp(0.25, 10.0)
-}
-
-fn axis_vector(axis: GizmoAxis) -> Vec3 {
-    match axis {
-        GizmoAxis::X => Vec3::X,
-        GizmoAxis::Y => Vec3::Y,
-        GizmoAxis::Z => Vec3::Z,
-    }
-}
-
-fn axis_index(axis: GizmoAxis) -> usize {
-    match axis {
-        GizmoAxis::X => 0,
-        GizmoAxis::Y => 1,
-        GizmoAxis::Z => 2,
-    }
-}
-
-fn axis_color(axis: GizmoAxis) -> [f32; 4] {
-    match axis {
-        GizmoAxis::X => [0.9, 0.15, 0.15, 1.0],
-        GizmoAxis::Y => [0.2, 0.9, 0.2, 1.0],
-        GizmoAxis::Z => [0.2, 0.4, 1.0, 1.0],
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::scene::{MeshType, SpawnObject};
+
+    fn setup(mode: GizmoType) -> (World, SceneInteraction, Entity) {
+        let mut world = World::new();
+        spawn_cube(&mut world, "selected", -10.0);
+        let entity = world.query::<&StableId>().next().unwrap().0;
+        world.select(Some(entity));
+        let mut interaction = SceneInteraction::default();
+        interaction.set_mode(mode);
+        interaction.set_view(
+            Vec3::ZERO,
+            -Vec3::Z,
+            Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, 1.0, 0.1, 10000.0),
+            Vec2::splat(900.0),
+        );
+        (world, interaction, entity)
+    }
+
+    #[test]
+    fn press_captures_without_hover_and_drag_continues_off_handle() {
+        let (mut world, mut interaction, entity) = setup(GizmoType::Translate);
+        let pivot = Vec3::new(0.0, 0.0, -10.0);
+        let length = interaction.view.length(pivot).unwrap();
+        let start = pivot + Vec3::X * length * 0.7;
+        assert!(interaction.try_start_drag(&world, Vec3::ZERO, start.normalize(), Vec3::ZERO));
+        assert_eq!(interaction.drag.unwrap().handle, Handle::Axis(0));
+        let away = pivot + Vec3::new(length * 4.0, length * 2.0, 0.0);
+        interaction.update_hover(&world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
+        assert_eq!(interaction.hovered, Some(Handle::Axis(0)));
+        interaction.update_drag(&mut world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
+        assert!(world.get::<Transform>(entity).unwrap().position[0] > length * 3.0);
+        interaction.cancel_drag();
+        let final_transform = *world.get::<Transform>(entity).unwrap();
+        interaction.update_drag(&mut world, Vec3::ZERO, start.normalize(), Vec3::ZERO);
+        assert_eq!(*world.get::<Transform>(entity).unwrap(), final_transform);
+    }
+
+    #[test]
+    fn ring_is_pickable_between_axes() {
+        let (world, interaction, entity) = setup(GizmoType::Rotate);
+        let t = *world.get::<Transform>(entity).unwrap();
+        let pivot = Vec3::from_array(t.position);
+        let length = interaction.view.length(pivot).unwrap();
+        let point = pivot + Vec3::new(0.6, 0.6, 0.0) * length;
+        assert_eq!(
+            interaction.hit(t, interaction.view.project(point).unwrap()),
+            Some(Handle::Axis(2))
+        );
+    }
+
+    #[test]
+    fn handle_size_is_constant_with_distance() {
+        let (_, interaction, _) = setup(GizmoType::Translate);
+        for depth in [1.0, 10.0, 1000.0] {
+            let pivot = Vec3::new(0.0, 0.0, -depth);
+            let end = pivot + Vec3::X * interaction.view.length(pivot).unwrap();
+            let size = interaction
+                .view
+                .project(end)
+                .unwrap()
+                .distance(interaction.view.project(pivot).unwrap());
+            assert!((size - HANDLE_PIXELS).abs() < 0.01);
+        }
+    }
+
+    #[test]
+    fn hover_margin_is_in_pixels_and_empty_space_does_not_capture() {
+        let (_, interaction, _) = setup(GizmoType::Translate);
+        for depth in [2.0, 40.0, 1000.0] {
+            let t = Transform {
+                position: [0.0, 0.0, -depth],
+                ..Default::default()
+            };
+            let pivot = Vec3::from_array(t.position);
+            let length = interaction.view.length(pivot).unwrap();
+            let shaft = interaction
+                .view
+                .project(pivot + Vec3::X * length * 0.65)
+                .unwrap();
+            assert_eq!(
+                interaction.hit(t, shaft + Vec2::Y * 6.0),
+                Some(Handle::Axis(0))
+            );
+            assert_eq!(interaction.hit(t, shaft + Vec2::Y * 25.0), None);
+        }
+    }
+
+    #[test]
+    fn plane_and_center_handles_capture_and_locked_objects_do_not() {
+        let (mut world, mut interaction, entity) = setup(GizmoType::Translate);
+        let t = *world.get::<Transform>(entity).unwrap();
+        let pivot = Vec3::from_array(t.position);
+        let length = interaction.view.length(pivot).unwrap();
+        let plane = pivot + Vec3::new(0.33, 0.33, 0.0) * length;
+        assert!(interaction.try_start_drag(&world, Vec3::ZERO, plane.normalize(), Vec3::ZERO));
+        assert_eq!(interaction.drag.unwrap().handle, Handle::Plane(2));
+        interaction.cancel_drag();
+        assert!(interaction.try_start_drag(&world, Vec3::ZERO, pivot.normalize(), Vec3::ZERO));
+        assert_eq!(interaction.drag.unwrap().handle, Handle::Center);
+        interaction.cancel_drag();
+        world.get_mut::<Visibility>(entity).unwrap().locked = true;
+        assert!(!interaction.try_start_drag(&world, Vec3::ZERO, plane.normalize(), Vec3::ZERO));
+    }
+
+    #[test]
+    fn rotation_follows_ring_plane_and_preserves_other_fields() {
+        let (mut world, mut interaction, entity) = setup(GizmoType::Rotate);
+        let pivot = Vec3::new(0.0, 0.0, -10.0);
+        let length = interaction.view.length(pivot).unwrap();
+        let start = pivot + Vec3::new(0.6, 0.6, 0.0) * length;
+        assert!(interaction.try_start_drag(&world, Vec3::ZERO, start.normalize(), Vec3::ZERO));
+        let end = pivot + Vec3::new(-0.6, 0.6, 0.0) * length;
+        interaction.update_drag(&mut world, Vec3::ZERO, end.normalize(), Vec3::ZERO);
+        let t = world.get::<Transform>(entity).unwrap();
+        assert!((t.rotation[2] - 90.0).abs() < 0.01);
+        assert_eq!(t.position, pivot.to_array());
+        assert_eq!(t.scale, [1.0; 3]);
+    }
 
     fn spawn_cube(world: &mut World, id: &str, z: f32) {
         world

@@ -19,8 +19,10 @@ impl ViewportPanel {
         let _element_bounds = self.element_bounds.clone();
         let viewport_entity = self.viewport.clone();
 
-        let empty_snapshot = EngineFrameSnapshot::default();
-        let snap = snapshot.as_ref().unwrap_or(&empty_snapshot);
+        if let Some(snapshot) = snapshot {
+            self.cached_frame_snapshot = snapshot;
+        }
+        let snap = &self.cached_frame_snapshot;
         let ui_fps = snap.ui_fps;
         let render_fps = snap.render_fps;
 
@@ -37,14 +39,8 @@ impl ViewportPanel {
         let _input_state_scroll = Arc::clone(&self.input_state);
         let mouse_right_captured = self.mouse_right_captured.clone();
         let mouse_middle_captured = self.mouse_middle_captured.clone();
-        // Pointer-event queue for the left-click/left-release handlers below
-        // (Pulsar-Native drag-release freeze fix -- see `PendingPointerEvent`'s
-        // doc). Fetched once, in the same locked pass as the frame stats --
-        // and non-blocking, so a miss just means those two handlers fall back
-        // to a no-op this rebuild and correctly pick the queue back up next
-        // time (GPUI rebuilds this element tree far more often than a user
-        // can actually click). The click/release closures themselves never
-        // touch `gpu_engine` again after this.
+        // Retain the mailbox across busy renderer frames. Event delivery must
+        // not depend on whether this particular UI rebuild could sample stats.
         let pointer_events_for_click = snap.pointer_events.clone();
         let camera_input_for_prepaint = snap.camera_input.clone();
         let element_bounds_for_prepaint = self.element_bounds.clone();
@@ -103,6 +99,7 @@ impl ViewportPanel {
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let state_arc_move = state_arc.clone();
+                let pointer_events_move = snap.pointer_events.clone();
 
 move |event: &gpui::MouseMoveEvent, _window, _cx| {
                     super::build_handlers::handle_mouse_move(
@@ -114,6 +111,7 @@ move |event: &gpui::MouseMoveEvent, _window, _cx| {
                         mouse_middle_captured.clone(),
                         state_arc_move.clone(),
                         gpu_engine_move.clone(),
+                        pointer_events_move.clone(),
                         element_bounds_move.clone(),
                         last_mouse_pos.clone(),
                     );
@@ -279,7 +277,47 @@ move |event: &gpui::MouseUpEvent,
                     );
                 }
             })
+            .on_mouse_up_out(gpui::MouseButton::Left, {
+                let pointer_events = pointer_events_for_click.clone();
+                let state = state_arc.clone();
+                let engine = gpu_engine.clone();
+                move |event, _window, _cx| {
+                    super::build_handlers::handle_left_mouse_up(
+                        event, pointer_events.clone(), state.clone(), engine.clone(),
+                    );
+                }
+            })
             .child(viewport_entity)
+            .child({
+                let queue = pointer_events_for_click.clone();
+                let right = mouse_right_captured.clone();
+                let middle = mouse_middle_captured.clone();
+                gpui::canvas(|_, _, _| (), move |bounds, (), window, _cx| {
+                    window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, _window, _cx| {
+                        if phase != gpui::DispatchPhase::Capture || bounds.contains(&event.position)
+                            || right.load(Ordering::Relaxed) || middle.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        let x: f32 = (event.position.x - bounds.origin.x).into();
+                        let y: f32 = (event.position.y - bounds.origin.y).into();
+                        let w: f32 = bounds.size.width.into();
+                        let h: f32 = bounds.size.height.into();
+                        if let Some(queue) = &queue {
+                            if let Ok(mut events) = queue.lock() {
+                                use engine_backend::subsystems::render::PendingPointerEvent;
+                                let next = PendingPointerEvent::MouseMove {
+                                    norm_x: x / w.max(1.0), norm_y: y / h.max(1.0),
+                                };
+                                if let Some(last @ PendingPointerEvent::MouseMove { .. }) = events.last_mut() {
+                                    *last = next;
+                                } else {
+                                    events.push(next);
+                                }
+                            }
+                        }
+                    });
+                }).absolute().size_full()
+            })
             // Overlays
             .child(self.render_overlays(
                 state,
