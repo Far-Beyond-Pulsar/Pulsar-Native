@@ -52,6 +52,23 @@ fn live_payload_state_is_scene_owned_but_script_exfiltrated() {
     let snapshot = export.read().unwrap();
     assert_eq!(snapshot.0, 1);
     assert_eq!(snapshot.1.get(&[u64::MAX, 0, 7, 2]).unwrap().as_ref(), &[1, 2, 3]);
+    drop(snapshot);
+
+    // SceneDB/value clones retain the canonical payload value while owning
+    // an independent mutable index, so cloning an entry cannot erase data or
+    // make future writes leak between entities.
+    let cloned = terrain.clone();
+    assert_eq!(
+        cloned.payload_store().read().unwrap().1[&[u64::MAX, 0, 7, 2]].as_ref(),
+        &[1, 2, 3]
+    );
+    cloned
+        .payload_store()
+        .write()
+        .unwrap()
+        .1
+        .remove(&[u64::MAX, 0, 7, 2]);
+    assert_eq!(terrain.payload_store().read().unwrap().1.len(), 1);
 
     serialized = serde_json::to_value(&terrain).expect("payload remains caller-owned");
     assert!(serialized.get("payloads").is_none());
