@@ -5033,6 +5033,7 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
+ "helio-mats",
  "helio-pass-object-batch",
  "log",
  "pulsar_scenedb",

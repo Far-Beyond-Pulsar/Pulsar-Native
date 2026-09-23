@@ -1,11 +1,12 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer backed by SceneDB.
 
 use glam::{Mat4, Vec3};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use helio::{Camera, Renderer, RendererConfig};
 use helio_component::{PlanetTerrainFrameInput, PlanetTerrainRuntime};
+use helio_pass_voxel_mesh::VoxelMeshPass;
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 use crate::scene::{GizmoType, SceneWorldExt};
@@ -202,6 +203,7 @@ struct HelioInner {
     /// Transient execution state for the optional planetary pass.
     planet_terrain: Option<PlanetTerrainRuntime>,
     planet_graph_rebuilt: bool,
+    last_voxel_projection_errors: Vec<String>,
     /// Frame-pacing revision; never used as a renderer-side world mirror.
     last_scene_revision: u64,
     has_rendered_frame: bool,
@@ -381,6 +383,7 @@ impl HelioRenderer {
                 interaction: SceneInteraction::default(),
                 planet_terrain: None,
                 planet_graph_rebuilt: false,
+                last_voxel_projection_errors: Vec::new(),
                 last_scene_revision: 0,
                 has_rendered_frame: false,
             };
@@ -495,8 +498,9 @@ impl HelioRenderer {
 
         let needs_initial_scene_sync = !inner.has_rendered_frame;
         let force_scene_sync = self.pending_force_full_resync.swap(false, Ordering::AcqRel);
-        let has_pending_scene =
-            needs_initial_scene_sync || force_scene_sync || scene_revision != inner.last_scene_revision;
+        let has_pending_scene = needs_initial_scene_sync
+            || force_scene_sync
+            || scene_revision != inner.last_scene_revision;
         let has_pending_editor = self.pending_deselect.load(Ordering::Acquire)
             || self.pending_gizmo_mode.lock().is_ok_and(|g| g.is_some())
             || self.pending_force_full_resync.load(Ordering::Acquire);
@@ -511,7 +515,24 @@ impl HelioRenderer {
         let terrain_streaming = inner.planet_terrain.as_ref().is_some_and(|runtime| {
             runtime.renderer_ready(&inner.renderer) && runtime.has_pending_work(&inner.renderer)
         });
-        let has_pending_terrain = self.terrain.wants_advance() || terrain_streaming;
+        let voxel_streaming = {
+            let scene = self.scene_store.read();
+            let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene.world);
+            if errors != inner.last_voxel_projection_errors {
+                for error in &errors {
+                    tracing::warn!("{error}");
+                }
+                inner.last_voxel_projection_errors = errors;
+            }
+            inner
+                .renderer
+                .find_pass_mut::<VoxelMeshPass>()
+                .is_some_and(|pass| {
+                    pass.reconcile_scene_entries(entries, self.cam_pos.as_dvec3().to_array())
+                })
+        };
+        let has_pending_terrain =
+            self.terrain.wants_advance() || terrain_streaming || voxel_streaming;
         let is_idle = camera_stopped
             && !has_pending_scene
             && !has_pending_editor
@@ -1109,7 +1130,9 @@ impl HelioRenderer {
     pub fn select_object_atomic(&mut self, scene_db_id: Option<String>) -> bool {
         let exists = {
             let mut scene = self.scene_store.write();
-            let entity = scene_db_id.as_deref().and_then(|id| scene.world.entity_for(id));
+            let entity = scene_db_id
+                .as_deref()
+                .and_then(|id| scene.world.entity_for(id));
             scene.world.select(entity);
             scene_db_id.is_none() || entity.is_some()
         };
@@ -1151,7 +1174,9 @@ impl HelioRenderer {
         {
             return;
         }
-        let target = inner.interaction.pick(&store.world, ray_origin, ray_direction);
+        let target = inner
+            .interaction
+            .pick(&store.world, ray_origin, ray_direction);
         drop(store);
         self.select_object_atomic(target);
     }
@@ -1165,9 +1190,12 @@ impl HelioRenderer {
             .interaction
             .update_hover(&store.world, ray_origin, ray_direction, self.cam_pos);
         if inner.interaction.is_dragging() {
-            inner
-                .interaction
-                .update_drag(&mut store.world, ray_origin, ray_direction, self.cam_pos);
+            inner.interaction.update_drag(
+                &mut store.world,
+                ray_origin,
+                ray_direction,
+                self.cam_pos,
+            );
         }
     }
 

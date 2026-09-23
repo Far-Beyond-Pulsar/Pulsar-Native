@@ -85,11 +85,9 @@ fn live_payload_state_is_scene_owned_but_script_exfiltrated() {
 fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
     let mut world = pulsar_scenedb::World::new();
     let entity = world.spawn();
-    let terrain = VoxelTerrainComponent {
-        generator_id: "test.generator".into(),
-        seed: 1234,
-        ..VoxelTerrainComponent::default()
-    };
+    let mut terrain = VoxelTerrainComponent::default();
+    terrain.generator_id = "test.generator".into();
+    terrain.seed = 1234;
     let terrain_json = serde_json::to_value(&terrain).unwrap();
     assert!(pulsar_world_registry::hydrate_world_component_for_class(
         "VoxelTerrainComponent",
