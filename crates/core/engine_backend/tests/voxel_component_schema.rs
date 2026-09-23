@@ -13,7 +13,7 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
 
     let terrain = VoxelTerrainComponent::default();
     assert_eq!(terrain.domain_mode, 1);
-    assert_eq!(terrain.shape_mode, 0);
+    assert!(terrain.generator_id.is_empty());
     let terrain_json = serde_json::to_value(&terrain).expect("serialize terrain component");
     let terrain_restored: VoxelTerrainComponent =
         serde_json::from_value(terrain_json).expect("restore terrain component");
@@ -32,7 +32,7 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
 #[test]
 fn service_revision_is_persisted_but_not_exposed_as_an_inspector_property() {
     let properties = VoxelTerrainComponent::default().get_properties();
-    assert_eq!(properties.len(), 17);
+    assert_eq!(properties.len(), 15);
     assert!(properties
         .iter()
         .all(|property| property.name != "source_revision"));

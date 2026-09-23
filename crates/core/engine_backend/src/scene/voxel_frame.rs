@@ -228,14 +228,6 @@ pub(super) fn terrain_entry(
     if component.material_ids.len() > 255 {
         return Err("voxel material palette exceeds 255 IDs");
     }
-    if component.shape_mode > 1 {
-        return Err("shape_mode must be plane (0) or planet (1)");
-    }
-    if component.shape_mode == 1
-        && (!component.planet_radius.is_finite() || component.planet_radius <= 0.0)
-    {
-        return Err("planet_radius must be finite and positive");
-    }
     let voxel_size = component.voxel_size * scale;
     let domain = match component.domain_mode {
         0 => {
@@ -292,7 +284,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn projects_multiple_rows_with_generation_identity_and_rejects_bad_modes() {
+    fn projects_multiple_rows_with_generation_identity_and_rejects_bad_domains() {
         let mut world = World::new();
         let object = world.spawn();
         world.insert(object, VoxelComponent::default());
@@ -314,14 +306,14 @@ mod tests {
         world
             .get_mut::<VoxelTerrainComponent>(terrain)
             .unwrap()
-            .shape_mode = 99;
+            .domain_mode = 99;
         let (entries, errors) = project_voxel_entries(&world);
         assert_eq!(entries.len(), 1);
         assert_eq!(errors.len(), 1);
         world
             .get_mut::<VoxelTerrainComponent>(terrain)
             .unwrap()
-            .shape_mode = 0;
+            .domain_mode = 1;
         world
             .get_mut::<VoxelComponent>(object)
             .unwrap()
