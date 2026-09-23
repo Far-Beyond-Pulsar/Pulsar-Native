@@ -892,7 +892,7 @@ mod tests {
                     state.set_view(mode);
                     cx.notify();
                 });
-                window.draw(cx).clear(cx);
+                window.draw(cx).clear();
                 let labels = view.read(cx).labels.borrow();
                 assert!(!labels.is_empty());
                 for (kind, label) in labels.iter() {

@@ -2278,7 +2278,7 @@ mod tests {
             let handle = handle.clone();
             move |_, _| ScrollbarHarness { handle, axis, mode }
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         (cx, handle)
     }
 
@@ -2542,7 +2542,7 @@ mod tests {
                 mode: ScrollbarMode::Always,
             }
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let observed = Rc::new(RefCell::new(Vec::new()));
         let _subscription = cx.update(|_, cx| {
             let observed = observed.clone();
@@ -2569,8 +2569,8 @@ mod tests {
         update(-20., Duration::from_millis(16), cx);
         update(-30., Duration::from_millis(16), cx);
         // Rendering at 120 Hz must not bypass the configured 30 Hz timer.
-        cx.update(|window, cx| {
-            window.simulate_next_frame(cx);
+        cx.update(|window, _| {
+            window.refresh();
         });
         cx.run_until_parked();
         assert!(observed.borrow().is_empty());
@@ -2725,7 +2725,7 @@ mod tests {
                             ),
                         }
                     });
-                    cx.update(|window, cx| window.draw(cx).clear(cx));
+                    cx.update(|window, cx| window.draw(cx).clear());
                     let initial = painted.get();
                     let start = initial.center();
                     let grab = if vertical {
@@ -2752,7 +2752,7 @@ mod tests {
                     } else {
                         cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
                     }
-                    cx.update(|window, cx| window.draw(cx).clear(cx));
+                    cx.update(|window, cx| window.draw(cx).clear());
                     assert!(
                         (axis_value(painted.get().origin) + grab - axis_value(started_position))
                             .abs()
@@ -2776,7 +2776,7 @@ mod tests {
                                 Modifiers::default(),
                             );
                         }
-                        cx.update(|window, cx| window.draw(cx).clear(cx));
+                        cx.update(|window, cx| window.draw(cx).clear());
                         if delta == 0. {
                             reference_offset = axis_value(handle.offset());
                         }
@@ -2815,7 +2815,7 @@ mod tests {
                         "release must flush the last displacement"
                     );
                     let released_offset = handle.offset();
-                    cx.update(|window, cx| window.draw(cx).clear(cx));
+                    cx.update(|window, cx| window.draw(cx).clear());
                     assert_eq!(
                         handle.offset(),
                         released_offset,

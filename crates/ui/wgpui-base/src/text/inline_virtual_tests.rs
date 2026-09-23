@@ -48,7 +48,7 @@ fn document() -> String {
 
 fn settle(cx: &mut VisualTestContext) {
     cx.run_until_parked();
-    cx.update(|window, cx| window.draw(cx).clear(cx));
+    cx.update(|window, cx| window.draw(cx).clear());
     cx.run_until_parked();
 }
 

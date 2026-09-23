@@ -408,7 +408,7 @@ mod tests {
             let clicks = clicks.clone();
             move |_, _| TableHarness { clicks }
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
 
         let table = cx.debug_bounds("base-table").expect("table is rendered");
         assert_eq!(table.size.width, px(120.));

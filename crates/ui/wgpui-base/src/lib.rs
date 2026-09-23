@@ -15,6 +15,8 @@ pub mod auto_scroll;
 #[cfg(feature = "editor-core")]
 pub mod button;
 #[cfg(feature = "editor-core")]
+pub mod element_ext;
+#[cfg(feature = "editor-core")]
 pub mod geometry;
 #[cfg(feature = "editor-core")]
 pub mod global_state;
@@ -42,6 +44,8 @@ pub use auto_scroll::*;
 #[cfg(feature = "editor-core")]
 pub use button::*;
 #[cfg(feature = "editor-core")]
+pub use element_ext::*;
+#[cfg(feature = "editor-core")]
 pub use component_traits::*;
 #[cfg(feature = "editor-core")]
 pub use geometry::*;
@@ -65,6 +69,11 @@ pub use theme_tokens::SemanticThemeTokens;
 pub use theme::*;
 #[cfg(feature = "editor-core")]
 pub use touch_selection::*;
+
+#[cfg(feature = "editor-core")]
+pub fn init(cx: &mut gpui::App) {
+    input::init(cx);
+}
 
 /// Lightweight transition compatibility used by scrolling components.
 pub mod motion {

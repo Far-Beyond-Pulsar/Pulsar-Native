@@ -417,7 +417,7 @@ mod tests {
 
         cx.update(|window, cx| {
             state.update(cx, |state, cx| state.focus(window, cx));
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
         });
         cx.update(|window, cx| {
             assert!(

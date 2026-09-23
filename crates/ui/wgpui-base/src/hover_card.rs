@@ -310,21 +310,21 @@ mod tests {
     fn public_hover_card_owns_delayed_open_and_close(cx: &mut TestAppContext) {
         let delay = Duration::from_millis(100);
         let (_, cx) = cx.add_window_view(|_, _| Harness::default());
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
 
         cx.simulate_mouse_move(point(px(10.), px(10.)), None, gpui::Modifiers::default());
         cx.executor().advance_clock(delay);
         cx.run_until_parked();
         cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
+            window.draw(cx).clear();
         });
         assert!(cx.debug_bounds("hover-card-content").is_some());
 
         cx.simulate_mouse_move(point(px(100.), px(100.)), None, gpui::Modifiers::default());
         cx.executor().advance_clock(delay);
         cx.run_until_parked();
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(cx.debug_bounds("hover-card-content").is_none());
     }
 
@@ -339,7 +339,7 @@ mod tests {
                 ..Default::default()
             }
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
 
         cx.simulate_mouse_move(point(px(10.), px(10.)), None, gpui::Modifiers::default());
         assert_eq!(*open_changes.borrow(), Vec::<bool>::new());
@@ -347,15 +347,15 @@ mod tests {
         cx.executor().advance_clock(delay);
         cx.run_until_parked();
         cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
+            window.draw(cx).clear();
         });
         assert_eq!(*open_changes.borrow(), vec![true]);
 
         cx.simulate_mouse_move(point(px(100.), px(100.)), None, gpui::Modifiers::default());
         cx.executor().advance_clock(delay);
         cx.run_until_parked();
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert_eq!(*open_changes.borrow(), vec![true, false]);
     }
     #[gpui::test]
@@ -368,7 +368,7 @@ mod tests {
                 open_changes: changes,
             }
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         cx.simulate_mouse_move(point(px(10.), px(10.)), None, Default::default());
         cx.executor().advance_clock(Duration::from_secs(1));
         cx.run_until_parked();
@@ -376,8 +376,8 @@ mod tests {
 
         cx.simulate_click(point(px(10.), px(10.)), Default::default());
         cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
+            window.draw(cx).clear();
         });
         assert!(cx.debug_bounds("hover-card-content").is_some());
         cx.simulate_mouse_move(point(px(100.), px(100.)), None, Default::default());
@@ -386,20 +386,20 @@ mod tests {
         assert_eq!(*changes.borrow(), vec![true]);
 
         cx.simulate_click(point(px(10.), px(10.)), Default::default());
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(cx.debug_bounds("hover-card-content").is_none());
         assert_eq!(*changes.borrow(), vec![true, false]);
 
         cx.simulate_click(point(px(10.), px(10.)), Default::default());
         cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
+            window.draw(cx).clear();
         });
         let bounds = cx.debug_bounds("hover-card-content").unwrap();
         cx.simulate_click(bounds.center(), Default::default());
         assert_eq!(*changes.borrow(), vec![true, false, true]);
         cx.simulate_click(point(px(100.), px(100.)), Default::default());
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(cx.debug_bounds("hover-card-content").is_none());
         assert_eq!(*changes.borrow(), vec![true, false, true, false]);
     }

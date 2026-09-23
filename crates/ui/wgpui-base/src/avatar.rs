@@ -172,7 +172,7 @@ mod tests {
     #[gpui::test]
     fn image_slot_takes_precedence_over_fallback(cx: &mut gpui::TestAppContext) {
         let (_, cx) = cx.add_window_view(|_, _| Harness { image: true });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(cx.debug_bounds("avatar-image").is_some());
         assert!(cx.debug_bounds("avatar-fallback").is_none());
     }
@@ -180,7 +180,7 @@ mod tests {
     #[gpui::test]
     fn fallback_renders_without_an_image(cx: &mut gpui::TestAppContext) {
         let (_, cx) = cx.add_window_view(|_, _| Harness { image: false });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(cx.debug_bounds("avatar-image").is_none());
         assert!(cx.debug_bounds("avatar-fallback").is_some());
     }

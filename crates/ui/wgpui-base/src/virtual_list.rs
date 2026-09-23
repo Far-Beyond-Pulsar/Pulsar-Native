@@ -819,13 +819,13 @@ mod tests {
             }
         });
 
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let initial_range = visible_ranges.borrow().last().cloned().unwrap();
         assert_eq!(initial_range.start, 0);
         assert!(initial_range.end < item_sizes.len());
 
         scroll_handle.scroll_to_item(12, ScrollStrategy::Top);
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let scrolled_range = visible_ranges.borrow().last().cloned().unwrap();
         assert!(scrolled_range.contains(&12));
         match axis {
@@ -899,7 +899,7 @@ mod tests {
             }
         });
 
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(visible_ranges.borrow().is_empty());
     }
 }

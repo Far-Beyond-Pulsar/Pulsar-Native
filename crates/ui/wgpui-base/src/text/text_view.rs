@@ -912,7 +912,7 @@ mod tests {
         });
         cx.run_until_parked();
         cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
         });
         let bounds = root.read_with(cx, |root, cx| {
             root.view.read(cx).selection_adapter.text_bounds()
@@ -921,7 +921,7 @@ mod tests {
         for bounds in bounds {
             cx.simulate_click(bounds.center(), Modifiers::default());
             cx.update(|window, cx| {
-                window.draw(cx).clear(cx);
+                window.draw(cx).clear();
             });
         }
         assert_eq!(*captured.lock().unwrap(), vec!["one", "two"]);
@@ -938,7 +938,7 @@ mod tests {
             format: crate::text::SelectionFormat::Plain,
         });
         cx.run_until_parked();
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert_eq!(builds.load(Ordering::Relaxed), 0);
         let view = root.read_with(cx, |root, _| root.view.clone());
         let bounds = view.read_with(cx, |view, _| view.selection_adapter.text_bounds()[0]);
@@ -949,12 +949,12 @@ mod tests {
         cx.executor()
             .advance_clock(std::time::Duration::from_secs(1));
         cx.run_until_parked();
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(
             builds.load(Ordering::Relaxed) > 0,
             "hover did not build the card"
         );
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let card = cx
             .debug_bounds("inline-test-card")
             .expect("hover card should be painted");
@@ -978,7 +978,7 @@ mod tests {
                 view.set_selection_format(format, cx);
                 view.select_all(cx);
             });
-            cx.update(|window, cx| window.draw(cx).clear(cx));
+            cx.update(|window, cx| window.draw(cx).clear());
             assert_eq!(
                 view.read_with(cx, |view, _| view.selected_text()).trim(),
                 expected
@@ -1039,7 +1039,7 @@ mod tests {
                             cx.notify();
                         });
                         cx.run_until_parked();
-                        cx.update(|window, cx| window.draw(cx).clear(cx));
+                        cx.update(|window, cx| window.draw(cx).clear());
                         let bounds =
                             root.read_with(cx, |root, cx| root.text_view.read(cx).bounds());
                         let text_bounds = root.read_with(cx, |root, cx| {
@@ -1053,11 +1053,11 @@ mod tests {
                             point(last.right() - px(0.1), last.top() + last.size.height / 2.);
                         for (start, end) in [(left, right), (right, left)] {
                             cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
-                            cx.update(|window, cx| window.draw(cx).clear(cx));
+                            cx.update(|window, cx| window.draw(cx).clear());
                             cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::default());
-                            cx.update(|window, cx| window.draw(cx).clear(cx));
+                            cx.update(|window, cx| window.draw(cx).clear());
                             cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
-                            cx.update(|window, cx| window.draw(cx).clear(cx));
+                            cx.update(|window, cx| window.draw(cx).clear());
                             let selected = root
                                 .read_with(cx, |root, cx| root.text_view.read(cx).selected_text());
                             assert_eq!(
@@ -1089,7 +1089,7 @@ mod tests {
         });
         let cx: &mut VisualTestContext = cx;
         cx.run_until_parked();
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let before = root.read_with(cx, |root, cx| root.text_view.read(cx).bounds());
         let regions = root.read_with(cx, |root, cx| {
             root.text_view.read(cx).selection_adapter.text_bounds()
@@ -1099,11 +1099,11 @@ mod tests {
         let start = point(first.left() + px(0.1), first.top() + px(10.));
         let end = point(last.right() - px(0.1), last.top() + px(10.));
         cx.simulate_mouse_down(start, MouseButton::Left, Modifiers::default());
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         cx.simulate_mouse_move(end, MouseButton::Left, Modifiers::default());
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         cx.simulate_mouse_up(end, MouseButton::Left, Modifiers::default());
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert_eq!(
             root.read_with(cx, |root, cx| root.text_view.read(cx).selected_text())
                 .trim(),
@@ -1115,7 +1115,7 @@ mod tests {
                 .update(cx, |state, cx| state.invalidate_inline_layout(cx))
         });
         cx.run_until_parked();
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let after = root.read_with(cx, |root, cx| root.text_view.read(cx).bounds());
         assert!(after.size.height > before.size.height * 2.);
         assert_eq!(
@@ -1137,7 +1137,7 @@ mod tests {
         });
         let cx: &mut VisualTestContext = cx;
         cx.run_until_parked();
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let regions = root.read_with(cx, |root, cx| {
             root.text_view.read(cx).selection_adapter.text_bounds()
         });
@@ -1156,7 +1156,7 @@ mod tests {
             button: MouseButton::Left,
             click_count: 3,
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert_eq!(
             root.read_with(cx, |root, cx| root.text_view.read(cx).selected_text())
                 .trim(),
@@ -1166,7 +1166,7 @@ mod tests {
             root.source_format = true;
             cx.notify();
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert_eq!(
             root.read_with(cx, |root, cx| root.text_view.read(cx).selected_text())
                 .trim(),
@@ -1186,7 +1186,7 @@ mod tests {
         });
         let cx: &mut VisualTestContext = cx;
         cx.run_until_parked();
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let regions = root.read_with(cx, |root, cx| {
             root.text_view.read(cx).selection_adapter.text_bounds()
         });
@@ -1204,7 +1204,7 @@ mod tests {
             button: MouseButton::Left,
             click_count: 2,
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         // Two clicks stop at the object; only three take the whole line.
         assert_eq!(
             root.read_with(cx, |root, cx| root.text_view.read(cx).selected_text())
@@ -1260,7 +1260,7 @@ mod tests {
         // assertion below has to follow a real frame.
         let settle = |cx: &mut VisualTestContext| {
             cx.run_until_parked();
-            cx.update(|window, cx| window.draw(cx).clear(cx));
+            cx.update(|window, cx| window.draw(cx).clear());
             cx.run_until_parked();
         };
         settle(cx);
@@ -1343,7 +1343,7 @@ mod tests {
         let cx: &mut VisualTestContext = cx;
 
         cx.run_until_parked();
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let renders_after_redraw = renders.load(Ordering::Relaxed);
         cx.run_until_parked();
         assert_eq!(
@@ -1366,7 +1366,7 @@ mod tests {
         let cx: &mut VisualTestContext = cx;
 
         cx.run_until_parked();
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
 
         // `Image` keys the asset system by a hash of its bytes, so rebuilding it
         // from the same body finds the entry the text view's `img` registered

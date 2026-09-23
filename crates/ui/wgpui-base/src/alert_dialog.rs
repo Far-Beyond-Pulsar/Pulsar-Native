@@ -305,7 +305,7 @@ mod tests {
             let close_requested = close_requested.clone();
             move |_, _| Harness { close_requested }
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
 
         cx.simulate_click(point(px(20.), px(20.)), Default::default());
 

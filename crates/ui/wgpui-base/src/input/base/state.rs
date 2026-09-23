@@ -4459,11 +4459,7 @@ mod tests {
         struct Root(Entity<Panel>);
         impl Render for Root {
             fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-                div().size_full().child(
-                    self.0
-                        .clone()
-                        .cached(gpui::StyleRefinement::default().size_full()),
-                )
+                div().size_full().child(self.0.clone())
             }
         }
         cx.update(crate::init);
@@ -4580,11 +4576,7 @@ mod tests {
         struct Root(Entity<Panel>);
         impl Render for Root {
             fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-                div().size_full().child(
-                    self.0
-                        .clone()
-                        .cached(gpui::StyleRefinement::default().size_full()),
-                )
+                div().size_full().child(self.0.clone())
             }
         }
 

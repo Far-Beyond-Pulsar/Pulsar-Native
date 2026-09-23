@@ -666,7 +666,7 @@ mod tests {
         let captured = Arc::new(Mutex::new(None));
         let result = captured.clone();
         let (_, cx) = cx.add_window_view(move |_, _| Probe(captured));
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let node = result.lock().unwrap().take().unwrap();
         assert_eq!(node.role(), Role::Button);
         assert_eq!(node.label(), Some("Close"));
@@ -717,7 +717,7 @@ mod tests {
         });
         cx.update(|window, cx| {
             view.read(cx).focus.clone().focus(window, cx);
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
         });
         cx.simulate_click(point(px(20.), px(20.)), Default::default());
         cx.run_until_parked();
@@ -726,7 +726,7 @@ mod tests {
 
         cx.update(|window, cx| {
             view.read(cx).button_focus.clone().focus(window, cx);
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
         });
         let keystroke = Keystroke::parse("space").unwrap();
         cx.simulate_event(KeyDownEvent {
@@ -761,7 +761,7 @@ mod tests {
             let handle = handle.clone();
             move |_, _| TriggerHarness { handle }
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         cx.simulate_click(point(px(20.), px(20.)), Default::default());
 
         assert!(handle.is_open());
@@ -812,7 +812,7 @@ mod tests {
         });
         let viewport = cx.update(|window, cx| {
             let viewport = window.viewport_size();
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
             viewport
         });
 

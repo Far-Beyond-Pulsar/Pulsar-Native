@@ -2849,12 +2849,12 @@ mod tests {
         let syntax = vec![(
             0..8,
             HighlightStyle {
-                color: Some(gpui::blue()),
+                color: Some(gpui::blue().into()),
                 ..Default::default()
             },
         )];
         let decoration = HighlightStyle {
-            color: Some(gpui::red()),
+            color: Some(gpui::red().into()),
             font_style: Some(gpui::FontStyle::Italic),
             ..Default::default()
         };
@@ -2862,7 +2862,7 @@ mod tests {
         let styles = compose_decorations(syntax, [(2..6, decoration)], 0..8).unwrap();
 
         assert_eq!(styles[1].0, 2..6);
-        assert_eq!(styles[1].1.color, Some(gpui::red()));
+        assert_eq!(styles[1].1.color, Some(gpui::red().into()));
         assert_eq!(styles[1].1.font_style, Some(gpui::FontStyle::Italic));
     }
 
@@ -2944,7 +2944,8 @@ mod tests {
         let run = TextRun {
             len: 0,
             font: gpui::font(".SystemUIFont"),
-            color: gpui::black(),
+            color: gpui::black().into(),
+            letter_spacing: None,
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -3093,7 +3094,8 @@ mod tests {
         let run = TextRun {
             len: 0,
             font: gpui::font(".SystemUIFont"),
-            color: gpui::black(),
+            color: gpui::black().into(),
+            letter_spacing: None,
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -3131,7 +3133,8 @@ mod tests {
         let run = TextRun {
             len: 0,
             font: gpui::font(".SystemUIFont"),
-            color: gpui::blue(),
+            color: gpui::blue().into(),
+            letter_spacing: None,
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -3210,7 +3213,8 @@ mod tests {
         let run = TextRun {
             len: 0,
             font: gpui::font(".SystemUIFont"),
-            color: gpui::blue(),
+            color: gpui::blue().into(),
+            letter_spacing: None,
             background_color: None,
             underline: None,
             strikethrough: None,
@@ -3237,12 +3241,12 @@ mod tests {
             result.iter().map(|run| run.len).collect::<Vec<_>>(),
             vec![3, 2, 2, 5, 1, 23]
         );
-        assert_eq!(result[0].color, gpui::blue());
-        assert_eq!(result[1].color, gpui::black());
-        assert_eq!(result[2].color, gpui::black());
-        assert_eq!(result[3].color, gpui::black());
-        assert_eq!(result[4].color, gpui::black());
-        assert_eq!(result[5].color, gpui::blue());
+        assert_eq!(result[0].color, gpui::blue().into());
+        assert_eq!(result[1].color, gpui::black().into());
+        assert_eq!(result[2].color, gpui::black().into());
+        assert_eq!(result[3].color, gpui::black().into());
+        assert_eq!(result[4].color, gpui::black().into());
+        assert_eq!(result[5].color, gpui::blue().into());
     }
 
     #[test]

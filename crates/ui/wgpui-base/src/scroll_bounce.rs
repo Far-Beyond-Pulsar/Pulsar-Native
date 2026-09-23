@@ -459,7 +459,7 @@ mod tests {
     }
 
     fn draw(cx: &mut VisualTestContext) {
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
     }
 
     fn scroll(cx: &mut VisualTestContext, delta: f32, phase: TouchPhase) {

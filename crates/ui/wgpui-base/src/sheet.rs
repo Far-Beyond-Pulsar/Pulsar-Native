@@ -220,7 +220,7 @@ mod tests {
             }
         });
         cx.update(|window, cx| focus.focus(window, cx));
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         (cx, events)
     }
 
@@ -261,7 +261,7 @@ mod tests {
                 events,
             }
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         cx.simulate_click(point(px(20.), px(20.)), Default::default());
         assert!(events.borrow().is_empty());
         cx.simulate_click(point(px(20.), px(80.)), Default::default());

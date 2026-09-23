@@ -271,7 +271,7 @@ mod tests {
                 keyboard_changes,
             }
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         (cx, changes, keyboard_changes)
     }
 
@@ -289,7 +289,7 @@ mod tests {
         let (cx, changes, keyboard_changes) = harness(cx, false, false);
         cx.simulate_click(point(px(10.), px(10.)), Modifiers::default());
         changes.borrow_mut().clear();
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
 
         for key in ["enter", "space"] {
             let keystroke = Keystroke::parse(key).unwrap();
@@ -349,7 +349,7 @@ mod tests {
             let captured = captured.clone();
             move |_, _| AlignmentProbe(captured)
         });
-        context.update(|window, cx| window.draw(cx).clear(cx));
+        context.update(|window, cx| window.draw(cx).clear());
 
         let (root, child) = *captured.lock().unwrap();
         assert_eq!(
@@ -445,7 +445,7 @@ mod tests {
         let captured: Captured = Arc::new(Mutex::new(None));
         let result = captured.clone();
         let (_, cx) = cx.add_window_view(move |_, _| Probe(captured));
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let (enabled, disabled) = result.lock().unwrap().take().unwrap();
         assert_eq!(enabled.role(), Role::Button);
         assert_eq!(enabled.label(), Some("Bold"));
