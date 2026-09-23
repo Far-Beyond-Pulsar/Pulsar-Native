@@ -1,13 +1,130 @@
-//! SceneDB voxel row projection into the specialized Helio pass.
+//! SceneDB voxel row projection for renderer-independent voxel sources.
 //!
 //! This copies configuration and Arc capabilities only. Canonical payload
-//! bytes remain in component rows and are selected by the pass's CPU worker.
+//! bytes remain in component rows and are selected by the consuming backend.
 
 use helio_component::{VoxelComponent, VoxelTerrainComponent};
-use helio_pass_voxel_mesh::{VoxelCubeInit, VoxelDomain, VoxelEntryId, VoxelSceneEntry};
+use helio_voxel_data::{
+    VoxelBatchRevision, VoxelChunkBatch, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload,
+    VoxelChunkUpdate, VoxelDomain, VoxelPayloadStore, VoxelSourceId, VoxelSourceWriter,
+    VoxelTerrainId, VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
+};
 use pulsar_scenedb::{Entity, World};
 
 use crate::scene::Transform;
+
+/// SceneDB entity bits include its generation; kind distinguishes source rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct VoxelEntryId {
+    pub entity_bits: u64,
+    pub kind: u8,
+}
+
+/// CPU description of one live SceneDB voxel source, independent of a renderer.
+#[derive(Clone)]
+pub struct VoxelSceneEntry {
+    pub id: VoxelEntryId,
+    pub store: VoxelPayloadStore,
+    pub domain: VoxelDomain,
+    pub source_revision: u64,
+    pub origin: [f64; 3],
+    pub voxel_size: f64,
+    pub material_ids: Vec<u32>,
+    pub initial_cube: Option<VoxelCubeInit>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct VoxelCubeInit {
+    pub dimensions: [u32; 3],
+    pub material_slot: u8,
+}
+
+/// Initialize a deserialized object before source edits. This runs off-frame.
+pub fn initialize_empty_cube(entry: &VoxelSceneEntry) -> Result<bool, String> {
+    let Some(init) = entry.initial_cube else {
+        return Ok(false);
+    };
+    let state = entry
+        .store
+        .read()
+        .map_err(|_| "voxel store lock poisoned".to_string())?;
+    let uninitialized = state.0 == 0 && state.1.is_empty();
+    drop(state);
+    if !uninitialized {
+        return Ok(false);
+    }
+    let writer = VoxelSourceWriter::new(
+        VoxelTerrainId(u128::from(entry.id.entity_bits)),
+        VoxelSourceId(0),
+        entry.store.clone(),
+    );
+    if init.dimensions.iter().any(|&size| size == 0 || size > 256)
+        || init.material_slot == 0
+        || usize::from(init.material_slot) > entry.material_ids.len()
+    {
+        return Err("initial cube dimensions or material slot are invalid".into());
+    }
+    let mut chunks = Vec::new();
+    for z in 0..init.dimensions[2].div_ceil(8) {
+        for y in 0..init.dimensions[1].div_ceil(8) {
+            for x in 0..init.dimensions[0].div_ceil(8) {
+                let mut samples = [0u8; 512];
+                for lz in 0..8 {
+                    for ly in 0..8 {
+                        for lx in 0..8 {
+                            if x * 8 + lx < init.dimensions[0]
+                                && y * 8 + ly < init.dimensions[1]
+                                && z * 8 + lz < init.dimensions[2]
+                            {
+                                samples[(lz * 64 + ly * 8 + lx) as usize] = init.material_slot;
+                            }
+                        }
+                    }
+                }
+                chunks.push((
+                    VoxelChunkKey::new(i64::from(x), i64::from(y), i64::from(z), 0),
+                    samples,
+                ));
+            }
+        }
+    }
+    let ops: Vec<_> = chunks
+        .iter()
+        .map(|(key, samples)| {
+            VoxelChunkOp::Upsert(VoxelChunkUpdate {
+                key: *key,
+                payload: VoxelChunkPayload {
+                    encoding: VOXEL_CHUNK_ENCODING_RAW,
+                    schema_version: VOXEL_CHUNK_SCHEMA_VERSION,
+                    bytes: samples,
+                },
+            })
+        })
+        .collect();
+    match writer.publish_batch(&VoxelChunkBatch {
+        terrain: VoxelTerrainId(u128::from(entry.id.entity_bits)),
+        source: VoxelSourceId(0),
+        revision: VoxelBatchRevision {
+            expected: 0,
+            publish: 1,
+        },
+        domain: entry.domain,
+        ops: &ops,
+    }) {
+        Ok(_) => Ok(true),
+        Err(error) => {
+            let state = entry
+                .store
+                .read()
+                .map_err(|_| "voxel store lock poisoned".to_string())?;
+            if state.0 > 0 || !state.1.is_empty() {
+                Ok(false)
+            } else {
+                Err(format!("initial cube publication failed: {error:?}"))
+            }
+        }
+    }
+}
 
 pub fn project_voxel_entries(world: &World) -> (Vec<VoxelSceneEntry>, Vec<String>) {
     let mut entries = Vec::new();
@@ -40,7 +157,7 @@ fn origin_scale(world: &World, entity: Entity) -> Result<([f64; 3], f64), &'stat
         .iter()
         .any(|v| !v.is_finite() || v.abs() > 1.0e-5)
     {
-        return Err("rotated voxel transforms are unsupported by the current pass");
+        return Err("rotated voxel source transforms are unsupported");
     }
     let [sx, sy, sz] = transform.scale;
     if !sx.is_finite() || sx <= 0.0 || (sx - sy).abs() > 1.0e-5 || (sx - sz).abs() > 1.0e-5 {
@@ -91,7 +208,6 @@ pub(super) fn object_entry(
         origin,
         voxel_size: component.voxel_size * scale,
         material_ids: component.material_ids.clone(),
-        smooth_surface: component.smooth_surface,
         initial_cube: Some(VoxelCubeInit {
             dimensions: component.dimensions,
             material_slot: u8::try_from(component.default_material_slot)
@@ -167,7 +283,6 @@ pub(super) fn terrain_entry(
         origin,
         voxel_size,
         material_ids: component.material_ids.clone(),
-        smooth_surface: component.smooth_surface,
         initial_cube: None,
     })
 }

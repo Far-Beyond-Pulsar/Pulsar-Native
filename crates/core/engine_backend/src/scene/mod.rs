@@ -19,7 +19,6 @@ pub mod mesh_frame;
 #[cfg(feature = "render")]
 pub mod voxel_frame;
 #[cfg(feature = "render")]
-pub mod voxel_generation;
 #[cfg(feature = "render")]
 pub mod voxel_source;
 

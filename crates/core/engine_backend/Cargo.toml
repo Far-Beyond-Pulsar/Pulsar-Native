@@ -20,7 +20,7 @@ toml = { workspace = true }
 workspace = true
 
 [dependencies]
-helio-pass-voxel-mesh.workspace = true
+helio-voxel-data.workspace = true
 engine_subsystems = { workspace = true }
 ui_gen_macros = { workspace = true }
 pebble = { package = "PebbleVault", version = "0.7.0" }

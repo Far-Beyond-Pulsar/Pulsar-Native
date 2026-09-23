@@ -1,14 +1,12 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer backed by SceneDB.
 
 use glam::{Mat4, Vec3};
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use helio::{Camera, Renderer, RendererConfig};
-use helio_pass_voxel_mesh::{VoxelChunkGenerator, VoxelMeshPass};
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
-use crate::scene::voxel_generation::VoxelTerrainGenerationManager;
 use crate::scene::{GizmoType, SceneWorldExt};
 
 use super::interaction::SceneInteraction;
@@ -151,8 +149,6 @@ pub struct HelioRenderer {
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
     pub pending_errors: Arc<Mutex<Vec<String>>>,
 
-    voxel_generation: VoxelTerrainGenerationManager,
-
     inner: Option<HelioInner>,
 
     // ── Camera State ──
@@ -194,7 +190,6 @@ struct HelioInner {
     renderer: Renderer,
     queue: Arc<wgpu::Queue>,
     interaction: SceneInteraction,
-    last_voxel_projection_errors: Vec<String>,
     /// Frame-pacing revision; never used as a renderer-side world mirror.
     last_scene_revision: u64,
     has_rendered_frame: bool,
@@ -215,7 +210,6 @@ impl HelioRenderer {
             reset_taa_next_frame: false,
             inner: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
-            voxel_generation: VoxelTerrainGenerationManager::default(),
             cam_pos: Vec3::new(8.0, 6.0, 12.0),
             cam_yaw: -0.5,
             cam_pitch: -0.3,
@@ -265,17 +259,6 @@ impl HelioRenderer {
 
     pub fn spike_log_config(&self) -> RenderSpikeLogConfig {
         self.spike_log_config
-    }
-
-    /// Register a CPU-only external voxel source by stable descriptor ID and
-    /// version. Components persist only that descriptor, never executable code.
-    pub fn register_voxel_generator_adapter(
-        &mut self,
-        id: impl Into<String>,
-        version: u32,
-        adapter: Arc<dyn VoxelChunkGenerator>,
-    ) -> Result<(), String> {
-        self.voxel_generation.register_adapter(id, version, adapter)
     }
 
     /// Called each GPUI frame from the viewport.
@@ -381,7 +364,6 @@ impl HelioRenderer {
                 renderer: r,
                 queue: queue_arc.clone(),
                 interaction: SceneInteraction::default(),
-                last_voxel_projection_errors: Vec::new(),
                 last_scene_revision: 0,
                 has_rendered_frame: false,
             };
@@ -496,37 +478,9 @@ impl HelioRenderer {
             || self.pending_force_full_resync.load(Ordering::Acquire);
         let camera_stopped = self.cam_local_velocity.length_squared() <= CAMERA_IDLE_EPSILON
             && !self.had_camera_input;
-        let voxel_streaming = if let Some(scene) = self.scene_store.try_read() {
-            let (entries, mut errors) =
-                crate::scene::voxel_frame::project_voxel_entries(&scene.world);
-            let generating = self
-                .voxel_generation
-                .reconcile(&scene.world, self.cam_pos.as_dvec3().to_array());
-            errors.extend(self.voxel_generation.errors().iter().cloned());
-            if errors != inner.last_voxel_projection_errors {
-                for error in &errors {
-                    tracing::warn!("{error}");
-                }
-                inner.last_voxel_projection_errors = errors;
-            }
-            let voxel_residency =
-                inner
-                    .renderer
-                    .find_pass_mut::<VoxelMeshPass>()
-                    .is_some_and(|pass| {
-                        pass.reconcile_scene_entries(entries, self.cam_pos.as_dvec3().to_array())
-                    });
-            generating || voxel_residency
-        } else {
-            // A scene writer owns the lock this frame. Keep the renderer awake
-            // and retry without waiting for it on the frame callback.
-            true
-        };
-        let has_pending_voxels = voxel_streaming;
         let is_idle = camera_stopped
             && !has_pending_scene
             && !has_pending_editor
-            && !has_pending_voxels
             && !self.gizmo_dirty
             && !viewport_resized
             && !self.reset_taa_next_frame;

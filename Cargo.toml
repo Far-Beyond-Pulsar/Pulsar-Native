@@ -163,7 +163,7 @@ plugin_manager        = { path = "crates/core/plugin_manager" }
 helio                      = { path = "crates/renderer/helio/crates/helio" }
 helio-asset-compat         = { path = "crates/renderer/helio/crates/helio-asset-compat" }
 helio-default-graphs       = { path = "crates/renderer/helio/crates/helio-default-graphs" }
-helio-pass-voxel-mesh = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-voxel-mesh" }
+helio-voxel-data = { path = "crates/renderer/helio/crates/helio-voxel-data" }
 helio-pass-billboard = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-billboard" }
 helio-pass-forward-lit = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-forward-lit" }
 helio-pass-decal = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-decal" }

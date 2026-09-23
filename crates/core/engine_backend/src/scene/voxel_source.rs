@@ -3,17 +3,16 @@
 use std::sync::Arc;
 
 use helio_component::{VoxelComponent, VoxelTerrainComponent};
-use helio_pass_voxel_mesh::{
-    VoxelChunkBatch, VoxelDomain, VoxelEditClose, VoxelEditJob, VoxelEditTicket, VoxelEditWorker,
+use helio_voxel_data::{
+    VoxelChunkBatch, VoxelEditClose, VoxelEditJob, VoxelEditTicket, VoxelEditWorker,
     VoxelEditWorkerStatus, VoxelInboxBatch, VoxelInboxClose, VoxelInboxLimits,
     VoxelPublicationOutcome, VoxelPublicationStatus, VoxelPublicationTicket,
-    VoxelPublicationWorker, VoxelSampleEdit, VoxelSceneEntry, VoxelSourceId, VoxelSourceWriter,
-    VoxelTerrainId,
+    VoxelPublicationWorker, VoxelSampleEdit, VoxelSourceId, VoxelSourceWriter, VoxelTerrainId,
 };
 use pulsar_scenedb::{Entity, World};
 
 use super::{
-    voxel_frame::{object_entry, terrain_entry},
+    voxel_frame::{initialize_empty_cube, object_entry, terrain_entry, VoxelSceneEntry},
     SharedScene,
 };
 
@@ -54,7 +53,7 @@ impl VoxelSourceSession {
         drop(guard);
         // A newly created or deserialized cube must exist in the canonical
         // store before edits can publish their first revision.
-        helio_pass_voxel_mesh::initialize_empty_cube(&entry)?;
+        initialize_empty_cube(&entry)?;
         let writer = VoxelSourceWriter::new(
             VoxelTerrainId(u128::from(entity.bits())),
             source,
@@ -95,7 +94,6 @@ impl VoxelSourceSession {
             && current.origin == self.entry.origin
             && current.voxel_size == self.entry.voxel_size
             && current.material_ids == self.entry.material_ids
-            && current.smooth_surface == self.entry.smooth_surface
             && current.initial_cube == self.entry.initial_cube)
     }
 
@@ -170,8 +168,7 @@ impl VoxelSourceSession {
     /// Caller-owned in-memory export; run off the frame thread for large maps.
     pub fn snapshot(
         &self,
-    ) -> Result<helio_pass_voxel_mesh::VoxelTerrainSnapshot, helio_pass_voxel_mesh::VoxelUpdateError>
-    {
+    ) -> Result<helio_voxel_data::VoxelTerrainSnapshot, helio_voxel_data::VoxelUpdateError> {
         self.writer.snapshot()
     }
 
@@ -250,12 +247,12 @@ mod tests {
             .unwrap();
         assert!(matches!(
             ticket.wait(),
-            helio_pass_voxel_mesh::VoxelEditTicketState::Published(_)
+            helio_voxel_data::VoxelEditTicketState::Published(_)
         ));
         let snapshot = session.snapshot().unwrap();
-        let chunk = helio_pass_voxel_mesh::VoxelMaterialChunk::decode(
+        let chunk = helio_voxel_data::VoxelMaterialChunk::decode(
             snapshot
-                .get(helio_pass_voxel_mesh::VoxelChunkKey::new(0, 0, 0, 0))
+                .get(helio_voxel_data::VoxelChunkKey::new(0, 0, 0, 0))
                 .unwrap(),
         )
         .unwrap();
@@ -277,7 +274,7 @@ mod tests {
 
     #[test]
     fn accepted_batch_completes_in_old_store_after_row_replacement() {
-        use helio_pass_voxel_mesh::{
+        use helio_voxel_data::{
             VoxelBatchRevision, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload, VoxelChunkUpdate,
             VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
         };
@@ -341,7 +338,7 @@ mod tests {
         assert!(
             matches!(
                 state,
-                helio_pass_voxel_mesh::VoxelPublicationTicketState::Published(_)
+                helio_voxel_data::VoxelPublicationTicketState::Published(_)
             ),
             "{state:?}"
         );
@@ -352,7 +349,7 @@ mod tests {
 
     #[test]
     fn failed_batch_can_be_rebased_and_retried_from_new_session() {
-        use helio_pass_voxel_mesh::{
+        use helio_voxel_data::{
             VoxelBatchRevision, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload, VoxelChunkUpdate,
             VoxelPublicationTicketState, VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
         };
