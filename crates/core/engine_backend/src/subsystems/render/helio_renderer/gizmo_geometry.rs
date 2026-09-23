@@ -13,6 +13,20 @@ pub(super) struct Mesh {
     pub handle: Handle,
     pub triangles: Vec<[Vec3; 3]>,
 }
+/// Non-interactive quarter-disc grid, bounded by the inner edge of the arc.
+pub(super) fn rotation_grid(axis: usize, signs: Vec3) -> Vec<[Vec3; 2]> {
+    let u = Vec3::AXES[(axis + 1) % 3] * signs[(axis + 1) % 3];
+    let v = Vec3::AXES[(axis + 2) % 3] * signs[(axis + 2) % 3];
+    let radius = 0.81_f32;
+    let mut lines = Vec::with_capacity(18);
+    for step in 0..9 {
+        let offset = radius * step as f32 / 9.0;
+        let extent = (radius * radius - offset * offset).sqrt();
+        lines.push([u * offset, u * offset + v * extent]);
+        lines.push([v * offset, v * offset + u * extent]);
+    }
+    lines
+}
 fn quad(tris: &mut Vec<[Vec3; 3]>, a: Vec3, b: Vec3, c: Vec3, d: Vec3) {
     tris.extend([[a, b, c], [a, c, d]]);
 }
@@ -51,20 +65,26 @@ fn build(mode: GizmoType) -> Vec<Mesh> {
             for j in 0..96 {
                 let t = j as f32 * std::f32::consts::TAU / 96.0;
                 let s = (j + 1) as f32 * std::f32::consts::TAU / 96.0;
-                // Continuous solid tube, with the same triangles used for picking.
-                for k in 0..8 {
-                    let vertex = |a: f32, b: f32| {
-                        let radial = u * a.cos() + v * a.sin();
-                        radial * (0.85 + 0.024 * b.cos()) + axis * (0.024 * b.sin())
-                    };
-                    let b = k as f32 * std::f32::consts::TAU / 8.0;
-                    let c = (k + 1) as f32 * std::f32::consts::TAU / 8.0;
+                // Broad annular ribbon with a thin solid edge, not a wire tube.
+                let vertex = |a: f32, radius: f32, height: f32| {
+                    (u * a.cos() + v * a.sin()) * radius + axis * height
+                };
+                for height in [-0.006, 0.006] {
                     quad(
                         &mut triangles,
-                        vertex(t, b),
-                        vertex(s, b),
-                        vertex(s, c),
-                        vertex(t, c),
+                        vertex(t, 0.81, height),
+                        vertex(s, 0.81, height),
+                        vertex(s, 0.89, height),
+                        vertex(t, 0.89, height),
+                    );
+                }
+                for radius in [0.81, 0.89] {
+                    quad(
+                        &mut triangles,
+                        vertex(t, radius, -0.006),
+                        vertex(s, radius, -0.006),
+                        vertex(s, radius, 0.006),
+                        vertex(t, radius, 0.006),
                     );
                 }
             }

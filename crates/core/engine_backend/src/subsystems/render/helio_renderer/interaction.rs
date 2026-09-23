@@ -1,5 +1,5 @@
 //! Transform handles with shared solid geometry for drawing and picking.
-use super::gizmo_geometry::{meshes, Handle};
+use super::gizmo_geometry::{meshes, rotation_grid, Handle};
 use crate::scene::{GizmoType, ObjectType, SceneWorldExt, StableId, Transform, Visibility};
 use glam::{EulerRot, Mat3, Mat4, Quat, Vec2, Vec3};
 use helio::Renderer;
@@ -132,13 +132,62 @@ impl SceneInteraction {
         }
         Some((entity, *world.get::<Transform>(entity)?))
     }
+    fn handle_visible(&self, handle: Handle, pivot: Vec3, basis: Mat3, length: f32) -> bool {
+        let Some(center) = self.view.project(pivot) else {
+            return false;
+        };
+        let projected = |i| {
+            self.view
+                .project(pivot + basis.col(i) * length)
+                .map(|p| p - center)
+        };
+        match handle {
+            Handle::Axis(i) if self.mode != GizmoType::Rotate => {
+                projected(i).is_some_and(|v| v.length() > 12.0)
+            }
+            Handle::Plane(i) => match (projected((i + 1) % 3), projected((i + 2) % 3)) {
+                (Some(a), Some(b)) => a.perp_dot(b).abs() * 0.04 > 16.0,
+                _ => false,
+            },
+            _ => true,
+        }
+    }
+    fn triangle_visible(&self, handle: Handle, tri: &[Vec3; 3], pivot: Vec3, basis: Mat3) -> bool {
+        if self.mode != GizmoType::Rotate {
+            return true;
+        }
+        let Handle::Axis(i) = handle else {
+            return true;
+        };
+        let signs = self.quadrant_signs(pivot, basis);
+        let center = (tri[0] + tri[1] + tri[2]) / 3.0;
+        // Display only the camera-facing quadrant; picking uses the identical mask.
+        [(i + 1) % 3, (i + 2) % 3]
+            .into_iter()
+            .all(|j| center[j] * signs[j] >= -0.0001)
+    }
+    fn quadrant_signs(&self, pivot: Vec3, basis: Mat3) -> Vec3 {
+        let toward_camera = basis.transpose() * (self.view.position - pivot);
+        // Independent axis signs select an octant, never a continuously turning billboard.
+        Vec3::from_array(
+            toward_camera
+                .to_array()
+                .map(|v| if v < -0.0001 { -1.0 } else { 1.0 }),
+        )
+    }
     fn hit(&self, t: Transform, cursor: Vec2) -> Option<Handle> {
         let pivot = Vec3::from_array(t.position);
         let length = self.view.length(pivot)?;
         let basis = rotation_matrix(t);
         let mut best: Option<(f32, f32, Handle)> = None;
         for mesh in meshes(self.mode) {
+            if !self.handle_visible(mesh.handle, pivot, basis, length) {
+                continue;
+            }
             for tri in &mesh.triangles {
+                if !self.triangle_visible(mesh.handle, tri, pivot, basis) {
+                    continue;
+                }
                 let points = tri.map(|p| pivot + basis * p * length);
                 let [Some(a), Some(b), Some(c)] = points.map(|p| self.view.project(p)) else {
                     continue;
@@ -270,7 +319,19 @@ impl SceneInteraction {
                 };
                 let axis = basis.col(i);
                 if axis.dot(drag.view.forward).abs() > 0.15 {
-                    let Some(angle) = rotation_angle(o, d, pivot, basis, i) else {
+                    let center = drag.view.project(pivot).unwrap();
+                    if cursor.distance(center) < 8.0 {
+                        return;
+                    }
+                    let Some(angle) = projected_ring_angle(
+                        drag.view,
+                        pivot,
+                        basis,
+                        i,
+                        drag.length,
+                        cursor,
+                        drag.previous_angle,
+                    ) else {
                         return;
                     };
                     let step = (angle - drag.previous_angle + std::f32::consts::PI)
@@ -334,7 +395,27 @@ impl SceneInteraction {
         let active = self.drag.map(|d| d.handle).or(self.hovered);
         // Submit the complete widget under one lock and upload generation.
         renderer.debug_batch(|batch| {
+            if self.mode == GizmoType::Rotate {
+                let signs = self.quadrant_signs(pivot, basis);
+                for axis in 0..3 {
+                    let color = match axis {
+                        0 => [0.8, 0.42, 0.38, 0.45],
+                        1 => [0.48, 0.75, 0.4, 0.45],
+                        _ => [0.4, 0.6, 0.85, 0.45],
+                    };
+                    for [a, b] in rotation_grid(axis, signs) {
+                        batch.line(
+                            (pivot + basis * a * length).to_array(),
+                            (pivot + basis * b * length).to_array(),
+                            color,
+                        );
+                    }
+                }
+            }
             for mesh in meshes(self.mode) {
+                if !self.handle_visible(mesh.handle, pivot, basis, length) {
+                    continue;
+                }
                 let base = if active == Some(mesh.handle) {
                     [1.0, 0.8, 0.12, 1.0]
                 } else {
@@ -346,6 +427,9 @@ impl SceneInteraction {
                     }
                 };
                 for tri in &mesh.triangles {
+                    if !self.triangle_visible(mesh.handle, tri, pivot, basis) {
+                        continue;
+                    }
                     let [a, b, c] = tri.map(|p| pivot + basis * p * length);
                     let n = (b - a).cross(c - a).normalize_or_zero();
                     let shade = 0.65 + 0.35 * n.dot(Vec3::new(0.3, 0.8, 0.5).normalize()).abs();
@@ -359,6 +443,46 @@ impl SceneInteraction {
             }
         });
     }
+}
+fn projected_ring_angle(
+    view: View,
+    pivot: Vec3,
+    basis: Mat3,
+    axis: usize,
+    length: f32,
+    cursor: Vec2,
+    previous: f32,
+) -> Option<f32> {
+    let point = |angle: f32| {
+        view.project(
+            pivot
+                + length
+                    * 0.85
+                    * (basis.col((axis + 1) % 3) * angle.cos()
+                        + basis.col((axis + 2) % 3) * angle.sin()),
+        )
+    };
+    let mut angle = previous;
+    // Follow the local projected arc rather than intersecting a nearly parallel plane.
+    // Keeping the previous angle as the seed preserves the branch across full turns.
+    for _ in 0..16 {
+        let p = point(angle)?;
+        let tangent = (point(angle + 0.001)? - point(angle - 0.001)?) / 0.002;
+        if tangent.length_squared() < 4.0 {
+            break;
+        }
+        let mut step = ((cursor - p).dot(tangent) / tangent.length_squared()).clamp(-0.25, 0.25);
+        let error = cursor.distance_squared(p);
+        // Damping prevents oscillation when the pointer strays far outside the ring.
+        while step.abs() > 0.00001 && cursor.distance_squared(point(angle + step)?) > error {
+            step *= 0.5;
+        }
+        angle += step;
+        if step.abs() < 0.00001 {
+            break;
+        }
+    }
+    Some(angle)
 }
 fn segment_distance(p: Vec2, a: Vec2, b: Vec2) -> f32 {
     let ab = b - a;
@@ -574,6 +698,134 @@ mod tests {
         assert!((t.rotation[2] - 90.0).abs() < 0.01);
         assert_eq!(t.position, pivot.to_array());
         assert_eq!(t.scale, [1.0; 3]);
+    }
+
+    #[test]
+    fn projected_rotation_tracks_oblique_rings_through_multiple_turns() {
+        let (_, interaction, _) = setup(GizmoType::Rotate);
+        let pivot = Vec3::new(0.0, 0.0, -10.0);
+        let length = interaction.view.length(pivot).unwrap();
+        for tilt in [0.0_f32, 0.7, 1.3] {
+            let basis = Mat3::from_rotation_x(tilt);
+            let mut previous = 0.4;
+            for frame in 1..=1440 {
+                let expected = 0.4 + frame as f32 * std::f32::consts::TAU / 720.0;
+                let position = pivot
+                    + length
+                        * 0.85
+                        * (basis.col(0) * expected.cos() + basis.col(1) * expected.sin());
+                let cursor = interaction.view.project(position).unwrap();
+                let angle = projected_ring_angle(
+                    interaction.view,
+                    pivot,
+                    basis,
+                    2,
+                    length,
+                    cursor,
+                    previous,
+                )
+                .unwrap();
+                assert!(
+                    (angle - expected).abs() < 0.001,
+                    "tilt={tilt} frame={frame} angle={angle} expected={expected}"
+                );
+                assert!((angle - previous).abs() < 0.02);
+                previous = angle;
+            }
+        }
+    }
+
+    #[test]
+    fn hidden_rotation_quadrants_do_not_capture() {
+        let (world, interaction, entity) = setup(GizmoType::Rotate);
+        let t = *world.get::<Transform>(entity).unwrap();
+        let pivot = Vec3::from_array(t.position);
+        let length = interaction.view.length(pivot).unwrap();
+        let hidden = interaction
+            .view
+            .project(pivot - Vec3::new(0.6, 0.6, 0.0) * length)
+            .unwrap();
+        assert_eq!(interaction.hit(t, hidden), None);
+    }
+
+    #[test]
+    fn arcs_and_grids_share_camera_facing_quadrants() {
+        let (_, mut interaction, _) = setup(GizmoType::Rotate);
+        for x in [-1.0, 1.0] {
+            for y in [-1.0, 1.0] {
+                for z in [-1.0, 1.0] {
+                    let signs = Vec3::new(x, y, z);
+                    interaction.view.position = signs * 10.0;
+                    assert_eq!(
+                        interaction.quadrant_signs(Vec3::ZERO, Mat3::IDENTITY),
+                        signs
+                    );
+                    interaction.view.position *= Vec3::new(0.2, 3.0, 0.7);
+                    assert_eq!(
+                        interaction.quadrant_signs(Vec3::ZERO, Mat3::IDENTITY),
+                        signs
+                    );
+                    for mesh in meshes(GizmoType::Rotate) {
+                        let visible = mesh
+                            .triangles
+                            .iter()
+                            .filter(|tri| {
+                                interaction.triangle_visible(
+                                    mesh.handle,
+                                    tri,
+                                    Vec3::ZERO,
+                                    Mat3::IDENTITY,
+                                )
+                            })
+                            .count();
+                        assert_eq!(visible * 4, mesh.triangles.len());
+                        let Handle::Axis(axis) = mesh.handle else {
+                            unreachable!()
+                        };
+                        let grid = rotation_grid(axis, signs);
+                        assert_eq!(grid.len(), 18);
+                        assert_eq!(grid[0][0], Vec3::ZERO);
+                        for [a, b] in grid {
+                            assert!(a.length() <= 0.81001);
+                            assert!((b.length() - 0.81).abs() < 0.00001);
+                            assert_eq!(a[axis], 0.0);
+                            assert_eq!(b[axis], 0.0);
+                            assert!((a * signs).min_element() >= 0.0);
+                            assert!((b * signs).min_element() >= 0.0);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rotation_remains_stable_far_outside_ring() {
+        let (_, interaction, _) = setup(GizmoType::Rotate);
+        let pivot = Vec3::new(0.0, 0.0, -10.0);
+        let length = interaction.view.length(pivot).unwrap();
+        let center = interaction.view.project(pivot).unwrap();
+        let mut previous = 0.4;
+        for frame in 1..=360 {
+            let expected = 0.4 + frame as f32 * 0.01;
+            let on_ring = interaction
+                .view
+                .project(pivot + length * 0.85 * Vec3::new(expected.cos(), expected.sin(), 0.0))
+                .unwrap();
+            let cursor = center + (on_ring - center) * 5.0;
+            let angle = projected_ring_angle(
+                interaction.view,
+                pivot,
+                Mat3::IDENTITY,
+                2,
+                length,
+                cursor,
+                previous,
+            )
+            .unwrap();
+            assert!((angle - expected).abs() < 0.002);
+            previous = angle;
+        }
     }
 
     fn spawn_cube(world: &mut World, id: &str, z: f32) {
