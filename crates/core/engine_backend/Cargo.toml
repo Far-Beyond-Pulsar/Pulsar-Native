@@ -7,10 +7,12 @@ version = "0.1.34"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+serde_json = { workspace = true }
 # Test-only -- blocks on wgpu's async adapter/device requests in the
 # Transform GPU-mirror test (scene/world_store.rs), same pinned version
 # `helio-component` already uses for the identical purpose.
 pollster = "=0.4.0"
+helio-pass-voxel-mesh.workspace = true
 
 [build-dependencies]
 toml = { workspace = true }

@@ -9,6 +9,7 @@
 pub mod attachments;
 pub mod components;
 pub mod instance;
+pub mod payload_catalog;
 pub mod world_ext;
 
 use serde::{Deserialize, Serialize};
@@ -18,6 +19,9 @@ pub use components::{
     Name, Parent, RenderProps, Selected, SiblingIndex, StableId, Transform, Visibility,
 };
 pub use instance::{ComponentInstance, EditorObjectId};
+pub use payload_catalog::{
+    ContentId, PayloadCatalog, PayloadCatalogError, PayloadMutation, PayloadRef,
+};
 pub use world_ext::{SceneError, SceneWorldExt, SpawnObject};
 
 /// Same type as [`EditorObjectId`]; the alias the editor spells it as.

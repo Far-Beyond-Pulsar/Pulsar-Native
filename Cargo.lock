@@ -2936,6 +2936,7 @@ dependencies = [
  "helio-pass-decal",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
+ "helio-pass-voxel-mesh",
  "helio-pass-water-sim",
  "helio_component",
  "libloading 0.9.0",
