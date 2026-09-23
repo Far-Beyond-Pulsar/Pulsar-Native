@@ -273,7 +273,6 @@ fn generate() {
         &world,
         root.join("assets/default.level"),
         Some(start_camera()),
-        None,
     )
     .expect("level saves");
 }
