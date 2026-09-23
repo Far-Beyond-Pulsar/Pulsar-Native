@@ -206,7 +206,10 @@ mod tests {
         let entity = {
             let mut scene = scene.write();
             let entity = scene.world.spawn();
-            scene.world.insert(entity, VoxelComponent::default());
+            // Deserialization intentionally omits runtime payloads.
+            let serialized = serde_json::to_value(VoxelComponent::default()).unwrap();
+            let restored: VoxelComponent = serde_json::from_value(serialized).unwrap();
+            scene.world.insert(entity, restored);
             entity
         };
         let session = VoxelSourceSession::open(
@@ -273,6 +276,7 @@ mod tests {
         )
         .unwrap();
         let old_store = session.entry.store.clone();
+        assert_eq!(old_store.read().unwrap().0, 0);
         let held = old_store.write().unwrap();
         let payload: Arc<[u8]> = Arc::from([0u8]);
         let ops = [VoxelChunkOp::Upsert(VoxelChunkUpdate {
@@ -289,8 +293,8 @@ mod tests {
                     terrain: session.terrain_id(),
                     source: VoxelSourceId(4),
                     revision: VoxelBatchRevision {
-                        expected: 1,
-                        publish: 2,
+                        expected: 0,
+                        publish: 1,
                     },
                     domain: session.entry.domain,
                     ops: &ops,
@@ -312,11 +316,15 @@ mod tests {
         assert!(!Arc::ptr_eq(&old_store, &new_store));
         assert!(!session.is_attached().unwrap());
         drop(held);
-        assert!(matches!(
-            ticket.wait(),
-            helio_pass_voxel_mesh::VoxelPublicationTicketState::Published(_)
-        ));
-        assert_eq!(old_store.read().unwrap().0, 2);
+        let state = ticket.wait();
+        assert!(
+            matches!(
+                state,
+                helio_pass_voxel_mesh::VoxelPublicationTicketState::Published(_)
+            ),
+            "{state:?}"
+        );
+        assert_eq!(old_store.read().unwrap().0, 1);
         assert_eq!(new_store.read().unwrap().0, 0);
         session.finish(VoxelInboxClose::Drain);
     }
