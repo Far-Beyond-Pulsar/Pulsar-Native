@@ -218,6 +218,21 @@ fn resolve(
 mod tests {
     use super::*;
 
+    fn admit_when_ready(
+        mut submit: impl FnMut() -> Result<VoxelPublicationTicket, String>,
+    ) -> VoxelPublicationTicket {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        loop {
+            match submit() {
+                Ok(ticket) => return ticket,
+                Err(error) if error.ends_with(": Busy") && std::time::Instant::now() < deadline => {
+                    std::thread::yield_now();
+                }
+                Err(error) => panic!("voxel batch was not admitted: {error}"),
+            }
+        }
+    }
+
     #[test]
     fn session_submits_deformation_and_rejects_after_component_removal() {
         let scene: SharedScene = Arc::new(parking_lot::RwLock::new(pulsar_scenedb::SceneDb::new()));
@@ -305,8 +320,8 @@ mod tests {
                 bytes: &payload,
             },
         })];
-        let ticket = session
-            .try_submit_chunks(
+        let ticket = admit_when_ready(|| {
+            session.try_submit_chunks(
                 &VoxelChunkBatch {
                     terrain: session.terrain_id(),
                     source: VoxelSourceId(4),
@@ -319,7 +334,7 @@ mod tests {
                 },
                 &[payload.clone()],
             )
-            .unwrap();
+        });
         {
             let mut scene = scene.write();
             scene.world.remove::<VoxelComponent>(entity);
@@ -380,8 +395,8 @@ mod tests {
                 bytes: &payload,
             },
         })];
-        let ticket = session
-            .try_submit_chunks(
+        let ticket = admit_when_ready(|| {
+            session.try_submit_chunks(
                 &VoxelChunkBatch {
                     terrain: session.terrain_id(),
                     source: VoxelSourceId(4),
@@ -394,7 +409,7 @@ mod tests {
                 },
                 &[payload.clone()],
             )
-            .unwrap();
+        });
         assert!(matches!(
             ticket.wait(),
             VoxelPublicationTicketState::Failed(_)
@@ -407,13 +422,14 @@ mod tests {
             publish: 1,
         };
         let replacement = open();
-        let retry = replacement.try_retry_chunks(&retained).unwrap();
+        let retry = admit_when_ready(|| replacement.try_retry_chunks(&retained));
         assert!(matches!(
             retry.wait(),
             VoxelPublicationTicketState::Published(_)
         ));
-        assert_eq!(replacement.publication_status().unwrap().retried_batches, 1);
         assert_eq!(replacement.snapshot().unwrap().revision(), 1);
-        replacement.finish(VoxelInboxClose::Drain);
+        let (outcome, _, panicked) = replacement.finish(VoxelInboxClose::Drain);
+        assert!(!panicked);
+        assert_eq!(outcome.retried_batches, 1);
     }
 }
