@@ -144,6 +144,7 @@ fn tool_camera_frame(
 /// - Camera mode selection and controls
 /// - Visual option toggles (grid, wireframe, lighting)
 pub struct ViewportPanel {
+    cached_frame_snapshot: EngineFrameSnapshot,
     /// Helio viewport entity for GPU rendering
     viewport: Entity<HelioViewport>,
 
@@ -223,6 +224,7 @@ impl ViewportPanel {
 
         Self {
             viewport,
+            cached_frame_snapshot: EngineFrameSnapshot::default(),
             viewport_controls: ViewportControls::new(),
             render_enabled,
             element_bounds: Rc::new(RefCell::new(None)),

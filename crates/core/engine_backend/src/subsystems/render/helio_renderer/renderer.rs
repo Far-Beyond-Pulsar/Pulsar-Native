@@ -47,6 +47,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// must not collapse into "latest wins."
 #[derive(Debug, Clone, Copy)]
 pub enum PendingPointerEvent {
+    /// Latest-wins pointer position.  Unlike clicks, intermediate hover
+    /// positions have no semantic value and must not build up a queue during
+    /// a high-Hz mouse drag.
+    MouseMove { norm_x: f32, norm_y: f32 },
     LeftClick { norm_x: f32, norm_y: f32 },
     LeftRelease,
 }
@@ -396,6 +400,19 @@ impl HelioRenderer {
             // First frame must render (lazy init includes nothing visible)
         }
 
+        let previous_viewport_size = self.viewport_size;
+        self.viewport_size = (width, height);
+        self.configure_gizmo_view();
+
+        if let Some(inner) = &mut self.inner {
+            if let Ok(mut pending) = self.pending_gizmo_mode.lock() {
+                if let Some(mode) = pending.take() {
+                    inner.interaction.set_mode(mode);
+                    self.gizmo_dirty = true;
+                }
+            }
+        }
+
         // ── Pending pointer events (queued by the UI thread, see
         // `PendingPointerEvent`'s doc) ──────────────────────────────────────────
         // Drained unconditionally, before `self.inner` is borrowed below and
@@ -422,6 +439,10 @@ impl HelioRenderer {
             profiling::profile_scope!("helio_pointer_events");
             for event in pending_pointer_events {
                 match event {
+                    PendingPointerEvent::MouseMove { norm_x, norm_y } => {
+                        profiling::profile_scope!("helio_handle_mouse_move");
+                        self.handle_mouse_move(norm_x, norm_y);
+                    }
                     PendingPointerEvent::LeftClick { norm_x, norm_y } => {
                         profiling::profile_scope!("helio_handle_left_click");
                         self.handle_left_click(norm_x, norm_y);
@@ -464,6 +485,8 @@ impl HelioRenderer {
             profiling::profile_scope!("helio_camera_input");
             self.apply_camera_input(dt);
         }
+        self.configure_gizmo_view();
+        self.viewport_size = previous_viewport_size;
 
         // Reconcile the terrain runtime with the scene's planets before the
         // idle check below reads `planet_terrain` -- creating or retiring a
@@ -1126,8 +1149,8 @@ impl HelioRenderer {
         let (width, height) = self.viewport_size;
         let width = width.max(1) as f32;
         let height = height.max(1) as f32;
-        let x = norm_x.clamp(0.0, 1.0) * 2.0 - 1.0;
-        let y = 1.0 - norm_y.clamp(0.0, 1.0) * 2.0;
+        let x = norm_x * 2.0 - 1.0;
+        let y = 1.0 - norm_y * 2.0;
         let (sy, cy) = self.cam_yaw.sin_cos();
         let (sp, cp) = self.cam_pitch.sin_cos();
         let forward = Vec3::new(sy * cp, sp, -cy * cp);
@@ -1141,6 +1164,7 @@ impl HelioRenderer {
     }
 
     pub fn handle_left_click(&mut self, norm_x: f32, norm_y: f32) {
+        self.configure_gizmo_view();
         self.gizmo_dirty = true;
         let (ray_origin, ray_direction) = self.build_pick_ray(norm_x, norm_y);
         let Some(inner) = &mut self.inner else { return };
@@ -1157,17 +1181,20 @@ impl HelioRenderer {
     }
 
     pub fn handle_mouse_move(&mut self, norm_x: f32, norm_y: f32) {
-        self.gizmo_dirty = true;
+        self.configure_gizmo_view();
         let (ray_origin, ray_direction) = self.build_pick_ray(norm_x, norm_y);
         let Some(inner) = &mut self.inner else { return };
-        let mut store = self.scene_store.write();
-        inner
-            .interaction
-            .update_hover(&store.world, ray_origin, ray_direction, self.cam_pos);
         if inner.interaction.is_dragging() {
+            let mut store = self.scene_store.write();
             inner
                 .interaction
                 .update_drag(&mut store.world, ray_origin, ray_direction, self.cam_pos);
+            self.gizmo_dirty = true;
+        } else {
+            let store = self.scene_store.read();
+            self.gizmo_dirty |= inner.interaction.update_hover(
+                &store.world, ray_origin, ray_direction, self.cam_pos,
+            );
         }
     }
 
@@ -1175,6 +1202,22 @@ impl HelioRenderer {
         self.gizmo_dirty = true;
         if let Some(inner) = &mut self.inner {
             inner.interaction.cancel_drag();
+        }
+    }
+
+    fn configure_gizmo_view(&mut self) {
+        let (sy, cy) = self.cam_yaw.sin_cos();
+        let (sp, cp) = self.cam_pitch.sin_cos();
+        let forward = Vec3::new(sy * cp, sp, -cy * cp);
+        let (w, h) = self.viewport_size;
+        let size = self.camera_input.lock().ok()
+            .map(|input| glam::Vec2::new(input.viewport_width, input.viewport_height))
+            .filter(|size| size.x > 1.0 && size.y > 1.0)
+            .unwrap_or(glam::Vec2::new(w.max(1) as f32, h.max(1) as f32));
+        let projection = Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, w.max(1) as f32 / h.max(1) as f32, 0.1, 10_000.0);
+        let view = Mat4::look_at_rh(self.cam_pos, self.cam_pos + forward, Vec3::Y);
+        if let Some(inner) = &mut self.inner {
+            inner.interaction.set_view(self.cam_pos, forward, projection * view, size);
         }
     }
     fn sync_planet_graph(inner: &mut HelioInner, error_queue: &Arc<Mutex<Vec<String>>>) {

@@ -10,6 +10,7 @@ pub(super) fn handle_mouse_move(
     state_arc_move: Arc<parking_lot::RwLock<LevelEditorState>>,
     terrain_api_for_move: Option<engine_backend::services::terrain_edit::TerrainEditApi>,
     gpu_engine_move: Arc<Mutex<GpuRenderer>>,
+    pointer_events_move: Option<Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>>,
     element_bounds_move: Rc<RefCell<Option<Bounds<Pixels>>>>,
     last_mouse_pos: Rc<RefCell<Option<(f32, f32)>>>,
 ) {
@@ -101,8 +102,8 @@ pub(super) fn handle_mouse_move(
                             let local_x = pos_x - origin_x;
                             let local_y = pos_y - origin_y;
                             (
-                                (local_x / width).clamp(0.0, 1.0),
-                                (local_y / height).clamp(0.0, 1.0),
+                                local_x / width.max(1.0),
+                                local_y / height.max(1.0),
                                 width,
                                 height,
                             )
@@ -115,16 +116,12 @@ pub(super) fn handle_mouse_move(
                     *last_pos = Some((norm_x, norm_y));
                     drop(last_pos);
 
-                    // Read the live camera in the same non-blocking pass that
-                    // forwards the move to Helio, so the tool-mode ray below
-                    // is built from this frame's camera and not a stale one
-                    // captured when the element tree was assembled.
+                    // Read the live camera in the same non-blocking pass for
+                    // tool-mode dispatch. Gizmo interaction itself is queued
+                    // above and runs on the render thread.
                     let mut camera_state = None;
-                    if let Ok(mut engine) = gpu_engine_move.try_lock() {
+                    if let Ok(engine) = gpu_engine_move.try_lock() {
                         camera_state = engine.editor_camera_state();
-                        if !is_rotating && !is_panning {
-                            engine.handle_mouse_move(norm_x, norm_y);
-                        }
                     }
 
                     // Tool-mode dispatch for continuous input. `Drag` is what
@@ -140,7 +137,7 @@ pub(super) fn handle_mouse_move(
                     } else {
                         crate::level_editor::tool_modes::PointerKind::Hover
                     };
-                    dispatch_tool_pointer(
+                    let consumed = dispatch_tool_pointer(
                         &state_arc_move,
                         &gpu_engine_move,
                         terrain_api_for_move.as_ref(),
@@ -151,7 +148,28 @@ pub(super) fn handle_mouse_move(
                         norm_x,
                         norm_y,
                         event.modifiers,
-                    );
+                    ) == crate::level_editor::tool_modes::ToolPointerResult::Consumed;
+                    if consumed { return; }
+                    // Queue the latest hover/drag position for the render
+                    // thread. The old direct try_lock path dropped movement
+                    // whenever a frame was rendering, which made gizmos feel
+                    // one or more frames behind the cursor.
+                    if let Some(events) = &pointer_events_move {
+                        if let Ok(mut events) = events.lock() {
+                            let next = engine_backend::subsystems::render::PendingPointerEvent::MouseMove {
+                                norm_x,
+                                norm_y,
+                            };
+                            if matches!(events.last(), Some(engine_backend::subsystems::render::PendingPointerEvent::MouseMove { .. })) {
+                                if let Some(last) = events.last_mut() {
+                                    *last = next;
+                                }
+                            } else {
+                                events.push(next);
+                            }
+                        }
+                    }
+
 }
 
 pub(super) fn handle_right_mouse_down(
@@ -411,9 +429,14 @@ pub(super) fn handle_left_mouse_down(
                     // Tool-mode dispatch: give the active mode first refusal on the
                     // click (design doc §4.5). LevelEdit always returns `PassThrough`,
                     // so this is byte-for-byte the prior behavior for today's default mode.
+                    // Mouse-down must stay non-blocking.  The render thread
+                    // owns the authoritative gizmo interaction and the click
+                    // is queued below; waiting for a whole frame here makes a
+                    // press look like it only registered after the user has
+                    // already started dragging.
                     let camera = tool_camera_frame(
                         gpu_engine_click
-                            .lock()
+                            .try_lock()
                             .ok()
                             .and_then(|e| e.editor_camera_state()),
                     );

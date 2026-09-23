@@ -4769,6 +4769,7 @@ dependencies = [
  "helio-pass-object-batch",
  "helio-pass-shadow-matrix",
  "pulsar_scenedb",
+ "twox-hash",
  "wgpu",
 ]
 

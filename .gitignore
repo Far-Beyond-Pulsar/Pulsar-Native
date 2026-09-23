@@ -37,3 +37,4 @@ blueprint_graph_debug.json
 /.opencode
 *.lg
 .env
+*.db
