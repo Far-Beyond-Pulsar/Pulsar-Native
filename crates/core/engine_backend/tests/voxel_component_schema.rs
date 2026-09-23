@@ -30,6 +30,34 @@ fn service_revision_is_persisted_but_not_exposed_as_an_inspector_property() {
 }
 
 #[test]
+fn live_payload_state_is_scene_owned_but_script_exfiltrated() {
+    use std::sync::Arc;
+
+    let terrain = VoxelTerrainComponent::default();
+    let properties = terrain.get_properties();
+    assert!(properties.iter().all(|property| property.name != "payloads"));
+
+    let mut serialized = serde_json::to_value(&terrain).expect("serialize authored config");
+    assert!(serialized.get("payloads").is_none());
+    {
+        let store_handle = terrain.payload_store();
+        let mut store = store_handle.write().unwrap();
+        store.1.insert([u64::MAX, 0, 7, 2], Arc::from([1, 2, 3]));
+        store.0 = 1;
+    }
+
+    // Scripts opt in to exfiltration by retaining the component's runtime
+    // store handle; default component serialization omits live payload bytes.
+    let export = terrain.payload_store();
+    let snapshot = export.read().unwrap();
+    assert_eq!(snapshot.0, 1);
+    assert_eq!(snapshot.1.get(&[u64::MAX, 0, 7, 2]).unwrap().as_ref(), &[1, 2, 3]);
+
+    serialized = serde_json::to_value(&terrain).expect("payload remains caller-owned");
+    assert!(serialized.get("payloads").is_none());
+}
+
+#[test]
 fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
     let mut world = pulsar_scenedb::World::new();
     let entity = world.spawn();
