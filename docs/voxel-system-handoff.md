@@ -60,7 +60,7 @@ Phase 3 commit series (parent repo): `87e90453` (SceneDB batch round trip), `a2f
 
 ## Phase 5: completed pass foundation
 
-`VoxelSourceSession` binds the wake-driven `VoxelPublicationWorker` and `VoxelEditWorker` to one SceneDB entity generation and component payload store. Submission uses bounded, nonblocking admission; tickets expose published, failed, retained, or discarded work. A removed or replaced row rejects new submissions from the old session, while accepted work may safely complete in its captured store. The blocking writer runs on CPU workers, never in the render callback.
+`VoxelSourceSession` binds the wake-driven `VoxelPublicationWorker` and `VoxelEditWorker` to one SceneDB entity generation and component payload store. Submission uses bounded, nonblocking admission; tickets expose published, failed, retained, or discarded work. Retained batches can be reviewed, rebased, and submitted to a fresh session with `try_retry_chunks`; accepted retries are counted in status and finish outcomes. A removed or replaced row rejects new submissions from the old session, while accepted work may safely complete in its captured store. The blocking writer runs on CPU workers, never in the render callback.
 
 The renderer projects each live voxel row into `VoxelSceneEntry` using its stable entity generation and kind. `VoxelSceneFeed` selects and prepares bounded nearby canonical chunks on a CPU worker. `VoxelResidency` tracks revisioned per-entry GPU slots, evicts only transient data, stages at most 64 bricks per frame, and promotes a complete replacement after its final staged upload. The pass keeps old complete output during staging and exposes queue, upload, residency, eviction, rebuild, and stale-result metrics. The generic renderer and SceneDB buffer seam remain free of voxel-specific data interpretation.
 
@@ -96,14 +96,14 @@ Independent review result is summarized immediately above. It was read-only and 
 
 ### Phase 6 — component behavior, generators, and update workflows
 
-`VoxelComponent::default()` is a filled 16³ cube with a one-entry SceneDB material palette. A deserialized cube with an empty runtime store is populated once by the CPU scene worker. `VoxelSourceSession::open(scene, entity, kind, source, limits)` then supports nonblocking `try_submit_chunks` and `try_submit_edits`, status/tickets, a caller-owned in-memory snapshot, and explicit `finish(Drain|Discard)`. Sample edits affect the canonical chunk store and trigger revisioned redraw. The session checks entity generation, store identity, configuration, and editability before each new submission.
+`VoxelComponent::default()` is a filled 16³ cube with a one-entry SceneDB material palette. A deserialized cube with an empty runtime store is populated once by the CPU scene worker or before the first source-session edit. `VoxelSourceSession::open(scene, entity, kind, source, limits)` supports nonblocking `try_submit_chunks`, `try_retry_chunks`, and `try_submit_edits`, status/tickets, a caller-owned in-memory snapshot, and explicit `finish(Drain|Discard)`. Sample edits affect the canonical chunk store and trigger revisioned redraw. The session checks entity generation, store identity, configuration, and editability before each new submission.
 
 `VoxelTerrainComponent` supports bounded and unbounded domains, flat and planet shape modes, deterministic built-in generators `helio.flat` and `helio.planet`, seed and version identity, and CPU-only registered external adapters. `generator_parameters` is JSON with `base_height`, `amplitude`, `wavelength`, and `material_slot`; the manager schedules a bounded 5³ camera window on CPU workers and publishes complete generated batches to the canonical store. An empty `generator_id` selects externally supplied chunks. Script/tool callers may explicitly export/import snapshots; the engine does not persist runtime payloads. Invalid modes, transforms, palette slots, and unsupported mixed LOD sets report errors.
 
 ### Phase 5–6 validation (2026-09-23)
 
 - `cargo test --locked --offline -p helio-pass-voxel-mesh` passed 54 unit tests, the generic opaque-buffer contract, and the GPU pipeline portability test in the isolated Helio worktree. The GPU draw test ran on the local RTX 3060 and produced inspected blocky and smooth captures with adjacent red/green materials.
-- `cargo test --locked --offline -p engine_backend --lib voxel_ --quiet` passed 6 focused library tests, including a deserialized cube edited before its first render. `cargo test --locked --offline -p engine_backend --test voxel_component_schema --quiet` passed 5 integration tests.
+- `cargo test --locked --offline -p engine_backend --lib voxel_ --quiet` passed 7 focused library tests, including a deserialized cube edited before its first render and a failed batch rebased and retried through a new session. `cargo test --locked --offline -p engine_backend --test voxel_component_schema --quiet` passed 5 integration tests.
 - The pass has per-frame upload limits and staging metrics. The tests prove the first render path and bounded work contracts; they do not establish total frame time, distant LOD correctness, or steady-state canonical memory use under the Phase 8 workload.
 
 ### Phase 7 — migrate and remove old implementation
@@ -116,7 +116,7 @@ Use the exact agreed release workload and external proprietary game checkout; do
 
 ## Git/worktree and validation notes
 
-- The active Pulsar branch is `codex/unified-voxel-phase5-6` (`1c52cc091`, `26d968767`, `b908059f2` for the SceneDB bridge, generation/source service, and deserialized-cube test). Helio integration is `codex/unified-voxel-integration`; this checkout pins Helio `9498b7d2`.
+- The active Pulsar branch is `codex/unified-voxel-phase5-6` (`1c52cc091`, `26d968767`, `b908059f2`, `5022173bb` for the SceneDB bridge, generation/source service, deserialized-cube test, and retry API). Helio integration is `codex/unified-voxel-integration`; this checkout pins Helio `5511687e`.
 - Phase 5 acceptance-doc commit is parent `d48a5716`.
 - A prior Pulsar checkout had unrelated dirty user changes. The current `C:\Users\thiag\Documents\GitHub\Pulsar-Native` checkout was fast-forwarded to `origin/main` on 2026-09-23; the removed `crates/graphics/wgpu/` submodule checkout remains untracked and untouched.
 - The main Helio checkout has unrelated dirty HLFS paths (`light_grid.wgsl`, `src/lib.rs`, and `key_selection_tests.rs`). Preserve them.
