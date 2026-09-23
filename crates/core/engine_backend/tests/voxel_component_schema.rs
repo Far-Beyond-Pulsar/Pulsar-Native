@@ -28,3 +28,38 @@ fn service_revision_is_persisted_but_not_exposed_as_an_inspector_property() {
     assert_eq!(properties.len(), 20);
     assert!(properties.iter().all(|property| property.name != "source_revision"));
 }
+
+#[test]
+fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
+    let mut world = pulsar_scenedb::World::new();
+    let entity = world.spawn();
+    let terrain = VoxelTerrainComponent {
+        generator_id: "test.generator".into(),
+        seed: 1234,
+        ..VoxelTerrainComponent::default()
+    };
+    let terrain_json = serde_json::to_value(&terrain).unwrap();
+    assert!(pulsar_world_registry::hydrate_world_component_for_class(
+        "VoxelTerrainComponent",
+        &mut world,
+        entity,
+        &terrain_json,
+    )
+    .unwrap());
+    let hydrated = world
+        .get::<VoxelTerrainComponent>(entity)
+        .expect("typed SceneDB component");
+    assert_eq!(hydrated.generator_id, "test.generator");
+    assert_eq!(hydrated.seed, 1234);
+
+    let voxel = VoxelComponent::default();
+    let voxel_json = serde_json::to_value(&voxel).unwrap();
+    assert!(pulsar_world_registry::hydrate_world_component_for_class(
+        "VoxelComponent",
+        &mut world,
+        entity,
+        &voxel_json,
+    )
+    .unwrap());
+    assert!(world.get::<VoxelComponent>(entity).is_some());
+}
