@@ -8,7 +8,7 @@ use crate::{
     theme::ActiveTheme as _,
 };
 use gpui::{
-    Anchor, App, Axis, Background, BorderStyle, Bounds, ContentMask, CursorStyle, Edges, Element,
+    App, Axis, Background, BorderStyle, Bounds, ContentMask, Corner, CursorStyle, Edges, Element,
     ElementId, EntityId, GlobalElementId, Hitbox, HitboxBehavior, Hsla, InspectorElementId,
     IntoElement, IsZero, LayoutId, ListState, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
     PaintQuad, Pixels, Point, Position, ScrollHandle, ScrollWheelEvent, Size, Style,
@@ -1303,7 +1303,7 @@ impl Element for Scrollbar {
         let motion = base_theme.scrollbar.motion();
         // Always-visible scrollbars skip visibility motion but still animate
         // their activity width. Reduced motion snaps every channel.
-        let reduce_motion = cx.reduce_motion();
+        let reduce_motion = false;
         let (enter, exit) = if !mode.is_always() && !reduce_motion {
             (motion.enter(), motion.exit())
         } else {
@@ -1503,14 +1503,14 @@ impl Element for Scrollbar {
             // The clickable area of the thumb
             let thumb_length = geometry.length;
             let thumb_bounds = if is_vertical {
-                Bounds::from_anchor_and_size(
-                    Anchor::TopRight,
+                Bounds::from_corner_and_size(
+                    Corner::TopRight,
                     bounds.top_right() + point(-inset, thumb_start),
                     size(track_width, thumb_length),
                 )
             } else {
-                Bounds::from_anchor_and_size(
-                    Anchor::BottomLeft,
+                Bounds::from_corner_and_size(
+                    Corner::BottomLeft,
                     bounds.bottom_left() + point(thumb_start, -inset),
                     size(thumb_length, track_width),
                 )
@@ -1518,14 +1518,14 @@ impl Element for Scrollbar {
 
             // The actual render area of the thumb
             let thumb_fill_bounds = if is_vertical {
-                Bounds::from_anchor_and_size(
-                    Anchor::TopRight,
+                Bounds::from_corner_and_size(
+                    Corner::TopRight,
                     bounds.top_right() + point(-inset, thumb_start),
                     size(thumb_width, thumb_length),
                 )
             } else {
-                Bounds::from_anchor_and_size(
-                    Anchor::BottomLeft,
+                Bounds::from_corner_and_size(
+                    Corner::BottomLeft,
                     bounds.bottom_left() + point(thumb_start, -inset),
                     size(thumb_length, thumb_width),
                 )

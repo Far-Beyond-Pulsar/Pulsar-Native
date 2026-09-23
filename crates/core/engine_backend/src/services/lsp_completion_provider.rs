@@ -98,27 +98,11 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
             return Task::ready(Ok(lsp_types::CompletionResponse::Array(vec![])));
         }
 
-        tracing::debug!("[LSP COMPLETION] BEFORE ensure_document_open_with_ra");
-        self.ensure_document_open_with_ra(text, cx);
-        tracing::debug!("[LSP COMPLETION] AFTER ensure_document_open_with_ra");
-
-        // Send didChange to keep rust-analyzer in sync with current editor content.
-        // This is essential: without it, rust-analyzer uses stale content from the original didOpen.
-        if self.did_open_sent.load(Ordering::Relaxed) {
-            let content = text.to_string();
-            let path = self.file_path.clone();
-            let version = self.text_version.fetch_add(1, Ordering::Relaxed) + 1;
-            let _ = self.analyzer.update(cx, move |analyzer, _| {
-                if let Err(e) = analyzer.did_change_file(&path, &content, version) {
-                    tracing::debug!("[LSP SYNC] didChange failed: {}", e);
-                } else {
-                    tracing::debug!(
-                        "[LSP SYNC] didChange sent version={} for {:?}",
-                        version,
-                        path.file_name()
-                    );
-                }
-            });
+        // Opening is the only synchronous document operation allowed here. The
+        // editor's debounced change pipeline owns didChange; duplicating it per
+        // completion request used to stringify the entire rope on every key.
+        if !self.did_open_sent.load(Ordering::Acquire) {
+            self.ensure_document_open_with_ra(text, cx);
         }
 
         // Clone only what we need - DO NOT convert rope to string here (blocks UI!)

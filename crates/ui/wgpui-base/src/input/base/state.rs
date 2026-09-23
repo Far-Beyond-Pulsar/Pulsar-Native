@@ -37,7 +37,7 @@ use crate::input::movement::MoveDirection;
 use crate::input::{
     InputExtras as _, Position, RopeExt as _, element::RIGHT_MARGIN, layout::LastLayout,
 };
-use crate::{AutoScroll, StepAction};
+use crate::{AutoScroll, StepAction, StyledExt as _};
 
 /// Vertical clearance to retain when revealing a text position.
 pub(crate) enum ScrollPadding {

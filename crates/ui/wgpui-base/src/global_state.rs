@@ -1,8 +1,6 @@
 use std::rc::{Rc, Weak};
 
-use gpui::{App, Entity, Global, OwnedMenu};
-
-use crate::text::TextViewState;
+use gpui::{App, Global, OwnedMenu};
 
 /// Holds the deferred interaction context open for as long as it is alive.
 ///
@@ -16,7 +14,6 @@ pub struct GlobalState {
     app_menus: Vec<OwnedMenu>,
     deferred_popovers: Vec<Weak<()>>,
     suppress_text_selection: bool,
-    pub(crate) text_view_state_stack: Vec<Entity<TextViewState>>,
     selection_document_order: u64,
     /// When a finger last went down. A tap reaches controls as a mouse press;
     /// this is how they tell it from one.
@@ -31,7 +28,6 @@ impl GlobalState {
             app_menus: Vec::new(),
             deferred_popovers: Vec::new(),
             suppress_text_selection: false,
-            text_view_state_stack: Vec::new(),
             selection_document_order: 1,
             last_touch: None,
         }
@@ -87,10 +83,6 @@ impl GlobalState {
 
     pub fn global_mut(cx: &mut App) -> &mut Self {
         cx.global_mut::<Self>()
-    }
-
-    pub(crate) fn text_view_state(&self) -> Option<&Entity<TextViewState>> {
-        self.text_view_state_stack.last()
     }
 
     #[doc(hidden)]

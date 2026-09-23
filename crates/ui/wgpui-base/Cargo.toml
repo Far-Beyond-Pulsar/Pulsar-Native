@@ -18,6 +18,7 @@ doctest = false
 
 [features]
 upstream-full = []
+editor-core = []
 test-support = ["gpui/test-support"]
 inspector = ["gpui/inspector"]
 

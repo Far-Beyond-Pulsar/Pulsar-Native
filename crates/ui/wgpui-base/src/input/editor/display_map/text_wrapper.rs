@@ -291,7 +291,7 @@ impl TextWrapper {
     ) {
         let mut line_wrapper = cx
             .text_system()
-            .line_wrapper(self.font.clone(), self.font_size);
+            .line_wrapper(self.font.clone(), self.font_size, None);
         self._update(
             changed_text,
             range,
@@ -810,8 +810,6 @@ impl LineLayout {
             _ = line.paint_background(
                 pos + point(self.line_indent(ix), ix * line_height),
                 line_height,
-                text_align,
-                align_width,
                 window,
                 cx,
             );
@@ -831,8 +829,6 @@ impl LineLayout {
             _ = line.paint(
                 pos + point(self.line_indent(ix), ix * line_height),
                 line_height,
-                text_align,
-                align_width,
                 window,
                 cx,
             );
@@ -852,7 +848,7 @@ impl LineLayout {
                     pos.y + *line_index as f32 * line_height,
                 );
 
-                _ = invisible.paint(origin, line_height, text_align, align_width, window, cx);
+                _ = invisible.paint(origin, line_height, window, cx);
             }
         }
     }

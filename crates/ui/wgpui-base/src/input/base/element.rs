@@ -1037,10 +1037,11 @@ impl<M: InputModeKind> TextElement<M> {
                 &[TextRun {
                     len: line_number_len,
                     font: style.font(),
-                    color: gpui::black(),
+                    color: gpui::black().into(),
                     background_color: None,
                     underline: None,
                     strikethrough: None,
+                    letter_spacing: None,
                 }],
                 None,
             );
@@ -1089,10 +1090,11 @@ impl<M: InputModeKind> TextElement<M> {
             &[TextRun {
                 len: space_text.len(),
                 font: style.font(),
-                color: invisible_color,
+                color: invisible_color.into(),
                 background_color: None,
                 underline: None,
                 strikethrough: None,
+                letter_spacing: None,
             }],
             None,
         );
@@ -1104,10 +1106,11 @@ impl<M: InputModeKind> TextElement<M> {
             &[TextRun {
                 len: tab_text.len(),
                 font: style.font(),
-                color: invisible_color,
+                color: invisible_color.into(),
                 background_color: None,
                 underline: None,
                 strikethrough: None,
+                letter_spacing: None,
             }],
             None,
         );
@@ -1161,10 +1164,11 @@ impl<M: InputModeKind> TextElement<M> {
             let first_run = TextRun {
                 len: first_text.len(),
                 font: font.clone(),
-                color: completion_color,
+                color: completion_color.into(),
                 background_color: None,
                 underline: None,
                 strikethrough: None,
+                letter_spacing: None,
             };
             Some(
                 window
@@ -1184,10 +1188,11 @@ impl<M: InputModeKind> TextElement<M> {
                 let run = TextRun {
                     len,
                     font: font.clone(),
-                    color: completion_color,
+                    color: completion_color.into(),
                     background_color: None,
                     underline: None,
                     strikethrough: None,
+                    letter_spacing: None,
                 };
                 // Use space for empty lines so they take up height
                 let shaped_text = if text.is_empty() { " ".into() } else { text };
@@ -1301,7 +1306,7 @@ impl<M: InputModeKind> TextElement<M> {
                     gpui::canvas(
                         |_, _, _| {},
                         move |bounds, _, window, cx| {
-                            let color = window.text_style().color;
+                            let color = window.text_style().color.solid;
                             let _ = window.paint_svg(
                                 bounds,
                                 path.into(),
@@ -1721,25 +1726,25 @@ fn print_points_as_svg_path(
     for corners in line_corners {
         println!(
             "tl: ({}, {}), tr: ({}, {}), bl: ({}, {}), br: ({}, {})",
-            corners.top_left.as_f32() as i32,
-            corners.top_left.as_f32() as i32,
-            corners.top_right.as_f32() as i32,
-            corners.top_right.as_f32() as i32,
-            corners.bottom_left.as_f32() as i32,
-            corners.bottom_left.as_f32() as i32,
-            corners.bottom_right.as_f32() as i32,
-            corners.bottom_right.as_f32() as i32,
+            corners.top_left.to_f32() as i32,
+            corners.top_left.to_f32() as i32,
+            corners.top_right.to_f32() as i32,
+            corners.top_right.to_f32() as i32,
+            corners.bottom_left.to_f32() as i32,
+            corners.bottom_left.to_f32() as i32,
+            corners.bottom_right.to_f32() as i32,
+            corners.bottom_right.to_f32() as i32,
         );
     }
 
     if points.len() > 0 {
         println!(
             "M{},{}",
-            points[0].x.as_f32() as i32,
-            points[0].y.as_f32() as i32
+            points[0].x.to_f32() as i32,
+            points[0].y.to_f32() as i32
         );
         for p in points.iter().skip(1) {
-            println!("L{},{}", p.x.as_f32() as i32, p.y.as_f32() as i32);
+            println!("L{},{}", p.x.to_f32() as i32, p.y.to_f32() as i32);
         }
     }
 }
@@ -1799,10 +1804,23 @@ impl<M: InputModeKind> Element for TextElement<M> {
         let text_size = style.font_size.to_pixels(window.rem_size());
         // Past the end of a line there are no glyphs to hit-test against, so a pointer
         // out there is measured in spaces instead.
-        let space_width = {
-            let font_id = window.text_system().resolve_font(&font);
-            window.text_system().layout_width(font_id, text_size, ' ')
-        };
+        let space_width = window
+            .text_system()
+            .shape_line(
+                " ".into(),
+                text_size,
+                &[TextRun {
+                    len: 1,
+                    font: font.clone(),
+                    color: gpui::black().into(),
+                    background_color: None,
+                    underline: None,
+                    strikethrough: None,
+                    letter_spacing: None,
+                }],
+                None,
+            )
+            .width;
 
         self.state.update(cx, |state, cx| {
             state.display_map.set_font(font, text_size, cx);
@@ -1818,7 +1836,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
         let text_style = window.text_style();
         let disabled = state.disabled;
         let dim = |color: Hsla| if disabled { color.opacity(0.5) } else { color };
-        let fg = dim(text_style.color);
+        let fg = dim(text_style.color.solid);
         let (display_text, text_color) = if is_empty {
             (
                 &Rope::from(placeholder.as_str()),
@@ -1925,15 +1943,16 @@ impl<M: InputModeKind> Element for TextElement<M> {
         let run = TextRun {
             len: display_text.len(),
             font: style.font(),
-            color: text_color,
+            color: text_color.into(),
             background_color: None,
             underline: None,
             strikethrough: None,
+            letter_spacing: None,
         };
         let marked_run = TextRun {
             len: 0,
             font: style.font(),
-            color: text_color,
+            color: text_color.into(),
             background_color: None,
             underline: Some(UnderlineStyle {
                 thickness: px(1.),
@@ -1941,6 +1960,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 wavy: false,
             }),
             strikethrough: None,
+            letter_spacing: None,
         };
 
         let ime_marked_range = ime_marked_display_range(
@@ -1955,7 +1975,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
             for (range, style) in &highlight_styles {
                 let mut run = text_style.clone().highlight(*style).to_run(range.len());
                 if disabled {
-                    run.color = run.color.opacity(0.5);
+                    run.color = run.color.with_opacity(0.5);
                 }
 
                 runs.extend(split_run_for_ime_underline(
@@ -2009,10 +2029,11 @@ impl<M: InputModeKind> Element for TextElement<M> {
                     &[TextRun {
                         len: longest_line.len(),
                         font: style.font(),
-                        color: gpui::black(),
+                        color: gpui::black().into(),
                         background_color: None,
                         underline: None,
                         strikethrough: None,
+                        letter_spacing: None,
                     }],
                     wrap_width,
                 )
@@ -2115,18 +2136,20 @@ impl<M: InputModeKind> Element for TextElement<M> {
             let other_line_runs = vec![TextRun {
                 len: line_number_len,
                 font: style.font(),
-                color: state.editor_style.muted_foreground,
+                color: state.editor_style.muted_foreground.into(),
                 background_color: None,
                 underline: None,
                 strikethrough: None,
+                letter_spacing: None,
             }];
             let current_line_runs = vec![TextRun {
                 len: line_number_len,
                 font: style.font(),
-                color: state.editor_style.foreground,
+                color: state.editor_style.foreground.into(),
                 background_color: None,
                 underline: None,
                 strikethrough: None,
+                letter_spacing: None,
             }];
 
             // build line numbers
@@ -2406,8 +2429,6 @@ impl<M: InputModeKind> Element for TextElement<M> {
                     _ = ghost_line.paint(
                         ghost_p,
                         line_height,
-                        text_align,
-                        Some(prepaint.last_layout.content_width),
                         window,
                         cx,
                     );
@@ -2466,7 +2487,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
                 }
 
                 for line in lines {
-                    _ = line.paint(p, line_height, TextAlign::Left, None, window, cx);
+                    _ = line.paint(p, line_height, window, cx);
                     offset_y += line_height;
                 }
 
@@ -2532,7 +2553,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
                     window.paint_quad(fill(bg_bounds, editor_background));
 
                     // Paint first line completion text
-                    _ = first_line.paint(p, line_height, text_align, None, window, cx);
+                    _ = first_line.paint(p, line_height, window, cx);
                 }
             }
         }
@@ -2752,7 +2773,7 @@ fn split_runs_by_bg_segments(
             if run_len > 0 {
                 result.push(TextRun {
                     len: run_len,
-                    color: text_color,
+                    color: text_color.into(),
                     ..run.clone()
                 });
 

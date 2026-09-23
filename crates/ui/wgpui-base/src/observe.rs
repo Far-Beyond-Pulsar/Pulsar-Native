@@ -17,9 +17,8 @@ pub type ObservedElement<E> = E;
 /// use wgpui_base::TestSupportExt;
 /// div().id("input").test_support().test_props(|props| props.value("invented"));
 /// ```
-pub trait TestSupportExt:
-    Element<PrepaintState = Option<Hitbox>> + InteractiveElement + Sized
-{
+#[cfg(feature = "test-support")]
+pub trait TestSupportExt: Element<PrepaintState = Option<Hitbox>> + InteractiveElement + Sized {
     /// With `test-support`, observes the element without adding a layout node.
     /// Otherwise returns the original element with its exact native type.
     /// Call before `track_focus` so the actual focus binding can be observed.
@@ -35,7 +34,15 @@ pub trait TestSupportExt:
         }
     }
 }
+#[cfg(feature = "test-support")]
 impl<E: Element<PrepaintState = Option<Hitbox>> + InteractiveElement> TestSupportExt for E {}
+
+#[cfg(not(feature = "test-support"))]
+pub trait TestSupportExt: Sized {
+    fn test_support(self) -> Self { self }
+}
+#[cfg(not(feature = "test-support"))]
+impl<E> TestSupportExt for E {}
 
 #[cfg(test)]
 mod tests {
