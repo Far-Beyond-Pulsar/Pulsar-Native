@@ -243,10 +243,6 @@ pub struct EngineFrameSnapshot {
     pub camera_input: Option<Arc<Mutex<engine_backend::subsystems::render::CameraInput>>>,
     pub pointer_events:
         Option<Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>>,
-    /// Voxel terrain edit seam for the active tool mode. Fetched in the same
-    /// locked pass as the other handles above so the pointer closures never
-    /// take `gpu_engine` themselves -- see `TerrainEditApi`'s threading note.
-    pub terrain: Option<engine_backend::services::terrain_edit::TerrainEditApi>,
 }
 
 impl EngineFrameSnapshot {
@@ -281,7 +277,6 @@ impl EngineFrameSnapshot {
             frame_time_ms,
             camera_input: engine.camera_input(),
             pointer_events: engine.pointer_event_queue(),
-            terrain: engine.terrain_edit_api(),
         };
 
         if let Some(cam) = engine.camera_input() {

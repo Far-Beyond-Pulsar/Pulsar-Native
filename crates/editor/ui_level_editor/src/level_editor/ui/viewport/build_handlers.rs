@@ -8,7 +8,6 @@ pub(super) fn handle_mouse_move(
     mouse_right_captured: Arc<AtomicBool>,
     mouse_middle_captured: Arc<AtomicBool>,
     state_arc_move: Arc<parking_lot::RwLock<LevelEditorState>>,
-    terrain_api_for_move: Option<engine_backend::services::terrain_edit::TerrainEditApi>,
     gpu_engine_move: Arc<Mutex<GpuRenderer>>,
     element_bounds_move: Rc<RefCell<Option<Bounds<Pixels>>>>,
     last_mouse_pos: Rc<RefCell<Option<(f32, f32)>>>,
@@ -143,7 +142,6 @@ pub(super) fn handle_mouse_move(
                     dispatch_tool_pointer(
                         &state_arc_move,
                         &gpu_engine_move,
-                        terrain_api_for_move.as_ref(),
                         tool_camera_frame(camera_state),
                         (viewport_width, viewport_height),
                         kind,
@@ -368,7 +366,6 @@ pub(super) fn handle_left_mouse_down(
     mouse_middle_captured: Arc<AtomicBool>,
     state_arc_click: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine_click: Arc<Mutex<GpuRenderer>>,
-    terrain_api_for_click: Option<engine_backend::services::terrain_edit::TerrainEditApi>,
 ) {
                     if ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured)
                         .is_active()
@@ -420,7 +417,6 @@ pub(super) fn handle_left_mouse_down(
                     let dispatch_result = dispatch_tool_pointer(
                         &state_arc_click,
                         &gpu_engine_click,
-                        terrain_api_for_click.as_ref(),
                         camera,
                         (viewport_width, viewport_height),
                         crate::level_editor::tool_modes::PointerKind::Down,
@@ -457,7 +453,6 @@ pub(super) fn handle_left_mouse_up(
     pointer_events: Option<Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>>,
     state_arc_up: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine_up: Arc<Mutex<GpuRenderer>>,
-    terrain_api_for_up: Option<engine_backend::services::terrain_edit::TerrainEditApi>,
 ) {
                     let mut state = state_arc_up.write();
                     state.overlays.positions.is_dragging_camera = false;
@@ -467,15 +462,10 @@ pub(super) fn handle_left_mouse_up(
                     drop(state);
 
                     // Close the active tool-mode gesture before the release
-                    // reaches the renderer. For terrain this is what commits
-                    // the stroke to undo history -- a stroke left open here
-                    // would swallow the next one. No ray is cast for `Up`, so
-                    // the camera/viewport frames are not needed and a default
-                    // frame is correct rather than merely tolerable.
+                    // reaches the renderer. No ray is cast for `Up`.
                     let consumed = dispatch_tool_pointer(
                         &state_arc_up,
                         &gpu_engine_up,
-                        terrain_api_for_up.as_ref(),
                         crate::level_editor::tool_modes::CameraFrame::default(),
                         (0.0, 0.0),
                         crate::level_editor::tool_modes::PointerKind::Up,

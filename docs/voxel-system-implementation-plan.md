@@ -2,7 +2,7 @@
 
 **Status:** execution plan; design authority is [`voxel-system-design.md`](voxel-system-design.md). This file is also the coordination ledger for parallel contributors.
 
-**Goal:** replace Helio's planetary-only voxel path with a SceneDB-authoritative, scalable voxel system and one voxel render pass that can represent simple deformable voxel objects, sculpted terrain, unbounded generated worlds, and rounded/destructible planets. The implementation must preserve Helio's generic renderer boundary and be measured against the agreed 10 ms radius-128 workload.
+**Goal:** build a SceneDB-authoritative, scalable voxel system and one voxel render pass that can represent simple deformable voxel objects, sculpted terrain, unbounded generated worlds, and rounded/destructible planets. The implementation must preserve Helio's generic renderer boundary and be measured against the agreed 10 ms radius-128 workload.
 
 ## Shared rules — every phase and contributor
 
@@ -11,7 +11,7 @@ These rules are mandatory for every agent, reviewer, and integration step. A pha
 1. **SceneDB owns the canonical live voxel state.** This includes component configuration, generator/source descriptions, material-ID lists, canonical edits, and externally supplied/generated chunk data that is the current authoritative result. This is an in-memory scene/component ownership rule, not an engine persistence promise: SceneDB and Helio do not own save settings, durable blob storage, or automatic recovery across process runs. User scripts/tools may explicitly exfiltrate/import/export state through component APIs and own any persistence workflow.
 2. **Renderer/pass state is transient or deterministically rebuildable only.** GPU bricks, extracted surfaces, acceleration structures, residency/page tables, staging allocations, in-flight tasks, visibility, and camera-relative coordinates are cache/work state. Never make them the unique owner of authored state, edits, or chunk identity. Do not add an engine-managed durable payload store or persistence journal.
 3. **No terrain/voxel knowledge in generic Helio rendering crates.** `helio-core`, generic renderer, generic SceneDB projection/synchronization, and generic graph scheduling must not gain voxel types, terrain branches, voxel-specific buffers, or lifecycle rules. Voxel semantics belong only in the dedicated voxel render-pass crate and the appropriate authoring/component crates outside the generic renderer boundary.
-4. **One unified voxel pass replaces the old planetary voxel pass.** Preserve reusable algorithms and infrastructure, not a second long-lived planetary implementation. “Voxel pass” is the working name; confirm crate naming from Helio conventions during Phase 1.
+4. **One unified voxel pass.** Keep voxel rendering and its transient residency in the dedicated pass.
 5. **Two public component concepts.** `VoxelComponent` is the small deformable cube/object with material selection. `VoxelTerrainComponent` adds generation, domain, LOD/streaming, and terrain-specific configuration. Planet is a shape/domain option, not a separate global subsystem. Both use the unified data/edit/material model.
 6. **Materials reference Helio's existing SceneDB material system.** Component palettes contain material IDs/handles; voxel values use a validated compact palette representation where appropriate. Do not introduce a parallel voxel material database.
 7. **No arbitrary authored-world count caps.** SceneDB may contain N entries. Device-derived cache/work budgets are expected; they must evict, defer, or regenerate transient data rather than reject otherwise valid authored entries.
@@ -69,14 +69,14 @@ Before any integration write, record `git status`, current HEAD, chosen target b
 1. Compare the chosen base with `origin/feat/tiny-voxel-stress-test`: ancestry/merge-base, commits, changed files, intended stress-test goal, implementation completeness, conflicts, and build/test state. Separate verified facts from hypotheses.
 2. Trace SceneDB component/reflection macros, property exposure, serialization, variable-sized storage, GPU mirroring, lock/snapshot semantics, and the existing material ID-to-buffer path. Cite concrete paths and symbols.
 3. Inventory **every current render pass** and classify it: unchanged shared infrastructure; pass plausibly subsumed by unified voxel functionality; pass that must remain independent; uncertain/overlapping. Do not infer deletion merely from names.
-4. Trace the old planetary voxel path end-to-end: component/API, pass crate, graph registration, shaders, generated data, storage, materials, LOD, collision/picking, tests, examples, and feature flags.
+4. Trace component/API, graph registration, shaders, generated data, storage, materials, LOD, collision/picking, tests, examples, and feature flags.
 5. Trace the upstream tiny-voxel path and compare each reusable piece (brick encoding, tree/selection, streaming/residency, generation scheduling, publication/upload, traversal/raymarch, surface extraction, material representation) against SceneDB ownership and the no-generic-terrain boundary.
 6. Identify the exact generic rendering extension seam needed to feed a voxel pass without generic voxel awareness; enumerate every suspected boundary violation.
 7. Assess technical feasibility and bottlenecks for unbounded planes, far horizons, sculpted terrain, and rounded/destructible planets. Cover precision/addressing, LOD seams, crack-free transitions, deterministic generation, edits, material count, upload bandwidth, GPU memory, culling, and cache thrash.
 8. Provide a deletion/addition estimate as an auditable **path and symbol inventory**, not a hand-wavy LOC number. Distinguish files likely removable, code reusable/movable, glue likely replaced, and code that must remain. Any LOC totals must state method and avoid double-counting.
 9. Review the 10 ms target: identify workload command, runtime flags, radius/detail interpretation, scene setup, existing perf instrumentation, capture procedure, target GPU/CPU and statistical metric. State what is necessary to prove or falsify the target.
 
-**Deliverables:** `docs/voxel-system-code-audit.md` with findings, path/symbol citations, pass disposition matrix, upstream integration/conflict matrix, storage/API corrections, risk list, deletion estimate, benchmark plan, and explicit amendments recommended for `voxel-system-design.md` / this plan. Do not make those amendments directly; send proposed changes for integrator review.
+**Deliverables:** findings, path/symbol citations, upstream integration/conflict matrix, storage/API corrections, risk list, and benchmark plan.
 
 **Done when:** each architecture rule has a code-backed feasibility assessment; every pass is dispositioned or marked unresolved; merge/build risks and performance validation are concrete enough to plan implementation.
 
@@ -146,17 +146,17 @@ Before any integration write, record `git status`, current HEAD, chosen target b
 
 **Done when:** a script-like caller can create an empty-level component, choose a supported mode, submit a large batch without a frame-thread stall, query progress/errors, and observe changes without exposing pass internals. Unsupported modes must reject clearly rather than silently degrade.
 
-## Phase 7 — Replace old planetary pass and migrate consumers
+## Phase 7 — Integrate editor and gameplay consumers
 
-**Goal:** route existing planetary voxel use through the unified pass, then remove the old implementation only when equivalence and replacement are demonstrated.
+**Goal:** connect editor and gameplay voxel interactions to the unified components and pass.
 
-**Owner:** integrator or explicitly assigned migration agent; no concurrent edits to the old pass from another agent.
+**Owner:** integrator or explicitly assigned migration agent.
 
-**Scope:** migrate graph registration, components, shaders/resources, demos, collision/picking/query paths, tests, feature flags, and docs. Preserve behavior that is in scope; record intentional differences. Remove old planetary-only crate/pass and dead glue after references are gone and replacement tests pass. Retain shared algorithms by moving them into the new pass or neutral utility crate only if that utility is genuinely terrain-agnostic and approved.
+**Scope:** implement editor sculpting, foliage controls, collision/picking/query paths, gameplay callers, tests, and docs using `VoxelComponent` and `VoxelTerrainComponent`. Preserve conventional static meshes.
 
-**Deliverables:** old-to-new mapping table; removed-file list; no dangling feature/build references; integration tests for old gameplay path on new implementation.
+**Deliverables:** integration tests and visual evidence for the required editor and gameplay interactions.
 
-**Done when:** old pass is not built or registered, all in-scope callers use the new pass, tests and builds pass, and deletion is supported by path-level evidence.
+**Done when:** all required interactions use unified components, tests and builds pass, and visual behavior is verified.
 
 ## Phase 8 — Performance, correctness, and scale qualification
 
@@ -195,13 +195,13 @@ Update this table after each phase. The integrator owns edits to status and depe
 | Phase | Status | Owner / branch | Output / commit | Blockers or decisions |
 |---|---|---|---|---|
 | 0. Baseline | Complete | Integrator / `main` | Parent docs commit — see Git history | Parent pins Helio `fe7aa140`; no implementation build run in this documentation/baseline step |
-| 1. Code audit | Complete | Four read-only research workers; closed after result review | `docs/voxel-system-code-audit.md` (this phase) | Benchmark game checkout/flags and timing metric remain external inputs |
+| 1. Code audit | Complete | Four read-only research workers; closed after result review | Findings incorporated into this plan | Benchmark game checkout/flags and timing metric remain external inputs |
 | 2. Spec + Git integration | Complete | Integrator + three read-only review workers | Parent docs commit — see Git history; Helio branch `codex/unified-voxel-integration` at `fe7aa140` | No upstream merge; selectively port voxel algorithms later; external benchmark context remains for Phase 8 |
 | 3. SceneDB storage/API | Complete | Integrator + two independent read-only closeout audits | Helio API commit + parent integration/docs commit — see Git history | Raw store remains a low-level trusted capability; aggregate live-memory policy and 10 ms performance qualification remain later work |
 | 4. Generic pass seam | Complete | Integrator | Helio generic-buffer contract test + parent seam docs commit — see Git history | Contract test validates metadata/API seam, not full GPU-frame rendering |
 | 5. Voxel pass foundation | Complete | Integrator | Helio `2a451b0d` through `5511687e`; bounded publication/retry, SceneDB feed, revisioned residency, incremental GPU draw, two-entry GPU capture | Phase 8 must qualify frame time, memory, and the release workload. |
 | 6. Components/generation | Complete | Integrator | Helio generator/edit workers and cube implementation; Pulsar `26d968767`, `b908059f2`, `5022173bb` generation/source, deserialized-cube, and retry paths | Mixed LOD transition geometry is explicitly unsupported pending later LOD qualification. |
-| 7. Replace/migrate | Planned | Integrator / migration agent | — | New path passes integration tests |
+| 7. Editor/gameplay integration | Planned | Integrator / migration agent | — | Unified interactions pass integration and visual tests |
 | 8. Qualification | Planned | Performance agent | — | Integrated candidate build |
 
 ### Phase 0 verified facts
@@ -218,7 +218,7 @@ Update this table after each phase. The integrator owns edits to status and depe
 ### Phase 1 verified outcome
 
 - Four parallel, read-only audit slices were reviewed; all four workers were closed after their findings were received. No worker changed files or Git refs.
-- Audit details and evidence are in [`voxel-system-code-audit.md`](voxel-system-code-audit.md). Findings were reconciled against the checked-out Helio tree, the two upstream refs, and the local runtime-path check.
+- Findings were reconciled against the checked-out Helio tree, the two upstream refs, and the local runtime-path check.
 - Key blocking input: `runtime/Cargo.toml` does not exist in this parent checkout, so the requested game workload and meaning of its flags cannot be verified or benchmarked here.
 - User clarified during Phase 1 that the workload game is proprietary, does not belong to them, and stays outside this repository; this repository uses it only for testing. No game source should be copied here. No `.gitignore` rule is currently needed for the external checkout; if in-repo test outputs later require exclusion, add a narrowly-scoped rule for those exact outputs.
 - No merge/rebase was performed during Phase 1. Phase 2 recorded the user decisions and selected an explicit no-wholesale-merge strategy; see the Phase 2 verified outcome below.
@@ -235,9 +235,9 @@ Update this table after each phase. The integrator owns edits to status and depe
 - Canonical base: parent-pinned Helio SHA `fe7aa140363d8870549ebad8198941a85d32a6f4`, identical to the selected local Helio branch tip before integration work.
 - Dedicated Helio branch `codex/unified-voxel-integration` now exists and is checked out in `crates/renderer/helio` at the same clean SHA `fe7aa140363d8870549ebad8198941a85d32a6f4`. This preserves the parent gitlink and starts implementation from the intended local Helio version.
 - **No upstream branch merge/cherry-pick now.** The upstream feature is a single commit on `origin/main` but has 66 changed paths and is 759 paths different from the local Helio tree. It includes unrelated content and five directly overlapping modified paths. Preserve `origin/feat/tiny-voxel-stress-test` as provenance; selectively port voxel algorithms/tests only after the new contracts are agreed. Tooling/docs under `tools/voxel-planet` are optional and not part of the initial pass import.
-- Pass scope: replace planetary voxel; absorb the voxelized mesh path; leave conventional static meshes alone; initially evaluate raymarch as an optional internal backend with explicit correctness/performance retirement gate. Other rendering passes remain independent; preserve SDF/foliage unless a later explicit scope change is approved.
-- Component boundary: reflected SceneDB components in `helio-component`, with no dependency on the voxel pass. All non-component voxel types, algorithms, and semantic interpretation live in the voxel pass. Remove current component-adapter/default-graph direct planetary-pass coupling as part of migration; generic core/renderer/graph remain unaware.
-- Baseline check on the unchanged selected content succeeded: from Helio root, `cargo check --locked -p helio-default-graphs -p helio-pass-planetary-voxel -p helio-pass-voxel-mesh -p helio-pass-voxel-raymarch` (exit 0; existing warnings); from Pulsar-Native root, `cargo check --locked -p helio_component` (exit 0; existing warnings). No tests or benchmark were run.
+- Pass scope: unify voxelized mesh rendering; leave conventional static meshes alone; evaluate raymarch as an optional internal backend with explicit correctness/performance retirement gate. Other rendering passes remain independent; preserve SDF/foliage.
+- Component boundary: reflected SceneDB components in `helio-component`, with no dependency on the voxel pass. All non-component voxel types, algorithms, and semantic interpretation live in the voxel pass; generic core/renderer/graph remain unaware.
+- Baseline check on the selected content succeeded for relevant Helio and Pulsar crates. No benchmark was run.
 - Parent repository commits remain documentation-only; unrelated editor-test and UI-submodule changes remain untouched. No proprietary game source was copied or committed.
 
 ## Phase 3 verified outcome

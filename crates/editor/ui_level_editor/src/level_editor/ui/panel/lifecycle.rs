@@ -118,7 +118,6 @@ impl LevelEditorPanel {
                     &world.world,
                     &default_path,
                     self.current_editor_camera_state(),
-                    self.terrain_api.as_ref(),
                 )
             };
 
@@ -188,7 +187,6 @@ impl LevelEditorPanel {
             let mut state = panel.shared_state.write();
             state.scene.current_scene = Some(path);
             state.scene.has_unsaved_changes = false;
-            state.editor.terrain_undo.clear();
             state.scene.bump_revision(false);
             if let Some(open_path) = state.scene.current_scene.clone() {
                 ai_sessions::register_open_scene(&open_path, &panel.shared_state);
@@ -343,12 +341,7 @@ impl LevelEditorPanel {
         // somehow arrived pre-torn-down, which the `if let` call sites below
         // degrade out of harmlessly (same "skip this one tick" shape the old
         // `gpu_engine.lock()` sites already had on any lock failure).
-        // Same "fetch once, never take `gpu_engine` again" contract as
-        // `helio_mailbox` above -- see `TerrainEditApi`'s threading note.
-        let (helio_mailbox, terrain_api) = match gpu_engine.lock().ok() {
-            Some(engine) => (engine.editor_mailbox(), engine.terrain_edit_api()),
-            None => (None, None),
-        };
+        let helio_mailbox = gpu_engine.lock().ok().and_then(|engine| engine.editor_mailbox());
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -357,7 +350,6 @@ impl LevelEditorPanel {
             viewport,
             gpu_engine: gpu_engine.clone(),
             helio_mailbox,
-            terrain_api,
             render_enabled,
             shared_state,
             workspace: None,

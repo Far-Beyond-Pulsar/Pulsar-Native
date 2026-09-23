@@ -120,7 +120,6 @@ fn workspace_engine_fs_callers_declare_their_minimum_surface() {
         // covered by this policy check.
         ("pulsar_scene".to_owned(), features(&[])),
         ("pulsar_std".to_owned(), features(&[])),
-        ("pulsar_terrain".to_owned(), features(&[])),
         ("ui_common".to_owned(), features(&["editor"])),
         ("ui_file_manager".to_owned(), features(&["editor"])),
         ("ui_git_manager".to_owned(), features(&[])),

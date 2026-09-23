@@ -3,7 +3,7 @@
 //! Owns registered tool modes and the currently active mode ID.
 //! Provides lookup, switching, and extensibility seams.
 
-use super::{level_edit::LevelEditMode, terrain::TerrainMode, ToolMode, ToolModeContext};
+use super::{level_edit::LevelEditMode, ToolMode, ToolModeContext};
 
 // ── ToolModeId ─────────────────────────────────────────────────────────────
 
@@ -13,7 +13,6 @@ pub struct ToolModeId(pub &'static str);
 
 impl ToolModeId {
     pub const LEVEL_EDIT: Self = Self("level_edit");
-    pub const TERRAIN: Self = Self("terrain");
     /// Milestone 5's extensibility-demo mode (`tool_modes::spline::SplineMode`).
     /// Registered via [`register_tool_modes`], never added to
     /// [`ToolModeRegistry::builtin`].
@@ -29,14 +28,13 @@ pub struct ToolModeRegistry {
 }
 
 impl ToolModeRegistry {
-    /// Constructs registry with default built-in modes: Level Edit and Terrain.
+    /// Constructs registry with the built-in Level Edit mode.
     pub fn builtin() -> Self {
         let mut registry = Self {
             modes: Vec::new(),
             selected: ToolModeId::LEVEL_EDIT,
         };
         registry.register(Box::new(LevelEditMode::default()));
-        registry.register(Box::new(TerrainMode::default()));
         registry
     }
 

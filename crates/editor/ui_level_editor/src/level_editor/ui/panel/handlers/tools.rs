@@ -95,16 +95,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // One locked pass for both the camera and the terrain seam: the mode
-        // lifecycle hooks need the seam to close any open stroke / clear the
-        // brush ring as they hand over.
-        let (camera, terrain_api) = {
-            let engine = self.gpu_engine.lock().ok();
-            match engine {
-                Some(engine) => (engine.editor_camera_state(), engine.terrain_edit_api()),
-                None => (None, None),
-            }
-        };
+        let camera = self.gpu_engine.lock().ok().and_then(|engine| engine.editor_camera_state());
         let camera = camera
             .map(|c| crate::level_editor::tool_modes::CameraFrame {
                 position: c.position,
@@ -117,7 +108,6 @@ impl LevelEditorPanel {
         crate::level_editor::tool_modes::ToolModeDispatcher::select_tool_mode(
             &mut state,
             &self.gpu_engine,
-            terrain_api.as_ref(),
             action.0,
             camera,
             crate::level_editor::tool_modes::ViewportFrame::default(),

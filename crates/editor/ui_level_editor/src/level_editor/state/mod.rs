@@ -34,8 +34,6 @@ pub mod overlays;
 pub mod play;
 pub mod scene;
 pub mod spline;
-pub mod terrain;
-pub mod terrain_undo;
 
 pub use build::BuildDomain;
 pub use editor::EditorDomain;
@@ -44,8 +42,6 @@ pub use overlays::OverlayDomain;
 pub use play::{PieControl, PieStartRequest, PlayDomain};
 pub use scene::SceneDomain;
 pub use spline::SplineDomain;
-pub use terrain::TerrainDomain;
-pub use terrain_undo::{TerrainStrokeRecord, TerrainUndoDomain, MAX_TERRAIN_UNDO_HISTORY};
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -117,4 +113,3 @@ pub use editor::{
 pub use hierarchy::{HierarchyDragPayload, HierarchyDragState};
 pub use overlays::OverlayState;
 pub use scene::EditorMode;
-pub use terrain::{FoliageBrush, SculptBrush, SculptMode, Stroke, TerrainTarget};

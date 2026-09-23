@@ -2,8 +2,7 @@
 //!
 //! One file per panel wrapper (each implements `ui::dock::Panel` and owns its
 //! own frame pump — see `ui/frame_pump.rs`). Each corresponds to a fixed part
-//! of the editor's default layout; panels a tool mode adds live with that mode
-//! (e.g. `tool_modes/terrain/panels/`).
+//! of the editor's default layout; panels a tool mode adds live with that mode.
 
 mod hierarchy;
 mod properties;

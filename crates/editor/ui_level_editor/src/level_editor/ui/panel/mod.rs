@@ -62,9 +62,6 @@ pub struct LevelEditorPanel {
     // (gizmo mode, deselect, force-full-resync) -- see `HelioEditorMailbox`'s
     // doc. Fetched once at construction, not re-locked per command.
     helio_mailbox: Option<HelioEditorMailbox>,
-    /// Voxel terrain edit seam, fetched once alongside `helio_mailbox`.
-    /// Undo/redo and the save path use it; see `TerrainEditApi`.
-    terrain_api: Option<engine_backend::services::terrain_edit::TerrainEditApi>,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
 
     // Shared state for all panels (single source of truth)

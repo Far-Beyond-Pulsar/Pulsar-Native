@@ -167,14 +167,7 @@ impl ToolbarPanel {
 
                 let save_result = {
                     let state = state_clone.read();
-                    // One locked pass for both: the terrain seam is what
-                    // flushes authored voxels alongside the level.
-                    let (camera_state, terrain_api) = match gpu_engine.lock().ok() {
-                        Some(engine) => {
-                            (engine.editor_camera_state(), engine.terrain_edit_api())
-                        }
-                        None => (None, None),
-                    };
+                    let camera_state = gpu_engine.lock().ok().and_then(|engine| engine.editor_camera_state());
                     let editor_camera = camera_state.map(|camera| {
                         crate::level_editor::scene_edit::LevelEditorCameraState {
                             position: camera.position,
@@ -186,7 +179,6 @@ impl ToolbarPanel {
                     crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(&world,
                         &path,
                         editor_camera,
-                        terrain_api.as_ref(),
                     )
                 };
 
@@ -273,14 +265,7 @@ impl ToolbarPanel {
 
                 let save_result = {
                     let state = state_clone.read();
-                    // One locked pass for both: the terrain seam is what
-                    // flushes authored voxels alongside the level.
-                    let (camera_state, terrain_api) = match gpu_engine.lock().ok() {
-                        Some(engine) => {
-                            (engine.editor_camera_state(), engine.terrain_edit_api())
-                        }
-                        None => (None, None),
-                    };
+                    let camera_state = gpu_engine.lock().ok().and_then(|engine| engine.editor_camera_state());
                     let editor_camera = camera_state.map(|camera| {
                         crate::level_editor::scene_edit::LevelEditorCameraState {
                             position: camera.position,
@@ -292,7 +277,6 @@ impl ToolbarPanel {
                     crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(&world,
                         &path,
                         editor_camera,
-                        terrain_api.as_ref(),
                     )
                 };
 

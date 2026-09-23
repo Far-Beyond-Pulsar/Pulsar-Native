@@ -13,7 +13,7 @@
 5. **SceneDB entries scale to N.** No application-level `max_planets = 4`, fixed global component count, or fixed per-scene page ceiling. The renderer may impose a device-derived transient-memory/work budget and evict/rebuild cache entries, but those limits do not cap authored SceneDB entries.
 6. **Frame work is bounded and nonblocking.** Script generation, chunk ingestion, snapshot/export work, planning, and heavy voxel processing must not synchronously stall the render thread. Updates are revisioned, batched, prioritized, coalesced where safe, and published when complete. Any persistence I/O is user-owned and must be scheduled by the user’s script/tool outside the render-thread critical path.
 
-The old “one shared `Arc<World>` in a mutex” model is useful as a prototype, but is not the target authority model. Render work consumes a consistent SceneDB projection/snapshot and keeps no unique authoritative copy of the world. “Canonical” here means current in-memory scene state; it does not imply persistence or durability.
+Render work consumes a consistent SceneDB projection/snapshot and keeps no unique authoritative copy of the world. “Canonical” here means current in-memory scene state; it does not imply persistence or durability.
 
 ## Product model: two authorable components
 
@@ -216,7 +216,7 @@ Do not inherit its product constraints as requirements:
 - Renderer-owned `World`/edit history or a renderer-local authoritative journal.
 - A claim of frame-time qualification based only on unit/GPU tests.
 
-The embedded Helio implementation currently has a `helio-pass-planetary-voxel` with Transvoxel surface extraction, page residency, generation-tagged uploads, LOD transitions, and meshlet drawing. The target decision is to remove that old planetary-only pass and replace it with one pass crate named **voxel pass** (`helio-pass-voxel` or final crate name TBD) that supports arbitrary voxel shapes in theory. Smooth and blocky output are modes/backends of that pass, not separate terrain authorities. Preserve useful protocol, validation, LOD, and material integration ideas where they fit the stored-brick backend.
+The unified `helio-pass-voxel-mesh` handles voxel rendering. Smooth and blocky output are modes of that pass. Its transient residency and generation-tagged publication must remain distinct from canonical SceneDB component state.
 
 The upstream commit also changes DOF, portal instances, sky, shadow matrices, TSR, deferred lighting/material shaders, and virtual geometry. Those are separate graphics changes; review and validate them independently from the voxel backend migration. Five paths overlap changes in the local Helio line and upstream commit: DOF, portal instances, sky LUT, TSR, and virtual geometry.
 
@@ -251,7 +251,7 @@ Required design controls:
 4. **Build the new voxel pass:** mine upstream stored-brick selection/residency/traversal; support multi-entry inputs; integrate the existing SceneDB material IDs; add selectable blocky/smooth behavior.
 5. **Connect component projection and source writers:** script-created entries, registered custom generators, batched chunk publication, edit receipts, and stale-work rejection.
 6. **Migrate gameplay and tools:** picking, collision/sample APIs, editor sculpting, and scripting use SceneDB-backed services and revisioned batches. Any save/undo workflow is implemented by user-facing scripts/tools consuming the component snapshot/export API, not by renderer-owned state or an engine-managed voxel persistence layer.
-7. **Replace the old pass:** update graph/default-graph wiring, examples, component adapters, manifests, locks, and tests; remove the old planetary-only pass after parity for required behavior.
+7. **Integrate tools and gameplay:** connect editor, picking, and gameplay consumers to unified components; verify required behavior.
 8. **Qualify:** build the integrated workspace, run CPU/GPU correctness and graph tests, then run the exact release stress command and iterate against the 10 ms budget.
 
 ## Open decisions to resolve
@@ -261,7 +261,7 @@ Required design controls:
 - SceneDB in-memory representation/API for large chunk payloads and edits, including bounded transaction size and zero-copy/immutable snapshots. Durable encoding, storage location/settings, and restart recovery are owned by user scripts/tools and are not Helio requirements.
 - Custom generator registration ABI/versioning and failure behavior when a provider is unavailable.
 - How multiple overlapping voxel/terrain entries compose and how their GBuffer depth/material output is ordered.
-- Whether smooth mode uses a retained extraction path (Transvoxel) or a new stored-density surface method in the replacement pass.
+- How smooth-mode extraction and LOD transitions will satisfy the required visual and performance targets.
 - Exact SceneDB material handle/index type, buffer key, material channel encoding, and behavior for missing material IDs.
 - Component transform versus canonical world origin ownership for planetary coordinates and floating-origin updates.
 - Whether generated chunks are reproducible from a source descriptor or must be retained as canonical live supplied data; in either case, cross-run persistence is a user decision implemented outside Helio.

@@ -1,11 +1,9 @@
 use std::{env, fs, path::Path, path::PathBuf};
 
-const HELIO_DEPENDENCIES: [&str; 5] = [
+const HELIO_DEPENDENCIES: [&str; 3] = [
     "helio",
     "helio-asset-compat",
     "helio-default-graphs",
-    "helio-planet-voxel-core",
-    "helio-pass-planetary-voxel",
 ];
 
 /// Dependencies a generated game project needs, resolved from *this* engine

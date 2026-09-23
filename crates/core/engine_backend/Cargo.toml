@@ -49,11 +49,6 @@ pulsar_script_object_model.workspace = true
 
 # Shared scene loading — canonical implementation used by both engine and game
 pulsar_scene.workspace = true
-# Canonical planetary voxel terrain. Needed directly (not just transitively
-# through `helio_component`) by `services::terrain_edit`, which re-exports
-# `EditOp`/`PlanetDefinition`/`TerrainSnapshot` so UI crates can author terrain
-# edits without taking their own `pulsar_terrain` dependency.
-pulsar_terrain.workspace = true
 helio_component.workspace = true
 helio-pass-billboard = { workspace = true, optional = true }
 helio-pass-forward-lit = { workspace = true, optional = true }

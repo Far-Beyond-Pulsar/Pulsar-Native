@@ -27,14 +27,11 @@ pub use core::world_settings_data;
 pub use core::scene_edit::SceneObjectData;
 pub use state::request_thumbnail_capture;
 pub use state::spline::SplineDomain;
-pub use state::terrain::{
-    FoliageBrush, SculptBrush, SculptMode, Stroke, TerrainDomain, TerrainTarget,
-};
 pub use state::LevelEditorState;
 pub use state::{CameraMode, EditorMode, TransformTool};
 pub use tool_modes::{
     register_tool_modes, BrushCursor, CameraFrame, LevelEditMode, ModePanelDescriptor,
-    ModePanelPlacement, PointerKind, SplineMode, StatusReadout, TerrainMode, ToolMode,
+    ModePanelPlacement, PointerKind, SplineMode, StatusReadout, ToolMode,
     ToolModeContext, ToolModeDispatcher, ToolModeId, ToolModeRegistry, ToolPointerEvent,
     ToolPointerResult, ToolWidget, ViewportFrame,
 };

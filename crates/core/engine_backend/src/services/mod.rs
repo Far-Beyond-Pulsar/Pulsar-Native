@@ -11,8 +11,6 @@ pub mod gpu_renderer;
 #[cfg(feature = "editor-ui")]
 pub mod lsp_completion_provider;
 pub mod native_scripts;
-#[cfg(feature = "render")]
-pub mod terrain_edit;
 #[cfg(feature = "physics")]
 pub mod physics_query_service;
 #[cfg(feature = "pie")]
@@ -27,11 +25,6 @@ pub mod rust_analyzer_manager {
 pub use core_project_builder::{ensure_core_bootstrap, ensure_engine_primitives};
 #[cfg(feature = "render")]
 pub use gpu_renderer::GpuRenderer;
-#[cfg(feature = "render")]
-pub use terrain_edit::{
-    BrushCursorRequest, Ray3, TerrainEditApi, TerrainEditError, TerrainEditMailbox, TerrainHit,
-    TerrainTarget,
-};
 #[cfg(feature = "editor-ui")]
 pub use lsp_completion_provider::GlobalRustAnalyzerCompletionProvider;
 #[cfg(feature = "physics")]

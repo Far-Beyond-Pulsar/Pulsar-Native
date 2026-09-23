@@ -26,10 +26,6 @@ pub fn active_mode_widgets(
     let ctx = ToolModeContext {
         state: &mut state_clone,
         gpu_engine,
-        // Widget data comes from editor state alone; no mode's
-        // `toolbar_controls`/`status` impl reads `ctx.terrain` today (only
-        // `on_pointer` does), so the toolbar never needs a live seam.
-        terrain: None,
         camera: CameraFrame::default(),
         viewport: ViewportFrame::default(),
     };
@@ -47,7 +43,7 @@ pub fn active_mode_widgets(
 pub fn render_mode_widgets<V>(
     controls: Vec<ToolWidget>,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-    gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+    _gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
     cx: &mut Context<V>,
 ) -> AnyElement
 where
@@ -185,26 +181,14 @@ where
             }
             ToolWidget::Action { id, label_key } => {
                 let state_clone = state_arc.clone();
-                // The terrain seam is fetched inside the click, not per
-                // render: the same one-locked-pass shape `on_set_tool_mode`
-                // already uses for a user action.
-                let engine = gpu_engine.clone();
                 let mut btn = Button::new(id)
                     .icon(IconName::Plus)
                     .label(t!(label_key))
                     .small()
                     .ghost()
                     .on_click(move |_, _, _| {
-                        let terrain = engine
-                            .lock()
-                            .ok()
-                            .and_then(|engine| engine.terrain_edit_api());
                         let mut st = state_clone.write();
-                        ToolModeDispatcher::dispatch_widget_edit_with_terrain(
-                            &mut st,
-                            terrain.as_ref(),
-                            &ToolWidgetEdit::Invoke { id },
-                        );
+                        ToolModeDispatcher::dispatch_widget_edit(&mut st, &ToolWidgetEdit::Invoke { id });
                     });
                 container = container.child(btn);
             }

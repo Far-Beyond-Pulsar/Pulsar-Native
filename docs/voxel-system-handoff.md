@@ -1,10 +1,10 @@
 # Unified Voxel System — Project Handoff
 
-This document is a self-contained orientation for a new collaborator or agent who has not followed the earlier design work. It records the agreed architecture, phase plan, current repository state, evidence, risks, and the next bounded tasks. The canonical detailed documents remain [`voxel-system-design.md`](voxel-system-design.md), [`voxel-system-implementation-plan.md`](voxel-system-implementation-plan.md), [`voxel-system-code-audit.md`](voxel-system-code-audit.md), and [`voxel-phase4-scene-buffer-seam.md`](voxel-phase4-scene-buffer-seam.md). Read this file first, then the relevant phase section in the plan and design before changing code.
+This document records the unified voxel architecture, phase plan, repository state, evidence, risks, and next tasks. The detailed documents are [`voxel-system-design.md`](voxel-system-design.md), [`voxel-system-implementation-plan.md`](voxel-system-implementation-plan.md), and [`voxel-phase4-scene-buffer-seam.md`](voxel-phase4-scene-buffer-seam.md).
 
 ## Mission and non-negotiable rules
 
-Replace Helio's planetary-only voxel implementation with one general voxel/terrain system that can support a simple deformable cube, sculpted terrain, unbounded flat terrain, distant-horizon worlds, and rounded/destructible planets. It must scale to N independent SceneDB entries and eventually be qualified against the agreed release workload at a total frame-time budget of 10 ms. That performance target is **not yet measured or established**.
+Build one general voxel/terrain system that supports a simple deformable cube, sculpted terrain, unbounded flat terrain, distant-horizon worlds, and rounded/destructible planets. It must scale to N independent SceneDB entries and eventually be qualified against the agreed release workload at a total frame-time budget of 10 ms. That performance target is **not yet measured or established**.
 
 The ownership and boundary rules are strict:
 
@@ -31,16 +31,16 @@ The ownership and boundary rules are strict:
 | Phase | Goal | Status | Evidence / remaining work |
 |---|---|---|---|
 | 0. Baseline | Record repository/submodule refs and existing dirty state | Complete | Baseline recorded in implementation plan; no feature code changed in this phase. |
-| 1. Code audit | Audit upstream branch, local passes/components, ownership, workload, risks | Complete | `voxel-system-code-audit.md`; proprietary runtime workload is unavailable in this repository. |
+| 1. Code audit | Audit ownership, workload, and risks | Complete | Proprietary runtime workload is unavailable in this repository. |
 | 2. Spec + Git integration | Agree scope and base; avoid broad upstream merge | Complete | Helio branch `codex/unified-voxel-integration`; selective port only. Conventional meshes remain; raymarch is gated. |
 | 3. SceneDB storage/API | Reflected components and live component-owned payload API | Complete | End-to-end SceneDB round-trip test; bounded inbox/writer/snapshot/import API; risks are documented below. |
 | 4. Generic pass seam | Prove specialized pass can use generic opaque SceneDB GPU handles | Complete | Existing generic seam plus `opaque_scene_buffer_contract` test. No generic voxel-specific code added. Test is an API/contract proof, not a full GPU-frame integration test. |
 | 5. Unified voxel pass foundation | Fix publication path; multi-entry revision-aware transient residency; bounded async generation/upload; first render path | Complete | Helio `2a451b0d` through `9498b7d2`; SceneDB feed, budgeted residency, production GPU draw tests for two entries and material IDs. |
 | 6. Behaviors/generators | Cube deformation; general domains/shapes; smooth/blocky; deterministic generators and external updates | Complete | Default filled cube, sample edits, bounded/unbounded flat and planet generators, external adapters, blocky/smooth GPU extraction, and script-facing source session. |
-| 7. Replace/migrate | Route planetary voxel consumers through unified pass and remove old planetary-only implementation after equivalence | Planned | Keep ordinary static meshes. Audit all callers/resources/tests before deletion. |
+| 7. Integrate tools | Connect editor and gameplay interactions to unified components | Planned | Sculpting, foliage controls, picking, and gameplay integration need implementation and visual verification. |
 | 8. Qualification | Correctness, capacity, memory, and performance at agreed workload | Planned | Capture CPU/GPU/frame p50/p95/p99/worst sustained time and resource metrics. No result is currently available. |
 
-Phases 5 and 6 are implemented on the branches listed below. Phase 7 migration and Phase 8 workload qualification remain separate work; the 10 ms target has not been measured.
+Phases 5 and 6 are implemented on the branches listed below. Phase 7 tool integration and Phase 8 workload qualification remain separate work; the 10 ms target has not been measured.
 
 ## Phase 3: what exists and what it guarantees
 
@@ -106,9 +106,9 @@ Independent review result is summarized immediately above. It was read-only and 
 - `cargo test --locked --offline -p engine_backend --lib voxel_ --quiet` passed 7 focused library tests, including a deserialized cube edited before its first render and a failed batch rebased and retried through a new session. `cargo test --locked --offline -p engine_backend --test voxel_component_schema --quiet` passed 5 integration tests.
 - The pass has per-frame upload limits and staging metrics. The tests prove the first render path and bounded work contracts; they do not establish total frame time, distant LOD correctness, or steady-state canonical memory use under the Phase 8 workload.
 
-### Phase 7 — migrate and remove old implementation
+### Phase 7 — editor and gameplay integration
 
-Route existing planetary voxel usage through the unified pass. Audit graph registration, components, renderer bridges, shaders/resources, collision/picking/query consumers, examples, tests, feature flags, and docs. Preserve conventional static mesh rendering. Keep raymarch only if its behavior/material/depth correctness and matched performance justify it. Remove old planetary-specific pass/crate/glue only after all references are migrated and equivalence/replacement evidence passes. Keep a path/symbol deletion inventory in the handoff.
+Connect editor sculpting, foliage controls, picking, and gameplay interactions to `VoxelComponent`, `VoxelTerrainComponent`, and `VoxelMeshPass`. Verify these capabilities visually and with integration tests. Conventional static mesh rendering remains.
 
 ### Phase 8 — correctness, capacity, and performance qualification
 
@@ -129,6 +129,6 @@ Use the exact agreed release workload and external proprietary game checkout; do
 
 ## Next phases
 
-1. Phase 7: migrate planetary voxel callers, collision/query and editor interactions, then remove the old planetary path only after equivalent behavior is verified. Keep ordinary static meshes.
+1. Phase 7: implement editor sculpting, foliage controls, picking, and gameplay interactions against the unified components; verify them visually.
 2. Phase 8: run the agreed external release workload and record visual correctness, total-frame and GPU timings, memory, queue pressure, and transient cache behavior. Qualify far LOD transitions and the 10 ms target with measured evidence.
 

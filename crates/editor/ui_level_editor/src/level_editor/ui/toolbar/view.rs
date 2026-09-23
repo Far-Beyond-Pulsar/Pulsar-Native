@@ -27,7 +27,6 @@ use gpui::*;
 use ui::dock::PanelEvent;
 
 use super::ToolbarPanel;
-use crate::level_editor::state::terrain::SculptMode;
 use crate::level_editor::state::{
     BuildConfig, BuildMode, EditorMode, MultiplayerMode, TargetPlatform,
 };
@@ -43,17 +42,6 @@ use crate::level_editor::LevelEditorState;
 pub struct ToolbarSignature {
     // tool_mode_dropdown / mode_indicator
     tool_mode: ToolModeId,
-    // terrain controls
-    terrain_sculpt_mode: SculptMode,
-    terrain_radius_m: f32,
-    terrain_strength: f32,
-    terrain_falloff: f32,
-    // terrain foliage sub-mode controls
-    terrain_paint_foliage: bool,
-    terrain_foliage_density: f32,
-    terrain_foliage_radius_m: f32,
-    terrain_foliage_slope_min: f32,
-    terrain_foliage_slope_max: f32,
     // spline mode controls (Milestone 5 extensibility demo)
     spline_point_count: usize,
     spline_length_m: f32,
@@ -81,15 +69,6 @@ impl ToolbarSignature {
     fn of(state: &LevelEditorState) -> Self {
         Self {
             tool_mode: state.editor.tool_mode_registry.selected_id(),
-            terrain_sculpt_mode: state.editor.terrain.sculpt.mode,
-            terrain_radius_m: state.editor.terrain.sculpt.radius_m,
-            terrain_strength: state.editor.terrain.sculpt.strength,
-            terrain_falloff: state.editor.terrain.sculpt.falloff,
-            terrain_paint_foliage: state.editor.terrain.paint_foliage,
-            terrain_foliage_density: state.editor.terrain.foliage.density,
-            terrain_foliage_radius_m: state.editor.terrain.foliage.radius_m,
-            terrain_foliage_slope_min: state.editor.terrain.foliage.slope_limit.0,
-            terrain_foliage_slope_max: state.editor.terrain.foliage.slope_limit.1,
             spline_point_count: state.editor.spline.points.len(),
             spline_length_m: state.editor.spline.total_length_m(),
             editor_mode: state.scene.editor_mode,
