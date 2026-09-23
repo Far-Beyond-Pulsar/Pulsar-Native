@@ -110,9 +110,9 @@ pub fn generate_enum_impl(
             }
         }
 
-        #[cfg(any())] ::pulsar_reflection::inventory::submit! {
+        ::pulsar_reflection::inventory::submit! {
             ::pulsar_reflection::RuntimeTypeRegistration {
-                type_info: &*#type_info_name,
+                type_info: || &*#type_info_name,
                 serialize_json: |value: &dyn ::std::any::Any| {
                     let typed = value.downcast_ref::<#name #ty_generics>().ok_or_else(|| {
                         ::pulsar_reflection::ReflectError::TypeMismatch {
@@ -124,7 +124,7 @@ pub fn generate_enum_impl(
                     <#name #ty_generics as ::pulsar_reflection::Reflectable>::serialize(typed, &mut serializer)?;
                     Ok(serializer.into_json())
                 },
-                deserialize_json: |value: ::serde_json::Value| {
+                deserialize_json: |value: ::pulsar_reflection::serde_json::Value| {
                     let mut deserializer = ::pulsar_reflection::JsonDeserializer::new(value);
                     let typed = <#name #ty_generics as ::pulsar_reflection::Reflectable>::deserialize(&mut deserializer)?;
                     Ok(::std::boxed::Box::new(typed) as ::std::boxed::Box<dyn ::std::any::Any>)

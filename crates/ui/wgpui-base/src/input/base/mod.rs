@@ -247,6 +247,9 @@ mod tests {
 
     #[test]
     fn frame_accepts_application_owned_content_and_style() {
+        let test_context = gpui::TestAppContext::single();
+        let test_app = test_context.app.borrow();
+        let _arena_scope = gpui::ElementArenaScope::enter(test_app.element_arena());
         let _ = InputBase::new("input")
             .focused(true)
             .disabled(false)
