@@ -35,12 +35,12 @@ The ownership and boundary rules are strict:
 | 2. Spec + Git integration | Agree scope and base; avoid broad upstream merge | Complete | Helio branch `codex/unified-voxel-integration`; selective port only. Conventional meshes remain; raymarch is gated. |
 | 3. SceneDB storage/API | Reflected components and live component-owned payload API | Complete | End-to-end SceneDB round-trip test; bounded inbox/writer/snapshot/import API; risks are documented below. |
 | 4. Generic pass seam | Prove specialized pass can use generic opaque SceneDB GPU handles | Complete | Existing generic seam plus `opaque_scene_buffer_contract` test. No generic voxel-specific code added. Test is an API/contract proof, not a full GPU-frame integration test. |
-| 5. Unified voxel pass foundation | Fix publication path; multi-entry revision-aware transient residency; bounded async generation/upload; first render path | **In progress; publication unresolved** | Full current audit below. The safe implementation worker did not produce an acceptable patch/commit. |
-| 6. Behaviors/generators | Cube deformation; general domains/shapes; smooth/blocky; deterministic generators and external updates | Planned | Depends on Phases 3 and 5. |
+| 5. Unified voxel pass foundation | Fix publication path; multi-entry revision-aware transient residency; bounded async generation/upload; first render path | Complete | Helio `2a451b0d` through `9498b7d2`; SceneDB feed, budgeted residency, production GPU draw tests for two entries and material IDs. |
+| 6. Behaviors/generators | Cube deformation; general domains/shapes; smooth/blocky; deterministic generators and external updates | Complete | Default filled cube, sample edits, bounded/unbounded flat and planet generators, external adapters, blocky/smooth GPU extraction, and script-facing source session. |
 | 7. Replace/migrate | Route planetary voxel consumers through unified pass and remove old planetary-only implementation after equivalence | Planned | Keep ordinary static meshes. Audit all callers/resources/tests before deletion. |
 | 8. Qualification | Correctness, capacity, memory, and performance at agreed workload | Planned | Capture CPU/GPU/frame p50/p95/p99/worst sustained time and resource metrics. No result is currently available. |
 
-Phase 4 is complete and is not a blocker. Continue with Phase 5; do not redo Phase 4 or jump ahead to migration/performance claims.
+Phases 5 and 6 are implemented on the branches listed below. Phase 7 migration and Phase 8 workload qualification remain separate work; the 10 ms target has not been measured.
 
 ## Phase 3: what exists and what it guarantees
 
@@ -48,7 +48,7 @@ In Helio's `helio-component`, `VoxelComponent` and `VoxelTerrainComponent` hold 
 
 In `helio-pass-voxel-mesh`, `VoxelChunkBatch` validates payload schema/encoding, keys/domain, duplicate operations, sequential data revisions, and size limits. `VoxelSourceWriter` applies one validated batch to the component store and exposes immutable `VoxelTerrainSnapshot`s. `replace_from_snapshot` replaces a destination component's map in one revision transition. These are in-memory APIs, not durable serialization or automatic save/load. Component `Clone` copies the key index and revision while sharing immutable `Arc` payload allocations.
 
-`BoundedVoxelInbox` provides finite pending batch/operation/byte budgets, nonblocking `try_submit`/`try_drain`, whole-batch FIFO semantics, back-pressure outcomes, and explicit close modes. Enqueue clones `Arc` handles, not payload bytes. The inbox is pending work, not canonical state. At this point it has no owned consumer thread: the caller must drain and call `publish_into`.
+`BoundedVoxelInbox` provides finite pending batch/operation/byte budgets, nonblocking `try_submit`/`try_drain`, whole-batch FIFO semantics, back-pressure outcomes, and explicit close modes. Enqueue clones `Arc` handles, not payload bytes. The inbox is pending work, not canonical state. Phase 5 added an optional owned CPU consumer; direct callers can still drain and publish explicitly on a non-frame thread.
 
 Verified tests:
 
@@ -58,19 +58,13 @@ Verified tests:
 
 Phase 3 commit series (parent repo): `87e90453` (SceneDB batch round trip), `a2f310ae` (pin Helio API commit), after earlier Phase 3 commits `91518794`, `5b940ded`, `c6d2760f`. Helio submodule commit: `99103728` (`feat(voxel): support snapshot replacement import`). Phase 5 criteria were subsequently committed as `d48a5716`.
 
-## Phase 5: current publication problem and required architecture
+## Phase 5: completed pass foundation
 
-The current public writer is synchronous and takes a blocking `RwLock` path. The bounded inbox does not schedule or consume itself. Calling `VoxelInboxBatch::publish_into` or `VoxelSourceWriter::publish_batch` from a frame callback can therefore put validation, `HashSet`/vector allocation, payload copying, and component-map mutation on the caller's thread. Queue submission is nonblocking; canonical publication is not.
+`VoxelSourceSession` binds the wake-driven `VoxelPublicationWorker` and `VoxelEditWorker` to one SceneDB entity generation and component payload store. Submission uses bounded, nonblocking admission; tickets expose published, failed, retained, or discarded work. A removed or replaced row rejects new submissions from the old session, while accepted work may safely complete in its captured store. The blocking writer runs on CPU workers, never in the render callback.
 
-The render pass has a separate gap: current `VoxelMeshPass::prepare` uploads only an already-built dirty-brick list/parameters; `execute` dispatches extraction for those entries. There is no incremental bridge from a component's canonical payload revision into pass residency, no multi-entry SceneDB identity/lifetime integration, and no per-frame source-payload staging budget. The generic Phase 4 buffer projection carries opaque GPU handles; it intentionally does not transport CPU payload bytes.
+The renderer projects each live voxel row into `VoxelSceneEntry` using its stable entity generation and kind. `VoxelSceneFeed` selects and prepares bounded nearby canonical chunks on a CPU worker. `VoxelResidency` tracks revisioned per-entry GPU slots, evicts only transient data, stages at most 64 bricks per frame, and promotes a complete replacement after its final staged upload. The pass keeps old complete output during staging and exposes queue, upload, residency, eviction, rebuild, and stale-result metrics. The generic renderer and SceneDB buffer seam remain free of voxel-specific data interpretation.
 
-The code-backed independent audit also found:
-
-- A drained batch is removed from the inbox; on writer error it is retryable only if the consumer retains it. There is no automatic requeue/rebase contract.
-- Inbox bounds do not bound cumulative canonical live memory or memory pinned by retained snapshots.
-- `VoxelSourceWriter` accepts caller-supplied IDs and a store handle; it does not resolve entity identity/lifetime.
-- `VoxelMeshPass::mark_dirty_with_mode` currently logs and drops a new dirty entry when its dirty-list limit is full. Future publication must not equate “dirty list full” with “data accepted”; it needs back-pressure/defer/reconstruct semantics.
-- A dedicated CPU worker removes writer work from the frame thread but does **not** by itself bound GPU prepare/execute time. Per-frame upload and compute must be budgeted separately, with unprocessed work retained and old complete output preserved.
+Current limits are explicit. Inbox bounds do not cap total canonical live memory or snapshots retained by clients. The pass limits brick uploads and extraction work per frame, but Phase 8 still needs full-frame and GPU timing under the agreed release workload. Mixed LOD chunk sets reject with a diagnostic until transition geometry is implemented; `target_error_pixels` and `detail_distance` are authored configuration for later LOD qualification. Direct use of the synchronous low-level writer is available to trusted off-frame callers, while normal script/tool producers should use `VoxelSourceSession`.
 
 ### Phase 5 acceptance checklist
 
@@ -86,6 +80,12 @@ Before considering Phase 5 complete, establish and test all of the following:
 8. Tests cover concurrent submit, back-pressure, worker wake/close/drain/discard, worker errors/recovery, multiple component entries, stale completion, removal/replacement, eviction/rebuild, bounded frame-side staging, and canonical state survival.
 9. Add instrumentation for queued bytes/ops, publication time, failed/retried batches, resident/staging bytes, per-frame upload bytes/time, deferred jobs, evictions, rebuilds, and stale results. Do not claim the 10 ms goal until Phase 8.
 
+### Accepted CPU publication increment (2026-09-23)
+
+Helio `2a451b0d` was reproduced in a clean isolated worktree and integrated into `codex/unified-voxel-integration`. It changes only `helio-pass-voxel-mesh/src/bounded_inbox.rs` and its public exports. The inbox now uses one mutex/condition-variable pair for queue state and worker wakeup. `VoxelPublicationWorker` binds one `VoxelSourceWriter`, processes whole batches on a CPU thread, and stops on the first writer error. Producer admission never waits for the component-store lock. Each accepted submission returns a ticket that reports published, failed, unprocessed, or discarded work; failed/unprocessed tickets retain a batch handle for caller-controlled retry/rebase. `finish(Drain)` returns failures and unprocessed work; `finish(Discard)` and worker `Drop` mark queued tickets discarded while an already in-flight write completes. Queue limits plus one maximum-size in-flight batch bound transient admission. Status exposes pending/in-flight operations and bytes, published/failed counts, and last publication duration.
+
+Subsequent Helio commits add canonical chunk encoding, scene preparation, per-entry transient residency, signed 10-cube halo, camera-relative origins, smooth seam ownership, bounded generators and edits, and GPU draw/material tests. Unit tests cover worker wake/close/drain/discard, concurrent back-pressure, retained errors, stale revisions, row removal/replacement, eviction/rebuild, frame staging, and two independent entries. The RTX 3060 offscreen test renders adjacent chunks in blocky and smooth modes using two distinct SceneDB material IDs. It verifies shared block faces are culled and both materials appear in the GPU output. This is visual correctness evidence for the first render path; it does not measure the Phase 8 release workload.
+
 ### Incomplete worker attempt (do not merge)
 
 A Phase 5 implementation worker and independent read-only auditor were dispatched in parallel. The auditor completed and was closed after review. The implementation worker stopped without a commit. Its branch base was `99103728`, but Git in its isolated checkout reported widespread tracked-file deletions (including `src/lib.rs` and `src/bounded_inbox.rs`) while those files physically existed. The worker could not explain/validate that mismatch and recommended abandoning the patch. No code from that worker is accepted. Do not cherry-pick, copy, or stage its worktree until its Git metadata/state is independently understood and the patch is reproduced in a trustworthy checkout. The worker agent is closed; the questionable checkout is retained rather than destructively cleaned up.
@@ -96,7 +96,15 @@ Independent review result is summarized immediately above. It was read-only and 
 
 ### Phase 6 — component behavior, generators, and update workflows
 
-Implement the public component behavior over the Phase 3 data contract and Phase 5 pass. Make the simple voxel object cube-first and deformable. Support bounded/unbounded flat terrain and planet shape as separate source/domain options. Add blocky/smooth behavior only where a real implementation path exists. Define deterministic generator descriptors/seed/version semantics and external generator adapters; do not serialize closures/function pointers. External code must batch edits/chunks, observe progress/failure, and avoid frame-thread work. Unsupported modes must fail explicitly.
+`VoxelComponent::default()` is a filled 16³ cube with a one-entry SceneDB material palette. A deserialized cube with an empty runtime store is populated once by the CPU scene worker. `VoxelSourceSession::open(scene, entity, kind, source, limits)` then supports nonblocking `try_submit_chunks` and `try_submit_edits`, status/tickets, a caller-owned in-memory snapshot, and explicit `finish(Drain|Discard)`. Sample edits affect the canonical chunk store and trigger revisioned redraw. The session checks entity generation, store identity, configuration, and editability before each new submission.
+
+`VoxelTerrainComponent` supports bounded and unbounded domains, flat and planet shape modes, deterministic built-in generators `helio.flat` and `helio.planet`, seed and version identity, and CPU-only registered external adapters. `generator_parameters` is JSON with `base_height`, `amplitude`, `wavelength`, and `material_slot`; the manager schedules a bounded 5³ camera window on CPU workers and publishes complete generated batches to the canonical store. An empty `generator_id` selects externally supplied chunks. Script/tool callers may explicitly export/import snapshots; the engine does not persist runtime payloads. Invalid modes, transforms, palette slots, and unsupported mixed LOD sets report errors.
+
+### Phase 5–6 validation (2026-09-23)
+
+- `cargo test --locked --offline -p helio-pass-voxel-mesh` passed 54 unit tests, the generic opaque-buffer contract, and the GPU pipeline portability test in the isolated Helio worktree. The GPU draw test ran on the local RTX 3060 and produced inspected blocky and smooth captures with adjacent red/green materials.
+- `cargo test --locked --offline -p engine_backend --lib voxel_ --quiet` passed 6 focused library tests, including a deserialized cube edited before its first render. `cargo test --locked --offline -p engine_backend --test voxel_component_schema --quiet` passed 5 integration tests.
+- The pass has per-frame upload limits and staging metrics. The tests prove the first render path and bounded work contracts; they do not establish total frame time, distant LOD correctness, or steady-state canonical memory use under the Phase 8 workload.
 
 ### Phase 7 — migrate and remove old implementation
 
@@ -108,23 +116,19 @@ Use the exact agreed release workload and external proprietary game checkout; do
 
 ## Git/worktree and validation notes
 
-- Canonical parent branch is `main`; Helio integration branch is `codex/unified-voxel-integration`. Parent gitlink was updated to Helio `99103728`.
+- The active Pulsar branch is `codex/unified-voxel-phase5-6` (`1c52cc091`, `26d968767`, `b908059f2` for the SceneDB bridge, generation/source service, and deserialized-cube test). Helio integration is `codex/unified-voxel-integration`; this checkout pins Helio `9498b7d2`.
 - Phase 5 acceptance-doc commit is parent `d48a5716`.
-- The parent working tree currently has unrelated dirty user changes. In the last observed status these included `Cargo.lock`, `crates/core/engine_backend/src/scene/mod.rs`, the editor command tests, `crates/subsystems/pulsar_scene` files, and submodule `crates/ui/wgpui-component`. Do not stage/reset/revert them.
-- Helio `crates/passes/3d/helio-pass-voxel-mesh/Cargo.toml` is also modified in the main Helio checkout but was pre-existing/unrelated to the recent Phase 3 commits. Preserve it.
+- A prior Pulsar checkout had unrelated dirty user changes. The current `C:\Users\thiag\Documents\GitHub\Pulsar-Native` checkout was fast-forwarded to `origin/main` on 2026-09-23; the removed `crates/graphics/wgpu/` submodule checkout remains untracked and untouched.
+- The main Helio checkout has unrelated dirty HLFS paths (`light_grid.wgsl`, `src/lib.rs`, and `key_selection_tests.rs`). Preserve them.
 - During Phase 3 closeout the new test dependency in the root workspace and engine-backend dev-dependencies was committed. Do not mistake it for unrelated state.
 - After each accepted worker patch, inspect exact changed paths and both repository statuses, run tests from the proper workspace roots, then commit the Helio submodule code first, update the parent gitlink, and commit parent tests/docs separately. Close completed workers immediately after review/validation.
 - Current relevant test commands:
-  - `cargo test --locked -p helio-pass-voxel-mesh` from `D:\GitHub\Pulsar-Native\crates\renderer\helio`
-  - `cargo test --locked -p engine_backend --test voxel_component_schema` from `D:\GitHub\Pulsar-Native`
+  - `cargo test --locked -p helio-pass-voxel-mesh` from the Helio workspace
+  - `cargo test --locked -p engine_backend --test voxel_component_schema` from the Pulsar root
 - Whole-workspace checks were not Phase 3 acceptance gates and may surface unrelated existing warnings/failures. The 10 ms external game command cannot run from this parent checkout because its runtime/game project is not present here.
 
-## First safe next actions for the receiving integrator
+## Next phases
 
-1. Read `voxel-system-implementation-plan.md` shared rules and Phase 5, this handoff, and `voxel-phase4-scene-buffer-seam.md`.
-2. Reconfirm both repository/submodule HEADs and statuses; do not inherit or stage the questionable worker checkout.
-3. Recreate the publication worker in a trustworthy isolated Helio worktree. Start by making the inbox's producer notification and consumer wait share a correct synchronization primitive (no polling/lost wakeup). Define accepted-batch retention/retry, stale-revision recovery, queue closure, and `Drop` behavior before adding the worker thread.
-4. Keep CPU SceneDB publication separate from GPU residency: CPU worker writes canonical SceneDB component state; a pass-side revision consumer stages/upload chunks incrementally under explicit per-frame budgets.
-5. Add focused tests for every failure/shutdown path before extending to multi-entry cache/residency and rendering.
-6. Review and integrate only scoped commits after tests and a path-level diff audit. Then continue Phase 5 acceptance checklist above.
+1. Phase 7: migrate planetary voxel callers, collision/query and editor interactions, then remove the old planetary path only after equivalent behavior is verified. Keep ordinary static meshes.
+2. Phase 8: run the agreed external release workload and record visual correctness, total-frame and GPU timings, memory, queue pressure, and transient cache behavior. Qualify far LOD transitions and the 10 ms target with measured evidence.
 

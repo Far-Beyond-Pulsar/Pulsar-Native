@@ -199,8 +199,8 @@ Update this table after each phase. The integrator owns edits to status and depe
 | 2. Spec + Git integration | Complete | Integrator + three read-only review workers | Parent docs commit — see Git history; Helio branch `codex/unified-voxel-integration` at `fe7aa140` | No upstream merge; selectively port voxel algorithms later; external benchmark context remains for Phase 8 |
 | 3. SceneDB storage/API | Complete | Integrator + two independent read-only closeout audits | Helio API commit + parent integration/docs commit — see Git history | Raw store remains a low-level trusted capability; aggregate live-memory policy and 10 ms performance qualification remain later work |
 | 4. Generic pass seam | Complete | Integrator | Helio generic-buffer contract test + parent seam docs commit — see Git history | Contract test validates metadata/API seam, not full GPU-frame rendering |
-| 5. Voxel pass foundation | In progress | Integrator + bounded publication worker + independent publication audit | Worker handoffs pending | Fix CPU publication hitch first; keep SceneDB authoritative and GPU residency transient; do not claim 10 ms until Phase 8 |
-| 6. Components/generation | Planned | Component/generator agent | — | Phases 3 and 5 contracts |
+| 5. Voxel pass foundation | Complete | Integrator | Helio `2a451b0d` through `9498b7d2`; bounded publication, SceneDB feed, revisioned residency, incremental GPU draw, two-entry GPU capture | Phase 8 must qualify frame time, memory, and the release workload. |
+| 6. Components/generation | Complete | Integrator | Helio generator/edit workers and cube implementation; Pulsar `26d968767` generation/source service and `b908059f2` deserialized-cube test | Mixed LOD transition geometry is explicitly unsupported pending later LOD qualification. |
 | 7. Replace/migrate | Planned | Integrator / migration agent | — | New path passes integration tests |
 | 8. Qualification | Planned | Performance agent | — | Integrated candidate build |
 
