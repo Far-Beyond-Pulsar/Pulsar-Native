@@ -309,15 +309,20 @@ fn committed_meshes_match_generator() {
         let (decoded, _) = helio_component::mesh_cache::decode(&bytes).expect("valid PMSH");
         assert_eq!(decoded.indices, batch.mesh.indices, "{}", batch.file);
         assert_eq!(decoded.vertices.len(), batch.mesh.vertices.len(), "{}", batch.file);
-        assert!(
-            decoded
-                .vertices
-                .iter()
-                .zip(&batch.mesh.vertices)
-                .all(|(a, b)| vertex_bits(a) == vertex_bits(b)),
-            "{}",
-            batch.file
-        );
+        if let Some((index, (committed, generated))) = decoded
+            .vertices
+            .iter()
+            .zip(&batch.mesh.vertices)
+            .enumerate()
+            .find(|(_, (committed, generated))| vertex_bits(committed) != vertex_bits(generated))
+        {
+            panic!(
+                "{} vertex {index}: committed {:?}, generated {:?}",
+                batch.file,
+                vertex_bits(committed),
+                vertex_bits(generated)
+            );
+        }
     }
 }
 
