@@ -315,6 +315,21 @@ pub struct ComponentRegistration {
 
 inventory::collect!(ComponentRegistration);
 
+/// Components registered in bulk by another registry (e.g. the engine's
+/// world component registry), rather than one `script_component!` each.
+pub struct ComponentProvider {
+    pub components: fn() -> Vec<ProvidedComponent>,
+}
+
+inventory::collect!(ComponentProvider);
+
+/// One component from a [`ComponentProvider`]. Its Rust type is looked up
+/// from the SceneDB `ComponentId`.
+pub struct ProvidedComponent {
+    pub name: &'static str,
+    pub id: fn() -> ComponentId,
+}
+
 /// A value type visible to scripts under a stable name. Submitted by
 /// [`script_value_type!`](crate::script_value_type).
 pub struct ValueTypeRegistration {
@@ -420,7 +435,7 @@ impl TypeBinding {
 #[derive(Clone, Copy, Debug)]
 pub struct ComponentBinding {
     pub name: &'static str,
-    pub ty: TypeRef,
+    pub type_id: TypeId,
     id: fn() -> ComponentId,
 }
 
@@ -463,11 +478,25 @@ impl TypeRegistry {
         builtin!((), bool, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize, f32, f64, String, Arc<str>, Entity);
 
         for reg in inventory::iter::<ComponentRegistration> {
-            let binding = ComponentBinding { name: reg.name, ty: reg.ty, id: reg.id };
+            let binding = ComponentBinding { name: reg.name, type_id: reg.ty.type_id(), id: reg.id };
             if registry.components.insert(reg.name, binding).is_some() {
                 tracing::error!("script component name `{}` registered twice", reg.name);
             }
-            registry.components_by_rust.insert(reg.ty.type_id(), reg.name);
+            registry.components_by_rust.insert(binding.type_id, reg.name);
+        }
+        // Bulk providers fill in whatever explicit registrations did not.
+        for provider in inventory::iter::<ComponentProvider> {
+            for provided in (provider.components)() {
+                let type_id = pulsar_scenedb::component::type_of((provided.id)());
+                if registry.components.contains_key(provided.name)
+                    || registry.components_by_rust.contains_key(&type_id)
+                {
+                    continue;
+                }
+                let binding = ComponentBinding { name: provided.name, type_id, id: provided.id };
+                registry.components.insert(provided.name, binding);
+                registry.components_by_rust.insert(type_id, provided.name);
+            }
         }
         for reg in inventory::iter::<ValueTypeRegistration> {
             if registry.objects.insert(reg.name, reg).is_some() {

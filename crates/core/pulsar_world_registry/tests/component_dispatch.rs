@@ -403,3 +403,90 @@ fn nonzero_component_index_is_instance_missing_for_properties() {
     let err = get_component_property(&world, e, "DispatchGizmo", 0, "nope").unwrap_err();
     assert!(matches!(err, ScriptRefError::UnknownProperty { .. }));
 }
+
+// ── script VM natives (script_natives.rs) ─────────────────────────────────
+
+mod script_vm {
+    use std::sync::Arc;
+
+    use pulsar_script_vm::{
+        Budget, Function, Host, Import, Instr, Module, NativeRegistry, Param, Program, Signature,
+        Type, TypeRegistry, Value, Vm,
+    };
+
+    use super::{hydrated_world, DispatchGizmo};
+
+    fn gizmo() -> Type {
+        Type::component("DispatchGizmo")
+    }
+
+    #[test]
+    fn world_components_are_script_components() {
+        assert!(TypeRegistry::global().component("DispatchGizmo").is_some());
+        let registry = NativeRegistry::with_engine_natives();
+        let mut names: Vec<_> = registry.methods_for(&gizmo()).map(|n| n.name.clone()).collect();
+        names.sort();
+        assert_eq!(
+            names,
+            [
+                "DispatchGizmo::add_charges",
+                "DispatchGizmo::entity",
+                "DispatchGizmo::exists",
+                "DispatchGizmo::get_charges",
+                "DispatchGizmo::set_charges",
+            ]
+        );
+        let add = registry.get("DispatchGizmo::add_charges").unwrap();
+        assert_eq!(add.sig, Signature::new([Param::new(gizmo()), Param::new(Type::Int)], Type::Int));
+        assert!(!add.flags.side_effect_free);
+    }
+
+    #[test]
+    fn scripts_read_write_and_call_world_components() {
+        let registry = NativeRegistry::with_engine_natives();
+        let mut module = Module::new("gizmo_user");
+        let import = |name: &str, params: Vec<Param>, ret: Type| Import { name: name.into(), sig: Signature::new(params, ret) };
+        module.imports = vec![
+            import("DispatchGizmo::of", vec![Param::new(Type::Entity)], gizmo()),
+            import("DispatchGizmo::add_charges", vec![Param::new(gizmo()), Param::new(Type::Int)], Type::Int),
+            import("DispatchGizmo::set_charges", vec![Param::new(gizmo()), Param::new(Type::Int)], Type::Unit),
+            import("DispatchGizmo::get_charges", vec![Param::new(gizmo())], Type::Int),
+        ];
+        // g = DispatchGizmo::of(self); g.add_charges(n); g.charges = g.charges * 2; g.charges
+        module.functions = vec![Function {
+            name: "run".into(),
+            exported: true,
+            params: vec![Type::Int],
+            ret: Type::Int,
+            registers: vec![Type::Int, Type::Entity, gizmo(), Type::Int],
+            code: vec![
+                Instr::SelfEntity { dst: 1 },
+                Instr::CallNative { import: 0, args: vec![1], dst: Some(2) },
+                Instr::CallNative { import: 1, args: vec![2, 0], dst: Some(3) },
+                Instr::Binary { op: pulsar_script_vm::BinOp::Add, dst: 3, a: 3, b: 3 },
+                Instr::CallNative { import: 2, args: vec![2, 3], dst: None },
+                Instr::CallNative { import: 3, args: vec![2], dst: Some(3) },
+                Instr::Return { value: Some(3) },
+            ],
+        }];
+        let program = Program::link(Arc::new(module), &registry).unwrap();
+        let (mut world, e) = hydrated_world(1);
+        let mut vm = Vm::new();
+        let mut instance = program.instantiate();
+        let func = program.entry("run").unwrap();
+        let mut host = Host::new(&mut world, e);
+        let out = vm
+            .call(&program, &mut instance, func, &[Value::Int(4)], &mut host, &mut Budget::new(100))
+            .unwrap();
+        assert_eq!(out, Value::Int(10));
+        assert_eq!(world.get::<DispatchGizmo>(e).unwrap().charges, 10);
+
+        // A reference whose entity lost the component fails cleanly.
+        world.remove::<DispatchGizmo>(e);
+        let mut host = Host::new(&mut world, e);
+        let err = vm
+            .call(&program, &mut instance, func, &[Value::Int(1)], &mut host, &mut Budget::new(100))
+            .unwrap_err();
+        assert!(err.to_string().contains("has no DispatchGizmo"), "{err}");
+    }
+}

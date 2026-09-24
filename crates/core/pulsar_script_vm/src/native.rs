@@ -280,6 +280,15 @@ pub struct NativeRegistration {
 
 inventory::collect!(NativeRegistration);
 
+/// Natives registered in bulk by another registry (e.g. the world
+/// component registry's properties and methods). A native whose name is
+/// already taken is skipped.
+pub struct NativeProvider {
+    pub natives: fn() -> Vec<NativeFn>,
+}
+
+inventory::collect!(NativeProvider);
+
 /// A native with this name is already registered.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("native `{0}` is already registered")]
@@ -303,8 +312,8 @@ impl NativeRegistry {
     }
 
     /// The standard library, every script-visible reflected method,
-    /// component method, component accessor and property, and every
-    /// [`NativeRegistration`].
+    /// component method, component accessor and property, every
+    /// [`NativeRegistration`], and every [`NativeProvider`]'s natives.
     pub fn with_engine_natives() -> Self {
         let mut registry = Self::new();
         crate::stdlib::register(&mut registry);
@@ -312,6 +321,13 @@ impl NativeRegistry {
         for registration in inventory::iter::<NativeRegistration> {
             if let Err(err) = registry.register((registration.build)()) {
                 tracing::error!("script natives: {err}");
+            }
+        }
+        for provider in inventory::iter::<NativeProvider> {
+            for native in (provider.natives)() {
+                if let Err(err) = registry.register(native) {
+                    tracing::debug!("script natives: skipping provided {err}");
+                }
             }
         }
         registry

@@ -42,8 +42,10 @@ pub use module::{
     BinOp, Constant, Function, Import, Instr, Module, Param, Reg, Signature, UnOp, Variable,
     FORMAT_VERSION,
 };
-pub use native::{Host, NativeBuilder, NativeFn, NativeRegistration, NativeRegistry, Origin};
-pub use types::{Obj, ScriptValue, Type, TypeRegistry};
+pub use native::{
+    Host, NativeBuilder, NativeFn, NativeProvider, NativeRegistration, NativeRegistry, Origin,
+};
+pub use types::{ComponentProvider, Obj, ProvidedComponent, ScriptValue, Type, TypeRegistry};
 pub use value::{Object, Value};
 pub use verify::verify;
 

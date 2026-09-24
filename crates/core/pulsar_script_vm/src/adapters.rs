@@ -37,15 +37,15 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         let ty = Type::Component(component.name.to_owned());
         accessors(component, &ty, &mut natives);
         let cid = component.component_id();
-        for method in component_methods_of_type(component.ty.type_id()) {
+        for method in component_methods_of_type(component.type_id) {
             natives.extend(component_method(component.name, &ty, cid, *method));
         }
-        for method in methods_of(component.ty.type_id()) {
+        for method in methods_of(component.type_id) {
             if method.receiver == ReceiverKind::None {
                 natives.extend(reflected(component.name, None, method));
             }
         }
-        for field in struct_fields(component.ty.type_id()) {
+        for field in struct_fields(component.type_id) {
             natives.extend(component_field(component.name, &ty, cid, field));
         }
     }

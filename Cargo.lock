@@ -9136,9 +9136,11 @@ dependencies = [
  "inventory",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_script_vm",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+ "tracing",
 ]
 
 [[package]]

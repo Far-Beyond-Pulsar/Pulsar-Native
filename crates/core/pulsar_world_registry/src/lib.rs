@@ -79,6 +79,7 @@ pub mod errors;
 pub mod marshal;
 pub mod type_shims;
 pub mod vm_abi;
+mod script_natives;
 
 // The unified reflection dispatcher (#643) and its property accessors --
 // THE entry points every scripting backend (VM opcodes, generated code,
