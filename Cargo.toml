@@ -408,5 +408,5 @@ pulsar_reflection_derive = { path = "crates/third-party/pulsar-reflection/pulsar
 # The patch VALUE uses the `//`-spelled URL: cargo refuses a patch that points
 # at the exact source the manifest pins (same URL, even at a different rev), so
 # the alternate spelling is what lets this override resolve the pushed rev.
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "214cb5319fcef099f2413005e472d86aaf1046b3" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "214cb5319fcef099f2413005e472d86aaf1046b3" }
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "7b0414b2975e8e1eb2d6ea489b710a2c411630b3" }
+pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "7b0414b2975e8e1eb2d6ea489b710a2c411630b3" }
