@@ -131,12 +131,14 @@ fn build_pie_dylib(
     // `cargo build --release` / `cargo run --release` produce).
     let release = true;
 
-    // Blueprint preflight (#656): validate saved class graphs against the
-    // compiled artifacts PIE would load. Bad graphs stop Play here instead of
-    // surfacing as runtime failures inside the embedded game.
-    if let Err(summary) = blueprint_editor_plugin::validation::validate_project_classes(root) {
-        tracing::error!("PiE blocked by blueprint validation:\n{summary}");
-        return Err(summary);
+    // Script preflight (#656): every scripting language plugin validates its
+    // saved classes. Bad scripts stop Play here instead of surfacing as
+    // runtime failures inside the embedded game.
+    if let Some(plugins) = plugin_manager::global() {
+        if let Err(summary) = plugins.read().validate_scripts(root) {
+            tracing::error!("PiE blocked by script validation:\n{summary}");
+            return Err(summary);
+        }
     }
 
     // Fastpath — reuse the existing artifact when nothing changed. Needs the

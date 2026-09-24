@@ -214,6 +214,10 @@ impl BuiltinEditorProvider for BlueprintEditorBuiltinProvider {
         blueprint_editor_plugin::BlueprintEditorPlugin::default().ai_tools()
     }
 
+    fn script_languages(&self) -> Vec<Arc<dyn plugin_editor_api::ScriptLanguage>> {
+        vec![blueprint_editor_plugin::script_language()]
+    }
+
     fn capabilities_for_file(&self, file_path: &Path) -> Vec<String> {
         blueprint_editor_plugin::BlueprintEditorPlugin::default().capabilities_for_file(file_path)
     }
