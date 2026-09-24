@@ -92,7 +92,10 @@ fn build_batches() -> Vec<Batch> {
     }
     for (index, (mesh, colour)) in panes.into_iter().zip(colours).enumerate() {
         batches.push(Batch {
-            file: format!("{MESH_DIR}/glass_{}.mesh", GLASS_NAMES[index].to_lowercase()),
+            file: format!(
+                "{MESH_DIR}/glass_{}.mesh",
+                GLASS_NAMES[index].to_lowercase()
+            ),
             name: format!("Glass {}", GLASS_NAMES[index]),
             mesh: MeshUpload {
                 vertices: mesh.vertices,
@@ -335,7 +338,12 @@ fn committed_meshes_match_generator() {
             .unwrap_or_else(|e| panic!("{} missing: {e}", batch.file));
         let (decoded, _) = helio_component::mesh_cache::decode(&bytes).expect("valid PMSH");
         assert_eq!(decoded.indices, batch.mesh.indices, "{}", batch.file);
-        assert_eq!(decoded.vertices.len(), batch.mesh.vertices.len(), "{}", batch.file);
+        assert_eq!(
+            decoded.vertices.len(),
+            batch.mesh.vertices.len(),
+            "{}",
+            batch.file
+        );
         if let Some((index, (committed, generated))) = decoded
             .vertices
             .iter()
@@ -371,5 +379,8 @@ fn default_level_loads_the_cathedral() {
         .filter(|o| matches!(o.object_type, ObjectType::Light(_)))
         .count();
     assert_eq!((meshes, lights), (14, 17));
-    assert_eq!(camera.expect("editor camera saved").position, [0.0, 2.0, 24.0]);
+    assert_eq!(
+        camera.expect("editor camera saved").position,
+        [0.0, 2.0, 24.0]
+    );
 }

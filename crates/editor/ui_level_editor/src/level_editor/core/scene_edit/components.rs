@@ -473,12 +473,7 @@ pub(super) fn hydrate_canonical_component(
 
 /// Update a single component's data by index. World-authoritative classes are
 /// hydrated directly; legacy classes keep the attachment-JSON behavior.
-pub fn update_component(
-    world: &mut World,
-    object_id: &str,
-    component_index: usize,
-    data: Value,
-) {
+pub fn update_component(world: &mut World, object_id: &str, component_index: usize, data: Value) {
     profiling::profile_scope!("scene_edit::update_component");
     let component = get_components_metadata(world, object_id)
         .get(component_index)
@@ -596,12 +591,13 @@ pub fn update_live_component_property(
                 .find(|p| p.name == prop_name)
         })
     else {
-        tracing::warn!("[LIVE_PROPERTY_EDIT] no reflected property '{prop_name}' on '{class_name}'");
+        tracing::warn!(
+            "[LIVE_PROPERTY_EDIT] no reflected property '{prop_name}' on '{class_name}'"
+        );
         return Err(new_value);
     };
 
-    let is_live =
-        live_typed_component_index(world, object_id, class_name) == Some(component_index);
+    let is_live = live_typed_component_index(world, object_id, class_name) == Some(component_index);
     if !is_live {
         let mut scratch = World::new();
         let scratch_entity = scratch.spawn();
@@ -640,9 +636,9 @@ pub fn update_live_component_property(
     let Some(entity) = world.entity_for(object_id) else {
         return Err(new_value);
     };
-    let Some(instance) = pulsar_world_registry::get_world_component_as_engine_class_mut(
-        class_name, world, entity,
-    ) else {
+    let Some(instance) =
+        pulsar_world_registry::get_world_component_as_engine_class_mut(class_name, world, entity)
+    else {
         return Err(new_value);
     };
     (setter)(instance, new_value);
@@ -699,10 +695,8 @@ pub(super) fn sync_registered_component_props_to_scene_db(world: &mut World, obj
                     continue;
                 }
             }
-            if pulsar_world_registry::get_world_component_as_engine_class(
-                class_name, world, entity,
-            )
-            .is_some()
+            if pulsar_world_registry::get_world_component_as_engine_class(class_name, world, entity)
+                .is_some()
             {
                 component.data = attachment_data(&component.data);
             }

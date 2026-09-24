@@ -48,8 +48,8 @@ pub mod helio_bridge;
 // Re-export new system types for convenience
 #[cfg(feature = "render")]
 pub use helio_bridge::{
-    arm_render_row_subscriptions, ensure_gpu_mirror, retire_gpu_rows_for_entity,
-    sync_static_mesh_rows,
+    arm_render_row_subscriptions, arm_render_row_subscriptions_for_entity, ensure_gpu_mirror,
+    retire_gpu_rows_for_entity, sync_static_mesh_rows,
 };
 
 /// Hook a `World` up to the SceneDB Inspector (CPU + GPU live view). Inert

@@ -10,9 +10,7 @@ use super::components::{
     add_component_instance, get_components, get_components_metadata, remove_component,
 };
 use super::objects::{add_object, clear, get_all_objects};
-use super::{
-    LevelEditorCameraState, LevelEditorFileState, LevelFile, LevelMetadata,
-};
+use super::{LevelEditorCameraState, LevelEditorFileState, LevelFile, LevelMetadata};
 
 /// Serialize the scene to a JSON level file.
 pub fn save_to_file<P: AsRef<Path>>(world: &World, path: P) -> Result<(), String> {

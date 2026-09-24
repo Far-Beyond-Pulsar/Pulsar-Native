@@ -555,11 +555,12 @@ pub fn can_reparent(world: &World, id: &str, new_parent: Option<&str>) -> bool {
 /// attaches components afterwards. Used to rebuild a scene from a snapshot.
 pub(super) fn spawn_raw(world: &mut World, obj: &SceneObjectData) -> Result<Entity, String> {
     let parent = match &obj.parent {
-        Some(parent_id) => Some(
-            world
-                .entity_for(parent_id)
-                .ok_or_else(|| format!("object '{}' references unknown parent '{parent_id}'", obj.id))?,
-        ),
+        Some(parent_id) => Some(world.entity_for(parent_id).ok_or_else(|| {
+            format!(
+                "object '{}' references unknown parent '{parent_id}'",
+                obj.id
+            )
+        })?),
         None => None,
     };
     let entity = world

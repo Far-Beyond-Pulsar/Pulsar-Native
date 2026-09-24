@@ -7,9 +7,13 @@
 //! (running on the GPUI main thread) can detect changes made by background
 //! threads (AI tools, asset import, etc.) and trigger a re-render.
 
-use crate::level_editor::scene_edit::{self, ObjectId, SceneHistorySnapshot, SceneObjectData};
+use crate::level_editor::scene_edit::{
+    self, ObjectId, SceneHistoryDelta, SceneHistorySnapshot, SceneObjectData,
+};
 use engine_backend::scene::SharedScene;
-use parking_lot::{MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use parking_lot::{
+    MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
+};
 use pulsar_scenedb::World;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -68,11 +72,11 @@ pub struct SceneDomain {
     /// Undo history (Pulsar-Native#554) — one entry per mutating
     /// `SceneCommand` (`commands.rs::execute_command` pushes onto this),
     /// oldest first. Bounded at [`MAX_UNDO_HISTORY`].
-    undo_stack: Vec<SceneHistorySnapshot>,
+    undo_stack: Vec<SceneHistoryDelta>,
     /// Redo history — populated by [`Self::undo`], cleared by every new
     /// mutating command (standard undo/redo semantics: once you make a new
     /// change, the old "future" you undid past is gone).
-    redo_stack: Vec<SceneHistorySnapshot>,
+    redo_stack: Vec<SceneHistoryDelta>,
 }
 
 impl Default for SceneDomain {
@@ -194,8 +198,15 @@ impl SceneDomain {
     /// Commit a previously captured pre-state onto the undo stack and clear
     /// the redo stack. Called by `execute_command` only when the command it
     /// preceded actually changed something.
-    pub fn commit_undo_checkpoint(&mut self, pre_state: SceneHistorySnapshot) {
-        self.undo_stack.push(pre_state);
+    pub fn commit_undo_checkpoint(
+        &mut self,
+        pre_state: SceneHistorySnapshot,
+        post_state: SceneHistorySnapshot,
+    ) {
+        self.undo_stack.push(SceneHistoryDelta {
+            before: pre_state,
+            after: post_state,
+        });
         if self.undo_stack.len() > MAX_UNDO_HISTORY {
             self.undo_stack.remove(0);
         }
@@ -216,32 +227,38 @@ impl SceneDomain {
     /// method deliberately leaves to the caller since it has no `cx` to
     /// notify with here).
     pub fn undo(&mut self) -> bool {
-        let Some(previous) = self.undo_stack.pop() else {
+        let Some(delta) = self.undo_stack.pop() else {
             return false;
         };
-        let current = self.capture_history_snapshot();
-        if !self.restore(&previous) {
-            // Restore failed (malformed snapshot) -- put it back so the
-            // entry isn't silently lost, and leave the redo stack alone.
-            self.undo_stack.push(previous);
+        let ids = delta.ids();
+        let current = scene_edit::history::capture_history_subset(&self.world(), &ids);
+        if !self.restore_delta(&delta.before, &ids) {
+            self.undo_stack.push(delta);
             return false;
         }
-        self.redo_stack.push(current);
+        self.redo_stack.push(SceneHistoryDelta {
+            before: current,
+            after: delta.after,
+        });
         true
     }
 
     /// Redo the last undone command. See [`Self::undo`]'s doc for the
     /// caller's responsibilities on success.
     pub fn redo(&mut self) -> bool {
-        let Some(next) = self.redo_stack.pop() else {
+        let Some(delta) = self.redo_stack.pop() else {
             return false;
         };
-        let current = self.capture_history_snapshot();
-        if !self.restore(&next) {
-            self.redo_stack.push(next);
+        let ids = delta.ids();
+        let current = scene_edit::history::capture_history_subset(&self.world(), &ids);
+        if !self.restore_delta(&delta.after, &ids) {
+            self.redo_stack.push(delta);
             return false;
         }
-        self.undo_stack.push(current);
+        self.undo_stack.push(SceneHistoryDelta {
+            before: delta.before,
+            after: current,
+        });
         true
     }
 
@@ -256,6 +273,16 @@ impl SceneDomain {
             }
             Err(error) => {
                 tracing::error!(%error, "scene restore rejected");
+                false
+            }
+        }
+    }
+
+    fn restore_delta(&mut self, snapshot: &SceneHistorySnapshot, ids: &[ObjectId]) -> bool {
+        match scene_edit::history::restore_history_delta(&mut self.world_mut(), snapshot, ids) {
+            Ok(()) => true,
+            Err(error) => {
+                tracing::error!(%error, "scoped scene restore rejected");
                 false
             }
         }

@@ -29,13 +29,13 @@ pub mod level_io;
 pub mod objects;
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod hlfs_cathedral;
+#[cfg(test)]
+mod tests;
 
 pub use changes::PropertyChangeSet;
 pub use engine_backend::scene::{LightType, MeshType, ObjectId, ObjectType};
-pub use history::SceneHistorySnapshot;
+pub use history::{SceneHistoryDelta, SceneHistorySnapshot};
 
 /// Whether `class_name` has a live typed component registered in the world
 /// (as opposed to being a JSON-only attachment).

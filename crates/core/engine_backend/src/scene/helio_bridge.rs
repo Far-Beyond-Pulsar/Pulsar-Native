@@ -23,16 +23,33 @@ pub fn arm_render_row_subscriptions(world: &mut pulsar_scenedb::World) {
         .map(|(entity, _)| entity)
         .collect();
     for entity in mesh_entities {
-        let _ = world.subscribe::<StaticMeshComponent>(entity);
-        let _ = world.subscribe::<Transform>(entity);
-        let _ = world.subscribe::<Visibility>(entity);
-        let _ = world.subscribe::<helio_component::components::MaterialOverrideComponent>(entity);
+        arm_render_row_subscriptions_for_entity(world, entity);
     }
     let light_entities: Vec<_> = world
         .query::<&helio_component::components::LightComponent>()
         .map(|(entity, _)| entity)
         .collect();
     for entity in light_entities {
+        arm_render_row_subscriptions_for_entity(world, entity);
+    }
+}
+
+/// Arm subscriptions for one newly-created entity without revisiting the rest
+/// of the scene. Structural editor commands call this immediately after spawn.
+pub fn arm_render_row_subscriptions_for_entity(
+    world: &mut pulsar_scenedb::World,
+    entity: pulsar_scenedb::Entity,
+) {
+    if world.get::<StaticMeshComponent>(entity).is_some() {
+        let _ = world.subscribe::<StaticMeshComponent>(entity);
+        let _ = world.subscribe::<Transform>(entity);
+        let _ = world.subscribe::<Visibility>(entity);
+        let _ = world.subscribe::<helio_component::components::MaterialOverrideComponent>(entity);
+    }
+    if world
+        .get::<helio_component::components::LightComponent>(entity)
+        .is_some()
+    {
         let _ = world.subscribe::<helio_component::components::LightComponent>(entity);
         let _ = world.subscribe::<Transform>(entity);
         let _ = world.subscribe::<Visibility>(entity);
