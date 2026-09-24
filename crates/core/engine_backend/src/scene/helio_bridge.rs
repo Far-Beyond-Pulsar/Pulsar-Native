@@ -58,46 +58,18 @@ pub fn arm_render_row_subscriptions_for_entity(
 
 struct EditorMeshRow;
 
-/// Remove `entity`'s `StaticObjectComponent` row so it actually stops being
-/// drawn, not just `world.remove`, which only drops the CPU-side archetype
-/// row: `StaticObjectComponent` is a fixed-size (`Pod`) `#[gpu(layout =
-/// packed, ...)]`-mirrored component, and packed mirrors have no remove-side
-/// GPU invalidation (unlike despawn, which bumps `GenerationMirror`, or a
-/// `Vec<T>` "Once" field's content-id pool release) -- the physical bytes in
-/// the `static_objects` GPU buffer are left completely untouched. The
-/// GPU-driven object-batch pass's `cs_gather` treats `mesh_generation != 0`
-/// as its sole liveness signal for a row, so a stale nonzero value there
-/// keeps the old row drawing forever (removing just this entity's
-/// `StaticMeshComponent` while the entity itself stays alive doesn't even
-/// touch `GenerationMirror`, which tracks entity despawn, not per-component
-/// removal -- so that path can't help here either).
-///
-/// Overwriting the row with a zeroed value before removing marks it dirty
-/// for the next GPU-mirror flush, so the zero actually reaches the buffer
-/// -- making `cs_gather`'s existing check correctly treat it as dead --
-/// before the CPU-side row disappears from `World`.
+/// Remove `entity`'s `StaticObjectComponent` row so it stops being drawn.
+/// SceneDB zeroes a component's GPU row when the component is removed (or
+/// its entity despawns), which the object-batch pass's `mesh_generation != 0`
+/// liveness check then treats as dead.
 fn retire_static_object_row(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
-    if world
-        .get::<helio_pass_gbuffer::StaticObjectComponent>(entity)
-        .is_some()
-    {
-        world.insert(
-            entity,
-            <helio_pass_gbuffer::StaticObjectComponent as bytemuck::Zeroable>::zeroed(),
-        );
-    }
     world.remove::<helio_pass_gbuffer::StaticObjectComponent>(entity);
 }
 
-/// Retire every packed/`Pod` `#[gpu]`-mirrored renderer row `entity` might
-/// carry, so it stops drawing. Callers that are about to despawn `entity`
-/// (or one of its descendants) must call this FIRST, while the entity is
-/// still alive and addressable -- once despawned there is no `Entity` left
-/// to `world.get`/`world.insert` against, and (per [`retire_static_object_row`]'s
-/// doc) `World::despawn` does NOT itself zero a packed mirror's GPU buffer
-/// bytes, only the CPU-side archetype row. Currently just the one row kind;
-/// add more `retire_*` calls here as other packed-mirror renderer rows gain
-/// the same despawn-time gap.
+/// Retire the renderer rows derived for `entity`. `World::despawn` also
+/// clears every `#[gpu]` row the entity carries, so calling this first is
+/// no longer required for correctness; it remains the explicit hook for
+/// dropping derived rows from an entity that stays alive.
 pub fn retire_gpu_rows_for_entity(
     world: &mut pulsar_scenedb::World,
     entity: pulsar_scenedb::Entity,
