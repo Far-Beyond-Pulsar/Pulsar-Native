@@ -4999,6 +4999,10 @@ dependencies = [
 [[package]]
 name = "helio-voxel-data"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "helio-xr"
@@ -5032,6 +5036,7 @@ dependencies = [
  "helio-pass-portal-cull",
  "helio-pass-postprocess",
  "helio-pass-water-sim",
+ "helio-voxel-data",
  "plugin_editor_api",
  "pulsar_events",
  "pulsar_reflection",
