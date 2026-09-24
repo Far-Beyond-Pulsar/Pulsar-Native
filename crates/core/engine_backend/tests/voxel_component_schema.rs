@@ -19,6 +19,9 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
         serde_json::from_value(terrain_json).expect("restore terrain component");
     assert_eq!(terrain_restored.generator_id, terrain.generator_id);
     assert_eq!(terrain_restored.generator_version, 1);
+    assert_eq!(terrain_restored.chunk_edge_voxels, 8);
+    assert_eq!(terrain_restored.max_chunk_lod, 16);
+    assert_eq!(terrain_restored.lod_scale, 2);
     assert_eq!(terrain_restored.source_revision, terrain.source_revision);
     let mut older_json = serde_json::to_value(&terrain).unwrap();
     older_json
@@ -32,7 +35,10 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
 #[test]
 fn service_revision_is_persisted_but_not_exposed_as_an_inspector_property() {
     let properties = VoxelTerrainComponent::default().get_properties();
-    assert_eq!(properties.len(), 15);
+    assert_eq!(properties.len(), 18);
+    assert!(properties.iter().any(|property| property.name == "chunk_edge_voxels"));
+    assert!(properties.iter().any(|property| property.name == "max_chunk_lod"));
+    assert!(properties.iter().any(|property| property.name == "lod_scale"));
     assert!(properties
         .iter()
         .all(|property| property.name != "source_revision"));
@@ -40,7 +46,7 @@ fn service_revision_is_persisted_but_not_exposed_as_an_inspector_property() {
 
 #[test]
 fn live_payload_state_is_scene_owned_but_script_exfiltrated() {
-    use std::sync::Arc;
+    use helio_voxel_data::VoxelStoredPayload;
 
     let terrain = VoxelTerrainComponent::default();
     let properties = terrain.get_properties();
@@ -53,7 +59,10 @@ fn live_payload_state_is_scene_owned_but_script_exfiltrated() {
     {
         let store_handle = terrain.payload_store();
         let mut store = store_handle.write().unwrap();
-        store.1.insert([u64::MAX, 0, 7, 2], Arc::from([1, 2, 3]));
+        store.1.insert(
+            [u64::MAX, 0, 7, 2],
+            VoxelStoredPayload::raw_material([1, 2, 3]),
+        );
         store.0 = 1;
     }
 
@@ -190,7 +199,7 @@ fn live_batch_publish_snapshot_and_import_round_trip_through_scenedb_rows() {
         .payload_store();
     let published = writer.snapshot().unwrap();
     assert_eq!(published.revision(), 1);
-    assert_eq!(published.get(key), Some(&[5, 8, 13, 21][..]));
+    assert_eq!(published.get_raw_material(key), Some(&[5, 8, 13, 21][..]));
     assert_eq!(live.read().unwrap().0, published.revision());
 
     // The snapshot can be handed to another SceneDB component; the receiving
@@ -212,7 +221,7 @@ fn live_batch_publish_snapshot_and_import_round_trip_through_scenedb_rows() {
         .replace_from_snapshot(&published, VoxelDomain::Unbounded { max_lod: 8 })
         .unwrap();
     let imported = target_writer.snapshot().unwrap();
-    assert_eq!(imported.get(key), Some(&[5, 8, 13, 21][..]));
+    assert_eq!(imported.get_raw_material(key), Some(&[5, 8, 13, 21][..]));
     assert_eq!(imported.revision(), 1);
 
     // Stale work is rejected without changing the component-owned row.

@@ -6,8 +6,8 @@
 use helio_component::{VoxelComponent, VoxelTerrainComponent};
 use helio_voxel_data::{
     VoxelBatchRevision, VoxelChunkBatch, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload,
-    VoxelChunkUpdate, VoxelDomain, VoxelPayloadStore, VoxelSourceId, VoxelSourceWriter,
-    VoxelTerrainId, VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
+    VoxelChunkUpdate, VoxelDomain, VoxelGeneratorDescriptor, VoxelPayloadStore, VoxelSourceId,
+    VoxelSourceWriter, VoxelTerrainId, VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
 };
 use pulsar_scenedb::{Entity, World};
 
@@ -29,8 +29,43 @@ pub struct VoxelSceneEntry {
     pub source_revision: u64,
     pub origin: [f64; 3],
     pub voxel_size: f64,
+    /// Logical width of a chunk address at LOD zero, in base voxel units.
+    /// The payload format determines how that region is represented.
+    pub chunk_edge_voxels: u32,
+    pub lod_scale: u32,
     pub material_ids: Vec<u32>,
+    pub generator: Option<VoxelGeneratorConfig>,
     pub initial_cube: Option<VoxelCubeInit>,
+}
+
+/// Authored generator identity and parameters passed to the specialized voxel
+/// source scheduler. Executable generator code is registered outside SceneDB.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VoxelGeneratorConfig {
+    pub id: String,
+    pub version: u32,
+    pub seed: u64,
+    pub parameters: String,
+}
+
+impl VoxelSceneEntry {
+    /// Build the CPU generator input from the reflected terrain configuration.
+    /// The registered generator interprets `parameters` and produces a
+    /// format-tagged payload; no engine-side material-cell conversion occurs.
+    pub fn generator_descriptor(&self) -> Option<VoxelGeneratorDescriptor> {
+        let generator = self.generator.as_ref()?;
+        Some(VoxelGeneratorDescriptor {
+            id: generator.id.clone(),
+            version: generator.version,
+            seed: generator.seed,
+            domain: self.domain,
+            origin: self.origin,
+            voxel_size: self.voxel_size,
+            chunk_edge_voxels: self.chunk_edge_voxels,
+            lod_scale: self.lod_scale,
+            parameters: generator.parameters.clone(),
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -207,7 +242,10 @@ pub(super) fn object_entry(
         source_revision: 0,
         origin,
         voxel_size: component.voxel_size * scale,
+        chunk_edge_voxels: 8,
+        lod_scale: 1,
         material_ids: component.material_ids.clone(),
+        generator: None,
         initial_cube: Some(VoxelCubeInit {
             dimensions: component.dimensions,
             material_slot: u8::try_from(component.default_material_slot)
@@ -225,10 +263,19 @@ pub(super) fn terrain_entry(
     if !component.voxel_size.is_finite() || component.voxel_size <= 0.0 {
         return Err("voxel_size must be finite and positive");
     }
-    if component.material_ids.len() > 255 {
-        return Err("voxel material palette exceeds 255 IDs");
+    if component.chunk_edge_voxels == 0 {
+        return Err("chunk_edge_voxels must be positive");
     }
+    if component.lod_scale == 0 {
+        return Err("lod_scale must be positive");
+    }
+    let max_lod = u8::try_from(component.max_chunk_lod)
+        .map_err(|_| "max_chunk_lod must fit in a chunk key")?;
     let voxel_size = component.voxel_size * scale;
+    let chunk_size = voxel_size * f64::from(component.chunk_edge_voxels);
+    if !chunk_size.is_finite() || chunk_size <= 0.0 {
+        return Err("chunk span must be finite and positive");
+    }
     let domain = match component.domain_mode {
         0 => {
             let min_world = [
@@ -248,20 +295,20 @@ pub(super) fn terrain_entry(
             }) {
                 return Err("bounded terrain requires finite increasing bounds");
             }
-            let chunk_size = voxel_size * 8.0;
             let min = std::array::from_fn(|axis| {
                 ((min_world[axis] - origin[axis]) / chunk_size).floor() as i64
             });
             let max = std::array::from_fn(|axis| {
                 (((max_world[axis] - origin[axis]) / chunk_size).ceil() as i64).saturating_sub(1)
             });
-            VoxelDomain::Bounded {
+            VoxelDomain::BoundedBase {
                 min,
                 max,
-                max_lod: 16,
+                max_lod,
+                lod_scale: component.lod_scale,
             }
         }
-        1 => VoxelDomain::Unbounded { max_lod: 16 },
+        1 => VoxelDomain::Unbounded { max_lod },
         _ => return Err("domain_mode must be bounded (0) or unbounded (1)"),
     };
     Ok(VoxelSceneEntry {
@@ -274,7 +321,15 @@ pub(super) fn terrain_entry(
         source_revision: component.source_revision,
         origin,
         voxel_size,
+        chunk_edge_voxels: component.chunk_edge_voxels,
+        lod_scale: component.lod_scale,
         material_ids: component.material_ids.clone(),
+        generator: (!component.generator_id.is_empty()).then(|| VoxelGeneratorConfig {
+            id: component.generator_id.clone(),
+            version: component.generator_version,
+            seed: component.seed,
+            parameters: component.generator_parameters.clone(),
+        }),
         initial_cube: None,
     })
 }
@@ -282,6 +337,77 @@ pub(super) fn terrain_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terrain_projection_preserves_source_contract_and_uses_authored_chunk_span() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        let mut component = VoxelTerrainComponent::default();
+        component.domain_mode = 0;
+        component.bounds_max_x = 64.0;
+        component.bounds_max_y = 64.0;
+        component.bounds_max_z = 64.0;
+        component.chunk_edge_voxels = 32;
+        component.max_chunk_lod = 4;
+        component.lod_scale = 3;
+        component.generator_id = "test.world".into();
+        component.generator_version = 7;
+        component.seed = 42;
+        component.generator_parameters = "{\"biome\":1}".into();
+        component.material_ids = vec![0; 300];
+        world.insert(entity, component);
+
+        let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
+        assert_eq!(entry.chunk_edge_voxels, 32);
+        assert_eq!(
+            entry.domain,
+            VoxelDomain::BoundedBase {
+                min: [0; 3],
+                max: [1; 3],
+                max_lod: 4,
+                lod_scale: 3,
+            }
+        );
+        assert!(entry
+            .domain
+            .validate_key(VoxelChunkKey::new(0, 0, 0, 1))
+            .is_ok());
+        assert!(entry
+            .domain
+            .validate_key(VoxelChunkKey::new(1, 0, 0, 1))
+            .is_err());
+        assert_eq!(
+            entry.generator,
+            Some(VoxelGeneratorConfig {
+                id: "test.world".into(),
+                version: 7,
+                seed: 42,
+                parameters: "{\"biome\":1}".into(),
+            })
+        );
+        let descriptor = entry.generator_descriptor().unwrap();
+        assert_eq!(descriptor.id, "test.world");
+        assert_eq!(descriptor.chunk_edge_voxels, 32);
+        assert_eq!(descriptor.lod_scale, 3);
+        assert_eq!(descriptor.parameters, "{\"biome\":1}");
+
+        {
+            let mut component = world.get_mut::<VoxelTerrainComponent>(entity).unwrap();
+            component.chunk_edge_voxels = 2;
+            component.max_chunk_lod = 0;
+        }
+        let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
+        assert_eq!(entry.chunk_edge_voxels, 2);
+        assert_eq!(
+            entry.domain,
+            VoxelDomain::BoundedBase {
+                min: [0; 3],
+                max: [31; 3],
+                max_lod: 0,
+                lod_scale: 3,
+            }
+        );
+    }
 
     #[test]
     fn projects_multiple_rows_with_generation_identity_and_rejects_bad_domains() {
