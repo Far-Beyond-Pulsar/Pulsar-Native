@@ -23,6 +23,11 @@ fn blueprint_functions_become_natives() {
     assert_eq!(add.param_names, ["a", "b"]);
     assert_eq!(add.attr("category"), Some("Math"));
     assert!(add.flags.side_effect_free);
+
+    // `&str` parameters are taken as strings.
+    let print = registry.get("std::print_string").expect("std::print_string");
+    assert_eq!(print.sig, Signature::new([Param::new(Type::Str)], Type::Unit));
+    assert!(!print.flags.side_effect_free);
 }
 
 #[test]

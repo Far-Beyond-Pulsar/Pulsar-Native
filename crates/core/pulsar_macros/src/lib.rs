@@ -563,10 +563,15 @@ fn is_script_native_type(ty: &syn::Type) -> bool {
     }
 }
 
+fn is_str_ref(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Reference(r) if r.mutability.is_none()
+        && matches!(&*r.elem, syn::Type::Path(p) if p.path.is_ident("str")))
+}
+
 /// Register a pure or plain function node as the script VM native
 /// `std::<name>` (feature `script-natives`), when its signature is
-/// representable: non-generic, at most six parameters, every parameter and
-/// the return type a scalar or `String`. Control-flow and event nodes are
+/// representable: non-generic, at most six parameters, every parameter a
+/// scalar, `String` or `&str`, and the return type a scalar or `String`. Control-flow and event nodes are
 /// compiler intrinsics, not natives.
 fn script_native_registration(
     input: &ItemFn,
@@ -580,10 +585,22 @@ fn script_native_registration(
         return quote! {};
     }
     let mut params = Vec::new();
-    for arg in &input.sig.inputs {
+    // Closure parameters and the call's arguments: `&str` parameters take a
+    // `String` and pass a borrow.
+    let mut closure_params = Vec::new();
+    let mut call_args = Vec::new();
+    for (index, arg) in input.sig.inputs.iter().enumerate() {
         let FnArg::Typed(typed) = arg else { return quote! {} };
         let Pat::Ident(ident) = &*typed.pat else { return quote! {} };
-        if !is_script_native_type(&typed.ty) {
+        let arg_ident = quote::format_ident!("a{index}");
+        if is_str_ref(&typed.ty) {
+            closure_params.push(quote! { #arg_ident: ::std::string::String });
+            call_args.push(quote! { &#arg_ident });
+        } else if is_script_native_type(&typed.ty) {
+            let ty = &typed.ty;
+            closure_params.push(quote! { #arg_ident: #ty });
+            call_args.push(quote! { #arg_ident });
+        } else {
             return quote! {};
         }
         params.push(ident.ident.to_string().trim_start_matches('_').to_string());
@@ -613,7 +630,7 @@ fn script_native_registration(
                     .attr("category", #category)
                     .params::<&str>([#(#params),*])
                     #pure
-                    .build(#fn_ident),
+                    .build(|#(#closure_params),*| #fn_ident(#(#call_args),*)),
             }
         }
     }
