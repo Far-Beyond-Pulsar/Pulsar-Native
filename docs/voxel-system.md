@@ -34,16 +34,17 @@ registered for `VoxelComponent` yet.
 Open [`assets/examples/voxel_planet.level`](../assets/examples/voxel_planet.level)
 in Pulsar to see the backend through a normal `VoxelTerrainComponent`. The
 editor camera stores its position as `f64` so the voxel pass can build an exact
-nearby cell origin at planetary distance. Ordinary mesh transforms and editor
-pick tools still use `f32`; their precision at that scale is separate work.
+nearby cell origin at planetary distance. The viewport submits a camera-local
+matrix for this backend so depth and motion stay precise as the camera moves.
+Select **Voxel Sculpt** in the tool menu, then click or drag to dig; hold Shift
+to build. The backend raycasts exact cells in `f64`, writes its edit journal to
+the terrain recipe, and increments the source revision. Save the level to keep
+those edits. Ordinary mesh transforms and editor pick tools still use `f32`;
+their precision at that scale is separate work.
+The hierarchy eye toggle hides terrain while keeping its authored sky, and
+selecting a terrain does not draw a planet-sized transform gizmo at its origin.
 The backend keeps an idle viewport rendering while its bounded brick jobs are
 pending and releases its GPU residency when the source is removed.
-
-![Voxel planet rendered in the Pulsar level editor](images/voxel-pulsar-viewport.jpg)
-
-The image is a live viewport capture of the example after its first residency
-cut completed. It demonstrates the component-to-backend path, not a terrain
-quality or frame-time qualification.
 
 The graph capture test runs with `HELIO_VOXEL_CAPTURE` set to an output PNG path:
 `cargo test -p helio-default-graphs --test voxel_pass_graph` from the Helio

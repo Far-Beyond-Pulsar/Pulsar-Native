@@ -11,11 +11,34 @@ use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogCon
 use crate::scene::{GizmoType, SceneWorldExt};
 
 use super::interaction::SceneInteraction;
-use super::voxel_backend::{TinyVoxelBackend, VoxelBackendRegistry, VoxelRenderBackend, VoxelView};
+use super::voxel_backend::{
+    TinyVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRenderBackend, VoxelView,
+};
 type GizmoMode = GizmoType;
 
 /// Camera velocity squared below this threshold is considered stopped.
 const CAMERA_IDLE_EPSILON: f32 = 0.001;
+
+/// Commit a backend-specific edit through the generic terrain row. The backend
+/// owns the recipe format; SceneDB only stores it and advances the revision.
+pub(super) fn apply_voxel_brush_commit(
+    world: &mut pulsar_scenedb::World,
+    commit: VoxelBrushCommit,
+) -> bool {
+    if commit.id.kind != 1 {
+        return false;
+    }
+    let entity = pulsar_scenedb::Entity::from_bits(commit.id.entity_bits);
+    let Some(mut terrain) = world.get_mut::<helio_component::VoxelTerrainComponent>(entity) else {
+        return false;
+    };
+    if !terrain.editable {
+        return false;
+    }
+    terrain.generator_parameters = commit.recipe;
+    terrain.source_revision = terrain.source_revision.wrapping_add(1);
+    true
+}
 
 // ── Compatibility types retained for existing UI wiring ───────────────────────
 
@@ -57,6 +80,12 @@ pub enum PendingPointerEvent {
     LeftClick {
         norm_x: f32,
         norm_y: f32,
+    },
+    VoxelBrush {
+        norm_x: f32,
+        norm_y: f32,
+        radius: f32,
+        material: u32,
     },
     LeftRelease,
 }
@@ -354,7 +383,16 @@ impl HelioRenderer {
 
             let device_arc = Arc::new(_device.clone());
             let queue_arc = Arc::new(_queue.clone());
-            let config = RendererConfig::new(width, height, format);
+            let voxel_quality = {
+                let store = self.scene_store.read();
+                let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&store.world);
+                self.voxel_backends
+                    .temporal_quality(&entries, [width, height])
+            };
+            let mut config = RendererConfig::new(width, height, format);
+            if let Some(quality) = voxel_quality {
+                config = config.with_tsr_quality(quality);
+            }
             // ── project/streaming → renderer translation (Helio#238 §5) ────
             // The canonical keys live in pulsar_settings' streaming schema;
             // this is the only place the engine hands them to Helio. The
@@ -492,6 +530,14 @@ impl HelioRenderer {
                     PendingPointerEvent::LeftRelease => {
                         profiling::profile_scope!("helio_handle_left_release");
                         self.handle_left_release();
+                    }
+                    PendingPointerEvent::VoxelBrush {
+                        norm_x,
+                        norm_y,
+                        radius,
+                        material,
+                    } => {
+                        self.handle_voxel_brush(norm_x, norm_y, radius, material);
                     }
                 }
             }
@@ -694,6 +740,21 @@ impl HelioRenderer {
         }
 
         // ── Camera / gizmo / render ─────────────────────────────────────────────
+        let (voxel_entries, mut voxel_errors, authored_sky) = {
+            let store = self.scene_store.read();
+            let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&store.world);
+            let authored_sky = store
+                .world
+                .query::<&helio_pass_sky::SkyComponent>()
+                .next()
+                .is_some();
+            (entries, errors, authored_sky)
+        };
+        let (camera_relative, outdoor_sky) = self.voxel_backends.frame_environment(&voxel_entries);
+        inner.renderer.set_tsr_quality(
+            self.voxel_backends
+                .temporal_quality(&voxel_entries, [width, height]),
+        );
         let t_prepare = Instant::now();
         let camera = {
             #[cfg(feature = "editor-ui")]
@@ -703,9 +764,14 @@ impl HelioRenderer {
             let (sp, cp) = self.cam_pitch.sin_cos();
             let fwd = Vec3::new(sy * cp, sp, -cy * cp);
             let aspect = width as f32 / height.max(1) as f32;
+            let camera_eye = if camera_relative {
+                Vec3::ZERO
+            } else {
+                self.cam_pos.as_vec3()
+            };
             let camera = Camera::perspective_look_at(
-                self.cam_pos.as_vec3(),
-                self.cam_pos.as_vec3() + fwd,
+                camera_eye,
+                camera_eye + fwd,
                 Vec3::Y,
                 std::f32::consts::FRAC_PI_4,
                 aspect,
@@ -739,10 +805,17 @@ impl HelioRenderer {
         }
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
-        let (voxel_entries, mut voxel_errors) = {
-            let store = self.scene_store.read();
-            crate::scene::voxel_frame::project_voxel_entries(&store.world)
-        };
+        inner
+            .renderer
+            .set_world_origin(camera_relative.then_some(self.cam_pos));
+        if outdoor_sky {
+            inner.renderer.set_ambient([0.7, 0.8, 0.9], 1.0);
+        } else {
+            inner.renderer.set_ambient([0.0, 0.0, 0.0], 0.0);
+        }
+        inner
+            .renderer
+            .set_fallback_sky_enabled(outdoor_sky && !authored_sky);
         let (sy, cy) = self.cam_yaw.sin_cos();
         let (sp, cp) = self.cam_pitch.sin_cos();
         let forward = Vec3::new(sy * cp, sp, -cy * cp);
@@ -1004,6 +1077,45 @@ impl HelioRenderer {
     pub fn queue_left_release(&self) {
         if let Ok(mut events) = self.pending_pointer_events.lock() {
             events.push(PendingPointerEvent::LeftRelease);
+        }
+    }
+
+    fn handle_voxel_brush(&mut self, norm_x: f32, norm_y: f32, radius: f32, material: u32) {
+        let (width, height) = self.viewport_size;
+        let aspect = width.max(1) as f32 / height.max(1) as f32;
+        let (sy, cy) = self.cam_yaw.sin_cos();
+        let (sp, cp) = self.cam_pitch.sin_cos();
+        let forward = Vec3::new(sy * cp, sp, -cy * cp);
+        let right = forward.cross(Vec3::Y).normalize_or_zero();
+        let up = right.cross(forward).normalize_or_zero();
+        let tan = (std::f32::consts::FRAC_PI_4 * 0.5).tan();
+        let x = norm_x.clamp(0.0, 1.0) * 2.0 - 1.0;
+        let y = 1.0 - norm_y.clamp(0.0, 1.0) * 2.0;
+        let direction = (forward + right * x * aspect * tan + up * y * tan)
+            .normalize_or_zero()
+            .as_dvec3();
+        if direction == DVec3::ZERO {
+            return;
+        }
+        let entries = {
+            let scene = self.scene_store.read();
+            crate::scene::voxel_frame::project_voxel_entries(&scene.world).0
+        };
+        match self
+            .voxel_backends
+            .edit_ray(&entries, self.cam_pos, direction, radius, material)
+        {
+            Ok(Some(commit)) => {
+                let mut scene = self.scene_store.write();
+                self.gizmo_dirty |= apply_voxel_brush_commit(&mut scene.world, commit);
+            }
+            Ok(_) => {}
+            Err(error) => {
+                tracing::warn!("Voxel brush: {error}");
+                if let Ok(mut pending) = self.pending_errors.lock() {
+                    pending.push(format!("Voxel brush: {error}"));
+                }
+            }
         }
     }
 

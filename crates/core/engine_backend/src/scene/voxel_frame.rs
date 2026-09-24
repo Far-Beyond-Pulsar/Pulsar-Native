@@ -11,7 +11,7 @@ use helio_voxel_data::{
 };
 use pulsar_scenedb::{Entity, World};
 
-use crate::scene::Transform;
+use crate::scene::{Transform, Visibility};
 
 /// SceneDB entity bits include its generation; kind distinguishes source rows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -24,9 +24,13 @@ pub struct VoxelEntryId {
 #[derive(Clone)]
 pub struct VoxelSceneEntry {
     pub id: VoxelEntryId,
+    /// Editor visibility is independent of whether this source owns the
+    /// camera environment (for example a planet's atmosphere).
+    pub visible: bool,
     pub store: VoxelPayloadStore,
     pub domain: VoxelDomain,
     pub source_revision: u64,
+    pub editable: bool,
     pub origin: [f64; 3],
     pub voxel_size: f64,
     /// Logical width of a chunk address at LOD zero, in base voxel units.
@@ -171,7 +175,10 @@ pub fn project_voxel_entries(world: &World) -> (Vec<VoxelSceneEntry>, Vec<String
             continue;
         }
         match object_entry(world, entity, component) {
-            Ok(entry) => entries.push(entry),
+            Ok(mut entry) => {
+                entry.visible = world.get::<Visibility>(entity).is_none_or(|v| v.visible);
+                entries.push(entry);
+            }
             Err(error) => errors.push(format!("voxel object {}: {error}", entity.bits())),
         }
     }
@@ -180,7 +187,10 @@ pub fn project_voxel_entries(world: &World) -> (Vec<VoxelSceneEntry>, Vec<String
             continue;
         }
         match terrain_entry(world, entity, component) {
-            Ok(entry) => entries.push(entry),
+            Ok(mut entry) => {
+                entry.visible = world.get::<Visibility>(entity).is_none_or(|v| v.visible);
+                entries.push(entry);
+            }
             Err(error) => errors.push(format!("voxel terrain {}: {error}", entity.bits())),
         }
     }
@@ -235,6 +245,7 @@ pub(super) fn object_entry(
             entity_bits: entity.bits(),
             kind: 0,
         },
+        visible: true,
         store: component.payload_store(),
         domain: VoxelDomain::Bounded {
             min: [0; 3],
@@ -242,6 +253,7 @@ pub(super) fn object_entry(
             max_lod: 0,
         },
         source_revision: 0,
+        editable: component.editable,
         origin,
         voxel_size: component.voxel_size * scale,
         chunk_edge_voxels: 8,
@@ -319,9 +331,11 @@ pub(super) fn terrain_entry(
             entity_bits: entity.bits(),
             kind: 1,
         },
+        visible: true,
         store: component.payload_store(),
         domain,
         source_revision: component.source_revision,
+        editable: component.editable,
         origin,
         voxel_size,
         chunk_edge_voxels: component.chunk_edge_voxels,

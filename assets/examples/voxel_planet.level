@@ -106,7 +106,7 @@
             "lighting_channel_2": false
           },
           "intensity": {
-            "intensity": 8.0,
+            "intensity": 1.0,
             "intensity_units": "Lumens",
             "exposure_compensation": 0.0,
             "inverse_squared_falloff": true,

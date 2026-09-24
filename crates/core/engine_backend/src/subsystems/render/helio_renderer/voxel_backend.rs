@@ -9,7 +9,7 @@ use glam::{DVec3, Vec3};
 use helio_default_graphs::VoxelPassFactory;
 use helio_pass_tiny_voxel::{
     engine::{EngineVoxelFrame, LazyEngineVoxelPass, SharedVoxelFrame},
-    world::{render_origin, GENERATOR_REVISION},
+    world::{render_origin, Edit, GENERATOR_REVISION},
     Params, World as TinyWorld,
 };
 use helio_voxel_data::VoxelDomain;
@@ -33,8 +33,40 @@ pub struct VoxelView {
     pub size: [u32; 2],
 }
 
+/// A backend edit becomes an update to its opaque source recipe. SceneDB owns
+/// the component and persists this string with the level.
+pub struct VoxelBrushCommit {
+    pub id: VoxelEntryId,
+    pub distance: f64,
+    pub recipe: String,
+}
+
 pub trait VoxelRenderBackend: Send {
     fn renderer_id(&self) -> &'static str;
+    /// Choose temporal resolve for this backend at the current viewport size.
+    fn temporal_quality(&self, _size: [u32; 2]) -> Option<helio_pass_tsr::TsrQuality> {
+        None
+    }
+    /// This backend renders in camera-local coordinates while retaining the
+    /// precise world-space eye in `VoxelView`.
+    fn camera_relative(&self) -> bool {
+        false
+    }
+    /// Outdoor backends may use the sky pass's default atmosphere when the
+    /// scene has no explicitly authored sky component.
+    fn outdoor_sky(&self) -> bool {
+        false
+    }
+    fn edit_ray(
+        &self,
+        _source: &VoxelSceneEntry,
+        _origin: DVec3,
+        _direction: DVec3,
+        _radius: f32,
+        _material: u32,
+    ) -> Result<Option<VoxelBrushCommit>, String> {
+        Ok(None)
+    }
     /// Used only when a source leaves its renderer ID empty. Explicit IDs
     /// always win, and an ambiguous automatic match is reported to the host.
     fn supports(&self, _source: &VoxelSceneEntry) -> bool {
@@ -86,6 +118,88 @@ impl VoxelBackendRegistry {
             .collect()
     }
 
+    pub fn frame_environment(&self, entries: &[VoxelSceneEntry]) -> (bool, bool) {
+        let selected = self.backends.iter().filter(|backend| {
+            entries.iter().any(|entry| {
+                if entry.renderer_id.is_empty() {
+                    backend.supports(entry)
+                } else {
+                    entry.renderer_id == backend.renderer_id()
+                }
+            })
+        });
+        selected.fold((false, false), |(relative, sky), backend| {
+            (
+                relative || backend.camera_relative(),
+                sky || backend.outdoor_sky(),
+            )
+        })
+    }
+
+    pub fn temporal_quality(
+        &self,
+        entries: &[VoxelSceneEntry],
+        size: [u32; 2],
+    ) -> Option<helio_pass_tsr::TsrQuality> {
+        let mut quality: Option<helio_pass_tsr::TsrQuality> = None;
+        for backend in &self.backends {
+            let selected = entries.iter().any(|entry| {
+                if entry.renderer_id.is_empty() {
+                    backend.supports(entry)
+                } else {
+                    entry.renderer_id == backend.renderer_id()
+                }
+            });
+            if selected {
+                if let Some(candidate) = backend.temporal_quality(size) {
+                    if quality
+                        .is_none_or(|current| candidate.render_scale() > current.render_scale())
+                    {
+                        quality = Some(candidate);
+                    }
+                }
+            }
+        }
+        quality
+    }
+
+    pub fn edit_ray(
+        &self,
+        entries: &[VoxelSceneEntry],
+        origin: DVec3,
+        direction: DVec3,
+        radius: f32,
+        material: u32,
+    ) -> Result<Option<VoxelBrushCommit>, String> {
+        let mut closest: Option<VoxelBrushCommit> = None;
+        for entry in entries
+            .iter()
+            .filter(|entry| entry.visible && entry.editable)
+        {
+            for backend in &self.backends {
+                let matches = if entry.renderer_id.is_empty() {
+                    backend.supports(entry)
+                } else {
+                    entry.renderer_id == backend.renderer_id()
+                };
+                if !matches {
+                    continue;
+                }
+                if let Some(commit) =
+                    backend.edit_ray(entry, origin, direction, radius, material)?
+                {
+                    if closest
+                        .as_ref()
+                        .is_none_or(|old| commit.distance < old.distance)
+                    {
+                        closest = Some(commit);
+                    }
+                }
+            }
+        }
+        Ok(closest)
+    }
+
     pub fn needs_frame(&self, renderer: &helio::Renderer) -> bool {
         self.backends
             .iter()
@@ -95,7 +209,7 @@ impl VoxelBackendRegistry {
     pub fn publish_frame(&mut self, entries: &[VoxelSceneEntry], view: VoxelView) -> Vec<String> {
         let mut errors = Vec::new();
         let mut selected = vec![Vec::new(); self.backends.len()];
-        for entry in entries {
+        for entry in entries.iter().filter(|entry| entry.visible) {
             let matches: Vec<_> = self
                 .backends
                 .iter()
@@ -225,6 +339,49 @@ impl VoxelRenderBackend for TinyVoxelBackend {
         TINY_VOXEL_RENDERER_ID
     }
 
+    fn temporal_quality(&self, size: [u32; 2]) -> Option<helio_pass_tsr::TsrQuality> {
+        let pixels = u64::from(size[0]) * u64::from(size[1]);
+        Some(if pixels > 1_500_000 {
+            helio_pass_tsr::TsrQuality::Quality
+        } else {
+            helio_pass_tsr::TsrQuality::Native
+        })
+    }
+
+    fn camera_relative(&self) -> bool {
+        true
+    }
+
+    fn outdoor_sky(&self) -> bool {
+        true
+    }
+
+    fn edit_ray(
+        &self,
+        source: &VoxelSceneEntry,
+        origin: DVec3,
+        direction: DVec3,
+        radius: f32,
+        material: u32,
+    ) -> Result<Option<VoxelBrushCommit>, String> {
+        let generator = Self::validate_source(source)?;
+        let mut world = TinyWorld::from_recipe_json(&generator.parameters)?;
+        let Some((solid, air, distance)) = world.raycast(origin, direction, 1_000.0) else {
+            return Ok(None);
+        };
+        let cell = if material == 0 { solid } else { air };
+        world.apply_edit(Edit {
+            cell,
+            radius,
+            material,
+        })?;
+        Ok(Some(VoxelBrushCommit {
+            id: source.id,
+            distance,
+            recipe: serde_json::to_string(&world).map_err(|error| error.to_string())?,
+        }))
+    }
+
     fn supports(&self, source: &VoxelSceneEntry) -> bool {
         source
             .generator
@@ -311,6 +468,7 @@ impl VoxelRenderBackend for TinyVoxelBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scene::Visibility;
     use helio_component::VoxelTerrainComponent;
     use helio_pass_tiny_voxel::world::RADIUS;
     use helio_voxel_data::VoxelStoredPayload;
@@ -410,5 +568,65 @@ mod tests {
         registry.register(Box::new(backend)).unwrap();
         assert!(registry.publish_frame(&entries, view()).is_empty());
         assert!(frame.lock().unwrap().is_some());
+
+        scene.insert(
+            entity,
+            Visibility {
+                visible: false,
+                locked: false,
+            },
+        );
+        let (hidden, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        assert!(errors.is_empty());
+        assert!(!hidden[0].visible);
+        assert_eq!(registry.frame_environment(&hidden), (true, true));
+        assert!(registry.publish_frame(&hidden, view()).is_empty());
+        assert!(frame.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn exact_brush_edit_round_trips_through_the_generic_terrain_recipe() {
+        let mut scene = World::new();
+        let entity = scene.spawn();
+        let mut terrain = VoxelTerrainComponent::default();
+        terrain.renderer_id = TINY_VOXEL_RENDERER_ID.into();
+        terrain.generator_id = TINY_VOXEL_GENERATOR_ID.into();
+        terrain.generator_version = GENERATOR_REVISION;
+        terrain.voxel_size = 0.1;
+        terrain.chunk_edge_voxels = 32;
+        terrain.lod_scale = 2;
+        scene.insert(entity, terrain);
+        let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        assert!(errors.is_empty());
+        let original = TinyWorld::default();
+        let eye = original.ground_spawn(0.0, 0.0, 3.0);
+        let (solid, _, _) = original.raycast(eye, -DVec3::Y, 100.0).unwrap();
+        let mut registry = VoxelBackendRegistry::new();
+        registry
+            .register(Box::new(TinyVoxelBackend::new()))
+            .unwrap();
+        let commit = registry
+            .edit_ray(&entries, eye, -DVec3::Y, 0.5, 0)
+            .unwrap()
+            .unwrap();
+        assert_eq!(commit.id, entries[0].id);
+        assert_eq!(
+            TinyWorld::from_recipe_json(&commit.recipe)
+                .unwrap()
+                .material(solid),
+            0
+        );
+        assert_ne!(original.material(solid), 0);
+        assert!(super::super::renderer::apply_voxel_brush_commit(
+            &mut scene, commit
+        ));
+        let terrain = scene.get::<VoxelTerrainComponent>(entity).unwrap();
+        assert_eq!(terrain.source_revision, 1);
+        assert_eq!(
+            TinyWorld::from_recipe_json(&terrain.generator_parameters)
+                .unwrap()
+                .material(solid),
+            0
+        );
     }
 }

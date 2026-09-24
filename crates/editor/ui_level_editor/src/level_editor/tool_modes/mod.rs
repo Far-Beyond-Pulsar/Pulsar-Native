@@ -8,6 +8,7 @@ pub mod dispatcher;
 pub mod level_edit;
 pub mod registry;
 pub mod spline;
+pub mod voxel_sculpt;
 
 use gpui::{App, Window};
 use std::sync::Arc;
@@ -19,6 +20,7 @@ pub use dispatcher::*;
 pub use level_edit::*;
 pub use registry::*;
 pub use spline::*;
+pub use voxel_sculpt::*;
 
 use crate::level_editor::state::LevelEditorState;
 
@@ -82,12 +84,15 @@ pub struct ToolPointerEvent {
 }
 
 /// Result returned from [`ToolMode::on_pointer`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ToolPointerResult {
     /// Mode consumed the event; default editor interaction will not run.
     Consumed,
     /// Mode passed the event through; editor will perform default object pick/transform gizmo.
     PassThrough,
+    /// Commit an exact raycast edit in the render thread, where the camera
+    /// retains its double-precision planetary position.
+    VoxelBrush { radius: f32, material: u32 },
 }
 
 // ── Declarative Toolbar Widgets ────────────────────────────────────────────

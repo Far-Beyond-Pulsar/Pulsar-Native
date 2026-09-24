@@ -3,6 +3,7 @@ use super::gizmo_geometry::{meshes, rotation_grid, Handle};
 use crate::scene::{GizmoType, ObjectType, SceneWorldExt, StableId, Transform, Visibility};
 use glam::{EulerRot, Mat3, Mat4, Quat, Vec2, Vec3};
 use helio::Renderer;
+use helio_component::VoxelTerrainComponent;
 use pulsar_scenedb::{Entity, World};
 const HANDLE_PIXELS: f32 = 112.0;
 const PICK_MARGIN: f32 = 7.0;
@@ -126,6 +127,12 @@ impl SceneInteraction {
 
     fn selected(&self, world: &World) -> Option<(Entity, Transform)> {
         let entity = world.selected_entity()?;
+        // A terrain's transform is its global domain origin (a planet's
+        // center for spherical worlds), not a local editing pivot. Drawing
+        // the ordinary transform gizmo there can cover the entire viewport.
+        if world.get::<VoxelTerrainComponent>(entity).is_some() {
+            return None;
+        }
         let v = world.get::<Visibility>(entity)?;
         if !v.visible || v.locked || self.mode == GizmoType::None {
             return None;
@@ -597,6 +604,15 @@ mod tests {
             Vec2::splat(900.0),
         );
         (world, interaction, entity)
+    }
+
+    #[test]
+    fn selected_terrain_has_no_global_origin_gizmo() {
+        let (mut world, interaction, entity) = setup(GizmoType::Translate);
+        assert!(interaction.selected(&world).is_some());
+        world.insert(entity, VoxelTerrainComponent::default());
+        assert_eq!(world.selected_entity(), Some(entity));
+        assert!(interaction.selected(&world).is_none());
     }
 
     #[test]
