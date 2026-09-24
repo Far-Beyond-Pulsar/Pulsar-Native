@@ -1294,7 +1294,7 @@ impl HelioRenderer {
         if let Some(inner) = &mut self.inner {
             inner
                 .interaction
-                .set_view(camera_position, forward, projection * view, size);
+                .set_view(camera_position, forward, projection * view, size, 10_000.0);
         }
     }
 }

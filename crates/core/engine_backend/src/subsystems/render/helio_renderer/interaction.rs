@@ -3,7 +3,6 @@ use super::gizmo_geometry::{meshes, rotation_grid, Handle};
 use crate::scene::{GizmoType, ObjectType, SceneWorldExt, StableId, Transform, Visibility};
 use glam::{EulerRot, Mat3, Mat4, Quat, Vec2, Vec3};
 use helio::Renderer;
-use helio_component::VoxelTerrainComponent;
 use pulsar_scenedb::{Entity, World};
 const HANDLE_PIXELS: f32 = 112.0;
 const PICK_MARGIN: f32 = 7.0;
@@ -13,6 +12,7 @@ struct View {
     forward: Vec3,
     matrix: Mat4,
     size: Vec2,
+    far: f32,
 }
 impl Default for View {
     fn default() -> Self {
@@ -21,6 +21,7 @@ impl Default for View {
             forward: -Vec3::Z,
             matrix: Mat4::IDENTITY,
             size: Vec2::new(1600.0, 900.0),
+            far: 10_000.0,
         }
     }
 }
@@ -37,7 +38,7 @@ impl View {
     }
     fn length(self, p: Vec3) -> Option<f32> {
         let depth = (p - self.position).dot(self.forward);
-        (depth > 0.1).then_some(
+        (depth > 0.1 && depth < self.far).then_some(
             2.0 * depth * std::f32::consts::FRAC_PI_8.tan() * HANDLE_PIXELS / self.size.y,
         )
     }
@@ -84,12 +85,13 @@ impl SceneInteraction {
             self.mode = mode;
         }
     }
-    pub fn set_view(&mut self, position: Vec3, forward: Vec3, matrix: Mat4, size: Vec2) {
+    pub fn set_view(&mut self, position: Vec3, forward: Vec3, matrix: Mat4, size: Vec2, far: f32) {
         self.view = View {
             position,
             forward,
             matrix,
             size: size.max(Vec2::ONE),
+            far,
         };
     }
     pub fn is_dragging(&self) -> bool {
@@ -127,12 +129,6 @@ impl SceneInteraction {
 
     fn selected(&self, world: &World) -> Option<(Entity, Transform)> {
         let entity = world.selected_entity()?;
-        // A terrain's transform is its global domain origin (a planet's
-        // center for spherical worlds), not a local editing pivot. Drawing
-        // the ordinary transform gizmo there can cover the entire viewport.
-        if world.get::<VoxelTerrainComponent>(entity).is_some() {
-            return None;
-        }
         let v = world.get::<Visibility>(entity)?;
         if !v.visible || v.locked || self.mode == GizmoType::None {
             return None;
@@ -602,17 +598,23 @@ mod tests {
             -Vec3::Z,
             Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, 1.0, 0.1, 10000.0),
             Vec2::splat(900.0),
+            10_000.0,
         );
         (world, interaction, entity)
     }
 
     #[test]
-    fn selected_terrain_has_no_global_origin_gizmo() {
+    fn distant_planet_origin_has_no_gizmo_beyond_camera_far_plane() {
         let (mut world, interaction, entity) = setup(GizmoType::Translate);
-        assert!(interaction.selected(&world).is_some());
-        world.insert(entity, VoxelTerrainComponent::default());
+        let mut planet = *world.get::<Transform>(entity).unwrap();
+        planet.position = [0.0, 0.0, -1_000_000.0];
+        world.insert(entity, planet);
         assert_eq!(world.selected_entity(), Some(entity));
-        assert!(interaction.selected(&world).is_none());
+        assert!(interaction.selected(&world).is_some());
+        assert!(interaction
+            .view
+            .length(Vec3::from_array(planet.position))
+            .is_none());
     }
 
     #[test]
