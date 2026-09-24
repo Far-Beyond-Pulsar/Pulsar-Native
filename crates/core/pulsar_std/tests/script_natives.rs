@@ -64,3 +64,28 @@ fn natives_run_through_the_vm() {
     // pulsar_std's divide defines x / 0 as 0.
     assert_eq!(run(1, 0).unwrap(), Value::Int(0));
 }
+
+#[test]
+fn control_flow_nodes_become_selector_natives() {
+    assert!(!pulsar_std::get_all_nodes().is_empty());
+    let registry = NativeRegistry::with_engine_natives();
+    // Fires one of five outputs and returns which (1-5) through `result`.
+    let randexec = registry.get("std::randexec").expect("std::randexec");
+    assert_eq!(randexec.attr("exec_outputs"), Some("A,B,C,D,E"));
+    assert_eq!(randexec.sig, Signature::new([Param::inout(Type::Int)], Type::Int));
+    // A body that fires inside a loop must run the graph between firings:
+    // no selector (the compiler implements the built-in loops itself).
+    assert!(registry.get("std::for_loop").is_none());
+
+    let mut world = World::new();
+    let e = world.spawn();
+    let mut host = Host::new(&mut world, e);
+    for _ in 0..20 {
+        let mut args = [Value::Int(0)];
+        let fired = randexec.call(&mut host, &mut args).unwrap().as_int().unwrap();
+        assert!((0..5).contains(&fired));
+        assert_eq!(args[0], Value::Int(fired + 1), "result is the chosen pin number");
+    }
+    let fired = registry.get("std::branch").unwrap().call(&mut host, &mut [Value::Bool(false)]).unwrap();
+    assert_eq!(fired, Value::Int(1), "branch(false) fires False");
+}

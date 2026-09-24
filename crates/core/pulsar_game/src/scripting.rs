@@ -1,12 +1,19 @@
 //! Script classes on the engine script VM (`pulsar_script_runtime`).
 //!
-//! A class whose editor build produced `events/.build/module.json` runs on
-//! the [`ScriptRuntime`]; a class with only the older PBGC
-//! `bytecode.json` keeps running on the [`BlueprintDispatcher`](crate::blueprint_runtime::BlueprintDispatcher)
-//! until it is rebuilt. Both are driven by the [`TickLoop`](crate::TickLoop).
-//!
+//! Every class's editor build writes `events/.build/module.json`; the
+//! [`ScriptRuntime`] runs it, driven by the [`TickLoop`](crate::tick::TickLoop).
 //! The runtime is language-neutral: any scripting plugin that writes a
 //! module for a class is loaded the same way.
+//!
+//! # Level bindings
+//!
+//! A level file may carry a `blueprint_bindings` section keyed by object
+//! **StableId** (`pulsar_scene::format::BlueprintBindings`): which classes
+//! each object runs, with per-instance variable overrides. At play-mode
+//! bootstrap [`apply_script_bindings`] resolves every StableId against the
+//! hydrated store and spawns one bound instance per (object, class) pair.
+//! Keys are StableIds, never names, so renames never orphan a binding;
+//! per-binding failures are collected, never fatal.
 
 use std::path::{Path, PathBuf};
 
@@ -14,9 +21,7 @@ use engine_backend::scene::SceneWorldExt;
 use pulsar_scene::format::BlueprintBindings;
 pub use pulsar_script_runtime::{RuntimeError, ScriptRuntime};
 
-use crate::blueprint_runtime::level_bindings::{
-    instance_id_for, AppliedBinding, ApplyReport, BindingError, BindingFailure,
-};
+use pulsar_scenedb::Entity;
 
 // Scene-object lookup for scripts. The result is `entity::none()` when no
 // object matches; component references built from it resolve to nothing.
@@ -50,6 +55,66 @@ inventory::submit! {
                 })
         },
     }
+}
+
+/// Deterministic instance id for one (object, class) binding: stable
+/// across loads, distinct per class.
+pub fn instance_id_for(stable_id: &str, class_name: &str) -> String {
+    format!("{stable_id}::{class_name}")
+}
+
+/// One applied binding: which object now runs which class on which entity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AppliedBinding {
+    pub stable_id: String,
+    pub class_name: String,
+    /// Runtime instance id (`instance_id_for`).
+    pub instance_id: String,
+    pub entity: Entity,
+}
+
+/// Why one binding could not be applied. Per binding only: never aborts a
+/// whole level load.
+#[derive(Debug)]
+pub enum BindingError {
+    /// No live object with this StableId in the hydrated store.
+    UnknownObject { stable_id: String },
+    /// Two entries on one object name the same class.
+    DuplicateClass { stable_id: String, class_name: String },
+    /// No compiled module for the class under the project root.
+    ModuleMissing { class_name: String, path: PathBuf },
+    /// The script runtime refused (bad module, bad override, ..).
+    Script(RuntimeError),
+}
+
+impl std::fmt::Display for BindingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownObject { stable_id } => write!(f, "no live object with stable id '{stable_id}'"),
+            Self::DuplicateClass { stable_id, class_name } => {
+                write!(f, "class '{class_name}' bound twice to '{stable_id}'")
+            }
+            Self::ModuleMissing { class_name, path } => {
+                write!(f, "no compiled script module for class '{class_name}' at {}", path.display())
+            }
+            Self::Script(error) => write!(f, "script runtime refused: {error}"),
+        }
+    }
+}
+
+/// One failed binding.
+#[derive(Debug)]
+pub struct BindingFailure {
+    pub stable_id: String,
+    pub class_name: String,
+    pub error: BindingError,
+}
+
+/// Result of applying a level's bindings.
+#[derive(Debug, Default)]
+pub struct ApplyReport {
+    pub applied: Vec<AppliedBinding>,
+    pub failures: Vec<BindingFailure>,
 }
 
 /// Where a class's compiled script module lives.
@@ -100,32 +165,29 @@ pub fn load_project_classes(runtime: &mut ScriptRuntime, classes_dir: &Path) -> 
     loaded
 }
 
-/// Apply a level's bindings for every class that has a compiled module:
-/// one instance per (object, class), bound to the object's entity, with
-/// the binding's overrides. Returns the report and the bindings left for
-/// the bytecode dispatcher (classes without a module).
+/// Apply a level's bindings: one instance per (object, class), bound to
+/// the object's entity, with the binding's overrides, loading each class's
+/// module on first use.
 pub fn apply_script_bindings(
     runtime: &mut ScriptRuntime,
     store: &pulsar_scenedb::SceneDb,
     project_root: &Path,
     bindings: &BlueprintBindings,
-) -> (ApplyReport, BlueprintBindings) {
+) -> ApplyReport {
     let mut report = ApplyReport::default();
-    let mut remaining = BlueprintBindings::new();
     for (stable_id, class_bindings) in bindings {
         for binding in class_bindings {
             let class = &binding.class_name;
             let module = module_path_for_class(project_root, class);
-            if !runtime.has_class(class) && !module.exists() {
-                remaining.entry(stable_id.clone()).or_default().push(binding.clone());
-                continue;
-            }
             let result = (|| {
                 let entity = store
                     .world
                     .entity_for(stable_id)
                     .ok_or_else(|| BindingError::UnknownObject { stable_id: stable_id.clone() })?;
                 if !runtime.has_class(class) {
+                    if !module.exists() {
+                        return Err(BindingError::ModuleMissing { class_name: class.clone(), path: module.clone() });
+                    }
                     runtime.load_class_file(&module).map_err(BindingError::Script)?;
                 }
                 let instance_id = instance_id_for(stable_id, class);
@@ -159,5 +221,5 @@ pub fn apply_script_bindings(
             }
         }
     }
-    (report, remaining)
+    report
 }

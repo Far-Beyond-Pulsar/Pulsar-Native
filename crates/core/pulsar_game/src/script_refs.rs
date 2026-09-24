@@ -1,9 +1,9 @@
 //! Shared object-reference resolution for blueprint graphs (#654).
 //!
-//! ONE implementation consumed by BOTH compile targets: the VM's comp-op
-//! trampolines (`blueprint_runtime::component_ops`) and PBGC-generated Rust
-//! actors, whose emitted source calls these functions by fully-qualified
-//! path. Identity handling rides B's object-model types
+//! Consumed by PBGC-generated Rust actors (the Blueprint plugin's Rust
+//! export), whose emitted source calls these functions by fully-qualified
+//! path. (Script modules resolve objects through the `world::find_by_*`
+//! natives, see `crate::scripting`.) Identity handling rides B's object-model types
 //! (`pulsar_script_object_model`) — never re-derived here — and world-level
 //! StableId/Name lookups come from `engine_backend::scene`, the one home of
 //! those component definitions.
@@ -286,7 +286,7 @@ mod tests {
         let (mut store, door, lamp) = scene();
         let world = &mut store.world;
 
-        // "VmProbe" is registered by the component_ops test inventory;
+        // "VmProbe" is registered by `crate::test_probe`;
         // unregistered classes must refuse validation (B's contract).
         let good = component_ref_json(world, lamp, "VmProbe", 0, "mk");
         assert_eq!(

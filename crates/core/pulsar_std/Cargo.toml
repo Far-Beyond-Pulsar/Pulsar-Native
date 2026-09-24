@@ -3,17 +3,11 @@ name = "pulsar_std"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-# rlib for normal dependency use; cdylib when pulsar_std_bundle's build.rs compiles
-# it as a native shared library to embed in the executor bundle.
-crate-type = ["rlib", "cdylib"]
-
 [features]
 default = ["native", "script-natives"]
-# native: full stdlib including threading, Lua scripting, and the linkme registry
-native = ["dep:rlua", "dep:linkme"]
-# script-natives: register `#[blueprint]` functions as script VM natives. Kept
-# out of `native` so the legacy pulsar_std_bundle cdylib stays light.
+# native: full stdlib including threading and the linkme registry
+native = ["dep:linkme"]
+# script-natives: register `#[blueprint]` functions as script VM natives.
 script-natives = ["native", "dep:pulsar_script_vm"]
 
 
@@ -27,8 +21,6 @@ pulsar_script_vm = { workspace = true, optional = true }
 tracing        = { workspace = true }
 rand           = { workspace = true, features = [] }
 
-# rlua is native-only (links to liblua, uses pthreads)
-rlua = { version = "0.20", optional = true }
 
 [dev-dependencies]
 serde = { workspace = true, features = ["derive"] }

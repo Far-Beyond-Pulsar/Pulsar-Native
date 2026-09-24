@@ -252,9 +252,18 @@ panic fail the call instead of unwinding into the game loop.
 - Phase 3: `ScriptLanguage` / `EditorPluginScripting` in
   `plugin_editor_api`; PIE validates through `PluginManager`, and
   `ui_level_editor` no longer depends on the Blueprint plugin.
-- Still unsupported in the new compiler: `randexec`,
-  `random_exec_switch`, `runlua`. Graphs using them run on the legacy
-  bytecode fallback, which is why Phase 5 (removal) has not started.
+- Generic control flow: `#[blueprint]` turns each control-flow node's
+  own body into a selector native reporting which exec output fired;
+  the compiler jumps there (built-in loops, gates and delays stay
+  intrinsics).
+
+**Phase 5: done.** Removed `pulsar_bp_executor`, `pulsar_std_bundle`,
+`pulsar_game::blueprint_runtime` (binding types moved to
+`pulsar_game::scripting`), the TickLoop dispatcher, bytecode discovery in
+generated projects, the `__bp_dispatch_*` shims, the world registry's VM
+byte ABI (`vm_abi`, arena marshalling), the plugin's bytecode output, and
+Lua (`rustlua`, `rlua`). PBGC keeps its Rust codegen (the plugin's Rust
+export); its bytecode/VM modules are now unused.
 
 Not yet: pulsar_std functions with tuple/Vec/array signatures as natives (needs a free-function
 registration path from `#[blueprint]`; natives can already be written with

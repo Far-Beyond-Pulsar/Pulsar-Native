@@ -267,14 +267,12 @@ lazy_static = "1.4"
 toml = "1.0"
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
 regex = "1"
-pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
 pulsar_script_vm = { path = "crates/core/pulsar_script_vm" }
 pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 bytemuck = { version = "1", features = ["derive"] }
 similar = "3"
 quinn = "0.11"
 rusqlite = { version = "0.32", features = ["bundled"] }
-pulsar_std_bundle = { path = "crates/core/pulsar_std_bundle" }
 
 
 
@@ -330,8 +328,6 @@ ui_auth           = { path = "crates/editor/ui_auth" }
 engine_backend    = { path = "crates/core/engine_backend" }
 engine_state      = { path = "crates/core/engine_state" }
 ui_types_common   = { path = "crates/editor/ui_types_common" }
-pulsar_std_bundle = { path = "crates/core/pulsar_std_bundle" }
-pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
 pulsar_script_vm  = { path = "crates/core/pulsar_script_vm" }
 pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 pulsar_reflection = { path = "crates/third-party/pulsar-reflection/pulsar_reflection" }

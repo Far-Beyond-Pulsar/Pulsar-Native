@@ -486,14 +486,6 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     );
     let node_type_ident = syn::Ident::new(node_type_str, fn_name.span());
 
-    // Native dispatch shim — __bp_dispatch_<name>.
-    // pulsar_bp_executor loads these from the compiled cdylib by symbol name.
-    let dispatch_shim = if !native_only {
-        generate_dispatch_shim(&input, fn_name, &fn_name_str)
-    } else {
-        quote! {}
-    };
-
     // native_only nodes are wrapped so they compile out in non-native (cdylib) builds
     let fn_definition = if native_only {
         quote! {
@@ -538,7 +530,6 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     let expanded = quote! {
         #fn_definition
         #registry_registration
-        #dispatch_shim
         #script_native
     };
 
@@ -563,6 +554,186 @@ fn is_script_native_type(ty: &syn::Type) -> bool {
     }
 }
 
+/// Rewrites `exec_output!("Label")` into recording which output fired, and
+/// notes whether any sits inside a loop (such a node may fire repeatedly
+/// between which the graph must run, so it cannot be a selector).
+struct ExecOutputRewriter {
+    labels: Vec<String>,
+    loop_depth: usize,
+    in_loop: bool,
+}
+
+impl ExecOutputRewriter {
+    fn replacement(&mut self, mac: &syn::Macro) -> Option<syn::Expr> {
+        if !mac.path.is_ident("exec_output") {
+            return None;
+        }
+        let label = syn::parse2::<syn::LitStr>(mac.tokens.clone()).ok()?.value();
+        if self.loop_depth > 0 {
+            self.in_loop = true;
+        }
+        let index = match self.labels.iter().position(|l| *l == label) {
+            Some(i) => i,
+            None => {
+                self.labels.push(label);
+                self.labels.len() - 1
+            }
+        } as i64;
+        Some(syn::parse_quote!({
+            *__bp_fired = #index;
+            *__bp_fire_count += 1;
+        }))
+    }
+}
+
+impl syn::visit_mut::VisitMut for ExecOutputRewriter {
+    fn visit_expr_mut(&mut self, expr: &mut syn::Expr) {
+        let is_loop = matches!(expr, syn::Expr::ForLoop(_) | syn::Expr::While(_) | syn::Expr::Loop(_));
+        if let syn::Expr::Macro(m) = expr {
+            if let Some(replacement) = self.replacement(&m.mac) {
+                *expr = replacement;
+                return;
+            }
+        }
+        if is_loop {
+            self.loop_depth += 1;
+        }
+        syn::visit_mut::visit_expr_mut(self, expr);
+        if is_loop {
+            self.loop_depth -= 1;
+        }
+    }
+
+    fn visit_stmt_mut(&mut self, stmt: &mut Stmt) {
+        if let Stmt::Macro(m) = stmt {
+            if let Some(replacement) = self.replacement(&m.mac) {
+                *stmt = Stmt::Expr(replacement, Some(Default::default()));
+                return;
+            }
+        }
+        syn::visit_mut::visit_stmt_mut(self, stmt);
+    }
+}
+
+/// A control-flow node as a script VM *selector* native: its own body runs
+/// with each `exec_output!` recording which exec output fired, and the
+/// native returns that output's index (-1: none) for the compiler to jump
+/// to. A node that returns a value passes it out through a trailing
+/// `inout result` parameter. The labels, in index order, are the native's
+/// `exec_outputs` attribute. Nodes whose `exec_output!` sits in a loop (or
+/// with unrepresentable types) get no selector; the compiler implements
+/// the built-in loops itself.
+fn control_flow_selector(
+    input: &ItemFn,
+    name: &str,
+    category: &str,
+    doc: &str,
+    native_only: bool,
+) -> proc_macro2::TokenStream {
+    use syn::visit_mut::VisitMut;
+
+    let mut body = (*input.block).clone();
+    let mut rewriter = ExecOutputRewriter { labels: Vec::new(), loop_depth: 0, in_loop: false };
+    rewriter.visit_block_mut(&mut body);
+    if rewriter.in_loop || rewriter.labels.is_empty() {
+        return quote! {};
+    }
+
+    let mut params = Vec::new();
+    let mut fn_params = Vec::new();
+    let mut sig_params = Vec::new();
+    let mut extracts = Vec::new();
+    for (index, arg) in input.sig.inputs.iter().enumerate() {
+        let FnArg::Typed(typed) = arg else { return quote! {} };
+        let Pat::Ident(ident) = &*typed.pat else { return quote! {} };
+        let pat = &ident.ident;
+        let (slot_ty, pass): (syn::Type, proc_macro2::TokenStream) = if is_str_ref(&typed.ty) {
+            (syn::parse_quote!(::std::string::String), quote! { &__bp_arg })
+        } else if is_script_native_type(&typed.ty) {
+            ((*typed.ty).clone(), quote! { __bp_arg })
+        } else {
+            return quote! {};
+        };
+        let ty = &typed.ty;
+        fn_params.push(quote! { #pat: #ty });
+        sig_params.push(quote! {
+            ::pulsar_script_vm::Param::new(<#slot_ty as ::pulsar_script_vm::ScriptValue>::script_type())
+        });
+        extracts.push(quote! {{
+            let __bp_arg = <#slot_ty as ::pulsar_script_vm::ScriptValue>::from_value(&args[#index])
+                .ok_or_else(|| ::pulsar_script_vm::ScriptError::native(concat!("bad argument ", #index)))?;
+            #pass
+        }});
+        params.push(ident.ident.to_string().trim_start_matches('_').to_string());
+    }
+    let ret_ty: syn::Type = match &input.sig.output {
+        ReturnType::Default => syn::parse_quote!(()),
+        ReturnType::Type(_, ty) if is_script_native_type(ty) => (**ty).clone(),
+        ReturnType::Type(..) => return quote! {},
+    };
+    let has_result = !matches!(&ret_ty, syn::Type::Tuple(t) if t.elems.is_empty());
+    let result_index = params.len();
+    if has_result {
+        params.push("result".to_string());
+        sig_params.push(quote! {
+            ::pulsar_script_vm::Param::inout(<#ret_ty as ::pulsar_script_vm::ScriptValue>::script_type())
+        });
+    }
+    if params.len() > 8 {
+        return quote! {};
+    }
+    let store_result = if has_result {
+        quote! { args[#result_index] = ::pulsar_script_vm::ScriptValue::into_value(__bp_ret); }
+    } else {
+        quote! { let _ = __bp_ret; }
+    };
+    let labels = rewriter.labels.join(",");
+    let native_name = format!("std::{name}");
+    let selector = quote::format_ident!("__bp_select_{}", input.sig.ident);
+    let cfg = if native_only {
+        quote! { #[cfg(all(feature = "script-natives", not(target_arch = "wasm32")))] }
+    } else {
+        quote! { #[cfg(feature = "script-natives")] }
+    };
+    quote! {
+        #cfg
+        #[doc(hidden)]
+        #[allow(non_snake_case, unused_mut, unused_variables, unreachable_code, clippy::needless_return)]
+        fn #selector(__bp_fired: &mut i64, __bp_fire_count: &mut u32, #(#fn_params),*) -> #ret_ty {
+            #body
+        }
+
+        #cfg
+        ::pulsar_script_vm::__private::inventory::submit! {
+            ::pulsar_script_vm::NativeRegistration {
+                build: || ::pulsar_script_vm::NativeFn::builder(#native_name)
+                    .doc(#doc)
+                    .attr("category", #category)
+                    .attr("exec_outputs", #labels)
+                    .params::<&str>([#(#params),*])
+                    .build_raw(
+                        ::pulsar_script_vm::Signature::new(
+                            [#(#sig_params),*],
+                            ::pulsar_script_vm::Type::Int,
+                        ),
+                        ::std::boxed::Box::new(|_host, args| {
+                            let mut __bp_fired: i64 = -1;
+                            let mut __bp_fire_count: u32 = 0;
+                            let __bp_ret = #selector(&mut __bp_fired, &mut __bp_fire_count, #(#extracts),*);
+                            if __bp_fire_count > 1 {
+                                return ::std::result::Result::Err(::pulsar_script_vm::ScriptError::native(
+                                    "fired more than one exec output in one call",
+                                ));
+                            }
+                            #store_result
+                            ::std::result::Result::Ok(::pulsar_script_vm::Value::Int(__bp_fired))
+                        }),
+                    ),
+            }
+        }
+    }
+}
+
 fn is_str_ref(ty: &syn::Type) -> bool {
     matches!(ty, syn::Type::Reference(r) if r.mutability.is_none()
         && matches!(&*r.elem, syn::Type::Path(p) if p.path.is_ident("str")))
@@ -581,6 +752,9 @@ fn script_native_registration(
     doc: &str,
     native_only: bool,
 ) -> proc_macro2::TokenStream {
+    if node_type == "control_flow" && input.sig.generics.params.is_empty() {
+        return control_flow_selector(input, name, category, doc, native_only);
+    }
     if !matches!(node_type, "pure" | "fn_") || !input.sig.generics.params.is_empty() {
         return quote! {};
     }
@@ -983,401 +1157,6 @@ fn substitute_generics_with_unit(
             Type::Reference(new_r)
         }
         other => other.clone(),
-    }
-}
-
-// ── Concrete-type substitution for generic shim codegen ──────────────────────
-//
-// Replace every occurrence of a named generic type parameter in a `syn::Type`
-// with a caller-supplied concrete type.  Used to generate the typed arms of the
-// size-dispatch shim for generic functions.
-
-fn substitute_generics_with_concrete_type(
-    ty: &syn::Type,
-    type_map: &std::collections::HashMap<String, syn::Type>,
-) -> syn::Type {
-    use syn::{GenericArgument, PathArguments, Type};
-    match ty {
-        Type::Path(type_path) => {
-            if type_path.qself.is_none() && type_path.path.segments.len() == 1 {
-                let seg = &type_path.path.segments[0];
-                if matches!(seg.arguments, PathArguments::None) {
-                    if let Some(concrete) = type_map.get(&seg.ident.to_string()) {
-                        return concrete.clone();
-                    }
-                }
-            }
-            let mut new_tp = type_path.clone();
-            for seg in new_tp.path.segments.iter_mut() {
-                if let PathArguments::AngleBracketed(ref mut ab) = seg.arguments {
-                    let mut new_args = syn::punctuated::Punctuated::new();
-                    for arg in ab.args.iter() {
-                        let new_arg = if let GenericArgument::Type(inner) = arg {
-                            GenericArgument::Type(substitute_generics_with_concrete_type(
-                                inner, type_map,
-                            ))
-                        } else {
-                            arg.clone()
-                        };
-                        new_args.push(new_arg);
-                    }
-                    ab.args = new_args;
-                }
-            }
-            Type::Path(new_tp)
-        }
-        Type::Tuple(tup) => {
-            let mut new_tup = tup.clone();
-            let mut new_elems = syn::punctuated::Punctuated::new();
-            for elem in tup.elems.iter() {
-                new_elems.push(substitute_generics_with_concrete_type(elem, type_map));
-            }
-            new_tup.elems = new_elems;
-            Type::Tuple(new_tup)
-        }
-        Type::Reference(r) => {
-            let mut new_r = r.clone();
-            new_r.elem = Box::new(substitute_generics_with_concrete_type(&r.elem, type_map));
-            Type::Reference(new_r)
-        }
-        other => other.clone(),
-    }
-}
-
-/// Returns true iff `ty` is a bare generic type-parameter name with no arguments
-/// (e.g. `T`, `U`).
-fn is_bare_generic_param(ty: &syn::Type, param_names: &std::collections::HashSet<String>) -> bool {
-    use syn::{PathArguments, Type};
-    if let Type::Path(tp) = ty {
-        if tp.qself.is_none() && tp.path.segments.len() == 1 {
-            let seg = &tp.path.segments[0];
-            return matches!(seg.arguments, PathArguments::None)
-                && param_names.contains(&seg.ident.to_string());
-        }
-    }
-    false
-}
-
-// ── Generic type-erased shim (size-dispatch) ──────────────────────────────────
-//
-// For a generic function with exactly ONE type parameter T that carries no
-// "semantic" bounds (PartialEq, Ord, Hash, Clone, …), the macro emits ONE
-// `__bp_dispatch_<name>` symbol that dispatches on `type_slots[0].size` at
-// runtime.  Each arm substitutes T → `[u8; N]` and calls the original function
-// through a concrete monomorphization.  This avoids per-type-name symbols while
-// remaining correct for purely structural operations (Vec<T> push/pop/len/…).
-//
-// If the function has no bare-T parameters (all sizes compile-time known, e.g.
-// `fn array_len<T>(v: Vec<T>) -> usize`), we use T=() for every call: Vec<()>
-// shares the same header layout as Vec<T> for any T, so structural queries are
-// always correct.
-
-fn generate_generic_dispatch_shim(
-    func: &ItemFn,
-    fn_name: &proc_macro2::Ident,
-    fn_name_str: &str,
-) -> proc_macro2::TokenStream {
-    // ── Guard: exactly one type param, no semantic bounds ─────────────────────
-    let type_params: Vec<&syn::TypeParam> = func
-        .sig
-        .generics
-        .params
-        .iter()
-        .filter_map(|p| {
-            if let syn::GenericParam::Type(tp) = p {
-                Some(tp)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if type_params.len() != 1 {
-        return quote! {};
-    }
-    let tp = type_params[0];
-
-    // Reject bounds that require T's methods that [u8; N] doesn't implement
-    // (formatting, hashing, user-defined traits, etc.).
-    // We allow:
-    //   - auto-traits with no vtable: Sized, Send, Sync
-    //   - derivable primitive traits that [u8; N] implements for all N:
-    //     Clone, Copy, PartialEq, Eq, PartialOrd, Ord
-    let has_semantic_bounds = tp.bounds.iter().any(|b| {
-        if let syn::TypeParamBound::Trait(tb) = b {
-            let name = tb
-                .path
-                .segments
-                .last()
-                .map(|s| s.ident.to_string())
-                .unwrap_or_default();
-            !matches!(
-                name.as_str(),
-                "Sized"
-                    | "Send"
-                    | "Sync"
-                    | "Clone"
-                    | "Copy"
-                    | "PartialEq"
-                    | "Eq"
-                    | "PartialOrd"
-                    | "Ord"
-            )
-        } else {
-            false // lifetime bounds are fine
-        }
-    });
-    if has_semantic_bounds {
-        return quote! {};
-    }
-
-    let generic_param_name = tp.ident.to_string();
-    let mut param_names_set = std::collections::HashSet::new();
-    param_names_set.insert(generic_param_name.clone());
-
-    // Collect typed params: (arg_index, ident, original_type).
-    let mut params: Vec<(usize, proc_macro2::Ident, syn::Type)> = Vec::new();
-    for (i, arg) in func.sig.inputs.iter().enumerate() {
-        if let FnArg::Typed(pt) = arg {
-            if let Pat::Ident(pi) = &*pt.pat {
-                params.push((i, pi.ident.clone(), (*pt.ty).clone()));
-            }
-        }
-    }
-
-    let shim_ident =
-        proc_macro2::Ident::new(&format!("__bp_dispatch_{}", fn_name_str), fn_name.span());
-
-    // ── Check whether any param / return type is a bare T ─────────────────────
-    let has_bare_param = params
-        .iter()
-        .any(|(_, _, ty)| is_bare_generic_param(ty, &param_names_set));
-    let has_bare_return = match &func.sig.output {
-        ReturnType::Type(_, ty) => is_bare_generic_param(ty, &param_names_set),
-        ReturnType::Default => false,
-    };
-
-    // ── No bare T anywhere: use T=() for everything ────────────────────────────
-    if !has_bare_param && !has_bare_return {
-        let unit_map = {
-            let unit_ty: syn::Type = syn::parse_quote!(());
-            let mut m = std::collections::HashMap::new();
-            m.insert(generic_param_name.clone(), unit_ty);
-            m
-        };
-
-        let mut let_stmts: Vec<proc_macro2::TokenStream> = Vec::new();
-        let mut call_args: Vec<proc_macro2::TokenStream> = Vec::new();
-        for (arg_idx, _, orig_ty) in &params {
-            let arg_var =
-                proc_macro2::Ident::new(&format!("__a{}", arg_idx), proc_macro2::Span::call_site());
-            let idx_lit = proc_macro2::Literal::usize_unsuffixed(*arg_idx);
-            let concrete_ty = substitute_generics_with_concrete_type(orig_ty, &unit_map);
-            let_stmts.push(quote! {
-                let #arg_var = ::std::ptr::read(*args.add(#idx_lit) as *const #concrete_ty);
-            });
-            call_args.push(quote! { #arg_var });
-        }
-
-        let call_expr = quote! { #fn_name(#(#call_args),*) };
-        let write_stmt = match &func.sig.output {
-            ReturnType::Default => quote! { #call_expr; },
-            ReturnType::Type(_, ret_ty) => {
-                let ty_s = quote!(#ret_ty).to_string();
-                if ty_s.trim() == "()" || ty_s.trim() == "!" {
-                    quote! { #call_expr; }
-                } else {
-                    let concrete_ret = substitute_generics_with_concrete_type(ret_ty, &unit_map);
-                    quote! {
-                        let __r = #call_expr;
-                        ::std::ptr::write(ret as *mut #concrete_ret, __r);
-                    }
-                }
-            }
-        };
-
-        return quote! {
-            #[cfg(not(target_arch = "wasm32"))]
-            #[no_mangle]
-            pub unsafe extern "C" fn #shim_ident(
-                args:        *const *const u8,
-                ret:         *mut u8,
-                _type_slots: *const u8,  // not needed — no bare T params
-            ) {
-                #(#let_stmts)*
-                #write_stmt
-            }
-        };
-    }
-
-    // ── Has bare T: generate size-dispatch on type_slots[0].size ──────────────
-    //
-    // Arm sizes cover all common blueprint element types.
-    // Each arm substitutes T → [u8; N] (or () for N=0) and calls the original
-    // function with those concrete types.  Because [u8; N] has the same size and
-    // alignment as any N-byte T, structural operations (push, pop, etc.) produce
-    // identical machine code.
-
-    let dispatch_sizes: &[(&str, &str)] = &[
-        ("0", "()"),
-        ("1", "[u8; 1]"),
-        ("2", "[u8; 2]"),
-        ("4", "[u8; 4]"),
-        ("8", "[u8; 8]"),
-        ("12", "[u8; 12]"),
-        ("16", "[u8; 16]"),
-        ("24", "[u8; 24]"),
-        ("32", "[u8; 32]"),
-    ];
-
-    let mut match_arms: Vec<proc_macro2::TokenStream> = Vec::new();
-
-    for &(size_str, ty_str) in dispatch_sizes {
-        let concrete_ty: syn::Type = syn::parse_str(ty_str)
-            .unwrap_or_else(|_| panic!("internal: bad type str '{}'", ty_str));
-        let size_lit: proc_macro2::TokenStream = size_str.parse().expect("bad size literal");
-
-        let mut type_map = std::collections::HashMap::new();
-        type_map.insert(generic_param_name.clone(), concrete_ty.clone());
-
-        let mut let_stmts: Vec<proc_macro2::TokenStream> = Vec::new();
-        let mut call_args: Vec<proc_macro2::TokenStream> = Vec::new();
-
-        for (arg_idx, _, orig_ty) in &params {
-            let arg_var =
-                proc_macro2::Ident::new(&format!("__a{}", arg_idx), proc_macro2::Span::call_site());
-            let idx_lit = proc_macro2::Literal::usize_unsuffixed(*arg_idx);
-            let concrete_arg_ty = substitute_generics_with_concrete_type(orig_ty, &type_map);
-
-            let_stmts.push(quote! {
-                let #arg_var = ::std::ptr::read(*args.add(#idx_lit) as *const #concrete_arg_ty);
-            });
-            call_args.push(quote! { #arg_var });
-        }
-
-        let call_expr = quote! { #fn_name(#(#call_args),*) };
-        let write_stmt = match &func.sig.output {
-            ReturnType::Default => quote! { #call_expr; },
-            ReturnType::Type(_, ret_ty) => {
-                let ty_s = quote!(#ret_ty).to_string();
-                if ty_s.trim() == "()" || ty_s.trim() == "!" {
-                    quote! { #call_expr; }
-                } else {
-                    let concrete_ret = substitute_generics_with_concrete_type(ret_ty, &type_map);
-                    quote! {
-                        let __r = #call_expr;
-                        ::std::ptr::write(ret as *mut #concrete_ret, __r);
-                    }
-                }
-            }
-        };
-
-        match_arms.push(quote! {
-            #size_lit => { #(#let_stmts)* #write_stmt }
-        });
-    }
-
-    let panic_msg = format!(
-        "__bp_dispatch_{}: unsupported T size {{}} align {{}}",
-        fn_name_str
-    );
-    match_arms.push(quote! {
-        __n => panic!(#panic_msg, __ts0.size, __ts0.align),
-    });
-
-    quote! {
-        #[cfg(not(target_arch = "wasm32"))]
-        #[no_mangle]
-        pub unsafe extern "C" fn #shim_ident(
-            args:       *const *const u8,
-            ret:        *mut u8,
-            type_slots: *const crate::TypeSlot,
-        ) {
-            let __ts0 = *type_slots.add(0);
-            match __ts0.size {
-                #(#match_arms)*
-            }
-        }
-    }
-}
-
-// ── Native dispatch symbol generation ────────────────────────────────────────
-//
-// Each `#[blueprint]` function gets a `__bp_dispatch_<name>` symbol (native only).
-//
-// ABI:  unsafe extern "C" fn(args: *const *const u8, ret: *mut u8, type_slots: *const TypeSlot)
-//   - args[i]:     pointer into the byte arena at the i-th input's arena offset
-//   - ret:         pointer into the byte arena at the output's arena offset
-//                  (null / ignored for void-returning functions)
-//   - type_slots:  array of TypeSlot values resolved at graph-compile time, one
-//                  per generic type parameter T.  Concrete functions ignore this.
-//
-// The symbol reads each argument directly from the arena via ptr::read,
-// calls the actual function, and writes the result back via ptr::write.
-// There is exactly ONE type boundary — here — and nowhere else in the runtime.
-
-fn generate_dispatch_shim(
-    func: &ItemFn,
-    fn_name: &proc_macro2::Ident,
-    fn_name_str: &str,
-) -> proc_macro2::TokenStream {
-    // Generic functions — route to the type-erased size-dispatch shim generator.
-    if !func.sig.generics.params.is_empty() {
-        return generate_generic_dispatch_shim(func, fn_name, fn_name_str);
-    }
-
-    // Collect (ident, syn::Type) for all typed params
-    let mut params: Vec<(proc_macro2::Ident, syn::Type)> = Vec::new();
-    for arg in &func.sig.inputs {
-        if let FnArg::Typed(pt) = arg {
-            if let Pat::Ident(ident) = &*pt.pat {
-                params.push((ident.ident.clone(), (*pt.ty).clone()));
-            }
-        }
-    }
-
-    // Build ptr::read expressions — one per argument
-    let reads: Vec<proc_macro2::TokenStream> = params
-        .iter()
-        .enumerate()
-        .map(|(i, (_, ty))| {
-            let idx = proc_macro2::Literal::usize_unsuffixed(i);
-            quote! { ::std::ptr::read(*args.add(#idx) as *const #ty) }
-        })
-        .collect();
-
-    let call_expr = quote! { #fn_name(#(#reads),*) };
-
-    // Write result — omit ptr::write entirely for void and diverging functions
-    let body = match &func.sig.output {
-        ReturnType::Default => quote! { #call_expr; },
-        ReturnType::Type(_, ty) => {
-            let ty_str = quote::quote!(#ty).to_string();
-            let ty_trimmed = ty_str.trim();
-            if ty_trimmed == "()" || ty_trimmed == "!" {
-                quote! { #call_expr; }
-            } else {
-                quote! {
-                    let __result = #call_expr;
-                    ::std::ptr::write(ret as *mut #ty, __result);
-                }
-            }
-        }
-    };
-
-    let shim_ident =
-        proc_macro2::Ident::new(&format!("__bp_dispatch_{}", fn_name_str), fn_name.span());
-
-    quote! {
-        #[cfg(not(target_arch = "wasm32"))]
-        #[no_mangle]
-        pub unsafe extern "C" fn #shim_ident(
-            args:        *const *const u8,
-            ret:         *mut u8,
-            _type_slots: *const u8,  // TypeSlot array — ignored by concrete functions
-        ) {
-            #body
-        }
     }
 }
 

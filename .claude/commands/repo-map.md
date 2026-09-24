@@ -37,8 +37,8 @@ Pulsar-Native/
 │   │       └── core_project_builder.rs   ← generates user project scaffolding
 │   ├── blueprint_compiler/    Drives PBGC from within the editor
 │   ├── pulsar_std/            Standard library of blueprint nodes (print_number, etc.)
-│   ├── pulsar_std_bundle/     Bundles pulsar_std for VM executor
-│   ├── pulsar_bp_executor/    Bytecode VM that runs compiled blueprints
+│   ├── pulsar_script_vm/      Engine script bytecode VM (every language compiles to it)
+│   ├── pulsar_script_runtime/ Script classes bound to entities
 │   ├── pulsar_reflection/     EngineClass trait + property reflection
 │   ├── pulsar_reflection_derive/  proc-macro: #[derive(EngineClass)]
 │   ├── engine_class_derive/   proc-macro: #[derive(EngineClass, Clone)]

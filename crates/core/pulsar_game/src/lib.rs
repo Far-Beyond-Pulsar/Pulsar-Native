@@ -11,18 +11,12 @@
 //! - **Game time** — `GameTime` and `DeltaTime`.
 
 pub use pulsar_core::{EventBuffer, EventReader, EventWriter, GameTime, TaskPool, TickMode};
-// NOTE (#651): the SceneDB baked-store helpers (`__bp_with_comp` /
-// `__bp_set_comp_ctx` / `__bp_clear_comp_ctx` / `ComponentStore`) are
-// deliberately NOT re-exported anymore — generated actors address the live
-// world through `pulsar_world_registry`'s dispatcher. They remain available
-// from `pulsar_scenedb` itself for legacy callers.
+// Generated actors address the live world through `pulsar_world_registry`'s
+// dispatcher.
 pub use pulsar_scenedb::{
     Actor, ActorRegistry, Archetype, ArchetypeId, ArchetypeKey, Component, Entity, QueryIter,
     Schedule, World, WorldQuery,
 };
-
-// Blueprint runtime system
-pub mod blueprint_runtime;
 
 // Script classes on the engine script VM (module.json builds).
 pub mod scripting;
@@ -79,14 +73,13 @@ mod blueprint_ref_codegen;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod test_probe;
+
 /// Convenience prelude — glob-import this to get the whole public API.
 pub mod prelude {
     pub use crate::{
-        blueprint_runtime::{
-            BlueprintDispatcher, BlueprintEvent, BlueprintExecutionMode, BlueprintExecutor,
-            BlueprintInstance, ByteArena, BytecodeCompiler, CompiledBytecode, ExecutionMode,
-            VariableDescriptor,
-        },
+        scripting::ScriptRuntime,
         freecam::FreeCam,
         tick::{SharedTickLoop, TickLoop},
         window::{RenderCamera, WindowDescriptor, WindowHandle, WindowManager},

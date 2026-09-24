@@ -1,4 +1,3 @@
-use crate::blueprint_runtime::BlueprintDispatcher;
 use crate::time::to_scenedb_time;
 use crate::window::{WindowBridge, WindowCommand, WindowDescriptor, WindowHandle, WindowManager};
 
@@ -25,7 +24,7 @@ use std::sync::{Arc, Mutex};
 /// ## Locking protocol
 ///
 /// `tick_once` acquires the store's write lock ONCE PER PHASE (schedule →
-/// actors → blueprint events), dropping it between phases so render/editor
+/// actors → script events), dropping it between phases so render/editor
 /// threads are never blocked for a whole tick. Phase code must never stash
 /// the guard: borrow it, mutate, let it drop.
 ///
@@ -48,9 +47,7 @@ pub struct TickLoop {
     pub schedule: Schedule,
     pub actors: ActorRegistry,
     pub tasks: Arc<TaskPool>,
-    pub blueprint_dispatcher: Option<Arc<Mutex<BlueprintDispatcher>>>,
     /// Script classes on the engine script VM (see `crate::scripting`).
-    /// Driven in the same phase as `blueprint_dispatcher`.
     pub script_runtime: Option<Arc<Mutex<crate::scripting::ScriptRuntime>>>,
     /// Set by [`run_with_windows`][Self::run_with_windows]; game code can
     /// clone this to open/close/configure windows from actors and systems.
@@ -93,7 +90,6 @@ impl TickLoop {
             schedule: Schedule::new(),
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
-            blueprint_dispatcher: None,
             script_runtime: None,
             window_manager: None,
             clock: Clock::new(max_delta),
@@ -126,7 +122,6 @@ impl TickLoop {
             schedule: Schedule::new(),
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
-            blueprint_dispatcher: None,
             script_runtime: None,
             window_manager: None,
             clock: Clock::new(max_delta),
@@ -183,26 +178,14 @@ impl TickLoop {
             }
         }
 
-        // Phase 3: runtime blueprint lifecycle + tick events, AFTER ECS +
-        // actor updates. `begin_play` for newly-registered instances is
-        // deferred to here (rather than fired at registration time during
-        // level setup) so it observes a fully-initialised window/world/scene
-        // -- registration happens before the primary window opens, but
-        // `tick_once` only runs after `spawn_ecs_thread`, which is called
-        // once the window is ready. Each instance dispatches on its own
-        // state arena with component ops addressed at its bound entity
-        // (#648); the world borrow only feeds component ops and is dropped
-        // with the phase.
-        if let Some(dispatcher) = &self.blueprint_dispatcher {
-            let mut dispatcher = dispatcher.lock().unwrap();
-            let mut store = self.scene_store.write();
-            let world = &mut store.world;
-            dispatcher.dispatch_pending_begin_play(world);
-            dispatcher.dispatch_tick_all(world, time.delta.as_secs_f32());
-        }
+        // Phase 3: script lifecycle and tick events, AFTER ECS + actor
+        // updates. `begin_play` for newly spawned instances is deferred to
+        // here (rather than fired at registration during level setup) so it
+        // observes a fully initialised window/world/scene: registration
+        // happens before the primary window opens, but `tick_once` only runs
+        // after `spawn_ecs_thread`, once the window is ready. Errors are per
+        // instance and logged by the runtime.
         if let Some(runtime) = &self.script_runtime {
-            // Same order and lock discipline as the dispatcher above. Errors
-            // are per instance and already logged by the runtime.
             let mut runtime = runtime.lock().unwrap();
             let mut store = self.scene_store.write();
             let world = &mut store.world;
@@ -234,16 +217,9 @@ impl TickLoop {
             }
         }
 
-        // Loop is shutting down — give VM blueprint instances a chance to run
+        // Loop is shutting down — give script instances a chance to run
         // their `end_play` teardown logic, mirroring `ActorRegistry`'s
         // begin_play/end_play contract for native actors.
-        if let Some(dispatcher) = &self.blueprint_dispatcher {
-            let mut store = self.scene_store.write();
-            dispatcher
-                .lock()
-                .unwrap()
-                .dispatch_end_play_all(&mut store.world);
-        }
         if let Some(runtime) = &self.script_runtime {
             let mut store = self.scene_store.write();
             runtime.lock().unwrap().end_play_all(&mut store.world);

@@ -12,8 +12,7 @@
 //!    mutates the ONE shared SceneDB world — including firing #47
 //!    subscription events, the acceptance criterion "visible in SceneDB
 //!    subscriptions during standalone play" (a full light e2e additionally
-//!    needs a GPU/display session; the registered-probe pattern follows
-//!    `blueprint_runtime::component_ops`' VmProbe).
+//!    needs a GPU/display session; this uses a registered probe component).
 //! 2. [`pbgc_emission_matches_the_reference_shape_this_module_proves`] —
 //!    ties the twin to the generator: PBGC's output for the same class +
 //!    graph must contain the very calls the twin makes, and none of the

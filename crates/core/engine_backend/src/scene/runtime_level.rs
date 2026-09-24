@@ -73,7 +73,7 @@ pub struct EditorCamera {
 
 /// What a level load reports beyond hydration itself (#650): the editor
 /// camera seed and the file's Blueprint class bindings. Hosts apply the
-/// bindings through `pulsar_game::blueprint_runtime::level_bindings`, which
+/// bindings through `pulsar_game::scripting`, which
 /// resolves each StableId against the hydrated store and spawns one bound
 /// dispatcher instance per (object, class) pair.
 #[derive(Clone, Debug, Default)]
@@ -203,7 +203,7 @@ impl RuntimeLevel {
 
     /// The level's extras: editor camera seed + Blueprint class bindings
     /// (#650). Bindings are NOT applied by hydration itself — hosts apply
-    /// them through `pulsar_game::blueprint_runtime::level_bindings` so the
+    /// them through `pulsar_game::scripting` so the
     /// dispatcher stays a gameplay-side concern.
     pub fn extras(&self) -> &LevelExtras {
         &self.extras
@@ -738,7 +738,7 @@ mod tests {
     /// #650 additive guarantee: files without `blueprint_bindings` load with
     /// empty extras, and an authored bindings section rides along unharmed
     /// (hydration itself never applies it — hosts do, via
-    /// `pulsar_game::blueprint_runtime::level_bindings`).
+    /// `pulsar_game::scripting`).
     #[test]
     fn blueprint_bindings_are_additive_extras() {
         let old: SceneFile = serde_json::from_str(SAMPLE_LEVEL).expect("sample parses");
