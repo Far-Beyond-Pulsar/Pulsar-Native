@@ -1,6 +1,6 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer backed by SceneDB.
 
-use glam::{Mat4, Vec3};
+use glam::{DVec3, Mat4, Vec3};
 use std::collections::HashSet;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -11,6 +11,7 @@ use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogCon
 use crate::scene::{GizmoType, SceneWorldExt};
 
 use super::interaction::SceneInteraction;
+use super::voxel_backend::{TinyVoxelBackend, VoxelBackendRegistry, VoxelRenderBackend, VoxelView};
 type GizmoMode = GizmoType;
 
 /// Camera velocity squared below this threshold is considered stopped.
@@ -25,7 +26,7 @@ pub enum RendererCommand {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct EditorCameraState {
-    pub position: [f32; 3],
+    pub position: [f64; 3],
     pub yaw: f32,
     pub pitch: f32,
 }
@@ -77,11 +78,19 @@ pub enum PendingPointerEvent {
 #[derive(Clone)]
 pub struct HelioEditorMailbox {
     pending_gizmo_mode: Arc<Mutex<Option<GizmoMode>>>,
+    pending_camera_state: Arc<Mutex<Option<EditorCameraState>>>,
     pending_deselect: Arc<AtomicBool>,
     pending_force_full_resync: Arc<AtomicBool>,
 }
 
 impl HelioEditorMailbox {
+    /// Apply a loaded level camera at the next render-frame boundary.
+    pub fn queue_camera(&self, camera: EditorCameraState) {
+        if let Ok(mut pending) = self.pending_camera_state.lock() {
+            *pending = Some(camera);
+        }
+    }
+
     /// Queue the SceneDB interaction gizmo mode for the render thread to apply
     /// at the next frame boundary.
     pub fn queue_gizmo(&self, mode: GizmoMode) {
@@ -144,6 +153,7 @@ pub struct HelioRenderer {
     // ── Pending editor commands (written by UI thread, read by render thread) ──
     /// Next gizmo mode to apply; consumed at start of render_frame.
     pub pending_gizmo_mode: Arc<Mutex<Option<GizmoMode>>>,
+    pending_camera_state: Arc<Mutex<Option<EditorCameraState>>>,
     /// When true, the render thread should clear SceneDB selection next frame.
     pub pending_deselect: Arc<AtomicBool>,
     /// Left-click/left-release events queued by the UI thread, drained in
@@ -163,7 +173,7 @@ pub struct HelioRenderer {
     inner: Option<HelioInner>,
 
     // ── Camera State ──
-    cam_pos: Vec3,
+    cam_pos: DVec3,
     cam_yaw: f32,
     cam_pitch: f32,
     // Smoothed local-space velocity: x=right, y=up, z=forward (units/sec).
@@ -199,6 +209,8 @@ pub struct HelioRenderer {
     /// projection after a mutation. This stays armed for the lifetime of the
     /// shared scene and avoids scanning every mesh during a drag.
     render_row_subscriptions_armed: bool,
+    voxel_backends: VoxelBackendRegistry,
+    last_voxel_errors: Vec<String>,
 }
 
 struct HelioInner {
@@ -213,19 +225,24 @@ struct HelioInner {
 impl HelioRenderer {
     pub fn new(scene_store: crate::scene::SharedScene) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
+        let mut voxel_backends = VoxelBackendRegistry::new();
+        voxel_backends
+            .register(Box::new(TinyVoxelBackend::new()))
+            .expect("built-in voxel renderer ID must be unique");
         Self {
             camera_input: Arc::new(Mutex::new(CameraInput::new())),
             scene_store,
             command_sender,
             command_receiver,
             pending_gizmo_mode: Arc::new(Mutex::new(None)),
+            pending_camera_state: Arc::new(Mutex::new(None)),
             pending_deselect: Arc::new(AtomicBool::new(false)),
             pending_pointer_events: Arc::new(Mutex::new(Vec::new())),
             pending_force_full_resync: Arc::new(AtomicBool::new(false)),
             reset_taa_next_frame: false,
             inner: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
-            cam_pos: Vec3::new(8.0, 6.0, 12.0),
+            cam_pos: DVec3::new(8.0, 6.0, 12.0),
             cam_yaw: -0.5,
             cam_pitch: -0.3,
             cam_local_velocity: Vec3::ZERO,
@@ -241,7 +258,20 @@ impl HelioRenderer {
             gizmo_dirty: true,
             profiler_frame_counter: 0,
             render_row_subscriptions_armed: false,
+            voxel_backends,
+            last_voxel_errors: Vec::new(),
         }
+    }
+
+    /// Register a voxel renderer before the first viewport frame.
+    pub fn register_voxel_backend(
+        &mut self,
+        backend: Box<dyn VoxelRenderBackend>,
+    ) -> Result<(), String> {
+        if self.inner.is_some() {
+            return Err("voxel renderers must be registered before graph construction".into());
+        }
+        self.voxel_backends.register(backend)
     }
 
     pub fn editor_camera_state(&self) -> EditorCameraState {
@@ -253,7 +283,7 @@ impl HelioRenderer {
     }
 
     pub fn set_editor_camera_state(&mut self, state: EditorCameraState) {
-        self.cam_pos = Vec3::from_array(state.position);
+        self.cam_pos = DVec3::from_array(state.position);
         self.cam_yaw = state.yaw;
         self.cam_pitch = state.pitch;
         self.cam_local_velocity = Vec3::ZERO;
@@ -302,6 +332,19 @@ impl HelioRenderer {
         self.last_frame = now;
         self.frame_count += 1;
         self.profiler_frame_counter += 1;
+
+        // Level loading runs on the UI thread while rendering can hold the
+        // engine mutex. Consume the camera mailbox before camera input and
+        // idle detection so the saved pose cannot be silently skipped.
+        let pending_camera = self
+            .pending_camera_state
+            .lock()
+            .ok()
+            .and_then(|mut pending| pending.take());
+        if let Some(camera) = pending_camera {
+            self.set_editor_camera_state(camera);
+            self.reset_taa_next_frame = true;
+        }
 
         // ── Lazy init (first frame only) ────────────────────────────────────────
         if self.inner.is_none() {
@@ -370,10 +413,14 @@ impl HelioRenderer {
             if vt_enabled {
                 builder = builder.with_texture_streaming(pool_mb);
             }
+            let voxel_passes = self.voxel_backends.pass_factories();
             let r = builder
-                .with_pass_build_context(Box::new(
-                    helio_default_graphs::build_default_graph_external_with_context,
-                ))
+                .with_pass_build_context(Box::new(move |ctx| {
+                    helio_default_graphs::build_default_graph_external_with_voxel_passes(
+                        ctx,
+                        voxel_passes,
+                    )
+                }))
                 .build(device_arc.clone(), queue_arc.clone(), width, height, format);
 
             let inner = HelioInner {
@@ -516,6 +563,7 @@ impl HelioRenderer {
         let is_idle = camera_stopped
             && !has_pending_scene
             && !has_pending_editor
+            && !self.voxel_backends.needs_frame(&inner.renderer)
             && !self.gizmo_dirty
             && !viewport_resized
             && !self.reset_taa_next_frame;
@@ -656,8 +704,8 @@ impl HelioRenderer {
             let fwd = Vec3::new(sy * cp, sp, -cy * cp);
             let aspect = width as f32 / height.max(1) as f32;
             let camera = Camera::perspective_look_at(
-                self.cam_pos,
-                self.cam_pos + fwd,
+                self.cam_pos.as_vec3(),
+                self.cam_pos.as_vec3() + fwd,
                 Vec3::Y,
                 std::f32::consts::FRAC_PI_4,
                 aspect,
@@ -677,9 +725,11 @@ impl HelioRenderer {
             };
             {
                 profiling::profile_scope!("helio_draw_gizmo");
-                inner
-                    .interaction
-                    .draw_gizmo(&mut inner.renderer, &store.world, self.cam_pos);
+                inner.interaction.draw_gizmo(
+                    &mut inner.renderer,
+                    &store.world,
+                    self.cam_pos.as_vec3(),
+                );
             }
             camera
         };
@@ -689,6 +739,37 @@ impl HelioRenderer {
         }
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
+        let (voxel_entries, mut voxel_errors) = {
+            let store = self.scene_store.read();
+            crate::scene::voxel_frame::project_voxel_entries(&store.world)
+        };
+        let (sy, cy) = self.cam_yaw.sin_cos();
+        let (sp, cp) = self.cam_pitch.sin_cos();
+        let forward = Vec3::new(sy * cp, sp, -cy * cp);
+        let right = forward.cross(Vec3::Y).normalize_or_zero();
+        let up = right.cross(forward).normalize_or_zero();
+        voxel_errors.extend(self.voxel_backends.publish_frame(
+            &voxel_entries,
+            VoxelView {
+                position: self.cam_pos.to_array(),
+                right: right.to_array(),
+                up: up.to_array(),
+                forward: forward.to_array(),
+                tan_half_fov_y: (std::f32::consts::FRAC_PI_4 * 0.5).tan(),
+                aspect: width as f32 / height.max(1) as f32,
+                far: 10_000.0,
+                size: [width, height],
+            },
+        ));
+        if voxel_errors != self.last_voxel_errors {
+            for error in &voxel_errors {
+                tracing::warn!("Voxel terrain: {error}");
+            }
+            if let Ok(mut pending) = self.pending_errors.lock() {
+                pending.extend(voxel_errors.iter().cloned());
+            }
+            self.last_voxel_errors = voxel_errors;
+        }
         let t_render = Instant::now();
         let submission_index = {
             #[cfg(feature = "editor-ui")]
@@ -868,9 +949,9 @@ impl HelioRenderer {
         // instant velocity step produces no visible jump.
         self.cam_local_velocity = target_velocity;
 
-        self.cam_pos += right * self.cam_local_velocity.x * dt;
-        self.cam_pos += Vec3::Y * self.cam_local_velocity.y * dt;
-        self.cam_pos += fwd * self.cam_local_velocity.z * dt;
+        self.cam_pos += (right * self.cam_local_velocity.x * dt).as_dvec3();
+        self.cam_pos += (Vec3::Y * self.cam_local_velocity.y * dt).as_dvec3();
+        self.cam_pos += (fwd * self.cam_local_velocity.z * dt).as_dvec3();
 
         // Middle-mouse (or right-click + Shift) view-plane pan: translate the camera
         // along its screen right/up axes for a 1:1 "grab" feel. Applied directly from
@@ -885,8 +966,8 @@ impl HelioRenderer {
             let pan_speed = PAN * input.move_speed.max(1.0);
             // Grab convention: dragging right moves content right (camera goes left);
             // dragging down moves content down (camera goes up).
-            self.cam_pos += right * (-input.pan_delta_x) * pan_speed;
-            self.cam_pos += screen_up * input.pan_delta_y * pan_speed;
+            self.cam_pos += (right * (-input.pan_delta_x) * pan_speed).as_dvec3();
+            self.cam_pos += (screen_up * input.pan_delta_y * pan_speed).as_dvec3();
         }
     }
 
@@ -946,6 +1027,7 @@ impl HelioRenderer {
     pub fn editor_mailbox(&self) -> HelioEditorMailbox {
         HelioEditorMailbox {
             pending_gizmo_mode: self.pending_gizmo_mode.clone(),
+            pending_camera_state: self.pending_camera_state.clone(),
             pending_deselect: self.pending_deselect.clone(),
             pending_force_full_resync: self.pending_force_full_resync.clone(),
         }
@@ -1018,7 +1100,8 @@ impl HelioRenderer {
         let forward = Vec3::new(sy * cp, sp, -cy * cp);
         let projection =
             Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, width / height, 0.1, 10_000.0);
-        let view = Mat4::look_at_rh(self.cam_pos, self.cam_pos + forward, Vec3::Y);
+        let camera_position = self.cam_pos.as_vec3();
+        let view = Mat4::look_at_rh(camera_position, camera_position + forward, Vec3::Y);
         let inverse = (projection * view).inverse();
         let near = inverse.project_point3(Vec3::new(x, y, 0.0));
         let far = inverse.project_point3(Vec3::new(x, y, 1.0));
@@ -1031,10 +1114,12 @@ impl HelioRenderer {
         let (ray_origin, ray_direction) = self.build_pick_ray(norm_x, norm_y);
         let Some(inner) = &mut self.inner else { return };
         let store = self.scene_store.read();
-        if inner
-            .interaction
-            .try_start_drag(&store.world, ray_origin, ray_direction, self.cam_pos)
-        {
+        if inner.interaction.try_start_drag(
+            &store.world,
+            ray_origin,
+            ray_direction,
+            self.cam_pos.as_vec3(),
+        ) {
             return;
         }
         let target = inner
@@ -1054,7 +1139,7 @@ impl HelioRenderer {
                 &mut store.world,
                 ray_origin,
                 ray_direction,
-                self.cam_pos,
+                self.cam_pos.as_vec3(),
             );
             self.gizmo_dirty = true;
         } else {
@@ -1063,7 +1148,7 @@ impl HelioRenderer {
                 &store.world,
                 ray_origin,
                 ray_direction,
-                self.cam_pos,
+                self.cam_pos.as_vec3(),
             );
         }
     }
@@ -1092,11 +1177,12 @@ impl HelioRenderer {
             0.1,
             10_000.0,
         );
-        let view = Mat4::look_at_rh(self.cam_pos, self.cam_pos + forward, Vec3::Y);
+        let camera_position = self.cam_pos.as_vec3();
+        let view = Mat4::look_at_rh(camera_position, camera_position + forward, Vec3::Y);
         if let Some(inner) = &mut self.inner {
             inner
                 .interaction
-                .set_view(self.cam_pos, forward, projection * view, size);
+                .set_view(camera_position, forward, projection * view, size);
         }
     }
 }

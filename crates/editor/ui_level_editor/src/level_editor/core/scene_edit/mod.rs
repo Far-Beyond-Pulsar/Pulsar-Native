@@ -199,7 +199,7 @@ pub struct LevelEditorFileState {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LevelEditorCameraState {
-    pub position: [f32; 3],
+    pub position: [f64; 3],
     pub yaw: f32,
     pub pitch: f32,
 }

@@ -75,16 +75,12 @@ impl LevelEditorPanel {
         let Some(camera) = camera else {
             return;
         };
-
-        // Same `.try_lock()` reasoning as `current_editor_camera_state`.
-        if let Ok(mut engine) = self.gpu_engine.try_lock() {
-            engine.set_editor_camera_state(EditorCameraState {
+        if let Some(mailbox) = &self.helio_mailbox {
+            mailbox.queue_camera(EditorCameraState {
                 position: camera.position,
                 yaw: camera.yaw,
                 pitch: camera.pitch,
             });
-        } else {
-            tracing::debug!("[CAMERA_STATE] gpu_engine busy, skipped applying camera state");
         }
     }
 }
