@@ -42,7 +42,7 @@ pub use module::{
     BinOp, Constant, Function, Import, Instr, Module, Param, Reg, Signature, UnOp, Variable,
     FORMAT_VERSION,
 };
-pub use native::{Host, NativeBuilder, NativeFn, NativeRegistry, Origin};
+pub use native::{Host, NativeBuilder, NativeFn, NativeRegistration, NativeRegistry, Origin};
 pub use types::{Obj, ScriptValue, Type, TypeRegistry};
 pub use value::{Object, Value};
 pub use verify::verify;

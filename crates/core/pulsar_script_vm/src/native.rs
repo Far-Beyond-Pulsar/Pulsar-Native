@@ -125,6 +125,12 @@ impl NativeBuilder {
         self
     }
 
+    /// No side effects, but the result may vary (e.g. reads a clock).
+    pub fn side_effect_free(mut self) -> Self {
+        self.flags.side_effect_free = true;
+        self
+    }
+
     pub fn flags(mut self, flags: MethodFlags) -> Self {
         self.flags = flags;
         self
@@ -265,6 +271,15 @@ into_native!(A 0, B 1, C 2, D 3);
 into_native!(A 0, B 1, C 2, D 3, E 4);
 into_native!(A 0, B 1, C 2, D 3, E 4, G 5);
 
+/// An engine native registered at link time (e.g. by pulsar_std's
+/// `#[blueprint]` functions). Collected by
+/// [`NativeRegistry::with_engine_natives`].
+pub struct NativeRegistration {
+    pub build: fn() -> NativeFn,
+}
+
+inventory::collect!(NativeRegistration);
+
 /// A native with this name is already registered.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("native `{0}` is already registered")]
@@ -287,12 +302,18 @@ impl NativeRegistry {
         Self::default()
     }
 
-    /// The standard library plus every script-visible reflected method,
-    /// component method, component accessor and property.
+    /// The standard library, every script-visible reflected method,
+    /// component method, component accessor and property, and every
+    /// [`NativeRegistration`].
     pub fn with_engine_natives() -> Self {
         let mut registry = Self::new();
         crate::stdlib::register(&mut registry);
         crate::adapters::register(&mut registry);
+        for registration in inventory::iter::<NativeRegistration> {
+            if let Err(err) = registry.register((registration.build)()) {
+                tracing::error!("script natives: {err}");
+            }
+        }
         registry
     }
 

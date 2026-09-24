@@ -417,6 +417,15 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         })
         .collect();
 
+    let script_native = script_native_registration(
+        &input,
+        &fn_name_str,
+        node_type_str,
+        &category_str,
+        &docs.join("\n"),
+        args_str.contains("wasm_safe : false") || args_str.contains("wasm_safe:false"),
+    );
+
     // Create a clean function without macro attributes for source code display
     let mut clean_input = input.clone();
     clean_input.attrs.retain(|attr| attr.path().is_ident("doc"));
@@ -530,9 +539,84 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         #fn_definition
         #registry_registration
         #dispatch_shim
+        #script_native
     };
 
     TokenStream::from(expanded)
+}
+
+/// Types a `#[blueprint]` function may use (by value) to also become a
+/// script VM native. Anything else keeps the node Blueprint-only.
+const SCRIPT_NATIVE_TYPES: &[&str] = &[
+    "bool", "i8", "i16", "i32", "i64", "isize", "u8", "u16", "u32", "u64", "usize", "f32", "f64",
+    "String",
+];
+
+fn is_script_native_type(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(path) => path
+            .path
+            .get_ident()
+            .is_some_and(|ident| SCRIPT_NATIVE_TYPES.contains(&ident.to_string().as_str())),
+        syn::Type::Tuple(tuple) => tuple.elems.is_empty(),
+        _ => false,
+    }
+}
+
+/// Register a pure or plain function node as the script VM native
+/// `std::<name>` (feature `script-natives`), when its signature is
+/// representable: non-generic, at most six parameters, every parameter and
+/// the return type a scalar or `String`. Control-flow and event nodes are
+/// compiler intrinsics, not natives.
+fn script_native_registration(
+    input: &ItemFn,
+    name: &str,
+    node_type: &str,
+    category: &str,
+    doc: &str,
+    native_only: bool,
+) -> proc_macro2::TokenStream {
+    if !matches!(node_type, "pure" | "fn_") || !input.sig.generics.params.is_empty() {
+        return quote! {};
+    }
+    let mut params = Vec::new();
+    for arg in &input.sig.inputs {
+        let FnArg::Typed(typed) = arg else { return quote! {} };
+        let Pat::Ident(ident) = &*typed.pat else { return quote! {} };
+        if !is_script_native_type(&typed.ty) {
+            return quote! {};
+        }
+        params.push(ident.ident.to_string().trim_start_matches('_').to_string());
+    }
+    if params.len() > 6 {
+        return quote! {};
+    }
+    if let ReturnType::Type(_, ty) = &input.sig.output {
+        if !is_script_native_type(ty) {
+            return quote! {};
+        }
+    }
+    let fn_ident = &input.sig.ident;
+    let native_name = format!("std::{name}");
+    let pure = if node_type == "pure" { quote! { .side_effect_free() } } else { quote! {} };
+    let cfg = if native_only {
+        quote! { #[cfg(all(feature = "script-natives", not(target_arch = "wasm32")))] }
+    } else {
+        quote! { #[cfg(feature = "script-natives")] }
+    };
+    quote! {
+        #cfg
+        ::pulsar_script_vm::__private::inventory::submit! {
+            ::pulsar_script_vm::NativeRegistration {
+                build: || ::pulsar_script_vm::NativeFn::builder(#native_name)
+                    .doc(#doc)
+                    .attr("category", #category)
+                    .params::<&str>([#(#params),*])
+                    #pure
+                    .build(#fn_ident),
+            }
+        }
+    }
 }
 
 /// Extract a string value from an attribute string like `category: "Math"`

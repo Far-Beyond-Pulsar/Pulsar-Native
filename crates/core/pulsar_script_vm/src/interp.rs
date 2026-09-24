@@ -173,7 +173,12 @@ impl Vm {
                     let mut values = std::mem::take(&mut self.args);
                     values.clear();
                     values.extend(args.iter().map(|a| self.regs[r(*a)].clone()));
-                    let result = native.call(host, &mut values);
+                    // A panicking native fails the call instead of unwinding
+                    // through the VM into the game loop.
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        native.call(host, &mut values)
+                    }))
+                    .unwrap_or_else(|panic| Err(ScriptError::native(panic_message(&*panic))));
                     let result = match result {
                         Ok(value) if value.fits(&native.sig.ret) => value,
                         Ok(value) => {
@@ -230,6 +235,15 @@ impl Vm {
             self.frames.last_mut().expect("active").pc = next;
         }
     }
+}
+
+fn panic_message(panic: &(dyn std::any::Any + Send)) -> String {
+    let message = panic
+        .downcast_ref::<&str>()
+        .map(|s| s.to_string())
+        .or_else(|| panic.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "unknown panic".into());
+    format!("panicked: {message}")
 }
 
 fn unary(op: UnOp, value: &Value) -> Value {

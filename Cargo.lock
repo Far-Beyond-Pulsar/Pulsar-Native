@@ -9107,6 +9107,8 @@ dependencies = [
  "pulsar_macros",
  "pulsar_reflection",
  "pulsar_reflection_derive",
+ "pulsar_scenedb",
+ "pulsar_script_vm",
  "rand 0.10.2",
  "rlua",
  "serde",

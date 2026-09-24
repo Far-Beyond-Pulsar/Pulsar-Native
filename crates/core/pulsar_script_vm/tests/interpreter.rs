@@ -286,3 +286,26 @@ fn instances_belong_to_their_module() {
     assert!(matches!(err.kind, ScriptErrorKind::BadEntryCall(_)));
     h.call(&a, &mut instance, "f", &[]).unwrap();
 }
+
+#[test]
+fn panicking_natives_fail_the_call() {
+    let mut registry = NativeRegistry::new();
+    registry
+        .register(pulsar_script_vm::NativeFn::builder("test::boom").build(|| -> i64 { panic!("kaboom") }))
+        .unwrap();
+    let mut asm = Asm::new();
+    let boom = asm.import("test::boom", vec![], Type::Int);
+    asm.function("f", vec![], Type::Int, vec![Type::Int], vec![
+        CallNative { import: boom, args: vec![], dst: Some(0) },
+        Return { value: Some(0) },
+    ]);
+    let program = asm.link(&registry);
+    let mut h = Harness::new();
+    let err = h.run(&program, "f", &[]).unwrap_err();
+    assert!(
+        matches!(&err.kind, ScriptErrorKind::Native { name, message } if name == "test::boom" && message == "panicked: kaboom"),
+        "{err}"
+    );
+    // Still usable.
+    assert!(h.run(&program, "f", &[]).is_err());
+}
