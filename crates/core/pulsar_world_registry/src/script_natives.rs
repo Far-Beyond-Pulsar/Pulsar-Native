@@ -11,7 +11,8 @@
 //!
 //! for every property and method whose types scripts can represent. They
 //! read and write the live component through the same bridge the
-//! properties panel uses, so writes reach SceneDB's change hooks.
+//! properties panel uses, so writes reach SceneDB's change hooks, and
+//! re-sync the component's GPU mirror after every write, as the panel does.
 
 use std::any::Any;
 use std::sync::Arc;
@@ -118,6 +119,10 @@ fn property_natives(
             let instance = (registration.get_as_engine_class_mut)(host.world, entity)
                 .ok_or_else(|| missing(entity, class))?;
             (property.setter)(instance, value);
+            // The `&mut dyn EngineClass` bridge reports the write when it is
+            // borrowed, before the setter runs; re-sync GPU mirrors after,
+            // as the properties panel does.
+            (registration.refresh_gpu_mirror)(host.world, entity);
             Ok(Value::Unit)
         }),
     );
@@ -180,6 +185,8 @@ fn method_native(
             let instance = (registration.get_as_engine_class_mut)(host.world, entity)
                 .ok_or_else(|| missing(entity, class))?;
             let result = caller(instance, boxed);
+            // As for property setters: the method may have written.
+            (registration.refresh_gpu_mirror)(host.world, entity);
             match (ret_binding, result) {
                 (Some(binding), Some(value)) => Ok(binding.to_value(&*value)),
                 (Some(_), None) => Err(ScriptError::native(format!("{class}::{name} returned nothing"))),
