@@ -1,6 +1,10 @@
 [workspace]
 members = [
     "crates/profiling",
+    # The Blueprint plugin's graph -> script module compiler. The plugin
+    # itself is excluded below; its compiler is a member so its tests run
+    # against this workspace's script VM.
+    "plugins/vendor/blueprint_editor/compiler",
     "crates/core/*",
     "crates/editor/*",
     "crates/subsystems/*",
@@ -16,6 +20,7 @@ members = [
 # `standalone` examples into the same output file.
 exclude = [
     "crates/core/plugin_manager/tests/fixtures/plugin_loader_fixture",
+    "crates/core/pulsar_script_vm/tests/fixtures/test_library",
     # WGPUI is an independently versioned repository. Pulsar consumes it as a
     # path dependency, but its standalone examples/dev dependencies must remain
     # owned and resolved by WGPUI rather than polluting Pulsar's workspace graph.
@@ -262,12 +267,12 @@ lazy_static = "1.4"
 toml = "1.0"
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
 regex = "1"
-pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
+pulsar_script_vm = { path = "crates/core/pulsar_script_vm" }
+pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 bytemuck = { version = "1", features = ["derive"] }
 similar = "3"
 quinn = "0.11"
 rusqlite = { version = "0.32", features = ["bundled"] }
-pulsar_std_bundle = { path = "crates/core/pulsar_std_bundle" }
 
 
 
@@ -323,8 +328,8 @@ ui_auth           = { path = "crates/editor/ui_auth" }
 engine_backend    = { path = "crates/core/engine_backend" }
 engine_state      = { path = "crates/core/engine_state" }
 ui_types_common   = { path = "crates/editor/ui_types_common" }
-pulsar_std_bundle = { path = "crates/core/pulsar_std_bundle" }
-pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
+pulsar_script_vm  = { path = "crates/core/pulsar_script_vm" }
+pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 pulsar_reflection = { path = "crates/third-party/pulsar-reflection/pulsar_reflection" }
 pulsar_reflection_derive = { path = "crates/third-party/pulsar-reflection/pulsar_reflection_derive" }
 # The flamegraph reads ONE global profiler. Helio pins `profiling` from this
@@ -362,6 +367,7 @@ wgsl_std = { path = "crates/third-party/psgc/crates/wgsl_std" }
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection"]
 pulsar_reflection = { path = "crates/third-party/pulsar-reflection/pulsar_reflection" }
 pulsar_reflection_derive = { path = "crates/third-party/pulsar-reflection/pulsar_reflection_derive" }
+pulsar_reflection_codegen = { path = "crates/third-party/pulsar-reflection/pulsar_reflection_codegen" }
 
 # SceneDB's World-level subscription system (SceneDB#47, merged at c761890)
 # is what the properties panel's cache-until-signaled rework
@@ -408,5 +414,10 @@ pulsar_reflection_derive = { path = "crates/third-party/pulsar-reflection/pulsar
 # The patch VALUE uses the `//`-spelled URL: cargo refuses a patch that points
 # at the exact source the manifest pins (same URL, even at a different rev), so
 # the alternate spelling is what lets this override resolve the pushed rev.
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "7b0414b2975e8e1eb2d6ea489b710a2c411630b3" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "7b0414b2975e8e1eb2d6ea489b710a2c411630b3" }
+#
+# SCRIPT VM (Phase 0, SceneDB `claude/serene-keller-ma920s`): erased
+# component access, ComponentRef/ComponentHandle, and ComponentId-keyed
+# component methods that `pulsar_script_vm` links against. Repin to the
+# merge commit once that branch lands.
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "0801d2638a66b81692df6a03130c3dcf1b3f1dbf" }
+pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "0801d2638a66b81692df6a03130c3dcf1b3f1dbf" }

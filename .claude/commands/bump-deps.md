@@ -62,7 +62,7 @@ Update Plugin_Blueprints `Cargo.toml` (all Pulsar-Native `rev =` lines), push, t
 1. **Always use `git rev-parse HEAD` immediately after push.** Never reconstruct a SHA from memory.
 2. **Never skip a level.** If PBGC changed, Pulsar-Native must pick up the new PBGC rev even if you only "care about" Plugin_Blueprints.
 3. **The `[patch]` sections in `Pulsar-Native/Cargo.toml`** redirect all `git = "...Pulsar-Native"` references to local paths. Don't remove them — they prevent duplicate-crate link errors.
-4. **Plugin_Blueprints `Cargo.toml`** must have matching revs for all five Pulsar-Native deps (`ui`, `ui_common`, `pulsar_std`, `engine_backend`, `pulsar_reflection`, `pulsar_std_bundle`, `pulsar_bp_executor`) plus `graphy` and `pbgc`.
+4. **Plugin_Blueprints `Cargo.toml`** must have matching revs for all five Pulsar-Native deps (`gpui-ce`, `ui`, `plugin_editor_api`, `ui_common`, `engine_backend`, `pulsar_reflection`, `pulsar_script_vm`) plus `graphy` and `pbgc`.
 
 ## Verifying a rev exists
 

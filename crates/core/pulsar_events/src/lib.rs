@@ -3,7 +3,7 @@
 //! [`script_registry`] provides a handle to a process-global map from actor keys
 //! to [`ScriptRegistration`] entries.  It is written by [`ScriptComponent`]'s
 //! `sync_component` every render/sync pass and read by the game runtime's
-//! [`BlueprintDispatcher`] to know which scene objects have scripts attached and
+//! script runtime to know which scene objects have scripts attached and
 //! where their bytecode lives.
 //!
 //! The registry is intentionally free of execution logic — it is a pure
@@ -96,7 +96,7 @@ impl ScriptRegistry {
 /// Returns a handle to the process-global script registry.
 ///
 /// Written each sync/render pass by [`ScriptComponent::sync_component`].
-/// Read by the game runtime to build its [`BlueprintDispatcher`] instance map.
+/// Read by the game runtime to build its script runtime instance map.
 pub fn script_registry() -> ResourceHandle<ScriptRegistry> {
     EngineContext::global()
         .expect("EngineContext not initialized")

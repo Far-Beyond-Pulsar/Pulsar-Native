@@ -676,9 +676,9 @@ pub extern "C" fn pulsar_pie_shutdown() {
 ///    `TickLoop`'s `ActorRegistry` and shared scene store so they receive
 ///    `tick` every frame (the store is the ONE SceneDB world, also read by
 ///    renderers -- Pulsar-Native#634).
-/// 2. Scans `src/classes/*/events/.build/bytecode.json` for VM-compiled blueprints,
-///    loads them into a `BlueprintDispatcher`, and wires the dispatcher into the
-///    `TickLoop`. `setup()` runs before the primary window/scene exist, so
+/// 2. Loads every class's compiled script module
+///    (`src/classes/*/events/.build/module.json`) into a `ScriptRuntime` and
+///    wires it into the `TickLoop`. `setup()` runs before the primary window/scene exist, so
 ///    `begin_play`/`end_play` are deliberately NOT dispatched here — the
 ///    `TickLoop` fires `begin_play` on its first tick (once the window is open)
 ///    and `end_play` on shutdown, the same lifecycle ordering native actors get.
@@ -769,94 +769,41 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
 //!
 //! Native prefabs are controlled by `Pulsar/level.json`.
 //! Gameplay script crates under `scripts/` are auto-discovered (#653).
-//! VM blueprints are auto-discovered from `src/classes/*/events/.build/bytecode.json`.
+//! Script classes are auto-discovered from `src/classes/*/events/.build/module.json`.
 
 use pulsar_game::prelude::*;
-use pulsar_game::blueprint_runtime::BlueprintDispatcher;
 use std::sync::{{Arc, Mutex}};
 
 /// Set up the level: spawn native actors, register gameplay script crates and
-/// load VM-compiled blueprints.
+/// load compiled script classes.
 ///
 /// Called once from `main()` before `game.run_blocking()`.
 /// - Native actors + script-crate actors are registered into the tick loop's
 ///   shared world and receive `tick` every frame (via `register_actor`, which
 ///   also makes them hot-reload-safe in Play-In-Editor).
-/// - VM blueprints are loaded into `game.blueprint_dispatcher`; the `TickLoop`
-///   dispatches `BlueprintEvent::Tick` to each instance after every frame.
+/// - Script classes are loaded into `game.script_runtime`, one default
+///   instance each; the `TickLoop` runs their events every frame.
 pub fn setup(game: &mut TickLoop) -> Result<(), String> {{
     // ── Native actors (from Pulsar/level.json) ────────────────────────────────
 {native_spawn_body}
 {script_section}
-    // ── VM blueprint discovery ────────────────────────────────────────────────
-    //
-    // Scan src/classes/*/events/.build/bytecode.json.
-    // Each file was written by the Blueprint Editor's BytecodeVm compile path.
-    // The function-pointer slots are zero here; BlueprintDispatcher::new() calls
-    // BpExecutor::prepare() which patches them from the embedded pulsar_std dylib.
     let classes_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("src")
         .join("classes");
 
+    // ── Script classes (engine script VM) ─────────────────────────────────────
+    //
+    // Every class's editor build writes src/classes/*/events/.build/module.json.
+    // begin_play is NOT fired here: the TickLoop fires it on its first tick,
+    // once the window and scene exist.
     if classes_dir.exists() {{
-        match BlueprintDispatcher::new() {{
-            Ok(mut dispatcher) => {{
-                let mut vm_loaded: usize = 0;
-
-                let read_dir = std::fs::read_dir(&classes_dir)
-                    .map_err(|e| format!("Cannot read classes dir: {{e}}"))?;
-
-                for entry in read_dir.flatten() {{
-                    if !entry.path().is_dir() {{
-                        continue;
-                    }}
-
-                    let build_path = entry
-                        .path()
-                        .join("events")
-                        .join(".build")
-                        .join("bytecode.json");
-
-                    if !build_path.exists() {{
-                        continue;
-                    }}
-
-                    let class_name = entry.file_name().to_string_lossy().into_owned();
-                    // Each VM class gets a single default instance.
-                    // For per-level multi-instance spawning, add support in level.json.
-                    let object_id = format!("{{class_name}}__vm_default");
-
-                    match dispatcher.register_instance(object_id.clone(), &build_path, None) {{
-                        Ok(()) => {{
-                            // `begin_play` is intentionally NOT fired here — `setup()` runs
-                            // before the primary window/GPU surface/scene exist. The
-                            // TickLoop dispatches it on the first tick (after the window is
-                            // open), so blueprint begin_play logic sees a ready world —
-                            // the same ordering native actors get from `ActorRegistry`.
-                            vm_loaded += 1;
-                            tracing::info!("VM blueprint loaded: {{class_name}} → {{object_id}}");
-                        }}
-                        Err(e) => {{
-                            tracing::warn!(
-                                "Failed to load VM blueprint '{{class_name}}': {{e}}"
-                            );
-                        }}
-                    }}
-                }}
-
-                if vm_loaded > 0 {{
-                    game.blueprint_dispatcher = Some(Arc::new(Mutex::new(dispatcher)));
-                    tracing::info!(
-                        "VM blueprint runtime active — {{vm_loaded}} class(es) loaded"
-                    );
-                }} else {{
-                    tracing::debug!("No VM blueprints found in {{}}",  classes_dir.display());
-                }}
-            }}
-            Err(e) => {{
-                // Non-fatal: native actors still run without the VM runtime.
-                tracing::warn!("Could not initialise BlueprintDispatcher: {{e}}");
-            }}
+        let mut runtime = pulsar_game::scripting::new_runtime();
+        let script_classes = pulsar_game::scripting::load_project_classes(&mut runtime, &classes_dir);
+        if !script_classes.is_empty() {{
+            tracing::info!("Script runtime active — {{}} class(es) loaded", script_classes.len());
+            game.script_runtime = Some(Arc::new(Mutex::new(runtime)));
+        }} else {{
+            tracing::debug!("No compiled script classes found in {{}}", classes_dir.display());
         }}
     }}
 

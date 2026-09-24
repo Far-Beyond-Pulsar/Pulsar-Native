@@ -1,0 +1,21 @@
+[package]
+name = "pulsar_script_vm"
+version = "0.1.0"
+edition = "2021"
+description = "Engine script bytecode: module format, verifier, linker, typed register interpreter and the native function registry (with hot-reloadable native libraries). Language-neutral: every scripting frontend compiles to this."
+
+[dependencies]
+pulsar_scenedb    = { workspace = true }
+pulsar_reflection = { workspace = true }
+inventory         = { workspace = true }
+libloading        = { workspace = true }
+serde             = { workspace = true, features = ["derive"] }
+serde_json        = { workspace = true }
+thiserror         = { workspace = true }
+tracing           = { workspace = true }
+
+[dev-dependencies]
+pulsar_script_vm_test_library = { path = "tests/fixtures/test_library" }
+
+[lints]
+workspace = true

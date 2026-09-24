@@ -13,8 +13,8 @@
 //! 2. **Reload rebinding.** After [`TickLoop::begin_script_reload`] collected
 //!    the surviving tags, registrations whose type matches an unclaimed tag
 //!    are bound to THAT entity — no spawn, no state loss — mirroring
-//!    `BlueprintDispatcher::reload_blueprint`'s entity-preserving contract
-//!    for VM classes (#648). Unmatched types spawn fresh; unmatched tags are
+//!    `ScriptRuntime::reload_class`'s entity-preserving contract for script
+//!    classes. Unmatched types spawn fresh; unmatched tags are
 //!    left in place and logged (their behavior is gone, their data stays).
 //!
 //! Invariants: a tag is consumed at most once per reload (two instances of

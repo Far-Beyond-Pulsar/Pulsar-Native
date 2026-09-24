@@ -14,7 +14,6 @@ Engine platform crates. These live under `crates/core/` and are the backbone of 
 | `plugin_manager` | Plugin loading, lifecycle, and registry |
 | `profiling` | Performance tracing and profiling |
 | `pulsar_auth` | Authentication and session management |
-| `pulsar_bp_executor` | Blueprint graph runtime executor |
 | `pulsar_core` | Core engine types and utilities |
 | `pulsar_docs` | Documentation generation from reflected types |
 | `pulsar_ecs` | Entity-Component-System |
@@ -26,8 +25,9 @@ Engine platform crates. These live under `crates/core/` and are the backbone of 
 | `pulsar_reflection` | Runtime type reflection |
 | `pulsar_reflection_derive` | Derive macro for reflection |
 | `pulsar_settings` | Settings store and watcher |
-| `pulsar_std` | Standard library for blueprints |
-| `pulsar_std_bundle` | Bundled standard library definitions |
+| `pulsar_std` | Standard library for blueprints (also script VM natives) |
+| `pulsar_script_vm` | Engine script bytecode: module format, verifier, linker, interpreter, natives |
+| `pulsar_script_runtime` | Script classes bound to entities: lifecycle, events, hot reload |
 | `pulsar-multiplayer-core` | Multiplayer session core |
 | `pulsar-relay` | Relay server client |
 | `ui_gen_macros` | Procedural macros for UI code generation |

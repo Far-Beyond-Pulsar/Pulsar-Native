@@ -611,6 +611,7 @@ pub fn do_n(n: i64, reset: bool) {
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0", wasm_safe: false)]
 pub fn delay(milliseconds: i64) {
     std::thread::sleep(std::time::Duration::from_millis(milliseconds as u64));
+    exec_output!("Completed");
 }
 
 /// A node that provides a retriggerable delay (restartable timer).

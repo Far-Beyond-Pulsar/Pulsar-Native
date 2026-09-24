@@ -1097,11 +1097,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "blueprint_compiler"
+version = "0.1.0"
+dependencies = [
+ "graphy",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_script_vm",
+ "serde_json",
+]
+
+[[package]]
 name = "blueprint_editor_plugin"
 version = "0.7.0"
 dependencies = [
  "anyhow",
  "arboard",
+ "blueprint_compiler",
  "bytemuck",
  "chrono",
  "engine_backend",
@@ -1114,6 +1126,7 @@ dependencies = [
  "pbgc",
  "plugin_editor_api",
  "pulsar_reflection",
+ "pulsar_script_vm",
  "schemars",
  "serde",
  "serde_json",
@@ -2000,32 +2013,6 @@ dependencies = [
 
 [[package]]
 name = "criterion"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2b12d017a929603d80db1831cd3a24082f8137ce19c69e6447f54f5fc8d692f"
-dependencies = [
- "anes",
- "cast",
- "ciborium",
- "clap",
- "criterion-plot 0.5.0",
- "is-terminal",
- "itertools 0.10.5",
- "num-traits",
- "once_cell",
- "oorandom",
- "plotters",
- "rayon",
- "regex",
- "serde",
- "serde_derive",
- "serde_json",
- "tinytemplate",
- "walkdir",
-]
-
-[[package]]
-name = "criterion"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "950046b2aa2492f9a536f5f4f9a3de7b9e2476e575e05bd6c333371add4d98f3"
@@ -2035,7 +2022,7 @@ dependencies = [
  "cast",
  "ciborium",
  "clap",
- "criterion-plot 0.8.2",
+ "criterion-plot",
  "itertools 0.13.0",
  "num-traits",
  "oorandom",
@@ -2048,16 +2035,6 @@ dependencies = [
  "tinytemplate",
  "tokio",
  "walkdir",
-]
-
-[[package]]
-name = "criterion-plot"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
-dependencies = [
- "cast",
- "itertools 0.10.5",
 ]
 
 [[package]]
@@ -3109,12 +3086,6 @@ dependencies = [
  "log",
  "regex",
 ]
-
-[[package]]
-name = "env_home"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7f84e12ccf0a7ddc17a6c41c93326024c42920d7ee630d04950e6926645c0fe"
 
 [[package]]
 name = "env_logger"
@@ -4294,7 +4265,6 @@ dependencies = [
 name = "graphy"
 version = "0.1.0"
 dependencies = [
- "criterion 0.5.1",
  "quote",
  "rayon",
  "rustc-hash 2.1.3",
@@ -4304,7 +4274,6 @@ dependencies = [
  "syn 2.0.119",
  "thiserror 1.0.69",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -5642,17 +5611,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "is-terminal"
-version = "0.4.17"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
-dependencies = [
- "hermit-abi",
- "libc",
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "is-wsl"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5667,15 +5625,6 @@ name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
-
-[[package]]
-name = "itertools"
-version = "0.10.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
-dependencies = [
- "either",
-]
 
 [[package]]
 name = "itertools"
@@ -6182,25 +6131,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lua-src"
-version = "547.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1edaf29e3517b49b8b746701e5648ccb5785cde1c119062cbabbc5d5cd115e42"
-dependencies = [
- "cc",
-]
-
-[[package]]
-name = "luajit-src"
-version = "210.5.12+a4f56a4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3a8e7962a5368d5f264d045a5a255e90f9aa3fc1941ae15a8d2940d42cac671"
-dependencies = [
- "cc",
- "which 7.0.3",
-]
-
-[[package]]
 name = "lyon"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6528,48 +6458,6 @@ dependencies = [
  "log",
  "wasi 0.11.1+wasi-snapshot-preview1",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "mlua"
-version = "0.9.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d111deb18a9c9bd33e1541309f4742523bfab01d276bfa9a27519f6de9c11dc7"
-dependencies = [
- "bstr",
- "mlua-sys",
- "mlua_derive",
- "num-traits",
- "once_cell",
- "rustc-hash 2.1.3",
-]
-
-[[package]]
-name = "mlua-sys"
-version = "0.6.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "380c1f7e2099cafcf40e51d3a9f20a346977587aa4d012eae1f043149a728a93"
-dependencies = [
- "cc",
- "cfg-if",
- "lua-src",
- "luajit-src",
- "pkg-config",
-]
-
-[[package]]
-name = "mlua_derive"
-version = "0.9.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09697a6cec88e7f58a02c7ab5c18c611c6907c8654613df9cc0192658a4fb859"
-dependencies = [
- "itertools 0.12.1",
- "once_cell",
- "proc-macro-error",
- "proc-macro2",
- "quote",
- "regex",
- "syn 2.0.119",
 ]
 
 [[package]]
@@ -8467,30 +8355,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proc-macro-error"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c"
-dependencies = [
- "proc-macro-error-attr",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
- "version_check",
-]
-
-[[package]]
-name = "proc-macro-error-attr"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1be40180e52ecc98ad80b184934baf3d0d29f979574e439af5a55274b35f869"
-dependencies = [
- "proc-macro2",
- "quote",
- "version_check",
-]
-
-[[package]]
 name = "proc-macro-utils"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8728,7 +8592,7 @@ dependencies = [
  "clap",
  "colored 3.1.1",
  "config",
- "criterion 0.8.2",
+ "criterion",
  "dashmap",
  "ed25519-dalek 3.0.0",
  "futures-util",
@@ -8775,18 +8639,6 @@ dependencies = [
  "reqwest 0.13.4",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "pulsar_bp_executor"
-version = "0.1.0"
-dependencies = [
- "graphy",
- "libloading 0.9.0",
- "pbgc",
- "pulsar_std_bundle",
- "serde_json",
- "sha2 0.11.0",
 ]
 
 [[package]]
@@ -8877,25 +8729,26 @@ dependencies = [
  "helio",
  "helio-default-graphs",
  "helio_component",
+ "inventory",
  "parking_lot",
  "pbgc",
  "pollster 1.0.1",
  "profiling 0.1.0",
- "pulsar_bp_executor",
  "pulsar_core",
  "pulsar_pie_abi",
  "pulsar_reflection",
  "pulsar_scene",
  "pulsar_scenedb",
  "pulsar_script_object_model",
+ "pulsar_script_runtime",
+ "pulsar_script_vm",
  "pulsar_settings",
- "pulsar_std_bundle",
+ "pulsar_std",
  "pulsar_world_registry",
  "serde",
  "serde_json",
  "tempfile",
  "tracing",
- "ui",
  "uuid",
  "wgpu",
  "winit",
@@ -8974,11 +8827,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_reflection_codegen"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "pulsar_reflection_derive"
 version = "0.1.0"
 dependencies = [
  "owo-colors",
  "proc-macro2",
+ "pulsar_reflection_codegen",
  "quote",
  "syn 2.0.119",
 ]
@@ -9014,7 +8877,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=7b0414b2975e8e1eb2d6ea489b710a2c411630b3#7b0414b2975e8e1eb2d6ea489b710a2c411630b3"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=0801d2638a66b81692df6a03130c3dcf1b3f1dbf#0801d2638a66b81692df6a03130c3dcf1b3f1dbf"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9030,9 +8893,10 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=7b0414b2975e8e1eb2d6ea489b710a2c411630b3#7b0414b2975e8e1eb2d6ea489b710a2c411630b3"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=0801d2638a66b81692df6a03130c3dcf1b3f1dbf#0801d2638a66b81692df6a03130c3dcf1b3f1dbf"
 dependencies = [
  "proc-macro2",
+ "pulsar_reflection_codegen",
  "quote",
  "syn 2.0.119",
 ]
@@ -9053,6 +8917,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_script_runtime"
+version = "0.1.0"
+dependencies = [
+ "pulsar_scenedb",
+ "pulsar_script_vm",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
+name = "pulsar_script_vm"
+version = "0.1.0"
+dependencies = [
+ "inventory",
+ "libloading 0.9.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_script_vm_test_library",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
+name = "pulsar_script_vm_test_library"
+version = "0.1.0"
+dependencies = [
+ "pulsar_script_vm",
+]
+
+[[package]]
 name = "pulsar_settings"
 version = "0.1.0"
 dependencies = [
@@ -9068,24 +8965,12 @@ dependencies = [
  "pulsar_macros",
  "pulsar_reflection",
  "pulsar_reflection_derive",
+ "pulsar_scenedb",
+ "pulsar_script_vm",
  "rand 0.10.2",
- "rlua",
  "serde",
  "serde_json",
  "tracing",
-]
-
-[[package]]
-name = "pulsar_std_bundle"
-version = "0.1.0"
-dependencies = [
- "graphy",
- "once_cell",
- "pbgc",
- "pulsar_bp_executor",
- "pulsar_std",
- "serde_json",
- "sha2 0.11.0",
 ]
 
 [[package]]
@@ -9095,9 +8980,11 @@ dependencies = [
  "inventory",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_script_vm",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+ "tracing",
 ]
 
 [[package]]
@@ -9778,15 +9665,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "rlua"
-version = "0.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d43f01c44a4ea0d2c7faadac231a0fd906a438723aa4ee26599e71fa7b915abd"
-dependencies = [
- "mlua",
 ]
 
 [[package]]
@@ -13184,7 +13062,6 @@ name = "ui_level_editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "blueprint_editor_plugin",
  "chrono",
  "core-foundation-sys",
  "core-graphics2 0.6.1",
@@ -14218,18 +14095,6 @@ dependencies = [
  "either",
  "home",
  "rustix 0.38.44",
- "winsafe",
-]
-
-[[package]]
-name = "which"
-version = "7.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24d643ce3fd3e5b54854602a080f34fb10ab75e0b813ee32d00ca2b44fa74762"
-dependencies = [
- "either",
- "env_home",
- "rustix 1.1.4",
  "winsafe",
 ]
 

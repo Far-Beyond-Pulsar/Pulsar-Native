@@ -1,0 +1,10 @@
+[package]
+name = "pulsar_reflection_codegen"
+version = "0.1.0"
+edition = "2021"
+description = "Shared code generation for reflected-method attribute macros"
+
+[dependencies]
+syn = { version = "2", features = ["full", "extra-traits"] }
+quote = "1"
+proc-macro2 = { version = "1", features = ["proc-macro"] }

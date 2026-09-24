@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use winit::{
@@ -25,7 +25,6 @@ use helio::{
 };
 use parking_lot::RwLock;
 
-use crate::blueprint_runtime::level_bindings;
 use crate::camera_selection::select_world_camera;
 use crate::freecam::FreeCam;
 use crate::window::{RenderCamera, WindowBridge, WindowCommand, WindowDescriptor, WindowHandle};
@@ -473,40 +472,40 @@ impl PulsarApp {
                         );
                     }
 
-                    // Spawn the level's Blueprint class bindings (#650): one
-                    // bound VM instance per (object, class) pair, addressed
-                    // at its own hydrated entity. Per-binding failures are
+                    // Spawn the level's script class bindings (#650): one
+                    // bound instance per (object, class) pair, addressed at
+                    // its own hydrated entity. Per-binding failures are
                     // logged + collected — one stale entry never blocks play.
                     if !extras.blueprint_bindings.is_empty() {
                         if let Some(tick_loop) = self.tick_loop.as_mut() {
-                            if let Some(dispatcher) = &tick_loop.blueprint_dispatcher {
-                                // Same lock order as TickLoop phase 3:
-                                // dispatcher mutex, then store write.
-                                let mut dispatcher =
-                                    dispatcher.lock().expect("blueprint dispatcher mutex");
-                                let report = {
-                                    let store = self.scene_store.write();
-                                    level_bindings::apply_blueprint_bindings(
-                                        &mut dispatcher,
-                                        &store,
-                                        &self.project_root,
-                                        &extras.blueprint_bindings,
-                                    )
-                                };
-                                for applied in &report.applied {
-                                    tracing::info!(
-                                        object = %applied.stable_id,
-                                        class = %applied.class_name,
-                                        instance = %applied.instance_id,
-                                        "Level blueprint binding spawned"
-                                    );
-                                }
+                            let runtime = tick_loop.script_runtime.get_or_insert_with(|| {
+                                Arc::new(Mutex::new(crate::scripting::new_runtime()))
+                            });
+                            // Same lock order as TickLoop phase 3: runtime
+                            // mutex, then store write.
+                            let report = {
+                                let mut runtime = runtime.lock().expect("script runtime mutex");
+                                let store = self.scene_store.write();
+                                crate::scripting::apply_script_bindings(
+                                    &mut runtime,
+                                    &store,
+                                    &self.project_root,
+                                    &extras.blueprint_bindings,
+                                )
+                            };
+                            for applied in &report.applied {
                                 tracing::info!(
-                                    applied = report.applied.len(),
-                                    failed = report.failures.len(),
-                                    "Applied level blueprint bindings"
+                                    object = %applied.stable_id,
+                                    class = %applied.class_name,
+                                    instance = %applied.instance_id,
+                                    "Level script binding spawned"
                                 );
                             }
+                            tracing::info!(
+                                applied = report.applied.len(),
+                                failed = report.failures.len(),
+                                "Applied level script bindings"
+                            );
                         }
                     }
 

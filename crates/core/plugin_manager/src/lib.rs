@@ -928,6 +928,32 @@ impl PluginManager {
     // Component Registration (#269)
     // ========================================================================
 
+    /// Every scripting language from loaded plugins and built-in providers.
+    pub fn script_languages(&self) -> Vec<Arc<dyn plugin_editor_api::ScriptLanguage>> {
+        let mut languages: Vec<Arc<dyn plugin_editor_api::ScriptLanguage>> = self
+            .plugins
+            .values()
+            .flat_map(|loaded| loaded.plugin.script_languages())
+            .collect();
+        languages.extend(self.builtin_registry.get_all_script_languages());
+        languages
+    }
+
+    /// Run every scripting language's pre-Play validation on
+    /// `project_root`. `Err` joins the failures.
+    pub fn validate_scripts(&self, project_root: &std::path::Path) -> Result<(), String> {
+        let failures: Vec<String> = self
+            .script_languages()
+            .iter()
+            .filter_map(|lang| {
+                lang.validate_project(project_root)
+                    .err()
+                    .map(|e| format!("{}: {e}", lang.display_name()))
+            })
+            .collect();
+        if failures.is_empty() { Ok(()) } else { Err(failures.join("\n")) }
+    }
+
     /// Get all component definitions registered by all plugins and built-in providers.
     pub fn get_all_component_definitions(&self) -> Vec<ComponentDefinition> {
         let mut all_defs = Vec::new();

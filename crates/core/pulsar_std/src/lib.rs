@@ -78,7 +78,7 @@ pub enum NodeTypes {
 pub mod engine;
 pub use engine::*;
 
-// experimental contains Lua scripting and other native-only nodes
+// experimental contains native-only nodes
 #[cfg(feature = "native")]
 pub mod experimental;
 #[cfg(feature = "native")]

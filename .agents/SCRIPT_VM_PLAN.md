@@ -1,0 +1,282 @@
+# Script VM refactor plan
+
+Goal: the engine core knows exactly one thing about scripting: how to load,
+verify and execute **engine bytecode** against the SceneDB world. Every
+language (Blueprints first, TypeScript later) is a plugin that compiles to
+that bytecode. Scripts reference the world through typed entity/component
+handles, and can call methods registered on reflected types and SceneDB
+components.
+
+This plan is based on three read-only investigations of the current code
+(bytecode/executor, Blueprint plugin boundaries, reflection/SceneDB methods).
+File references are to Pulsar-Native unless noted.
+
+## Where we are
+
+What works:
+
+- An end-to-end path from Blueprint graph to running code exists: the editor
+  compiles a graph with PBGC into `bytecode.json`; `pulsar_game`'s
+  `BlueprintDispatcher` loads it, binds instances to entities, and runs
+  begin_play/tick/end_play inside the TickLoop, with hot reload.
+- Component property get/set and method calls work from the VM and from
+  generated Rust, through one reflection dispatcher
+  (`pulsar_world_registry::dispatch`).
+- `ActorRef`/`ComponentRef` (`pulsar_script_object_model`) resolve lazily
+  against the live world with typed errors.
+- Tests for `pulsar_bp_executor`, `pulsar_std_bundle` and `pbgc` pass.
+
+What is wrong or missing:
+
+1. **The engine bytecode lives inside the Blueprint compiler.**
+   `Instruction`/`BpProgram` and the VM are in `crates/third-party/pbgc`
+   (`bytecode/`, `vm/`), which depends on `pulsar_std` and `graphy`. The
+   runtime (`pulsar_bp_executor`, `pulsar_game`) depends on pbgc to get them.
+2. **The VM is not memory safe for non-`Copy` values.** Values are untyped
+   bytes in an arena; native shims `ptr::read` arguments, so a `String` or
+   `Vec` read twice is freed twice, and heap values left in the arena leak.
+   Generic natives dispatch on `size_of` and panic on unknown sizes.
+3. **Control flow is wrong in bytecode.** Only branch-shaped nodes and
+   `sequence` lower correctly. Loops, switch, gate, do_once, do_n, delay and
+   flip_flop run their body once and fire every exec output.
+4. **Native calls are resolved by name with dlsym** against a hand-maintained
+   whitelist (`ALLOWED_NODE_NAMES`, 180 lines), from a pulsar_std cdylib that
+   a build script compiles and embeds. Component ops are encoded as
+   `comp_*::Class::Member` strings with JSON operands in 4 KiB arena blobs.
+5. **Runtime lifecycle bugs.** The editor names tick/end-play programs
+   `on_tick`/`on_end_play`, the dispatcher runs `tick`/`end_play`, so
+   editor-compiled tick and end-play graphs never run. `delta_time` is never
+   passed. Editor output has `variables: []`, so defaults and level overrides
+   never apply. `emit_event` is an empty stub.
+6. **Methods cannot be looked up by reference type.** Reflection has method
+   registries, but they are keyed by class-name strings, rebuilt on every
+   lookup, and callers panic on bad arguments. The authoring macro for
+   hand-written methods (`#[component_methods]` + `#[method]`) does not
+   compile when used, so the only methods today are generated property
+   accessors. SceneDB has no erased access by `(Entity, ComponentId)` and no
+   way to list an entity's components.
+7. **Blueprint concepts are spread through core.** The graph model is in the
+   UI library (`ui::graph`); `pulsar_game` carries a second, dead
+   graph-to-bytecode compiler; editor crates depend on the plugin crate
+   directly; reflection has `MethodType::{Pure, Fn, ControlFlow}`; SceneDB
+   still exports dead `ComponentStore`/`__bp_*` helpers; the plugin API has
+   no way to register a language or compiler.
+
+## Target layering
+
+```
+pulsar_reflection        types; TypeId-keyed method registry (language-neutral)
+pulsar_scenedb           entities, components, erased access, typed handles,
+                         ComponentId-keyed component method registry
+pulsar_script_vm  (new)  module format, verifier/linker, interpreter, values,
+                         native function registry, host (world) interface
+pulsar_script_runtime    script instances bound to entities, lifecycle
+  (from pulsar_game::blueprint_runtime)  events, hot reload, level bindings
+plugin_editor_api        + ScriptLanguage registration (source -> module)
+blueprint_editor plugin  graph model, graph compiler -> module, node palette,
+                         Blueprint pin semantics, Rust-source export
+```
+
+Core crates never mention graphs, nodes, pins, exec flow or Blueprints.
+
+## Key design decisions
+
+**D1. A new typed VM instead of the byte arena.** Registers hold `Value`s
+(unit, bool, integers, floats, string, entity handle, component handle,
+opaque reflected value). Natives receive `&mut [Value]` and return
+`Result<Value, ScriptError>`; no raw pointers, no `extern "C"` shims, no
+size-dispatch. Instructions include real jumps, so loops and switches are
+ordinary control flow. A step budget and typed errors replace panics. The
+existing arena VM is small, but making it memory safe means rewriting every
+native shim anyway.
+
+**D2. Natives are registered by name and signature, and can hot-reload.**
+A module lists the natives it imports by stable qualified name plus
+signature. The linker resolves them against an in-process registry (std
+functions, reflected-type methods, component methods) and the verifier
+type-checks every call before the module can run. Anything not registered
+cannot be called, which replaces the whitelist and raw dlsym. Natives can
+come from the engine binary or from a **native library** loaded at runtime:
+the library exposes one registration entry point that adds its functions to
+the registry. Reloading a library unregisters its natives, loads the new
+build, and re-links and re-verifies every module that imports them; a
+signature change fails verification instead of calling a stale pointer.
+(User decision: native hot reload is a requirement.)
+
+**D3. One method model, two keys.** Reflection gets a TypeId-keyed
+registry of `ReflectedMethod { name, receiver (none/ref/mut), params, ret,
+flags (side-effect-free, deterministic), attrs, invoke }` using static
+fn pointers, with argument validation in the generated shim. SceneDB gets a
+ComponentId-keyed registry derived from it, plus explicit methods that
+receive `(&mut World, Entity)`. Blueprint's Pure/Fn/ControlFlow become
+Blueprint-side interpretations of the neutral flags.
+
+**D4. Handles are the reference types.** SceneDB provides
+`ComponentHandle<T>` and an erased `ComponentRef { entity, component }`,
+both liveness-checked on every access. Script values carry these at runtime;
+anything persisted (graphs, level files) stores StableId plus a stable type
+name, because `ComponentId` is process-local.
+
+**D5. Languages are plugins.** `plugin_editor_api` gains a `ScriptLanguage`
+extension: file types it owns, a compile function returning a
+`pulsar_script_vm::Module`, and a query API over the native registry so a
+frontend can list functions and "methods callable on a reference of type X".
+The Blueprint plugin moves its graph model out of `ui` and its compiler out
+of pbgc; the Rust-source export stays a Blueprint plugin feature.
+
+## Phases
+
+Each phase leaves every touched crate building and tested.
+
+**Phase 0: groundwork (SceneDB, reflection).**
+- SceneDB: `World::has_component`, `component_ids(entity)`, `get_dyn`,
+  `get_dyn_mut` (a `MutDyn` guard reusing the existing erased hooks);
+  `ComponentHandle<T>` and `ComponentRef`; delete `component_store.rs` and
+  the `__bp_*` exports.
+- Reflection: TypeId-keyed `ReflectedMethod` registry and a working
+  `#[reflect_methods]` / `#[reflect_method]` authoring macro; keep the
+  existing registries working as adapters.
+- SceneDB: ComponentId-keyed component method registry and
+  `World::call_component_method`, plus a derive for world-receiving methods.
+
+**Phase 1: `pulsar_script_vm`.**
+- Module format (versioned; serde now, compact binary later): functions,
+  registers, constants, imports, exported entry points with signatures.
+- Value model, interpreter, step budget, typed errors.
+- Native registry and linker/verifier; adapters that expose pulsar_std
+  functions and reflected/component methods as natives.
+- Host interface: the world and the bound entity passed explicitly, no
+  thread-local.
+- Tests: arithmetic, control flow (loops, switch), strings without
+  double-frees, handle liveness, method calls on components, verifier
+  rejections.
+
+**Phase 2: runtime on the new VM.**
+- Move `pulsar_game::blueprint_runtime` to `pulsar_script_runtime` with
+  neutral names; run modules instead of `BpProgram`s.
+- Fix the lifecycle: canonical entry points (`begin_play`,
+  `tick(delta_time)`, `end_play`, custom events), variable defaults and
+  level overrides, hot reload.
+- Neutral level-file bindings and project-builder discovery.
+
+**Phase 3: plugin API.**
+- `ScriptLanguage` registration and native-registry query API
+  (`functions()`, `methods_for(type)`).
+- Generic pre-play validation hook and menu contributions, so editor crates
+  stop depending on the Blueprint plugin crate.
+
+**Phase 4: Blueprint plugin.**
+- Move the graph model out of `ui::graph`; move the graph compiler out of
+  pbgc; compile graphs to `pulsar_script_vm::Module`.
+- Palette from the registry, including methods by reference type and the
+  global node list.
+- Keep the Rust-source export inside the plugin.
+
+**Phase 5: removal.**
+- Delete pbgc's bytecode/VM, `pulsar_bp_executor`, `pulsar_std_bundle`,
+  `pulsar_game`'s dead bytecode compiler, the dylib shims in
+  `pulsar_macros`, and the Blueprint names left in core.
+
+## Progress
+
+**Phase 0: done.**
+- SceneDB (`claude/serene-keller-ma920s`, 03de736 + 0801d26): erased
+  access (`has_component`, `component_ids`, `get_dyn`, `get_dyn_mut` with a
+  `MutDyn` guard sharing `Mut`'s hooks); `ComponentRef` / `ComponentHandle<T>`;
+  `component_store.rs` and the `__bp_*` exports deleted; ComponentId-keyed
+  component methods (`component_methods`, `World::call_component_method`,
+  `invoke_component_method`, `ComponentRef::call`) and the
+  `#[component_methods]` macro with `#[reflect_method]` and world-receiving
+  `#[world_method]` methods.
+- Pulsar-Reflection (`claude/serene-keller-ma920s`): `methods` module
+  (`ReflectedMethod { info: MethodInfo, receiver, invoke }`, TypeId-keyed
+  registry, `CallError`), `#[reflect_methods]`, and
+  `pulsar_reflection_codegen` (shared signature parsing/shim generation).
+  The branch also merges 1c64758 (the rev SceneDB and Helio pinned), so the
+  flat renderer array registrations are kept. The copy vendored here has
+  the same new files.
+
+**Phase 1: done** (`crates/core/pulsar_script_vm`).
+- Module format, verifier, linker (`Program`), interpreter (`Vm`) with
+  step budget, call-depth limit and traced errors.
+- Values: unit/bool/int/float/string/entity/component reference/object;
+  every value owned and `Clone`, no raw pointers.
+- `TypeRegistry`: builtins, `script_component!`, `script_value_type!`.
+- `NativeRegistry` with typed native builder, query API
+  (`functions()`, `methods_for(type)`), and engine natives: stdlib,
+  reflected methods/fields of value types, component methods/fields and
+  accessors (`C::of`, `C::exists`, `C::entity`).
+- `NativeLibraries`: load/reload/unload with shadow copies, a `TypeId` ABI
+  check, and `Arc`-held libraries so linked programs never call unmapped
+  code.
+- 33 tests: control flow (loops, recursion), strings, budget, verifier and
+  link rejections, component methods through references, world methods,
+  properties through SceneDB hooks, value types with `inout` write-back,
+  instance variables, library load/reload/unload with a real cdylib.
+
+**Phase 2: runtime crate done** (`crates/core/pulsar_script_runtime`).
+`ScriptRuntime` owns the native registry, native libraries, classes and
+instances: canonical `begin_play()` / `tick(delta_time: float)` /
+`end_play()` (signatures checked at load), custom events
+(`send_event`), variable defaults and overrides (typed and JSON), bind /
+unbind, class hot reload keeping same-name-same-type variables, relinking
+every class when natives change, per-instance step budgets. 8 tests.
+Wiring it into the TickLoop and level bindings waits for Phase 4: the
+editor still emits PBGC `bytecode.json`, so swapping the dispatcher now
+would stop Blueprints running in PIE.
+
+**Engine natives from existing registries: done.** `#[blueprint]`
+registers 251 of pulsar_std's 431 functions as `std::<fn>` natives (the
+rest are control-flow/event nodes, generic, or use tuples/Vecs); every
+world component (`pulsar_world_registry`) is a script component with
+`Class::get_/set_<property>` and `Class::<method>` natives. Natives that
+panic fail the call instead of unwinding into the game loop.
+
+**Phase 4: Blueprint compiler done; runtime switch done.**
+- `Plugin_Blueprints` branch `claude/serene-keller-ma920s`:
+  `compiler/` (`blueprint_compiler`) compiles the expanded graph to a
+  module (see its crate docs for the node mapping); the Bytecode VM
+  compile mode also writes `events/.build/module.json`. 10 tests.
+- `pulsar_game::scripting` + `TickLoop::script_runtime`: classes with a
+  `module.json` run on `ScriptRuntime` (level bindings and project
+  discovery, including the generated `setup()`); classes with only
+  `bytecode.json` stay on the old dispatcher.
+- Scene lookups (`find_object_by_*`, `object_ref_literal`,
+  cross-object `get_component_ref`) compile to `world::find_by_*` natives.
+- Latent nodes: the VM has `Wait`/`Now` with resumable continuations
+  (`Vm::start`/`resume`); the runtime tracks game time and resumes
+  waiting calls; `delay`/`retriggerable_delay` compile to them.
+- Palette: every non-std native is a `native::<name>` node in the global
+  list, grouped by receiver type, so dragging from a reference lists its
+  methods.
+- Phase 3: `ScriptLanguage` / `EditorPluginScripting` in
+  `plugin_editor_api`; PIE validates through `PluginManager`, and
+  `ui_level_editor` no longer depends on the Blueprint plugin.
+- Generic control flow: `#[blueprint]` turns each control-flow node's
+  own body into a selector native reporting which exec output fired;
+  the compiler jumps there (built-in loops, gates and delays stay
+  intrinsics).
+
+**Phase 5: done.** Removed `pulsar_bp_executor`, `pulsar_std_bundle`,
+`pulsar_game::blueprint_runtime` (binding types moved to
+`pulsar_game::scripting`), the TickLoop dispatcher, bytecode discovery in
+generated projects, the `__bp_dispatch_*` shims, the world registry's VM
+byte ABI (`vm_abi`, arena marshalling), the plugin's bytecode output, and
+Lua (`rustlua`, `rlua`). PBGC keeps its Rust codegen (the plugin's Rust
+export); its bytecode/VM modules are now unused.
+
+Not yet: pulsar_std functions with tuple/Vec/array signatures as natives (needs a free-function
+registration path from `#[blueprint]`; natives can already be written with
+the typed builder), a compact binary encoding.
+
+## Decisions taken
+
+- D1: typed register VM (user confirmed).
+- D2: native libraries stay hot-reloadable, registered by name + signature
+  (user confirmed).
+
+## Open question
+
+Phase 4 needs push access to the Blueprint plugin repository
+(`plugins/vendor/blueprint_editor`); `crates/third-party/pbgc` and `graphy`
+are also separate repositories.

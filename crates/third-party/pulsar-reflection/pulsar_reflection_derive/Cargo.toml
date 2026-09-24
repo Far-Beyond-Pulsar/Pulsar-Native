@@ -11,3 +11,4 @@ syn = { version = "2", features = ["full", "extra-traits"] }
 quote = "1"
 proc-macro2 = { version = "1", features = ["proc-macro"] }
 owo-colors = "4"
+pulsar_reflection_codegen = { path = "../pulsar_reflection_codegen" }

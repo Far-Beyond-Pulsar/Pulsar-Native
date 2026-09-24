@@ -1,0 +1,15 @@
+[package]
+name = "pulsar_script_vm_test_library"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# A native library for pulsar_script_vm's loading tests. The cdylib is what
+# the tests load; the rlib only lets Cargo build it as a dev-dependency.
+[lib]
+crate-type = ["cdylib", "rlib"]
+test = false
+doctest = false
+
+[dependencies]
+pulsar_script_vm = { path = "../../.." }

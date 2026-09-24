@@ -48,9 +48,8 @@ pub fn begin_play() {
 /// `begin_play` calls `__init_events()` to register subscribers.
 #[blueprint(type: crate::NodeTypes::fn_, category: "Events")]
 pub fn emit_event() {
-    // Resolved at runtime: the executor reads the type_id and payload
-    // from the bytecode stack and calls EventBus::publish_raw.
-    // Implementation lives in pulsar_bp_executor.
+    // Placeholder: custom events compile to direct calls of their handler
+    // (`emit_custom_event`); this node has no runtime behavior.
 }
 
 /// Register a handler for a custom event.
