@@ -1,6 +1,7 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer backed by SceneDB.
 
 use glam::{Mat4, Vec3};
+use std::collections::HashSet;
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -48,8 +49,14 @@ pub enum PendingPointerEvent {
     /// Latest-wins pointer position.  Unlike clicks, intermediate hover
     /// positions have no semantic value and must not build up a queue during
     /// a high-Hz mouse drag.
-    MouseMove { norm_x: f32, norm_y: f32 },
-    LeftClick { norm_x: f32, norm_y: f32 },
+    MouseMove {
+        norm_x: f32,
+        norm_y: f32,
+    },
+    LeftClick {
+        norm_x: f32,
+        norm_y: f32,
+    },
     LeftRelease,
 }
 
@@ -188,6 +195,10 @@ pub struct HelioRenderer {
     /// Frame counter used to throttle GPU profiler reads to once every
     /// N frames so a fast idle loop doesn't hammer the timing API.
     profiler_frame_counter: u32,
+    /// SceneDB subscriptions identify exactly which derived render rows need
+    /// projection after a mutation. This stays armed for the lifetime of the
+    /// shared scene and avoids scanning every mesh during a drag.
+    render_row_subscriptions_armed: bool,
 }
 
 struct HelioInner {
@@ -229,6 +240,7 @@ impl HelioRenderer {
             had_camera_input: false,
             gizmo_dirty: true,
             profiler_frame_counter: 0,
+            render_row_subscriptions_armed: false,
         }
     }
 
@@ -542,6 +554,7 @@ impl HelioRenderer {
         if force_scene_sync {
             inner.last_scene_revision = 0;
             inner.has_rendered_frame = false;
+            self.render_row_subscriptions_armed = false;
         }
 
         // ── Early out when idle ─────────────────────────────────────────────────
@@ -575,20 +588,54 @@ impl HelioRenderer {
                 profiling::profile_scope!("helio_scene_store_write_lock_wait");
                 self.scene_store.write()
             };
+            let mut dirty_meshes = HashSet::new();
+            let mut dirty_lights = HashSet::new();
+            let mesh_components = [
+                pulsar_scenedb::component_id::<helio_component::components::StaticMeshComponent>(),
+                pulsar_scenedb::component_id::<crate::scene::Transform>(),
+                pulsar_scenedb::component_id::<crate::scene::Visibility>(),
+                pulsar_scenedb::component_id::<
+                    helio_component::components::MaterialOverrideComponent,
+                >(),
+            ];
+            let light_components = [
+                pulsar_scenedb::component_id::<helio_component::components::LightComponent>(),
+                pulsar_scenedb::component_id::<crate::scene::Transform>(),
+                pulsar_scenedb::component_id::<crate::scene::Visibility>(),
+            ];
+            for event in scene_store.world.take_component_change_events() {
+                if mesh_components.contains(&event.component) {
+                    dirty_meshes.insert(event.entity);
+                }
+                if light_components.contains(&event.component) {
+                    dirty_lights.insert(event.entity);
+                }
+            }
+            let full_projection = !self.render_row_subscriptions_armed || !inner.has_rendered_frame;
+            let mesh_dirty = (!full_projection).then_some(&dirty_meshes);
+            let light_dirty = (!full_projection).then_some(&dirty_lights);
             {
                 profiling::profile_scope!("helio_sync_editor_light_rows");
-                crate::scene::editor_rows::sync_editor_light_rows(&mut scene_store.world, true);
+                crate::scene::editor_rows::sync_editor_light_rows(
+                    &mut scene_store.world,
+                    true,
+                    light_dirty,
+                );
             }
             {
                 profiling::profile_scope!("helio_sync_static_mesh_rows");
-                crate::scene::sync_static_mesh_rows(&mut scene_store);
+                crate::scene::sync_static_mesh_rows(&mut scene_store, mesh_dirty);
+            }
+            if full_projection {
+                crate::scene::arm_render_row_subscriptions(&mut scene_store.world);
+                self.render_row_subscriptions_armed = true;
             }
             {
                 profiling::profile_scope!("helio_scene_store_step");
                 scene_store.step();
             }
             sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
-            inner.last_scene_revision = scene_revision;
+            inner.last_scene_revision = scene_store.world.revision();
         }
 
         // SceneDB Inspector bridge: throttled inside SceneDB, and a no-op unless
@@ -1003,14 +1050,20 @@ impl HelioRenderer {
         let Some(inner) = &mut self.inner else { return };
         if inner.interaction.is_dragging() {
             let mut store = self.scene_store.write();
-            inner
-                .interaction
-                .update_drag(&mut store.world, ray_origin, ray_direction, self.cam_pos);
+            inner.interaction.update_drag(
+                &mut store.world,
+                ray_origin,
+                ray_direction,
+                self.cam_pos,
+            );
             self.gizmo_dirty = true;
         } else {
             let store = self.scene_store.read();
             self.gizmo_dirty |= inner.interaction.update_hover(
-                &store.world, ray_origin, ray_direction, self.cam_pos,
+                &store.world,
+                ray_origin,
+                ray_direction,
+                self.cam_pos,
             );
         }
     }
@@ -1026,14 +1079,24 @@ impl HelioRenderer {
         let (sp, cp) = self.cam_pitch.sin_cos();
         let forward = Vec3::new(sy * cp, sp, -cy * cp);
         let (w, h) = self.viewport_size;
-        let size = self.camera_input.lock().ok()
+        let size = self
+            .camera_input
+            .lock()
+            .ok()
             .map(|input| glam::Vec2::new(input.viewport_width, input.viewport_height))
             .filter(|size| size.x > 1.0 && size.y > 1.0)
             .unwrap_or(glam::Vec2::new(w.max(1) as f32, h.max(1) as f32));
-        let projection = Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, w.max(1) as f32 / h.max(1) as f32, 0.1, 10_000.0);
+        let projection = Mat4::perspective_rh(
+            std::f32::consts::FRAC_PI_4,
+            w.max(1) as f32 / h.max(1) as f32,
+            0.1,
+            10_000.0,
+        );
         let view = Mat4::look_at_rh(self.cam_pos, self.cam_pos + forward, Vec3::Y);
         if let Some(inner) = &mut self.inner {
-            inner.interaction.set_view(self.cam_pos, forward, projection * view, size);
+            inner
+                .interaction
+                .set_view(self.cam_pos, forward, projection * view, size);
         }
     }
 }

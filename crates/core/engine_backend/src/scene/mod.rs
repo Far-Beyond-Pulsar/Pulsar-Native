@@ -6,7 +6,6 @@
 //! components on demand. The editor, the renderer and the play-mode runtime
 //! all share one [`SharedScene`].
 
-
 // Resolved per-light GPU frames (Pulsar-Native#636) -- transform-folded
 // light state maintained at change time from World subscriptions, replacing
 // rebuild_light_frame's per-frame CPU combine.
@@ -40,15 +39,18 @@ pub mod script_ref_bridge;
 pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 
 #[cfg(feature = "render")]
+pub mod editor_rows;
+#[cfg(feature = "render")]
 // Shared WorldSceneStore <-> helio::Renderer operations (#637): GPU seam
 // attach + per-frame static-mesh/light frame assembly.
 pub mod helio_bridge;
-#[cfg(feature = "render")]
-pub mod editor_rows;
 
 // Re-export new system types for convenience
 #[cfg(feature = "render")]
-pub use helio_bridge::{ensure_gpu_mirror, retire_gpu_rows_for_entity, sync_static_mesh_rows};
+pub use helio_bridge::{
+    arm_render_row_subscriptions, ensure_gpu_mirror, retire_gpu_rows_for_entity,
+    sync_static_mesh_rows,
+};
 
 /// Hook a `World` up to the SceneDB Inspector (CPU + GPU live view). Inert
 /// unless this process was launched by `scenedb_inspector`; safe to call for
@@ -64,17 +66,18 @@ pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
 }
 pub use light_frame::{LightFrameMaintainer, ResolvedLightFrame};
 pub use mesh_frame::{MeshFrameMaintainer, ResolvedMeshFrame};
+pub use pulsar_scene_model::{
+    attachments, components, instance, world_ext, ComponentAttachments, ComponentInstance,
+    EditorObjectId, LightType, MeshType, Name, ObjectId, ObjectType, Parent, RenderProps,
+    SceneError, SceneWorldExt, Selected, SiblingIndex, SpawnObject, StableId, Transform,
+    Visibility,
+};
 pub use render_resources::{
     insert_render_resources, MaterialComponent, MaterialResource, MaterialTextureResource,
     MeshObjectComponent, MeshObjectResource, MeshSectionResource, SectionedMeshComponent,
     SectionedMeshResource, TextureComponent, TextureResource,
 };
 pub use runtime_level::{EditorCamera, LevelExtras, RuntimeLevel, RuntimeLevelError};
-pub use pulsar_scene_model::{
-    attachments, components, instance, world_ext, ComponentAttachments, ComponentInstance,
-    EditorObjectId, LightType, MeshType, Name, ObjectId, ObjectType, Parent, RenderProps, SceneError,
-    SceneWorldExt, Selected, SiblingIndex, SpawnObject, StableId, Transform, Visibility,
-};
 
 /// The scene is a `pulsar_scenedb::SceneDb` shared between the editor UI, the
 /// renderer and the play-mode runtime. This alias only names the sharing.

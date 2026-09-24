@@ -170,8 +170,9 @@ impl EmbeddedGame {
                 "PiE: v2 context carries no shared_world token (host too old?)".to_string(),
             );
         } else {
-            let host_store =
-                unsafe { Arc::from_raw(ctx.shared_world as *const RwLock<pulsar_scenedb::SceneDb>) };
+            let host_store = unsafe {
+                Arc::from_raw(ctx.shared_world as *const RwLock<pulsar_scenedb::SceneDb>)
+            };
             TickLoop::with_scene_store(host_store, TickMode::default(), threads)
         };
         let mut tick_loop = tick_loop;
@@ -261,7 +262,7 @@ impl EmbeddedGame {
         //    moved object therefore shows up on the very next frame.
         {
             let mut store = self.scene_store.write();
-            sync_static_mesh_rows(&mut store);
+            sync_static_mesh_rows(&mut store, None);
             store.step();
         }
 

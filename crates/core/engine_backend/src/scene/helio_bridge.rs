@@ -5,7 +5,7 @@
 /// component buffers directly. This module contains no renderer scene, frame
 /// projection, material table, subscription cache, or per-frame input
 /// assembly.
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use helio_component::components::StaticMeshComponent;
 use pulsar_scenedb::gpu::{
@@ -13,6 +13,31 @@ use pulsar_scenedb::gpu::{
 };
 
 use crate::scene::{Transform, Visibility};
+
+/// Arm the change-time projection once for the currently live scene. Future
+/// transform/material/visibility edits are delivered as entity-specific
+/// events, so the renderer can update only the affected derived row.
+pub fn arm_render_row_subscriptions(world: &mut pulsar_scenedb::World) {
+    let mesh_entities: Vec<_> = world
+        .query::<&StaticMeshComponent>()
+        .map(|(entity, _)| entity)
+        .collect();
+    for entity in mesh_entities {
+        let _ = world.subscribe::<StaticMeshComponent>(entity);
+        let _ = world.subscribe::<Transform>(entity);
+        let _ = world.subscribe::<Visibility>(entity);
+        let _ = world.subscribe::<helio_component::components::MaterialOverrideComponent>(entity);
+    }
+    let light_entities: Vec<_> = world
+        .query::<&helio_component::components::LightComponent>()
+        .map(|(entity, _)| entity)
+        .collect();
+    for entity in light_entities {
+        let _ = world.subscribe::<helio_component::components::LightComponent>(entity);
+        let _ = world.subscribe::<Transform>(entity);
+        let _ = world.subscribe::<Visibility>(entity);
+    }
+}
 
 struct EditorMeshRow;
 
@@ -56,24 +81,32 @@ fn retire_static_object_row(world: &mut pulsar_scenedb::World, entity: pulsar_sc
 /// bytes, only the CPU-side archetype row. Currently just the one row kind;
 /// add more `retire_*` calls here as other packed-mirror renderer rows gain
 /// the same despawn-time gap.
-pub fn retire_gpu_rows_for_entity(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+pub fn retire_gpu_rows_for_entity(
+    world: &mut pulsar_scenedb::World,
+    entity: pulsar_scenedb::Entity,
+) {
     retire_static_object_row(world, entity);
 }
 
 /// Author the GPU draw rows directly in SceneDB from the live mesh entities.
 /// The object-batch pass reads these rows and the mesh ranges from the same
 /// SceneDB mirror; no renderer object table or CPU frame cache is involved.
-pub fn sync_static_mesh_rows(scene_db: &mut pulsar_scenedb::SceneDb) {
+pub fn sync_static_mesh_rows(
+    scene_db: &mut pulsar_scenedb::SceneDb,
+    dirty: Option<&HashSet<pulsar_scenedb::Entity>>,
+) {
     profiling::profile_scope!("HelioBridge::sync_static_mesh_rows");
-    let stale: Vec<_> = scene_db
-        .world
-        .query::<&EditorMeshRow>()
-        .filter(|(entity, _)| scene_db.world.get::<StaticMeshComponent>(*entity).is_none())
-        .map(|(entity, _)| entity)
-        .collect();
-    for entity in stale {
-        retire_static_object_row(&mut scene_db.world, entity);
-        scene_db.world.remove::<EditorMeshRow>(entity);
+    if dirty.is_none() {
+        let stale: Vec<_> = scene_db
+            .world
+            .query::<&EditorMeshRow>()
+            .filter(|(entity, _)| scene_db.world.get::<StaticMeshComponent>(*entity).is_none())
+            .map(|(entity, _)| entity)
+            .collect();
+        for entity in stale {
+            retire_static_object_row(&mut scene_db.world, entity);
+            scene_db.world.remove::<EditorMeshRow>(entity);
+        }
     }
     tracing::debug!(
         mesh_components = scene_db.world.query::<&StaticMeshComponent>().count(),
@@ -86,12 +119,22 @@ pub fn sync_static_mesh_rows(scene_db: &mut pulsar_scenedb::SceneDb) {
     let Some(mirror) = scene_db.world.gpu_mirror().cloned() else {
         return;
     };
-    let entities: Vec<_> = scene_db
-        .world
-        .query::<&StaticMeshComponent>()
-        .map(|(entity, _)| entity)
-        .collect();
+    let entities: Vec<_> = dirty.map_or_else(
+        || {
+            scene_db
+                .world
+                .query::<&StaticMeshComponent>()
+                .map(|(entity, _)| entity)
+                .collect()
+        },
+        |dirty| dirty.iter().copied().collect(),
+    );
     for entity in entities {
+        if scene_db.world.get::<StaticMeshComponent>(entity).is_none() {
+            retire_static_object_row(&mut scene_db.world, entity);
+            scene_db.world.remove::<EditorMeshRow>(entity);
+            continue;
+        }
         tracing::debug!(
             entity = entity.index(),
             "[SceneDB render diagnostics] evaluating StaticMeshComponent"

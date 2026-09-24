@@ -112,10 +112,7 @@ impl RuntimeLevel {
     /// class bindings). Call `engine_state::set_project_path` first so
     /// asset-resolving hydrates (`StaticMeshComponent`) can find project
     /// files.
-    pub fn load_into(
-        path: &Path,
-        world: &mut World,
-    ) -> Result<LevelExtras, RuntimeLevelError> {
+    pub fn load_into(path: &Path, world: &mut World) -> Result<LevelExtras, RuntimeLevelError> {
         let file = load_scene_file(path)?;
         let extras = LevelExtras {
             editor_camera: editor_camera(&file.editor),
@@ -142,10 +139,7 @@ impl RuntimeLevel {
 
     /// Shared hydration core: version gate + objects + components into
     /// `world`.
-    fn hydrate_scene_file(
-        file: SceneFile,
-        world: &mut World,
-    ) -> Result<(), RuntimeLevelError> {
+    fn hydrate_scene_file(file: SceneFile, world: &mut World) -> Result<(), RuntimeLevelError> {
         let version = version_string(&file.version);
         // Same accepted set as the editor's own loader: 1.x and 2.x.
         if !version.starts_with("1.") && !version.starts_with("2.") && version != "1" {
@@ -437,11 +431,7 @@ fn hydrate_components(
                 })?;
             }
             None => {
-                pulsar_world_registry::remove_world_component_for_class(
-                    class_name,
-                    world,
-                    entity,
-                );
+                pulsar_world_registry::remove_world_component_for_class(class_name, world, entity);
             }
         }
     }
@@ -518,7 +508,10 @@ mod tests {
         let world = &scene.world;
 
         let sun = world.entity_for("sun").expect("sun loaded");
-        assert_eq!(world.get::<Transform>(sun).unwrap().position, [1.0, 5.0, 2.0]);
+        assert_eq!(
+            world.get::<Transform>(sun).unwrap().position,
+            [1.0, 5.0, 2.0]
+        );
         assert_eq!(world.get::<Visibility>(sun).unwrap().visible, true);
 
         let cube = world.entity_for("cube").expect("cube loaded");
@@ -570,7 +563,8 @@ mod tests {
         let light = world.get::<LightComponent>(sun).expect("hydrated");
         assert_eq!(light.intensity.intensity, 750.0);
         assert!(
-            world.get::<helio_component::components::LightComponentGpuMirror>(sun)
+            world
+                .get::<helio_component::components::LightComponentGpuMirror>(sun)
                 .is_some(),
             "an enabled light carries its GPU mirror"
         );
@@ -620,7 +614,8 @@ mod tests {
         let scene = scene.read();
         let world = &scene.world;
 
-        let light = world.entity_for("sun")
+        let light = world
+            .entity_for("sun")
             .and_then(|e| world.get::<LightComponent>(e))
             .expect("persisted map drove hydration");
         assert_eq!(
@@ -689,9 +684,7 @@ mod tests {
         let scene = level.scene();
         let scene = scene.read();
         let world = &scene.world;
-        let records = render_props(world, "sun")
-            .component_instances
-            .unwrap();
+        let records = render_props(world, "sun").component_instances.unwrap();
         let records = records.as_array().unwrap();
 
         assert_eq!(records.len(), 3);

@@ -681,7 +681,7 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 // zero-copy seam the editor viewport renderer uses).
                 {
                     let mut store = self.scene_store.write();
-                    sync_static_mesh_rows(&mut store);
+                    sync_static_mesh_rows(&mut store, None);
                     store.step();
                 }
 
