@@ -407,7 +407,7 @@ mod tests {
                 captured,
             }
         });
-        window.update(|window, cx| window.draw(cx).clear(cx));
+        window.update(|window, cx| window.draw(cx).clear());
 
         let node = captured.borrow_mut().take().unwrap();
         assert_eq!(node.role(), Role::Button);
@@ -447,7 +447,7 @@ mod tests {
                 requested,
             }
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         (cx, requested)
     }
 
@@ -499,7 +499,7 @@ mod tests {
             let captured = captured.clone();
             move |_, _| Probe(captured)
         });
-        view.update(|window, cx| window.draw(cx).clear(cx));
+        view.update(|window, cx| window.draw(cx).clear());
         let nodes = captured.borrow();
         assert_eq!(nodes[0].role(), Role::Heading);
         assert_eq!(nodes[1].role(), Role::Region);

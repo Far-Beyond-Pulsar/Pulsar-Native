@@ -813,7 +813,7 @@ mod tests {
 
     fn state(cx: &mut TestAppContext) -> (Entity<ColorPickerState>, &mut gpui::VisualTestContext) {
         let (state, cx) = cx.add_window_view(ColorPickerState::new);
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         (state, cx)
     }
 
@@ -979,7 +979,7 @@ mod tests {
         });
         cx.update(|window, cx| {
             state.read(cx).focus_handle.clone().focus(window, cx);
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
         });
 
         cx.simulate_keystrokes("enter");

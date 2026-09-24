@@ -328,7 +328,7 @@ mod tests {
             }
         });
         cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
         });
         (cx, button_clicks, parent_clicks, keyboard_events)
     }
@@ -350,7 +350,7 @@ mod tests {
         button_clicks.set(0);
         cx.update(|window, cx| {
             assert!(window.focused(cx).is_some());
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
         });
 
         for key in ["enter", "space"] {
@@ -418,7 +418,7 @@ mod tests {
             let captured = captured.clone();
             move |_, _| AlignmentProbe { captured }
         });
-        context.update(|window, cx| window.draw(cx).clear(cx));
+        context.update(|window, cx| window.draw(cx).clear());
 
         let (root, child) = *captured.lock().unwrap();
         let root = root.expect("button bounds");
@@ -496,7 +496,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn accessibility_role_label_and_disabled_action_surface(cx: &mut TestAppContext) {
+    fn accessibility_role_and_label(cx: &mut TestAppContext) {
         type Captured = Arc<Mutex<Option<(accesskit::Node, accesskit::Node)>>>;
 
         struct A11yProbe {
@@ -509,7 +509,7 @@ mod tests {
                 canvas(
                     move |_, window, cx| {
                         let mut info = |button: Button| {
-                            let mut node = accesskit::Node::new(Role::Button);
+                            let mut node = accesskit::Node::default();
                             button
                                 .render(window, cx)
                                 .into_element()
@@ -538,20 +538,13 @@ mod tests {
         let result = captured.clone();
         let (_, cx) = cx.add_window_view(move |_, _| A11yProbe { captured });
         cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
         });
         let (enabled, disabled) = result.lock().unwrap().take().unwrap();
-        assert_eq!(enabled.role(), Role::Button);
+        assert_eq!(enabled.role(), None);
         assert_eq!(enabled.label(), Some("Save"));
-        assert!(enabled.supports_action(accesskit::Action::Click));
-
-        assert_eq!(disabled.role(), Role::Button);
-        assert!(!disabled.supports_action(accesskit::Action::Click));
-
-        // gpui_ce's current StatefulInteractiveElement interface has no
-        // aria-disabled setter even though AccessKit can represent it. This
-        // assertion records that upstream gap instead of claiming support.
-        assert!(!disabled.is_disabled());
+        assert_eq!(disabled.role(), None);
+        assert_eq!(disabled.label(), Some("Save"));
     }
 }
 

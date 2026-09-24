@@ -434,8 +434,8 @@ mod tests {
     fn mixed_sizing_is_stable_between_resize_and_followup_frame(cx: &mut TestAppContext) {
         let (view, cx) = cx.add_window_view(|_, _| MixedSizingHarness { width: px(800.) });
         cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
+            window.draw(cx).clear();
         });
         let before = cx.debug_bounds("fixed-sidebar").unwrap().size.width;
 
@@ -445,7 +445,7 @@ mod tests {
         });
         cx.run_until_parked();
         let settled_frame = cx.debug_bounds("fixed-sidebar").unwrap().size.width;
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let followup_frame = cx.debug_bounds("fixed-sidebar").unwrap().size.width;
 
         // Resizable panels preserve their proportional sizing across a
@@ -489,8 +489,8 @@ mod tests {
             }
         });
         cx.update(|window, cx| {
-            window.draw(cx).clear(cx);
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
+            window.draw(cx).clear();
         });
 
         view.update(cx, |view, cx| {
@@ -499,7 +499,7 @@ mod tests {
         });
         cx.run_until_parked();
         let settled = cx.debug_bounds("cs-sidebar").unwrap().size.width;
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let followup = cx.debug_bounds("cs-sidebar").unwrap().size.width;
 
         assert_eq!(followup, settled, "settling frame must not be pending");
@@ -547,8 +547,8 @@ mod tests {
             let resizes = resizes.clone();
             move |_, _| ResizableHarness { state, resizes }
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
+        cx.update(|window, cx| window.draw(cx).clear());
         (cx, state, resizes)
     }
 
@@ -587,7 +587,7 @@ mod tests {
             state.update(cx, |state, cx| {
                 state.resize_panel(0, px(220.), window, cx);
             });
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
         });
 
         state.read_with(cx, |state, _| {
@@ -646,8 +646,8 @@ mod tests {
     #[gpui::test]
     fn a_group_size_binds_the_cross_axis(cx: &mut TestAppContext) {
         let (_, cx) = cx.add_window_view(|_, _| SizedGroupHarness);
-        cx.update(|window, cx| window.draw(cx).clear(cx));
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
+        cx.update(|window, cx| window.draw(cx).clear());
 
         let panel = cx.debug_bounds("sized-panel").unwrap();
         assert_eq!(panel.size.width, px(400.));

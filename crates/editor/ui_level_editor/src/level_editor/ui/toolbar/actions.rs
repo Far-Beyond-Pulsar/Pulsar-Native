@@ -1,4 +1,3 @@
-use crate::level_editor::state::terrain::SculptMode;
 use crate::level_editor::state::{BuildConfig, BuildMode, MultiplayerMode, TargetPlatform};
 use crate::level_editor::tool_modes::ToolModeId;
 use gpui::*;
@@ -7,23 +6,6 @@ use gpui::*;
 #[derive(Action, Clone, PartialEq)]
 #[action(namespace = level_editor_toolbar, no_json)]
 pub struct SetToolMode(pub ToolModeId);
-
-// Actions for terrain brush settings
-#[derive(Action, Clone, PartialEq)]
-#[action(namespace = level_editor_toolbar, no_json)]
-pub struct SetTerrainSculptMode(pub SculptMode);
-
-#[derive(Action, Clone, PartialEq)]
-#[action(namespace = level_editor_toolbar, no_json)]
-pub struct SetTerrainRadius(pub f32);
-
-#[derive(Action, Clone, PartialEq)]
-#[action(namespace = level_editor_toolbar, no_json)]
-pub struct SetTerrainStrength(pub f32);
-
-#[derive(Action, Clone, PartialEq)]
-#[action(namespace = level_editor_toolbar, no_json)]
-pub struct SetTerrainFalloff(pub f32);
 
 // Actions for toolbar dropdowns
 #[derive(Action, Clone, PartialEq)]

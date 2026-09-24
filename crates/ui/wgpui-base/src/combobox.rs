@@ -208,7 +208,7 @@ mod tests {
         cx.update(|window, cx| {
             let content_focus = state.read(cx).content_focus.clone();
             content_focus.focus(window, cx);
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
         });
         (cx, state)
     }

@@ -16,6 +16,11 @@ pub mod light_frame;
 // derived half of each static-mesh instance, same subscription-maintained
 // pattern as light_frame.
 pub mod mesh_frame;
+#[cfg(feature = "render")]
+pub mod voxel_frame;
+#[cfg(feature = "render")]
+#[cfg(feature = "render")]
+pub mod voxel_source;
 
 // Persistent texture/material/sectioned-mesh/object resource components.
 pub mod render_resources;

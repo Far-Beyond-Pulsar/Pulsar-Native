@@ -272,7 +272,7 @@ mod tests {
             let clicks = clicks.clone();
             move |_, _| TabHarness { disabled, clicks }
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         (cx, clicks)
     }
 
@@ -324,7 +324,7 @@ mod tests {
             let captured = captured.clone();
             move |_, _| AlignmentProbe(captured)
         });
-        context.update(|window, cx| window.draw(cx).clear(cx));
+        context.update(|window, cx| window.draw(cx).clear());
 
         let (root, child) = *captured.lock().unwrap();
         assert_eq!(
@@ -369,7 +369,7 @@ mod tests {
         let captured: Captured = Arc::new(Mutex::new(None));
         let result = captured.clone();
         let (_, cx) = cx.add_window_view(move |_, _| Probe(captured));
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         let (selected, disabled) = result.lock().unwrap().take().unwrap();
 
         assert_eq!(selected.role(), Role::Tab);
@@ -422,7 +422,7 @@ mod tests {
         let captured: Captured = Arc::new(Mutex::new(None));
         let result = captured.clone();
         let (_, cx) = cx.add_window_view(move |_, _| Probe(captured));
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert_eq!(result.lock().unwrap().take().unwrap().role(), Role::TabList);
     }
 }

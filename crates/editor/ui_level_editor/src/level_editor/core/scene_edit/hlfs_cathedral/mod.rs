@@ -273,7 +273,6 @@ fn generate() {
         &world,
         root.join("assets/default.level"),
         Some(start_camera()),
-        None,
     )
     .expect("level saves");
 }
@@ -301,6 +300,33 @@ fn vertex_bits(v: &PackedVertex) -> [u32; 10] {
     ]
 }
 
+fn vertex_matches(a: &PackedVertex, b: &PackedVertex) -> bool {
+    let float_fields = |v: &PackedVertex| {
+        [
+            v.position[0],
+            v.position[1],
+            v.position[2],
+            v.bitangent_sign,
+            v.tex_coords0[0],
+            v.tex_coords0[1],
+            v.tex_coords1[0],
+            v.tex_coords1[1],
+        ]
+    };
+    // The generator uses transcendental and vector math whose last bits can
+    // differ across architectures. Eight f32 epsilons stay below visual scale.
+    float_fields(a)
+        .into_iter()
+        .zip(float_fields(b))
+        .all(|(a, b)| {
+            a.is_finite()
+                && b.is_finite()
+                && (a - b).abs() <= 8.0 * f32::EPSILON * a.abs().max(b.abs()).max(1.0)
+        })
+        && a.normal == b.normal
+        && a.tangent == b.tangent
+}
+
 #[test]
 fn committed_meshes_match_generator() {
     let root = repo_root();
@@ -310,15 +336,20 @@ fn committed_meshes_match_generator() {
         let (decoded, _) = helio_component::mesh_cache::decode(&bytes).expect("valid PMSH");
         assert_eq!(decoded.indices, batch.mesh.indices, "{}", batch.file);
         assert_eq!(decoded.vertices.len(), batch.mesh.vertices.len(), "{}", batch.file);
-        assert!(
-            decoded
-                .vertices
-                .iter()
-                .zip(&batch.mesh.vertices)
-                .all(|(a, b)| vertex_bits(a) == vertex_bits(b)),
-            "{}",
-            batch.file
-        );
+        if let Some((index, (committed, generated))) = decoded
+            .vertices
+            .iter()
+            .zip(&batch.mesh.vertices)
+            .enumerate()
+            .find(|(_, (committed, generated))| !vertex_matches(committed, generated))
+        {
+            panic!(
+                "{} vertex {index}: committed {:?}, generated {:?}",
+                batch.file,
+                vertex_bits(committed),
+                vertex_bits(generated)
+            );
+        }
     }
 }
 

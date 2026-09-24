@@ -55,11 +55,6 @@ impl ViewportPanel {
         let cursor_capture =
             ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
 
-        // Terrain edit seam for the tool-mode pointer dispatch below. Cloned
-        // out of the same locked pass that produced the pointer queue, so the
-        // pointer closures never take `gpu_engine` for it.
-        let terrain_api = snap.terrain.clone();
-
         // For mouse move tracking
         let element_bounds_move = self.element_bounds.clone();
         let gpu_engine_move = gpu_engine.clone();
@@ -104,7 +99,6 @@ impl ViewportPanel {
                 let mouse_right_captured = mouse_right_captured.clone();
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let state_arc_move = state_arc.clone();
-                let terrain_api_for_move = terrain_api.clone();
                 let pointer_events_move = snap.pointer_events.clone();
 
 move |event: &gpui::MouseMoveEvent, _window, _cx| {
@@ -116,7 +110,6 @@ move |event: &gpui::MouseMoveEvent, _window, _cx| {
                         mouse_right_captured.clone(),
                         mouse_middle_captured.clone(),
                         state_arc_move.clone(),
-                        terrain_api_for_move.clone(),
                         gpu_engine_move.clone(),
                         pointer_events_move.clone(),
                         element_bounds_move.clone(),
@@ -251,7 +244,6 @@ move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let state_arc_click = state_arc.clone();
                 let gpu_engine_click = gpu_engine.clone();
-                let terrain_api_for_click = terrain_api.clone();
 
 move |event: &gpui::MouseDownEvent,
                       window: &mut gpui::Window,
@@ -265,7 +257,6 @@ move |event: &gpui::MouseDownEvent,
                         mouse_middle_captured.clone(),
                         state_arc_click.clone(),
                         gpu_engine_click.clone(),
-                        terrain_api_for_click.clone(),
                     );
                 }
             })
@@ -274,7 +265,6 @@ move |event: &gpui::MouseDownEvent,
                 let pointer_events = pointer_events_for_click.clone();
                 let state_arc_up = state_arc.clone();
                 let gpu_engine_up = gpu_engine.clone();
-                let terrain_api_for_up = terrain_api.clone();
 
 move |event: &gpui::MouseUpEvent,
                       _window: &mut gpui::Window,
@@ -284,7 +274,6 @@ move |event: &gpui::MouseUpEvent,
                         pointer_events.clone(),
                         state_arc_up.clone(),
                         gpu_engine_up.clone(),
-                        terrain_api_for_up.clone(),
                     );
                 }
             })
@@ -292,10 +281,9 @@ move |event: &gpui::MouseUpEvent,
                 let pointer_events = pointer_events_for_click.clone();
                 let state = state_arc.clone();
                 let engine = gpu_engine.clone();
-                let terrain = terrain_api.clone();
                 move |event, _window, _cx| {
                     super::build_handlers::handle_left_mouse_up(
-                        event, pointer_events.clone(), state.clone(), engine.clone(), terrain.clone(),
+                        event, pointer_events.clone(), state.clone(), engine.clone(),
                     );
                 }
             })

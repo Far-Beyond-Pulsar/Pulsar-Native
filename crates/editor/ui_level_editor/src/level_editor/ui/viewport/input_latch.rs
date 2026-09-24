@@ -131,10 +131,19 @@ mod tests {
             latch_now();
             let took = start.elapsed();
             worst = worst.max(took);
-            assert!(
-                polls.load(Ordering::Acquire) > polls_before,
-                "latch_now returned without a fresh poll having run"
-            );
+            if polls.load(Ordering::Acquire) == polls_before {
+                // The frame is allowed to use the previous sample after the
+                // 400 us deadline. The wake must still produce a fresh poll.
+                assert!(took >= MAX_WAIT, "latch returned before polling or timing out");
+                let deadline = Instant::now() + Duration::from_millis(50);
+                while polls.load(Ordering::Acquire) == polls_before && Instant::now() < deadline {
+                    std::thread::yield_now();
+                }
+                assert!(
+                    polls.load(Ordering::Acquire) > polls_before,
+                    "latch did not wake the input thread"
+                );
+            }
             std::thread::sleep(Duration::from_millis(2));
         }
         assert!(

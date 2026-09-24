@@ -92,14 +92,6 @@ impl LevelEditorPanel {
     /// can't diff against it correctly -- `force_full_resync` is required
     /// here, not optional; see its doc for why.
     pub(in crate::level_editor::ui::panel) fn on_undo(&mut self, _: &crate::level_editor::ui::actions::Undo, _: &mut Window, cx: &mut Context<Self>) {
-        // Voxel edits do not live in the scene database, so they have their
-        // own history (design doc §5.5). While the Terrain mode is active and
-        // that history has something in it, Ctrl+Z means "undo my sculpt
-        // stroke" -- one whole stroke, never one stamp.
-        if self.undo_terrain_stroke() {
-            cx.notify();
-            return;
-        }
         let mut state = self.shared_state.write();
         if state.scene.undo() {
             state.scene.bump_revision(true);
@@ -115,68 +107,8 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    /// Whether Ctrl+Z/Ctrl+Y should be read as a terrain operation.
-    ///
-    /// Only while the Terrain tool mode is selected: a user who has switched
-    /// back to Level Edit is undoing object edits, and silently rewinding
-    /// their voxels instead would be a nasty surprise. Interleaving the two
-    /// histories into one ordered timeline is the better long-term answer and
-    /// is called out as an open question in the design doc (§9, "Undo
-    /// pairing"); this keeps the two unambiguous until that is settled.
-    fn terrain_history_owns_undo(&self) -> bool {
-        use crate::level_editor::tool_modes::ToolModeId;
-        self.shared_state.read().editor.tool_mode_registry.selected_id() == ToolModeId::TERRAIN
-    }
-
-    /// Revert one full sculpt stroke. Returns `false` when terrain has no
-    /// history to give, so the caller falls through to scene undo.
-    fn undo_terrain_stroke(&mut self) -> bool {
-        if !self.terrain_history_owns_undo() {
-            return false;
-        }
-        let Some(api) = self.terrain_api.clone() else {
-            return false;
-        };
-        let mut state = self.shared_state.write();
-        if !state.editor.terrain_undo.can_undo() {
-            return false;
-        }
-        match state.editor.terrain_undo.undo(&api) {
-            Ok(changed) => changed,
-            Err(error) => {
-                tracing::error!(%error, "terrain undo failed");
-                false
-            }
-        }
-    }
-
-    /// Reapply one full sculpt stroke. See [`Self::undo_terrain_stroke`].
-    fn redo_terrain_stroke(&mut self) -> bool {
-        if !self.terrain_history_owns_undo() {
-            return false;
-        }
-        let Some(api) = self.terrain_api.clone() else {
-            return false;
-        };
-        let mut state = self.shared_state.write();
-        if !state.editor.terrain_undo.can_redo() {
-            return false;
-        }
-        match state.editor.terrain_undo.redo(&api) {
-            Ok(changed) => changed,
-            Err(error) => {
-                tracing::error!(%error, "terrain redo failed");
-                false
-            }
-        }
-    }
-
     /// Redo the last undone scene command. See [`Self::on_undo`]'s doc.
     pub(in crate::level_editor::ui::panel) fn on_redo(&mut self, _: &crate::level_editor::ui::actions::Redo, _: &mut Window, cx: &mut Context<Self>) {
-        if self.redo_terrain_stroke() {
-            cx.notify();
-            return;
-        }
         let mut state = self.shared_state.write();
         if state.scene.redo() {
             state.scene.bump_revision(true);

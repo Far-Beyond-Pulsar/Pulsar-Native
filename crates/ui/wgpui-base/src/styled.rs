@@ -76,9 +76,9 @@ pub trait StyledExt: Styled + Sized {
         self
     }
 
-    /// Compatibility accessibility setters. The embedded GPUI fork currently
-    /// publishes accessibility metadata from native elements rather than from
-    /// fluent style calls, so these remain deliberately allocation-free no-ops.
+    /// Fallback setters for elements without dedicated accessibility metadata.
+    /// `Div` and `Stateful<Div>` provide an inherent `aria_label` that retains
+    /// the label; these generic fallbacks remain no-ops.
     fn role(self, _role: Role) -> Self { self }
 
     fn aria_label(self, _label: impl Into<gpui::SharedString>) -> Self { self }

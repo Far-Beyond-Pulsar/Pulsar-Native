@@ -145,18 +145,8 @@ pub struct EditorDomain {
     pub feature_bloom_enabled: bool,
     pub feature_materials_enabled: bool,
 
-    // ── Tool Mode & Terrain Domains ───────────────────────────────────────
+    // ── Tool Modes ────────────────────────────────────────────────────────
     pub tool_mode_registry: crate::level_editor::tool_modes::ToolModeRegistry,
-    pub terrain: super::terrain::TerrainDomain,
-    /// Per-stroke voxel terrain undo history. Separate from
-    /// `SceneDomain`'s undo stack on purpose -- that one snapshots the scene
-    /// database, which does not contain voxels at all (design doc §5.5).
-    pub terrain_undo: super::terrain_undo::TerrainUndoDomain,
-    /// Handle to the renderer's terrain seam, stored by `TerrainMode::
-    /// on_mode_entered` so mode-owned panels (which only receive the shared
-    /// state) can list and create terrain bodies. `None` until Terrain mode
-    /// has been entered with a live renderer.
-    pub terrain_api: Option<engine_backend::services::terrain_edit::TerrainEditApi>,
     /// State for the Milestone 5 extensibility-demo `SplineMode`. Lives here
     /// (rather than as a field on `SplineMode` itself) because the toolbar
     /// and status bar both need to read it without going through the mode
@@ -166,11 +156,7 @@ pub struct EditorDomain {
 
 impl Default for EditorDomain {
     fn default() -> Self {
-        // `builtin()` registers the two Milestone 1-4 modes (LevelEdit,
-        // Terrain); `register_tool_modes` then adds every mode registered
-        // after them -- currently just Milestone 5's `SplineMode` -- purely
-        // through `ToolModeRegistry::register`, with `builtin()`'s own two
-        // entries untouched (design doc §9 / issue #714).
+        // The built-in level mode is extended by registered modes.
         let mut tool_mode_registry = crate::level_editor::tool_modes::ToolModeRegistry::builtin();
         crate::level_editor::tool_modes::register_tool_modes(&mut tool_mode_registry);
 
@@ -186,9 +172,6 @@ impl Default for EditorDomain {
             feature_bloom_enabled: true,
             feature_materials_enabled: true,
             tool_mode_registry,
-            terrain: super::terrain::TerrainDomain::default(),
-            terrain_undo: super::terrain_undo::TerrainUndoDomain::default(),
-            terrain_api: None,
             spline: super::spline::SplineDomain::default(),
         }
     }

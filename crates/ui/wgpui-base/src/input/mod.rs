@@ -66,6 +66,7 @@ mod touch;
 mod undo_manager;
 
 pub(crate) fn init(cx: &mut App) {
+    crate::global_state::GlobalState::init(cx);
     state::init(cx);
 }
 

@@ -20,8 +20,7 @@ pub(crate) mod input_latch;
 mod input_thread;
 mod overlays;
 
-use std::cell::{Cell, RefCell};
-use std::path::PathBuf;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -86,7 +85,6 @@ impl ViewportCursorCapture {
 fn dispatch_tool_pointer(
     state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine: &Arc<Mutex<GpuRenderer>>,
-    terrain: Option<&engine_backend::services::terrain_edit::TerrainEditApi>,
     camera: crate::level_editor::tool_modes::CameraFrame,
     viewport_size: (f32, f32),
     kind: crate::level_editor::tool_modes::PointerKind,
@@ -110,7 +108,6 @@ fn dispatch_tool_pointer(
     crate::level_editor::tool_modes::ToolModeDispatcher::dispatch_pointer(
         &mut state,
         gpu_engine,
-        terrain,
         &pointer_event,
         camera,
         viewport_frame,
@@ -194,18 +191,6 @@ pub struct ViewportPanel {
     /// Focus handle
     focus_handle: FocusHandle,
 
-    /// Scene revision at the last planet sync. Walking every object's
-    /// components to rebuild `PlanetDefinition`s is far too expensive to do
-    /// per frame, and the answer only changes when the scene does.
-    last_planet_sync_revision: Cell<Option<u64>>,
-
-    /// Level whose stored terrain has already been replayed into the runtime.
-    ///
-    /// The replay cannot happen at load time: the planets it targets are
-    /// registered by the *render* thread, a frame or more after the editor
-    /// posts their definitions. So the restore is attempted on each render
-    /// and latches once it lands.
-    restored_terrain_for: RefCell<Option<PathBuf>>,
 }
 
 impl ViewportPanel {
@@ -245,8 +230,6 @@ impl ViewportPanel {
             keys_pressed: Rc::new(RefCell::new(HashSet::new())),
             alt_pressed: Rc::new(RefCell::new(false)),
             focus_handle,
-            last_planet_sync_revision: Cell::new(None),
-            restored_terrain_for: RefCell::new(None),
         }
     }
 
@@ -276,54 +259,10 @@ impl ViewportPanel {
             state.overlays.state.show_performance_overlay,
         );
 
-        self.sync_terrain_planets_if_scene_changed(state, snapshot.as_ref());
-
         // Build the viewport UI
         self.build_viewport_ui(state, state_arc, snapshot, gpu_engine, cx)
     }
 
-    /// Hand the terrain runtime the scene's planets whenever the scene
-    /// changes.
-    ///
-    /// This is what actually brings a planet into existence in the editor:
-    /// the runtime is created lazily on the render thread the first time a
-    /// non-empty definition set arrives. Gated on the scene revision because
-    /// collecting the definitions walks every object's component list.
-    fn sync_terrain_planets_if_scene_changed(
-        &self,
-        state: &LevelEditorState,
-        snapshot: Option<&EngineFrameSnapshot>,
-    ) {
-        let Some(api) = snapshot.and_then(|snap| snap.terrain.as_ref()) else {
-            return;
-        };
-
-        let revision = state.scene.revision;
-        if self.last_planet_sync_revision.get() != Some(revision) {
-            self.last_planet_sync_revision.set(Some(revision));
-            crate::level_editor::tool_modes::terrain::scene_planets::sync_scene_planets(
-                &state.scene.shared_scene(),
-                api,
-            );
-        }
-
-        // Replay this level's stored terrain once its planets exist. Latches
-        // on the level path, so a level opened, edited and re-opened restores
-        // exactly once per open.
-        let Some(level) = state.scene.current_scene.as_ref() else {
-            return;
-        };
-        if self.restored_terrain_for.borrow().as_deref() == Some(level.as_path()) {
-            return;
-        }
-        if api.bodies().is_empty() {
-            // The render thread has not registered them yet; try again next
-            // frame rather than latching on an empty runtime.
-            return;
-        }
-        crate::level_editor::core::terrain_sidecar::load(level, api);
-        *self.restored_terrain_for.borrow_mut() = Some(level.clone());
-    }
 }
 
 impl ViewportPanel {

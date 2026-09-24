@@ -16,22 +16,14 @@ use super::{
 
 /// Serialize the scene to a JSON level file.
 pub fn save_to_file<P: AsRef<Path>>(world: &World, path: P) -> Result<(), String> {
-    save_to_file_with_editor_camera(world, path, None, None)
+    save_to_file_with_editor_camera(world, path, None)
 }
 
-/// Serialize the scene to a JSON level file, optionally persisting editor camera
-/// state and any authored voxel terrain.
-///
-/// `terrain` is the level editor's terrain edit seam. Voxel data does not live in
-/// the scene world, so it cannot ride along in the `LevelFile` the way objects and
-/// components do; it is flushed to a sidecar beside the level instead (see
-/// [`crate::level_editor::core::terrain_sidecar`]). Passing `None` -- as headless
-/// and test callers do -- writes the level without it.
+/// Serialize the scene to a JSON level file, optionally persisting editor camera state.
 pub fn save_to_file_with_editor_camera<P: AsRef<Path>>(
     world: &World,
     path: P,
     editor_camera: Option<LevelEditorCameraState>,
-    terrain: Option<&engine_backend::services::terrain_edit::TerrainEditApi>,
 ) -> Result<(), String> {
     profiling::profile_scope!("scene_edit::save_to_file");
     if let Some(parent_dir) = path.as_ref().parent() {
@@ -80,13 +72,6 @@ pub fn save_to_file_with_editor_camera<P: AsRef<Path>>(
         .map_err(|e| format!("Failed to serialize: {e}"))?;
     virtual_fs::write_file(path.as_ref(), json.as_bytes())
         .map_err(|e| format!("Failed to write file: {e}"))?;
-
-    // Flush voxel terrain after the level itself is on disk: a terrain sidecar
-    // without its level is meaningless, so the level is the thing that must land
-    // first.
-    if let Some(terrain) = terrain {
-        crate::level_editor::core::terrain_sidecar::save(path.as_ref(), terrain)?;
-    }
 
     tracing::info!("Scene saved to: {}", path.as_ref().display());
     Ok(())

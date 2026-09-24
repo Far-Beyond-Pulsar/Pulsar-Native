@@ -5,7 +5,6 @@ use pulsar_reflection::EngineClass;
 fn voxel_components_default_and_round_trip_as_scene_component_data() {
     let voxel = VoxelComponent::default();
     assert_eq!(voxel.dimensions, [16; 3]);
-    assert!(!voxel.smooth_surface);
     let voxel_json = serde_json::to_value(&voxel).expect("serialize voxel component");
     let voxel_restored: VoxelComponent =
         serde_json::from_value(voxel_json).expect("restore voxel component");
@@ -14,18 +13,26 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
 
     let terrain = VoxelTerrainComponent::default();
     assert_eq!(terrain.domain_mode, 1);
-    assert_eq!(terrain.shape_mode, 0);
+    assert!(terrain.generator_id.is_empty());
     let terrain_json = serde_json::to_value(&terrain).expect("serialize terrain component");
     let terrain_restored: VoxelTerrainComponent =
         serde_json::from_value(terrain_json).expect("restore terrain component");
     assert_eq!(terrain_restored.generator_id, terrain.generator_id);
+    assert_eq!(terrain_restored.generator_version, 1);
     assert_eq!(terrain_restored.source_revision, terrain.source_revision);
+    let mut older_json = serde_json::to_value(&terrain).unwrap();
+    older_json
+        .as_object_mut()
+        .unwrap()
+        .remove("generator_version");
+    let older: VoxelTerrainComponent = serde_json::from_value(older_json).unwrap();
+    assert_eq!(older.generator_version, 1);
 }
 
 #[test]
 fn service_revision_is_persisted_but_not_exposed_as_an_inspector_property() {
     let properties = VoxelTerrainComponent::default().get_properties();
-    assert_eq!(properties.len(), 20);
+    assert_eq!(properties.len(), 15);
     assert!(properties
         .iter()
         .all(|property| property.name != "source_revision"));
@@ -85,11 +92,9 @@ fn live_payload_state_is_scene_owned_but_script_exfiltrated() {
 fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
     let mut world = pulsar_scenedb::World::new();
     let entity = world.spawn();
-    let terrain = VoxelTerrainComponent {
-        generator_id: "test.generator".into(),
-        seed: 1234,
-        ..VoxelTerrainComponent::default()
-    };
+    let mut terrain = VoxelTerrainComponent::default();
+    terrain.generator_id = "test.generator".into();
+    terrain.seed = 1234;
     let terrain_json = serde_json::to_value(&terrain).unwrap();
     assert!(pulsar_world_registry::hydrate_world_component_for_class(
         "VoxelTerrainComponent",
@@ -118,7 +123,7 @@ fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
 
 #[test]
 fn live_batch_publish_snapshot_and_import_round_trip_through_scenedb_rows() {
-    use helio_pass_voxel_mesh::{
+    use helio_voxel_data::{
         BoundedVoxelInbox, VoxelBatchRevision, VoxelChunkBatch, VoxelChunkKey, VoxelChunkOp,
         VoxelChunkPayload, VoxelChunkUpdate, VoxelDomain, VoxelInboxDrainBudget, VoxelInboxLimits,
         VoxelSourceId, VoxelSourceWriter, VoxelTerrainId, VOXEL_CHUNK_ENCODING_RAW,
@@ -213,7 +218,7 @@ fn live_batch_publish_snapshot_and_import_round_trip_through_scenedb_rows() {
     // Stale work is rejected without changing the component-owned row.
     assert!(matches!(
         writer.publish_batch(&batch),
-        Err(helio_pass_voxel_mesh::VoxelUpdateError::StaleRevision {
+        Err(helio_voxel_data::VoxelUpdateError::StaleRevision {
             expected: 0,
             actual: 1
         })

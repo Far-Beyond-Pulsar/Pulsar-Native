@@ -204,7 +204,7 @@ impl ToolMode for SplineMode {
         else {
             // Camera can't see the ground plane from here: let the click
             // fall through to ordinary pick/gizmo behavior, same contract
-            // `TerrainMode::on_pointer` uses for "nothing under the brush".
+            // No surface was found under this pointer event.
             return ToolPointerResult::PassThrough;
         };
         ctx.state.editor.spline.push_point(point);

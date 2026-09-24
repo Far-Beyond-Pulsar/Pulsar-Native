@@ -80,7 +80,6 @@ impl LevelEditorPanel {
                     &world.world,
                     &path,
                     self.current_editor_camera_state(),
-                    self.terrain_api.as_ref(),
                 )
             };
             match save_result {
@@ -98,9 +97,6 @@ impl LevelEditorPanel {
         let state_arc = self.shared_state.clone();
         let scene_db = { state_arc.read().scene.shared_scene() };
         let editor_camera = self.current_editor_camera_state();
-        // Cloned into the async task: `self` is not available once the file
-        // dialog await resumes.
-        let terrain_api = self.terrain_api.clone();
         let dialog = rfd::AsyncFileDialog::new()
             .set_title("Save Scene As")
             .add_filter("Level file", &["level", "json"])
@@ -114,7 +110,6 @@ impl LevelEditorPanel {
                         &world.world,
                         &path,
                         editor_camera,
-                        terrain_api.as_ref(),
                     )
                 };
                 cx.update(|cx| {

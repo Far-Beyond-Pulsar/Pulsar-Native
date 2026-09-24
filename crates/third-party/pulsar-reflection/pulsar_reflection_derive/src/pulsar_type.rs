@@ -184,9 +184,9 @@ pub fn expand_primitive_alias(
             }
         }
 
-        #[cfg(any())] ::pulsar_reflection::inventory::submit! {
+        ::pulsar_reflection::inventory::submit! {
             ::pulsar_reflection::RuntimeTypeRegistration {
-                type_info: &*#type_info_name,
+                type_info: || &*#type_info_name,
                 serialize_json: |value: &dyn ::std::any::Any| {
                     let typed = value.downcast_ref::<#target_ty>().ok_or_else(|| {
                         ::pulsar_reflection::ReflectError::TypeMismatch {

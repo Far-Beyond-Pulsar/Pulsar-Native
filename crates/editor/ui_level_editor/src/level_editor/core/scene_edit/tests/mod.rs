@@ -1,1 +1,4 @@
-//! Scene edit tests (ported in a follow-up step).
+//! Regression tests for the editor's direct SceneDB operations.
+
+mod components;
+mod objects;

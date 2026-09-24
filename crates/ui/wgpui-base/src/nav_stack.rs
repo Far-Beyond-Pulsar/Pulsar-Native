@@ -793,22 +793,22 @@ mod tests {
             stack.push(second, NavMotion::Animated, cx);
         });
 
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(stack.read_with(cx, |stack, _| stack.transit.is_some()));
 
         cx.executor().advance_clock(Duration::from_millis(100));
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(stack.read_with(cx, |stack, _| stack.transit.is_some()));
 
         cx.executor().advance_clock(Duration::from_millis(150));
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(stack.read_with(cx, |stack, _| stack.transit.is_none()));
 
         // An immediate change is gone after the frame that draws it.
         stack.update(cx, |stack, cx| {
             stack.pop(NavMotion::Immediate, cx);
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(stack.read_with(cx, |stack, _| stack.transit.is_none()));
     }
 

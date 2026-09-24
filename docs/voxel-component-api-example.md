@@ -1,11 +1,18 @@
 # Voxel component API example
 
 This shows the intended ownership boundary for externally generated chunks.
-`VoxelTerrainComponent` remains in SceneDB; the pass-side inbox is only a
+`VoxelTerrainComponent` remains in SceneDB; the data API inbox is only a
 bounded transient handoff. Neither API saves data or chooses persistence
 settings. A user script/tool owns any export or reload workflow.
 
 ```rust,ignore
+use helio_voxel_data::{
+    BoundedVoxelInbox, VoxelBatchRevision, VoxelChunkBatch, VoxelChunkKey,
+    VoxelChunkOp, VoxelChunkPayload, VoxelChunkUpdate, VoxelDomain,
+    VoxelInboxDrainBudget, VoxelInboxLimits, VoxelSourceWriter,
+    VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
+};
+
 let terrain = VoxelTerrainComponent::default();
 // Insert `terrain` into the user's SceneDB entity, then retain its payload
 // handle as a capability associated with that entity.

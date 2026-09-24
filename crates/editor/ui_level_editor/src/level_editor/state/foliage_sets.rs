@@ -1,4 +1,4 @@
-//! Foliage Sets — the authoring library the Terrain foliage brush paints from.
+//! Foliage Sets — reusable authoring configuration for foliage placement.
 //!
 //! A [`FoliageSet`] is a named, individually enable-able collection of
 //! [`FoliageMember`]s; each member is one source mesh with its *own*
@@ -8,10 +8,7 @@
 //! trees without either knowing about the other.
 //!
 //! Pure editor-side authoring configuration: no scene database, renderer, or
-//! GPUI types live here, so this survives the scene-database migration
-//! untouched. What a stamp *produces* is a separate concern
-//! (`tool_modes::terrain::scatter` computes instances,
-//! `tool_modes::terrain::author` turns them into scene content).
+//! GPUI types live here. Placement tools consume these definitions.
 
 use serde::{Deserialize, Serialize};
 

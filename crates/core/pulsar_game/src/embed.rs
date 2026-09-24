@@ -206,24 +206,13 @@ impl EmbeddedGame {
             ensure_gpu_mirror(&mut scene_store.write(), device.clone(), queue.clone());
 
         let config = RendererConfig::new(width, height, color_format);
-        let graph_scene_db = scene_db_handle.clone();
         let renderer = RendererBuilder::new(config, scene_db_handle)
             .with_external_device()
             .with_editor_mode(false)
             .with_ambient([0.0, 0.0, 0.0], 0.0)
-            .with_graph(Box::new(move |d, q, c, ds, cb, dcb, csb| {
-                helio_default_graphs::build_default_graph_external(
-                    d,
-                    q,
-                    cb,
-                    c,
-                    ds,
-                    dcb,
-                    csb,
-                    None,
-                    graph_scene_db.clone(),
-                )
-            }))
+            .with_pass_build_context(Box::new(
+                helio_default_graphs::build_default_graph_external_with_context,
+            ))
             .build(device.clone(), queue.clone(), width, height, color_format);
 
         // Under v2 the world comes pre-hydrated by the host, so the old

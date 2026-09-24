@@ -210,7 +210,7 @@ mod tests {
     impl HighlightStyleResolver for TestTheme {
         fn style(&self, name: &str) -> Option<HighlightStyle> {
             (name == "keyword" || name == "comment").then_some(HighlightStyle {
-                color: Some(hsla(0.5, 0.5, 0.5, 1.)),
+                color: Some(hsla(0.5, 0.5, 0.5, 1.).into()),
                 ..Default::default()
             })
         }

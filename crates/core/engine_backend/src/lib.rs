@@ -15,9 +15,8 @@ pub mod subsystems;
 // against its `inventory`-based `#[register_world_component]`/
 // `#[register_runtime_behavior]` registrations (see
 // `subsystems::render::helio_renderer::renderer`), but unlike its sibling
-// crates (`ui_level_editor`, `pulsar_scene`), it only names a few of
-// `helio_component`'s types directly (`PlanetTerrainRuntime`, the subsystem
-// caches) -- not every component. Without an explicit symbol reference the
+// crates (`ui_level_editor`, `pulsar_scene`), it does not name every
+// `helio_component` type directly. Without an explicit symbol reference the
 // linker can dead-strip the rest of `helio_component`'s `#[used]` inventory
 // statics in an optimized build.
 use helio_component as _;

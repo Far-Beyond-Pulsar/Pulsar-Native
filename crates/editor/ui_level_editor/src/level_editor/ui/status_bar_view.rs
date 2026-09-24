@@ -38,8 +38,6 @@ struct StatusBarSignature {
     camera_mode: CameraMode,
     current_tool: TransformTool,
     tool_mode: ToolModeId,
-    terrain_radius_m: f32,
-    terrain_strength: f32,
     // Spline mode's status text depends on both of these (Milestone 5).
     spline_point_count: usize,
     spline_length_m: f32,
@@ -54,8 +52,6 @@ impl StatusBarSignature {
             camera_mode: state.editor.camera_mode,
             current_tool: state.editor.current_tool,
             tool_mode: state.editor.tool_mode_registry.selected_id(),
-            terrain_radius_m: state.editor.terrain.sculpt.radius_m,
-            terrain_strength: state.editor.terrain.sculpt.strength,
             spline_point_count: state.editor.spline.points.len(),
             spline_length_m: state.editor.spline.total_length_m(),
         }
@@ -161,10 +157,6 @@ impl Render for StatusBarView {
             let ctx = ToolModeContext {
                 state: &mut state_clone,
                 gpu_engine: &self.gpu_engine,
-                // Presentational only: `status` reads editor state, never the
-                // terrain seam, so this path must not take `gpu_engine` to
-                // fetch one.
-                terrain: None,
                 camera: CameraFrame::default(),
                 viewport: ViewportFrame::default(),
             };

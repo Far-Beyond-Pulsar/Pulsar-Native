@@ -2679,7 +2679,7 @@ mod tests {
 
     fn draw_frames(cx: &mut VisualTestContext, frames: usize) {
         for _ in 0..frames {
-            cx.update(|window, cx| window.draw(cx).clear(cx));
+            cx.update(|window, cx| window.draw(cx).clear());
         }
     }
 

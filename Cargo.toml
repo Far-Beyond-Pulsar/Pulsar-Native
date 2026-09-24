@@ -111,7 +111,6 @@ pulsar_world_registry              = { path = "crates/core/pulsar_world_registry
 pulsar_scene_model                 = { path = "crates/core/pulsar_scene_model" }
 pulsar_script_object_model         = { path = "crates/core/pulsar_script_object_model" }
 pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
-pulsar_terrain                     = { path = "crates/subsystems/pulsar_terrain" }
 
 # ---------- Agent Providers ----------
 agent_chat_core                    = { path = "crates/agent-providers/agent_chat_core" }
@@ -164,9 +163,7 @@ plugin_manager        = { path = "crates/core/plugin_manager" }
 helio                      = { path = "crates/renderer/helio/crates/helio" }
 helio-asset-compat         = { path = "crates/renderer/helio/crates/helio-asset-compat" }
 helio-default-graphs       = { path = "crates/renderer/helio/crates/helio-default-graphs" }
-helio-planet-voxel-core    = { path = "crates/renderer/helio/crates/helio-planet-voxel-core" }
-helio-pass-planetary-voxel = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-planetary-voxel" }
-helio-pass-voxel-mesh = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-voxel-mesh" }
+helio-voxel-data = { path = "crates/renderer/helio/crates/helio-voxel-data" }
 helio-pass-billboard = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-billboard" }
 helio-pass-forward-lit = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-forward-lit" }
 helio-pass-decal = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-decal" }

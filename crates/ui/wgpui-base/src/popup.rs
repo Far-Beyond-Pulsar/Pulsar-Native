@@ -230,8 +230,8 @@ mod tests {
                 content_hovered,
             }
         });
-        window.update(|window, cx| window.draw(cx).clear(cx));
-        window.update(|window, cx| window.draw(cx).clear(cx));
+        window.update(|window, cx| window.draw(cx).clear());
+        window.update(|window, cx| window.draw(cx).clear());
 
         window.simulate_mouse_move(
             gpui::point(px(20.), px(110.)),
@@ -256,8 +256,8 @@ mod tests {
     #[gpui::test]
     fn trigger_capture_enables_deferred_content_on_the_next_frame(cx: &mut gpui::TestAppContext) {
         let (_, window) = cx.add_window_view(|_, _| Harness);
-        window.update(|window, cx| window.draw(cx).clear(cx));
-        window.update(|window, cx| window.draw(cx).clear(cx));
+        window.update(|window, cx| window.draw(cx).clear());
+        window.update(|window, cx| window.draw(cx).clear());
 
         assert_eq!(
             window.debug_bounds("popup-trigger").unwrap().size,

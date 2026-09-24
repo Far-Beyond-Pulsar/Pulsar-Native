@@ -100,12 +100,12 @@ mod tests {
     #[gpui::test]
     fn content_is_only_rendered_while_open(cx: &mut TestAppContext) {
         let (_, cx) = cx.add_window_view(|_, _| Harness(false));
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(cx.debug_bounds("trigger").is_some());
         assert!(cx.debug_bounds("content").is_none());
 
         let (_, cx) = cx.add_window_view(|_, _| Harness(true));
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(cx.debug_bounds("trigger").is_some());
         assert!(cx.debug_bounds("content").is_some());
     }

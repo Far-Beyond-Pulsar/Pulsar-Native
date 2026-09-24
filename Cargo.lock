@@ -2936,8 +2936,8 @@ dependencies = [
  "helio-pass-decal",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
- "helio-pass-voxel-mesh",
  "helio-pass-water-sim",
+ "helio-voxel-data",
  "helio_component",
  "libloading 0.9.0",
  "lsp-types",
@@ -2952,7 +2952,6 @@ dependencies = [
  "pulsar_scene_model",
  "pulsar_scenedb",
  "pulsar_script_object_model",
- "pulsar_terrain",
  "pulsar_world_registry",
  "rapier3d",
  "reqwest 0.13.4",
@@ -2980,6 +2979,7 @@ dependencies = [
 name = "engine_class_derive"
 version = "0.1.0"
 dependencies = [
+ "gpui-ce",
  "pollster 1.0.1",
  "proc-macro2",
  "pulsar_reflection",
@@ -4564,7 +4564,6 @@ dependencies = [
  "helio-pass-occlusion-cull",
  "helio-pass-perf-overlay",
  "helio-pass-planar-reflection",
- "helio-pass-planetary-voxel",
  "helio-pass-portal-cull",
  "helio-pass-portal-instances",
  "helio-pass-postprocess",
@@ -4580,7 +4579,6 @@ dependencies = [
  "helio-pass-tsr",
  "helio-pass-virtual-geometry",
  "helio-pass-volumetric-fog",
- "helio-pass-voxel-mesh",
  "helio-pass-water-sim",
  "image",
  "pulsar_scenedb",
@@ -4837,17 +4835,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "helio-pass-planetary-voxel"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "helio-core",
- "log",
- "thiserror 2.0.20",
- "wgpu",
-]
-
-[[package]]
 name = "helio-pass-portal-cull"
 version = "0.1.0"
 dependencies = [
@@ -5028,20 +5015,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "helio-pass-voxel-mesh"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "glam 0.33.5",
- "helio-core",
- "helio-pass-object-batch",
- "log",
- "pulsar_scenedb",
- "pulsar_scenedb_derive",
- "wgpu",
-]
-
-[[package]]
 name = "helio-pass-water-sim"
 version = "0.1.0"
 dependencies = [
@@ -5053,6 +5026,10 @@ dependencies = [
  "pulsar_scenedb_derive",
  "wgpu",
 ]
+
+[[package]]
+name = "helio-voxel-data"
+version = "0.1.0"
 
 [[package]]
 name = "helio-xr"
@@ -5083,7 +5060,6 @@ dependencies = [
  "helio-asset-compat",
  "helio-pass-deferred-light",
  "helio-pass-foliage-place",
- "helio-pass-planetary-voxel",
  "helio-pass-portal-cull",
  "helio-pass-postprocess",
  "helio-pass-water-sim",
@@ -5092,7 +5068,6 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
- "pulsar_terrain",
  "pulsar_world_registry",
  "serde",
  "serde_json",
@@ -9106,22 +9081,6 @@ dependencies = [
  "pulsar_std",
  "serde_json",
  "sha2 0.11.0",
-]
-
-[[package]]
-name = "pulsar_terrain"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "crossbeam-channel",
- "engine_fs",
- "engine_subsystems",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "tempfile",
- "thiserror 2.0.20",
- "tracing",
 ]
 
 [[package]]
@@ -13220,7 +13179,6 @@ name = "ui_level_editor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.23.1",
  "blueprint_editor_plugin",
  "chrono",
  "core-foundation-sys",

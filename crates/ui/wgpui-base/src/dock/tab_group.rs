@@ -1472,7 +1472,7 @@ mod tests {
                 )
             })
         });
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
 
         drag_from_the_tab_into_the_content(cx);
 
@@ -1727,7 +1727,7 @@ mod tests {
     fn the_renderer_composes_frame_then_tab_bar_then_content(cx: &mut TestAppContext) {
         let (_group, calls, cx) = build_skinned_group(&["a"], cx);
 
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
 
         assert_eq!(
             *calls.borrow(),
@@ -1742,7 +1742,7 @@ mod tests {
     fn an_empty_group_asks_the_renderer_for_its_empty_state(cx: &mut TestAppContext) {
         let (_group, calls, cx) = build_skinned_group(&[], cx);
 
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
 
         assert_eq!(
             *calls.borrow(),
@@ -1756,7 +1756,7 @@ mod tests {
     #[gpui::test]
     fn the_content_frame_is_what_a_drag_is_measured_against(cx: &mut TestAppContext) {
         let (group, calls, cx) = build_skinned_group(&["a", "b"], cx);
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
 
         drag_from_the_tab_into_the_content(cx);
 
@@ -1771,7 +1771,7 @@ mod tests {
         );
         assert_eq!(indicator.placement(), Some(Placement::Right));
 
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
         assert!(
             calls.borrow().contains(&"drop_indicator"),
             "a published indicator is handed to the renderer to draw"
@@ -1784,7 +1784,7 @@ mod tests {
     fn dropping_on_the_content_frame_reports_the_move(cx: &mut TestAppContext) {
         let (group, _calls, cx) = build_skinned_group(&["a", "b"], cx);
         let events = record_events(&group, cx);
-        cx.update(|window, cx| window.draw(cx).clear(cx));
+        cx.update(|window, cx| window.draw(cx).clear());
 
         drag_from_the_tab_into_the_content(cx);
         cx.simulate_mouse_up(

@@ -378,7 +378,7 @@ mod tests {
         let (state, cx) = cx.add_window_view(move |_, cx| SelectHarness::new(disabled, cx));
         cx.update(|window, cx| {
             state.focus_handle(cx).focus(window, cx);
-            window.draw(cx).clear(cx);
+            window.draw(cx).clear();
         });
         (cx, state)
     }

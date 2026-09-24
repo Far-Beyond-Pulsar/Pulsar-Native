@@ -44,7 +44,6 @@ use crate::format::{SceneFile, SceneLoadError};
 // (ComponentRuntimeContext dispatch only works if those statics are linked in.)
 pub use helio_component::FoliageComponent as _ForceLink_FoliageComponent;
 pub use helio_component::LightComponent as _ForceLink_LightComponent;
-pub use helio_component::PlanetTerrainComponent as _ForceLink_PlanetTerrainComponent;
 pub use helio_component::PortalComponent as _ForceLink_PortalComponent;
 pub use helio_component::PostProcessVolumeComponent as _ForceLink_PostProcessVolumeComponent;
 pub use helio_component::ReflectionCaptureComponent as _ForceLink_ReflectionCaptureComponent;
@@ -231,57 +230,4 @@ pub fn build_transform_parts(position: [f32; 3], rotation: [f32; 3], scale: [f32
         rotation[2].to_radians(),
     );
     Mat4::from_scale_rotation_translation(Vec3::from_array(scale), q, Vec3::from_array(position))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use pulsar_reflection::ComponentRuntimeContext;
-    use std::path::{Path, PathBuf};
-
-    struct LinkageContext {
-        project_root: PathBuf,
-        subsystems: Subsystems,
-        errors: Vec<String>,
-    }
-
-    impl ComponentRuntimeContext for LinkageContext {
-        fn subsystems_mut(&mut self) -> &mut Subsystems {
-            &mut self.subsystems
-        }
-
-        fn project_root(&self) -> &Path {
-            &self.project_root
-        }
-
-        fn report_error(&mut self, message: String) {
-            self.errors.push(message);
-        }
-    }
-
-    #[test]
-    fn shared_scene_loader_links_planet_terrain_runtime_behavior() {
-        let props = HashMap::new();
-        let owner = RuntimeComponentOwner {
-            scene_object_id: "earth",
-            position: [0.0; 3],
-            rotation: [0.0; 3],
-            scale: [1.0; 3],
-            props: &props,
-        };
-        let mut context = LinkageContext {
-            project_root: PathBuf::from("."),
-            subsystems: Subsystems::new(),
-            errors: Vec::new(),
-        };
-
-        assert!(apply_runtime_behavior_for_class(
-            helio_component::PLANET_TERRAIN_CLASS_NAME,
-            &owner,
-            0,
-            &serde_json::to_value(helio_component::PlanetTerrainComponent::default()).unwrap(),
-            &mut context,
-        ));
-        assert!(context.errors.is_empty());
-    }
 }

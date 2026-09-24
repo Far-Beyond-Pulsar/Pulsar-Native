@@ -5,11 +5,9 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use helio::{Camera, Renderer, RendererConfig};
-use helio_component::{PlanetTerrainFrameInput, PlanetTerrainRuntime};
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 use crate::scene::{GizmoType, SceneWorldExt};
-use crate::services::terrain_edit::TerrainEditMailbox;
 
 use super::interaction::SceneInteraction;
 type GizmoMode = GizmoType;
@@ -155,11 +153,6 @@ pub struct HelioRenderer {
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
     pub pending_errors: Arc<Mutex<Vec<String>>>,
 
-    /// Frame-boundary mailbox for the level editor's terrain tool mode: the
-    /// scene's planet definitions and the brush ring come in, the canonical
-    /// `TerrainRuntimeHandle` goes out. See `services::terrain_edit`.
-    terrain: TerrainEditMailbox,
-
     inner: Option<HelioInner>,
 
     // ── Camera State ──
@@ -181,7 +174,6 @@ pub struct HelioRenderer {
     spike_log_config: RenderSpikeLogConfig,
     last_spike_warning: Option<Instant>,
     last_reported_gpu_frame: Option<u64>,
-    last_planet_error: Option<String>,
 
     // ── Idle tracking ──
     /// Set when raw keyboard/mouse input was non-zero this frame, cleared
@@ -200,12 +192,8 @@ pub struct HelioRenderer {
 
 struct HelioInner {
     renderer: Renderer,
-    device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     interaction: SceneInteraction,
-    /// Transient execution state for the optional planetary pass.
-    planet_terrain: Option<PlanetTerrainRuntime>,
-    planet_graph_rebuilt: bool,
     /// Frame-pacing revision; never used as a renderer-side world mirror.
     last_scene_revision: u64,
     has_rendered_frame: bool,
@@ -226,7 +214,6 @@ impl HelioRenderer {
             reset_taa_next_frame: false,
             inner: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
-            terrain: TerrainEditMailbox::new(),
             cam_pos: Vec3::new(8.0, 6.0, 12.0),
             cam_yaw: -0.5,
             cam_pitch: -0.3,
@@ -239,7 +226,6 @@ impl HelioRenderer {
             spike_log_config: RenderSpikeLogConfig::default(),
             last_spike_warning: None,
             last_reported_gpu_frame: None,
-            last_planet_error: None,
             had_camera_input: false,
             gizmo_dirty: true,
             profiler_frame_counter: 0,
@@ -380,11 +366,8 @@ impl HelioRenderer {
 
             let inner = HelioInner {
                 renderer: r,
-                device: device_arc.clone(),
                 queue: queue_arc.clone(),
                 interaction: SceneInteraction::default(),
-                planet_terrain: None,
-                planet_graph_rebuilt: false,
                 last_scene_revision: 0,
                 has_rendered_frame: false,
             };
@@ -488,14 +471,6 @@ impl HelioRenderer {
         self.configure_gizmo_view();
         self.viewport_size = previous_viewport_size;
 
-        // Reconcile the terrain runtime with the scene's planets before the
-        // idle check below reads `planet_terrain` -- creating or retiring a
-        // planet must itself be able to wake the frame up.
-        {
-            profiling::profile_scope!("helio_sync_terrain_planets");
-            self.sync_terrain_planets();
-        }
-
         let inner = match self.inner.as_mut() {
             Some(i) => i,
             None => return None,
@@ -518,27 +493,17 @@ impl HelioRenderer {
 
         let needs_initial_scene_sync = !inner.has_rendered_frame;
         let force_scene_sync = self.pending_force_full_resync.swap(false, Ordering::AcqRel);
-        let has_pending_scene =
-            needs_initial_scene_sync || force_scene_sync || scene_revision != inner.last_scene_revision;
+        let has_pending_scene = needs_initial_scene_sync
+            || force_scene_sync
+            || scene_revision != inner.last_scene_revision;
         let has_pending_editor = self.pending_deselect.load(Ordering::Acquire)
             || self.pending_gizmo_mode.lock().is_ok_and(|g| g.is_some())
             || self.pending_force_full_resync.load(Ordering::Acquire);
         let camera_stopped = self.cam_local_velocity.length_squared() <= CAMERA_IDLE_EPSILON
             && !self.had_camera_input;
-        // A terrain edit (or a brush-ring move) changes what is on screen
-        // without touching the camera or the scene database, so it has to
-        // defeat the idle early-out itself -- otherwise a sculpt stroke made
-        // while the camera is parked would not appear until the user moved.
-        // Also true while a body is still streaming in: that work only progresses
-        // on rendered frames, so a parked camera must not idle it to a halt.
-        let terrain_streaming = inner.planet_terrain.as_ref().is_some_and(|runtime| {
-            runtime.renderer_ready(&inner.renderer) && runtime.has_pending_work(&inner.renderer)
-        });
-        let has_pending_terrain = self.terrain.wants_advance() || terrain_streaming;
         let is_idle = camera_stopped
             && !has_pending_scene
             && !has_pending_editor
-            && !has_pending_terrain
             && !self.gizmo_dirty
             && !viewport_resized
             && !self.reset_taa_next_frame;
@@ -556,11 +521,6 @@ impl HelioRenderer {
             let _engine_resize_diagnostic = (width, height, scene_revision, self.frame_count);
             profiling::profile_scope!("helio_resize");
             inner.renderer.set_render_size(width, height);
-            if inner.planet_terrain.as_ref().is_some_and(|runtime| {
-                runtime.has_active_components() && runtime.renderer_ready(&inner.renderer)
-            }) {
-                inner.planet_graph_rebuilt = true;
-            }
             self.viewport_size = (width, height);
         }
 
@@ -585,7 +545,7 @@ impl HelioRenderer {
         }
 
         // ── Early out when idle ─────────────────────────────────────────────────
-        // No GPU work, no gizmo rebuild, no planet terrain tick, no profiler reads.
+        // No GPU work, no gizmo rebuild, no profiler reads.
         if is_idle {
             // Idle frames must still serve inspector requests.
             {
@@ -638,7 +598,7 @@ impl HelioRenderer {
             self.scene_store.read().world.publish_inspector_snapshot();
         }
 
-        // ── Camera / planet / gizmo / render ────────────────────────────────────
+        // ── Camera / gizmo / render ─────────────────────────────────────────────
         let t_prepare = Instant::now();
         let camera = {
             #[cfg(feature = "editor-ui")]
@@ -658,63 +618,6 @@ impl HelioRenderer {
                 10_000.0,
             );
 
-            // Planet terrain advance: whenever the camera is moving, or when a
-            // terrain edit is waiting to be streamed back in.
-            let terrain_dirty = self.terrain.take_pending_advance();
-            let should_advance_planet = !viewport_resized
-                && inner.planet_terrain.as_ref().is_some_and(|runtime| {
-                    runtime.has_active_components() && runtime.renderer_ready(&inner.renderer)
-                })
-                && (!camera_stopped || viewport_resized || terrain_dirty || terrain_streaming);
-            if should_advance_planet {
-                profiling::profile_scope!("helio_planet_terrain_advance");
-                let graph_rebuilt = std::mem::take(&mut inner.planet_graph_rebuilt);
-                let planet_terrain = inner
-                    .planet_terrain
-                    .as_mut()
-                    .expect("planet runtime was checked above");
-                let horizontal_forward = Vec3::new(sy, 0.0, -cy);
-                let right = Vec3::new(cy, 0.0, sy);
-                let velocity = right * self.cam_local_velocity.x
-                    + Vec3::Y * self.cam_local_velocity.y
-                    + horizontal_forward * self.cam_local_velocity.z;
-                let input = PlanetTerrainFrameInput {
-                    camera_m: self.cam_pos.as_dvec3().to_array(),
-                    forward: fwd.as_dvec3().to_array(),
-                    up: Vec3::Y.as_dvec3().to_array(),
-                    vertical_fov_radians: f64::from(std::f32::consts::FRAC_PI_4),
-                    viewport_px: [width.max(1), height.max(1)],
-                    near_m: 0.1,
-                    far_m: 10_000.0,
-                    velocity_mps: velocity.as_dvec3().to_array(),
-                    delta_time_s: dt,
-                    tick: self.frame_count,
-                    frame_index: self.frame_count,
-                    graph_rebuilt,
-                };
-                let planet_error = match planet_terrain.advance(
-                    &mut inner.renderer,
-                    inner.device.as_ref(),
-                    inner.queue.as_ref(),
-                    input,
-                ) {
-                    Ok(report) if report.planning_failures.is_empty() => None,
-                    Ok(report) => Some(report.planning_failures.join("; ")),
-                    Err(error) => Some(format!("Planet terrain streaming failed: {error}")),
-                };
-                if planet_error != self.last_planet_error {
-                    if let Some(message) = planet_error.as_ref() {
-                        tracing::error!("{message}");
-                        if let Ok(mut errors) = self.pending_errors.lock() {
-                            errors.push(message.clone());
-                        }
-                    } else if self.last_planet_error.is_some() {
-                        tracing::info!("Planet terrain streaming recovered");
-                    }
-                    self.last_planet_error = planet_error;
-                }
-            }
-
             // Debug geometry is transient GPU execution state. World content is
             // read by Helio passes directly from the SceneDB GPU mirror.
             {
@@ -730,20 +633,6 @@ impl HelioRenderer {
                 inner
                     .interaction
                     .draw_gizmo(&mut inner.renderer, &store.world, self.cam_pos);
-            }
-            // Terrain brush ring, from the tool-mode mailbox. Same transient
-            // debug-geometry sink the gizmo uses, so it is rebuilt per frame
-            // and needs no lifetime management of its own.
-            if let Some(brush) = self.terrain.brush_cursor() {
-                inner.renderer.debug_torus(
-                    brush.center_m,
-                    brush.normal,
-                    brush.radius_m,
-                    (brush.radius_m * 0.02).max(0.02),
-                    brush.color,
-                    48,
-                    6,
-                );
             }
             camera
         };
@@ -1015,82 +904,6 @@ impl HelioRenderer {
         }
     }
 
-    /// Cheap handle bundle for the terrain tool mode. Like
-    /// [`Self::editor_mailbox`] this is fetched once and never takes the
-    /// renderer's per-frame lock afterwards.
-    pub fn terrain_mailbox(&self) -> TerrainEditMailbox {
-        self.terrain.clone()
-    }
-
-    /// Reconcile the terrain runtime with the terrain bodies the editor
-    /// posted, creating the runtime on first use and retiring it when the last
-    /// body disappears.
-    ///
-    /// A body is a planet or a flat voxel volume; this path does not care
-    /// which, because `upsert_body_component` registers either one the same
-    /// way and the component cache keys off the shared body identity.
-    ///
-    /// This is deliberately driven by an explicit mailbox rather than by the
-    /// generic world-component dispatch: that dispatch was removed with the
-    /// SceneDB nativization work, and the terrain seam must not depend on when
-    /// it comes back.
-    fn sync_terrain_planets(&mut self) {
-        let Some(definitions) = self.terrain.take_pending_bodies() else {
-            return;
-        };
-        let Some(inner) = self.inner.as_mut() else {
-            return;
-        };
-
-        if definitions.is_empty() {
-            if inner.planet_terrain.take().is_some() {
-                self.terrain.publish_runtime(None);
-                Self::sync_planet_graph(inner, &self.pending_errors);
-            }
-            return;
-        }
-
-        if inner.planet_terrain.is_none() {
-            match PlanetTerrainRuntime::new() {
-                Ok(runtime) => inner.planet_terrain = Some(runtime),
-                Err(error) => {
-                    let message = format!("Planet terrain runtime initialization failed: {error}");
-                    tracing::error!("{message}");
-                    if let Ok(mut errors) = self.pending_errors.lock() {
-                        errors.push(message);
-                    }
-                    return;
-                }
-            }
-        }
-
-        let Some(planet_terrain) = inner.planet_terrain.as_mut() else {
-            return;
-        };
-        let (runtime, cache) = planet_terrain.component_context_mut();
-        let runtime = runtime.clone();
-        let mut live_keys = pulsar_reflection::LiveKeySet::new();
-        for (source_key, definition) in &definitions {
-            live_keys.insert(source_key.clone());
-            match runtime.upsert_body_component(source_key.clone(), *definition) {
-                Ok(_) => cache.record(source_key.clone(), definition.body_id()),
-                Err(error) => {
-                    let message = format!("Planet terrain component sync failed: {error}");
-                    tracing::error!("{message}");
-                    if let Ok(mut errors) = self.pending_errors.lock() {
-                        errors.push(message);
-                    }
-                }
-            }
-        }
-        if let Err(error) = planet_terrain.remove_stale_components(&live_keys) {
-            tracing::error!("Planet terrain stale-component cleanup failed: {error}");
-        }
-
-        self.terrain.publish_runtime(Some(runtime));
-        Self::sync_planet_graph(inner, &self.pending_errors);
-    }
-
     pub fn set_gizmo_mode(&mut self, mode: GizmoMode) {
         self.gizmo_dirty = true;
         if let Some(inner) = &mut self.inner {
@@ -1132,7 +945,9 @@ impl HelioRenderer {
     pub fn select_object_atomic(&mut self, scene_db_id: Option<String>) -> bool {
         let exists = {
             let mut scene = self.scene_store.write();
-            let entity = scene_db_id.as_deref().and_then(|id| scene.world.entity_for(id));
+            let entity = scene_db_id
+                .as_deref()
+                .and_then(|id| scene.world.entity_for(id));
             scene.world.select(entity);
             scene_db_id.is_none() || entity.is_some()
         };
@@ -1175,7 +990,9 @@ impl HelioRenderer {
         {
             return;
         }
-        let target = inner.interaction.pick(&store.world, ray_origin, ray_direction);
+        let target = inner
+            .interaction
+            .pick(&store.world, ray_origin, ray_direction);
         drop(store);
         self.select_object_atomic(target);
     }
@@ -1204,7 +1021,6 @@ impl HelioRenderer {
             inner.interaction.cancel_drag();
         }
     }
-
     fn configure_gizmo_view(&mut self) {
         let (sy, cy) = self.cam_yaw.sin_cos();
         let (sp, cp) = self.cam_pitch.sin_cos();
@@ -1218,60 +1034,6 @@ impl HelioRenderer {
         let view = Mat4::look_at_rh(self.cam_pos, self.cam_pos + forward, Vec3::Y);
         if let Some(inner) = &mut self.inner {
             inner.interaction.set_view(self.cam_pos, forward, projection * view, size);
-        }
-    }
-    fn sync_planet_graph(inner: &mut HelioInner, error_queue: &Arc<Mutex<Vec<String>>>) {
-        let wants_planet_graph = inner
-            .planet_terrain
-            .as_ref()
-            .is_some_and(PlanetTerrainRuntime::has_active_components);
-        let has_planet_graph = inner
-            .planet_terrain
-            .as_ref()
-            .is_some_and(|runtime| runtime.renderer_ready(&inner.renderer));
-        if wants_planet_graph == has_planet_graph {
-            return;
-        }
-
-        let context = || helio::PassBuildContext {
-            device: &inner.device,
-            queue: &inner.queue,
-            config: inner.renderer.renderer_config(),
-            debug_state: inner.renderer.debug_state(),
-            // The *scene* camera buffer. This used to pass `debug_camera_buf()`
-            // (64-byte UNIFORM-only), so the first planet/volume created in
-            // the editor rebuilt the graph with a buffer `ShadowMatrixPass`
-            // binds as storage -> wgpu validation panic on the render thread.
-            camera_buffer: inner.renderer.camera_buf(),
-            // Helio's `PassBuildContext` carries the debug-draw camera uniform
-            // separately from the scene camera above (see the note there).
-            debug_camera_buffer: inner.renderer.debug_camera_buf(),
-            cull_stats_buffer: inner.renderer.cull_stats_buf(),
-            owns_device: false,
-            scene_db: inner.renderer.scene_db(),
-        };
-        let graph = if wants_planet_graph {
-            helio_default_graphs::build_default_graph_external_with_planetary_voxels_with_context(
-                context(),
-                PlanetTerrainRuntime::renderer_config(),
-            )
-            .map_err(|error| error.to_string())
-        } else {
-            Ok(helio_default_graphs::build_default_graph_external_with_context(context()))
-        };
-
-        match graph {
-            Ok(graph) => {
-                inner.renderer.set_graph(graph);
-                inner.planet_graph_rebuilt = wants_planet_graph;
-            }
-            Err(error) => {
-                let message = format!("Failed to configure planetary render graph: {error}");
-                tracing::error!("{message}");
-                if let Ok(mut errors) = error_queue.lock() {
-                    errors.push(message);
-                }
-            }
         }
     }
 }

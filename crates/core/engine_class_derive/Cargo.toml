@@ -45,6 +45,7 @@ proc-macro2 = { workspace = true }
 # compile and run that generated code against this crate's own tests.
 
 [dev-dependencies]
+gpui-ce = { workspace = true }
 # Was a TEMPORARY branch pin (`engine-class-scenestore-export`) while
 # SceneDB#44's `pulsar_scenedb::SceneStore` re-export was unmerged and the
 # root Cargo.toml's rev predated it. SceneDB#44 has since merged to `main`
