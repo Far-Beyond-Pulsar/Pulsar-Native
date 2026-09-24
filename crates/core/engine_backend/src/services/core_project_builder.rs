@@ -769,7 +769,8 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
 //!
 //! Native prefabs are controlled by `Pulsar/level.json`.
 //! Gameplay script crates under `scripts/` are auto-discovered (#653).
-//! VM blueprints are auto-discovered from `src/classes/*/events/.build/bytecode.json`.
+//! Script classes are auto-discovered from `src/classes/*/events/.build/module.json`;
+//! VM blueprints without one from `src/classes/*/events/.build/bytecode.json`.
 
 use pulsar_game::prelude::*;
 use pulsar_game::blueprint_runtime::BlueprintDispatcher;
@@ -788,15 +789,30 @@ pub fn setup(game: &mut TickLoop) -> Result<(), String> {{
     // ── Native actors (from Pulsar/level.json) ────────────────────────────────
 {native_spawn_body}
 {script_section}
+    let classes_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src")
+        .join("classes");
+
+    // ── Script classes (engine script VM) ─────────────────────────────────────
+    //
+    // Classes whose editor build wrote src/classes/*/events/.build/module.json
+    // run on the script runtime; the bytecode discovery below skips them.
+    let mut script_classes: Vec<String> = Vec::new();
+    if classes_dir.exists() {{
+        let mut runtime = pulsar_game::scripting::new_runtime();
+        script_classes = pulsar_game::scripting::load_project_classes(&mut runtime, &classes_dir);
+        if !script_classes.is_empty() {{
+            tracing::info!("Script runtime active — {{}} class(es) loaded", script_classes.len());
+            game.script_runtime = Some(Arc::new(Mutex::new(runtime)));
+        }}
+    }}
+
     // ── VM blueprint discovery ────────────────────────────────────────────────
     //
     // Scan src/classes/*/events/.build/bytecode.json.
     // Each file was written by the Blueprint Editor's BytecodeVm compile path.
     // The function-pointer slots are zero here; BlueprintDispatcher::new() calls
     // BpExecutor::prepare() which patches them from the embedded pulsar_std dylib.
-    let classes_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("src")
-        .join("classes");
 
     if classes_dir.exists() {{
         match BlueprintDispatcher::new() {{
@@ -822,6 +838,9 @@ pub fn setup(game: &mut TickLoop) -> Result<(), String> {{
                     }}
 
                     let class_name = entry.file_name().to_string_lossy().into_owned();
+                    if script_classes.contains(&class_name) {{
+                        continue;
+                    }}
                     // Each VM class gets a single default instance.
                     // For per-level multi-instance spawning, add support in level.json.
                     let object_id = format!("{{class_name}}__vm_default");

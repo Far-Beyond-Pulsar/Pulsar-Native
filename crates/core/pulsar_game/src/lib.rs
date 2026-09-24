@@ -24,6 +24,9 @@ pub use pulsar_scenedb::{
 // Blueprint runtime system
 pub mod blueprint_runtime;
 
+// Script classes on the engine script VM (module.json builds).
+pub mod scripting;
+
 // Window / rendering integration
 pub mod camera_selection;
 pub mod freecam;

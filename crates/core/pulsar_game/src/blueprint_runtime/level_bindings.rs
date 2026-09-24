@@ -115,6 +115,8 @@ pub enum BindingError {
     },
     Serialization(String),
     Executor(ExecutorError),
+    /// The script runtime refused (see `crate::scripting`).
+    Script(pulsar_script_runtime::RuntimeError),
 }
 
 impl std::fmt::Display for BindingError {
@@ -139,6 +141,7 @@ impl std::fmt::Display for BindingError {
             BindingError::Io { path, message } => write!(f, "failed to read '{path}': {message}"),
             BindingError::Serialization(message) => write!(f, "invalid bytecode json: {message}"),
             BindingError::Executor(error) => write!(f, "dispatcher refused: {error}"),
+            BindingError::Script(error) => write!(f, "script runtime refused: {error}"),
         }
     }
 }

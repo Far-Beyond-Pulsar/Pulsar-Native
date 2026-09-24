@@ -1097,11 +1097,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "blueprint_compiler"
+version = "0.1.0"
+dependencies = [
+ "graphy",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_script_vm",
+ "serde_json",
+]
+
+[[package]]
 name = "blueprint_editor_plugin"
 version = "0.7.0"
 dependencies = [
  "anyhow",
  "arboard",
+ "blueprint_compiler",
  "bytemuck",
  "chrono",
  "engine_backend",
@@ -1114,6 +1126,7 @@ dependencies = [
  "pbgc",
  "plugin_editor_api",
  "pulsar_reflection",
+ "pulsar_script_vm",
  "schemars",
  "serde",
  "serde_json",
@@ -8883,7 +8896,10 @@ dependencies = [
  "pulsar_scene",
  "pulsar_scenedb",
  "pulsar_script_object_model",
+ "pulsar_script_runtime",
+ "pulsar_script_vm",
  "pulsar_settings",
+ "pulsar_std",
  "pulsar_std_bundle",
  "pulsar_world_registry",
  "serde",

@@ -225,7 +225,27 @@ Wiring it into the TickLoop and level bindings waits for Phase 4: the
 editor still emits PBGC `bytecode.json`, so swapping the dispatcher now
 would stop Blueprints running in PIE.
 
-Not yet: pulsar_std's 431 functions as natives (needs a free-function
+**Engine natives from existing registries: done.** `#[blueprint]`
+registers 251 of pulsar_std's 431 functions as `std::<fn>` natives (the
+rest are control-flow/event nodes, generic, or use tuples/Vecs); every
+world component (`pulsar_world_registry`) is a script component with
+`Class::get_/set_<property>` and `Class::<method>` natives. Natives that
+panic fail the call instead of unwinding into the game loop.
+
+**Phase 4: Blueprint compiler done; runtime switch done.**
+- `Plugin_Blueprints` branch `claude/serene-keller-ma920s`:
+  `compiler/` (`blueprint_compiler`) compiles the expanded graph to a
+  module (see its crate docs for the node mapping); the Bytecode VM
+  compile mode also writes `events/.build/module.json`. 10 tests.
+- `pulsar_game::scripting` + `TickLoop::script_runtime`: classes with a
+  `module.json` run on `ScriptRuntime` (level bindings and project
+  discovery, including the generated `setup()`); classes with only
+  `bytecode.json` stay on the old dispatcher.
+- Not yet: identity nodes (`find_object_by_*`, `object_ref_literal`) and
+  latent nodes (`delay`) are compile errors in the new compiler; the node
+  palette still comes from pulsar_std metadata rather than the registry.
+
+Not yet: pulsar_std functions with tuple/Vec/array signatures as natives (needs a free-function
 registration path from `#[blueprint]`; natives can already be written with
 the typed builder), a compact binary encoding.
 

@@ -49,6 +49,9 @@ pub struct TickLoop {
     pub actors: ActorRegistry,
     pub tasks: Arc<TaskPool>,
     pub blueprint_dispatcher: Option<Arc<Mutex<BlueprintDispatcher>>>,
+    /// Script classes on the engine script VM (see `crate::scripting`).
+    /// Driven in the same phase as `blueprint_dispatcher`.
+    pub script_runtime: Option<Arc<Mutex<crate::scripting::ScriptRuntime>>>,
     /// Set by [`run_with_windows`][Self::run_with_windows]; game code can
     /// clone this to open/close/configure windows from actors and systems.
     pub window_manager: Option<Arc<WindowManager>>,
@@ -91,6 +94,7 @@ impl TickLoop {
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
             blueprint_dispatcher: None,
+            script_runtime: None,
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,
@@ -123,6 +127,7 @@ impl TickLoop {
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
             blueprint_dispatcher: None,
+            script_runtime: None,
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,
@@ -195,6 +200,15 @@ impl TickLoop {
             dispatcher.dispatch_pending_begin_play(world);
             dispatcher.dispatch_tick_all(world, time.delta.as_secs_f32());
         }
+        if let Some(runtime) = &self.script_runtime {
+            // Same order and lock discipline as the dispatcher above. Errors
+            // are per instance and already logged by the runtime.
+            let mut runtime = runtime.lock().unwrap();
+            let mut store = self.scene_store.write();
+            let world = &mut store.world;
+            runtime.dispatch_pending_begin_play(world);
+            runtime.tick_all(world, time.delta.as_secs_f64());
+        }
 
         time
     }
@@ -229,6 +243,10 @@ impl TickLoop {
                 .lock()
                 .unwrap()
                 .dispatch_end_play_all(&mut store.world);
+        }
+        if let Some(runtime) = &self.script_runtime {
+            let mut store = self.scene_store.write();
+            runtime.lock().unwrap().end_play_all(&mut store.world);
         }
     }
 

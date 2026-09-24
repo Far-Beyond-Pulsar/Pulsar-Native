@@ -939,3 +939,100 @@ mod blueprint_instances {
         let _ = std::fs::remove_dir_all(&project_root);
     }
 }
+
+/// Level bindings for classes with a compiled script module run on the
+/// script runtime (`crate::scripting`); classes without one are left for
+/// the bytecode dispatcher.
+#[cfg(test)]
+mod script_runtime_bindings {
+    use crate::blueprint_runtime::level_bindings::instance_id_for;
+    use crate::scripting;
+    use engine_backend::scene::{RuntimeLevel, SceneWorldExt};
+    use pulsar_script_vm::{BinOp, Function, Instr, Module, Type, Value, Variable};
+
+    const BINDINGS_FIXTURE: &str =
+        include_str!("../tests/fixtures/level_bindings_sample.level.json");
+
+    /// `total += speed * delta_time` every tick.
+    fn tick_probe_module() -> Module {
+        let mut m = Module::new("TickProbe");
+        m.variables = vec![
+            Variable { name: "speed".into(), ty: Type::Float, default: None },
+            Variable { name: "total".into(), ty: Type::Float, default: None },
+        ];
+        m.functions = vec![Function {
+            name: "tick".into(),
+            exported: true,
+            params: vec![Type::Float],
+            ret: Type::Unit,
+            registers: vec![Type::Float, Type::Float, Type::Float],
+            code: vec![
+                Instr::LoadVar { dst: 1, var: 0 },
+                Instr::Binary { op: BinOp::Mul, dst: 1, a: 1, b: 0 },
+                Instr::LoadVar { dst: 2, var: 1 },
+                Instr::Binary { op: BinOp::Add, dst: 2, a: 2, b: 1 },
+                Instr::StoreVar { var: 1, src: 2 },
+                Instr::Return { value: None },
+            ],
+        }];
+        m
+    }
+
+    #[test]
+    fn module_classes_bind_to_their_objects_and_tick() {
+        let root = std::env::temp_dir().join(format!("pulsar_game_script_bindings_{}", std::process::id()));
+        let module_path = scripting::module_path_for_class(&root, "TickProbe");
+        std::fs::create_dir_all(module_path.parent().unwrap()).unwrap();
+        std::fs::write(&module_path, tick_probe_module().to_json().unwrap()).unwrap();
+
+        let file: pulsar_scene::SceneFile = serde_json::from_str(BINDINGS_FIXTURE).unwrap();
+        let level = RuntimeLevel::from_scene_file(file).unwrap();
+        let store = level.scene();
+        let mut bindings = level.extras().blueprint_bindings.clone();
+        drop(level);
+        // A class with no module stays with the bytecode dispatcher.
+        bindings.get_mut("lever_a").unwrap().push(pulsar_scene::format::BlueprintBinding {
+            class_name: "LegacyOnly".into(),
+            overrides: Default::default(),
+        });
+
+        let mut runtime = scripting::new_runtime();
+        let (report, remaining) = {
+            let guard = store.read();
+            scripting::apply_script_bindings(&mut runtime, &guard, &root, &bindings)
+        };
+        assert!(report.failures.is_empty(), "{:?}", report.failures);
+        assert_eq!(report.applied.len(), 2);
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining["lever_a"][0].class_name, "LegacyOnly");
+
+        let a = instance_id_for("lever_a", "TickProbe");
+        let b = instance_id_for("lever_b", "TickProbe");
+        {
+            let guard = store.read();
+            assert_eq!(runtime.entity_of(&a), guard.world.entity_for("lever_a"));
+        }
+        let mut guard = store.write();
+        runtime.dispatch_pending_begin_play(&mut guard.world);
+        runtime.tick_all(&mut guard.world, 1.0);
+        runtime.tick_all(&mut guard.world, 1.0);
+        assert_eq!(runtime.variable(&a, "total"), Some(&Value::Float(5.0)));
+        assert_eq!(runtime.variable(&b, "total"), Some(&Value::Float(18.0)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn project_discovery_loads_module_classes() {
+        let root = std::env::temp_dir().join(format!("pulsar_game_script_discovery_{}", std::process::id()));
+        let module_path = scripting::module_path_for_class(&root, "TickProbe");
+        std::fs::create_dir_all(module_path.parent().unwrap()).unwrap();
+        std::fs::write(&module_path, tick_probe_module().to_json().unwrap()).unwrap();
+        std::fs::create_dir_all(root.join("src/classes/NoModule/events/.build")).unwrap();
+
+        let mut runtime = scripting::new_runtime();
+        let loaded = scripting::load_project_classes(&mut runtime, &root.join("src/classes"));
+        assert_eq!(loaded, ["TickProbe"]);
+        assert_eq!(runtime.instance_ids(), ["TickProbe__vm_default"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

@@ -104,6 +104,9 @@ fn instances_are_isolated_and_take_overrides() {
         rt.spawn("d", "Counter", None, &[("step".into(), Value::Float(1.0))]),
         Err(RuntimeError::BadVariable { .. })
     ));
+    // JSON overrides (level files) skip variables that no longer exist.
+    let stale: HashMap<String, serde_json::Value> = [("gone".to_string(), serde_json::json!(1))].into();
+    rt.spawn_with_json("e", "Counter", None, &stale).unwrap();
     assert!(matches!(rt.spawn("a", "Counter", None, &[]), Err(RuntimeError::DuplicateInstance(_))));
     assert!(matches!(rt.spawn("x", "Nope", None, &[]), Err(RuntimeError::UnknownClass(_))));
 }

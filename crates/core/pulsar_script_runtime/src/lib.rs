@@ -295,6 +295,8 @@ impl ScriptRuntime {
     }
 
     /// Like [`spawn`](Self::spawn), with overrides as JSON (level files).
+    /// Overrides naming variables the class no longer has are ignored with
+    /// a warning; a value of the wrong type is an error.
     pub fn spawn_with_json(
         &mut self,
         object_id: impl Into<String>,
@@ -305,13 +307,12 @@ impl ScriptRuntime {
         let program = &self.classes.get(class).ok_or_else(|| RuntimeError::UnknownClass(class.to_owned()))?.program;
         let mut converted = Vec::with_capacity(overrides.len());
         for (name, json) in overrides {
-            let var = program
-                .variable(name)
-                .map(|i| &program.module().variables[i])
-                .ok_or_else(|| RuntimeError::BadVariable {
-                    name: name.clone(),
-                    reason: format!("`{class}` has no such variable"),
-                })?;
+            // Level files outlive graph edits: a variable that no longer
+            // exists is skipped, not fatal.
+            let Some(var) = program.variable(name).map(|i| &program.module().variables[i]) else {
+                tracing::warn!("`{class}` has no variable `{name}`; ignoring its override");
+                continue;
+            };
             let value = value_from_json(json, &var.ty)
                 .map_err(|reason| RuntimeError::BadVariable { name: name.clone(), reason })?;
             converted.push((name.clone(), value));

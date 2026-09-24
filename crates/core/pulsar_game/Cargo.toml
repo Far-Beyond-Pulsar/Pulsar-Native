@@ -21,6 +21,10 @@ ui = { workspace = true }
 pbgc = { workspace = true }
 pulsar_bp_executor = { workspace = true }
 pulsar_std_bundle = { workspace = true }
+# The engine script VM runtime (scripting.rs) and pulsar_std, whose
+# functions it links as natives.
+pulsar_script_runtime = { workspace = true }
+pulsar_std = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
@@ -71,3 +75,4 @@ workspace = true
 # end-to-end generated-project cargo check (tests/generated_project_compiles).
 engine_class_derive = { workspace = true }
 tempfile = { workspace = true }
+pulsar_script_vm = { workspace = true }

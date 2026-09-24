@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use winit::{
@@ -479,7 +479,31 @@ impl PulsarApp {
                     // logged + collected — one stale entry never blocks play.
                     if !extras.blueprint_bindings.is_empty() {
                         if let Some(tick_loop) = self.tick_loop.as_mut() {
-                            if let Some(dispatcher) = &tick_loop.blueprint_dispatcher {
+                            // Classes with a compiled script module run on the
+                            // script runtime; the rest fall through to the
+                            // bytecode dispatcher below.
+                            let runtime = tick_loop.script_runtime.get_or_insert_with(|| {
+                                Arc::new(Mutex::new(crate::scripting::new_runtime()))
+                            });
+                            let (script_report, remaining) = {
+                                let mut runtime = runtime.lock().expect("script runtime mutex");
+                                let store = self.scene_store.write();
+                                crate::scripting::apply_script_bindings(
+                                    &mut runtime,
+                                    &store,
+                                    &self.project_root,
+                                    &extras.blueprint_bindings,
+                                )
+                            };
+                            tracing::info!(
+                                applied = script_report.applied.len(),
+                                failed = script_report.failures.len(),
+                                "Applied level script bindings"
+                            );
+                            let extras_bindings = remaining;
+                            if extras_bindings.is_empty() {
+                                // Everything ran on the script runtime.
+                            } else if let Some(dispatcher) = &tick_loop.blueprint_dispatcher {
                                 // Same lock order as TickLoop phase 3:
                                 // dispatcher mutex, then store write.
                                 let mut dispatcher =
@@ -490,7 +514,7 @@ impl PulsarApp {
                                         &mut dispatcher,
                                         &store,
                                         &self.project_root,
-                                        &extras.blueprint_bindings,
+                                        &extras_bindings,
                                     )
                                 };
                                 for applied in &report.applied {
