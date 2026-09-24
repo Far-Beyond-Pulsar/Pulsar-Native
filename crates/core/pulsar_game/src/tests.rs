@@ -1022,6 +1022,25 @@ mod script_runtime_bindings {
     }
 
     #[test]
+    fn world_lookup_natives_find_level_objects() {
+        use pulsar_script_vm::Host;
+        let file: pulsar_scene::SceneFile = serde_json::from_str(BINDINGS_FIXTURE).unwrap();
+        let level = RuntimeLevel::from_scene_file(file).unwrap();
+        let store = level.scene();
+        drop(level);
+        let runtime = scripting::new_runtime();
+        let find = runtime.natives().get("world::find_by_stable_id").expect("registered");
+        let mut guard = store.write();
+        let expected = guard.world.entity_for("lever_b").unwrap();
+        let mut host = Host::new(&mut guard.world, pulsar_scenedb::Entity::DANGLING);
+        let found = find.call(&mut host, &mut [Value::from("lever_b")]).unwrap();
+        assert_eq!(found, Value::Entity(expected));
+        let missing = find.call(&mut host, &mut [Value::from("nope")]).unwrap();
+        assert_eq!(missing, Value::Entity(pulsar_scenedb::Entity::DANGLING));
+        assert!(runtime.natives().get("world::find_by_name").is_some());
+    }
+
+    #[test]
     fn project_discovery_loads_module_classes() {
         let root = std::env::temp_dir().join(format!("pulsar_game_script_discovery_{}", std::process::id()));
         let module_path = scripting::module_path_for_class(&root, "TickProbe");

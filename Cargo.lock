@@ -8885,6 +8885,7 @@ dependencies = [
  "helio",
  "helio-default-graphs",
  "helio_component",
+ "inventory",
  "parking_lot",
  "pbgc",
  "pollster 1.0.1",

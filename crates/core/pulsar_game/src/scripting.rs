@@ -18,6 +18,40 @@ use crate::blueprint_runtime::level_bindings::{
     instance_id_for, AppliedBinding, ApplyReport, BindingError, BindingFailure,
 };
 
+// Scene-object lookup for scripts. The result is `entity::none()` when no
+// object matches; component references built from it resolve to nothing.
+inventory::submit! {
+    pulsar_script_vm::NativeRegistration {
+        build: || {
+            pulsar_script_vm::NativeFn::builder("world::find_by_stable_id")
+                .doc("The scene object with this stable id (the level file's object id).")
+                .side_effect_free()
+                .attr("category", "World")
+                .params(["stable_id"])
+                .build(|host: &mut pulsar_script_vm::Host<'_>, id: String| {
+                    engine_backend::scene::entity_with_stable_id(host.world, &id)
+                        .unwrap_or(pulsar_scenedb::Entity::DANGLING)
+                })
+        },
+    }
+}
+
+inventory::submit! {
+    pulsar_script_vm::NativeRegistration {
+        build: || {
+            pulsar_script_vm::NativeFn::builder("world::find_by_name")
+                .doc("The first scene object with this display name.")
+                .side_effect_free()
+                .attr("category", "World")
+                .params(["name"])
+                .build(|host: &mut pulsar_script_vm::Host<'_>, name: String| {
+                    engine_backend::scene::first_entity_named(host.world, &name)
+                        .unwrap_or(pulsar_scenedb::Entity::DANGLING)
+                })
+        },
+    }
+}
+
 /// Where a class's compiled script module lives.
 pub fn module_path_for_class(project_root: &Path, class_name: &str) -> PathBuf {
     project_root
