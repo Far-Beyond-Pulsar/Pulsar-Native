@@ -177,6 +177,58 @@ Each phase leaves every touched crate building and tested.
   `pulsar_game`'s dead bytecode compiler, the dylib shims in
   `pulsar_macros`, and the Blueprint names left in core.
 
+## Progress
+
+**Phase 0: done.**
+- SceneDB (`claude/serene-keller-ma920s`, 03de736 + 0801d26): erased
+  access (`has_component`, `component_ids`, `get_dyn`, `get_dyn_mut` with a
+  `MutDyn` guard sharing `Mut`'s hooks); `ComponentRef` / `ComponentHandle<T>`;
+  `component_store.rs` and the `__bp_*` exports deleted; ComponentId-keyed
+  component methods (`component_methods`, `World::call_component_method`,
+  `invoke_component_method`, `ComponentRef::call`) and the
+  `#[component_methods]` macro with `#[reflect_method]` and world-receiving
+  `#[world_method]` methods.
+- Pulsar-Reflection (`claude/serene-keller-ma920s`): `methods` module
+  (`ReflectedMethod { info: MethodInfo, receiver, invoke }`, TypeId-keyed
+  registry, `CallError`), `#[reflect_methods]`, and
+  `pulsar_reflection_codegen` (shared signature parsing/shim generation).
+  The branch also merges 1c64758 (the rev SceneDB and Helio pinned), so the
+  flat renderer array registrations are kept. The copy vendored here has
+  the same new files.
+
+**Phase 1: done** (`crates/core/pulsar_script_vm`).
+- Module format, verifier, linker (`Program`), interpreter (`Vm`) with
+  step budget, call-depth limit and traced errors.
+- Values: unit/bool/int/float/string/entity/component reference/object;
+  every value owned and `Clone`, no raw pointers.
+- `TypeRegistry`: builtins, `script_component!`, `script_value_type!`.
+- `NativeRegistry` with typed native builder, query API
+  (`functions()`, `methods_for(type)`), and engine natives: stdlib,
+  reflected methods/fields of value types, component methods/fields and
+  accessors (`C::of`, `C::exists`, `C::entity`).
+- `NativeLibraries`: load/reload/unload with shadow copies, a `TypeId` ABI
+  check, and `Arc`-held libraries so linked programs never call unmapped
+  code.
+- 33 tests: control flow (loops, recursion), strings, budget, verifier and
+  link rejections, component methods through references, world methods,
+  properties through SceneDB hooks, value types with `inout` write-back,
+  instance variables, library load/reload/unload with a real cdylib.
+
+**Phase 2: runtime crate done** (`crates/core/pulsar_script_runtime`).
+`ScriptRuntime` owns the native registry, native libraries, classes and
+instances: canonical `begin_play()` / `tick(delta_time: float)` /
+`end_play()` (signatures checked at load), custom events
+(`send_event`), variable defaults and overrides (typed and JSON), bind /
+unbind, class hot reload keeping same-name-same-type variables, relinking
+every class when natives change, per-instance step budgets. 8 tests.
+Wiring it into the TickLoop and level bindings waits for Phase 4: the
+editor still emits PBGC `bytecode.json`, so swapping the dispatcher now
+would stop Blueprints running in PIE.
+
+Not yet: pulsar_std's 431 functions as natives (needs a free-function
+registration path from `#[blueprint]`; natives can already be written with
+the typed builder), a compact binary encoding.
+
 ## Decisions taken
 
 - D1: typed register VM (user confirmed).

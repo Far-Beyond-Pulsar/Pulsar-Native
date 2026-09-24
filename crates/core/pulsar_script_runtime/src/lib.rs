@@ -1,0 +1,471 @@
+//! Script classes bound to entities.
+//!
+//! A **class** is a linked [`Module`] (compiled by any scripting frontend).
+//! An **instance** is one copy of a class's variables, identified by an
+//! object id and optionally bound to an [`Entity`]. The [`ScriptRuntime`]
+//! owns the native registry, the loaded native libraries, the classes and
+//! the instances, and runs lifecycle events:
+//!
+//! | event        | exported function signature | when                          |
+//! |--------------|-----------------------------|-------------------------------|
+//! | `begin_play` | `() -> unit`                | first dispatch after spawning |
+//! | `tick`       | `(float delta_time) -> unit`| every frame                   |
+//! | `end_play`   | `() -> unit`                | despawn / shutdown            |
+//!
+//! Any other exported function is a custom event, sent with
+//! [`ScriptRuntime::send_event`]. A class need not export any of them.
+//!
+//! Hot reload: [`ScriptRuntime::reload_class`] swaps a class's code and
+//! keeps each instance's variables whose name and type are unchanged;
+//! loading, reloading or unloading a native library relinks every class
+//! (see [`RelinkReport`]).
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use pulsar_scenedb::{Entity, World};
+use pulsar_script_vm::{
+    Budget, FuncId, Host, Instance, LibraryError, LibraryId, LinkError, Module, NativeFn,
+    NativeLibraries, NativeRegistry, Program, ScriptError, Type, Value, Vm,
+};
+
+pub const BEGIN_PLAY: &str = "begin_play";
+pub const TICK: &str = "tick";
+pub const END_PLAY: &str = "end_play";
+
+/// Default step budget for one event on one instance.
+pub const DEFAULT_BUDGET: u64 = 1_000_000;
+
+#[derive(Debug, thiserror::Error)]
+pub enum RuntimeError {
+    #[error("no script class `{0}` is loaded")]
+    UnknownClass(String),
+    #[error("script class `{0}` is already loaded")]
+    ClassLoaded(String),
+    #[error("no script instance `{0}`")]
+    UnknownInstance(String),
+    #[error("script instance `{0}` already exists")]
+    DuplicateInstance(String),
+    #[error("`{class}::{name}` must be `{expected}` to be a lifecycle event")]
+    BadEntryPoint { class: String, name: &'static str, expected: &'static str },
+    #[error("`{class}` has no exported function `{name}`")]
+    UnknownEvent { class: String, name: String },
+    #[error("variable `{name}`: {reason}")]
+    BadVariable { name: String, reason: String },
+    #[error("script class `{class}`: {source}")]
+    Link { class: String, source: LinkError },
+    #[error("script instance `{object_id}`: {source}")]
+    Script { object_id: String, source: ScriptError },
+    #[error(transparent)]
+    Library(#[from] LibraryError),
+    #[error("could not read `{path}`: {source}")]
+    Io { path: PathBuf, source: std::io::Error },
+    #[error("`{path}` is not a script module: {source}")]
+    Parse { path: PathBuf, source: serde_json::Error },
+}
+
+struct Entries {
+    begin_play: Option<FuncId>,
+    tick: Option<FuncId>,
+    end_play: Option<FuncId>,
+}
+
+struct Class {
+    program: Program,
+    entries: Entries,
+}
+
+impl Class {
+    fn link(module: Arc<Module>, natives: &NativeRegistry) -> Result<Self, RuntimeError> {
+        let class = module.name.clone();
+        let program = Program::link(module, natives)
+            .map_err(|source| RuntimeError::Link { class: class.clone(), source })?;
+        let entry = |name: &'static str, params: &[Type], expected: &'static str| {
+            match program.module().function(name) {
+                Some((index, f)) if f.exported => {
+                    if f.params == params && f.ret == Type::Unit {
+                        Ok(Some(FuncId(index)))
+                    } else {
+                        Err(RuntimeError::BadEntryPoint { class: class.clone(), name, expected })
+                    }
+                }
+                _ => Ok(None),
+            }
+        };
+        let entries = Entries {
+            begin_play: entry(BEGIN_PLAY, &[], "fn begin_play()")?,
+            tick: entry(TICK, &[Type::Float], "fn tick(delta_time: float)")?,
+            end_play: entry(END_PLAY, &[], "fn end_play()")?,
+        };
+        Ok(Self { program, entries })
+    }
+}
+
+/// One live instance of a class.
+struct ScriptInstance {
+    class: String,
+    state: Instance,
+    entity: Option<Entity>,
+}
+
+/// Classes that failed to relink after the native registry changed. They
+/// keep running the code they were last linked with (whose natives stay
+/// loaded) until fixed and reloaded.
+#[derive(Debug, Default)]
+pub struct RelinkReport {
+    pub relinked: Vec<String>,
+    pub failed: Vec<(String, LinkError)>,
+}
+
+pub struct ScriptRuntime {
+    natives: NativeRegistry,
+    libraries: NativeLibraries,
+    vm: Vm,
+    classes: HashMap<String, Class>,
+    instances: HashMap<String, ScriptInstance>,
+    /// Instance ids in spawn order: events dispatch in this order.
+    order: Vec<String>,
+    pending_begin_play: Vec<String>,
+    /// Step budget for one event on one instance.
+    pub budget: u64,
+}
+
+impl ScriptRuntime {
+    /// A runtime with the engine's natives. Native library shadow copies go
+    /// in `shadow_dir`.
+    pub fn new(shadow_dir: impl Into<PathBuf>) -> Self {
+        Self::with_natives(NativeRegistry::with_engine_natives(), shadow_dir)
+    }
+
+    pub fn with_natives(natives: NativeRegistry, shadow_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            natives,
+            libraries: NativeLibraries::new(shadow_dir),
+            vm: Vm::new(),
+            classes: HashMap::new(),
+            instances: HashMap::new(),
+            order: Vec::new(),
+            pending_begin_play: Vec::new(),
+            budget: DEFAULT_BUDGET,
+        }
+    }
+
+    /// The natives scripts can link against (for frontends' palettes).
+    pub fn natives(&self) -> &NativeRegistry {
+        &self.natives
+    }
+
+    // ---- natives -------------------------------------------------------
+
+    /// Register an engine native, then relink every class.
+    pub fn register_native(&mut self, native: NativeFn) -> Result<RelinkReport, RuntimeError> {
+        self.natives
+            .register(native)
+            .map_err(|e| RuntimeError::Library(LibraryError::Duplicate(e)))?;
+        Ok(self.relink_all())
+    }
+
+    pub fn load_library(&mut self, path: impl AsRef<Path>) -> Result<(LibraryId, RelinkReport), RuntimeError> {
+        let id = self.libraries.load(path, &mut self.natives)?;
+        Ok((id, self.relink_all()))
+    }
+
+    pub fn reload_library(&mut self, id: LibraryId) -> Result<RelinkReport, RuntimeError> {
+        self.libraries.reload(id, &mut self.natives)?;
+        Ok(self.relink_all())
+    }
+
+    pub fn unload_library(&mut self, id: LibraryId) -> Result<RelinkReport, RuntimeError> {
+        self.libraries.unload(id, &mut self.natives)?;
+        Ok(self.relink_all())
+    }
+
+    fn relink_all(&mut self) -> RelinkReport {
+        let mut report = RelinkReport::default();
+        for (name, class) in &mut self.classes {
+            match Class::link(Arc::clone(class.program.module()), &self.natives) {
+                Ok(relinked) => {
+                    *class = relinked;
+                    report.relinked.push(name.clone());
+                }
+                Err(RuntimeError::Link { source, .. }) => {
+                    tracing::error!("script class `{name}` failed to relink: {source}");
+                    report.failed.push((name.clone(), source));
+                }
+                Err(other) => tracing::error!("script class `{name}` failed to relink: {other}"),
+            }
+        }
+        report
+    }
+
+    // ---- classes -------------------------------------------------------
+
+    /// Link and add a class, named by its module name.
+    pub fn load_class(&mut self, module: Module) -> Result<(), RuntimeError> {
+        if self.classes.contains_key(&module.name) {
+            return Err(RuntimeError::ClassLoaded(module.name));
+        }
+        let class = Class::link(Arc::new(module), &self.natives)?;
+        self.classes.insert(class.program.module().name.clone(), class);
+        Ok(())
+    }
+
+    /// Read a JSON module and load it (or reload it, if already loaded).
+    pub fn load_class_file(&mut self, path: impl AsRef<Path>) -> Result<String, RuntimeError> {
+        let path = path.as_ref();
+        let json = std::fs::read_to_string(path)
+            .map_err(|source| RuntimeError::Io { path: path.to_owned(), source })?;
+        let module = Module::from_json(&json)
+            .map_err(|source| RuntimeError::Parse { path: path.to_owned(), source })?;
+        let name = module.name.clone();
+        if self.classes.contains_key(&name) {
+            self.reload_class(module)?;
+        } else {
+            self.load_class(module)?;
+        }
+        Ok(name)
+    }
+
+    pub fn has_class(&self, name: &str) -> bool {
+        self.classes.contains_key(name)
+    }
+
+    /// Swap a loaded class's code. Instances keep their identity, binding
+    /// and every variable whose name and type are unchanged; new or
+    /// retyped variables start at their defaults. On error nothing changes.
+    pub fn reload_class(&mut self, module: Module) -> Result<(), RuntimeError> {
+        let name = module.name.clone();
+        let old = self.classes.get(&name).ok_or_else(|| RuntimeError::UnknownClass(name.clone()))?;
+        let new = Class::link(Arc::new(module), &self.natives)?;
+
+        let old_module = Arc::clone(old.program.module());
+        let mut migrated = 0;
+        for instance in self.instances.values_mut().filter(|i| i.class == name) {
+            let mut state = new.program.instantiate();
+            for (index, var) in new.program.module().variables.iter().enumerate() {
+                let Some(old_index) = old_module.variables.iter().position(|v| v.name == var.name && v.ty == var.ty)
+                else {
+                    continue;
+                };
+                if let Some(value) = old.program.var(&instance.state, old_index) {
+                    // Same name and type: always fits.
+                    let _ = new.program.set_var(&mut state, index, value.clone());
+                }
+            }
+            instance.state = state;
+            migrated += 1;
+        }
+        tracing::info!(class = %name, instances = migrated, "reloaded script class");
+        self.classes.insert(name, new);
+        Ok(())
+    }
+
+    // ---- instances -----------------------------------------------------
+
+    /// Create an instance of `class` with id `object_id`, optionally bound
+    /// to `entity`, with variable overrides applied. Its `begin_play` runs
+    /// at the next [`dispatch_pending_begin_play`](Self::dispatch_pending_begin_play).
+    pub fn spawn(
+        &mut self,
+        object_id: impl Into<String>,
+        class: &str,
+        entity: Option<Entity>,
+        overrides: &[(String, Value)],
+    ) -> Result<(), RuntimeError> {
+        let object_id = object_id.into();
+        if self.instances.contains_key(&object_id) {
+            return Err(RuntimeError::DuplicateInstance(object_id));
+        }
+        let program = &self.classes.get(class).ok_or_else(|| RuntimeError::UnknownClass(class.to_owned()))?.program;
+        let mut state = program.instantiate();
+        for (name, value) in overrides {
+            let index = program.variable(name).ok_or_else(|| RuntimeError::BadVariable {
+                name: name.clone(),
+                reason: format!("`{class}` has no such variable"),
+            })?;
+            program
+                .set_var(&mut state, index, value.clone())
+                .map_err(|reason| RuntimeError::BadVariable { name: name.clone(), reason })?;
+        }
+        self.instances.insert(object_id.clone(), ScriptInstance { class: class.to_owned(), state, entity });
+        self.order.push(object_id.clone());
+        self.pending_begin_play.push(object_id);
+        Ok(())
+    }
+
+    /// Like [`spawn`](Self::spawn), with overrides as JSON (level files).
+    pub fn spawn_with_json(
+        &mut self,
+        object_id: impl Into<String>,
+        class: &str,
+        entity: Option<Entity>,
+        overrides: &HashMap<String, serde_json::Value>,
+    ) -> Result<(), RuntimeError> {
+        let program = &self.classes.get(class).ok_or_else(|| RuntimeError::UnknownClass(class.to_owned()))?.program;
+        let mut converted = Vec::with_capacity(overrides.len());
+        for (name, json) in overrides {
+            let var = program
+                .variable(name)
+                .map(|i| &program.module().variables[i])
+                .ok_or_else(|| RuntimeError::BadVariable {
+                    name: name.clone(),
+                    reason: format!("`{class}` has no such variable"),
+                })?;
+            let value = value_from_json(json, &var.ty)
+                .map_err(|reason| RuntimeError::BadVariable { name: name.clone(), reason })?;
+            converted.push((name.clone(), value));
+        }
+        self.spawn(object_id, class, entity, &converted)
+    }
+
+    /// Run `end_play` (if the instance has begun) and remove the instance.
+    pub fn despawn(&mut self, object_id: &str, world: &mut World) -> Result<(), RuntimeError> {
+        if !self.instances.contains_key(object_id) {
+            return Err(RuntimeError::UnknownInstance(object_id.to_owned()));
+        }
+        let begun = !self.pending_begin_play.iter().any(|id| id == object_id);
+        let result = if begun { self.run_lifecycle(object_id, END_PLAY, world) } else { Ok(()) };
+        self.instances.remove(object_id);
+        self.order.retain(|id| id != object_id);
+        self.pending_begin_play.retain(|id| id != object_id);
+        result
+    }
+
+    pub fn bind(&mut self, object_id: &str, entity: Entity) -> Result<Option<Entity>, RuntimeError> {
+        let instance = self.instance_mut(object_id)?;
+        Ok(instance.entity.replace(entity))
+    }
+
+    pub fn unbind(&mut self, object_id: &str) -> Result<Option<Entity>, RuntimeError> {
+        Ok(self.instance_mut(object_id)?.entity.take())
+    }
+
+    pub fn entity_of(&self, object_id: &str) -> Option<Entity> {
+        self.instances.get(object_id)?.entity
+    }
+
+    /// Instance ids in dispatch order.
+    pub fn instance_ids(&self) -> &[String] {
+        &self.order
+    }
+
+    /// Read an instance variable.
+    pub fn variable(&self, object_id: &str, name: &str) -> Option<&Value> {
+        let instance = self.instances.get(object_id)?;
+        let program = &self.classes.get(&instance.class)?.program;
+        program.var(&instance.state, program.variable(name)?)
+    }
+
+    pub fn set_variable(&mut self, object_id: &str, name: &str, value: Value) -> Result<(), RuntimeError> {
+        let instance = self.instances.get_mut(object_id).ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
+        let program = &self.classes.get(&instance.class).ok_or_else(|| RuntimeError::UnknownClass(instance.class.clone()))?.program;
+        let bad = |reason: String| RuntimeError::BadVariable { name: name.to_owned(), reason };
+        let index = program.variable(name).ok_or_else(|| bad("no such variable".into()))?;
+        program.set_var(&mut instance.state, index, value).map_err(bad)
+    }
+
+    fn instance_mut(&mut self, object_id: &str) -> Result<&mut ScriptInstance, RuntimeError> {
+        self.instances.get_mut(object_id).ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))
+    }
+
+    // ---- events --------------------------------------------------------
+
+    /// Run `begin_play` for every instance spawned since the last call.
+    /// Failures are logged per instance and returned.
+    pub fn dispatch_pending_begin_play(&mut self, world: &mut World) -> Vec<RuntimeError> {
+        let pending = std::mem::take(&mut self.pending_begin_play);
+        pending
+            .iter()
+            .filter_map(|id| self.run_lifecycle(id, BEGIN_PLAY, world).err())
+            .inspect(|err| tracing::warn!("{err}"))
+            .collect()
+    }
+
+    /// Run `tick(delta_time)` on every instance that has begun, in spawn
+    /// order. A failing instance does not stop the others.
+    pub fn tick_all(&mut self, world: &mut World, delta_time: f64) -> Vec<RuntimeError> {
+        let ids: Vec<String> = self
+            .order
+            .iter()
+            .filter(|id| !self.pending_begin_play.contains(id))
+            .cloned()
+            .collect();
+        ids.iter()
+            .filter_map(|id| {
+                let func = self.instances.get(id).and_then(|i| self.classes.get(&i.class)).and_then(|c| c.entries.tick)?;
+                self.call(id, func, &[Value::Float(delta_time)], world).err()
+            })
+            .inspect(|err| tracing::warn!("{err}"))
+            .collect()
+    }
+
+    /// Run `end_play` on every instance that has begun (shutdown).
+    pub fn end_play_all(&mut self, world: &mut World) -> Vec<RuntimeError> {
+        let ids: Vec<String> = self
+            .order
+            .iter()
+            .filter(|id| !self.pending_begin_play.contains(id))
+            .cloned()
+            .collect();
+        ids.iter()
+            .filter_map(|id| self.run_lifecycle(id, END_PLAY, world).err())
+            .inspect(|err| tracing::warn!("{err}"))
+            .collect()
+    }
+
+    /// Call exported function `name` on an instance (a custom event).
+    pub fn send_event(
+        &mut self,
+        object_id: &str,
+        name: &str,
+        args: &[Value],
+        world: &mut World,
+    ) -> Result<Value, RuntimeError> {
+        let instance = self.instances.get(object_id).ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
+        let class = self.classes.get(&instance.class).ok_or_else(|| RuntimeError::UnknownClass(instance.class.clone()))?;
+        let func = class.program.entry(name).ok_or_else(|| RuntimeError::UnknownEvent {
+            class: instance.class.clone(),
+            name: name.to_owned(),
+        })?;
+        self.call(object_id, func, args, world)
+    }
+
+    fn run_lifecycle(&mut self, object_id: &str, event: &str, world: &mut World) -> Result<(), RuntimeError> {
+        let instance = self.instances.get(object_id).ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
+        let Some(class) = self.classes.get(&instance.class) else { return Ok(()) };
+        let func = match event {
+            BEGIN_PLAY => class.entries.begin_play,
+            END_PLAY => class.entries.end_play,
+            _ => class.entries.tick,
+        };
+        match func {
+            Some(func) => self.call(object_id, func, &[], world).map(drop),
+            None => Ok(()),
+        }
+    }
+
+    fn call(&mut self, object_id: &str, func: FuncId, args: &[Value], world: &mut World) -> Result<Value, RuntimeError> {
+        let instance = self.instances.get_mut(object_id).ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
+        let class = self.classes.get(&instance.class).ok_or_else(|| RuntimeError::UnknownClass(instance.class.clone()))?;
+        // Unbound instances run with a dangling entity: every component
+        // access fails its liveness check instead of reaching anything.
+        let mut host = Host::new(world, instance.entity.unwrap_or(Entity::DANGLING));
+        let mut budget = Budget::new(self.budget);
+        self.vm
+            .call(&class.program, &mut instance.state, func, args, &mut host, &mut budget)
+            .map_err(|source| RuntimeError::Script { object_id: object_id.to_owned(), source })
+    }
+}
+
+/// Convert a JSON value (from a level file) to a script value of type `ty`.
+pub fn value_from_json(json: &serde_json::Value, ty: &Type) -> Result<Value, String> {
+    use serde_json::Value as J;
+    match (ty, json) {
+        (Type::Bool, J::Bool(b)) => Ok(Value::Bool(*b)),
+        (Type::Int, J::Number(n)) => n.as_i64().map(Value::Int).ok_or_else(|| format!("{n} is not an integer")),
+        (Type::Float, J::Number(n)) => n.as_f64().map(Value::Float).ok_or_else(|| format!("{n} is not a number")),
+        (Type::Str, J::String(s)) => Ok(Value::Str(s.as_str().into())),
+        (ty, json) => Err(format!("cannot use {json} as {ty}")),
+    }
+}

@@ -8969,11 +8969,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_reflection_codegen"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "pulsar_reflection_derive"
 version = "0.1.0"
 dependencies = [
  "owo-colors",
  "proc-macro2",
+ "pulsar_reflection_codegen",
  "quote",
  "syn 2.0.119",
 ]
@@ -9009,7 +9019,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=7b0414b2975e8e1eb2d6ea489b710a2c411630b3#7b0414b2975e8e1eb2d6ea489b710a2c411630b3"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=0801d2638a66b81692df6a03130c3dcf1b3f1dbf#0801d2638a66b81692df6a03130c3dcf1b3f1dbf"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9025,9 +9035,10 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=7b0414b2975e8e1eb2d6ea489b710a2c411630b3#7b0414b2975e8e1eb2d6ea489b710a2c411630b3"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=0801d2638a66b81692df6a03130c3dcf1b3f1dbf#0801d2638a66b81692df6a03130c3dcf1b3f1dbf"
 dependencies = [
  "proc-macro2",
+ "pulsar_reflection_codegen",
  "quote",
  "syn 2.0.119",
 ]
@@ -9045,6 +9056,39 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tracing",
+]
+
+[[package]]
+name = "pulsar_script_runtime"
+version = "0.1.0"
+dependencies = [
+ "pulsar_scenedb",
+ "pulsar_script_vm",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
+name = "pulsar_script_vm"
+version = "0.1.0"
+dependencies = [
+ "inventory",
+ "libloading 0.9.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_script_vm_test_library",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
+name = "pulsar_script_vm_test_library"
+version = "0.1.0"
+dependencies = [
+ "pulsar_script_vm",
 ]
 
 [[package]]

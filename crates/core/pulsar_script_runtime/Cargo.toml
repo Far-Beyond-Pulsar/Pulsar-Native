@@ -1,0 +1,15 @@
+[package]
+name = "pulsar_script_runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Runs script classes (engine bytecode modules) bound to entities: lifecycle events, custom events, instance variables and hot reload of classes and native libraries. Language-neutral."
+
+[dependencies]
+pulsar_script_vm = { workspace = true }
+pulsar_scenedb   = { workspace = true }
+serde_json       = { workspace = true }
+thiserror        = { workspace = true }
+tracing          = { workspace = true }
+
+[lints]
+workspace = true
