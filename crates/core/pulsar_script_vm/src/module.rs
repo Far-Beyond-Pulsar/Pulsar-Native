@@ -225,5 +225,12 @@ pub enum Instr {
     StoreVar { var: u32, src: Reg },
     /// The entity this instance is bound to.
     SelfEntity { dst: Reg },
+    /// Game time in seconds (`float`), as the host reports it.
+    Now { dst: Reg },
+    /// Suspend this call for `seconds` (`float`) of game time. The host
+    /// resumes it later with [`Vm::resume`](crate::Vm::resume); execution
+    /// continues at the next instruction with every frame and register as
+    /// it was.
+    Wait { seconds: Reg },
     Return { value: Option<Reg> },
 }

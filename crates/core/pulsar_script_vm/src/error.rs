@@ -52,6 +52,9 @@ pub enum ScriptErrorKind {
     StackOverflow,
     /// A call from the host passed the wrong arguments.
     BadEntryCall(String),
+    /// The function waited (`Wait`) under [`Vm::call`](crate::Vm::call),
+    /// which cannot suspend; use `Vm::start`.
+    Suspended,
 }
 
 impl fmt::Display for ScriptErrorKind {
@@ -62,6 +65,7 @@ impl fmt::Display for ScriptErrorKind {
             Self::BudgetExceeded => f.write_str("step budget exceeded"),
             Self::StackOverflow => f.write_str("call depth limit exceeded"),
             Self::BadEntryCall(message) => write!(f, "bad call: {message}"),
+            Self::Suspended => f.write_str("the function waited; run it with Vm::start"),
         }
     }
 }

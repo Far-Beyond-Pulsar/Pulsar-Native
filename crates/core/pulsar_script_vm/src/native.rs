@@ -28,11 +28,17 @@ use crate::value::Value;
 pub struct Host<'w> {
     pub world: &'w mut World,
     pub entity: Entity,
+    /// Game time in seconds, read by the `Now` instruction.
+    pub time: f64,
 }
 
 impl<'w> Host<'w> {
     pub fn new(world: &'w mut World, entity: Entity) -> Self {
-        Self { world, entity }
+        Self { world, entity, time: 0.0 }
+    }
+
+    pub fn at_time(world: &'w mut World, entity: Entity, time: f64) -> Self {
+        Self { world, entity, time }
     }
 }
 

@@ -241,9 +241,20 @@ panic fail the call instead of unwinding into the game loop.
   `module.json` run on `ScriptRuntime` (level bindings and project
   discovery, including the generated `setup()`); classes with only
   `bytecode.json` stay on the old dispatcher.
-- Not yet: identity nodes (`find_object_by_*`, `object_ref_literal`) and
-  latent nodes (`delay`) are compile errors in the new compiler; the node
-  palette still comes from pulsar_std metadata rather than the registry.
+- Scene lookups (`find_object_by_*`, `object_ref_literal`,
+  cross-object `get_component_ref`) compile to `world::find_by_*` natives.
+- Latent nodes: the VM has `Wait`/`Now` with resumable continuations
+  (`Vm::start`/`resume`); the runtime tracks game time and resumes
+  waiting calls; `delay`/`retriggerable_delay` compile to them.
+- Palette: every non-std native is a `native::<name>` node in the global
+  list, grouped by receiver type, so dragging from a reference lists its
+  methods.
+- Phase 3: `ScriptLanguage` / `EditorPluginScripting` in
+  `plugin_editor_api`; PIE validates through `PluginManager`, and
+  `ui_level_editor` no longer depends on the Blueprint plugin.
+- Still unsupported in the new compiler: `randexec`,
+  `random_exec_switch`, `runlua`. Graphs using them run on the legacy
+  bytecode fallback, which is why Phase 5 (removal) has not started.
 
 Not yet: pulsar_std functions with tuple/Vec/array signatures as natives (needs a free-function
 registration path from `#[blueprint]`; natives can already be written with

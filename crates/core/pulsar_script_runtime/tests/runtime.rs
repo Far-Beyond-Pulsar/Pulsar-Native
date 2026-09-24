@@ -235,3 +235,45 @@ fn runaway_scripts_are_stopped_per_instance() {
     assert_eq!(errors.len(), 1);
     assert_eq!(rt.variable("ok", "ticks"), Some(&Value::Int(1)));
 }
+
+#[test]
+fn waiting_events_resume_after_game_time_passes() {
+    let mut rt = runtime();
+    let mut world = World::new();
+    let mut m = Module::new("Latent");
+    m.variables = vec![Variable { name: "log".into(), ty: Type::Str, default: None }];
+    m.constants = vec![Constant::Str("a".into()), Constant::Str("b".into()), Constant::Float(1.0)];
+    // begin_play: log += "a"; wait 1s; log += "b"
+    m.functions = vec![function("begin_play", vec![], vec![Type::Str, Type::Str, Type::Float], vec![
+        LoadVar { dst: 0, var: 0 },
+        Const { dst: 1, index: 0 },
+        Binary { op: BinOp::Add, dst: 0, a: 0, b: 1 },
+        StoreVar { var: 0, src: 0 },
+        Const { dst: 2, index: 2 },
+        Wait { seconds: 2 },
+        LoadVar { dst: 0, var: 0 },
+        Const { dst: 1, index: 1 },
+        Binary { op: BinOp::Add, dst: 0, a: 0, b: 1 },
+        StoreVar { var: 0, src: 0 },
+        Return { value: None },
+    ])];
+    rt.load_class(m.clone()).unwrap();
+    rt.spawn("a", "Latent", None, &[]).unwrap();
+    assert!(rt.dispatch_pending_begin_play(&mut world).is_empty());
+    assert_eq!(rt.variable("a", "log"), Some(&Value::from("a")));
+    assert_eq!(rt.waiting_calls("a"), 1);
+
+    rt.tick_all(&mut world, 0.5);
+    assert_eq!(rt.variable("a", "log"), Some(&Value::from("a")));
+    rt.tick_all(&mut world, 0.6);
+    assert_eq!(rt.variable("a", "log"), Some(&Value::from("ab")));
+    assert_eq!(rt.waiting_calls("a"), 0);
+    assert!((rt.time() - 1.1).abs() < 1e-9);
+
+    // Reloading drops calls suspended in the old code.
+    rt.spawn("b", "Latent", None, &[]).unwrap();
+    rt.dispatch_pending_begin_play(&mut world);
+    assert_eq!(rt.waiting_calls("b"), 1);
+    rt.reload_class(m).unwrap();
+    assert_eq!(rt.waiting_calls("b"), 0);
+}

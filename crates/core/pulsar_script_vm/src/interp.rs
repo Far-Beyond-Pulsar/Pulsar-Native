@@ -25,12 +25,38 @@ impl Budget {
     }
 }
 
+#[derive(Clone, Debug)]
 struct Frame {
     func: u32,
     pc: usize,
     base: usize,
     /// Where the caller wants the result.
     ret_dst: Option<Reg>,
+}
+
+/// How a started or resumed call ended.
+#[derive(Debug)]
+pub enum Completion {
+    Returned(Value),
+    /// The call executed `Wait`: resume `continuation` after `seconds` of
+    /// game time.
+    Waiting { seconds: f64, continuation: Continuation },
+}
+
+/// A suspended call: its frames and registers, for [`Vm::resume`]. Tied to
+/// the module it was running (it survives relinking, not reloading).
+#[derive(Debug)]
+pub struct Continuation {
+    module: Arc<crate::module::Module>,
+    /// Frames with bases relative to `regs`.
+    frames: Vec<Frame>,
+    regs: Vec<Value>,
+}
+
+impl Continuation {
+    pub fn module(&self) -> &Arc<crate::module::Module> {
+        &self.module
+    }
 }
 
 /// Execution state reused across calls (register stack and scratch).
@@ -52,7 +78,9 @@ impl Vm {
         Self::default()
     }
 
-    /// Run `func` of `program` with `args` on `instance`.
+    /// Run `func` of `program` with `args` on `instance` to completion. A
+    /// function that waits fails with [`ScriptErrorKind::Suspended`]; use
+    /// [`start`](Self::start) where waiting is allowed.
     pub fn call(
         &mut self,
         program: &Program,
@@ -62,6 +90,23 @@ impl Vm {
         host: &mut Host<'_>,
         budget: &mut Budget,
     ) -> Result<Value, ScriptError> {
+        match self.start(program, instance, func, args, host, budget)? {
+            Completion::Returned(value) => Ok(value),
+            Completion::Waiting { .. } => Err(ScriptError::new(ScriptErrorKind::Suspended)),
+        }
+    }
+
+    /// Run `func` of `program` with `args` on `instance` until it returns
+    /// or waits.
+    pub fn start(
+        &mut self,
+        program: &Program,
+        instance: &mut Instance,
+        func: FuncId,
+        args: &[Value],
+        host: &mut Host<'_>,
+        budget: &mut Budget,
+    ) -> Result<Completion, ScriptError> {
         let module = Arc::clone(program.module());
         let function = module
             .functions
@@ -86,6 +131,35 @@ impl Vm {
         let stack_base = self.regs.len();
         let frame_base = self.frames.len();
         self.push_frame(program, func.0, args.iter().cloned(), None);
+        let result = self.run(program, instance, host, budget, frame_base);
+        self.regs.truncate(stack_base);
+        self.frames.truncate(frame_base);
+        result
+    }
+
+    /// Continue a suspended call until it returns or waits again.
+    pub fn resume(
+        &mut self,
+        program: &Program,
+        instance: &mut Instance,
+        continuation: Continuation,
+        host: &mut Host<'_>,
+        budget: &mut Budget,
+    ) -> Result<Completion, ScriptError> {
+        if !Arc::ptr_eq(&continuation.module, program.module())
+            || !Arc::ptr_eq(&instance.module, program.module())
+        {
+            return Err(ScriptError::new(ScriptErrorKind::BadEntryCall(
+                "continuation does not belong to this program".into(),
+            )));
+        }
+        let stack_base = self.regs.len();
+        let frame_base = self.frames.len();
+        self.regs.extend(continuation.regs);
+        self.frames.extend(continuation.frames.into_iter().map(|mut f| {
+            f.base += stack_base;
+            f
+        }));
         let result = self.run(program, instance, host, budget, frame_base);
         self.regs.truncate(stack_base);
         self.frames.truncate(frame_base);
@@ -124,7 +198,7 @@ impl Vm {
         host: &mut Host<'_>,
         budget: &mut Budget,
         frame_base: usize,
-    ) -> Result<Value, ScriptError> {
+    ) -> Result<Completion, ScriptError> {
         let module = Arc::clone(program.module());
         loop {
             if budget.remaining == 0 {
@@ -217,12 +291,33 @@ impl Vm {
                 Instr::SelfEntity { dst } => {
                     self.regs[r(*dst)] = Value::Entity(host.entity);
                 }
+                Instr::Now { dst } => {
+                    self.regs[r(*dst)] = Value::Float(host.time);
+                }
+                Instr::Wait { seconds } => {
+                    let seconds = self.regs[r(*seconds)].as_float().unwrap_or(0.0);
+                    // NaN and negative waits resume on the next opportunity.
+                    let seconds = if seconds > 0.0 { seconds } else { 0.0 };
+                    self.frames.last_mut().expect("active").pc = next;
+                    let stack_base = self.frames[frame_base].base;
+                    let frames = self
+                        .frames
+                        .drain(frame_base..)
+                        .map(|mut f| {
+                            f.base -= stack_base;
+                            f
+                        })
+                        .collect();
+                    let regs = self.regs.split_off(stack_base);
+                    let continuation = Continuation { module: Arc::clone(&module), frames, regs };
+                    return Ok(Completion::Waiting { seconds, continuation });
+                }
                 Instr::Return { value } => {
                     let value = value.map_or(Value::Unit, |v| self.regs[r(v)].clone());
                     let frame = self.frames.pop().expect("active");
                     self.regs.truncate(frame.base);
                     if self.frames.len() == frame_base {
-                        return Ok(value);
+                        return Ok(Completion::Returned(value));
                     }
                     let caller = self.frames.last_mut().expect("caller");
                     caller.pc += 1;

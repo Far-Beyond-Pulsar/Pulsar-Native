@@ -15,6 +15,11 @@
 //! Any other exported function is a custom event, sent with
 //! [`ScriptRuntime::send_event`]. A class need not export any of them.
 //!
+//! Latent calls: a function that waits (the VM's `Wait`) is suspended and
+//! resumed by [`ScriptRuntime::tick_all`] once enough game time has
+//! passed; an instance can have several waiting at once. Reloading a
+//! class or despawning an instance drops its waiting calls.
+//!
 //! Hot reload: [`ScriptRuntime::reload_class`] swaps a class's code and
 //! keeps each instance's variables whose name and type are unchanged;
 //! loading, reloading or unloading a native library relinks every class
@@ -26,8 +31,8 @@ use std::sync::Arc;
 
 use pulsar_scenedb::{Entity, World};
 use pulsar_script_vm::{
-    Budget, FuncId, Host, Instance, LibraryError, LibraryId, LinkError, Module, NativeFn,
-    NativeLibraries, NativeRegistry, Program, ScriptError, Type, Value, Vm,
+    Budget, Completion, Continuation, FuncId, Host, Instance, LibraryError, LibraryId, LinkError,
+    Module, NativeFn, NativeLibraries, NativeRegistry, Program, ScriptError, Type, Value, Vm,
 };
 
 pub const BEGIN_PLAY: &str = "begin_play";
@@ -107,6 +112,8 @@ struct ScriptInstance {
     class: String,
     state: Instance,
     entity: Option<Entity>,
+    /// Suspended calls and the game time each resumes at.
+    waiting: Vec<(f64, Continuation)>,
 }
 
 /// Classes that failed to relink after the native registry changed. They
@@ -127,6 +134,8 @@ pub struct ScriptRuntime {
     /// Instance ids in spawn order: events dispatch in this order.
     order: Vec<String>,
     pending_begin_play: Vec<String>,
+    /// Game time in seconds: the sum of every `tick_all` delta.
+    time: f64,
     /// Step budget for one event on one instance.
     pub budget: u64,
 }
@@ -147,8 +156,19 @@ impl ScriptRuntime {
             instances: HashMap::new(),
             order: Vec::new(),
             pending_begin_play: Vec::new(),
+            time: 0.0,
             budget: DEFAULT_BUDGET,
         }
+    }
+
+    /// Game time in seconds (advanced by [`tick_all`](Self::tick_all)).
+    pub fn time(&self) -> f64 {
+        self.time
+    }
+
+    /// Number of suspended calls on an instance.
+    pub fn waiting_calls(&self, object_id: &str) -> usize {
+        self.instances.get(object_id).map_or(0, |i| i.waiting.len())
     }
 
     /// The natives scripts can link against (for frontends' palettes).
@@ -254,6 +274,11 @@ impl ScriptRuntime {
                 }
             }
             instance.state = state;
+            if !instance.waiting.is_empty() {
+                // Suspended calls belong to the old code.
+                tracing::warn!(class = %name, dropped = instance.waiting.len(), "reload dropped waiting script calls");
+                instance.waiting.clear();
+            }
             migrated += 1;
         }
         tracing::info!(class = %name, instances = migrated, "reloaded script class");
@@ -288,7 +313,10 @@ impl ScriptRuntime {
                 .set_var(&mut state, index, value.clone())
                 .map_err(|reason| RuntimeError::BadVariable { name: name.clone(), reason })?;
         }
-        self.instances.insert(object_id.clone(), ScriptInstance { class: class.to_owned(), state, entity });
+        self.instances.insert(
+            object_id.clone(),
+            ScriptInstance { class: class.to_owned(), state, entity, waiting: Vec::new() },
+        );
         self.order.push(object_id.clone());
         self.pending_begin_play.push(object_id);
         Ok(())
@@ -383,22 +411,53 @@ impl ScriptRuntime {
             .collect()
     }
 
-    /// Run `tick(delta_time)` on every instance that has begun, in spawn
-    /// order. A failing instance does not stop the others.
+    /// Advance game time by `delta_time`, resume every waiting call that is
+    /// due, then run `tick(delta_time)` on every instance that has begun,
+    /// in spawn order. A failing instance does not stop the others.
     pub fn tick_all(&mut self, world: &mut World, delta_time: f64) -> Vec<RuntimeError> {
+        self.time += delta_time;
         let ids: Vec<String> = self
             .order
             .iter()
             .filter(|id| !self.pending_begin_play.contains(id))
             .cloned()
             .collect();
-        ids.iter()
-            .filter_map(|id| {
+        let mut errors: Vec<RuntimeError> =
+            ids.iter().flat_map(|id| self.resume_due(id, world)).collect();
+        errors.extend(ids.iter().filter_map(|id| {
                 let func = self.instances.get(id).and_then(|i| self.classes.get(&i.class)).and_then(|c| c.entries.tick)?;
                 self.call(id, func, &[Value::Float(delta_time)], world).err()
-            })
-            .inspect(|err| tracing::warn!("{err}"))
-            .collect()
+            }));
+        for err in &errors {
+            tracing::warn!("{err}");
+        }
+        errors
+    }
+
+    /// Resume an instance's calls that are due at the current time. Calls
+    /// that wait again (even for zero seconds) resume on a later tick.
+    fn resume_due(&mut self, object_id: &str, world: &mut World) -> Vec<RuntimeError> {
+        let Some(instance) = self.instances.get_mut(object_id) else { return Vec::new() };
+        let now = self.time;
+        let (mut due, later): (Vec<_>, Vec<_>) =
+            std::mem::take(&mut instance.waiting).into_iter().partition(|(wake, _)| *wake <= now);
+        instance.waiting = later;
+        due.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let mut errors = Vec::new();
+        for (_, continuation) in due {
+            let Some(instance) = self.instances.get_mut(object_id) else { break };
+            let Some(class) = self.classes.get(&instance.class) else { break };
+            let mut host = Host::at_time(world, instance.entity.unwrap_or(Entity::DANGLING), now);
+            let mut budget = Budget::new(self.budget);
+            match self.vm.resume(&class.program, &mut instance.state, continuation, &mut host, &mut budget) {
+                Ok(Completion::Returned(_)) => {}
+                Ok(Completion::Waiting { seconds, continuation }) => {
+                    instance.waiting.push((now + seconds, continuation));
+                }
+                Err(source) => errors.push(RuntimeError::Script { object_id: object_id.to_owned(), source }),
+            }
+        }
+        errors
     }
 
     /// Run `end_play` on every instance that has begun (shutdown).
@@ -451,11 +510,18 @@ impl ScriptRuntime {
         let class = self.classes.get(&instance.class).ok_or_else(|| RuntimeError::UnknownClass(instance.class.clone()))?;
         // Unbound instances run with a dangling entity: every component
         // access fails its liveness check instead of reaching anything.
-        let mut host = Host::new(world, instance.entity.unwrap_or(Entity::DANGLING));
+        let mut host = Host::at_time(world, instance.entity.unwrap_or(Entity::DANGLING), self.time);
         let mut budget = Budget::new(self.budget);
-        self.vm
-            .call(&class.program, &mut instance.state, func, args, &mut host, &mut budget)
-            .map_err(|source| RuntimeError::Script { object_id: object_id.to_owned(), source })
+        match self.vm.start(&class.program, &mut instance.state, func, args, &mut host, &mut budget) {
+            Ok(Completion::Returned(value)) => Ok(value),
+            // A latent event: it finishes on a later tick, so the caller
+            // gets unit now.
+            Ok(Completion::Waiting { seconds, continuation }) => {
+                instance.waiting.push((self.time + seconds, continuation));
+                Ok(Value::Unit)
+            }
+            Err(source) => Err(RuntimeError::Script { object_id: object_id.to_owned(), source }),
+        }
     }
 }
 

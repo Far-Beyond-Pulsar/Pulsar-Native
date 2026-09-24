@@ -309,3 +309,80 @@ fn panicking_natives_fail_the_call() {
     // Still usable.
     assert!(h.run(&program, "f", &[]).is_err());
 }
+
+#[test]
+fn waits_suspend_and_resume_with_all_state() {
+    use pulsar_script_vm::Completion;
+    let mut asm = Asm::new();
+    let log = asm.var("log", Type::Str, None);
+    let one = asm.constant(Constant::Float(1.5));
+    let a = asm.constant(Constant::Str("a".into()));
+    let b = asm.constant(Constant::Str("b".into()));
+    // inner(): log += "a"; wait 1.5; log += "b"; return now
+    let inner = asm.function("inner", vec![], Type::Float, vec![Type::Str, Type::Str, Type::Float], vec![
+        LoadVar { dst: 0, var: log },
+        Const { dst: 1, index: a },
+        Binary { op: BinOp::Add, dst: 0, a: 0, b: 1 },
+        StoreVar { var: log, src: 0 },
+        Const { dst: 2, index: one },
+        Wait { seconds: 2 },
+        LoadVar { dst: 0, var: log },
+        Const { dst: 1, index: b },
+        Binary { op: BinOp::Add, dst: 0, a: 0, b: 1 },
+        StoreVar { var: log, src: 0 },
+        Now { dst: 2 },
+        Return { value: Some(2) },
+    ]);
+    // outer(x): t = inner(); return t + x   (x survives the wait)
+    asm.function("outer", vec![Type::Float], Type::Float, vec![Type::Float], vec![
+        Call { func: inner, args: vec![], dst: Some(1) },
+        Binary { op: BinOp::Add, dst: 1, a: 1, b: 0 },
+        Return { value: Some(1) },
+    ]);
+    let program = asm.link(&NativeRegistry::new());
+    let mut h = Harness::new();
+    let mut instance = program.instantiate();
+    let outer = program.entry("outer").unwrap();
+
+    let mut host = Host::at_time(&mut h.world, h.entity, 10.0);
+    let first = h.vm.start(&program, &mut instance, outer, &[float(100.0)], &mut host, &mut Budget::new(100)).unwrap();
+    let Completion::Waiting { seconds, continuation } = first else { panic!("expected a wait") };
+    assert_eq!(seconds, 1.5);
+    let log_index = program.variable("log").unwrap();
+    assert_eq!(program.var(&instance, log_index), Some(&Value::from("a")));
+
+    // The VM is free for other calls while this one waits.
+    assert_eq!(h.vm.call(&program, &mut program.instantiate(), program.entry("inner").unwrap(), &[], &mut Host::new(&mut h.world, h.entity), &mut Budget::new(100)).unwrap_err().kind, ScriptErrorKind::Suspended);
+
+    let mut host = Host::at_time(&mut h.world, h.entity, 11.5);
+    let done = h.vm.resume(&program, &mut instance, continuation, &mut host, &mut Budget::new(100)).unwrap();
+    let Completion::Returned(value) = done else { panic!("expected a return") };
+    assert_eq!(value, float(111.5));
+    assert_eq!(program.var(&instance, log_index), Some(&Value::from("ab")));
+}
+
+#[test]
+fn continuations_only_resume_in_their_program() {
+    use pulsar_script_vm::Completion;
+    let mut asm = Asm::new();
+    let zero = asm.constant(Constant::Float(0.0));
+    asm.function("f", vec![], Type::Unit, vec![Type::Float], vec![
+        Const { dst: 0, index: zero },
+        Wait { seconds: 0 },
+        Return { value: None },
+    ]);
+    let a = asm.link(&NativeRegistry::new());
+    let b = asm.link(&NativeRegistry::new());
+    let mut h = Harness::new();
+    let mut ia = a.instantiate();
+    let Completion::Waiting { continuation, .. } = h
+        .vm
+        .start(&a, &mut ia, a.entry("f").unwrap(), &[], &mut Host::new(&mut h.world, h.entity), &mut Budget::new(10))
+        .unwrap()
+    else {
+        panic!()
+    };
+    let mut ib = b.instantiate();
+    let err = h.vm.resume(&b, &mut ib, continuation, &mut Host::new(&mut h.world, h.entity), &mut Budget::new(10)).unwrap_err();
+    assert!(matches!(err.kind, ScriptErrorKind::BadEntryCall(_)));
+}

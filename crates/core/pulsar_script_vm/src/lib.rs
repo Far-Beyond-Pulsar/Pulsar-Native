@@ -35,7 +35,7 @@ pub mod value;
 pub mod verify;
 
 pub use error::{LinkError, ScriptError, ScriptErrorKind, VerifyError};
-pub use interp::{Budget, Vm};
+pub use interp::{Budget, Completion, Continuation, Vm};
 pub use library::{LibraryError, LibraryId, LibraryRegistrar, NativeLibraries};
 pub use link::{FuncId, Instance, Program};
 pub use module::{

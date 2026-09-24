@@ -208,6 +208,8 @@ impl FunctionVerifier<'_> {
                 self.expect(pc, *src, &var.ty)
             }
             Instr::SelfEntity { dst } => self.expect(pc, *dst, &Type::Entity),
+            Instr::Now { dst } => self.expect(pc, *dst, &Type::Float),
+            Instr::Wait { seconds } => self.expect(pc, *seconds, &Type::Float),
             Instr::Return { value: Some(reg) } => self.expect(pc, *reg, &self.function.ret),
             Instr::Return { value: None } => {
                 if self.function.ret == Type::Unit {
