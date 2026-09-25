@@ -1,6 +1,8 @@
 //! Long-form build pipeline: full `cargo build` (+ optional run) and the
 //! spawned game-process lifecycle.
 
+use std::io::BufReader;
+
 use super::crash::save_crash_report;
 use super::*;
 
@@ -83,12 +85,7 @@ pub(super) fn run_build_pipeline(
                 }
                 Ok(Err(msg)) => {
                     let _ = async_app.update_window(window_handle, |_, window, cx| {
-                        window.push_notification(
-                            Notification::error(msg)
-                                .id::<BuildCoreNotification>()
-                                .title(title.clone()),
-                            cx,
-                        );
+                        show_build_failure(msg, title.clone(), window, cx);
                     });
                     return;
                 }

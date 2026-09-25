@@ -11,13 +11,13 @@
 //! While a Build+Run process is alive the dropdown is disabled and a Stop
 //! button appears next to it.  Killing the process re-enables everything.
 
-use std::io::{BufRead as _, BufReader};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::{
     atomic::{AtomicU32, Ordering},
     Arc,
 };
+use std::rc::Rc;
 use std::time::Duration;
 
 use gpui::prelude::FluentBuilder as _;
@@ -25,7 +25,10 @@ use gpui::*;
 use rust_i18n::t;
 use ui::button::{Button, ButtonVariants as _, DropdownButton};
 use ui::notification::Notification;
-use ui::{h_flex, ContextModal as _, Disableable as _, IconName, Sizable as _};
+use ui::{
+    h_flex, v_flex, v_virtual_list, ActiveTheme as _, ContextModal as _, Disableable as _,
+    IconName, Sizable as _, VirtualListScrollHandle,
+};
 
 use super::super::actions::SetBuildMode;
 use crate::level_editor::state::{BuildMode, EditorMode, LevelEditorState};
@@ -33,6 +36,176 @@ use crate::level_editor::state::{BuildMode, EditorMode, LevelEditorState};
 pub(super) struct BuildCoreNotification;
 
 pub struct BuildCoreButton;
+
+/// Split compiler output into actionable error blocks. Cargo's JSON renderer
+/// emits one `compiler-message` per diagnostic; the progress runner joins
+/// those messages with this marker before handing the failure to the UI.
+fn parse_build_errors(message: &str) -> Vec<String> {
+    let marker = "--- PULSAR BUILD ERROR ---";
+    let mut errors: Vec<String> = message
+        .split(marker)
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_string)
+        .collect();
+    if errors.is_empty() {
+        errors.push(message.trim().to_string());
+    }
+    errors
+}
+
+struct BuildFailureModal {
+    errors: Vec<String>,
+    item_sizes: Rc<Vec<Size<Pixels>>>,
+    scroll_handle: VirtualListScrollHandle,
+}
+
+impl BuildFailureModal {
+    fn new(errors: Vec<String>) -> Self {
+        Self {
+            item_sizes: Rc::new(
+                errors
+                    .iter()
+                    .map(|_| size(px(0.), px(220.)))
+                    .collect(),
+            ),
+            errors,
+            scroll_handle: VirtualListScrollHandle::new(),
+        }
+    }
+
+    fn render_error(&self, index: usize, cx: &mut Context<Self>) -> AnyElement {
+        let error = self.errors[index].clone();
+        let copy_error = error.clone();
+        v_flex()
+            .w_full()
+            .h(px(208.))
+            .gap_2()
+            .p_2()
+            .rounded_md()
+            .bg(cx.theme().background.opacity(0.65))
+            .border_1()
+            .border_color(cx.theme().border)
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_between()
+                    .child(div().text_sm().font_weight(FontWeight::BOLD).child(format!(
+                        "Error {}",
+                        index + 1
+                    )))
+                    .child(
+                        Button::new(format!("copy-build-error-{index}"))
+                            .small()
+                            .ghost()
+                            .icon(IconName::Copy)
+                            .label("Copy")
+                            .on_click(move |_, _, cx| {
+                                cx.write_to_clipboard(ClipboardItem::new_string(copy_error.clone()));
+                            }),
+                    ),
+            )
+            .child(
+                div()
+                    .id(format!("build-error-body-{index}"))
+                    .flex_1()
+                    .w_full()
+                    .overflow_y_scroll()
+                    .child(
+                        div()
+                            .font_family("monospace")
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(error),
+                    ),
+            )
+            .into_any_element()
+    }
+}
+
+impl Render for BuildFailureModal {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let view = cx.entity();
+        let sizes = Rc::clone(&self.item_sizes);
+        v_flex()
+            .w_full()
+            .h(px(560.))
+            .gap_3()
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!(
+                        "{} compiler error{} captured from Cargo.",
+                        self.errors.len(),
+                        if self.errors.len() == 1 { "" } else { "s" }
+                    )),
+            )
+            .child(
+                div()
+                    .id("build-failure-list-container")
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(
+                        v_virtual_list(
+                            view,
+                            "build-failure-list",
+                            sizes,
+                            |this, range, _window, cx| {
+                                range
+                                    .map(|index| this.render_error(index, cx))
+                                    .collect::<Vec<_>>()
+                            },
+                        )
+                        .with_sizing_behavior(ListSizingBehavior::Infer)
+                        .track_scroll(&self.scroll_handle),
+                    ),
+            )
+    }
+}
+
+fn show_build_failure(message: String, title: String, window: &mut Window, cx: &mut App) {
+    let errors = parse_build_errors(&message);
+    let all_errors = errors.join("\n\n--- PULSAR BUILD ERROR ---\n\n");
+    window.open_modal(cx, move |modal, _, cx| {
+        let modal_entity = cx.new(|_| BuildFailureModal::new(errors.clone()));
+        let copy_all = all_errors.clone();
+        modal
+            .width(px(900.))
+            .title(title.clone())
+            .show_close(true)
+            .overlay_closable(true)
+            .child(
+                v_flex()
+                    .w_full()
+                    .gap_3()
+                    .child(modal_entity)
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .justify_end()
+                            .gap_2()
+                            .child(
+                                Button::new("copy-all-build-errors")
+                                    .primary()
+                                    .icon(IconName::Copy)
+                                    .label("Copy All Errors")
+                                    .on_click(move |_, _, cx| {
+                                        cx.write_to_clipboard(ClipboardItem::new_string(
+                                            copy_all.clone(),
+                                        ));
+                                    }),
+                            )
+                            .child(
+                                Button::new("close-build-errors")
+                                    .ghost()
+                                    .label("Close")
+                                    .on_click(|_, window, cx| window.close_modal(cx)),
+                            ),
+                    ),
+            )
+    });
+}
 
 impl BuildCoreButton {
     pub fn render<V>(

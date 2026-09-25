@@ -18,7 +18,9 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-use engine_backend::scene::{ensure_gpu_mirror, sync_static_mesh_rows, RuntimeLevel};
+use engine_backend::scene::{
+    ensure_gpu_mirror, sync_editor_light_rows, sync_static_mesh_rows, RuntimeLevel,
+};
 use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
     RendererConfig,
@@ -680,6 +682,11 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 // zero-copy seam the editor viewport renderer uses).
                 {
                     let mut store = self.scene_store.write();
+                    // Runtime uses Helio directly, so it does not pass through
+                    // HelioRenderer's editor-row projection. Hydrated
+                    // LightComponents therefore need the same derived light
+                    // rows authored before SceneDB flushes the GPU mirror.
+                    sync_editor_light_rows(&mut store.world, false, None);
                     sync_static_mesh_rows(&mut store, None);
                     store.step();
                 }

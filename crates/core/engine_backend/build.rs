@@ -124,7 +124,8 @@ fn build_game_manifest_deps(
     // workspace. `refl_spec` forces every reflection reference to one rev via the
     // double-slash URL alias (a distinct source string to cargo, same repo to
     // git — CI-safe, no local path).
-    let refl_spec = reflection_alias_spec(dependencies);
+    let refl_spec = reflection_patch_spec(manifest, workspace_root, "pulsar_reflection")
+        .unwrap_or_else(|| reflection_alias_spec(dependencies));
 
     out.push_str("[dependencies]\n");
     for dep in GAME_DEPENDENCIES {
@@ -159,8 +160,13 @@ fn build_game_manifest_deps(
             for (crate_name, spec) in entries {
                 // Force any reflection patch entry to the single aliased rev so it
                 // does not split from the [patch.Pulsar-Reflection] one below.
-                if crate_name == "pulsar_reflection" || crate_name == "pulsar_reflection_derive" {
-                    out.push_str(&format!("{crate_name} = {refl_spec}\n"));
+                if crate_name == "pulsar_reflection"
+                    || crate_name == "pulsar_reflection_derive"
+                    || crate_name == "pulsar_reflection_codegen"
+                {
+                    let spec = reflection_patch_spec(manifest, workspace_root, crate_name)
+                        .unwrap_or_else(|| reflection_alias_spec(dependencies));
+                    out.push_str(&format!("{crate_name} = {spec}\n"));
                     continue;
                 }
                 let rewritten = rewrite_paths(spec, workspace_root);
@@ -181,6 +187,23 @@ fn build_game_manifest_deps(
     }
 
     out
+}
+
+/// Use the engine workspace's local reflection patch when baking an out-of-tree
+/// game manifest. SceneDB and the engine must share the same `Reflectable`
+/// trait crate; falling back to the workspace git revision creates a second,
+/// incompatible reflection API (for example, without `methods` or `[f32; 16]`).
+fn reflection_patch_spec(
+    manifest: &toml::Value,
+    workspace_root: &Path,
+    crate_name: &str,
+) -> Option<String> {
+    let patches = manifest.get("patch")?.as_table()?;
+    let (_, entries) = patches.iter().find(|(source, _)| {
+        source.contains("Pulsar-Reflection")
+    })?;
+    let spec = entries.as_table()?.get(crate_name)?;
+    Some(format_toml_inline(&rewrite_paths(spec, workspace_root)))
 }
 
 /// The `{ git = "<aliased>", rev = "<rev>" }` spec every reflection reference in a
