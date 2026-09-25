@@ -165,3 +165,63 @@ pub fn render_property_row_runtime<V: 'static>(
 
     editor.view.into_any_element()
 }
+
+// ============================================================================
+// Class-instance overrides
+// ============================================================================
+
+/// Override state of one property row: for an object built from a class
+/// (a placed class instance), whether the row's value differs from the
+/// class default, and how to put the default back.
+///
+/// `on_revert` should go through the panel's normal write path (the same
+/// `write_back` the row's editor uses) with the default value, so a revert
+/// is an ordinary, undoable property edit.
+#[derive(Clone)]
+pub struct PropertyOverride {
+    pub overridden: bool,
+    pub on_revert: Option<Arc<dyn Fn(&mut Window, &mut App) + Send + Sync>>,
+}
+
+/// Wrap a row from [`render_property_row_runtime`] with its override
+/// state: an accent bar marks an overridden value, and a revert button
+/// restores the class default. Rows that are not overridden render with the
+/// same layout (so columns line up) and no button.
+pub fn decorate_property_override<V: 'static>(
+    row: AnyElement,
+    id: impl Into<ElementId>,
+    state: &PropertyOverride,
+    cx: &mut Context<V>,
+) -> AnyElement {
+    use ui::button::{Button, ButtonVariants as _};
+    use ui::{h_flex, ActiveTheme, IconName, Sizable};
+
+    let marker = div()
+        .w(px(2.0))
+        .h_full()
+        .min_h(px(18.0))
+        .rounded(px(1.0))
+        .when(state.overridden, |d| d.bg(cx.theme().primary));
+    let mut out = h_flex()
+        .w_full()
+        .items_center()
+        .gap_1()
+        .child(marker)
+        .child(div().flex_1().min_w_0().child(row));
+    if state.overridden {
+        if let Some(on_revert) = state.on_revert.clone() {
+            out = out.child(
+                Button::new(id)
+                    .icon(IconName::Undo)
+                    .ghost()
+                    .xsmall()
+                    .tooltip("Revert to class default")
+                    .on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        on_revert(window, cx);
+                    }),
+            );
+        }
+    }
+    out.into_any_element()
+}

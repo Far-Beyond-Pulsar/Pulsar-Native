@@ -201,6 +201,7 @@ pub fn apply_script_bindings(
                 runtime
                     .spawn_with_json(instance_id.clone(), class, Some(entity), &overrides)
                     .map_err(BindingError::Script)?;
+                bind_class_slots(runtime, &instance_id, &store.world, entity);
                 Ok(AppliedBinding {
                     stable_id: stable_id.clone(),
                     class_name: class.clone(),
@@ -222,4 +223,138 @@ pub fn apply_script_bindings(
         }
     }
     report
+}
+
+// ---- class component slots (#921) ------------------------------------------
+
+/// Fill the hidden component-slot handles (`__slot:<uuid>` variables, see
+/// `pulsar_class::SLOT_VARIABLE_PREFIX`) of instance `instance_id` from the
+/// placement of the class instance rooted at `root`.
+///
+/// This is the one place slot UUIDs are resolved: each becomes a handle to
+/// the instance's real component, and the script only ever uses the
+/// handle. A slot the placed instance does not have (removed from the
+/// class, or by the instance) keeps a `none` handle, with a warning naming
+/// the class and the slot. Returns the slots left unresolved.
+pub fn bind_class_slots(
+    runtime: &mut ScriptRuntime,
+    instance_id: &str,
+    world: &pulsar_scenedb::World,
+    root: Entity,
+) -> Vec<String> {
+    let Some(class) = runtime.class_of(instance_id).map(str::to_owned) else {
+        return Vec::new();
+    };
+    let slot_vars: Vec<(String, String)> = runtime
+        .class_variables(&class)
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(name, ty)| {
+            pulsar_class::slot_of_variable(&name)?;
+            match ty {
+                pulsar_script_vm::Type::Component(component) => Some((name, component)),
+                _ => None,
+            }
+        })
+        .collect();
+    if slot_vars.is_empty() {
+        return Vec::new();
+    }
+    let placement = pulsar_class::world::placement(world, root);
+    let mut unresolved = Vec::new();
+    for (variable, component_class) in slot_vars {
+        let slot = pulsar_class::slot_of_variable(&variable).unwrap_or_default().to_owned();
+        let handle = placement
+            .handle(&slot)
+            .filter(|h| h.class_name == component_class)
+            .and_then(|h| {
+                let id = pulsar_world_registry::component_id_for_class(&component_class)?;
+                Some(pulsar_scenedb::ComponentRef::new(h.entity, id))
+            });
+        match handle {
+            Some(handle) => {
+                if let Err(error) = runtime.set_variable(
+                    instance_id,
+                    &variable,
+                    pulsar_script_vm::Value::Component(handle),
+                ) {
+                    tracing::warn!(class = %class, slot = %slot, "Could not bind component slot: {error}");
+                    unresolved.push(slot);
+                }
+            }
+            None => {
+                tracing::warn!(
+                    class = %class,
+                    slot = %slot,
+                    component = %component_class,
+                    "Component slot not found on the placed instance; its handle stays none"
+                );
+                unresolved.push(slot);
+            }
+        }
+    }
+    unresolved
+}
+
+/// Reload the script module of the class an [`AssetUpdated`] names (by the
+/// class directory's name) if the runtime has it loaded, then re-bind the
+/// component-slot handles of every instance of it. Returns the class name
+/// when it reloaded.
+///
+/// [`AssetUpdated`]: pulsar_events::AssetUpdated
+pub fn reload_class_for_asset(
+    runtime: &mut ScriptRuntime,
+    world: &pulsar_scenedb::World,
+    project_root: &Path,
+    event: &pulsar_events::AssetUpdated,
+) -> Option<String> {
+    if event.kind != pulsar_events::AssetKind::Blueprint {
+        return None;
+    }
+    let class = match &event.path {
+        Some(path) => path.file_name()?.to_str()?.to_owned(),
+        None => {
+            let id = event.id.as_deref()?;
+            pulsar_class::ClassRegistry::scan(project_root)
+                .by_id(&pulsar_class::ClassId::from(id))?
+                .name
+                .clone()
+        }
+    };
+    if !runtime.has_class(&class) {
+        return None;
+    }
+    let module = module_path_for_class(project_root, &class);
+    if let Err(error) = runtime.load_class_file(&module) {
+        tracing::warn!(class = %class, "Class updated but its script module did not reload: {error}");
+        return None;
+    }
+    let instances: Vec<(String, Entity)> = runtime
+        .instance_ids()
+        .iter()
+        .filter(|id| runtime.class_of(id) == Some(class.as_str()))
+        .filter_map(|id| Some((id.clone(), runtime.entity_of(id)?)))
+        .collect();
+    for (id, entity) in instances {
+        bind_class_slots(runtime, &id, world, entity);
+    }
+    Some(class)
+}
+
+/// Keep `runtime` in step with class edits: every published class
+/// [`AssetUpdated`](pulsar_events::AssetUpdated) reloads that class's
+/// module (see [`reload_class_for_asset`]). Live instance handling (spawn,
+/// despawn, re-placing instances) is the script runtime's own phase (#922).
+pub fn subscribe_class_reloads(
+    runtime: std::sync::Arc<std::sync::Mutex<ScriptRuntime>>,
+    scene: engine_backend::scene::SharedScene,
+    project_root: PathBuf,
+) -> pulsar_events::AssetSubscription {
+    pulsar_events::subscribe_asset_updates(Some(pulsar_events::AssetKind::Blueprint), move |event| {
+        let world_guard = scene.read();
+        let mut runtime = runtime.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(class) = reload_class_for_asset(&mut runtime, &world_guard.world, &project_root, event) {
+            tracing::info!(class = %class, "Reloaded script class after an asset update");
+        }
+    })
 }

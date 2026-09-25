@@ -27,9 +27,10 @@ use std::sync::Arc;
 use libloading::Library;
 use parking_lot::{RwLock, RwLockWriteGuard};
 use pulsar_pie_abi::{
-    EngineContext as PieContext, FnAbiVersion, FnInit, FnInput, FnResize, FnShutdown, FnTick,
+    EngineContext as PieContext, FnAbiVersion, FnAssetUpdated, FnInit, FnInput, FnResize,
+    FnShutdown, FnTick,
     InputEvent, INIT_OK, LOG_DEBUG, LOG_ERROR, LOG_INFO, LOG_TRACE, LOG_WARN, PIE_ABI_VERSION,
-    SYM_ABI_VERSION, SYM_INIT, SYM_INPUT, SYM_RESIZE, SYM_SHUTDOWN, SYM_TICK,
+    SYM_ABI_VERSION, SYM_ASSET_UPDATED, SYM_INIT, SYM_INPUT, SYM_RESIZE, SYM_SHUTDOWN, SYM_TICK,
 };
 
 
@@ -124,6 +125,8 @@ pub struct PieHost {
     resize: FnResize,
     input: FnInput,
     shutdown: FnShutdown,
+    /// Optional (#921): games built before it existed lack the symbol.
+    asset_updated: Option<FnAssetUpdated>,
 
     /// Boxed so its address stays fixed while the game holds `&mut *ctx`.
     ctx: Box<PieContext>,
@@ -259,6 +262,8 @@ impl PieHost {
         let shutdown: FnShutdown = *lib
             .get(SYM_SHUTDOWN)
             .map_err(|e| format!("Missing symbol {}: {e}", sym_name(SYM_SHUTDOWN)))?;
+        let asset_updated: Option<FnAssetUpdated> =
+            lib.get::<FnAssetUpdated>(SYM_ASSET_UPDATED).ok().map(|symbol| *symbol);
 
         let color_format = format_to_u32(format)
             .ok_or_else(|| format!("Unsupported viewport format for PiE: {format:?}"))?;
@@ -327,6 +332,7 @@ impl PieHost {
             resize,
             input,
             shutdown,
+            asset_updated,
             ctx,
             out_texture,
             world_bridge: Some(world_bridge),
@@ -352,6 +358,28 @@ impl PieHost {
             self.ctx.width = width.max(1);
             self.ctx.height = height.max(1);
         }
+    }
+
+    /// Forward an asset-update notification to the running game (#921), so
+    /// it can reload what it built from the asset (a class's script module).
+    /// Call on the thread that ticks the game. A no-op for games built
+    /// without the entry point.
+    pub fn asset_updated(&self, event: &pulsar_events::AssetUpdated) {
+        let (Some(asset_updated), true) = (self.asset_updated, self.started) else {
+            return;
+        };
+        let Ok(kind) = serde_json::to_string(&event.kind) else {
+            return;
+        };
+        let id = event.id.clone().unwrap_or_default();
+        let path = event
+            .path
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        unsafe {
+            asset_updated(kind.as_ptr(), kind.len(), id.as_ptr(), id.len(), path.as_ptr(), path.len())
+        };
     }
 
     /// Forward one input event to the game.

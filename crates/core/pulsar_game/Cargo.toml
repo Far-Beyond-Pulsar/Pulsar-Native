@@ -46,6 +46,8 @@ parking_lot = { workspace = true }
 
 # Scene loading + settings
 pulsar_scene    = { workspace = true }
+pulsar_class    = { workspace = true }
+pulsar_events   = { workspace = true }
 engine_state    = { workspace = true }
 pulsar_settings = { workspace = true }
 

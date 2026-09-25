@@ -39,6 +39,7 @@
 //! | [`error`] | `PluginError` type |
 //! | [`statusbar`] | Statusbar button definitions |
 //! | [`actions`] | `OpenAsset` action |
+//! | [`asset_events`] | `AssetUpdated`: publish / subscribe to asset changes by kind |
 //! | [`ai`] | `AiToolDefinition`, `FsContext` |
 //! | [`components`] | `ComponentDefinition`, `EditorPluginComponents` |
 //! | [`subsystems`] | `EditorPluginSubsystems`, `Subsystem` re-exports |
@@ -79,6 +80,7 @@
 
 pub mod actions;
 pub mod ai;
+pub mod asset_events;
 pub mod asset_payload;
 pub mod components;
 pub mod editor_element;
@@ -103,6 +105,7 @@ pub mod version;
 
 pub use actions::*;
 pub use ai::*;
+pub use asset_events::*;
 pub use asset_payload::*;
 pub use components::*;
 pub use editor_element::*;

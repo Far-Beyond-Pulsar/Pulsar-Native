@@ -647,6 +647,24 @@ pub unsafe extern "C" fn pulsar_pie_input(ev: *const InputEvent) {
 pub extern "C" fn pulsar_pie_shutdown() {
     let _ = std::panic::catch_unwind(embed::pie_shutdown);
 }
+
+/// An asset was updated in the editor (e.g. a class was saved): reload it.
+///
+/// # Safety
+/// Each pointer/length pair must be a valid UTF-8 range or null.
+#[no_mangle]
+pub unsafe extern "C" fn pulsar_pie_asset_updated(
+    kind: *const u8,
+    kind_len: usize,
+    id: *const u8,
+    id_len: usize,
+    path: *const u8,
+    path_len: usize,
+) {
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        embed::pie_asset_updated(kind, kind_len, id, id_len, path, path_len)
+    }));
+}
 "#;
 
     // Only write when missing or still ours, so a user who deletes the marker to

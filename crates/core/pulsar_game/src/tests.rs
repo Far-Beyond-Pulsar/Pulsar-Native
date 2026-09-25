@@ -317,4 +317,71 @@ mod script_runtime_bindings {
         assert_eq!(runtime.instance_ids(), ["TickProbe__vm_default"]);
         let _ = std::fs::remove_dir_all(&root);
     }
+
+    /// #921: binding a script instance to a placed class fills each hidden
+    /// `__slot:<uuid>` variable once with a handle to that instance's real
+    /// component (here the second LightComponent, on a generated child).
+    /// A slot the instance does not have stays `none`, reported; there is
+    /// no fallback to the root.
+    #[test]
+    fn class_slot_handles_are_resolved_once_at_bind() {
+        use helio_component::components::LightComponent;
+
+        let root = std::env::temp_dir().join(format!("pulsar_game_slot_bind_{}", std::process::id()));
+        let class_dir = root.join("src/classes/Lamp");
+        std::fs::create_dir_all(&class_dir).unwrap();
+        let light = serde_json::to_value(LightComponent::default()).unwrap();
+        std::fs::write(
+            class_dir.join("prefab.json"),
+            serde_json::json!({
+                "prefab_version": 1, "name": "Lamp",
+                "components": [
+                    { "class_name": "LightComponent", "enabled": true, "data": light },
+                    { "class_name": "LightComponent", "enabled": true, "data": light }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let registry = pulsar_class::ClassRegistry::scan(&root);
+        let def = registry.by_name("Lamp").unwrap().load_definition().unwrap();
+        let second_slot = def.prefab.components[1].slot_id.clone();
+        let missing_slot = pulsar_class::new_slot_id();
+
+        let mut scene = engine_backend::scene::new_scene();
+        let placement = pulsar_class::world::instantiate_class(
+            &mut scene.world,
+            &def,
+            pulsar_class::ClassInstance::default(),
+            engine_backend::scene::SpawnObject::new("Lamp").with_id("lamp"),
+        )
+        .unwrap();
+        let child = placement.handle(&second_slot).unwrap().entity;
+        assert_ne!(child, placement.root(), "second copy lives on a generated child");
+
+        let mut module = Module::new("Lamp");
+        for slot in [&second_slot, &missing_slot] {
+            module.variables.push(Variable {
+                name: pulsar_class::slot_variable_name(slot),
+                ty: Type::Component("LightComponent".into()),
+                default: None,
+            });
+        }
+        let mut runtime = scripting::new_runtime();
+        runtime.load_class(module).unwrap();
+        runtime.spawn("lamp::Lamp", "Lamp", Some(placement.root()), &[]).unwrap();
+        let unresolved = scripting::bind_class_slots(&mut runtime, "lamp::Lamp", &scene.world, placement.root());
+        assert_eq!(unresolved, [missing_slot.clone()]);
+
+        let light_id = pulsar_world_registry::component_id_for_class("LightComponent").unwrap();
+        assert_eq!(
+            runtime.variable("lamp::Lamp", &pulsar_class::slot_variable_name(&second_slot)),
+            Some(&Value::Component(pulsar_scenedb::ComponentRef::new(child, light_id)))
+        );
+        match runtime.variable("lamp::Lamp", &pulsar_class::slot_variable_name(&missing_slot)) {
+            Some(Value::Component(handle)) => assert_eq!(handle.entity, pulsar_scenedb::Entity::DANGLING, "none, not the root"),
+            other => panic!("unexpected {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

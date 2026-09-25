@@ -343,6 +343,9 @@ impl LevelEditorPanel {
         // `gpu_engine.lock()` sites already had on any lock failure).
         let helio_mailbox = gpu_engine.lock().ok().and_then(|engine| engine.editor_mailbox());
 
+        let class_updates =
+            crate::level_editor::core::asset_updates::subscribe_class_updates(shared_state.clone());
+
         Self {
             focus_handle: cx.focus_handle(),
             toolbar,
@@ -351,6 +354,7 @@ impl LevelEditorPanel {
             gpu_engine: gpu_engine.clone(),
             helio_mailbox,
             render_enabled,
+            _class_updates: class_updates,
             shared_state,
             workspace: None,
             game_panel: None,

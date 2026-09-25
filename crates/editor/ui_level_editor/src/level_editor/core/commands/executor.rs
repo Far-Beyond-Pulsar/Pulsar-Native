@@ -14,10 +14,12 @@ fn command_scope(cmd: &SceneCommand) -> Vec<String> {
         | SceneCommand::SetTransform { id, .. }
         | SceneCommand::SetName { id, .. }
         | SceneCommand::SetVisibility { id, .. }
-        | SceneCommand::SetComponentProperty { id, .. } => vec![id.clone()],
+        | SceneCommand::SetComponentProperty { id, .. }
+        | SceneCommand::RevertComponentProperty { id, .. }
+        | SceneCommand::SetClassVariable { id, .. } => vec![id.clone()],
         SceneCommand::UpdateObject { data } => vec![data.id.clone()],
         SceneCommand::DuplicateObject { source_id, .. } => vec![source_id.clone()],
-        SceneCommand::SelectObject { .. } => Vec::new(),
+        SceneCommand::SelectObject { .. } | SceneCommand::InstantiateClass { .. } => Vec::new(),
     }
 }
 
@@ -47,7 +49,9 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
     let is_undoable = !matches!(cmd, SceneCommand::SelectObject { .. });
     let arms_new_render_rows = matches!(
         &cmd,
-        SceneCommand::AddObject { .. } | SceneCommand::DuplicateObject { .. }
+        SceneCommand::AddObject { .. }
+            | SceneCommand::DuplicateObject { .. }
+            | SceneCommand::InstantiateClass { .. }
     );
     let scope = command_scope(&cmd);
     let pre_state = is_undoable.then(|| capture_history_subset(&state.scene.world(), &scope));
@@ -71,6 +75,104 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 }
                 state.scene.bump_revision(true);
                 CommandResult::ok(vec![id])
+            }
+
+            SceneCommand::InstantiateClass {
+                ref class_dir,
+                ref transform,
+                ref parent_id,
+            } => {
+                let placed = crate::level_editor::scene_edit::classes::instantiate_class_dir(
+                    &mut state.scene.world_mut(),
+                    class_dir,
+                    transform,
+                    parent_id.as_deref(),
+                );
+                match placed {
+                    Ok(ids) => {
+                        state.scene.bump_revision(true);
+                        CommandResult::ok(ids)
+                    }
+                    Err(error) => {
+                        tracing::error!("Could not place class: {error}");
+                        CommandResult::noop("Class could not be placed")
+                    }
+                }
+            }
+
+            SceneCommand::RevertComponentProperty {
+                ref id,
+                ref class_name,
+                component_index,
+                ref prop_name,
+            } => {
+                let registry = crate::level_editor::scene_edit::classes::project_registry();
+                let default = {
+                    let world = state.scene.world();
+                    crate::level_editor::scene_edit::classes::slot_defaults(&world, id, &registry)
+                        .remove(&component_index)
+                        .filter(|d| &d.class_name == class_name)
+                        .and_then(|d| d.property(prop_name))
+                };
+                let Some(default) = default else {
+                    return CommandResult::noop("No class default for this property");
+                };
+                let json = pulsar_reflection::RUNTIME_TYPE_REGISTRY
+                    .serialize_json_for_any(default.as_ref())
+                    .ok();
+                let updated =
+                    crate::level_editor::scene_edit::components::update_live_component_property(
+                        &mut state.scene.world_mut(),
+                        id,
+                        class_name,
+                        component_index,
+                        prop_name,
+                        default,
+                    );
+                if updated.is_err() {
+                    let Some(json) = json else {
+                        return CommandResult::noop("Class default could not be written");
+                    };
+                    crate::level_editor::scene_edit::components::update_component_property(
+                        &mut state.scene.world_mut(),
+                        id,
+                        class_name,
+                        prop_name,
+                        json,
+                    );
+                }
+                state.scene.bump_revision(true);
+                CommandResult::ok(vec![id.clone()])
+            }
+
+            SceneCommand::SetClassVariable {
+                ref id,
+                ref name,
+                ref value,
+            } => {
+                let changed = match value {
+                    Some(value) => {
+                        let registry = crate::level_editor::scene_edit::classes::project_registry();
+                        crate::level_editor::scene_edit::classes::set_variable(
+                            &mut state.scene.world_mut(),
+                            id,
+                            name,
+                            value.clone(),
+                            &registry,
+                        )
+                    }
+                    None => crate::level_editor::scene_edit::classes::revert_variable(
+                        &mut state.scene.world_mut(),
+                        id,
+                        name,
+                    ),
+                };
+                if changed {
+                    state.scene.bump_revision(true);
+                    CommandResult::ok(vec![id.clone()])
+                } else {
+                    CommandResult::noop("Not a class instance, or nothing to revert")
+                }
             }
 
             SceneCommand::RemoveObject { ref id } => {
@@ -322,10 +424,22 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
     if result.changed {
         if arms_new_render_rows {
             let mut world = state.scene.world_mut();
+            // Include descendants: a duplicated class instance brings
+            // generated child objects along with its root.
+            let mut entities = Vec::new();
             for id in &result.affected_ids {
                 if let Some(entity) = world.entity_for(id) {
-                    engine_backend::scene::arm_render_row_subscriptions_for_entity(&mut world, entity);
+                    let mut stack = vec![entity];
+                    while let Some(e) = stack.pop() {
+                        if !entities.contains(&e) {
+                            entities.push(e);
+                            stack.extend(world.children_of(Some(e)));
+                        }
+                    }
                 }
+            }
+            for entity in entities {
+                engine_backend::scene::arm_render_row_subscriptions_for_entity(&mut world, entity);
             }
         }
         if let Some(pre) = pre_state {

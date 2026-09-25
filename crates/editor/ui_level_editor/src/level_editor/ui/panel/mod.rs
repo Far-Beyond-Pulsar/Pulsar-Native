@@ -105,6 +105,9 @@ pub struct LevelEditorPanel {
 
     // Keeps the polling task alive for the lifetime of the panel.
     _root_input_poller: gpui::Task<()>,
+
+    /// Rebuilds placed class instances when a class asset is updated (#921).
+    _class_updates: plugin_editor_api::AssetSubscription,
 }
 
 

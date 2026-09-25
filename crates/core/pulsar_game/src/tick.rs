@@ -350,8 +350,8 @@ impl TickLoop {
         };
 
         // Set up EngineContext globally before any scene loading or
-        // component sync (e.g. ScriptComponent::sync_component calls
-        // script_registry() which reads EngineContext::global()).
+        // component sync (component hydration and runtime behaviours may
+        // read EngineContext::global()).
         let engine_ctx = engine_state::EngineContext::new();
         engine_ctx.clone().set_global();
 

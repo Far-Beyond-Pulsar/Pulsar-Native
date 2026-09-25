@@ -2921,6 +2921,7 @@ dependencies = [
  "parking_lot",
  "pollster 0.4.0",
  "profiling 0.1.0",
+ "pulsar_class",
  "pulsar_events",
  "pulsar_lsp",
  "pulsar_pie_abi",
@@ -5038,7 +5039,6 @@ dependencies = [
  "helio-pass-water-sim",
  "helio-voxel-data",
  "plugin_editor_api",
- "pulsar_events",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
@@ -5929,11 +5929,13 @@ name = "level_migrate"
 version = "0.1.0"
 dependencies = [
  "helio_component",
+ "pulsar_class",
  "pulsar_physics",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_world_registry",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -8066,6 +8068,7 @@ version = "0.1.0"
 dependencies = [
  "engine_subsystems",
  "gpui-ce",
+ "pulsar_events",
  "pulsar_reflection",
  "schemars",
  "serde",
@@ -8642,6 +8645,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_class"
+version = "0.1.0"
+dependencies = [
+ "engine_class_derive",
+ "glam 0.33.5",
+ "inventory",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "pulsar_core"
 version = "0.1.0"
 dependencies = [
@@ -8713,9 +8734,9 @@ dependencies = [
 name = "pulsar_events"
 version = "0.1.0"
 dependencies = [
- "engine_state",
  "serde",
  "tracing",
+ "ui_types_common",
 ]
 
 [[package]]
@@ -8734,7 +8755,9 @@ dependencies = [
  "pbgc",
  "pollster 1.0.1",
  "profiling 0.1.0",
+ "pulsar_class",
  "pulsar_core",
+ "pulsar_events",
  "pulsar_pie_abi",
  "pulsar_reflection",
  "pulsar_scene",
@@ -8855,7 +8878,6 @@ dependencies = [
  "helio",
  "helio-asset-compat",
  "helio_component",
- "pulsar_events",
  "pulsar_reflection",
  "serde",
  "serde_json",
@@ -13082,6 +13104,7 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "profiling 0.1.0",
+ "pulsar_class",
  "pulsar_physics",
  "pulsar_pie_abi",
  "pulsar_reflection",
@@ -13095,6 +13118,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smol",
+ "tempfile",
  "tool_registry",
  "tracing",
  "ui",

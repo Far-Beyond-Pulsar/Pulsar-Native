@@ -54,7 +54,8 @@ pub use menu::{AppTitleBar, AppTitleBarEvent};
 pub use panel::{PanelBase, PanelEvent};
 pub use profile_dropdown::{ProfileDropdown, ProfileDropdownEvent};
 pub use reflected_properties_panel::{
-    render_property_row_runtime, PropertyStateManager, ReflectedPropertiesPanelConfig,
+    decorate_property_override, render_property_row_runtime, PropertyOverride,
+    PropertyStateManager, ReflectedPropertiesPanelConfig,
 };
 pub use shared::{PropertyField, StatusBar, Toolbar, ToolbarButton, ViewportControls};
 pub use theme_dropdown::ThemePicker;
