@@ -290,18 +290,10 @@ fn live_instance_mut<'w>(
 }
 
 /// Liveness gate mirroring the object-model crate's `ensure_live_entity`:
-/// ordinary staleness is a plain typed error in every build;
-/// `Entity::DANGLING` additionally trips a debug assert (raw-id abuse).
+/// a plain typed error in every build. `Entity::DANGLING` is scripts'
+/// `entity::none()`, so it is ordinary "not live" too (#888).
 fn ensure_live_entity(world: &World, entity: Entity) -> Result<(), ScriptRefError> {
-    if entity == Entity::DANGLING {
-        debug_assert!(
-            false,
-            "script dispatcher misuse: Entity::DANGLING reached a liveness-checked accessor \
-             (raw-id abuse across a language boundary, not ordinary staleness)"
-        );
-        return Err(ScriptRefError::despawned(entity));
-    }
-    if !world.is_alive(entity) {
+    if entity == Entity::DANGLING || !world.is_alive(entity) {
         return Err(ScriptRefError::despawned(entity));
     }
     Ok(())

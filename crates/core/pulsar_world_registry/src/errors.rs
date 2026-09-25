@@ -16,10 +16,8 @@
 //!   [`ScriptRefError::ComponentMissing`], [`ScriptRefError::InstanceMissing`])
 //!   is an expected runtime outcome -- handles outlive their targets by
 //!   design. These are plain `Err` returns in every build.
-//! - **Misuse** (passing [`pulsar_scenedb::Entity::DANGLING`] as a live
-//!   handle) returns the same `ReferenceDespawned` error in release builds
-//!   and additionally trips a debug-build assertion -- a sentinel reaching
-//!   an accessor can only mean raw ids crossed a boundary unconverted.
+//! - [`pulsar_scenedb::Entity::DANGLING`] (scripts' `entity::none()`)
+//!   returns the same `ReferenceDespawned` error in every build (#888).
 
 use pulsar_scenedb::Entity;
 

@@ -490,3 +490,25 @@ mod script_vm {
         assert!(err.to_string().contains("has no DispatchGizmo"), "{err}");
     }
 }
+
+/// #888: `Entity::DANGLING` is scripts' `entity::none()` (an unmatched
+/// lookup, an unbound instance's `self`), so method and property access on
+/// it is an ordinary "not live" error in every build, debug included: no
+/// assert, no panic.
+#[test]
+fn dangling_entity_is_not_live_not_a_panic() {
+    let (mut world, _e) = hydrated_world(3);
+    let none = Entity::DANGLING;
+
+    let err = invoke_component_method(
+        &mut world,
+        none,
+        "DispatchGizmo",
+        0,
+        "add_charges",
+        vec![Box::new(1i32)],
+    )
+    .unwrap_err();
+    assert_eq!(err, ScriptRefError::despawned(none));
+    assert!(get_component_property(&world, none, "DispatchGizmo", 0, "charges").is_err());
+}
