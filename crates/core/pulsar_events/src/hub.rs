@@ -361,6 +361,27 @@ impl EventHub {
     pub fn recent_events(&self) -> Vec<TapRecord> {
         self.inner.tap.recent()
     }
+
+    /// Everything the events debug panel shows.
+    pub fn snapshot(&self) -> crate::tap::EventsSnapshot {
+        let mut events: Vec<crate::tap::SnapshotEvent> = self
+            .events()
+            .into_iter()
+            .map(|e| crate::tap::SnapshotEvent {
+                global_subscribers: self.subscriber_count(e.descriptor.id, Channel::Global),
+                name: e.descriptor.name.clone(),
+                category: e.category.to_string(),
+            })
+            .collect();
+        events.sort_by(|a, b| a.name.cmp(&b.name));
+        crate::tap::EventsSnapshot {
+            frame: self.frame(),
+            queued: self.queued_len(),
+            tap_enabled: self.tap_enabled(),
+            recent: self.recent_events().iter().map(Into::into).collect(),
+            events,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -447,6 +468,12 @@ mod tests {
         assert_eq!(recent[0].channel, Channel::Entity(3));
         assert!(recent[0].summary.contains("impulse=0.500"), "{}", recent[0].summary);
         assert_eq!(recent[1].point, FlushPoint::AfterScripts);
+        let snapshot = hub.snapshot();
+        assert_eq!(snapshot.recent[0].channel, "entity:3");
+        let json = serde_json::to_string(&snapshot).unwrap();
+        let back: crate::tap::EventsSnapshot = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, snapshot);
+        assert!(back.events.iter().any(|e| e.name == "Hit" && e.category == "Physics"));
         hub.set_tap(false, 0);
         assert!(hub.recent_events().is_empty());
     }

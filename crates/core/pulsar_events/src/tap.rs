@@ -19,6 +19,63 @@ use gamma::{Channel, DynEvent, DynValue, EventDescriptor};
 
 use crate::hub::FlushPoint;
 
+/// A serialisable view of a hub's debug state, for tools on the other side
+/// of a library boundary (the editor reading a Play-in-Editor game through
+/// the PIE ABI's `pulsar_pie_events_snapshot`).
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct EventsSnapshot {
+    pub frame: u64,
+    pub queued: usize,
+    pub tap_enabled: bool,
+    /// Recently flushed events, oldest first.
+    pub recent: Vec<SnapshotRecord>,
+    /// Every registered event with its global-channel subscriber count,
+    /// sorted by name.
+    pub events: Vec<SnapshotEvent>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SnapshotRecord {
+    pub seq: u64,
+    pub frame: u64,
+    pub point: String,
+    pub name: String,
+    /// `global`, `entity:<hex bits>` or `class:<hex id>`.
+    pub channel: String,
+    pub summary: String,
+    pub subscribers: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SnapshotEvent {
+    pub name: String,
+    pub category: String,
+    pub global_subscribers: usize,
+}
+
+/// `global`, `entity:<hex>` or `class:<hex>`.
+pub fn channel_label(channel: Channel) -> String {
+    match channel {
+        Channel::Global => "global".into(),
+        Channel::Entity(bits) => format!("entity:{bits:x}"),
+        Channel::Class(id) => format!("class:{id:x}"),
+    }
+}
+
+impl From<&TapRecord> for SnapshotRecord {
+    fn from(r: &TapRecord) -> Self {
+        Self {
+            seq: r.seq,
+            frame: r.frame,
+            point: r.point.to_string(),
+            name: r.name.clone(),
+            channel: channel_label(r.channel),
+            summary: r.summary.clone(),
+            subscribers: r.subscribers,
+        }
+    }
+}
+
 /// One delivered event.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TapRecord {

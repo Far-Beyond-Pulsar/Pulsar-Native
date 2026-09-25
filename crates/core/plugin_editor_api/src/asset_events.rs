@@ -8,7 +8,11 @@
 //! that class.
 //!
 //! The bus lives in the GPUI-free `pulsar_events` crate so the game runtime
-//! shares it; see its docs for delivery rules.
+//! shares it; see its docs for delivery rules. It is the host's Gamma bus:
+//! a plugin built as a separate dynamic library is attached to it when the
+//! editor loads the plugin (`export_plugin!` exports the entry point), so
+//! its publishes reach the editor and the editor's reach it
+//! (Pulsar-Native#930).
 
 pub use pulsar_events::assets::{
     publish_asset_updated, subscribe_asset_updates, AssetSubscription, AssetUpdated,

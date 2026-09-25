@@ -28,9 +28,18 @@
 //! 1. class reloads requested since the last frame are applied;
 //! 2. **reconcile**: start and stop instances as above;
 //! 3. `begin_play` of every instance started in step 2, in start order;
-//! 4. `tick` of every running instance, in start order;
-//! 5. world changes scripts queued ([`WorldCommand`]s: spawn, destroy) are
+//! 4. event handler calls queued by the event hub since the last script
+//!    phase, in delivery order (see [`super::events`]);
+//! 5. `tick` of every running instance, in start order, then due timers;
+//! 6. world changes scripts queued ([`WorldCommand`]s: spawn, destroy) are
 //!    applied, in the order they were queued.
+//!
+//! With an event hub attached ([`ScriptDriver::attach_events`], done by
+//! the tick loop), instances subscribe to their class's events when they
+//! start and drop the subscriptions when they stop, and the driver
+//! publishes the lifecycle built-ins: `BeginPlay` after an instance's
+//! `begin_play`, `EndPlay` after its `end_play`, `LevelLoaded` once after
+//! the first frame's instances began, `EntitySpawned` / `EntityDestroyed`.
 //!
 //! # Ordering (deterministic)
 //!
@@ -68,6 +77,9 @@ use serde_json::Value;
 
 use super::bind_class_slots;
 use super::commands::{CommandScope, WorldCommand};
+use super::events::ScriptEvents;
+use pulsar_events::builtin::{BeginPlay, EndPlay, EntityDestroyed, EntitySpawned};
+use pulsar_events::{entity_channel, EventHub};
 
 /// Rounds of queued world commands applied per frame: `end_play` of a
 /// destroyed object may queue more, but a chain never runs forever.
@@ -176,6 +188,10 @@ pub struct ScriptDriver {
     spawn_serial: u64,
     reloads: ReloadRequests,
     scratch: Vec<ComponentChange>,
+    /// Event hub integration, once attached.
+    events: Option<ScriptEvents>,
+    /// Level name reported by `LevelLoaded`.
+    level: String,
 }
 
 impl ScriptDriver {
@@ -212,6 +228,115 @@ impl ScriptDriver {
             spawn_serial: 0,
             reloads: Arc::new(Mutex::new(Vec::new())),
             scratch: Vec::new(),
+            events: None,
+            level: String::new(),
+        }
+    }
+
+    // ---- events -------------------------------------------------------------
+
+    /// Put the scripts on `hub` (the session's event hub): declared events
+    /// register there, handlers link against it, natives publish to it and
+    /// every instance, running or started later, subscribes its handlers.
+    /// See [`super::events`].
+    pub fn attach_events(&mut self, hub: EventHub) {
+        if self.events.as_ref().is_some_and(|e| e.hub().ptr_eq(&hub)) {
+            return;
+        }
+        if let Some(mut old) = self.events.take() {
+            old.clear();
+        }
+        let events = ScriptEvents::new(hub);
+        for entry in self.registry.entries() {
+            events.bridge().add_class(&entry.name, entry.id.as_str());
+        }
+        let report = self.runtime.set_event_host(Some(events.host()));
+        for (class, error) in report.failed {
+            tracing::warn!(class = %class, "script class does not link against the event hub: {error}");
+        }
+        self.events = Some(events);
+        self.predeclare_project_events();
+        self.resubscribe(None);
+    }
+
+    /// Declare the events of every compiled class in the project on the
+    /// hub, so a class can subscribe to another class's events whichever
+    /// loads first.
+    fn predeclare_project_events(&self) {
+        if self.events.is_none() {
+            return;
+        }
+        for entry in self.registry.entries() {
+            let path = module_file(entry);
+            let Ok(json) = std::fs::read_to_string(&path) else { continue };
+            match pulsar_script_vm::Module::from_json(&json) {
+                Ok(module) => {
+                    if let Err(error) = self.runtime.declare_events(&module) {
+                        tracing::warn!("{error}");
+                    }
+                }
+                Err(error) => tracing::debug!(path = %path.display(), "unreadable script module: {error}"),
+            }
+        }
+    }
+
+    /// The attached event integration.
+    pub fn events(&self) -> Option<&ScriptEvents> {
+        self.events.as_ref()
+    }
+
+    /// The attached event hub.
+    pub fn event_hub(&self) -> Option<&EventHub> {
+        self.events.as_ref().map(ScriptEvents::hub)
+    }
+
+    /// Name the level `LevelLoaded` reports.
+    pub fn set_level_name(&mut self, level: impl Into<String>) {
+        self.level = level.into();
+    }
+
+    /// (Re)subscribe the live instances of `class` (the runtime's class
+    /// name), or of every class when `None`.
+    fn resubscribe(&mut self, class: Option<&str>) {
+        let Some(events) = self.events.as_mut() else { return };
+        let targets: Vec<(String, String, String, Option<Entity>)> = self
+            .runtime
+            .instance_ids()
+            .iter()
+            .filter_map(|id| {
+                let class_name = self.runtime.class_of(id)?;
+                if class.is_some_and(|c| c != class_name) {
+                    return None;
+                }
+                let guid = self
+                    .loaded
+                    .iter()
+                    .find(|(_, name)| name.as_str() == class_name)
+                    .map(|(guid, _)| guid.as_str().to_owned())
+                    .unwrap_or_default();
+                Some((id.clone(), class_name.to_owned(), guid, self.by_instance.get(id).copied()))
+            })
+            .collect();
+        for (id, class_name, guid, entity) in targets {
+            for failure in events.subscribe(&self.runtime, &id, &class_name, &guid, entity) {
+                tracing::warn!("{failure}");
+            }
+        }
+    }
+
+    fn subscribe_instance(&mut self, id: &str, class: &str, guid: &str, entity: Option<Entity>, report: &mut DriverReport) {
+        if let Some(events) = self.events.as_mut() {
+            events.bridge().add_class(class, guid);
+            for failure in events.subscribe(&self.runtime, id, class, guid, entity) {
+                tracing::warn!("{failure}");
+                report.failures.push(failure);
+            }
+        }
+    }
+
+    fn publish<T: pulsar_events::gamma::Event + Send>(&self, channel: pulsar_events::gamma::Channel, event: T) {
+        if let Some(events) = &self.events {
+            events.hub().publish(channel, event);
         }
     }
 
@@ -267,9 +392,24 @@ impl ScriptDriver {
     pub fn run_frame(&mut self, world: &mut World, delta_time: f64) -> DriverReport {
         let mut report = DriverReport::default();
         let mut scope = CommandScope::begin();
+        if let Some(events) = &self.events {
+            events.bridge().set_time(self.runtime.time());
+        }
         self.reconcile_into(world, &mut report);
         report.script_errors.extend(self.runtime.dispatch_pending_begin_play(world));
+        for id in &report.started {
+            if let Some(entity) = self.by_instance.get(id) {
+                self.publish(entity_channel(entity.bits()), BeginPlay { entity: entity.bits() });
+            }
+        }
+        if let Some(events) = self.events.as_mut() {
+            events.announce_level(&self.level);
+            report.script_errors.extend(events.run_calls(&mut self.runtime, world));
+        }
         report.script_errors.extend(self.runtime.tick_all(world, delta_time));
+        if let Some(events) = &self.events {
+            events.bridge().fire_timers(self.runtime.time());
+        }
         for _ in 0..MAX_COMMAND_ROUNDS {
             let commands = scope.take();
             if commands.is_empty() {
@@ -300,10 +440,21 @@ impl ScriptDriver {
 
     /// Run `end_play` on every running instance (shutdown). World changes
     /// scripts request now are dropped.
+    ///
+    /// With an event hub attached, every script subscription, queued
+    /// handler call and timer is dropped and the hub's queue discarded, so
+    /// a stopped session leaves nothing behind on the hub.
     pub fn end_play_all(&mut self, world: &mut World) -> Vec<RuntimeError> {
         let scope = CommandScope::begin();
+        if let Some(events) = self.events.as_mut() {
+            // No handler runs after end_play.
+            events.clear();
+        }
         let errors = self.runtime.end_play_all(world);
         discard_commands(world, scope.finish());
+        if let Some(events) = self.events.as_mut() {
+            events.clear();
+        }
         errors
     }
 
@@ -466,6 +617,7 @@ impl ScriptDriver {
                     tracked.instance = Some(id.clone());
                 }
                 self.by_instance.insert(id.clone(), entity);
+                self.subscribe_instance(&id, &class, entry.id.as_str(), Some(entity), report);
                 report.started.push(id);
             }
             Err(error) => {
@@ -482,11 +634,23 @@ impl ScriptDriver {
         };
         if let Some(id) = tracked.instance {
             self.by_instance.remove(&id);
+            if let Some(events) = self.events.as_mut() {
+                events.unsubscribe(&id);
+            }
+            let begun = self.runtime.has_begun(&id);
             if let Err(error) = self.runtime.despawn(&id, world) {
                 tracing::warn!("{error}");
                 report.script_errors.push(error);
             }
+            if begun {
+                self.publish(entity_channel(entity.bits()), EndPlay { entity: entity.bits() });
+            }
             report.stopped.push(id);
+        }
+        if !world.is_alive(entity) {
+            // Removed from the world by someone else (world::destroy
+            // publishes its own before despawning).
+            self.publish(pulsar_events::gamma::Channel::Global, EntityDestroyed { entity: entity.bits() });
         }
     }
 
@@ -511,6 +675,7 @@ impl ScriptDriver {
             match self.runtime.spawn(id.clone(), &class, None, &[]) {
                 Ok(()) => {
                     self.globals.push(id.clone());
+                    self.subscribe_instance(&id, &class, entry.id.as_str(), None, report);
                     report.started.push(id);
                 }
                 Err(error) => {
@@ -527,6 +692,12 @@ impl ScriptDriver {
     fn refresh_registry(&mut self) {
         if self.rescan_registry {
             self.registry = ClassRegistry::scan(&self.project_root);
+            if let Some(events) = &self.events {
+                for entry in self.registry.entries() {
+                    events.bridge().add_class(&entry.name, entry.id.as_str());
+                }
+                self.predeclare_project_events();
+            }
         }
     }
 
@@ -638,9 +809,11 @@ impl ScriptDriver {
                     Ok(name) if name != class => {
                         // The module was renamed: follow it.
                         tracing::warn!(class = %entry.name, module = %name, "Class module name changed on reload");
-                        self.loaded.insert(entry.id.clone(), name);
+                        self.loaded.insert(entry.id.clone(), name.clone());
+                        self.resubscribe(Some(&name));
                     }
-                    Ok(_) => {}
+                    // Its subscriptions may have changed.
+                    Ok(name) => self.resubscribe(Some(&name)),
                     Err(error) => {
                         tracing::warn!(class = %entry.name, "Class updated but its script module did not reload: {error}");
                         return None;
@@ -732,7 +905,10 @@ impl ScriptDriver {
             object_type: ObjectType::Blueprint,
         };
         match pulsar_class::world::instantiate_class_into(world, &def, ClassInstance::default(), spec, entity) {
-            Ok(_) => report.spawned.push(entity),
+            Ok(_) => {
+                self.publish(pulsar_events::gamma::Channel::Global, EntitySpawned { entity: entity.bits() });
+                report.spawned.push(entity)
+            }
             Err(error) => {
                 let message = format!("world::spawn of '{}' failed: {error}", def.name);
                 tracing::warn!("{message}");
@@ -769,6 +945,9 @@ impl ScriptDriver {
         }
         for &node in &tree {
             self.stop(world, node, report);
+        }
+        for &node in &tree {
+            self.publish(pulsar_events::gamma::Channel::Global, EntityDestroyed { entity: node.bits() });
         }
         world.despawn_tree(entity);
         report.destroyed.push(entity);

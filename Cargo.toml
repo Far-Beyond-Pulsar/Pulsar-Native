@@ -21,6 +21,7 @@ members = [
 exclude = [
     "crates/core/plugin_manager/tests/fixtures/plugin_loader_fixture",
     "crates/core/pulsar_script_vm/tests/fixtures/test_library",
+    "crates/core/pulsar_events/tests/fixtures/plugin",
     # WGPUI is an independently versioned repository. Pulsar consumes it as a
     # path dependency, but its standalone examples/dev dependencies must remain
     # owned and resolved by WGPUI rather than polluting Pulsar's workspace graph.

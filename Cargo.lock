@@ -8125,6 +8125,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "plugin_loader_fixture",
+ "pulsar_events",
  "serde_json",
  "sha2 0.11.0",
  "tracing",
@@ -8762,6 +8763,7 @@ name = "pulsar_events"
 version = "0.1.0"
 dependencies = [
  "gamma",
+ "libloading 0.9.0",
  "profiling 0.1.0",
  "serde",
  "serde_json",
@@ -8781,6 +8783,7 @@ dependencies = [
  "helio-default-graphs",
  "helio_component",
  "inventory",
+ "libloading 0.9.0",
  "parking_lot",
  "pbgc",
  "pollster 1.0.1",

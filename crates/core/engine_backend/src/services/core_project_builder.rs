@@ -687,6 +687,18 @@ pub unsafe extern "C" fn pulsar_pie_asset_updated(
         embed::pie_asset_updated(kind, kind_len, id, id_len, path, path_len)
     }));
 }
+
+/// The session's event debug snapshot (JSON) for the editor's events panel.
+///
+/// # Safety
+/// `out` must be valid for `capacity` bytes of writes (or `capacity` 0).
+#[no_mangle]
+pub unsafe extern "C" fn pulsar_pie_events_snapshot(out: *mut u8, capacity: usize) -> usize {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        embed::pie_events_snapshot(out, capacity)
+    }))
+    .unwrap_or(0)
+}
 "#;
 
     // Only write when missing or still ours, so a user who deletes the marker to

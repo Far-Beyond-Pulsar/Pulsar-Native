@@ -20,3 +20,7 @@ profiling = ["dep:profiling"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Loads the separately compiled test plugin (tests/fixtures/plugin).
+libloading = { workspace = true }

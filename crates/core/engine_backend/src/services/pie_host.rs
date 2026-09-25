@@ -30,7 +30,7 @@ use pulsar_pie_abi::{
     EngineContext as PieContext, FnAbiVersion, FnAssetUpdated, FnInit, FnInput, FnResize,
     FnShutdown, FnTick,
     InputEvent, INIT_OK, LOG_DEBUG, LOG_ERROR, LOG_INFO, LOG_TRACE, LOG_WARN, PIE_ABI_VERSION,
-    SYM_ABI_VERSION, SYM_ASSET_UPDATED, SYM_INIT, SYM_INPUT, SYM_RESIZE, SYM_SHUTDOWN, SYM_TICK,
+    FnEventsSnapshot, SYM_ABI_VERSION, SYM_ASSET_UPDATED, SYM_EVENTS_SNAPSHOT, SYM_INIT, SYM_INPUT, SYM_RESIZE, SYM_SHUTDOWN, SYM_TICK,
 };
 
 
@@ -127,6 +127,8 @@ pub struct PieHost {
     shutdown: FnShutdown,
     /// Optional (#921): games built before it existed lack the symbol.
     asset_updated: Option<FnAssetUpdated>,
+    /// Optional (#924): the game's event hub debug snapshot.
+    events_snapshot: Option<FnEventsSnapshot>,
 
     /// Boxed so its address stays fixed while the game holds `&mut *ctx`.
     ctx: Box<PieContext>,
@@ -264,6 +266,8 @@ impl PieHost {
             .map_err(|e| format!("Missing symbol {}: {e}", sym_name(SYM_SHUTDOWN)))?;
         let asset_updated: Option<FnAssetUpdated> =
             lib.get::<FnAssetUpdated>(SYM_ASSET_UPDATED).ok().map(|symbol| *symbol);
+        let events_snapshot: Option<FnEventsSnapshot> =
+            lib.get::<FnEventsSnapshot>(SYM_EVENTS_SNAPSHOT).ok().map(|symbol| *symbol);
 
         let color_format = format_to_u32(format)
             .ok_or_else(|| format!("Unsupported viewport format for PiE: {format:?}"))?;
@@ -333,6 +337,7 @@ impl PieHost {
             input,
             shutdown,
             asset_updated,
+            events_snapshot,
             ctx,
             out_texture,
             world_bridge: Some(world_bridge),
@@ -380,6 +385,29 @@ impl PieHost {
         unsafe {
             asset_updated(kind.as_ptr(), kind.len(), id.as_ptr(), id.len(), path.as_ptr(), path.len())
         };
+    }
+
+    /// The running game's event hub debug state (recent events, channels,
+    /// subscriber counts) for the PIE events panel. Call on the thread that
+    /// ticks the game. `None` for games built without the entry point.
+    pub fn events_snapshot(&self) -> Option<pulsar_events::EventsSnapshot> {
+        let (Some(snapshot), true) = (self.events_snapshot, self.started) else {
+            return None;
+        };
+        let mut buf: Vec<u8> = Vec::new();
+        // The snapshot can grow between the sizing call and the copy.
+        for _ in 0..3 {
+            let len = unsafe { snapshot(buf.as_mut_ptr(), buf.len()) };
+            if len == 0 {
+                return None;
+            }
+            if len <= buf.len() {
+                buf.truncate(len);
+                return serde_json::from_slice(&buf).ok();
+            }
+            buf = vec![0; len + len / 4];
+        }
+        None
     }
 
     /// Forward one input event to the game.

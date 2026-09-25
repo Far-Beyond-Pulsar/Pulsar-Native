@@ -1,0 +1,22 @@
+# A plugin library for the cross-library event tests (Pulsar-Native#930,
+# #924). The tests build it with their own cargo invocation and target
+# directory, so it links its own, separately compiled copy of
+# pulsar_events and Gamma, like a plugin DLL. Not a workspace member.
+[package]
+name = "pulsar_events_test_plugin"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+pulsar_events = { path = "../../..", default-features = false }
+
+[workspace]
+
+[profile.release]
+opt-level = 1
+codegen-units = 4

@@ -13,6 +13,10 @@
 //! listed as global scripts in `Pulsar/scripting.json` get one unbound
 //! instance each. See [`driver`] for lifecycle order and identity, and
 //! [`commands`] for the `world::spawn` / `world::destroy` natives.
+//!
+//! Scripts meet the engine event hub (`pulsar_events::EventHub`) through
+//! [`events`]: declared events, per-instance subscriptions and the
+//! handler-call queue the driver runs in its script phase.
 
 use std::path::{Path, PathBuf};
 
@@ -22,10 +26,12 @@ use pulsar_scenedb::Entity;
 
 pub mod commands;
 pub mod driver;
+pub mod events;
 #[cfg(test)]
 mod tests;
 
 pub use commands::WorldCommand;
+pub use events::{ScriptEventBridge, ScriptEvents};
 pub use driver::{
     global_instance_id, instance_id_for, scripting_config_path, DriverReport, ReloadRequests,
     ScriptDriver, ScriptingConfig, SCRIPTING_CONFIG_FILE,

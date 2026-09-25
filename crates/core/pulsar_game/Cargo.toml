@@ -76,3 +76,6 @@ engine_class_derive = { workspace = true }
 tempfile = { workspace = true }
 # The Rust-export drift guards (blueprint_*_codegen, live dispatch) run PBGC.
 pbgc = { workspace = true }
+# Loads pulsar_events' separately compiled test plugin (script events from
+# a plugin library, #924).
+libloading = { workspace = true }

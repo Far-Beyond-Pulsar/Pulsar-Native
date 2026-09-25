@@ -131,3 +131,8 @@ pub use ui::dock::{Panel, PanelView};
 /// Re-export serde_json::Value for plugin use.
 /// The `export_plugin!` macro references `$crate::JsonValue`.
 pub use serde_json::Value as JsonValue;
+
+/// The engine's event plumbing (Gamma v2 host bus, engine event hub,
+/// built-in events). `export_plugin!` wires every plugin library to the
+/// host's bus through it (Pulsar-Native#930).
+pub use pulsar_events;

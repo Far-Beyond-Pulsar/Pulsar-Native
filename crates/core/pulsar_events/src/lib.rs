@@ -45,5 +45,5 @@ pub mod tap;
 pub use assets::{AssetSubscription, AssetUpdated, publish_asset_updated, subscribe_asset_updates};
 pub use channel::{class_channel, class_channel_id, entity_channel};
 pub use hub::{EventCategory, EventHub, EventInfo, FlushPoint};
-pub use tap::TapRecord;
+pub use tap::{EventsSnapshot, SnapshotEvent, SnapshotRecord, TapRecord};
 pub use ui_types_common::AssetKind;
