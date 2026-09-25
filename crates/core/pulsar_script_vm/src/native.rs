@@ -317,6 +317,11 @@ inventory::collect!(NativeProvider);
 /// ([`instantiate`](Self::instantiate)). The implementation receives every
 /// argument and checks the trailing ones itself at call time. The `event::*`
 /// natives are polymorphic.
+///
+/// A module imports each name once, so to call a polymorphic native with
+/// several signatures it imports it under distinct names with a `@` tag:
+/// `event::send@Door.Opened` and `event::send@Hit` both link to
+/// `event::send` ([`poly_base_name`]).
 pub struct PolyNative {
     pub name: String,
     pub doc: String,
@@ -379,6 +384,11 @@ impl PolyNative {
         }
         Ok(builder.build_raw(sig.clone(), Box::new(move |host, args| call(host, args))))
     }
+}
+
+/// The polymorphic native an import name refers to: the part before `@`.
+pub fn poly_base_name(import: &str) -> &str {
+    import.split_once('@').map_or(import, |(base, _)| base)
 }
 
 impl fmt::Debug for PolyNative {

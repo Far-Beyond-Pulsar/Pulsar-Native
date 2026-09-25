@@ -236,6 +236,20 @@ fn event_natives_are_polymorphic_and_fail_cleanly() {
 }
 
 #[test]
+fn a_poly_native_can_be_imported_under_several_tags() {
+    let mut asm = Asm::new();
+    asm.import("event::emit@A", vec![Param::new(Type::Str), Param::new(Type::Int)], Type::Unit);
+    asm.import("event::emit@B", vec![Param::new(Type::Str), Param::new(Type::Float)], Type::Unit);
+    assert!(Program::link(Arc::new(asm.module.clone()), &NativeRegistry::with_engine_natives()).is_ok());
+    let mut asm = Asm::new();
+    asm.import("event::nope@A", vec![Param::new(Type::Str)], Type::Unit);
+    assert!(matches!(
+        Program::link(Arc::new(asm.module.clone()), &NativeRegistry::with_engine_natives()),
+        Err(LinkError::MissingNative { .. })
+    ));
+}
+
+#[test]
 fn poly_natives_reject_bad_import_signatures() {
     let registry = NativeRegistry::with_engine_natives();
     for (params, ret) in [

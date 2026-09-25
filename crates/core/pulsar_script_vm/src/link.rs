@@ -87,7 +87,7 @@ impl Program {
             default(&import.sig.ret)?;
             let native = match registry.get(&import.name) {
                 Some(native) => Arc::clone(native),
-                None => match registry.poly(&import.name) {
+                None => match registry.poly(crate::native::poly_base_name(&import.name)) {
                     Some(poly) => Arc::new(
                         poly.instantiate(&import.sig)
                             .map_err(|message| LinkError::PolyNative { name: import.name.clone(), message })?,
