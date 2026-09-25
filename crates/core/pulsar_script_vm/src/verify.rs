@@ -132,6 +132,23 @@ impl FunctionVerifier<'_> {
         for (pc, instr) in f.code.iter().enumerate() {
             self.instr(pc, instr)?;
         }
+        if let Some(debug) = &f.debug {
+            let mut previous_end = 0;
+            for range in &debug.ranges {
+                if range.start >= range.end || (range.end as usize) > f.code.len() || range.start < previous_end {
+                    return Err(self.err(
+                        None,
+                        format!(
+                            "debug range {}..{} is empty, out of order or past the code ({} instructions)",
+                            range.start,
+                            range.end,
+                            f.code.len()
+                        ),
+                    ));
+                }
+                previous_end = range.end;
+            }
+        }
         Ok(())
     }
 

@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-use crate::module::Signature;
+use crate::module::{Signature, SourceLoc};
 
 /// A module failed verification. Reported before anything runs.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -82,24 +82,42 @@ pub struct ScriptError {
     pub kind: ScriptErrorKind,
     /// `(function, pc)`, innermost first.
     pub trace: Vec<(String, usize)>,
+    /// The source location of each [`trace`](Self::trace) entry, from the
+    /// functions' debug info (#854); `None` where a function has none.
+    /// Same length as `trace` when filled by the VM.
+    pub locations: Vec<Option<SourceLoc>>,
 }
 
 impl ScriptError {
     pub fn new(kind: ScriptErrorKind) -> Self {
-        Self { kind, trace: Vec::new() }
+        Self { kind, trace: Vec::new(), locations: Vec::new() }
     }
 
     /// For natives: a failure with a message (the VM fills in the name).
     pub fn native(message: impl Into<String>) -> Self {
         Self::new(ScriptErrorKind::Native { name: String::new(), message: message.into() })
     }
+
+    /// The innermost frame, as `(function, pc)`.
+    pub fn function(&self) -> Option<(&str, usize)> {
+        self.trace.first().map(|(f, pc)| (f.as_str(), *pc))
+    }
+
+    /// The innermost source location the debug info knows: the node that
+    /// failed, or the call site in the nearest caller that has one.
+    pub fn location(&self) -> Option<&SourceLoc> {
+        self.locations.iter().flatten().next()
+    }
 }
 
 impl fmt::Display for ScriptError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.kind)?;
-        for (function, pc) in &self.trace {
+        for (index, (function, pc)) in self.trace.iter().enumerate() {
             write!(f, "\n  at {function}@{pc}")?;
+            if let Some(Some(location)) = self.locations.get(index) {
+                write!(f, " ({location})")?;
+            }
         }
         Ok(())
     }

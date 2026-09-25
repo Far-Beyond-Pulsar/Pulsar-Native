@@ -49,6 +49,7 @@ fn natives_run_through_the_vm() {
             Instr::CallNative { import: 0, args: vec![0, 1], dst: Some(2) },
             Instr::Return { value: Some(2) },
         ],
+        debug: None,
     }];
     let program = Program::link(Arc::new(module), &registry).unwrap();
     let mut world = World::new();

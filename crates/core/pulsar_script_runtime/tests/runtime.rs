@@ -18,7 +18,7 @@ fn runtime() -> ScriptRuntime {
 fn function(name: &str, params: Vec<Type>, extra: Vec<Type>, code: Vec<Instr>) -> Function {
     let mut registers = params.clone();
     registers.extend(extra);
-    Function { name: name.into(), exported: true, params, ret: Type::Unit, registers, code }
+    Function { name: name.into(), exported: true, params, ret: Type::Unit, registers, code, debug: None }
 }
 
 /// `elapsed` accumulates delta time, `ticks` counts ticks, `started` is set
@@ -270,12 +270,90 @@ fn waiting_events_resume_after_game_time_passes() {
     assert_eq!(rt.waiting_calls("a"), 0);
     assert!((rt.time() - 1.1).abs() < 1e-9);
 
-    // Reloading drops calls suspended in the old code.
+    // #862: a reload whose code keeps the waiting function's layout keeps
+    // the waiting call, and it finishes in the NEW code (here the second
+    // constant changed from "b" to "B").
     rt.spawn("b", "Latent", None, &[]).unwrap();
     rt.dispatch_pending_begin_play(&mut world);
     assert_eq!(rt.waiting_calls("b"), 1);
-    rt.reload_class(m).unwrap();
-    assert_eq!(rt.waiting_calls("b"), 0);
+    let mut v2 = m.clone();
+    v2.constants[1] = Constant::Str("B".into());
+    let report = rt.reload_class(v2.clone()).unwrap();
+    assert_eq!((report.kept, report.dropped.len()), (1, 0));
+    assert_eq!(rt.waiting_calls("b"), 1);
+    rt.tick_all(&mut world, 1.0);
+    assert_eq!(rt.variable("b", "log"), Some(&Value::from("aB")), "resumed in the new code");
+
+    // A reload that changes the waiting function's instruction count drops
+    // the call and names it.
+    rt.spawn("c", "Latent", None, &[]).unwrap();
+    rt.dispatch_pending_begin_play(&mut world);
+    assert_eq!(rt.waiting_calls("c"), 1);
+    let mut v3 = v2;
+    v3.functions[0].code.insert(0, Move { dst: 0, src: 0 });
+    let report = rt.reload_class(v3).unwrap();
+    assert_eq!(rt.waiting_calls("c"), 0);
+    assert_eq!(report.dropped.len(), 1);
+    assert_eq!(report.dropped[0].object_id, "c");
+    assert_eq!(report.dropped[0].function, "begin_play");
+    assert!(report.dropped[0].reason.contains("instruction count"), "{}", report.dropped[0].reason);
+}
+
+/// #854: a runtime error names the class, the instance, the function and
+/// the graph node the function's debug info maps the failing pc to; a link
+/// error names the node that calls the missing native.
+#[test]
+fn errors_carry_class_function_and_node() {
+    use pulsar_script_vm::{DebugInfo, SourceLoc};
+    let mut rt = runtime();
+    let mut world = World::new();
+    let mut m = Module::new("Divider");
+    m.constants = vec![Constant::Int(1), Constant::Int(0)];
+    let mut tick = function("tick", vec![Type::Float], vec![Type::Int, Type::Int], vec![
+        Const { dst: 1, index: 0 },
+        Const { dst: 2, index: 1 },
+        Binary { op: BinOp::Div, dst: 1, a: 1, b: 2 },
+        Return { value: None },
+    ]);
+    let mut debug = DebugInfo::default();
+    let consts = SourceLoc::node("graph_save.json", "literal_1");
+    let divide = SourceLoc::node("graph_save.json", "divide_7");
+    debug.record(0, &consts);
+    debug.record(1, &consts);
+    debug.record(2, &divide);
+    tick.debug = Some(debug);
+    m.functions = vec![tick];
+    rt.load_class(m.clone()).unwrap();
+    rt.spawn("d", "Divider", None, &[]).unwrap();
+    rt.dispatch_pending_begin_play(&mut world);
+    let errors = rt.tick_all(&mut world, 0.1);
+    assert_eq!(errors.len(), 1);
+    let details = errors[0].details();
+    assert_eq!(details.class.as_deref(), Some("Divider"));
+    assert_eq!(details.object_id.as_deref(), Some("d"));
+    assert_eq!(details.function.as_deref(), Some("tick"));
+    assert_eq!(details.pc, Some(2));
+    assert_eq!(details.location.as_ref().map(|l| l.node.as_str()), Some("divide_7"));
+    let text = errors[0].to_string();
+    assert!(text.contains("Divider") && text.contains("node divide_7"), "{text}");
+
+    // Link error: the native the `tick` of a new class calls is missing.
+    let mut broken = Module::new("Broken");
+    broken.imports = vec![Import { name: "nope::missing".into(), sig: Signature::new([], Type::Unit) }];
+    let mut f = function("tick", vec![Type::Float], vec![], vec![
+        CallNative { import: 0, args: vec![], dst: None },
+        Return { value: None },
+    ]);
+    let mut debug = DebugInfo::default();
+    debug.record(0, &SourceLoc::node("graph_save.json", "call_3"));
+    f.debug = Some(debug);
+    broken.functions = vec![f];
+    let error = rt.load_class(broken).unwrap_err();
+    let details = error.details();
+    assert_eq!(details.class.as_deref(), Some("Broken"));
+    assert_eq!(details.function.as_deref(), Some("tick"));
+    assert_eq!(details.location.map(|l| l.node), Some("call_3".to_owned()));
+    assert!(error.to_string().contains("node call_3"), "{error}");
 }
 
 // ---- events (#924) ----------------------------------------------------------

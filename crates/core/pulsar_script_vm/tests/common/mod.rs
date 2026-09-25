@@ -56,6 +56,7 @@ impl Asm {
             ret,
             registers: all,
             code,
+            debug: None,
         });
         (self.module.functions.len() - 1) as u32
     }

@@ -468,6 +468,7 @@ mod script_vm {
                 Instr::CallNative { import: 3, args: vec![2], dst: Some(3) },
                 Instr::Return { value: Some(3) },
             ],
+            debug: None,
         }];
         let program = Program::link(Arc::new(module), &registry).unwrap();
         let (mut world, e) = hydrated_world(1);
