@@ -335,18 +335,28 @@ impl ScriptRuntime {
 
     /// Read a JSON module and load it (or reload it, if already loaded).
     pub fn load_class_file(&mut self, path: impl AsRef<Path>) -> Result<String, RuntimeError> {
+        self.load_class_file_reporting(path).map(|(name, _)| name)
+    }
+
+    /// [`load_class_file`](Self::load_class_file), also returning what a
+    /// reload did with waiting calls (empty for a first load).
+    pub fn load_class_file_reporting(
+        &mut self,
+        path: impl AsRef<Path>,
+    ) -> Result<(String, ReloadReport), RuntimeError> {
         let path = path.as_ref();
         let json = std::fs::read_to_string(path)
             .map_err(|source| RuntimeError::Io { path: path.to_owned(), source })?;
         let module = Module::from_json(&json)
             .map_err(|source| RuntimeError::Parse { path: path.to_owned(), source })?;
         let name = module.name.clone();
-        if self.classes.contains_key(&name) {
-            self.reload_class(module)?;
+        let report = if self.classes.contains_key(&name) {
+            self.reload_class(module)?
         } else {
             self.load_class(module)?;
-        }
-        Ok(name)
+            ReloadReport::default()
+        };
+        Ok((name, report))
     }
 
     pub fn has_class(&self, name: &str) -> bool {

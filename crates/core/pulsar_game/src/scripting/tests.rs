@@ -29,7 +29,7 @@ type Log = Arc<Mutex<Vec<(String, String)>>>;
 fn function(name: &str, params: Vec<Type>, extra: Vec<Type>, code: Vec<Instr>) -> Function {
     let mut registers = params.clone();
     registers.extend(extra);
-    Function { name: name.into(), exported: true, params, ret: Type::Unit, registers, code }
+    Function { name: name.into(), exported: true, params, ret: Type::Unit, registers, code, debug: None }
 }
 
 fn import(name: &str, params: Vec<Type>, ret: Type) -> Import {
@@ -945,5 +945,348 @@ mod script_events {
             assert_eq!(driver.runtime().variable(&id("b"), "last_other"), Some(&Value::Entity(a)));
         }
         unsafe { lib.get::<extern "C" fn()>(b"fixture_shutdown").unwrap()() };
+    }
+}
+
+// ---- Play-in-Editor sessions (#925) ------------------------------------------
+
+mod pie_session {
+    use super::*;
+    use crate::embed::PieSession;
+    use pulsar_events::{AssetKind, AssetUpdated, ProblemSeverity};
+    use pulsar_pie_abi::control;
+    use pulsar_script_vm::{DebugInfo, EventRef, SourceLoc, Subscription, SubscriptionScope};
+
+    const COUNTER: &str = "counter-guid";
+
+    /// `Counter`: `tick` adds `step` to `count`; `begin_play` starts a
+    /// looping 100 s timer, then waits 0.05 s and sets `late`; `on_key`
+    /// handles `KeyDown` on the global channel.
+    fn counter_module(step: i64) -> Module {
+        let mut m = Module::new("Counter");
+        m.variables = vec![
+            Variable { name: "count".into(), ty: Type::Int, default: None },
+            Variable { name: "late".into(), ty: Type::Bool, default: None },
+            Variable { name: "timer".into(), ty: Type::Int, default: None },
+        ];
+        m.constants = vec![
+            Constant::Int(step),
+            Constant::Float(0.05),
+            Constant::Bool(true),
+            Constant::Float(100.0),
+        ];
+        m.imports = vec![import("timer::set", vec![Type::Float, Type::Bool], Type::Int)];
+        m.functions = vec![
+            function("begin_play", vec![], vec![Type::Float, Type::Bool, Type::Int], vec![
+                Instr::Const { dst: 0, index: 3 },
+                Instr::Const { dst: 1, index: 2 },
+                Instr::CallNative { import: 0, args: vec![0, 1], dst: Some(2) },
+                Instr::StoreVar { var: 2, src: 2 },
+                Instr::Const { dst: 0, index: 1 },
+                Instr::Wait { seconds: 0 },
+                Instr::Const { dst: 1, index: 2 },
+                Instr::StoreVar { var: 1, src: 1 },
+                Instr::Return { value: None },
+            ]),
+            function("tick", vec![Type::Float], vec![Type::Int, Type::Int], vec![
+                Instr::LoadVar { dst: 1, var: 0 },
+                Instr::Const { dst: 2, index: 0 },
+                Instr::Binary { op: BinOp::Add, dst: 1, a: 1, b: 2 },
+                Instr::StoreVar { var: 0, src: 1 },
+                Instr::Return { value: None },
+            ]),
+            function("on_key", vec![Type::Int], vec![], vec![Instr::Return { value: None }]),
+        ];
+        m.subscriptions = vec![Subscription {
+            event: EventRef::Name("KeyDown".into()),
+            handler: 2,
+            scope: SubscriptionScope::Global,
+        }];
+        m
+    }
+
+    fn counter_project() -> tempfile::TempDir {
+        counter_project_with(COUNTER)
+    }
+
+    /// Asset updates go to every session in the process (tests run in
+    /// parallel): a test that publishes one uses its own class GUID.
+    fn counter_project_with(guid: &str) -> tempfile::TempDir {
+        let dir = project();
+        write_class(dir.path(), "Counter", guid, Some(counter_module(1)), None);
+        dir
+    }
+
+    /// What `begin_pie` + the PIE host do: the editor world already holds
+    /// the level, the game adopts it, `setup()` enables scripting.
+    fn start(root: &Path, store: &engine_backend::scene::SharedScene) -> (PieSession, Log) {
+        let mut game = TickLoop::with_scene_store(Arc::clone(store), TickMode::Fixed { dt: std::time::Duration::from_millis(20) }, 0);
+        let log = install_log(&mut game.enable_scripting(root).lock().unwrap());
+        (PieSession::new(game, Some("test.level".into())), log)
+    }
+
+    fn editor_world(root: &Path, level: &Path) -> engine_backend::scene::SharedScene {
+        RuntimeLevel::load_with_classes(level, &ClassRegistry::scan(root)).unwrap().scene()
+    }
+
+    fn var(session: &PieSession, id: &str, name: &str) -> Option<Value> {
+        let driver = session.tick_loop.scripts.as_ref().unwrap().lock().unwrap();
+        driver.runtime().variable(id, name).cloned()
+    }
+
+    fn counter_id(stable: &str) -> String {
+        instance_id_for(stable, &COUNTER.into())
+    }
+
+    /// Done-when (#925): two placed instances each run bound to their own
+    /// entity, and a third placed during Play starts on the next tick.
+    #[test]
+    fn placed_instances_run_bound_and_a_drop_during_play_starts() {
+        let project = counter_project();
+        let level = level(
+            project.path(),
+            &[("c1", None, Some((COUNTER, "Counter"))), ("c2", None, Some((COUNTER, "Counter")))],
+        );
+        let store = editor_world(project.path(), &level);
+        let (mut session, _log) = start(project.path(), &store);
+        session.tick();
+        session.tick();
+        {
+            let driver = session.tick_loop.scripts.as_ref().unwrap().lock().unwrap();
+            let world = &store.read().world;
+            let bound: Vec<(String, String)> = driver
+                .bound_instances()
+                .into_iter()
+                .map(|(entity, id)| (id, world.stable_id_of(entity).unwrap().to_owned()))
+                .collect();
+            assert_eq!(bound, [(counter_id("c1"), "c1".to_owned()), (counter_id("c2"), "c2".to_owned())]);
+        }
+        assert_eq!(var(&session, &counter_id("c1"), "count"), Some(Value::Int(2)));
+        assert_eq!(var(&session, &counter_id("c2"), "count"), Some(Value::Int(2)));
+
+        // The editor drops a third one while playing.
+        let def = ClassRegistry::scan(project.path()).by_name("Counter").unwrap().load_definition().unwrap();
+        pulsar_class::world::instantiate_class(
+            &mut store.write().world,
+            &def,
+            ClassInstance::default(),
+            SpawnObject::new("Counter").with_id("c3"),
+        )
+        .unwrap();
+        session.tick();
+        assert_eq!(var(&session, &counter_id("c3"), "count"), Some(Value::Int(1)), "started and ticked");
+        assert_eq!(var(&session, &counter_id("c1"), "count"), Some(Value::Int(3)));
+        session.shutdown();
+    }
+
+    /// #928 / #833: a class compiled during Play (a new module.json and an
+    /// `AssetUpdated`, as the Blueprint editor publishes) changes behaviour
+    /// at the next tick with no rebuild: variables keep their values and a
+    /// waiting call whose code keeps its layout finishes in the new code.
+    #[test]
+    fn class_reload_during_play_changes_behaviour_and_keeps_state() {
+        const GUID: &str = "counter-reload-guid";
+        let project = counter_project_with(GUID);
+        let level = level(project.path(), &[("c1", None, Some((GUID, "Counter")))]);
+        let store = editor_world(project.path(), &level);
+        let (mut session, _log) = start(project.path(), &store);
+        session.tick();
+        session.tick();
+        let id = instance_id_for("c1", &GUID.into());
+        let timers = |s: &PieSession| {
+            s.tick_loop.scripts.as_ref().unwrap().lock().unwrap().events().unwrap().bridge().timer_count()
+        };
+        assert_eq!(timers(&session), 1);
+        assert_eq!(var(&session, &id, "count"), Some(Value::Int(2)));
+        assert_eq!(var(&session, &id, "late"), Some(Value::Bool(false)), "still waiting");
+        let waiting = |s: &PieSession| {
+            s.tick_loop.scripts.as_ref().unwrap().lock().unwrap().runtime().waiting_calls(&id)
+        };
+        assert_eq!(waiting(&session), 1);
+
+        // The graph is edited and compiled: `tick` now adds 10.
+        let dir = project.path().join("src/classes/Counter");
+        std::fs::write(dir.join("events/.build/module.json"), counter_module(10).to_json().unwrap()).unwrap();
+        session.asset_updated(AssetUpdated::new(AssetKind::Blueprint).with_id(GUID).with_path(dir));
+        assert_eq!(var(&session, &id, "count"), Some(Value::Int(2)), "applied at the next frame, not now");
+        session.tick();
+        assert_eq!(var(&session, &id, "count"), Some(Value::Int(12)), "new code, old value");
+        // It was due this frame: it survived the reload (a dropped call
+        // never sets `late`) and finished.
+        assert_eq!(waiting(&session), 0);
+        assert_eq!(var(&session, &id, "late"), Some(Value::Bool(true)), "the waiting call survived the reload");
+        session.tick();
+        assert_eq!(var(&session, &id, "count"), Some(Value::Int(22)));
+        assert_eq!(timers(&session), 1, "the instance's timer survived the reload");
+        assert!(session.problems().is_empty(), "{:?}", session.problems());
+        session.shutdown();
+    }
+
+    /// Pause stops the simulation, step runs single frames, resume goes on.
+    #[test]
+    fn pause_step_and_resume() {
+        let project = counter_project();
+        let level = level(project.path(), &[("c1", None, Some((COUNTER, "Counter")))]);
+        let store = editor_world(project.path(), &level);
+        let (mut session, _log) = start(project.path(), &store);
+        let id = counter_id("c1");
+        session.tick();
+        assert_eq!(session.control(control::PAUSE, 0), 1);
+        assert_eq!(session.control(control::IS_PAUSED, 0), 1);
+        let frame = session.control(control::FRAME, 0);
+        for _ in 0..3 {
+            session.tick();
+        }
+        assert_eq!(var(&session, &id, "count"), Some(Value::Int(1)), "paused");
+        assert_eq!(session.control(control::FRAME, 0), frame);
+        assert_eq!(session.control(control::STEP, 2), 1);
+        for _ in 0..3 {
+            session.tick();
+        }
+        assert_eq!(var(&session, &id, "count"), Some(Value::Int(3)), "two steps");
+        assert_eq!(session.control(control::FRAME, 0), frame + 2);
+        session.control(control::RESUME, 0);
+        assert_eq!(session.control(control::STEP, 1), 0, "steps only while paused");
+        session.tick();
+        assert_eq!(var(&session, &id, "count"), Some(Value::Int(4)));
+        session.shutdown();
+    }
+
+    /// #854 / #868: script errors and link errors come back as problems
+    /// naming the class, function and graph node.
+    #[test]
+    fn script_errors_report_class_function_and_node() {
+        let project = counter_project();
+        let mut faulty = Module::new("Faulty");
+        faulty.constants = vec![Constant::Int(1), Constant::Int(0)];
+        let mut tick = function("tick", vec![Type::Float], vec![Type::Int, Type::Int], vec![
+            Instr::Const { dst: 1, index: 0 },
+            Instr::Const { dst: 2, index: 1 },
+            Instr::Binary { op: BinOp::Div, dst: 1, a: 1, b: 2 },
+            Instr::Return { value: None },
+        ]);
+        let mut debug = DebugInfo::default();
+        debug.record(0, &SourceLoc::node("graph_save.json", "lit_1"));
+        debug.record(1, &SourceLoc::node("graph_save.json", "lit_1"));
+        debug.record(2, &SourceLoc::node("graph_save.json", "divide_7"));
+        debug.record(3, &SourceLoc::node("graph_save.json", "event_tick"));
+        tick.debug = Some(debug);
+        faulty.functions = vec![tick];
+        write_class(project.path(), "Faulty", "faulty-guid", Some(faulty), None);
+
+        let mut broken = Module::new("Broken");
+        broken.imports = vec![import("nope::missing", vec![], Type::Unit)];
+        let mut begin = function("begin_play", vec![], vec![], vec![
+            Instr::CallNative { import: 0, args: vec![], dst: None },
+            Instr::Return { value: None },
+        ]);
+        let mut debug = DebugInfo::default();
+        debug.record(0, &SourceLoc::node("graph_save.json", "call_3"));
+        begin.debug = Some(debug);
+        broken.functions = vec![begin];
+        write_class(project.path(), "Broken", "broken-guid", Some(broken), None);
+
+        let level = level(
+            project.path(),
+            &[("f", None, Some(("faulty-guid", "Faulty"))), ("b", None, Some(("broken-guid", "Broken")))],
+        );
+        let store = editor_world(project.path(), &level);
+        let (mut session, _log) = start(project.path(), &store);
+        session.tick();
+        let problems = session.take_problems();
+        let link = problems.iter().find(|p| p.class.as_deref() == Some("Broken")).expect("link error reported");
+        assert_eq!(link.severity, ProblemSeverity::Error);
+        assert_eq!(link.function.as_deref(), Some("begin_play"));
+        assert_eq!(link.node.as_deref(), Some("call_3"));
+        assert!(link.message.contains("nope::missing"), "{}", link.message);
+        let runtime = problems.iter().find(|p| p.class.as_deref() == Some("Faulty")).expect("runtime error reported");
+        assert_eq!(runtime.function.as_deref(), Some("tick"));
+        assert_eq!(runtime.node.as_deref(), Some("divide_7"));
+        assert_eq!(runtime.instance.as_deref(), Some("f::faulty-guid"));
+        assert_eq!(runtime.class_id.as_deref(), Some("faulty-guid"));
+        assert_eq!(
+            runtime.path.as_deref(),
+            Some(project.path().join("src/classes/Faulty/graph_save.json").as_path())
+        );
+        assert!(runtime.message.contains("division by zero"), "{}", runtime.message);
+        assert_eq!(runtime.summary(), "Faulty::tick (node divide_7) [f::faulty-guid]: integer division by zero");
+        assert!(session.take_problems().is_empty(), "taken");
+        session.tick();
+        assert_eq!(session.problems().len(), 1, "the failing tick reports again each frame");
+        session.shutdown();
+    }
+
+    /// Play → stop → play: the first session's scripts, subscriptions,
+    /// queued events and timers are gone when it stops, and once the editor
+    /// restored its world (runtime spawns removed) the second session starts
+    /// exactly like the first.
+    #[test]
+    fn play_stop_play_leaves_nothing_behind() {
+        let project = counter_project();
+        let level = level(
+            project.path(),
+            &[("spawner", None, Some((SPAWNER, "Spawner"))), ("c1", None, Some((COUNTER, "Counter")))],
+        );
+        let store = editor_world(project.path(), &level);
+        let before: std::collections::BTreeSet<String> = store
+            .read()
+            .world
+            .query::<&engine_backend::scene::StableId>()
+            .map(|(_, id)| id.0.clone())
+            .collect();
+
+        let mut first_instances = Vec::new();
+        for round in 0..2 {
+            let (mut session, _log) = start(project.path(), &store);
+            session.tick();
+            let started: Vec<String> = {
+                let driver = session.tick_loop.scripts.as_ref().unwrap().lock().unwrap();
+                driver.runtime().instance_ids().to_vec()
+            };
+            if round == 0 {
+                first_instances = started.clone();
+            } else {
+                assert_eq!(started, first_instances, "the second Play starts like the first");
+            }
+            session.tick();
+            session.tick();
+            assert!(session.problems().is_empty(), "{:?}", session.problems());
+            session.tick_loop.publish_input(pulsar_events::builtin::KeyDown { key: 1 });
+            let hub = session.tick_loop.events.clone();
+            {
+                let driver = session.tick_loop.scripts.as_ref().unwrap().lock().unwrap();
+                let events = driver.events().unwrap();
+                assert!(events.subscription_count() > 0, "Counter listens to KeyDown");
+                assert_eq!(events.bridge().timer_count(), 1, "Counter's looping timer");
+            }
+            assert!(hub.queued_len() > 0, "input waits for the next flush");
+
+            session.shutdown();
+            {
+                let driver = session.tick_loop.scripts.as_ref().unwrap().lock().unwrap();
+                let events = driver.events().unwrap();
+                assert_eq!(events.subscription_count(), 0, "no subscription left");
+                assert_eq!(events.pending_calls(), 0, "no queued handler call left");
+                assert_eq!(events.bridge().timer_count(), 0, "no timer left");
+            }
+            assert_eq!(hub.queued_len(), 0, "no queued event left");
+            let key_down = hub.descriptor_by_name("KeyDown").unwrap().id;
+            assert_eq!(hub.subscriber_count(key_down, pulsar_events::gamma::Channel::Global), 0);
+            drop(session);
+
+            // What the editor's restore does with objects spawned during
+            // Play: they carry runtime StableIds and are removed.
+            let mut scene = store.write();
+            let spawned: Vec<(String, Entity)> = scene
+                .world
+                .query::<&engine_backend::scene::StableId>()
+                .map(|(e, id)| (id.0.clone(), e))
+                .filter(|(id, _)| !before.contains(id))
+                .collect();
+            assert!(!spawned.is_empty() && spawned.iter().all(|(id, _)| id.starts_with("Minion_rt")), "{spawned:?}");
+            for (_, entity) in spawned {
+                scene.world.despawn_tree(entity);
+            }
+        }
     }
 }
