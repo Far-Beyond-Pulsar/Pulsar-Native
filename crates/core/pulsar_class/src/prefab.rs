@@ -1,12 +1,16 @@
 //! The class `prefab.json` read model.
 //!
 //! The Blueprint editor writes `prefab.json`; this is the engine's view of
-//! it. Every component entry has a stable **slot id**, the name overrides,
-//! child objects and `get_component_ref` nodes use for it. Files written
-//! before slot ids existed get deterministic ids on load
-//! ([`PrefabAsset::fill_missing_slot_ids`]): `<Class>_<n>`, where `n` counts
-//! earlier entries of the same class. The Blueprint editor applies the same
-//! rule, so the ids it later persists match the ones levels already use.
+//! it. Every component entry has a **slot id**: a UUID, unique within its
+//! class, that the class's compiled script uses to name the component and
+//! that levels key per-instance overrides by. Slot ids exist only on disk:
+//! placing a class resolves each one once into a handle to the instance's
+//! real component (see `crate::world::ClassPlacement`).
+//!
+//! A prefab without slot ids, or with ids that are not UUIDs (the readable
+//! `<Class>_<n>` ids of early #921 builds), gets fresh UUIDs on load, and
+//! the file is rewritten once so the ids stay stable
+//! ([`PrefabAsset::load_from_dir`]).
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -36,7 +40,7 @@ pub struct PrefabAsset {
 /// One component of a prefab.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PrefabComponent {
-    /// Stable id of this slot within the class. Empty in files written
+    /// UUID of this slot, unique within the class. Empty in files written
     /// before slot ids existed; see [`PrefabAsset::fill_missing_slot_ids`].
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub slot_id: String,
@@ -60,8 +64,23 @@ pub struct BlueprintClassRef {
     pub variable_defaults: HashMap<String, Value>,
 }
 
+/// Whether `slot_id` is a valid slot id (a UUID).
+pub fn is_slot_uuid(slot_id: &str) -> bool {
+    uuid::Uuid::parse_str(slot_id.trim()).is_ok()
+}
+
+/// A fresh slot id.
+pub fn new_slot_id() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
 impl PrefabAsset {
     /// Read `<dir>/prefab.json`. A class without one has no components.
+    ///
+    /// Components that get a slot id assigned here (missing, duplicate, or
+    /// not a UUID) are written back to the file once, so every later reader
+    /// (the Blueprint editor, other levels) sees the same ids. If the file
+    /// is read-only the ids still work for this session, with a warning.
     pub fn load_from_dir(dir: &Path) -> Result<Self, String> {
         let path = dir.join(PREFAB_FILE);
         if !path.exists() {
@@ -71,34 +90,39 @@ impl PrefabAsset {
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         let mut prefab: Self = serde_json::from_str(&text)
             .map_err(|e| format!("failed to parse {}: {e}", path.display()))?;
-        prefab.fill_missing_slot_ids();
+        if prefab.fill_missing_slot_ids() {
+            match prefab.save_to_dir(dir) {
+                Ok(()) => tracing::info!(path = %path.display(), "Assigned component slot UUIDs"),
+                Err(error) => tracing::warn!(
+                    path = %path.display(),
+                    "Assigned component slot UUIDs but could not save them: {error}"
+                ),
+            }
+        }
         Ok(prefab)
     }
 
-    /// Give every component without a slot id (or with a duplicate one) a
-    /// deterministic id. Returns whether anything changed.
+    /// Write `<dir>/prefab.json`.
+    pub fn save_to_dir(&self, dir: &Path) -> Result<(), String> {
+        let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        std::fs::write(dir.join(PREFAB_FILE), text).map_err(|e| e.to_string())
+    }
+
+    /// Give every component whose slot id is missing, duplicated or not a
+    /// UUID a fresh UUID. Returns whether anything changed.
     pub fn fill_missing_slot_ids(&mut self) -> bool {
         let mut used: HashSet<String> = HashSet::new();
-        let mut needs: Vec<usize> = Vec::new();
-        for (index, component) in self.components.iter().enumerate() {
-            if component.slot_id.trim().is_empty() || !used.insert(component.slot_id.clone()) {
-                needs.push(index);
+        let mut changed = false;
+        for component in &mut self.components {
+            let id = component.slot_id.trim();
+            if !is_slot_uuid(id) || !used.insert(id.to_string()) {
+                let fresh = new_slot_id();
+                used.insert(fresh.clone());
+                component.slot_id = fresh;
+                changed = true;
             }
         }
-        if needs.is_empty() {
-            return false;
-        }
-        for index in needs {
-            let class = self.components[index].class_name.clone();
-            let occurrence = self.components[..index]
-                .iter()
-                .filter(|c| c.class_name == class)
-                .count();
-            let id = next_free_slot_id(&class, occurrence, &used);
-            used.insert(id.clone());
-            self.components[index].slot_id = id;
-        }
-        true
+        changed
     }
 
     /// The component in slot `slot_id`.
@@ -115,95 +139,80 @@ impl PrefabAsset {
     }
 }
 
-/// `<class>_<n>` for the smallest `n >= start` not in `used`.
-pub fn next_free_slot_id(class_name: &str, start: usize, used: &HashSet<String>) -> String {
-    let mut n = start;
-    loop {
-        let candidate = format!("{class_name}_{n}");
-        if !used.contains(&candidate) {
-            return candidate;
-        }
-        n += 1;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn old_prefabs_get_deterministic_slot_ids() {
-        let json = r#"{
-            "prefab_version": 1, "name": "Lamp",
-            "components": [
-                { "class_name": "LightComponent", "enabled": true, "data": {} },
-                { "class_name": "StaticMeshComponent", "enabled": true, "data": {} },
-                { "class_name": "LightComponent", "enabled": true, "data": {} }
-            ],
-            "script_graph": { "nodes": [] }
-        }"#;
-        let mut a: PrefabAsset = serde_json::from_str(json).unwrap();
-        let mut b: PrefabAsset = serde_json::from_str(json).unwrap();
-        assert!(a.fill_missing_slot_ids());
-        b.fill_missing_slot_ids();
-        let ids: Vec<_> = a.components.iter().map(|c| c.slot_id.clone()).collect();
+    fn old_and_readable_slot_ids_become_uuids_once() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(PREFAB_FILE),
+            r#"{
+                "prefab_version": 1, "name": "Lamp",
+                "components": [
+                    { "class_name": "LightComponent", "enabled": true, "data": {} },
+                    { "slot_id": "LightComponent_1", "class_name": "LightComponent", "enabled": true, "data": {} },
+                    { "slot_id": "6f1c1a52-1d7e-4d7e-9c55-2b7c1f0d7a10", "class_name": "StaticMeshComponent", "data": {} }
+                ],
+                "script_graph": { "nodes": [] }
+            }"#,
+        )
+        .unwrap();
+        let first = PrefabAsset::load_from_dir(dir.path()).unwrap();
+        let ids: Vec<&str> = first
+            .components
+            .iter()
+            .map(|c| c.slot_id.as_str())
+            .collect();
+        assert!(ids.iter().all(|id| is_slot_uuid(id)), "{ids:?}");
         assert_eq!(
-            ids,
-            [
-                "LightComponent_0",
-                "StaticMeshComponent_0",
-                "LightComponent_1"
-            ]
+            ids[2], "6f1c1a52-1d7e-4d7e-9c55-2b7c1f0d7a10",
+            "valid UUIDs are kept"
         );
+        assert_ne!(ids[0], ids[1]);
+
+        // Saved once: a second load sees the same ids and unknown sections.
+        let second = PrefabAsset::load_from_dir(dir.path()).unwrap();
         assert_eq!(
-            ids,
-            b.components
+            second
+                .components
                 .iter()
                 .map(|c| c.slot_id.clone())
                 .collect::<Vec<_>>(),
-            "same file, same ids"
+            first
+                .components
+                .iter()
+                .map(|c| c.slot_id.clone())
+                .collect::<Vec<_>>()
         );
-        assert!(!a.fill_missing_slot_ids(), "idempotent");
-        // Unknown sections survive a round trip.
-        let text = serde_json::to_string(&a).unwrap();
+        let text = std::fs::read_to_string(dir.path().join(PREFAB_FILE)).unwrap();
         assert!(text.contains("script_graph"));
-        assert!(text.contains("\"slot_id\":\"LightComponent_1\""));
     }
 
     #[test]
-    fn existing_ids_are_kept_and_duplicates_repaired() {
+    fn duplicate_ids_are_repaired() {
+        let id = new_slot_id();
         let mut prefab = PrefabAsset {
             components: vec![
                 PrefabComponent {
-                    slot_id: "LightComponent_0".into(),
-                    class_name: "LightComponent".into(),
+                    slot_id: id.clone(),
+                    class_name: "A".into(),
                     enabled: true,
                     data: Value::Null,
                 },
                 PrefabComponent {
-                    slot_id: "LightComponent_0".into(),
-                    class_name: "LightComponent".into(),
-                    enabled: true,
-                    data: Value::Null,
-                },
-                PrefabComponent {
-                    slot_id: String::new(),
-                    class_name: "LightComponent".into(),
+                    slot_id: id.clone(),
+                    class_name: "A".into(),
                     enabled: true,
                     data: Value::Null,
                 },
             ],
             ..Default::default()
         };
-        prefab.fill_missing_slot_ids();
-        let ids: Vec<_> = prefab
-            .components
-            .iter()
-            .map(|c| c.slot_id.as_str())
-            .collect();
-        assert_eq!(
-            ids,
-            ["LightComponent_0", "LightComponent_1", "LightComponent_2"]
-        );
+        assert!(prefab.fill_missing_slot_ids());
+        assert_eq!(prefab.components[0].slot_id, id);
+        assert_ne!(prefab.components[1].slot_id, id);
+        assert!(!prefab.fill_missing_slot_ids(), "idempotent");
     }
 }

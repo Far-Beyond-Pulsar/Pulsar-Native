@@ -27,8 +27,15 @@ fn project_with_lamp(intensity: f32) -> (tempfile::TempDir, PathBuf) {
     (project, dir)
 }
 
+/// Write the Lamp prefab, keeping the slot UUIDs a previous load assigned
+/// (as the Blueprint editor does when it saves a class).
 fn write_lamp_prefab(dir: &Path, intensity: f32) {
-    let prefab = json!({
+    let existing: Vec<Value> = std::fs::read_to_string(dir.join("prefab.json"))
+        .ok()
+        .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        .and_then(|v| v["components"].as_array().cloned())
+        .unwrap_or_default();
+    let mut prefab = json!({
         "prefab_version": 1,
         "name": "Lamp",
         "components": [
@@ -37,7 +44,22 @@ fn write_lamp_prefab(dir: &Path, intensity: f32) {
         ],
         "blueprint_class": { "class_path": "", "variable_defaults": { "speed": "5.0" } }
     });
+    for (i, old) in existing.iter().enumerate() {
+        if let Some(id) = old.get("slot_id") {
+            prefab["components"][i]["slot_id"] = id.clone();
+        }
+    }
     std::fs::write(dir.join("prefab.json"), prefab.to_string()).unwrap();
+}
+
+/// Slot UUID of Lamp prefab component `index` (assigned on first load).
+fn slot(dir: &Path, index: usize) -> String {
+    let prefab: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("prefab.json")).unwrap()).unwrap();
+    prefab["components"][index]["slot_id"]
+        .as_str()
+        .expect("slot id assigned")
+        .to_string()
 }
 
 fn light(world: &World, id: &str) -> LightComponent {
@@ -130,7 +152,7 @@ fn save_writes_only_overrides_and_load_follows_class_edits() {
     let a_instance = &a_components[0]["data"];
     assert_eq!(
         a_instance["component_overrides"],
-        json!({ "LightComponent_0": { "intensity": { "intensity": 9.0 } } })
+        json!({ slot(&dir, 0): { "intensity": { "intensity": 9.0 } } })
     );
     assert_eq!(a_instance["variable_overrides"], json!({ "speed": 7.0 }));
     let b_instance = &saved["components"][&b][0]["data"];
@@ -254,7 +276,7 @@ fn duplicate_and_history_keep_the_class_link() {
     assert_eq!(
         classes::current_overrides(world, &a, &registry)
             .unwrap()
-            .component_overrides["LightComponent_0"],
+            .component_overrides[&slot(&dir, 0)],
         json!({ "intensity": { "intensity": 6.0 } })
     );
 }
@@ -291,7 +313,7 @@ fn details_view_marks_overrides_and_reverts_them() {
     assert!(classes::revert_slot(
         world,
         &a,
-        "LightComponent_0",
+        &slot(&dir, 0),
         Some("intensity.intensity"),
         &registry
     ));
@@ -300,4 +322,163 @@ fn details_view_marks_overrides_and_reverts_them() {
     let view = classes::class_instance_view(world, &a, &registry).unwrap();
     assert!(view.slots.iter().all(|s| s.overridden.is_empty()));
     assert!(view.variables.iter().all(|v| !v.overridden));
+}
+
+/// #921: publishing `AssetUpdated` for a class rebuilds every placed
+/// instance from the new definition, keeping each instance's overrides
+/// (including unsaved edits), and queues the event for a running game.
+#[test]
+fn class_asset_updates_rebuild_placed_instances() {
+    use crate::level_editor::core::asset_updates;
+    use crate::level_editor::state::LevelEditorState;
+    use plugin_editor_api::{publish_asset_updated, AssetKind, AssetUpdated};
+
+    let (_project, dir) = project_with_lamp(1.0);
+    let state = std::sync::Arc::new(parking_lot::RwLock::new(LevelEditorState::new()));
+    let (a, b) = {
+        let st = state.read();
+        let mut world = st.scene.world_mut();
+        let a = place(&mut world, &dir, 0.0);
+        let b = place(&mut world, &dir, 1.0);
+        // An unsaved edit on a.
+        let entity = world.entity_for(&a).unwrap();
+        world
+            .get_mut::<LightComponent>(entity)
+            .unwrap()
+            .intensity
+            .intensity = 9.0;
+        (a, b)
+    };
+    state.write().play.pie.active = true;
+    let _subscription = asset_updates::subscribe_class_updates(state.clone());
+
+    // The Blueprint editor saves the class with a new default, then publishes.
+    write_lamp_prefab(&dir, 3.0);
+    let event = AssetUpdated::new(AssetKind::Blueprint).with_path(dir.clone());
+    publish_asset_updated(event.clone());
+
+    let st = state.read();
+    let world = st.scene.world();
+    assert_eq!(
+        light(&world, &a).intensity.intensity,
+        9.0,
+        "the instance's own edit is kept"
+    );
+    assert_eq!(
+        light(&world, &b).intensity.intensity,
+        3.0,
+        "the new class default reaches b"
+    );
+    assert_eq!(
+        children(&world, &a).len(),
+        1,
+        "generated children rebuilt, not duplicated"
+    );
+    assert_eq!(
+        st.play.pie.pending_asset_updates,
+        [event],
+        "forwarded to the running game"
+    );
+}
+
+/// Reverting a class-slot property and setting/reverting a class variable
+/// go through the normal command path, so undo brings the override back.
+#[test]
+fn reverts_and_variable_edits_are_undoable_commands() {
+    use crate::level_editor::commands::{execute_command, SceneCommand};
+    use crate::level_editor::state::LevelEditorState;
+
+    let (project, dir) = project_with_lamp(1.0);
+    classes::set_fallback_project_root(Some(project.path().to_path_buf()));
+    let mut state = LevelEditorState::new();
+    let a = {
+        let mut world = state.scene.world_mut();
+        let a = place(&mut world, &dir, 0.0);
+        let entity = world.entity_for(&a).unwrap();
+        world
+            .get_mut::<LightComponent>(entity)
+            .unwrap()
+            .intensity
+            .intensity = 9.0;
+        a
+    };
+    let index = components::get_component_class_names(&state.scene.world(), &a)
+        .iter()
+        .position(|c| c == "LightComponent")
+        .unwrap();
+
+    // Revert the slot property to the class default.
+    let result = execute_command(
+        &mut state,
+        SceneCommand::RevertComponentProperty {
+            id: a.clone(),
+            class_name: "LightComponent".into(),
+            component_index: index,
+            prop_name: "intensity".into(),
+        },
+    );
+    assert!(result.changed, "{}", result.no_op_reason);
+    assert_eq!(light(&state.scene.world(), &a).intensity.intensity, 1.0);
+    state.scene.undo();
+    assert_eq!(
+        light(&state.scene.world(), &a).intensity.intensity,
+        9.0,
+        "undo restores the override"
+    );
+
+    // Class variable: set, revert, undo.
+    execute_command(
+        &mut state,
+        SceneCommand::SetClassVariable {
+            id: a.clone(),
+            name: "speed".into(),
+            value: Some(json!(8.0)),
+        },
+    );
+    assert_eq!(
+        classes::class_instance(&state.scene.world(), &a)
+            .unwrap()
+            .variable_overrides["speed"],
+        json!(8.0)
+    );
+    execute_command(
+        &mut state,
+        SceneCommand::SetClassVariable {
+            id: a.clone(),
+            name: "speed".into(),
+            value: None,
+        },
+    );
+    assert!(classes::class_instance(&state.scene.world(), &a)
+        .unwrap()
+        .variable_overrides
+        .is_empty());
+    state.scene.undo();
+    assert_eq!(
+        classes::class_instance(&state.scene.world(), &a)
+            .unwrap()
+            .variable_overrides["speed"],
+        json!(8.0)
+    );
+    classes::set_fallback_project_root(None);
+}
+
+/// The hierarchy shows a placed class as one class object: its generated
+/// children are class-owned; `ClassInstance` is not offered as a component.
+#[test]
+fn placed_classes_are_class_objects_with_owned_children() {
+    let (_project, dir) = project_with_lamp(1.0);
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let a = place(world, &dir, 0.0);
+    let kids = children(world, &a);
+    assert!(classes::is_class_root(world, &a));
+    assert!(kids.iter().all(|k| classes::is_generated_child(world, k)));
+    assert!(!classes::is_generated_child(world, &a));
+    // Slot ids are UUIDs, resolved into placement handles.
+    let slot0 = slot(&dir, 0);
+    assert!(pulsar_class::is_slot_uuid(&slot0));
+    let root = world.entity_for(&a).unwrap();
+    let placement = pulsar_class::world::placement(world, root);
+    assert_eq!(placement.handle(&slot0).unwrap().entity, root);
 }

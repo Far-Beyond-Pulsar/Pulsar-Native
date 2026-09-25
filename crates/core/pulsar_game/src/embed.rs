@@ -63,6 +63,10 @@ pub struct EmbeddedGame {
     scene_store: engine_backend::scene::SharedScene,
     /// Fallback free-look camera (used until an ECS camera drives the view).
     freecam: FreeCam,
+    /// Reloads edited classes into the script runtime (#921). Events come
+    /// from the host via [`pie_asset_updated`], published on this dylib's
+    /// own asset bus.
+    _class_reloads: Option<pulsar_events::AssetSubscription>,
 
     // ── Host log callback ───────────────────────────────────────────────────
     userdata: *mut std::ffi::c_void,
@@ -220,6 +224,13 @@ impl EmbeddedGame {
         // editor-camera file seeding is gone too -- camera selection prefers
         // Camera-typed entities from the shared world instead.
         let freecam = FreeCam::default();
+        let class_reloads = tick_loop.script_runtime.as_ref().map(|runtime| {
+            crate::scripting::subscribe_class_reloads(
+                Arc::clone(runtime),
+                Arc::clone(&scene_store),
+                project_root.clone(),
+            )
+        });
         engine_state::set_project_path(project_root.display().to_string());
         drop(scene_path); // advisory-only under v2 (world comes pre-hydrated)
 
@@ -235,6 +246,7 @@ impl EmbeddedGame {
             out_view,
             scene_store,
             freecam,
+            _class_reloads: class_reloads,
             userdata: ctx.userdata,
             log: ctx.log,
         })
@@ -397,6 +409,33 @@ pub unsafe fn pie_input(ev: *const InputEvent) {
             game.input(ev);
         }
     });
+}
+
+/// Deliver an asset-update notification from the host (#921): published on
+/// this game's own asset bus, where the running game's subscribers (the
+/// class reloader) pick it up. Strings are UTF-8 pointer/length pairs; an
+/// empty or null id/path means "not given".
+///
+/// # Safety
+/// Each pointer/length pair must describe a valid UTF-8 range or be null.
+pub unsafe fn pie_asset_updated(
+    kind_ptr: *const u8,
+    kind_len: usize,
+    id_ptr: *const u8,
+    id_len: usize,
+    path_ptr: *const u8,
+    path_len: usize,
+) {
+    let Some(kind) = read_str(kind_ptr, kind_len)
+        .and_then(|k| serde_json::from_str::<pulsar_events::AssetKind>(&k).ok())
+    else {
+        tracing::warn!("PiE: asset update with an unreadable kind; ignored");
+        return;
+    };
+    let mut event = pulsar_events::AssetUpdated::new(kind);
+    event.id = read_str(id_ptr, id_len);
+    event.path = read_str(path_ptr, path_len).map(PathBuf::from);
+    pulsar_events::publish_asset_updated(event);
 }
 
 /// Tear down the embedded game, dropping its world + renderer before the host

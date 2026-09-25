@@ -33,7 +33,6 @@ use helio_component::{
     PortalComponent as _ForceLink_PortalComponent,
     PostProcessVolumeComponent as _ForceLink_PostProcessVolumeComponent,
     ReflectionCaptureComponent as _ForceLink_ReflectionCaptureComponent,
-    ScriptComponent as _ForceLink_ScriptComponent,
     StaticMeshComponent as _ForceLink_StaticMeshComponent,
     WaterVolumeComponent as _ForceLink_WaterVolumeComponent,
 };

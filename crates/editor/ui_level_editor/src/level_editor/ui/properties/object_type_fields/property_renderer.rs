@@ -199,6 +199,9 @@ impl ObjectTypeFieldsSection {
             .enumerate()
             .filter_map(|(idx, component)| {
                 let class_name = &class_names[idx];
+                if class_name == pulsar_class::CLASS_INSTANCE {
+                    return self.render_class_card(window, cx);
+                }
 
                 let properties = {
                     let cached = self.property_metadata_cache.get(class_name.as_str())?;
@@ -287,6 +290,10 @@ impl ObjectTypeFieldsSection {
                 }
                 let values = values.expect("fresh pull or cache hit fills this");
 
+                // Components built from a class slot: each property's class
+                // default, for the override markers and revert (#921).
+                let slot_default_values = self.slot_default_values_for(idx, &properties);
+
                 let mut row_data: Vec<(
                     AnyElement,
                     Option<String>,
@@ -299,7 +306,7 @@ impl ObjectTypeFieldsSection {
                 // (fresh pull or cache hit -- indistinguishable from here
                 // on). Borrowed, not consumed; it goes back into the cache
                 // right after this loop.
-                for (prop, value) in properties.iter().zip(values.iter()) {
+                for (prop_index, (prop, value)) in properties.iter().zip(values.iter()).enumerate() {
                     let write_back = {
                         let state_arc = self.state_arc.clone();
                         let oid = object_id.clone();
@@ -341,6 +348,43 @@ impl ObjectTypeFieldsSection {
                         window,
                         cx,
                     );
+
+                    let row = match slot_default_values
+                        .as_ref()
+                        .and_then(|defaults| defaults.get(prop_index))
+                        .and_then(|d| d.as_ref())
+                    {
+                        Some(default) => {
+                            let overridden = !crate::level_editor::scene_edit::classes::property_equals_default(
+                                value.as_ref(),
+                                default.as_ref(),
+                            );
+                            let revert = {
+                                let state_arc = self.state_arc.clone();
+                                let oid = object_id.clone();
+                                let cls = class_name.clone();
+                                let pn = prop.name.to_string();
+                                Arc::new(move |_window: &mut Window, _cx: &mut App| {
+                                    execute_command(
+                                        &mut state_arc.write(),
+                                        SceneCommand::RevertComponentProperty {
+                                            id: oid.clone(),
+                                            class_name: cls.clone(),
+                                            component_index: idx,
+                                            prop_name: pn.clone(),
+                                        },
+                                    );
+                                })
+                            };
+                            ui_common::decorate_property_override(
+                                row,
+                                SharedString::from(format!("revert-{editor_key}-{}", prop.name)),
+                                &ui_common::PropertyOverride { overridden, on_revert: Some(revert) },
+                                cx,
+                            )
+                        }
+                        None => row,
+                    };
 
                     row_data.push((
                         row,
@@ -387,5 +431,186 @@ impl ObjectTypeFieldsSection {
                 )
             })
             .collect()
+    }
+}
+
+impl ObjectTypeFieldsSection {
+    /// Each property's class default for card `idx`, when that component was
+    /// built from a class slot. Read once per class-cache refresh.
+    fn slot_default_values_for(
+        &mut self,
+        idx: usize,
+        properties: &[PropertyMetadata],
+    ) -> Option<Arc<Vec<Option<Box<dyn Any>>>>> {
+        if let Some(values) = self.slot_default_values.get(&idx) {
+            return Some(Arc::clone(values));
+        }
+        let default = self.slot_defaults.get(&idx)?;
+        let instance = default.instance.as_deref()?;
+        let getters = instance.get_properties();
+        let values: Vec<Option<Box<dyn Any>>> = properties
+            .iter()
+            .map(|prop| {
+                getters
+                    .iter()
+                    .find(|g| g.name == prop.name)
+                    .map(|g| (g.getter)(instance))
+            })
+            .collect();
+        let values = Arc::new(values);
+        self.slot_default_values.insert(idx, Arc::clone(&values));
+        Some(values)
+    }
+
+    /// The card of a placed class instance's `ClassInstance`: the class it
+    /// references and its script variables, edited through the same
+    /// reflected property rows as components. Values that differ from the
+    /// class default are marked and can be reverted; both edits and reverts
+    /// are undoable `SetClassVariable` commands.
+    fn render_class_card(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+        use crate::level_editor::scene_edit::classes::ClassVariableView;
+        use pulsar_class::VariableKind;
+
+        let view = self.class_view.clone()?;
+        let object_id = self.object_id.clone();
+        let mut rows: Vec<AnyElement> = Vec::new();
+
+        if !view.resolved {
+            rows.push(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().danger)
+                    .child(format!(
+                        "Class '{}' is missing from this project; its data is kept.",
+                        view.class_name
+                    ))
+                    .into_any_element(),
+            );
+        }
+
+        for var in &view.variables {
+            let ClassVariableView { name, kind, value, overridden, .. } = var;
+            // The reflected type and a typed value for the row's editor.
+            let typed: Option<(&'static pulsar_reflection::RuntimeTypeInfo, Box<dyn Any>)> = match kind {
+                VariableKind::Bool => RUNTIME_TYPE_REGISTRY
+                    .get::<bool>()
+                    .map(|t| (t, Box::new(value.as_bool().unwrap_or(false)) as Box<dyn Any>)),
+                VariableKind::Int => RUNTIME_TYPE_REGISTRY
+                    .get::<i64>()
+                    .map(|t| (t, Box::new(value.as_i64().unwrap_or(0)) as Box<dyn Any>))
+                    .or_else(|| {
+                        RUNTIME_TYPE_REGISTRY
+                            .get::<i32>()
+                            .map(|t| (t, Box::new(value.as_i64().unwrap_or(0) as i32) as Box<dyn Any>))
+                    }),
+                VariableKind::Float => RUNTIME_TYPE_REGISTRY
+                    .get::<f64>()
+                    .map(|t| (t, Box::new(value.as_f64().unwrap_or(0.0)) as Box<dyn Any>))
+                    .or_else(|| {
+                        RUNTIME_TYPE_REGISTRY
+                            .get::<f32>()
+                            .map(|t| (t, Box::new(value.as_f64().unwrap_or(0.0) as f32) as Box<dyn Any>))
+                    }),
+                VariableKind::String => RUNTIME_TYPE_REGISTRY.get::<String>().map(|t| {
+                    (t, Box::new(value.as_str().unwrap_or_default().to_string()) as Box<dyn Any>)
+                }),
+                VariableKind::Other(_) => None,
+            };
+            let row = match typed {
+                Some((type_info, current)) => {
+                    let write_back = {
+                        let state_arc = self.state_arc.clone();
+                        let oid = object_id.clone();
+                        let var_name = name.clone();
+                        Arc::new(move |new_val: Box<dyn Any + Send>, _window: &mut Window, _cx: &mut App| {
+                            let Ok(json) = RUNTIME_TYPE_REGISTRY.serialize_json_for_any(new_val.as_ref()) else {
+                                return;
+                            };
+                            execute_command(
+                                &mut state_arc.write(),
+                                SceneCommand::SetClassVariable {
+                                    id: oid.clone(),
+                                    name: var_name.clone(),
+                                    value: Some(json),
+                                },
+                            );
+                        })
+                    };
+                    ui_common::render_property_row_runtime(
+                        &mut self.property_state,
+                        "level",
+                        "ClassInstance#variables",
+                        pulsar_class::CLASS_INSTANCE,
+                        name,
+                        name,
+                        type_info,
+                        current.as_ref(),
+                        write_back,
+                        window,
+                        cx,
+                    )
+                }
+                None => h_flex()
+                    .w_full()
+                    .justify_between()
+                    .child(div().text_sm().text_color(cx.theme().muted_foreground).child(name.clone()))
+                    .child(div().text_sm().child(value.to_string()))
+                    .into_any_element(),
+            };
+            let revert = {
+                let state_arc = self.state_arc.clone();
+                let oid = object_id.clone();
+                let var_name = name.clone();
+                Arc::new(move |_window: &mut Window, _cx: &mut App| {
+                    execute_command(
+                        &mut state_arc.write(),
+                        SceneCommand::SetClassVariable { id: oid.clone(), name: var_name.clone(), value: None },
+                    );
+                })
+            };
+            rows.push(ui_common::decorate_property_override(
+                row,
+                SharedString::from(format!("revert-class-var-{name}")),
+                &ui_common::PropertyOverride { overridden: *overridden, on_revert: Some(revert) },
+                cx,
+            ));
+        }
+
+        if view.variables.is_empty() && view.resolved {
+            rows.push(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("This class has no script variables.")
+                    .into_any_element(),
+            );
+        }
+
+        Some(
+            v_flex()
+                .w_full()
+                .gap_2()
+                .p_3()
+                .bg(cx.theme().sidebar)
+                .rounded(px(8.0))
+                .border_1()
+                .border_color(cx.theme().border)
+                .child(
+                    h_flex()
+                        .w_full()
+                        .items_center()
+                        .gap_2()
+                        .child(Icon::new(IconName::Code).small())
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(cx.theme().foreground)
+                                .child(format!("Class: {}", view.class_name)),
+                        ),
+                )
+                .children(rows)
+                .into_any_element(),
+        )
     }
 }

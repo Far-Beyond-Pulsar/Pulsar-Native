@@ -5039,7 +5039,6 @@ dependencies = [
  "helio-pass-water-sim",
  "helio-voxel-data",
  "plugin_editor_api",
- "pulsar_events",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
@@ -8069,6 +8068,7 @@ version = "0.1.0"
 dependencies = [
  "engine_subsystems",
  "gpui-ce",
+ "pulsar_events",
  "pulsar_reflection",
  "schemars",
  "serde",
@@ -8654,7 +8654,6 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scene_model",
  "pulsar_scenedb",
- "pulsar_script_vm",
  "pulsar_world_registry",
  "serde",
  "serde_json",
@@ -8735,9 +8734,9 @@ dependencies = [
 name = "pulsar_events"
 version = "0.1.0"
 dependencies = [
- "engine_state",
  "serde",
  "tracing",
+ "ui_types_common",
 ]
 
 [[package]]
@@ -8756,7 +8755,9 @@ dependencies = [
  "pbgc",
  "pollster 1.0.1",
  "profiling 0.1.0",
+ "pulsar_class",
  "pulsar_core",
+ "pulsar_events",
  "pulsar_pie_abi",
  "pulsar_reflection",
  "pulsar_scene",
@@ -8877,7 +8878,6 @@ dependencies = [
  "helio",
  "helio-asset-compat",
  "helio_component",
- "pulsar_events",
  "pulsar_reflection",
  "serde",
  "serde_json",

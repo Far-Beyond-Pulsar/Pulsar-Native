@@ -12,7 +12,7 @@ mod world_settings;
 pub use hierarchy::HierarchyPanel;
 pub use panel::LevelEditorPanel;
 pub use properties::{
-    ClassInstanceSection, ComponentHierarchyPanel, ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel,
+    ComponentHierarchyPanel, ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel,
     TransformSection,
 };
 pub use status_bar_view::StatusBarView;

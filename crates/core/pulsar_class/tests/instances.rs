@@ -4,7 +4,7 @@
 use engine_class_derive::{engine_class, register_runtime_behavior, register_world_component};
 use pulsar_class::world::{
     class_instance_of, collect_overrides, expand_all, generated_children, instantiate_class,
-    is_generated_child, slot_entity, slot_map, store_class_instance,
+    is_generated_child, placement, slot_map, store_class_instance,
 };
 use pulsar_class::{ClassInstance, ClassRegistry, CLASS_INSTANCE};
 use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
@@ -42,6 +42,21 @@ fn write_class(project: &std::path::Path, name: &str, prefab: serde_json::Value)
         serde_json::to_string_pretty(&prefab).unwrap(),
     )
     .unwrap();
+}
+
+/// Slot UUID of prefab component `index`.
+fn slot(def: &pulsar_class::ClassDefinition, index: usize) -> String {
+    def.prefab.components[index].slot_id.clone()
+}
+
+/// Edit the first component's defaults in place, keeping slot ids (what the
+/// Blueprint editor does on save).
+fn edit_lamp_default(project: &std::path::Path, intensity: f64, label: &str) {
+    let path = project.join("src/classes/Lamp/prefab.json");
+    let mut prefab: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    prefab["components"][0]["data"] = json!({ "intensity": intensity, "label": label });
+    std::fs::write(&path, prefab.to_string()).unwrap();
 }
 
 fn lamp_prefab(intensity: f64, label: &str) -> serde_json::Value {
@@ -86,14 +101,16 @@ fn two_components_of_one_type_put_the_second_on_a_child() {
         ClassInstance::default(),
         spawn_at("a", 1.0),
     )
-    .unwrap();
+    .unwrap()
+    .root();
     let b = instantiate_class(
         &mut world,
         &def,
         ClassInstance::default(),
         spawn_at("b", 5.0),
     )
-    .unwrap();
+    .unwrap()
+    .root();
 
     for root in [a, b] {
         let instance = class_instance_of(&world, root).unwrap();
@@ -106,10 +123,12 @@ fn two_components_of_one_type_put_the_second_on_a_child() {
         assert!(is_generated_child(&world, child));
         assert_eq!(lamp(&world, child).label, "second");
 
-        let slots = slot_map(&world, root);
-        assert_eq!(slots["TestLamp_0"].entity, root);
-        assert_eq!(slots["TestLamp_1"].entity, child);
-        assert_eq!(slot_entity(&world, root, "TestLamp_1"), Some(child));
+        // Slot UUIDs resolve once into handles on this instance.
+        let placed = placement(&world, root);
+        assert_eq!(placed.handle(&slot(&def, 0)).unwrap().entity, root);
+        assert_eq!(placed.handle(&slot(&def, 1)).unwrap().entity, child);
+        assert_eq!(placed.children, [child]);
+        assert_eq!(slot_map(&world, root).len(), 2);
     }
     // Children sit at their root's transform and have deterministic ids.
     let b_child = generated_children(&world, b)[0];
@@ -117,7 +136,10 @@ fn two_components_of_one_type_put_the_second_on_a_child() {
         world.get::<Transform>(b_child).unwrap().position,
         [5.0, 0.0, 0.0]
     );
-    assert_eq!(world.stable_id_of(b_child), Some("b#TestLamp_1"));
+    assert_eq!(
+        world.stable_id_of(b_child).map(str::to_string),
+        Some(format!("b#{}", slot(&def, 1)))
+    );
 }
 
 /// Save (overrides only), edit the class default, reload: overridden values
@@ -136,14 +158,16 @@ fn overrides_survive_a_class_edit_and_the_rest_updates() {
         ClassInstance::default(),
         spawn_at("a", 0.0),
     )
-    .unwrap();
+    .unwrap()
+    .root();
     let b = instantiate_class(
         &mut world,
         &def,
         ClassInstance::default(),
         spawn_at("b", 0.0),
     )
-    .unwrap();
+    .unwrap()
+    .root();
 
     // Edit instance a: one root component value, one child value, one variable.
     world.get_mut::<TestLamp>(a).unwrap().intensity = 9.0;
@@ -159,11 +183,11 @@ fn overrides_survive_a_class_edit_and_the_rest_updates() {
     let saved_a = collect_overrides(&world, a, &def);
     let saved_b = collect_overrides(&world, b, &def);
     assert_eq!(
-        saved_a.component_overrides["TestLamp_0"],
+        saved_a.component_overrides[&slot(&def, 0)],
         json!({ "intensity": 9.0 })
     );
     assert_eq!(
-        saved_a.component_overrides["TestLamp_1"],
+        saved_a.component_overrides[&slot(&def, 1)],
         json!({ "label": "custom" })
     );
     assert_eq!(saved_a.variable_overrides["speed"], json!(7.0));
@@ -182,7 +206,7 @@ fn overrides_survive_a_class_edit_and_the_rest_updates() {
         .is_empty());
 
     // Edit the class default, then "load" a fresh world from the saved data.
-    write_class(project.path(), "Lamp", lamp_prefab(3.0, "renamed"));
+    edit_lamp_default(project.path(), 3.0, "renamed");
     let registry = ClassRegistry::scan(project.path());
     let mut loaded = World::new();
     for (id, saved) in [("a", &saved_a), ("b", &saved_b)] {
@@ -276,12 +300,13 @@ fn removed_slots_are_recorded_and_respected() {
         ClassInstance::default(),
         spawn_at("r", 0.0),
     )
-    .unwrap();
+    .unwrap()
+    .root();
     let child = generated_children(&world, root)[0];
     world.despawn_tree(child);
     let saved = collect_overrides(&world, root, &def);
     assert_eq!(
-        saved.component_overrides["TestLamp_1"],
+        saved.component_overrides[&slot(&def, 1)],
         json!({ "__removed": true })
     );
 

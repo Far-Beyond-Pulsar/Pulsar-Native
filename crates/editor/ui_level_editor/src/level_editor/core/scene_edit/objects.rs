@@ -204,9 +204,9 @@ pub fn get_selected_object(world: &World) -> Option<SceneObjectData> {
 /// stale reference into a different object while the caller keeps using the
 /// original ID).
 ///
-/// Blueprint objects always receive a `ScriptComponent` pointing at their
-/// blueprint directory: the projection rebuilds `__component_instances` from the
-/// attachments, so it must live there.
+/// A Blueprint object described by a legacy class path (a
+/// `ScriptComponent.script_asset` or flat `script_asset` prop) becomes a
+/// placed class instance (#921).
 pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
     profiling::profile_scope!("scene_edit::add_object");
     if !obj.id.is_empty() && world.entity_for(&obj.id).is_some() {
@@ -303,8 +303,7 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
 
     // Legacy callers still describe a placed class by its directory path
     // (`ScriptComponent.script_asset` or a flat `script_asset` prop). A path
-    // that names a class becomes a real class instance (#921); anything
-    // else keeps the old ScriptComponent.
+    // that names a class becomes a real class instance (#921).
     if let Some(script_path) = blueprint_script_path {
         adopt_legacy_script_path(world, &object_id, &script_path);
     }
@@ -313,8 +312,9 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
     object_id
 }
 
-/// Turn a Blueprint object's legacy script path into a `ClassInstance`
-/// when it names a class; otherwise make sure it has a `ScriptComponent`.
+/// Turn a Blueprint object's legacy script path (a class directory) into a
+/// `ClassInstance`. A path that names no class is left as it is, with a
+/// warning: `ScriptComponent` is retired and nothing runs it.
 fn adopt_legacy_script_path(world: &mut World, object_id: &str, script_path: &str) {
     let components = get_components_metadata(world, object_id);
     if components.iter().any(|c| c.class_name == pulsar_class::CLASS_INSTANCE) {
@@ -322,18 +322,11 @@ fn adopt_legacy_script_path(world: &mut World, object_id: &str, script_path: &st
     }
     let registry = super::classes::registry_for_script_asset(script_path);
     let Some(entry) = registry.resolve_script_asset(script_path).cloned() else {
-        if !components.iter().any(|c| c.class_name == "ScriptComponent") {
-            attach_component_instance(
-                world,
-                object_id,
-                ComponentInstance {
-                    class_name: "ScriptComponent".to_string(),
-                    enabled: true,
-                    data: serde_json::json!({ "script_asset": script_path }),
-                },
-                false,
-            );
-        }
+        tracing::warn!(
+            object = %object_id,
+            script = %script_path,
+            "Blueprint object names a script path that is not a class; it has no class instance"
+        );
         return;
     };
     // Drop the class's ScriptComponent: the ClassInstance replaces it.

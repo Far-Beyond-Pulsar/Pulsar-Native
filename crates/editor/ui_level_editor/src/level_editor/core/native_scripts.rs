@@ -1,17 +1,20 @@
 //! Rust-script actor data model (#653): the editor-side record that binds a
 //! scene object to a gameplay script crate's actor type.
 //!
-//! Data-model level only, mirroring how Blueprint objects carry a
-//! `ScriptComponent` with `script_asset` (see
-//! `scene_edit::find_script_path`): a Rust actor object carries a
-//! `ScriptComponent` instance whose `data` uses the documented RUST mode:
+//! Data-model level only: a Rust actor object carries a
+//! `NativeScriptComponent` (`pulsar_class::NativeScriptComponent`, #921):
 //!
 //! ```json
-//! { "class_name": "ScriptComponent",
+//! { "class_name": "NativeScriptComponent",
 //!   "enabled": true,
-//!   "data": { "mode": "rust", "script_crate": "game_scripts",
-//!             "actor_type": "Spinner" } }
+//!   "data": { "script_crate": "game_scripts", "actor_type": "Spinner" } }
 //! ```
+//!
+//! Blueprint classes are placed as `ClassInstance`s instead; native script
+//! crates are not class assets (no class directory or GUID), so they keep
+//! this small component. Levels from before #921 stored the same binding as
+//! the "rust mode" of the retired `ScriptComponent`; the level migration
+//! (`pulsar_class::migrate`) converts it.
 //!
 //! The record rides the existing save path (`component_instances` round-trips;
 //! D5 proved re-saves preserve it). What consumes it today is discovery +
@@ -23,46 +26,36 @@ use serde_json::{json, Value};
 
 use crate::level_editor::scene_edit::{ObjectType, SceneObjectData, Transform};
 
-/// Class name of the component instance that carries script bindings.
+/// Class name of the component that binds an object to a Rust actor.
 ///
 /// F's inspector/menu work consumes these helpers (E3 landed the data model
 /// only); until then they are deliberately allowed dead.
 #[allow(dead_code)]
-pub const SCRIPT_COMPONENT_CLASS: &str = "ScriptComponent";
+pub const NATIVE_SCRIPT_CLASS: &str = pulsar_class::native_script::NATIVE_SCRIPT_COMPONENT;
 
 /// Build the `component_instances` array entry binding an object to a Rust
-/// actor from a script crate (the RUST mode of `ScriptComponent`).
+/// actor from a script crate.
 #[allow(dead_code)]
 pub fn rust_script_instance(crate_name: &str, actor_type: &str) -> Value {
     json!({
-        "class_name": SCRIPT_COMPONENT_CLASS,
+        "class_name": NATIVE_SCRIPT_CLASS,
         "enabled": true,
-        "data": {
-            "mode": "rust",
-            "script_crate": crate_name,
-            "actor_type": actor_type,
-        },
+        "data": serde_json::to_value(pulsar_class::NativeScriptComponent::new(crate_name, actor_type))
+            .unwrap_or_default(),
     })
 }
 
 /// Read back a Rust-script binding from an object's `component_instances`.
 ///
-/// Returns `(script_crate, actor_type)` for the FIRST rust-mode
-/// ScriptComponent entry; blueprint-mode entries (`script_asset`) and other
-/// components yield `None`. Tolerates missing/foreign shapes — discovery data
-/// must never make scene loading fragile.
+/// Returns `(script_crate, actor_type)` for the FIRST
+/// `NativeScriptComponent` entry; other components yield `None`. Tolerates
+/// missing/foreign shapes — discovery data must never make scene loading
+/// fragile.
 #[allow(dead_code)]
 pub fn find_rust_script_binding(component_instances: Option<&Value>) -> Option<(String, String)> {
     let arr = component_instances?.as_array()?;
     arr.iter()
-        .find(|inst| {
-            inst.get("class_name").and_then(|v| v.as_str()) == Some(SCRIPT_COMPONENT_CLASS)
-                && inst
-                    .get("data")
-                    .and_then(|d| d.get("mode"))
-                    .and_then(|m| m.as_str())
-                    == Some("rust")
-        })
+        .find(|inst| inst.get("class_name").and_then(|v| v.as_str()) == Some(NATIVE_SCRIPT_CLASS))
         .and_then(|inst| {
             let data = inst.get("data")?;
             let crate_name = data.get("script_crate")?.as_str()?.to_string();
@@ -72,7 +65,7 @@ pub fn find_rust_script_binding(component_instances: Option<&Value>) -> Option<(
 }
 
 /// Build a new scene object pre-bound to a Rust script actor: named after the
-/// type, carrying the rust-mode `ScriptComponent` instance. Consumed by the
+/// type, carrying its `NativeScriptComponent`. Consumed by the
 /// add-object flow (F wires the menu; this owns the DATA so both the menu and
 /// tests agree on one shape).
 #[allow(dead_code)]
@@ -110,15 +103,14 @@ mod tests {
         );
     }
 
-    /// Blueprint-mode ScriptComponents and non-Script entries never read as
-    /// rust bindings — the two modes stay distinguishable at the data layer.
+    /// Class instances and other components never read as rust bindings.
     #[test]
-    fn blueprint_mode_and_foreign_entries_do_not_read_as_rust() {
-        let blueprint_only = json!([
-            { "class_name": "ScriptComponent", "enabled": true,
-              "data": { "script_asset": "src/classes/Foo/graph_save.json" } },
+    fn class_instances_and_foreign_entries_do_not_read_as_rust() {
+        let class_only = json!([
+            { "class_name": "ClassInstance", "enabled": true,
+              "data": { "class": "6f1c1a52-1d7e-4d7e-9c55-2b7c1f0d7a10" } },
         ]);
-        assert_eq!(find_rust_script_binding(Some(&blueprint_only)), None);
+        assert_eq!(find_rust_script_binding(Some(&class_only)), None);
 
         assert_eq!(find_rust_script_binding(None), None);
         assert_eq!(find_rust_script_binding(Some(&json!("garbage"))), None);
@@ -126,8 +118,8 @@ mod tests {
         // Mixed arrays pick only the rust-mode entry.
         let mixed = json!([
             { "class_name": "LightComponent", "enabled": true, "data": {} },
-            { "class_name": "ScriptComponent", "enabled": true,
-              "data": { "mode": "rust", "script_crate": "c", "actor_type": "T" } },
+            { "class_name": "NativeScriptComponent", "enabled": true,
+              "data": { "script_crate": "c", "actor_type": "T" } },
         ]);
         assert_eq!(
             find_rust_script_binding(Some(&mixed)),
@@ -140,7 +132,7 @@ mod tests {
     #[test]
     fn malformed_rust_records_are_typed_as_none() {
         let broken = json!([
-            { "class_name": "ScriptComponent", "data": { "mode": "rust", "script_crate": "c" } },
+            { "class_name": "NativeScriptComponent", "data": { "script_crate": "c" } },
         ]);
         assert_eq!(find_rust_script_binding(Some(&broken)), None);
     }

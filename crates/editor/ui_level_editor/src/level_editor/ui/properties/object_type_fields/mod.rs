@@ -103,6 +103,26 @@ pub struct ObjectTypeFieldsSection {
     /// killing every outstanding subscription without any event ever firing;
     /// an epoch mismatch means drop everything and re-arm from scratch.
     pub(super) subs_epoch: u64,
+
+    // ── Class instances (#921) ──────────────────────────────────────────────
+    /// The project's classes, scanned once per section (selection).
+    pub(super) class_registry: Option<pulsar_class::ClassRegistry>,
+    /// Class defaults of this object's components that were built from a
+    /// class slot, by component index; drives the override markers and
+    /// "revert to class default" on those cards.
+    pub(super) slot_defaults: HashMap<usize, crate::level_editor::scene_edit::classes::SlotDefault>,
+    /// Per card, each property's class default (aligned with the card's
+    /// cached property metadata), read once from `slot_defaults`.
+    pub(super) slot_default_values: HashMap<usize, Arc<Vec<Option<Box<dyn Any>>>>>,
+    /// The class variables card data, when this object is a class root.
+    pub(super) class_view: Option<crate::level_editor::scene_edit::classes::ClassInstanceView>,
+    /// Re-read `slot_defaults` / `class_view` on the next render.
+    pub(super) class_cache_dirty: bool,
+    /// `classes::class_defs_generation()` the class caches were read at.
+    pub(super) class_defs_generation: u64,
+    /// World revision the class variables card was read at (undo/redo of a
+    /// variable edit changes it without a property-change record).
+    pub(super) class_view_revision: u64,
 }
 
 impl ObjectTypeFieldsSection {
@@ -113,9 +133,11 @@ impl ObjectTypeFieldsSection {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        // `ClassInstance` only comes from placing a class, never from here.
         let mut items: Vec<String> = REGISTRY
             .get_class_names()
             .into_iter()
+            .filter(|name| *name != pulsar_class::CLASS_INSTANCE)
             .map(|s| s.to_string())
             .collect();
 
@@ -168,6 +190,13 @@ impl ObjectTypeFieldsSection {
             world_subs: HashMap::new(),
             unsubscribable_classes: HashSet::new(),
             subs_epoch: 0, // corrected against the live epoch on first render
+            class_registry: None,
+            slot_defaults: HashMap::new(),
+            slot_default_values: HashMap::new(),
+            class_view: None,
+            class_cache_dirty: true,
+            class_defs_generation: 0,
+            class_view_revision: 0,
         }
     }
 
@@ -198,6 +227,47 @@ impl ObjectTypeFieldsSection {
         self.dirty_classes.clear();
         self.unsubscribable_classes.clear();
         self.subs_epoch = self.state_arc.read().scene.subscriptions_epoch();
+        self.class_cache_dirty = true;
+    }
+
+    /// Re-read the class caches (slot defaults, class variables card) when
+    /// something that feeds them changed.
+    fn refresh_class_caches(&mut self) {
+        let generation = crate::level_editor::scene_edit::classes::class_defs_generation();
+        let revision = self.state_arc.read().scene.world_revision();
+        if self.class_view.is_some() && revision != self.class_view_revision {
+            self.class_view_revision = revision;
+            let registry = self
+                .class_registry
+                .get_or_insert_with(crate::level_editor::scene_edit::classes::project_registry);
+            let world = self.scene_db.read();
+            self.class_view = crate::level_editor::scene_edit::classes::class_instance_view(
+                &world.world,
+                &self.object_id,
+                registry,
+            );
+        }
+        if !self.class_cache_dirty && generation == self.class_defs_generation {
+            return;
+        }
+        self.class_view_revision = revision;
+        self.class_cache_dirty = false;
+        self.class_defs_generation = generation;
+        self.slot_default_values.clear();
+        let registry = self
+            .class_registry
+            .get_or_insert_with(crate::level_editor::scene_edit::classes::project_registry);
+        let world = self.scene_db.read();
+        self.slot_defaults = crate::level_editor::scene_edit::classes::slot_defaults(
+            &world.world,
+            &self.object_id,
+            registry,
+        );
+        self.class_view = crate::level_editor::scene_edit::classes::class_instance_view(
+            &world.world,
+            &self.object_id,
+            registry,
+        );
     }
 
     fn add_component(
@@ -433,7 +503,11 @@ impl Render for ObjectTypeFieldsSection {
                     self.dirty_classes.insert((comp.class_name.clone(), idx));
                 }
             }
+            if property_changes.class_changed(&self.object_id, pulsar_class::CLASS_INSTANCE) {
+                self.class_cache_dirty = true;
+            }
         }
+        self.refresh_class_caches();
 
         let component_sections = self.render_component_sections(&attached, window, cx);
 

@@ -251,6 +251,19 @@ impl ScriptRuntime {
         self.classes.contains_key(name)
     }
 
+    /// The variables a loaded class declares, as `(name, type)`, in slot
+    /// order. Hosts use it to find variables they fill at bind time (e.g.
+    /// the hidden `__slot:<uuid>` component handles of class instances).
+    pub fn class_variables(&self, class: &str) -> Option<Vec<(String, Type)>> {
+        let module = self.classes.get(class)?.program.module();
+        Some(module.variables.iter().map(|v| (v.name.clone(), v.ty.clone())).collect())
+    }
+
+    /// The class an instance runs.
+    pub fn class_of(&self, object_id: &str) -> Option<&str> {
+        self.instances.get(object_id).map(|i| i.class.as_str())
+    }
+
     /// Swap a loaded class's code. Instances keep their identity, binding
     /// and every variable whose name and type are unchanged; new or
     /// retyped variables start at their defaults. On error nothing changes.

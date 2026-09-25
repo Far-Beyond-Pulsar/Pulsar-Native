@@ -187,7 +187,9 @@ impl GameViewport {
                 host.stop();
             }
             self.captured = false;
-            self.shared_state.write().play.pie.active = false;
+            let mut state = self.shared_state.write();
+            state.play.pie.active = false;
+            state.play.pie.pending_asset_updates.clear();
         }
 
         if let Some(req) = pending {
@@ -246,6 +248,11 @@ impl GameViewport {
         }
 
         if let Some(host) = self.pie_host.as_mut() {
+            // Class edits made while playing (#921): the game reloads them.
+            let pending = std::mem::take(&mut self.shared_state.write().play.pie.pending_asset_updates);
+            for event in &pending {
+                host.asset_updated(event);
+            }
             host.resize(w, h);
             let now = Instant::now();
             let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);

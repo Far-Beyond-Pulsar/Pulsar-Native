@@ -15,7 +15,7 @@
 //! | [`plan`] | which prefab component goes on the root and which on a child |
 //! | [`world`] | [`world::instantiate_class`] and friends, on a SceneDB `World` |
 //! | [`migrate`] | level-file migration from `ScriptComponent`/`blueprint_bindings` |
-//! | [`natives`] | `class::slot_entity`, the script native slot-id lookups call |
+//! | [`native_script`] | [`NativeScriptComponent`]: binds an object to a Rust script actor |
 //!
 //! Placed instances *reference* their class: a level stores the class GUID
 //! plus only the values that differ from the class defaults, and loading
@@ -27,7 +27,7 @@
 pub mod component;
 pub mod id;
 pub mod migrate;
-pub mod natives;
+pub mod native_script;
 pub mod overrides;
 pub mod plan;
 pub mod prefab;
@@ -36,9 +36,13 @@ pub mod world;
 
 pub use component::ClassInstance;
 pub use id::{ClassId, ClassMeta, CLASS_META_FILE};
+pub use native_script::NativeScriptComponent;
 pub use plan::{plan_instance, InstancePlan, LocalTransform, PlannedChild, PlannedComponent};
-pub use prefab::{BlueprintClassRef, PrefabAsset, PrefabComponent, PREFAB_FILE};
-pub use registry::{ClassDefinition, ClassEntry, ClassRegistry};
+pub use prefab::{
+    is_slot_uuid, new_slot_id, BlueprintClassRef, PrefabAsset, PrefabComponent, PREFAB_FILE,
+};
+pub use registry::{ClassDefinition, ClassEntry, ClassRegistry, ClassVariable, VariableKind};
+pub use world::{ClassPlacement, SlotHandle};
 
 /// Component class name of [`ClassInstance`].
 pub const CLASS_INSTANCE: &str = "ClassInstance";
@@ -59,6 +63,24 @@ pub const PARENT_INDEX_KEY: &str = "__parent_index";
 
 /// Override marker for a class slot the instance removed.
 pub const REMOVED_KEY: &str = "__removed";
+
+/// Prefix of the hidden script variables a compiled class declares for the
+/// component slots its graph uses: `__slot:<slot uuid>`, of the slot's
+/// component type. When a script instance is bound to a placed class, each
+/// is filled once with a handle to that instance's real component
+/// ([`world::ClassPlacement`]); scripts then only ever use the handle. The
+/// Blueprint compiler declares these with the same spelling.
+pub const SLOT_VARIABLE_PREFIX: &str = "__slot:";
+
+/// The hidden script variable for component slot `slot_id`.
+pub fn slot_variable_name(slot_id: &str) -> String {
+    format!("{SLOT_VARIABLE_PREFIX}{slot_id}")
+}
+
+/// The slot id a hidden slot variable stands for.
+pub fn slot_of_variable(name: &str) -> Option<&str> {
+    name.strip_prefix(SLOT_VARIABLE_PREFIX)
+}
 
 /// Stable id of the child object created for `slot_id` under the instance
 /// root `root_id`.

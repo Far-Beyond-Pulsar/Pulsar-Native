@@ -9,7 +9,6 @@ pulsar_scenedb        = { workspace = true }
 pulsar_scene_model    = { workspace = true }
 pulsar_reflection     = { workspace = true }
 pulsar_world_registry = { workspace = true }
-pulsar_script_vm      = { workspace = true }
 engine_class_derive   = { workspace = true }
 inventory             = { workspace = true }
 serde                 = { workspace = true, features = ["derive"] }

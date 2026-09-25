@@ -1,11 +1,9 @@
 pub mod bindings;
-pub mod class_instance_section;
 pub mod component_hierarchy;
 pub mod object_header_section;
 pub mod object_type_fields;
 pub mod transform_section;
 
-pub use class_instance_section::ClassInstanceSection;
 pub use component_hierarchy::ComponentHierarchyPanel;
 pub use object_header_section::ObjectHeaderSection;
 pub use object_type_fields::ObjectTypeFieldsSection;
@@ -47,7 +45,6 @@ impl PropertiesPanel {
         object_header_section: &Option<Entity<super::ObjectHeaderSection>>,
         transform_section: &Option<Entity<super::TransformSection>>,
         object_type_fields_section: &Option<Entity<super::ObjectTypeFieldsSection>>,
-        class_instance_section: &Option<Entity<super::ClassInstanceSection>>,
         window: &mut Window,
         cx: &mut Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {
@@ -70,14 +67,6 @@ impl PropertiesPanel {
                         // Render new TransformSection if available (new binding system)
                         if let Some(ref section) = transform_section {
                             flex = flex.child(section.clone());
-                        }
-
-                        // Placed class: its variables and component slots,
-                        // with overrides and revert (#921).
-                        if let Some(ref section) = class_instance_section {
-                            if section.read(cx).is_class_instance() {
-                                flex = flex.child(section.clone());
-                            }
                         }
 
                         // Reflection-backed object type properties — always present.

@@ -8,9 +8,9 @@
 //!   child object. A child whose prefab parent (`__parent_index`) is also a
 //!   child is nested under it.
 //!
-//! Every planned component carries its slot id as `__slot_id` metadata;
-//! that is how slot → entity/component is looked up afterwards
-//! ([`crate::world::slot_map`]).
+//! Every planned component carries its slot id as `__slot_id` metadata in
+//! its component record. The editor needs it to save per-slot overrides;
+//! placement resolves it into handles ([`crate::world::ClassPlacement`]).
 
 use std::collections::HashSet;
 
@@ -203,9 +203,11 @@ mod tests {
     use super::*;
     use crate::prefab::{PrefabAsset, PrefabComponent};
 
-    fn comp(class: &str, data: Value) -> PrefabComponent {
+    /// Slot ids are UUIDs in real prefabs; readable ones keep these tests
+    /// legible (planning never inspects the id's shape).
+    fn comp(slot: &str, class: &str, data: Value) -> PrefabComponent {
         PrefabComponent {
-            slot_id: String::new(),
+            slot_id: slot.into(),
             class_name: class.into(),
             enabled: true,
             data,
@@ -213,11 +215,10 @@ mod tests {
     }
 
     fn def(components: Vec<PrefabComponent>) -> ClassDefinition {
-        let mut prefab = PrefabAsset {
+        let prefab = PrefabAsset {
             components,
             ..Default::default()
         };
-        prefab.fill_missing_slot_ids();
         ClassDefinition {
             name: "Test".into(),
             prefab,
@@ -228,14 +229,15 @@ mod tests {
     #[test]
     fn duplicates_and_transformed_components_become_children() {
         let def = def(vec![
-            comp("A", json!({"v": 1})),
-            comp("B", json!({"v": 2})),
-            comp("A", json!({"v": 3})),
+            comp("A_0", "A", json!({"v": 1})),
+            comp("B_0", "B", json!({"v": 2})),
+            comp("A_1", "A", json!({"v": 3})),
             comp(
+                "C_0",
                 "C",
                 json!({"v": 4, "__transform": {"position": [1.0, 0.0, 0.0]}}),
             ),
-            comp("D", json!({"v": 5, "__parent_index": 3})),
+            comp("D_0", "D", json!({"v": 5, "__parent_index": 3})),
         ]);
         let plan = plan_instance(&def, &ClassInstance::default());
         let root: Vec<_> = plan.root.iter().map(|c| c.slot_id.as_str()).collect();
@@ -256,8 +258,8 @@ mod tests {
     #[test]
     fn overrides_apply_and_removed_slots_are_skipped() {
         let def = def(vec![
-            comp("A", json!({"v": 1, "w": 2})),
-            comp("B", json!({"v": 2})),
+            comp("A_0", "A", json!({"v": 1, "w": 2})),
+            comp("B_0", "B", json!({"v": 2})),
         ]);
         let mut instance = ClassInstance::default();
         instance

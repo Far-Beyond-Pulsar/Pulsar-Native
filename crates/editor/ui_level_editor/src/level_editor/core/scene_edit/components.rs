@@ -565,8 +565,8 @@ pub fn update_live_component_property(
     class_name: &str,
     component_index: usize,
     prop_name: &str,
-    new_value: Box<dyn Any + Send>,
-) -> Result<(), Box<dyn Any + Send>> {
+    new_value: Box<dyn Any>,
+) -> Result<(), Box<dyn Any>> {
     profiling::profile_scope!("scene_edit::update_live_component_property");
     // The index IS the identity: a stale or mismatched one must never land an
     // edit into some OTHER instance's storage.

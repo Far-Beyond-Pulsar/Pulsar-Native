@@ -24,10 +24,33 @@ use super::{ObjectId, ObjectType, Transform};
 /// The current project's classes (scanned from `src/classes`). Empty when
 /// no project is open.
 pub fn project_registry() -> ClassRegistry {
-    match engine_state::get_project_path() {
-        Some(root) => ClassRegistry::scan(Path::new(&root)),
+    match engine_state::get_project_path()
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            fallback_project_root()
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone()
+        }) {
+        Some(root) => ClassRegistry::scan(&root),
         None => ClassRegistry::default(),
     }
+}
+
+/// Project root used by [`project_registry`] when no engine context has
+/// one (command-line tools, tests).
+fn fallback_project_root() -> &'static std::sync::Mutex<Option<std::path::PathBuf>> {
+    static ROOT: std::sync::OnceLock<std::sync::Mutex<Option<std::path::PathBuf>>> =
+        std::sync::OnceLock::new();
+    ROOT.get_or_init(Default::default)
+}
+
+/// Set the project root [`project_registry`] falls back to when the engine
+/// context has none.
+pub fn set_fallback_project_root(root: Option<std::path::PathBuf>) {
+    *fallback_project_root()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner()) = root;
 }
 
 /// The registry for a class directory: the project it lives in
@@ -98,7 +121,10 @@ pub fn instantiate_class(
         object_type: ObjectType::Blueprint,
     };
     let root = match class_world::instantiate_class(world, def, instance, spawn) {
-        Ok(root) => root,
+        Ok(placement) => {
+            remember_built_definition(def);
+            placement.root()
+        }
         Err(error) => {
             tracing::error!(class = %def.name, "Could not place class: {error}");
             return None;
@@ -197,6 +223,7 @@ pub fn rebuild_instance(
         class_world::store_class_instance(world, root, &fixed);
     }
     class_world::expand_class_instance(world, root, &def);
+    remember_built_definition(&def);
     Some(sync_instance(world, root))
 }
 
@@ -271,6 +298,8 @@ pub fn current_overrides(
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClassVariableView {
     pub name: String,
+    /// How the details panel edits it.
+    pub kind: pulsar_class::VariableKind,
     pub default: Value,
     /// The instance value (the override, or the default).
     pub value: Value,
@@ -327,6 +356,7 @@ pub fn class_instance_view(
                 .iter()
                 .map(|(name, value)| ClassVariableView {
                     name: name.clone(),
+                    kind: pulsar_class::VariableKind::Other("unresolved".into()),
                     default: Value::Null,
                     value: value.clone(),
                     overridden: true,
@@ -338,24 +368,29 @@ pub fn class_instance_view(
     let current = class_world::collect_overrides(world, root, &def);
     let slots_at = class_world::slot_map(world, root);
 
-    let mut defaults: Vec<(String, Value)> = def.prefab.variable_defaults().into_iter().collect();
-    defaults.sort_by(|a, b| a.0.cmp(&b.0));
-    let mut variables: Vec<ClassVariableView> = defaults
+    let mut variables: Vec<ClassVariableView> = def
+        .variables()
         .into_iter()
-        .map(|(name, default)| {
-            let over = current.variable_overrides.get(&name).cloned();
+        .map(|var| {
+            let over = current
+                .variable_overrides
+                .get(&var.name)
+                .map(|v| var.kind.coerce(Some(v)));
             ClassVariableView {
-                value: over.clone().unwrap_or_else(|| default.clone()),
+                value: over.clone().unwrap_or_else(|| var.default.clone()),
                 overridden: over.is_some(),
-                name,
-                default,
+                name: var.name,
+                kind: var.kind,
+                default: var.default,
             }
         })
         .collect();
     for (name, value) in &current.variable_overrides {
         if !variables.iter().any(|v| &v.name == name) {
+            // An override for a variable the class no longer has: kept, shown.
             variables.push(ClassVariableView {
                 name: name.clone(),
+                kind: pulsar_class::VariableKind::Other("removed".into()),
                 default: Value::Null,
                 value: value.clone(),
                 overridden: true,
@@ -428,6 +463,7 @@ pub fn set_variable(
     }
     class_world::store_class_instance(world, root, &instance);
     sync_registered_component_props_to_scene_db(world, id);
+    super::changes::record_property_change(id, pulsar_class::CLASS_INSTANCE, name);
     true
 }
 
@@ -444,6 +480,7 @@ pub fn revert_variable(world: &mut World, id: &str, name: &str) -> bool {
     }
     class_world::store_class_instance(world, root, &instance);
     sync_registered_component_props_to_scene_db(world, id);
+    super::changes::record_property_change(id, pulsar_class::CLASS_INSTANCE, name);
     true
 }
 
@@ -484,4 +521,226 @@ pub fn revert_slot(
     }
     class_world::store_class_instance(world, root, &instance);
     rebuild_instance(world, id, registry).is_some()
+}
+
+// ── Per-property class defaults (details panel) ─────────────────────────────
+
+static CLASS_DEFS_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Bumped whenever class definitions were reloaded (an asset update); panels
+/// caching class defaults compare it to know when to re-read them.
+pub fn class_defs_generation() -> u64 {
+    CLASS_DEFS_GENERATION.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+fn bump_class_defs_generation() {
+    CLASS_DEFS_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The class instance root `id` belongs to: itself when it is a root, its
+/// root when it is a generated child.
+pub fn class_root_of(world: &World, id: &str) -> Option<Entity> {
+    let mut current = entity(world, id)?;
+    loop {
+        if class_world::is_class_root(world, current) {
+            return Some(current);
+        }
+        if !class_world::is_generated_child(world, current) {
+            return None;
+        }
+        current = world.parent_of(current)?;
+    }
+}
+
+/// Class default of one component built from a class slot.
+pub struct SlotDefault {
+    pub slot_id: String,
+    pub class_name: String,
+    /// The slot's default data, normalized to the component's shape.
+    pub data: Value,
+    /// The default as a reflected instance, for per-property reads.
+    pub instance: Option<Box<dyn pulsar_reflection::EngineClass>>,
+}
+
+impl SlotDefault {
+    /// The class default of property `prop_name` (typed, as the property's
+    /// getter returns it).
+    pub fn property(&self, prop_name: &str) -> Option<Box<dyn std::any::Any>> {
+        let instance = self.instance.as_deref()?;
+        instance
+            .get_properties()
+            .into_iter()
+            .find(|p| p.name == prop_name)
+            .map(|p| (p.getter)(instance))
+    }
+}
+
+/// For object `id`, the class defaults of its components that were built
+/// from a class slot, keyed by component index. Empty for objects that are
+/// not part of a resolved class instance.
+pub fn slot_defaults(
+    world: &World,
+    id: &str,
+    registry: &ClassRegistry,
+) -> std::collections::HashMap<usize, SlotDefault> {
+    let mut out = std::collections::HashMap::new();
+    let Some(root) = class_root_of(world, id) else {
+        return out;
+    };
+    let Some(instance) = class_world::class_instance_of(world, root) else {
+        return out;
+    };
+    let Some(def) = registry.definition_for(&instance) else {
+        return out;
+    };
+    let Some(object) = entity(world, id) else {
+        return out;
+    };
+    for (index, record) in class_world::component_records(world, object)
+        .iter()
+        .enumerate()
+    {
+        let Some(slot) = class_world::record_slot_id(record) else {
+            continue;
+        };
+        let Some(data) = pulsar_class::plan::slot_default(&def, slot) else {
+            continue;
+        };
+        let instance = pulsar_reflection::REGISTRY
+            .create_instance_from_json(&record.class_name, &data)
+            .and_then(Result::ok);
+        out.insert(
+            index,
+            SlotDefault {
+                slot_id: slot.to_string(),
+                class_name: record.class_name.clone(),
+                data,
+                instance,
+            },
+        );
+    }
+    out
+}
+
+/// Whether a property value equals its class default (both serialized
+/// through the reflection registry; float noise tolerated).
+pub fn property_equals_default(current: &dyn std::any::Any, default: &dyn std::any::Any) -> bool {
+    let registry = &pulsar_reflection::RUNTIME_TYPE_REGISTRY;
+    match (
+        registry.serialize_json_for_any(current),
+        registry.serialize_json_for_any(default),
+    ) {
+        (Ok(a), Ok(b)) => pulsar_class::overrides::values_equal(&a, &b),
+        _ => true,
+    }
+}
+
+// ── Asset updates: class edits reach placed instances ───────────────────────
+
+/// Whether `event` names the class `instance` refers to (by GUID, else by
+/// class directory name).
+fn event_names_class(
+    event: &plugin_editor_api::AssetUpdated,
+    instance: &ClassInstance,
+    registry: &ClassRegistry,
+) -> bool {
+    if let Some(id) = &event.id {
+        if instance.class.as_str() == id {
+            return true;
+        }
+    }
+    let Some(dir_name) = event
+        .path
+        .as_ref()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+    else {
+        return false;
+    };
+    registry
+        .resolve(instance)
+        .map(|entry| entry.name == dir_name)
+        .unwrap_or(instance.class_name == dir_name)
+}
+
+/// Rebuild every placed instance of the class an asset update names from
+/// the class's new definition, keeping each instance's overrides (current
+/// edits included). Returns the ids of the rebuilt objects (roots and their
+/// generated children). Events for other asset kinds are ignored.
+pub fn apply_class_asset_update(
+    world: &mut World,
+    event: &plugin_editor_api::AssetUpdated,
+) -> Vec<ObjectId> {
+    if event.kind != plugin_editor_api::AssetKind::Blueprint {
+        return Vec::new();
+    }
+    let registry = match &event.path {
+        Some(dir) if dir.is_dir() => registry_for_class_dir(dir),
+        _ => project_registry(),
+    };
+    let roots: Vec<(ObjectId, Entity)> = world
+        .query::<&engine_backend::scene::StableId>()
+        .map(|(e, id)| (id.0.clone(), e))
+        .filter(|(_, e)| class_world::is_class_root(world, *e))
+        .collect();
+    // First fold every matching instance's live values into its overrides,
+    // diffed against the definition it was built from (the new one would
+    // turn every value it did not override into one); only then rebuild,
+    // which records the new definition as the one built from. Slot ids are
+    // stable across class edits, so the overrides apply to the new one.
+    let mut matching = Vec::new();
+    for (id, root) in roots {
+        let Some(stored) = class_world::class_instance_of(world, root) else {
+            continue;
+        };
+        if !event_names_class(event, &stored, &registry) {
+            continue;
+        }
+        let Some(entry) = registry.resolve(&stored) else {
+            continue;
+        };
+        if let Some(built_from) = built_definition(&entry.id) {
+            let current = class_world::collect_overrides(world, root, &built_from);
+            class_world::store_class_instance(world, root, &current);
+        }
+        matching.push(id);
+    }
+    let mut touched = Vec::new();
+    for id in matching {
+        if let Some(ids) = rebuild_instance(world, &id, &registry) {
+            touched.extend(ids);
+        }
+    }
+    if !touched.is_empty() {
+        bump_class_defs_generation();
+    }
+    touched
+}
+
+/// Definitions instances were last built from, per class, so an asset
+/// update can tell the instance's own edits from old class defaults.
+fn built_definitions() -> &'static std::sync::Mutex<
+    std::collections::HashMap<pulsar_class::ClassId, pulsar_class::ClassDefinition>,
+> {
+    static BUILT: std::sync::OnceLock<
+        std::sync::Mutex<
+            std::collections::HashMap<pulsar_class::ClassId, pulsar_class::ClassDefinition>,
+        >,
+    > = std::sync::OnceLock::new();
+    BUILT.get_or_init(Default::default)
+}
+
+fn remember_built_definition(def: &pulsar_class::ClassDefinition) {
+    built_definitions()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .insert(def.id.clone(), def.clone());
+}
+
+fn built_definition(id: &pulsar_class::ClassId) -> Option<pulsar_class::ClassDefinition> {
+    built_definitions()
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .get(id)
+        .cloned()
 }

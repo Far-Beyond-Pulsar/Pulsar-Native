@@ -2,6 +2,8 @@
 
 use std::path::{Path, PathBuf};
 
+use serde_json::Value;
+
 use crate::component::ClassInstance;
 use crate::id::{ensure_class_id, ClassId, CLASS_META_FILE};
 use crate::prefab::{PrefabAsset, PREFAB_FILE};
@@ -35,6 +37,141 @@ pub struct ClassDefinition {
     pub dir: PathBuf,
     /// Components with slot ids filled in, plus variable defaults.
     pub prefab: PrefabAsset,
+}
+
+/// Value kind of a class script variable, as the instance details panel
+/// edits it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum VariableKind {
+    Bool,
+    Int,
+    Float,
+    String,
+    /// Any other script type (entity, component, value types): shown, but
+    /// not editable as a plain value.
+    Other(String),
+}
+
+/// One script variable of a class, with its class default.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClassVariable {
+    pub name: String,
+    pub kind: VariableKind,
+    /// The class default in its natural JSON form (`5.0`, `true`, `"hi"`).
+    pub default: Value,
+}
+
+impl VariableKind {
+    fn from_script_type(ty: &Value) -> Self {
+        match ty.get("kind").and_then(Value::as_str) {
+            Some("bool") => Self::Bool,
+            Some("int") => Self::Int,
+            Some("float") => Self::Float,
+            Some("str") => Self::String,
+            Some(other) => Self::Other(other.to_string()),
+            None => Self::Other(ty.to_string()),
+        }
+    }
+
+    fn infer(value: &Value) -> Self {
+        match value {
+            Value::Bool(_) => Self::Bool,
+            Value::Number(n) if n.is_i64() || n.is_u64() => Self::Int,
+            Value::Number(_) => Self::Float,
+            _ => Self::String,
+        }
+    }
+
+    /// `value` (possibly a string, as blueprint defaults are stored) in this
+    /// kind's JSON form; the kind's zero when it does not convert.
+    pub fn coerce(&self, value: Option<&Value>) -> Value {
+        let parsed = match value {
+            Some(Value::String(s)) if *self != Self::String => {
+                serde_json::from_str::<Value>(s).ok()
+            }
+            other => other.cloned(),
+        };
+        match self {
+            Self::Bool => Value::Bool(parsed.and_then(|v| v.as_bool()).unwrap_or(false)),
+            Self::Int => Value::from(
+                parsed
+                    .and_then(|v| v.as_f64())
+                    .map(|f| f as i64)
+                    .unwrap_or(0),
+            ),
+            Self::Float => Value::from(parsed.and_then(|v| v.as_f64()).unwrap_or(0.0)),
+            Self::String => Value::String(
+                parsed
+                    .map(|v| {
+                        v.as_str()
+                            .map(str::to_string)
+                            .unwrap_or_else(|| v.to_string())
+                    })
+                    .unwrap_or_default(),
+            ),
+            Self::Other(_) => parsed.unwrap_or(Value::Null),
+        }
+    }
+}
+
+impl ClassDefinition {
+    /// The class's script variables: those its compiled module declares
+    /// (`events/.build/module.json`), with defaults from the prefab's
+    /// blueprint defaults. Hidden variables (`__…`, e.g. component-slot
+    /// handles) are left out. Without a compiled module, the prefab's
+    /// variable defaults are listed with their kind inferred.
+    pub fn variables(&self) -> Vec<ClassVariable> {
+        let defaults = self.prefab.variable_defaults();
+        let module =
+            std::fs::read_to_string(self.dir.join("events").join(".build").join("module.json"))
+                .ok()
+                .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+        let mut out: Vec<ClassVariable> = Vec::new();
+        if let Some(vars) = module
+            .as_ref()
+            .and_then(|m| m.get("variables"))
+            .and_then(Value::as_array)
+        {
+            for var in vars {
+                let Some(name) = var.get("name").and_then(Value::as_str) else {
+                    continue;
+                };
+                if name.starts_with("__") {
+                    continue;
+                }
+                let kind = var
+                    .get("ty")
+                    .map(VariableKind::from_script_type)
+                    .unwrap_or(VariableKind::Other(String::new()));
+                let default = kind.coerce(defaults.get(name));
+                out.push(ClassVariable {
+                    name: name.to_string(),
+                    kind,
+                    default,
+                });
+            }
+        }
+        let mut extra: Vec<(&String, &Value)> = defaults
+            .iter()
+            .filter(|(name, _)| !out.iter().any(|v| &v.name == *name))
+            .collect();
+        extra.sort_by(|a, b| a.0.cmp(b.0));
+        for (name, raw) in extra {
+            let parsed = match raw {
+                Value::String(s) => {
+                    serde_json::from_str::<Value>(s).unwrap_or_else(|_| raw.clone())
+                }
+                other => other.clone(),
+            };
+            let kind = VariableKind::infer(&parsed);
+            out.push(ClassVariable {
+                name: name.clone(),
+                default: kind.coerce(Some(raw)),
+                kind,
+            });
+        }
+        out
+    }
 }
 
 /// Every class of one project, indexed by GUID.
@@ -202,5 +339,51 @@ mod tests {
             lamp.id
         );
         assert!(registry.resolve_script_asset("/x/Missing").is_none());
+    }
+}
+
+#[cfg(test)]
+mod variable_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn variables_come_from_the_module_with_prefab_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("events/.build")).unwrap();
+        std::fs::write(
+            dir.path().join("events/.build/module.json"),
+            json!({ "name": "C", "variables": [
+                { "name": "speed", "ty": { "kind": "float" } },
+                { "name": "alive", "ty": { "kind": "bool" } },
+                { "name": "__slot:x", "ty": { "kind": "component", "name": "A" } }
+            ] })
+            .to_string(),
+        )
+        .unwrap();
+        let mut def = ClassDefinition {
+            dir: dir.path().to_path_buf(),
+            ..Default::default()
+        };
+        def.prefab.blueprint_class = Some(crate::prefab::BlueprintClassRef {
+            class_path: String::new(),
+            variable_defaults: [
+                ("speed".to_string(), json!("5.0")),
+                ("label".to_string(), json!("hi")),
+            ]
+            .into(),
+        });
+        let vars = def.variables();
+        let names: Vec<_> = vars.iter().map(|v| v.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["speed", "alive", "label"],
+            "hidden slot handles are not variables"
+        );
+        assert_eq!(vars[0].kind, VariableKind::Float);
+        assert_eq!(vars[0].default, json!(5.0));
+        assert_eq!(vars[1].default, json!(false));
+        assert_eq!(vars[2].kind, VariableKind::String);
+        assert_eq!(vars[2].default, json!("hi"));
     }
 }

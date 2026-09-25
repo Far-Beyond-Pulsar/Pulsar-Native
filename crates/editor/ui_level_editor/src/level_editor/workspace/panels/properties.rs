@@ -2,7 +2,7 @@
 
 use crate::level_editor::state::LevelEditorState;
 use crate::level_editor::ui::{
-    ClassInstanceSection, ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel, TransformSection,
+    ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel, TransformSection,
 };
 use gpui::*;
 use std::collections::HashSet;
@@ -31,7 +31,6 @@ pub struct PropertiesPanelWrapper {
     object_header_section: Option<Entity<ObjectHeaderSection>>,
     transform_section: Option<Entity<TransformSection>>,
     object_type_fields_section: Option<Entity<ObjectTypeFieldsSection>>,
-    class_instance_section: Option<Entity<ClassInstanceSection>>,
     current_object_id: Option<String>,
     // DEPRECATED: Old manual property editing (will be removed)
     editing_property: Option<String>,
@@ -81,7 +80,6 @@ impl PropertiesPanelWrapper {
             object_header_section: None,
             transform_section: None,
             object_type_fields_section: None,
-            class_instance_section: None,
             current_object_id: None,
             editing_property: None,
             property_input,
@@ -206,15 +204,11 @@ impl PropertiesPanelWrapper {
                         cx,
                     )
                 }));
-                self.class_instance_section = Some(cx.new(|cx| {
-                    ClassInstanceSection::new(object_id_clone.clone(), self.state.clone(), window, cx)
-                }));
                 self.current_object_id = Some(object_id.clone());
             } else {
                 self.object_header_section = None;
                 self.transform_section = None;
                 self.object_type_fields_section = None;
-                self.class_instance_section = None;
                 self.current_object_id = None;
             }
         } else if revision_changed {
@@ -245,9 +239,6 @@ impl PropertiesPanelWrapper {
             if components_touched {
                 if let Some(section) = self.object_type_fields_section.clone() {
                     section.update(cx, |_, cx| cx.notify());
-                }
-                if let Some(section) = self.class_instance_section.clone() {
-                    section.update(cx, |section, cx| section.refresh(window, cx));
                 }
             }
         }
@@ -344,7 +335,6 @@ impl Render for PropertiesPanelWrapper {
                 &self.object_header_section,
                 &self.transform_section,
                 &self.object_type_fields_section,
-                &self.class_instance_section,
                 window,
                 cx,
             ))

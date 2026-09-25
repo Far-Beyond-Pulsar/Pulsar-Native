@@ -53,6 +53,9 @@ pub struct PieControl {
     pub stop_requested: bool,
     /// Last build/start error, surfaced by the viewport/toolbar.
     pub last_error: Option<String>,
+    /// Asset updates (e.g. an edited class) waiting to be forwarded to the
+    /// running game; the viewport delivers them on the render thread.
+    pub pending_asset_updates: Vec<plugin_editor_api::AssetUpdated>,
 }
 
 /// Everything the viewport needs to load an embedded game.

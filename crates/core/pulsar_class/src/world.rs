@@ -289,9 +289,55 @@ pub fn slot_map(world: &World, root: Entity) -> BTreeMap<String, SlotLocation> {
     map
 }
 
-/// The entity holding slot `slot_id` of the instance at `root`.
-pub fn slot_entity(world: &World, root: Entity, slot_id: &str) -> Option<Entity> {
-    slot_map(world, root).get(slot_id).map(|loc| loc.entity)
+/// A component slot of a placed instance, resolved to the entity holding
+/// the instance's real component.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SlotHandle {
+    pub slot_id: String,
+    pub class_name: String,
+    pub entity: Entity,
+}
+
+/// The result of placing a class: its root and a handle per component slot.
+///
+/// Slot ids exist only on disk and in the class's compiled script; this is
+/// where they are resolved, once, into handles. Consumers (script binding)
+/// take the handles and never look slot ids up again.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ClassPlacement {
+    pub root: Option<Entity>,
+    pub slots: Vec<SlotHandle>,
+    /// Generated child objects, parents before children.
+    pub children: Vec<Entity>,
+}
+
+impl ClassPlacement {
+    pub fn root(&self) -> Entity {
+        self.root.expect("placement of a spawned root")
+    }
+
+    /// The handle for `slot_id`, if the instance has that slot.
+    pub fn handle(&self, slot_id: &str) -> Option<&SlotHandle> {
+        self.slots.iter().find(|h| h.slot_id == slot_id)
+    }
+}
+
+/// The placement of the instance rooted at `root`, as the world holds it
+/// now: one handle per class slot the instance has (removed slots have
+/// none).
+pub fn placement(world: &World, root: Entity) -> ClassPlacement {
+    ClassPlacement {
+        root: Some(root),
+        slots: slot_map(world, root)
+            .into_iter()
+            .map(|(slot_id, loc)| SlotHandle {
+                slot_id,
+                class_name: loc.class_name,
+                entity: loc.entity,
+            })
+            .collect(),
+        children: generated_children(world, root),
+    }
 }
 
 // ── Transforms ────────────────────────────────────────────────────────────
@@ -374,13 +420,13 @@ pub fn clear_generated(world: &mut World, root: Entity) {
 
 /// Build the class components of the instance at `root` from `def`, the
 /// current class definition, applying the root's `ClassInstance` overrides.
-/// Anything a previous expansion created is replaced. Returns the generated
-/// child entities.
+/// Anything a previous expansion created is replaced. Returns the placement
+/// (a handle per slot, and the generated children).
 pub fn expand_class_instance(
     world: &mut World,
     root: Entity,
     def: &ClassDefinition,
-) -> Vec<Entity> {
+) -> ClassPlacement {
     clear_generated(world, root);
     let instance = class_instance_of(world, root).unwrap_or_default();
     let plan = plan_instance(def, &instance);
@@ -406,7 +452,7 @@ pub fn expand_class_instance(
         let spec = SpawnObject {
             stable_id: (!root_id.is_empty() && world.entity_for(&wanted_id).is_none())
                 .then_some(wanted_id),
-            name: slot_id.clone(),
+            name: child.component.class_name.clone(),
             parent: Some(parent),
             transform: compose(&parent_tf, &child.local),
             visibility: visible,
@@ -422,18 +468,18 @@ pub fn expand_class_instance(
         attach_components(world, entity, vec![planned_record(child.component)]);
         spawned.push((slot_id, entity));
     }
-    spawned.into_iter().map(|(_, e)| e).collect()
+    placement(world, root)
 }
 
 /// Spawn a new instance of `def` as `spawn` describes: the root object with
 /// its `ClassInstance` (carrying `instance`'s overrides) and every prefab
-/// component. Returns the root entity.
+/// component. Returns the placement: the root and a handle per slot.
 pub fn instantiate_class(
     world: &mut World,
     def: &ClassDefinition,
     mut instance: ClassInstance,
     spawn: SpawnObject,
-) -> Result<Entity, SceneError> {
+) -> Result<ClassPlacement, SceneError> {
     instance.class = def.id.clone();
     instance.class_name = def.name.clone();
     let root = world.spawn_object(spawn)?;
@@ -446,8 +492,7 @@ pub fn instantiate_class(
             data: instance.to_value(),
         }],
     );
-    expand_class_instance(world, root, def);
-    Ok(root)
+    Ok(expand_class_instance(world, root, def))
 }
 
 /// Expand every class instance root in `world` from `registry`. Instances
@@ -488,8 +533,8 @@ pub fn expand_roots(
                     fixed.class_name = def.name.clone();
                     store_class_instance(world, root, &fixed);
                 }
-                let children = expand_class_instance(world, root, &def);
-                report.expanded.push((id, children));
+                let placement = expand_class_instance(world, root, &def);
+                report.expanded.push((id, placement));
             }
             None => {
                 tracing::warn!(
@@ -508,8 +553,8 @@ pub fn expand_roots(
 /// What [`expand_all`] did.
 #[derive(Debug, Default)]
 pub struct ExpandReport {
-    /// Root stable id → generated child entities.
-    pub expanded: Vec<(String, Vec<Entity>)>,
+    /// Root stable id → its placement.
+    pub expanded: Vec<(String, ClassPlacement)>,
     /// Roots whose class could not be resolved.
     pub unresolved: Vec<String>,
 }

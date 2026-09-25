@@ -29,6 +29,9 @@ const SCRIPT_COMPONENT: &str = "ScriptComponent";
 pub struct MigrationReport {
     /// `(object id, class name)` for every `ScriptComponent` converted.
     pub script_components: Vec<(String, String)>,
+    /// `(object id, actor type)` for every rust-mode `ScriptComponent`
+    /// converted to a `NativeScriptComponent`.
+    pub native_scripts: Vec<(String, String)>,
     /// `(object id, class name)` for every binding converted.
     pub bindings: Vec<(String, String)>,
     /// `(object id, class name)` converted without a resolvable class (kept
@@ -40,7 +43,9 @@ pub struct MigrationReport {
 
 impl MigrationReport {
     pub fn changed(&self) -> bool {
-        !self.script_components.is_empty() || !self.bindings.is_empty()
+        !self.script_components.is_empty()
+            || !self.bindings.is_empty()
+            || !self.native_scripts.is_empty()
     }
 }
 
@@ -182,6 +187,47 @@ pub fn migrate_level_value(root: &mut Value, registry: &ClassRegistry) -> Migrat
             while i < entries.len() {
                 let entry = &entries[i];
                 if class_name_of(entry) != Some(SCRIPT_COMPONENT) {
+                    i += 1;
+                    continue;
+                }
+                // Rust-mode binding → NativeScriptComponent.
+                if entry
+                    .get("data")
+                    .and_then(|d| d.get("mode"))
+                    .and_then(Value::as_str)
+                    == Some("rust")
+                {
+                    let data = entry.get("data").cloned().unwrap_or_default();
+                    let field = |k: &str| {
+                        data.get(k)
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string()
+                    };
+                    let native = crate::NativeScriptComponent::new(
+                        field("script_crate"),
+                        field("actor_type"),
+                    );
+                    let mut converted = Map::new();
+                    if let Some(index) = entry.get("index").cloned() {
+                        converted.insert("index".into(), index);
+                    }
+                    converted.insert(
+                        "class_name".into(),
+                        Value::String(crate::native_script::NATIVE_SCRIPT_COMPONENT.into()),
+                    );
+                    converted.insert(
+                        "enabled".into(),
+                        entry.get("enabled").cloned().unwrap_or(Value::Bool(true)),
+                    );
+                    converted.insert(
+                        "data".into(),
+                        serde_json::to_value(&native).unwrap_or_default(),
+                    );
+                    report
+                        .native_scripts
+                        .push((id.clone(), native.actor_type.clone()));
+                    entries[i] = Value::Object(converted);
                     i += 1;
                     continue;
                 }
@@ -370,7 +416,11 @@ mod tests {
                     { "class_name": "ScriptComponent", "enabled": true, "data": { "script_asset": "C:/old/machine/src/classes/Lamp" } },
                     { "class_name": "LightComponent", "enabled": true, "data": {} }
                 ],
-                "b": [ { "class_name": "ScriptComponent", "enabled": true, "data": { "script_asset": "/somewhere/NotAClass" } } ]
+                "b": [
+                    { "class_name": "ScriptComponent", "enabled": true, "data": { "script_asset": "/somewhere/NotAClass" } },
+                    { "class_name": "ScriptComponent", "enabled": true,
+                      "data": { "mode": "rust", "script_crate": "game_scripts", "actor_type": "Spinner" } }
+                ]
             }
         });
         let report = migrate_level_value(&mut level, &registry());
@@ -385,6 +435,13 @@ mod tests {
         );
         // Not a class: untouched.
         assert_eq!(level["components"]["b"][0]["class_name"], "ScriptComponent");
+        // Rust-mode binding: its own component.
+        let native = &level["components"]["b"][1];
+        assert_eq!(native["class_name"], "NativeScriptComponent");
+        assert_eq!(
+            native["data"],
+            json!({ "script_crate": "game_scripts", "actor_type": "Spinner" })
+        );
         // Flat legacy prop.
         assert_eq!(
             level["objects"][2]["component_instances"][0]["data"]["class"],
