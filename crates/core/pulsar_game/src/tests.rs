@@ -205,84 +205,17 @@ mod schedule_tests {
     }
 }
 
-/// Level bindings and project discovery on the script runtime
-/// (`crate::scripting`).
+/// Script helpers on the engine VM (`crate::scripting`): world lookup
+/// natives and component-slot binding. The world-driven lifecycle is tested
+/// in `scripting::tests`.
 #[cfg(test)]
 mod script_runtime_bindings {
-    use crate::scripting::{self, instance_id_for, BindingError};
+    use crate::scripting;
     use engine_backend::scene::{RuntimeLevel, SceneWorldExt};
-    use pulsar_script_vm::{BinOp, Function, Instr, Module, Type, Value, Variable};
+    use pulsar_script_vm::{Module, Type, Value, Variable};
 
     const BINDINGS_FIXTURE: &str =
         include_str!("../tests/fixtures/level_bindings_sample.level.json");
-
-    /// `total += speed * delta_time` every tick.
-    fn tick_probe_module() -> Module {
-        let mut m = Module::new("TickProbe");
-        m.variables = vec![
-            Variable { name: "speed".into(), ty: Type::Float, default: None },
-            Variable { name: "total".into(), ty: Type::Float, default: None },
-        ];
-        m.functions = vec![Function {
-            name: "tick".into(),
-            exported: true,
-            params: vec![Type::Float],
-            ret: Type::Unit,
-            registers: vec![Type::Float, Type::Float, Type::Float],
-            code: vec![
-                Instr::LoadVar { dst: 1, var: 0 },
-                Instr::Binary { op: BinOp::Mul, dst: 1, a: 1, b: 0 },
-                Instr::LoadVar { dst: 2, var: 1 },
-                Instr::Binary { op: BinOp::Add, dst: 2, a: 2, b: 1 },
-                Instr::StoreVar { var: 1, src: 2 },
-                Instr::Return { value: None },
-            ],
-        }];
-        m
-    }
-
-    #[test]
-    fn module_classes_bind_to_their_objects_and_tick() {
-        let root = std::env::temp_dir().join(format!("pulsar_game_script_bindings_{}", std::process::id()));
-        let module_path = scripting::module_path_for_class(&root, "TickProbe");
-        std::fs::create_dir_all(module_path.parent().unwrap()).unwrap();
-        std::fs::write(&module_path, tick_probe_module().to_json().unwrap()).unwrap();
-
-        let file: pulsar_scene::SceneFile = serde_json::from_str(BINDINGS_FIXTURE).unwrap();
-        let level = RuntimeLevel::from_scene_file(file).unwrap();
-        let store = level.scene();
-        let mut bindings = level.extras().blueprint_bindings.clone();
-        drop(level);
-        // A class with no compiled module is a reported failure.
-        bindings.get_mut("lever_a").unwrap().push(pulsar_scene::format::BlueprintBinding {
-            class_name: "LegacyOnly".into(),
-            overrides: Default::default(),
-        });
-
-        let mut runtime = scripting::new_runtime();
-        let report = {
-            let guard = store.read();
-            scripting::apply_script_bindings(&mut runtime, &guard, &root, &bindings)
-        };
-        assert_eq!(report.applied.len(), 2);
-        assert_eq!(report.failures.len(), 1);
-        assert_eq!(report.failures[0].class_name, "LegacyOnly");
-        assert!(matches!(report.failures[0].error, BindingError::ModuleMissing { .. }));
-
-        let a = instance_id_for("lever_a", "TickProbe");
-        let b = instance_id_for("lever_b", "TickProbe");
-        {
-            let guard = store.read();
-            assert_eq!(runtime.entity_of(&a), guard.world.entity_for("lever_a"));
-        }
-        let mut guard = store.write();
-        runtime.dispatch_pending_begin_play(&mut guard.world);
-        runtime.tick_all(&mut guard.world, 1.0);
-        runtime.tick_all(&mut guard.world, 1.0);
-        assert_eq!(runtime.variable(&a, "total"), Some(&Value::Float(5.0)));
-        assert_eq!(runtime.variable(&b, "total"), Some(&Value::Float(18.0)));
-        let _ = std::fs::remove_dir_all(&root);
-    }
 
     #[test]
     fn world_lookup_natives_find_level_objects() {
@@ -301,21 +234,6 @@ mod script_runtime_bindings {
         let missing = find.call(&mut host, &mut [Value::from("nope")]).unwrap();
         assert_eq!(missing, Value::Entity(pulsar_scenedb::Entity::DANGLING));
         assert!(runtime.natives().get("world::find_by_name").is_some());
-    }
-
-    #[test]
-    fn project_discovery_loads_module_classes() {
-        let root = std::env::temp_dir().join(format!("pulsar_game_script_discovery_{}", std::process::id()));
-        let module_path = scripting::module_path_for_class(&root, "TickProbe");
-        std::fs::create_dir_all(module_path.parent().unwrap()).unwrap();
-        std::fs::write(&module_path, tick_probe_module().to_json().unwrap()).unwrap();
-        std::fs::create_dir_all(root.join("src/classes/NoModule/events/.build")).unwrap();
-
-        let mut runtime = scripting::new_runtime();
-        let loaded = scripting::load_project_classes(&mut runtime, &root.join("src/classes"));
-        assert_eq!(loaded, ["TickProbe"]);
-        assert_eq!(runtime.instance_ids(), ["TickProbe__vm_default"]);
-        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// #921: binding a script instance to a placed class fills each hidden
@@ -383,5 +301,27 @@ mod script_runtime_bindings {
             other => panic!("unexpected {other:?}"),
         }
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// #922: the script section of the generated `engine_main::setup()`
+/// (`engine_backend::services::core_project_builder`), compiled in-tree.
+#[cfg(test)]
+mod generated_setup_script_section {
+    use crate::prelude::*;
+
+    fn setup(game: &mut TickLoop) -> Result<(), String> {
+        game.enable_scripting(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+        Ok(())
+    }
+
+    #[test]
+    fn generated_setup_compiles_and_enables_scripting() {
+        let mut game = TickLoop::new(TickMode::default(), 0);
+        setup(&mut game).unwrap();
+        assert!(game.scripts.is_some());
+        game.tick_once();
+        let driver = game.scripts.as_ref().unwrap().lock().unwrap();
+        assert!(driver.runtime().instance_ids().is_empty(), "no default instances");
     }
 }

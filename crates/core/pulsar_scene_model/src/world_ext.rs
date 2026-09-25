@@ -83,6 +83,24 @@ impl SpawnObject {
     }
 }
 
+/// `requested` when it is free, a fresh `object_N` id when `None`.
+fn unique_stable_id(world: &World, requested: Option<String>) -> Result<String, SceneError> {
+    match requested {
+        Some(id) => {
+            if world.entity_for(&id).is_some() {
+                return Err(SceneError::DuplicateId(id));
+            }
+            Ok(id)
+        }
+        None => Ok(loop {
+            let candidate = format!("object_{}", next_ordinal());
+            if world.entity_for(&candidate).is_none() {
+                break candidate;
+            }
+        }),
+    }
+}
+
 /// Scene helpers on `World`. Import the trait to use them.
 pub trait SceneWorldExt {
     // ── Identity ────────────────────────────────────────────────────────
@@ -100,6 +118,11 @@ pub trait SceneWorldExt {
 
     // ── Lifecycle ───────────────────────────────────────────────────────
     fn spawn_object(&mut self, spec: SpawnObject) -> Result<Entity, SceneError>;
+    /// Make the already-spawned, still bare `entity` the object `spec`
+    /// describes (the same components [`spawn_object`](Self::spawn_object)
+    /// gives a new one). Lets a caller hand out an entity id first and fill
+    /// it later, e.g. a script spawn applied at the end of the script phase.
+    fn spawn_object_into(&mut self, entity: Entity, spec: SpawnObject) -> Result<(), SceneError>;
     /// Despawn `entity` and, recursively, its children.
     fn despawn_tree(&mut self, entity: Entity);
 
@@ -208,20 +231,7 @@ impl SceneWorldExt for World {
     }
 
     fn spawn_object(&mut self, spec: SpawnObject) -> Result<Entity, SceneError> {
-        let stable_id = match spec.stable_id {
-            Some(id) => {
-                if self.entity_for(&id).is_some() {
-                    return Err(SceneError::DuplicateId(id));
-                }
-                id
-            }
-            None => loop {
-                let candidate = format!("object_{}", next_ordinal());
-                if self.entity_for(&candidate).is_none() {
-                    break candidate;
-                }
-            },
-        };
+        let stable_id = unique_stable_id(self, spec.stable_id.clone())?;
         // One archetype transition for the whole object, not one per component.
         let entity = self.spawn_bundle((
             StableId(stable_id),
@@ -236,6 +246,26 @@ impl SceneWorldExt for World {
             self.insert(entity, Parent(parent));
         }
         Ok(entity)
+    }
+
+    fn spawn_object_into(&mut self, entity: Entity, spec: SpawnObject) -> Result<(), SceneError> {
+        let stable_id = unique_stable_id(self, spec.stable_id.clone())?;
+        self.insert_bundle(
+            entity,
+            (
+                StableId(stable_id),
+                Name(spec.name),
+                spec.transform,
+                spec.visibility,
+                spec.object_type,
+                SiblingIndex(next_ordinal()),
+                RenderProps::default(),
+            ),
+        );
+        if let Some(parent) = spec.parent {
+            self.insert(entity, Parent(parent));
+        }
+        Ok(())
     }
 
     fn despawn_tree(&mut self, entity: Entity) {
