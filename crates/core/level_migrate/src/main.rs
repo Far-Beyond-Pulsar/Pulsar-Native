@@ -68,7 +68,18 @@ fn main() {
     println!("so re-running this tool never clobbers your one true original).");
     println!();
 
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // `--project <dir>`: where `src/classes` lives, for the class migration
+    // (#921). Without it, each level's project is found by walking up from
+    // the file to the first directory with a `src/classes`.
+    let project = match args.iter().position(|a| a == "--project") {
+        Some(i) if i + 1 < args.len() => {
+            let dir = PathBuf::from(args.remove(i + 1));
+            args.remove(i);
+            Some(dir)
+        }
+        _ => None,
+    };
     let paths: Vec<PathBuf> = if args.is_empty() {
         match prompt_for_path() {
             Some(p) => vec![p],
@@ -85,7 +96,7 @@ fn main() {
     for path in &paths {
         println!("-----------------------------------------------------------------");
         println!("File: {}", path.display());
-        if let Err(err) = migrate_file(path) {
+        if let Err(err) = migrate_file(path, project.as_deref()) {
             eprintln!("  ERROR: {err}");
             any_failed = true;
         }
@@ -159,7 +170,41 @@ impl MigrationReport {
     }
 }
 
-fn migrate_file(path: &Path) -> Result<(), String> {
+/// The project a level belongs to: the first ancestor with `src/classes`.
+fn find_project_root(level: &Path) -> Option<PathBuf> {
+    level
+        .ancestors()
+        .skip(1)
+        .find(|dir| dir.join("src").join("classes").is_dir())
+        .map(Path::to_path_buf)
+}
+
+/// #921 class migration: `ScriptComponent` class paths and
+/// `blueprint_bindings` become `ClassInstance` components. Returns whether
+/// the level changed.
+fn migrate_classes(root: &mut Value, project: Option<&Path>) -> bool {
+    let Some(project) = project else {
+        println!("  no project with src/classes found -- class references left as they are");
+        return false;
+    };
+    let registry = pulsar_class::ClassRegistry::scan(project);
+    let report = pulsar_class::migrate::migrate_level_value(root, &registry);
+    for (object, class) in &report.script_components {
+        println!("  ScriptComponent -> ClassInstance: {object} ({class})");
+    }
+    for (object, class) in &report.bindings {
+        println!("  blueprint binding -> ClassInstance: {object} ({class})");
+    }
+    for (object, class) in &report.unresolved {
+        println!("  class '{class}' (on {object}) not found in {} -- kept unresolved", project.display());
+    }
+    for (object, class) in &report.kept_bindings {
+        println!("  kept legacy binding {object} -> {class} (object already has a class)");
+    }
+    report.changed()
+}
+
+fn migrate_file(path: &Path, project: Option<&Path>) -> Result<(), String> {
     if !path.is_file() {
         return Err(format!("not a file: {}", path.display()));
     }
@@ -181,6 +226,9 @@ fn migrate_file(path: &Path) -> Result<(), String> {
     }
 
     let mut report = MigrationReport::default();
+
+    let project = project.map(Path::to_path_buf).or_else(|| find_project_root(path));
+    let classes_changed = migrate_classes(&mut root, project.as_deref());
 
     // V2+ shape: each object carries its own `component_instances[]`.
     if let Some(objects) = root.get_mut("objects").and_then(Value::as_array_mut) {
@@ -234,7 +282,7 @@ fn migrate_file(path: &Path) -> Result<(), String> {
 
     report.print();
 
-    if report.migrated > 0 {
+    if report.migrated > 0 || classes_changed {
         let pretty = serde_json::to_string_pretty(&root)
             .map_err(|e| format!("failed to serialize result: {e}"))?;
         std::fs::write(path, pretty)
@@ -325,4 +373,46 @@ fn rebuild_component_json(class_name: &str, data: &Value) -> Option<Value> {
         }
     }
     instance.to_json().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// #921: the repair tool runs the same class migration as loading.
+    #[test]
+    fn class_references_are_migrated_in_place() {
+        let project = tempfile::tempdir().unwrap();
+        let class_dir = project.path().join("src").join("classes").join("Door");
+        std::fs::create_dir_all(&class_dir).unwrap();
+        std::fs::write(class_dir.join("graph_save.json"), "{}").unwrap();
+        let scenes = project.path().join("scenes");
+        std::fs::create_dir_all(&scenes).unwrap();
+        let level = scenes.join("old.level");
+        std::fs::write(
+            &level,
+            serde_json::json!({
+                "version": "2.1",
+                "objects": [
+                    { "id": "d", "name": "D", "object_type": "Blueprint", "props": {} },
+                    { "id": "b", "name": "B", "object_type": "Empty", "props": {} }
+                ],
+                "components": {
+                    "d": [ { "class_name": "ScriptComponent", "enabled": true,
+                             "data": { "script_asset": "/elsewhere/src/classes/Door" } } ]
+                },
+                "blueprint_bindings": { "b": [ { "class_name": "Door", "overrides": { "open": true } } ] }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        migrate_file(&level, None).unwrap();
+
+        let migrated: Value = serde_json::from_str(&std::fs::read_to_string(&level).unwrap()).unwrap();
+        assert_eq!(migrated["components"]["d"][0]["class_name"], "ClassInstance");
+        assert_eq!(migrated["objects"][1]["component_instances"][0]["data"]["variable_overrides"]["open"], true);
+        assert!(migrated.get("blueprint_bindings").is_none());
+        assert!(backup_path_for(&level).exists(), "original backed up");
+    }
 }

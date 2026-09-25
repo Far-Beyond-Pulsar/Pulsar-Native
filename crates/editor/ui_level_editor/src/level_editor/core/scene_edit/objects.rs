@@ -265,7 +265,8 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
         }
     }
     let blueprint_script_path = (obj.object_type == ObjectType::Blueprint)
-        .then(|| find_script_path(&obj.props, obj.component_instances.as_ref()));
+        .then(|| find_script_path(&obj.props, obj.component_instances.as_ref()))
+        .filter(|path| !path.trim().is_empty());
 
     let parent_entity = parent.as_deref().and_then(|p| world.entity_for(p));
     let spec = SpawnObject {
@@ -300,14 +301,31 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
         attach_component_instance(world, &object_id, component, false);
     }
 
+    // Legacy callers still describe a placed class by its directory path
+    // (`ScriptComponent.script_asset` or a flat `script_asset` prop). A path
+    // that names a class becomes a real class instance (#921); anything
+    // else keeps the old ScriptComponent.
     if let Some(script_path) = blueprint_script_path {
-        let already_has = get_components_metadata(world, &object_id)
-            .iter()
-            .any(|c| c.class_name == "ScriptComponent");
-        if !already_has {
+        adopt_legacy_script_path(world, &object_id, &script_path);
+    }
+
+    sync_registered_component_props_to_scene_db(world, &object_id);
+    object_id
+}
+
+/// Turn a Blueprint object's legacy script path into a `ClassInstance`
+/// when it names a class; otherwise make sure it has a `ScriptComponent`.
+fn adopt_legacy_script_path(world: &mut World, object_id: &str, script_path: &str) {
+    let components = get_components_metadata(world, object_id);
+    if components.iter().any(|c| c.class_name == pulsar_class::CLASS_INSTANCE) {
+        return;
+    }
+    let registry = super::classes::registry_for_script_asset(script_path);
+    let Some(entry) = registry.resolve_script_asset(script_path).cloned() else {
+        if !components.iter().any(|c| c.class_name == "ScriptComponent") {
             attach_component_instance(
                 world,
-                &object_id,
+                object_id,
                 ComponentInstance {
                     class_name: "ScriptComponent".to_string(),
                     enabled: true,
@@ -316,10 +334,40 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
                 false,
             );
         }
+        return;
+    };
+    // Drop the class's ScriptComponent: the ClassInstance replaces it.
+    let kept: Vec<ComponentInstance> = super::components::get_components(world, object_id)
+        .into_iter()
+        .filter(|c| {
+            !(c.class_name == "ScriptComponent"
+                && c.data
+                    .get("script_asset")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|p| registry.resolve_script_asset(p))
+                    .is_some())
+        })
+        .collect();
+    clear_components(world, object_id);
+    attach_component_instance(
+        world,
+        object_id,
+        ComponentInstance {
+            class_name: pulsar_class::CLASS_INSTANCE.to_string(),
+            enabled: true,
+            data: pulsar_class::ClassInstance::new(entry.id.clone(), entry.name.clone()).to_value(),
+        },
+        false,
+    );
+    for component in kept {
+        attach_component_instance(world, object_id, component, false);
     }
-
-    sync_registered_component_props_to_scene_db(world, &object_id);
-    object_id
+    if let Some(entity) = world.entity_for(object_id) {
+        if let Some(mut render_props) = world.get_mut::<RenderProps>(entity) {
+            render_props.props.remove("script_asset");
+        }
+    }
+    super::classes::rebuild_instance(world, object_id, &registry);
 }
 
 /// Add a folder object. Returns its id.
@@ -399,6 +447,7 @@ pub fn update_object(world: &mut World, obj: SceneObjectData) -> bool {
         render_props.props = obj.props;
     }
     sync_registered_component_props_to_scene_db(world, &id);
+    super::classes::relayout_children(world, &id);
     true
 }
 
@@ -466,6 +515,11 @@ pub fn set_transform(
         transform.scale = s;
         changed = true;
     }
+    drop(transform);
+    if changed {
+        // A class instance's generated children follow their root.
+        super::classes::relayout_children(world, id);
+    }
     changed
 }
 
@@ -511,7 +565,23 @@ pub fn move_object_down(world: &mut World, id: &str) {
 
 /// Shallow-duplicate an object (children are not copied). Returns the new ID.
 pub fn duplicate_object(world: &mut World, id: &str) -> Option<ObjectId> {
-    let source_components = get_components(world, id);
+    if super::classes::is_class_root(world, id) {
+        if let Some(new_id) = super::classes::duplicate_instance(world, id) {
+            return Some(new_id);
+        }
+    }
+    let from_generated_child = super::classes::is_generated_child(world, id);
+    let mut source_components = get_components(world, id);
+    if from_generated_child {
+        // A copy of a class's generated child is an ordinary object: drop the
+        // slot markers so it is saved and never mistaken for the class's own.
+        for component in &mut source_components {
+            if let Some(map) = component.data.as_object_mut() {
+                map.remove(pulsar_class::SLOT_ID_KEY);
+                map.remove(pulsar_class::TRANSFORM_KEY);
+            }
+        }
+    }
     let mut obj = get_object(world, id)?;
     obj.id = String::new(); // force auto-assign
     obj.name = format!("{} (Copy)", obj.name);

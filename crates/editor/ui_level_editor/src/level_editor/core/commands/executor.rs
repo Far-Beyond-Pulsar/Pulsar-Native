@@ -17,7 +17,7 @@ fn command_scope(cmd: &SceneCommand) -> Vec<String> {
         | SceneCommand::SetComponentProperty { id, .. } => vec![id.clone()],
         SceneCommand::UpdateObject { data } => vec![data.id.clone()],
         SceneCommand::DuplicateObject { source_id, .. } => vec![source_id.clone()],
-        SceneCommand::SelectObject { .. } => Vec::new(),
+        SceneCommand::SelectObject { .. } | SceneCommand::InstantiateClass { .. } => Vec::new(),
     }
 }
 
@@ -47,7 +47,9 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
     let is_undoable = !matches!(cmd, SceneCommand::SelectObject { .. });
     let arms_new_render_rows = matches!(
         &cmd,
-        SceneCommand::AddObject { .. } | SceneCommand::DuplicateObject { .. }
+        SceneCommand::AddObject { .. }
+            | SceneCommand::DuplicateObject { .. }
+            | SceneCommand::InstantiateClass { .. }
     );
     let scope = command_scope(&cmd);
     let pre_state = is_undoable.then(|| capture_history_subset(&state.scene.world(), &scope));
@@ -71,6 +73,29 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 }
                 state.scene.bump_revision(true);
                 CommandResult::ok(vec![id])
+            }
+
+            SceneCommand::InstantiateClass {
+                ref class_dir,
+                ref transform,
+                ref parent_id,
+            } => {
+                let placed = crate::level_editor::scene_edit::classes::instantiate_class_dir(
+                    &mut state.scene.world_mut(),
+                    class_dir,
+                    transform,
+                    parent_id.as_deref(),
+                );
+                match placed {
+                    Ok(ids) => {
+                        state.scene.bump_revision(true);
+                        CommandResult::ok(ids)
+                    }
+                    Err(error) => {
+                        tracing::error!("Could not place class: {error}");
+                        CommandResult::noop("Class could not be placed")
+                    }
+                }
             }
 
             SceneCommand::RemoveObject { ref id } => {
@@ -322,10 +347,22 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
     if result.changed {
         if arms_new_render_rows {
             let mut world = state.scene.world_mut();
+            // Include descendants: a duplicated class instance brings
+            // generated child objects along with its root.
+            let mut entities = Vec::new();
             for id in &result.affected_ids {
                 if let Some(entity) = world.entity_for(id) {
-                    engine_backend::scene::arm_render_row_subscriptions_for_entity(&mut world, entity);
+                    let mut stack = vec![entity];
+                    while let Some(e) = stack.pop() {
+                        if !entities.contains(&e) {
+                            entities.push(e);
+                            stack.extend(world.children_of(Some(e)));
+                        }
+                    }
                 }
+            }
+            for entity in entities {
+                engine_backend::scene::arm_render_row_subscriptions_for_entity(&mut world, entity);
             }
         }
         if let Some(pre) = pre_state {

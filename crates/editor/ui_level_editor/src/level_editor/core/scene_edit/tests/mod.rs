@@ -2,3 +2,4 @@
 
 mod components;
 mod objects;
+mod classes;

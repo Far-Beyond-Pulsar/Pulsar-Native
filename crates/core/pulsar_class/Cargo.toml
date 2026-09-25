@@ -1,0 +1,25 @@
+[package]
+name = "pulsar_class"
+version = "0.1.0"
+edition = "2021"
+description = "Class assets and placed class instances (Pulsar-Native#921): class GUIDs and the GUID -> class directory registry, the prefab read model with stable component slot ids, the ClassInstance world component, override diffs, instantiation into the scene World, and the level migration from ScriptComponent/blueprint_bindings. GPUI-free, shared by the editor, the game runtime and tools."
+
+[dependencies]
+pulsar_scenedb        = { workspace = true }
+pulsar_scene_model    = { workspace = true }
+pulsar_reflection     = { workspace = true }
+pulsar_world_registry = { workspace = true }
+pulsar_script_vm      = { workspace = true }
+engine_class_derive   = { workspace = true }
+inventory             = { workspace = true }
+serde                 = { workspace = true, features = ["derive"] }
+serde_json            = { workspace = true }
+tracing               = { workspace = true }
+uuid                  = { workspace = true, features = ["v4"] }
+glam                  = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

@@ -26,6 +26,13 @@ pub enum SceneCommand {
         parent_id: Option<String>,
     },
     /// Remove an object and all descendants.
+    /// Place an instance of the class in `class_dir` (#921): the root with
+    /// its `ClassInstance`, every prefab component and generated children.
+    InstantiateClass {
+        class_dir: std::path::PathBuf,
+        transform: crate::level_editor::scene_edit::Transform,
+        parent_id: Option<String>,
+    },
     RemoveObject { id: String },
     /// Overwrite all mutable fields of an existing object (looked up by `data.id`).
     UpdateObject { data: SceneObjectData },
@@ -106,6 +113,15 @@ impl std::fmt::Debug for SceneCommand {
                 .debug_struct("AddObject")
                 .field("data.id", &data.id)
                 .field("data.name", &data.name)
+                .field("parent_id", parent_id)
+                .finish(),
+            Self::InstantiateClass {
+                class_dir,
+                parent_id,
+                ..
+            } => f
+                .debug_struct("InstantiateClass")
+                .field("class_dir", class_dir)
                 .field("parent_id", parent_id)
                 .finish(),
             Self::RemoveObject { id } => f.debug_struct("RemoveObject").field("id", id).finish(),
