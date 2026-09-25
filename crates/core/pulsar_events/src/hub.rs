@@ -327,10 +327,12 @@ impl EventHub {
             .collect()
     }
 
-    /// Drop every queued event without delivering it (session teardown).
-    /// Handlers subscribed at this point still run for what is delivered;
-    /// call it after the session dropped its subscriptions.
-    pub fn discard_queued(&self) -> usize {
+    /// Empty the queue at session teardown: Gamma has no way to drop queued
+    /// events, so they are delivered now to whoever is still subscribed
+    /// (by then the session's script subscriptions are gone, so no script
+    /// handler runs) and nothing stays queued. Clears the debug tap.
+    /// Returns how many were delivered.
+    pub fn drain_queued(&self) -> usize {
         let report = self.inner.bus.flush_with_limit(u32::MAX);
         self.inner.tap.clear();
         report.delivered
@@ -479,11 +481,11 @@ mod tests {
     }
 
     #[test]
-    fn discard_drops_queued_events() {
+    fn drain_empties_the_queue() {
         let hub = EventHub::new();
         hub.publish(Channel::Global, KeyDown { key: 1 });
         assert_eq!(hub.queued_len(), 1);
-        hub.discard_queued();
+        hub.drain_queued();
         assert_eq!(hub.queued_len(), 0);
     }
 }

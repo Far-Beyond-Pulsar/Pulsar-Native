@@ -278,15 +278,16 @@ impl TickLoop {
     }
 
     /// Run `end_play` on every running script instance (shutdown). Script
-    /// subscriptions, queued handler calls and events still queued on the
-    /// hub are dropped: a stopped session leaves nothing on its hub.
+    /// subscriptions, queued handler calls and timers are dropped and the
+    /// hub's queue is drained (see `EventHub::drain_queued`): a stopped
+    /// session leaves nothing on its hub.
     pub fn end_scripts(&mut self) {
         if let Some(driver) = &self.scripts {
             let mut driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             let mut store = self.scene_store.write();
             driver.end_play_all(&mut store.world);
         }
-        self.events.discard_queued();
+        self.events.drain_queued();
     }
 
     /// Signal the loop to stop after the current tick.

@@ -442,7 +442,7 @@ impl ScriptDriver {
     /// scripts request now are dropped.
     ///
     /// With an event hub attached, every script subscription, queued
-    /// handler call and timer is dropped and the hub's queue discarded, so
+    /// handler call and timer is dropped and the hub's queue drained, so
     /// a stopped session leaves nothing behind on the hub.
     pub fn end_play_all(&mut self, world: &mut World) -> Vec<RuntimeError> {
         let scope = CommandScope::begin();

@@ -13138,6 +13138,7 @@ dependencies = [
  "plugin_manager",
  "profiling 0.1.0",
  "pulsar_class",
+ "pulsar_events",
  "pulsar_physics",
  "pulsar_pie_abi",
  "pulsar_reflection",

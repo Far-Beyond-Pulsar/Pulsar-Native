@@ -434,13 +434,14 @@ impl ScriptEvents {
         }
     }
 
-    /// Drop everything (session end): subscriptions, queued calls, timers,
-    /// and events still queued on the hub.
+    /// Drop everything (session end): subscriptions, queued calls and
+    /// timers; then drain the hub's queue (no script handler is left to
+    /// receive it).
     pub fn clear(&mut self) {
         self.instances.clear();
         self.lock_calls().clear();
         self.bridge.clear_all_timers();
-        self.bridge.hub().discard_queued();
+        self.bridge.hub().drain_queued();
     }
 
     /// Publish `LevelLoaded` once per session. `true` if it did now.

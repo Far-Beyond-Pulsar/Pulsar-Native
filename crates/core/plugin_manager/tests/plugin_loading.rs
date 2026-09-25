@@ -104,3 +104,20 @@ fn missing_plugin_reports_the_real_open_error() {
         "error must identify the missing library: {error}"
     );
 }
+
+/// #930: the loader hands a plugin library the host's event bus through
+/// the entry point `export_plugin!` exports, and the plugin accepts it.
+#[test]
+fn plugins_are_attached_to_the_host_event_bus() {
+    let lib = PermanentLibrary::new(plugin_path()).expect("failed to load plugin fixture");
+    assert_eq!(
+        plugin_manager::attach_event_bus(&lib),
+        Some(plugin_editor_api::pulsar_events::host::ATTACH_OK)
+    );
+    // A second attach is refused (the plugin already has its bus); the
+    // reference it was handed is released.
+    assert_eq!(
+        plugin_manager::attach_event_bus(&lib),
+        Some(plugin_editor_api::pulsar_events::host::ATTACH_ALREADY_LOCAL)
+    );
+}
