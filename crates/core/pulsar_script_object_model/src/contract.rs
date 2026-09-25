@@ -37,12 +37,10 @@
 //! | Property/method name not in reflection metadata | `UnknownProperty` / `UnknownMethod` |
 //! | Value didn't survive JSON⇄typed marshalling | `Marshalling` |
 //!
-//! The single deliberate exception to "never assert":
-//! [`pulsar_scenedb::Entity::DANGLING`] reaching an accessor trips a
-//! debug-build assertion (release still returns the typed error). DANGLING
-//! is a sentinel that should be stopped at FFI/glue boundaries -- if it
-//! reaches here, raw ids crossed without conversion, which is exactly what
-//! this contract exists to catch.
+//! [`pulsar_scenedb::Entity::DANGLING`] is no exception: it is scripts'
+//! `entity::none()` (an unmatched lookup, an unbound instance's `self`), so
+//! reaching an accessor is ordinary "not live" and returns the same typed
+//! error in every build (#888).
 //!
 //! # Identity rules
 //!

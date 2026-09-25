@@ -716,12 +716,13 @@ pub unsafe extern "C" fn pulsar_pie_asset_updated(
 ///    `TickLoop`'s `ActorRegistry` and shared scene store so they receive
 ///    `tick` every frame (the store is the ONE SceneDB world, also read by
 ///    renderers -- Pulsar-Native#634).
-/// 2. Loads every class's compiled script module
-///    (`src/classes/*/events/.build/module.json`) into a `ScriptRuntime` and
-///    wires it into the `TickLoop`. `setup()` runs before the primary window/scene exist, so
-///    `begin_play`/`end_play` are deliberately NOT dispatched here — the
-///    `TickLoop` fires `begin_play` on its first tick (once the window is open)
-///    and `end_play` on shutdown, the same lifecycle ordering native actors get.
+/// 2. Enables the script driver (`TickLoop::enable_scripting`): every placed
+///    class instance in the world runs its class's compiled script
+///    (`src/classes/*/events/.build/module.json`) bound to its object, plus
+///    one instance per global script listed in `Pulsar/scripting.json` (#922).
+///    Nothing is spawned here: `setup()` runs before the level is in the world
+///    (standalone) and the driver finds it on its first tick, once the window
+///    is open; `end_play` fires on shutdown.
 ///
 /// The file is regenerated whenever the Pulsar editor compiles a blueprint.
 /// Remove the `@generated-by-pulsar-engine_main` marker to opt out of regeneration.
@@ -809,43 +810,32 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
 //!
 //! Native prefabs are controlled by `Pulsar/level.json`.
 //! Gameplay script crates under `scripts/` are auto-discovered (#653).
-//! Script classes are auto-discovered from `src/classes/*/events/.build/module.json`.
+//! Script classes run on placed class instances; global scripts are listed in
+//! `Pulsar/scripting.json`.
 
 use pulsar_game::prelude::*;
-use std::sync::{{Arc, Mutex}};
 
 /// Set up the level: spawn native actors, register gameplay script crates and
-/// load compiled script classes.
+/// enable the script driver.
 ///
 /// Called once from `main()` before `game.run_blocking()`.
 /// - Native actors + script-crate actors are registered into the tick loop's
 ///   shared world and receive `tick` every frame (via `register_actor`, which
 ///   also makes them hot-reload-safe in Play-In-Editor).
-/// - Script classes are loaded into `game.script_runtime`, one default
-///   instance each; the `TickLoop` runs their events every frame.
+/// - The script driver runs one script instance per placed class instance
+///   (and per global script); the `TickLoop` runs their events every frame.
 pub fn setup(game: &mut TickLoop) -> Result<(), String> {{
     // ── Native actors (from Pulsar/level.json) ────────────────────────────────
 {native_spawn_body}
 {script_section}
-    let classes_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("src")
-        .join("classes");
-
     // ── Script classes (engine script VM) ─────────────────────────────────────
     //
-    // Every class's editor build writes src/classes/*/events/.build/module.json.
-    // begin_play is NOT fired here: the TickLoop fires it on its first tick,
-    // once the window and scene exist.
-    if classes_dir.exists() {{
-        let mut runtime = pulsar_game::scripting::new_runtime();
-        let script_classes = pulsar_game::scripting::load_project_classes(&mut runtime, &classes_dir);
-        if !script_classes.is_empty() {{
-            tracing::info!("Script runtime active — {{}} class(es) loaded", script_classes.len());
-            game.script_runtime = Some(Arc::new(Mutex::new(runtime)));
-        }} else {{
-            tracing::debug!("No compiled script classes found in {{}}", classes_dir.display());
-        }}
-    }}
+    // The script driver follows the world: each placed class instance runs
+    // its class's script (src/classes/*/events/.build/module.json) bound to
+    // its object, from level load, Play-in-Editor placement or a script's
+    // world::spawn. No instance is created here, and a level without class
+    // instances runs no scripts. Global scripts: Pulsar/scripting.json.
+    game.enable_scripting(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")));
 
     Ok(())
 }}
@@ -888,6 +878,23 @@ mod tests {
         cargo_safe_name, ensure_core_cargo_toml, ensure_engine_primitives, ensure_scripts_crate,
         splice_script_dependencies, workspace_block, HELIO_GIT_REVISION,
     };
+
+    /// #922: the generated `setup()` turns on the world-following script
+    /// driver and spawns no default script instances. The same statement
+    /// is compiled in-tree by `pulsar_game`'s `generated_setup_script_section`.
+    #[test]
+    fn generated_setup_enables_the_script_driver() {
+        let project = tempfile::tempdir().unwrap();
+        let src = project.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        super::ensure_engine_main(project.path(), &src).unwrap();
+        let text = std::fs::read_to_string(src.join("engine_main.rs")).unwrap();
+        assert!(text.contains(
+            "game.enable_scripting(std::path::PathBuf::from(env!(\"CARGO_MANIFEST_DIR\")));"
+        ));
+        assert!(!text.contains("load_project_classes"));
+        assert!(!text.contains("script_runtime"));
+    }
 
     #[test]
     fn generated_project_pins_the_workspace_helio_revision() {

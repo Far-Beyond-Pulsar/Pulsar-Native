@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
 
 use winit::{
@@ -474,42 +474,9 @@ impl PulsarApp {
                         );
                     }
 
-                    // Spawn the level's script class bindings (#650): one
-                    // bound instance per (object, class) pair, addressed at
-                    // its own hydrated entity. Per-binding failures are
-                    // logged + collected — one stale entry never blocks play.
-                    if !extras.blueprint_bindings.is_empty() {
-                        if let Some(tick_loop) = self.tick_loop.as_mut() {
-                            let runtime = tick_loop.script_runtime.get_or_insert_with(|| {
-                                Arc::new(Mutex::new(crate::scripting::new_runtime()))
-                            });
-                            // Same lock order as TickLoop phase 3: runtime
-                            // mutex, then store write.
-                            let report = {
-                                let mut runtime = runtime.lock().expect("script runtime mutex");
-                                let store = self.scene_store.write();
-                                crate::scripting::apply_script_bindings(
-                                    &mut runtime,
-                                    &store,
-                                    &self.project_root,
-                                    &extras.blueprint_bindings,
-                                )
-                            };
-                            for applied in &report.applied {
-                                tracing::info!(
-                                    object = %applied.stable_id,
-                                    class = %applied.class_name,
-                                    instance = %applied.instance_id,
-                                    "Level script binding spawned"
-                                );
-                            }
-                            tracing::info!(
-                                applied = report.applied.len(),
-                                failed = report.failures.len(),
-                                "Applied level script bindings"
-                            );
-                        }
-                    }
+                    // Scripts need nothing here: the tick loop's script
+                    // driver finds the level's class instances in the shared
+                    // world at its first reconcile (#922).
 
                     tracing::info!(
                         window = handle.id(),

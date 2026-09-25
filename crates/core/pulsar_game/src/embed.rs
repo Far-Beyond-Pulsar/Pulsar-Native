@@ -63,9 +63,9 @@ pub struct EmbeddedGame {
     scene_store: engine_backend::scene::SharedScene,
     /// Fallback free-look camera (used until an ECS camera drives the view).
     freecam: FreeCam,
-    /// Reloads edited classes into the script runtime (#921). Events come
-    /// from the host via [`pie_asset_updated`], published on this dylib's
-    /// own asset bus.
+    /// Queues edited classes for reload by the script driver (#921/#922).
+    /// Events come from the host via [`pie_asset_updated`], published on
+    /// this dylib's own asset bus.
     _class_reloads: Option<pulsar_events::AssetSubscription>,
 
     // ── Host log callback ───────────────────────────────────────────────────
@@ -224,12 +224,15 @@ impl EmbeddedGame {
         // editor-camera file seeding is gone too -- camera selection prefers
         // Camera-typed entities from the shared world instead.
         let freecam = FreeCam::default();
-        let class_reloads = tick_loop.script_runtime.as_ref().map(|runtime| {
-            crate::scripting::subscribe_class_reloads(
-                Arc::clone(runtime),
-                Arc::clone(&scene_store),
-                project_root.clone(),
-            )
+        // Scripts follow the shared world (#922): the driver `setup()`
+        // enabled finds the level the host already hydrated at its first
+        // reconcile, and objects placed during Play the same way. Class
+        // edits reach it as reload requests applied at its next frame.
+        let class_reloads = tick_loop.scripts.as_ref().map(|driver| {
+            driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .subscribe_class_reloads()
         });
         engine_state::set_project_path(project_root.display().to_string());
         drop(scene_path); // advisory-only under v2 (world comes pre-hydrated)
@@ -442,8 +445,10 @@ pub unsafe fn pie_asset_updated(
 /// unloads the library.
 pub fn pie_shutdown() {
     GAME.with(|g| {
-        if let Some(game) = g.borrow_mut().take() {
+        if let Some(mut game) = g.borrow_mut().take() {
             game.log(LOG_INFO, "PiE game shutting down");
+            // Scripts get end_play while the world still holds their objects.
+            game.tick_loop.end_scripts();
             drop(game);
         }
     });

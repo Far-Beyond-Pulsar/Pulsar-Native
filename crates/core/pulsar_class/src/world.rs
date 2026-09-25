@@ -480,9 +480,34 @@ pub fn instantiate_class(
     mut instance: ClassInstance,
     spawn: SpawnObject,
 ) -> Result<ClassPlacement, SceneError> {
+    let root = world.spawn_object(spawn)?;
     instance.class = def.id.clone();
     instance.class_name = def.name.clone();
-    let root = world.spawn_object(spawn)?;
+    Ok(build_instance_root(world, def, instance, root))
+}
+
+/// [`instantiate_class`] onto `entity`, an already spawned but still bare
+/// entity (no scene-object components yet): the id a script's
+/// `world::spawn` handed out before the spawn was applied (#922).
+pub fn instantiate_class_into(
+    world: &mut World,
+    def: &ClassDefinition,
+    mut instance: ClassInstance,
+    spawn: SpawnObject,
+    entity: Entity,
+) -> Result<ClassPlacement, SceneError> {
+    world.spawn_object_into(entity, spawn)?;
+    instance.class = def.id.clone();
+    instance.class_name = def.name.clone();
+    Ok(build_instance_root(world, def, instance, entity))
+}
+
+fn build_instance_root(
+    world: &mut World,
+    def: &ClassDefinition,
+    instance: ClassInstance,
+    root: Entity,
+) -> ClassPlacement {
     attach_components(
         world,
         root,
@@ -492,7 +517,7 @@ pub fn instantiate_class(
             data: instance.to_value(),
         }],
     );
-    Ok(expand_class_instance(world, root, def))
+    expand_class_instance(world, root, def)
 }
 
 /// Expand every class instance root in `world` from `registry`. Instances

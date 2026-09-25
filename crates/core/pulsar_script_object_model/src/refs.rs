@@ -138,21 +138,11 @@ impl ComponentRef {
 /// in every build -- ordinary staleness (despawned, recycled generation,
 /// out-of-range slot after a world rebuild) NEVER panics or asserts.
 ///
-/// The one exception: [`Entity::DANGLING`] is never a valid entity of any
-/// world, so seeing it here means raw-id misuse upstream of this crate
-/// (FFI glue handing a sentinel through as if it were a live handle).
-/// Debug builds trip an assert right at the call site; release builds
-/// return the same typed error either way.
+/// [`Entity::DANGLING`] is scripts' `entity::none()` (what an unmatched
+/// `world::find_by_*` or an unbound instance's `self` is), so it is an
+/// ordinary "not live" result here too (#888), never an assert.
 pub(crate) fn ensure_live_entity(world: &World, entity: Entity) -> Result<(), ScriptRefError> {
-    if entity == Entity::DANGLING {
-        debug_assert!(
-            false,
-            "script object model misuse: Entity::DANGLING reached a liveness-checked accessor \
-             (raw-id abuse across a language boundary, not ordinary staleness)"
-        );
-        return Err(ScriptRefError::despawned(entity));
-    }
-    if !world.is_alive(entity) {
+    if entity == Entity::DANGLING || !world.is_alive(entity) {
         return Err(ScriptRefError::despawned(entity));
     }
     Ok(())
@@ -191,11 +181,9 @@ mod tests {
         assert!(!actor.despawn(&mut world));
     }
 
-    /// #641: `Entity::DANGLING` and fabricated ids are rejected with the
-    /// same typed error as ordinary staleness. The DANGLING case also trips
-    /// a debug-build misuse assert (it can only mean raw-id abuse), so this
-    /// test tolerates the panic in debug builds while still pinning the
-    /// release-build `Err` path.
+    /// #641/#888: `Entity::DANGLING` (`entity::none()`) and fabricated ids
+    /// are rejected with the same typed error as ordinary staleness, in
+    /// every build: no panic, no debug assert.
     #[test]
     fn dangling_and_foreign_ids_are_typed_errors_not_panics() {
         let (world, _alive) = world_with_actor();
@@ -207,15 +195,11 @@ mod tests {
             Err(ScriptRefError::despawned(fabricated.0))
         );
 
-        // DANGLING sentinel: typed error in release; loud debug assert in
-        // dev builds (by design).
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            ActorRef::new(Entity::DANGLING).validate(&world)
-        }));
-        match result {
-            Ok(err) => assert_eq!(err, Err(ScriptRefError::despawned(Entity::DANGLING))),
-            Err(_) => assert!(cfg!(debug_assertions), "assert fired outside a debug build"),
-        }
+        // DANGLING sentinel (`entity::none()`): the same typed error.
+        assert_eq!(
+            ActorRef::new(Entity::DANGLING).validate(&world),
+            Err(ScriptRefError::despawned(Entity::DANGLING))
+        );
     }
 
     /// #640: `component()` composes the full panel identity; `live()` is the
