@@ -280,6 +280,13 @@ pub type FnShutdown = unsafe extern "C" fn();
 pub type FnAssetUpdated =
     unsafe extern "C" fn(*const u8, usize, *const u8, usize, *const u8, usize);
 
+/// Optional: `extern "C" fn(out, capacity) -> len` — the game's event hub
+/// debug snapshot (`pulsar_events::EventsSnapshot` as UTF-8 JSON: recent
+/// events, channels, subscriber counts) for the editor's PIE events panel.
+/// Writes it to `out` only if `len <= capacity`; returns `len` (0 when no
+/// game is running). Call with capacity 0 to size the buffer.
+pub type FnEventsSnapshot = unsafe extern "C" fn(*mut u8, usize) -> usize;
+
 /// Success/failure sentinel for [`FnInit`].
 pub const INIT_OK: u32 = 1;
 pub const INIT_ERR: u32 = 0;
@@ -294,3 +301,5 @@ pub const SYM_INPUT: &[u8] = b"pulsar_pie_input";
 pub const SYM_SHUTDOWN: &[u8] = b"pulsar_pie_shutdown";
 /// Optional; see [`FnAssetUpdated`].
 pub const SYM_ASSET_UPDATED: &[u8] = b"pulsar_pie_asset_updated";
+/// Optional; see [`FnEventsSnapshot`].
+pub const SYM_EVENTS_SNAPSHOT: &[u8] = b"pulsar_pie_events_snapshot";

@@ -35,6 +35,9 @@ use crate::freecam::FreeCam;
 use crate::tick::TickLoop;
 use pulsar_core::TickMode;
 
+/// Events the PIE session's debug tap keeps.
+const PIE_EVENT_TAP_CAPACITY: usize = 256;
+
 thread_local! {
     /// The single live embedded game for this thread. `None` before init /
     /// after shutdown.
@@ -235,7 +238,17 @@ impl EmbeddedGame {
                 .subscribe_class_reloads()
         });
         engine_state::set_project_path(project_root.display().to_string());
-        drop(scene_path); // advisory-only under v2 (world comes pre-hydrated)
+        // Advisory only under v2 (the world comes pre-hydrated); it names
+        // the level `LevelLoaded` reports.
+        if let (Some(path), Some(driver)) = (&scene_path, &tick_loop.scripts) {
+            driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .set_level_name(path.display().to_string());
+        }
+        // Play-in-Editor is a debugging session: record recently flushed
+        // events for the editor's events panel (`pie_events_snapshot`).
+        tick_loop.events.set_tap(true, PIE_EVENT_TAP_CAPACITY);
 
         Ok(Self {
             tick_loop,
@@ -328,6 +341,24 @@ impl EmbeddedGame {
             }
             input_kind::MOUSE_WHEEL => {
                 self.freecam.on_mouse_delta(0.0, ev.delta as f64);
+            }
+            // Keys and buttons become input events on the session's hub,
+            // delivered at the next tick's after-input flush.
+            input_kind::KEY => {
+                let key = i64::from(ev.button_or_key);
+                if ev.pressed != 0 {
+                    self.tick_loop.publish_input(pulsar_events::builtin::KeyDown { key });
+                } else {
+                    self.tick_loop.publish_input(pulsar_events::builtin::KeyUp { key });
+                }
+            }
+            input_kind::MOUSE_BUTTON => {
+                let button = i64::from(ev.button_or_key);
+                if ev.pressed != 0 {
+                    self.tick_loop.publish_input(pulsar_events::builtin::MouseButtonDown { button });
+                } else {
+                    self.tick_loop.publish_input(pulsar_events::builtin::MouseButtonUp { button });
+                }
             }
             _ => {}
         }
@@ -439,6 +470,24 @@ pub unsafe fn pie_asset_updated(
     event.id = read_str(id_ptr, id_len);
     event.path = read_str(path_ptr, path_len).map(PathBuf::from);
     pulsar_events::publish_asset_updated(event);
+}
+
+/// Write the session's event hub debug snapshot (JSON) into `out` if it
+/// fits in `capacity` bytes; returns its length (0 when no game runs).
+///
+/// # Safety
+/// `out` must be valid for `capacity` bytes of writes, or `capacity` 0.
+pub unsafe fn pie_events_snapshot(out: *mut u8, capacity: usize) -> usize {
+    let json = GAME.with(|g| {
+        g.borrow()
+            .as_ref()
+            .and_then(|game| serde_json::to_vec(&game.tick_loop.events.snapshot()).ok())
+    });
+    let Some(json) = json else { return 0 };
+    if !out.is_null() && json.len() <= capacity {
+        std::ptr::copy_nonoverlapping(json.as_ptr(), out, json.len());
+    }
+    json.len()
 }
 
 /// Tear down the embedded game, dropping its world + renderer before the host

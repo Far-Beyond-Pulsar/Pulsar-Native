@@ -2,12 +2,25 @@
 name = "pulsar_events"
 version = "0.1.0"
 edition = "2024"
-description = "Engine-wide event plumbing for Pulsar: asset-update notifications that editors, plugins and the game runtime publish and subscribe to by asset kind."
+description = "Engine-wide event plumbing for Pulsar on Gamma v2: the per-session engine event hub (built-in events, script events, flush points, debug tap), the process-wide host bus plugins reach through Gamma's FFI, and asset-update notifications."
 
 [dependencies]
+gamma           = { workspace = true }
 ui_types_common = { workspace = true }
 serde           = { workspace = true, features = ["derive"] }
+serde_json      = { workspace = true }
 tracing         = { workspace = true }
+# Engine profiler scopes around hub flushes and the deferred-queue lock
+# (Pulsar-Native#939). Off for plugin fixtures built outside the workspace.
+profiling       = { workspace = true, optional = true }
+
+[features]
+default = ["profiling"]
+profiling = ["dep:profiling"]
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Loads the separately compiled test plugin (tests/fixtures/plugin).
+libloading = { workspace = true }

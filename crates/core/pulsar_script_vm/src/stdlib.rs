@@ -10,6 +10,7 @@ use pulsar_scenedb::Entity;
 use crate::native::{Host, NativeFn, NativeRegistry};
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
+    crate::events::register(registry);
     let mut add = |native: NativeFn| {
         if let Err(err) = registry.register(native) {
             tracing::error!("script stdlib: {err}");

@@ -21,6 +21,7 @@ members = [
 exclude = [
     "crates/core/plugin_manager/tests/fixtures/plugin_loader_fixture",
     "crates/core/pulsar_script_vm/tests/fixtures/test_library",
+    "crates/core/pulsar_events/tests/fixtures/plugin",
     # WGPUI is an independently versioned repository. Pulsar consumes it as a
     # path dependency, but its standalone examples/dev dependencies must remain
     # owned and resolved by WGPUI rather than polluting Pulsar's workspace graph.
@@ -111,6 +112,9 @@ pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Puls
 pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "8f98f83" }
 pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "27eaaf7233522ff7d8c79cd2c76e7eeacb17d59d" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
+# Gamma v2 (Pulsar-Native#923): the event bus under `pulsar_events`' engine
+# hub. Pinned to the merged v0.2.0 on Gamma `main`.
+gamma                              = { git = "https://github.com/Far-Beyond-Pulsar/Gamma", rev = "b4ebf98486fb716d090d35b689a4eb8a0e414cc1" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
 pulsar_world_registry              = { path = "crates/core/pulsar_world_registry" }
 pulsar_scene_model                 = { path = "crates/core/pulsar_scene_model" }

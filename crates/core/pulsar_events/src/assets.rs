@@ -9,16 +9,23 @@
 //! - [`subscribe_asset_updates`] returns an [`AssetSubscription`]; dropping
 //!   it unsubscribes.
 //!
-//! The bus is process-global. Code compiled into a separate dynamic library
-//! with its own copy of this crate (the Play-In-Editor game dylib) has its
-//! own bus; the host forwards events to it explicitly.
+//! The bus is the process-wide [host bus](crate::host) (Gamma v2). A
+//! plugin compiled as a separate dynamic library that was attached to the
+//! host's bus when it loaded publishes and receives the same events as the
+//! editor. On the bus an update is the dynamic event `AssetUpdated`
+//! ([`descriptor`]) with three string fields: `kind` (the [`AssetKind`] as
+//! JSON), `id` and `path` (empty when not given).
+//!
+//! The Play-In-Editor game dylib is not a plugin: it keeps its own bus and
+//! the host forwards events to it explicitly.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
 
+use gamma::{Channel, DynEvent, DynValue, EventDescriptor, FieldType, SubscribeOptions};
 use serde::{Deserialize, Serialize};
 use ui_types_common::AssetKind;
+
+use crate::host::{HostBus, HostSubscription, host_bus};
 
 /// An asset was rewritten on disk.
 ///
@@ -58,35 +65,63 @@ impl AssetUpdated {
     }
 }
 
-type Callback = Arc<dyn Fn(&AssetUpdated) + Send + Sync>;
-
-struct Subscriber {
-    id: u64,
-    /// `None` = every kind.
-    kind: Option<AssetKind>,
-    callback: Callback,
+/// The `AssetUpdated` descriptor on the host bus.
+pub fn descriptor() -> EventDescriptor {
+    EventDescriptor::dynamic(
+        "AssetUpdated",
+        [("kind", FieldType::Str), ("id", FieldType::Str), ("path", FieldType::Str)],
+    )
 }
 
-fn subscribers() -> &'static Mutex<Vec<Subscriber>> {
-    static SUBSCRIBERS: OnceLock<Mutex<Vec<Subscriber>>> = OnceLock::new();
-    SUBSCRIBERS.get_or_init(|| Mutex::new(Vec::new()))
+fn registered(bus: &HostBus) -> Option<u64> {
+    let descriptor = descriptor();
+    let id = descriptor.id;
+    match bus.register_descriptor(&descriptor) {
+        Ok(()) => Some(id),
+        Err(error) => {
+            tracing::error!("asset bus: cannot register AssetUpdated: {error}");
+            None
+        }
+    }
 }
 
-static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+fn to_dyn(event: &AssetUpdated, id: u64) -> DynEvent {
+    let kind = serde_json::to_string(&event.kind).unwrap_or_default();
+    let path = event.path.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    DynEvent::new(
+        id,
+        vec![
+            DynValue::Str(kind),
+            DynValue::Str(event.id.clone().unwrap_or_default()),
+            DynValue::Str(path),
+        ],
+    )
+}
 
-/// Deliver `event` to every subscriber of its kind. Subscribers run after
-/// the bus lock is released, so they may subscribe, unsubscribe or publish.
+fn from_dyn(event: &DynEvent) -> Option<AssetUpdated> {
+    let [DynValue::Str(kind), DynValue::Str(id), DynValue::Str(path)] = event.fields.as_slice() else {
+        return None;
+    };
+    Some(AssetUpdated {
+        kind: serde_json::from_str(kind).ok()?,
+        id: (!id.is_empty()).then(|| id.clone()),
+        path: (!path.is_empty()).then(|| PathBuf::from(path)),
+    })
+}
+
+/// Deliver `event` to every subscriber of its kind on the host bus.
+/// Subscribers run after the bus lock is released, so they may subscribe,
+/// unsubscribe or publish.
 pub fn publish_asset_updated(event: AssetUpdated) {
-    let targets: Vec<Callback> = subscribers()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .iter()
-        .filter(|s| s.kind.as_ref().is_none_or(|k| *k == event.kind))
-        .map(|s| Arc::clone(&s.callback))
-        .collect();
-    tracing::debug!(kind = ?event.kind, id = ?event.id, path = ?event.path, subscribers = targets.len(), "asset updated");
-    for callback in targets {
-        callback(&event);
+    publish_asset_updated_on(host_bus(), &event);
+}
+
+/// [`publish_asset_updated`] on an explicit bus.
+pub fn publish_asset_updated_on(bus: &HostBus, event: &AssetUpdated) {
+    let Some(id) = registered(bus) else { return };
+    tracing::debug!(kind = ?event.kind, id = ?event.id, path = ?event.path, "asset updated");
+    if let Err(error) = bus.publish_dyn(Channel::Global, &to_dyn(event, id)) {
+        tracing::error!("asset bus: publish failed: {error}");
     }
 }
 
@@ -96,38 +131,40 @@ pub fn subscribe_asset_updates(
     kind: Option<AssetKind>,
     callback: impl Fn(&AssetUpdated) + Send + Sync + 'static,
 ) -> AssetSubscription {
-    let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
-    subscribers()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .push(Subscriber {
-            id,
-            kind,
-            callback: Arc::new(callback),
-        });
-    AssetSubscription { id }
+    subscribe_asset_updates_on(host_bus(), kind, callback)
+}
+
+/// [`subscribe_asset_updates`] on an explicit bus.
+pub fn subscribe_asset_updates_on(
+    bus: &HostBus,
+    kind: Option<AssetKind>,
+    callback: impl Fn(&AssetUpdated) + Send + Sync + 'static,
+) -> AssetSubscription {
+    let id = registered(bus).unwrap_or_else(|| descriptor().id);
+    let inner = bus.subscribe_dyn(id, SubscribeOptions::default(), move |event| {
+        let Some(update) = from_dyn(event) else {
+            tracing::warn!("asset bus: malformed AssetUpdated ignored");
+            return;
+        };
+        if kind.as_ref().is_none_or(|k| *k == update.kind) {
+            callback(&update);
+        }
+    });
+    AssetSubscription { _inner: inner }
 }
 
 /// A live subscription; unsubscribes on drop.
 #[must_use = "dropping the subscription unsubscribes immediately"]
 #[derive(Debug)]
 pub struct AssetSubscription {
-    id: u64,
-}
-
-impl Drop for AssetSubscription {
-    fn drop(&mut self) {
-        subscribers()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .retain(|s| s.id != self.id);
-    }
+    _inner: HostSubscription,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicUsize;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
     fn subscribers_get_their_kind_until_dropped() {
@@ -153,5 +190,30 @@ mod tests {
         assert_eq!(meshes.load(Ordering::SeqCst), 1, "unsubscribed");
         assert_eq!(all.load(Ordering::SeqCst), 3);
         drop(sub_all);
+    }
+
+    #[test]
+    fn a_foreign_view_shares_the_host_bus() {
+        // In-process stand-in for a plugin: the same FFI table a plugin gets.
+        let host = HostBus::local();
+        let plugin = unsafe { HostBus::foreign(host.export_raw().unwrap()) }.unwrap();
+        let seen = Arc::new(AtomicUsize::new(0));
+        let s = Arc::clone(&seen);
+        let _sub = subscribe_asset_updates_on(&host, Some(AssetKind::Blueprint), move |e| {
+            assert_eq!(e.id.as_deref(), Some("guid"));
+            assert_eq!(e.path, None);
+            s.fetch_add(1, Ordering::SeqCst);
+        });
+        publish_asset_updated_on(&plugin, &AssetUpdated::new(AssetKind::Blueprint).with_id("guid"));
+        assert_eq!(seen.load(Ordering::SeqCst), 1);
+
+        let back = Arc::new(AtomicUsize::new(0));
+        let b = Arc::clone(&back);
+        let _plugin_sub = subscribe_asset_updates_on(&plugin, None, move |e| {
+            assert_eq!(e.path.as_deref(), Some(std::path::Path::new("/m.mesh")));
+            b.fetch_add(1, Ordering::SeqCst);
+        });
+        publish_asset_updated_on(&host, &AssetUpdated::new(AssetKind::Mesh).with_path("/m.mesh"));
+        assert_eq!(back.load(Ordering::SeqCst), 1);
     }
 }

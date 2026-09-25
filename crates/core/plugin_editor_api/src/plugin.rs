@@ -273,6 +273,12 @@ macro_rules! export_plugin {
             Some(&*(ptr as *const ui::theme::Theme))
         }
 
+        // Receive the host's event bus when loaded (Pulsar-Native#930):
+        // `_plugin_attach_event_bus`, called by the plugin manager before
+        // `_plugin_create`, makes this library's `pulsar_events` host bus
+        // (asset updates, ...) the editor's own, over Gamma's FFI.
+        $crate::pulsar_events::export_host_bus_attach!();
+
         /// Get the plugin's version information.
         #[no_mangle]
         pub extern "C" fn _plugin_version() -> $crate::version::VersionInfo {

@@ -33,54 +33,20 @@ pub fn begin_play() {
     exec_output!("Body");
 }
 
-/// Emit a custom event by publishing raw bytes to the instance's EventBus.
+/// Legacy dispatch target of PBGC's bytecode backend for custom event
+/// dispatch nodes (`emit_custom_event`). It does nothing.
 ///
-/// # Inputs
-/// - `type_id`: The deterministic 64-bit type ID for the event (from Event::stable_type_id).
-/// - `payload_ptr`: Raw pointer to the repr(C) event struct.
-/// - `payload_len`: Size of the event struct in bytes.
+/// Not offered in the Blueprint palette (#872): engine events are handled
+/// and sent with the "On <Event>", "Send <Event> to" and "Broadcast
+/// <Event>" nodes, which compile to module subscriptions and the
+/// `event::send` / `event::emit` natives on the engine event hub (#924).
+/// The old `on_event` and `remove_event_listener` placeholders are gone:
+/// a subscription ends when its instance despawns.
 ///
-/// # Custom Event Emit
-/// Publishes raw event bytes to all subscribers.
-///
-/// Called by bytecode generated from `emit_custom_event` dispatch nodes.
-/// The blueprint actor owns a `gamma_core::EventBus` and the generated
-/// `begin_play` calls `__init_events()` to register subscribers.
+/// # Emit Event (legacy)
+/// Legacy no-op kept for PBGC's bytecode backend.
 #[blueprint(type: crate::NodeTypes::fn_, category: "Events")]
-pub fn emit_event() {
-    // Placeholder: custom events compile to direct calls of their handler
-    // (`emit_custom_event`); this node has no runtime behavior.
-}
-
-/// Register a handler for a custom event.
-///
-/// # Inputs
-/// - `type_id`: The deterministic 64-bit type ID for the event.
-/// - `handler_ptr`: Pointer to the handler function.
-///
-/// # On Event
-/// Registers a raw handler for a custom event on the instance's EventBus.
-///
-/// Called internally by the generated `__init_events()` method of the
-/// blueprint actor. The actual subscription uses `EventBus::subscribe_raw`.
-#[blueprint(type: crate::NodeTypes::fn_, category: "Events")]
-pub fn on_event() {
-    // Implementation lives in the generated actor code via
-    // __init_events() → self.events.subscribe_raw(type_id, callback).
-    // This function is kept as a pulsar_std entry point for type resolution.
-}
-
-/// Remove an event handler (placeholder: does nothing).
-///
-/// # Inputs
-/// - `event`: The event name
-///
-/// # Events Remove Listener
-/// Removes a handler for a custom event.
-#[blueprint(type: crate::NodeTypes::fn_, category: "Events")]
-pub fn remove_event_listener(_event: String) {
-    // In a real implementation, this would unregister a callback
-}
+pub fn emit_event() {}
 
 // =============================================================================
 // Engine Lifecycle Events

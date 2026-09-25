@@ -604,3 +604,346 @@ fn component_natives_on_none_are_errors_not_panics() {
     assert_eq!(runtime.variable("prober", "found"), Some(&Value::Bool(false)));
     assert_eq!(errors.len(), 1, "the getter on none is a script error: {errors:?}");
 }
+
+// ---- script events on the engine hub (#924) --------------------------------
+
+mod script_events {
+    use super::*;
+    use pulsar_events::builtin::Hit;
+    use pulsar_events::gamma::Channel;
+    use pulsar_events::{class_channel, entity_channel};
+    use pulsar_script_vm::{EventDecl, EventField, EventRef, Subscription, SubscriptionScope};
+
+    const TARGET: &str = "target-guid";
+    const SENDER: &str = "sender-guid";
+
+    fn handler(name: &str, params: Vec<Type>, extra: Vec<Type>, code: Vec<Instr>) -> Function {
+        let mut f = function(name, params, extra, code);
+        f.exported = false; // handlers need not be exported
+        f
+    }
+
+    /// `var += amount` (or `+= 1` with no parameter).
+    fn add_to(var: u32, param: bool) -> Vec<Instr> {
+        if param {
+            vec![
+                Instr::LoadVar { dst: 1, var },
+                Instr::Binary { op: BinOp::Add, dst: 1, a: 1, b: 0 },
+                Instr::StoreVar { var, src: 1 },
+                Instr::Return { value: None },
+            ]
+        } else {
+            vec![
+                Instr::LoadVar { dst: 0, var },
+                Instr::Const { dst: 1, index: 0 },
+                Instr::Binary { op: BinOp::Add, dst: 0, a: 0, b: 1 },
+                Instr::StoreVar { var, src: 0 },
+                Instr::Return { value: None },
+            ]
+        }
+    }
+
+    /// Declares `Target.Poke(amount: int)`; handles `Hit` (self), `LevelLoaded`
+    /// (global) and `Target.Poke` (self and class) by counting.
+    fn target_module() -> Module {
+        let mut m = Module::new("Target");
+        m.variables = ["hits", "last_other", "level_loads", "pokes", "class_pokes"]
+            .into_iter()
+            .map(|name| Variable {
+                name: name.into(),
+                ty: if name == "last_other" { Type::Entity } else { Type::Int },
+                default: None,
+            })
+            .collect();
+        m.constants = vec![Constant::Int(1)];
+        let mut on_hit = add_to(0, false);
+        on_hit.insert(4, Instr::StoreVar { var: 1, src: 3 });
+        m.functions = vec![
+            // on_hit(entity, other): registers entity, other, then scratch.
+            handler("on_hit", vec![Type::Entity, Type::Entity], vec![Type::Int, Type::Int], vec![
+                Instr::LoadVar { dst: 2, var: 0 },
+                Instr::Const { dst: 3, index: 0 },
+                Instr::Binary { op: BinOp::Add, dst: 2, a: 2, b: 3 },
+                Instr::StoreVar { var: 0, src: 2 },
+                Instr::StoreVar { var: 1, src: 1 },
+                Instr::Return { value: None },
+            ]),
+            handler("on_level_loaded", vec![], vec![Type::Int, Type::Int], add_to(2, false)),
+            handler("on_poke", vec![Type::Int], vec![Type::Int], add_to(3, true)),
+            handler("on_class_poke", vec![Type::Int], vec![Type::Int], add_to(4, true)),
+        ];
+        drop(on_hit);
+        m.events = vec![EventDecl { name: "Target.Poke".into(), fields: vec![EventField::new("amount", Type::Int)] }];
+        let sub = |event: &str, handler: u32, scope: SubscriptionScope| Subscription {
+            event: EventRef::Name(event.into()),
+            handler,
+            scope,
+        };
+        m.subscriptions = vec![
+            sub("Hit", 0, SubscriptionScope::Self_),
+            sub("LevelLoaded", 1, SubscriptionScope::Global),
+            sub("Target.Poke", 2, SubscriptionScope::Self_),
+            sub("Target.Poke", 3, SubscriptionScope::Class),
+        ];
+        m
+    }
+
+    /// A global script: `begin_play` sends `Target.Poke(5)` to object `b`
+    /// and `Target.Poke(2)` to the `Target` class; `bad()` emits
+    /// `Target.Poke` with a string.
+    fn sender_module() -> Module {
+        let mut m = Module::new("Sender");
+        m.constants = vec![
+            Constant::Str("b".into()),
+            Constant::Str("Target.Poke".into()),
+            Constant::Int(5),
+            Constant::Str("Target".into()),
+            Constant::Int(2),
+            Constant::Str("oops".into()),
+        ];
+        m.imports = vec![
+            import("world::find_by_stable_id", vec![Type::Str], Type::Entity),
+            import("event::send", vec![Type::Entity, Type::Str, Type::Int], Type::Unit),
+            import("event::emit_to_class", vec![Type::Str, Type::Str, Type::Int], Type::Unit),
+            import("event::emit", vec![Type::Str, Type::Str], Type::Unit),
+        ];
+        m.functions = vec![
+            function("begin_play", vec![], vec![Type::Str, Type::Entity, Type::Str, Type::Int, Type::Str], vec![
+                Instr::Const { dst: 0, index: 0 },
+                Instr::CallNative { import: 0, args: vec![0], dst: Some(1) },
+                Instr::Const { dst: 2, index: 1 },
+                Instr::Const { dst: 3, index: 2 },
+                Instr::CallNative { import: 1, args: vec![1, 2, 3], dst: None },
+                Instr::Const { dst: 4, index: 3 },
+                Instr::Const { dst: 3, index: 4 },
+                Instr::CallNative { import: 2, args: vec![4, 2, 3], dst: None },
+                Instr::Return { value: None },
+            ]),
+            function("bad", vec![], vec![Type::Str, Type::Str], vec![
+                Instr::Const { dst: 0, index: 1 },
+                Instr::Const { dst: 1, index: 5 },
+                Instr::CallNative { import: 3, args: vec![0, 1], dst: None },
+                Instr::Return { value: None },
+            ]),
+        ];
+        m
+    }
+
+    fn events_project() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        write_class(dir.path(), "Target", TARGET, Some(target_module()), None);
+        write_class(dir.path(), "Sender", SENDER, Some(sender_module()), None);
+        std::fs::create_dir_all(dir.path().join("Pulsar")).unwrap();
+        std::fs::write(
+            super::super::scripting_config_path(dir.path()),
+            json!({ "global_scripts": ["Sender"] }).to_string(),
+        )
+        .unwrap();
+        dir
+    }
+
+    fn target_level(root: &Path) -> PathBuf {
+        let class = Some((TARGET, "Target"));
+        level(root, &[("a", None, class), ("b", None, class)])
+    }
+
+    fn id(stable: &str) -> String {
+        instance_id_for(stable, &TARGET.into())
+    }
+
+    fn int(game: &TickLoop, instance: &str, var: &str) -> i64 {
+        let driver = game.scripts.as_ref().unwrap().lock().unwrap();
+        match driver.runtime().variable(instance, var) {
+            Some(Value::Int(i)) => *i,
+            other => panic!("{instance}.{var}: {other:?}"),
+        }
+    }
+
+    fn entity(game: &TickLoop, stable: &str) -> Entity {
+        game.scene_store.read().world.entity_for(stable).unwrap()
+    }
+
+    fn subscriptions_of(game: &TickLoop, instance: &str) -> usize {
+        game.scripts.as_ref().unwrap().lock().unwrap().events().unwrap().subscriptions_of(instance)
+    }
+
+    /// Declared events, sends to one entity and to a class, LevelLoaded
+    /// once per instance, and a hit that reaches only its own entity.
+    #[test]
+    fn script_events_reach_only_their_targets() {
+        let project = events_project();
+        let level = target_level(project.path());
+        let (mut game, _log) = standalone(project.path(), &level);
+        let poke = game.events.descriptor_by_name("Target.Poke");
+        assert!(poke.is_some(), "the project's events are declared when scripting is enabled");
+
+        game.tick_once(); // a and b start; Sender sends in begin_play
+        let poke = game.events.descriptor_by_name("Target.Poke").expect("declared by Target");
+        assert_eq!(subscriptions_of(&game, &id("a")), 4);
+        assert_eq!(
+            game.events.subscriber_count(poke.id, class_channel(TARGET)),
+            2,
+            "both instances on their class channel"
+        );
+        assert_eq!(int(&game, &id("b"), "pokes"), 0, "delivered, not run, until the next script phase");
+
+        game.tick_once(); // handlers run
+        assert_eq!((int(&game, &id("a"), "pokes"), int(&game, &id("b"), "pokes")), (0, 5), "only b");
+        assert_eq!((int(&game, &id("a"), "class_pokes"), int(&game, &id("b"), "class_pokes")), (2, 2));
+        assert_eq!((int(&game, &id("a"), "level_loads"), int(&game, &id("b"), "level_loads")), (1, 1));
+
+        // Physics reports a hit on a (simulated: published on its entity
+        // channel, as the physics step would).
+        let (a, b) = (entity(&game, "a"), entity(&game, "b"));
+        game.events.publish(entity_channel(a.bits()), Hit { entity: a.bits(), other: b.bits(), impulse: 3.0 });
+        game.tick_once();
+        assert_eq!((int(&game, &id("a"), "hits"), int(&game, &id("b"), "hits")), (1, 0), "only a's handler");
+        {
+            let driver = game.scripts.as_ref().unwrap().lock().unwrap();
+            assert_eq!(driver.runtime().variable(&id("a"), "last_other"), Some(&Value::Entity(b)));
+        }
+
+        // An object placed later never sees LevelLoaded; the others saw it once.
+        let def = ClassRegistry::scan(project.path()).by_name("Target").unwrap().load_definition().unwrap();
+        pulsar_class::world::instantiate_class(
+            &mut game.scene_store.write().world,
+            &def,
+            ClassInstance::default(),
+            SpawnObject::new("Target").with_id("late"),
+        )
+        .unwrap();
+        for _ in 0..3 {
+            game.tick_once();
+        }
+        assert_eq!(int(&game, &id("late"), "level_loads"), 0);
+        assert_eq!((int(&game, &id("a"), "level_loads"), int(&game, &id("b"), "level_loads")), (1, 1));
+
+        // A bad event call is a script error, not a panic.
+        {
+            let mut driver = game.scripts.as_ref().unwrap().lock().unwrap();
+            let sender = global_instance_id(&SENDER.into());
+            let mut store = game.scene_store.write();
+            let err = driver.runtime_mut().send_event(&sender, "bad", &[], &mut store.world).unwrap_err();
+            assert!(err.to_string().contains("Target.Poke") && err.to_string().contains("field 0"), "{err}");
+        }
+    }
+
+    /// Despawning an instance drops its subscriptions (and its queued calls).
+    #[test]
+    fn despawning_an_instance_removes_its_subscriptions() {
+        let project = events_project();
+        let level = target_level(project.path());
+        let (mut game, _log) = pie(project.path(), &level);
+        game.tick_once();
+        let hit = game.events.descriptor_by_name("Hit").unwrap().id;
+        let b = entity(&game, "b");
+        assert_eq!(game.events.subscriber_count(hit, entity_channel(b.bits())), 1);
+
+        // A hit queued for b, then b is deleted before it is delivered.
+        game.events.publish(entity_channel(b.bits()), Hit { entity: b.bits(), other: 0, impulse: 1.0 });
+        game.scene_store.write().world.despawn_tree(b);
+        game.tick_once();
+        assert_eq!(subscriptions_of(&game, &id("b")), 0);
+        assert_eq!(game.events.subscriber_count(hit, entity_channel(b.bits())), 0);
+        let poke = game.events.descriptor_by_name("Target.Poke").unwrap().id;
+        assert_eq!(game.events.subscriber_count(poke, class_channel(TARGET)), 1, "only a is left");
+        let driver = game.scripts.as_ref().unwrap().lock().unwrap();
+        assert!(driver.runtime().class_of(&id("b")).is_none());
+        assert_eq!(driver.events().unwrap().pending_calls(), 0);
+    }
+
+    fn hub_is_clean(game: &TickLoop) {
+        let driver = game.scripts.as_ref().unwrap().lock().unwrap();
+        let events = driver.events().unwrap();
+        assert_eq!(events.subscription_count(), 0, "no script subscriptions");
+        assert_eq!(events.pending_calls(), 0, "no queued handler calls");
+        assert_eq!(events.bridge().timer_count(), 0);
+        assert_eq!(game.events.queued_len(), 0, "no queued events");
+        let store = game.scene_store.read();
+        for info in game.events.events() {
+            let id = info.descriptor.id;
+            assert_eq!(game.events.subscriber_count(id, Channel::Global), 0, "{}", info.descriptor.name);
+            assert_eq!(game.events.subscriber_count(id, class_channel(TARGET)), 0);
+            for stable in ["a", "b"] {
+                let e = store.world.entity_for(stable).unwrap();
+                assert_eq!(game.events.subscriber_count(id, entity_channel(e.bits())), 0);
+            }
+        }
+    }
+
+    /// Play, stop, play again on the editor's world: stopping leaves no
+    /// subscriptions or queued events, and the second session starts fresh
+    /// (LevelLoaded once per instance again).
+    #[test]
+    fn pie_play_stop_play_leaves_nothing_behind() {
+        let project = events_project();
+        let level = target_level(project.path());
+        let editor = RuntimeLevel::load_with_classes(&level, &ClassRegistry::scan(project.path())).unwrap();
+        for session in 0..2 {
+            let mut game = TickLoop::with_scene_store(editor.scene(), TickMode::default(), 0);
+            game.enable_scripting(project.path());
+            for _ in 0..3 {
+                game.tick_once();
+            }
+            assert_eq!(int(&game, &id("a"), "level_loads"), 1, "session {session}");
+            assert_eq!(int(&game, &id("b"), "pokes"), 5, "session {session}");
+            // Stop with work in flight: a queued hit and a queued script send.
+            let a = entity(&game, "a");
+            game.events.publish(entity_channel(a.bits()), Hit { entity: a.bits(), other: 0, impulse: 1.0 });
+            game.end_scripts();
+            hub_is_clean(&game);
+        }
+    }
+
+    // ---- a plugin library publishing to scripts ----------------------------
+
+    fn plugin() -> &'static std::sync::Mutex<libloading::Library> {
+        static PLUGIN: std::sync::OnceLock<std::sync::Mutex<libloading::Library>> = std::sync::OnceLock::new();
+        PLUGIN.get_or_init(|| {
+            let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../pulsar_events/tests/fixtures/plugin/Cargo.toml");
+            // `<target>/debug/deps/<this test>` -> `<target>/tmp`, the
+            // directory pulsar_events' own plugin test builds into.
+            let exe = std::env::current_exe().unwrap();
+            let target_dir = exe.ancestors().nth(3).unwrap().join("tmp").join("pulsar-events-test-plugin");
+            let status = std::process::Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
+                .args(["build", "--release", "--quiet", "--manifest-path"])
+                .arg(&manifest)
+                .arg("--target-dir")
+                .arg(&target_dir)
+                .env_remove("RUSTFLAGS")
+                .env_remove("CARGO_ENCODED_RUSTFLAGS")
+                .status()
+                .expect("cargo");
+            assert!(status.success(), "building the test plugin failed");
+            let path = target_dir.join("release").join(libloading::library_filename("pulsar_events_test_plugin"));
+            std::sync::Mutex::new(unsafe { libloading::Library::new(&path) }.expect("load the test plugin"))
+        })
+    }
+
+    /// A separately compiled plugin, holding the session hub through
+    /// Gamma's `ForeignBus`, publishes a `Hit` (its own copy of the type):
+    /// the target's script handler runs; the other instance's does not.
+    #[test]
+    fn a_plugin_event_reaches_a_script_handler() {
+        let project = events_project();
+        let level = target_level(project.path());
+        let (mut game, _log) = standalone(project.path(), &level);
+        game.tick_once();
+        let lib = plugin().lock().unwrap();
+        let attach: libloading::Symbol<unsafe extern "C" fn(pulsar_events::gamma::ffi::RawBus) -> u32> =
+            unsafe { lib.get(b"fixture_attach_hub") }.unwrap();
+        assert_eq!(unsafe { attach(game.events.export_raw()) }, 0);
+        let publish_hit: libloading::Symbol<extern "C" fn(u64, u64, f64) -> u32> =
+            unsafe { lib.get(b"fixture_publish_hit") }.unwrap();
+        let (a, b) = (entity(&game, "a"), entity(&game, "b"));
+        assert_eq!(publish_hit(b.bits(), a.bits(), 4.0), 0);
+        game.tick_once();
+        assert_eq!((int(&game, &id("a"), "hits"), int(&game, &id("b"), "hits")), (0, 1));
+        {
+            let driver = game.scripts.as_ref().unwrap().lock().unwrap();
+            assert_eq!(driver.runtime().variable(&id("b"), "last_other"), Some(&Value::Entity(a)));
+        }
+        unsafe { lib.get::<extern "C" fn()>(b"fixture_shutdown").unwrap()() };
+    }
+}

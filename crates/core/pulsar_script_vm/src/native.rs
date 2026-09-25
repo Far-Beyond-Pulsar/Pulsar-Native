@@ -18,27 +18,42 @@ use pulsar_reflection::methods::MethodFlags;
 use pulsar_scenedb::{Entity, World};
 
 use crate::error::ScriptError;
+use crate::events::{is_event_field_type, EventSink};
 use crate::library::{LibraryId, ShadowLibrary};
 use crate::module::{Param, Signature};
 use crate::types::{ScriptValue, Type};
 use crate::value::Value;
 
-/// What a native can reach: the world, and the entity the calling script
-/// instance is bound to.
+/// What a native can reach: the world, the entity the calling script
+/// instance is bound to, and the engine's event hub.
 pub struct Host<'w> {
     pub world: &'w mut World,
     pub entity: Entity,
     /// Game time in seconds, read by the `Now` instruction.
     pub time: f64,
+    /// Where the `event::*` natives publish. `None` in hosts without an
+    /// event hub: those natives then fail the call.
+    pub events: Option<&'w dyn EventSink>,
 }
 
 impl<'w> Host<'w> {
     pub fn new(world: &'w mut World, entity: Entity) -> Self {
-        Self { world, entity, time: 0.0 }
+        Self { world, entity, time: 0.0, events: None }
     }
 
     pub fn at_time(world: &'w mut World, entity: Entity, time: f64) -> Self {
-        Self { world, entity, time }
+        Self { world, entity, time, events: None }
+    }
+
+    /// Attach an event sink.
+    pub fn with_events(mut self, events: Option<&'w dyn EventSink>) -> Self {
+        self.events = events;
+        self
+    }
+
+    /// The bound entity, or `None` for an unbound instance.
+    pub fn bound_entity(&self) -> Option<Entity> {
+        (self.entity != Entity::DANGLING).then_some(self.entity)
     }
 }
 
@@ -295,6 +310,93 @@ pub struct NativeProvider {
 
 inventory::collect!(NativeProvider);
 
+/// A *polymorphic* native: a fixed parameter list followed by any number
+/// of trailing arguments of event field types (`bool`, `int`, `float`,
+/// `string`, `entity`). Each module import names its own full signature;
+/// the linker instantiates a [`NativeFn`] with exactly that signature
+/// ([`instantiate`](Self::instantiate)). The implementation receives every
+/// argument and checks the trailing ones itself at call time. The `event::*`
+/// natives are polymorphic.
+///
+/// A module imports each name once, so to call a polymorphic native with
+/// several signatures it imports it under distinct names with a `@` tag:
+/// `event::send@Door.Opened` and `event::send@Hit` both link to
+/// `event::send` ([`poly_base_name`]).
+pub struct PolyNative {
+    pub name: String,
+    pub doc: String,
+    /// Leading parameters every call has.
+    pub fixed: Vec<Param>,
+    pub fixed_names: Vec<String>,
+    pub ret: Type,
+    pub attrs: Vec<(String, String)>,
+    call: Arc<NativeImpl>,
+}
+
+impl PolyNative {
+    pub fn new(
+        name: impl Into<String>,
+        fixed: Vec<(&str, Type)>,
+        ret: Type,
+        call: impl Fn(&mut Host<'_>, &mut [Value]) -> Result<Value, ScriptError> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            doc: String::new(),
+            fixed_names: fixed.iter().map(|(n, _)| (*n).to_owned()).collect(),
+            fixed: fixed.into_iter().map(|(_, ty)| Param::new(ty)).collect(),
+            ret,
+            attrs: Vec::new(),
+            call: Arc::new(call),
+        }
+    }
+
+    pub fn doc(mut self, doc: impl Into<String>) -> Self {
+        self.doc = doc.into();
+        self
+    }
+
+    pub fn attr(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.attrs.push((key.into(), value.into()));
+        self
+    }
+
+    /// A native with signature `sig`, if it is this native's fixed
+    /// parameters followed by event field types, returning [`Self::ret`].
+    pub fn instantiate(&self, sig: &Signature) -> Result<NativeFn, String> {
+        let fixed = self.fixed.len();
+        if sig.params.len() < fixed || sig.params[..fixed] != self.fixed[..] {
+            let expected = Signature::new(self.fixed.iter().cloned(), self.ret.clone());
+            return Err(format!("takes {expected} followed by event fields, the module imports it as {sig}"));
+        }
+        if sig.ret != self.ret {
+            return Err(format!("returns {}, the module expects {}", self.ret, sig.ret));
+        }
+        if let Some(bad) = sig.params[fixed..].iter().find(|p| p.inout || !is_event_field_type(&p.ty)) {
+            return Err(format!("trailing argument type {} is not an event field type", bad.ty));
+        }
+        let mut names = self.fixed_names.clone();
+        names.extend((0..sig.params.len() - fixed).map(|i| format!("field{i}")));
+        let call = Arc::clone(&self.call);
+        let mut builder = NativeFn::builder(self.name.clone()).doc(self.doc.clone()).params(names);
+        for (k, v) in &self.attrs {
+            builder = builder.attr(k.clone(), v.clone());
+        }
+        Ok(builder.build_raw(sig.clone(), Box::new(move |host, args| call(host, args))))
+    }
+}
+
+/// The polymorphic native an import name refers to: the part before `@`.
+pub fn poly_base_name(import: &str) -> &str {
+    import.split_once('@').map_or(import, |(base, _)| base)
+}
+
+impl fmt::Debug for PolyNative {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{}...", self.name, Signature::new(self.fixed.iter().cloned(), self.ret.clone()))
+    }
+}
+
 /// A native with this name is already registered.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("native `{0}` is already registered")]
@@ -309,6 +411,7 @@ pub struct DuplicateNative(pub String);
 #[derive(Default)]
 pub struct NativeRegistry {
     natives: HashMap<String, Arc<NativeFn>>,
+    poly: HashMap<String, Arc<PolyNative>>,
     generation: u64,
 }
 
@@ -340,12 +443,33 @@ impl NativeRegistry {
     }
 
     pub fn register(&mut self, native: NativeFn) -> Result<(), DuplicateNative> {
-        if self.natives.contains_key(&native.name) {
+        if self.natives.contains_key(&native.name) || self.poly.contains_key(&native.name) {
             return Err(DuplicateNative(native.name));
         }
         self.natives.insert(native.name.clone(), Arc::new(native));
         self.generation += 1;
         Ok(())
+    }
+
+    /// Register a polymorphic native. Its name must not be taken by a
+    /// plain native either.
+    pub fn register_poly(&mut self, native: PolyNative) -> Result<(), DuplicateNative> {
+        if self.natives.contains_key(&native.name) || self.poly.contains_key(&native.name) {
+            return Err(DuplicateNative(native.name));
+        }
+        self.poly.insert(native.name.clone(), Arc::new(native));
+        self.generation += 1;
+        Ok(())
+    }
+
+    /// The polymorphic native `name`.
+    pub fn poly(&self, name: &str) -> Option<&Arc<PolyNative>> {
+        self.poly.get(name)
+    }
+
+    /// Every polymorphic native, in no particular order.
+    pub fn poly_functions(&self) -> impl Iterator<Item = &Arc<PolyNative>> {
+        self.poly.values()
     }
 
     /// Remove every native with origin `origin`; returns their names.

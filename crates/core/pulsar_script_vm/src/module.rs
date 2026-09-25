@@ -10,16 +10,39 @@
 //!   signature, resolved against the native registry at link time;
 //! - **variables**: per-instance state (a script bound to an entity keeps
 //!   one set), with defaults;
-//! - a constant pool.
+//! - a constant pool;
+//! - **events** the module declares (name and typed fields), registered as
+//!   dynamic event descriptors on the engine event hub when the module is
+//!   loaded;
+//! - **subscriptions**: which function handles which event, and on which
+//!   channel ([`SubscriptionScope`]). The engine subscribes every instance
+//!   when it spawns and unsubscribes it when it despawns.
 //!
 //! Nothing here refers to a particular source language.
+//!
+//! # Events and handlers
+//!
+//! An event's fields map to script types one to one: `bool`, `int`
+//! (`i64`), `float` (`f64`), `string`, and `entity` (event fields of type
+//! `u64` are entity handles). A handler is a module function returning
+//! `unit` whose parameters are a **prefix** of the event's fields, in
+//! order: `fn on_hit(other: entity)` cannot handle `Hit(entity, other,
+//! impulse)`, but `fn on_hit(entity: entity, other: entity)` and
+//! `fn on_hit()` can. The verifier checks handlers against events the
+//! module declares; the linker checks the rest against the engine's event
+//! catalog.
 
 use serde::{Deserialize, Serialize};
 
 use crate::types::Type;
 
-/// Bumped on any incompatible change to the format.
-pub const FORMAT_VERSION: u32 = 1;
+/// Bumped on any incompatible change to the format. Version 2 added
+/// [`Module::events`] and [`Module::subscriptions`].
+pub const FORMAT_VERSION: u32 = 2;
+
+/// The oldest format version this VM still reads. Version 1 modules have
+/// no events or subscriptions (both default to empty).
+pub const MIN_FORMAT_VERSION: u32 = 1;
 
 /// Register index within a function.
 pub type Reg = u16;
@@ -36,6 +59,12 @@ pub struct Module {
     pub variables: Vec<Variable>,
     #[serde(default)]
     pub functions: Vec<Function>,
+    /// Events this module declares.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<EventDecl>,
+    /// Event handlers, subscribed per instance.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subscriptions: Vec<Subscription>,
 }
 
 impl Module {
@@ -47,6 +76,8 @@ impl Module {
             imports: Vec::new(),
             variables: Vec::new(),
             functions: Vec::new(),
+            events: Vec::new(),
+            subscriptions: Vec::new(),
         }
     }
 
@@ -65,6 +96,74 @@ impl Module {
             .find(|(_, f)| f.name == name)
             .map(|(i, f)| (i as u32, f))
     }
+}
+
+/// An event a module declares: registered on the engine event hub as a
+/// dynamic descriptor with these fields when the module loads.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct EventDecl {
+    /// Unique engine-wide. Frontends qualify it (the Blueprint compiler
+    /// uses `<Class>.<Event>`).
+    pub name: String,
+    #[serde(default)]
+    pub fields: Vec<EventField>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct EventField {
+    pub name: String,
+    /// `bool`, `int`, `float`, `string` or `entity`.
+    pub ty: Type,
+}
+
+impl EventField {
+    pub fn new(name: impl Into<String>, ty: Type) -> Self {
+        Self { name: name.into(), ty }
+    }
+}
+
+/// Which event a subscription is for.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum EventRef {
+    /// By descriptor name (the usual form).
+    Name(String),
+    /// By stable descriptor id (e.g. a plugin event known only by id).
+    Id(u64),
+}
+
+impl std::fmt::Display for EventRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Name(name) => f.write_str(name),
+            Self::Id(id) => write!(f, "#{id:016x}"),
+        }
+    }
+}
+
+/// The channel a subscription listens on, relative to the instance.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SubscriptionScope {
+    /// The entity channel of the entity the instance is bound to: events
+    /// about or sent to this object only. Not subscribed for an unbound
+    /// instance (a global script).
+    #[serde(rename = "Self")]
+    Self_,
+    /// The global channel.
+    #[default]
+    Global,
+    /// The class channel of the instance's own class: events sent to every
+    /// instance of the class.
+    Class,
+}
+
+/// "Run `handler` when `event` arrives on `scope`".
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Subscription {
+    pub event: EventRef,
+    /// Index into [`Module::functions`].
+    pub handler: u32,
+    #[serde(default)]
+    pub scope: SubscriptionScope,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

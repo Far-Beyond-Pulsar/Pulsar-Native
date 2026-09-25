@@ -10,12 +10,19 @@
 //!
 //! The tab is created once at workspace init and self-manages off the shared
 //! `play.pie` state set by `begin_pie`/`end_pie`: build → load → run → stop.
+//!
+//! **Events panel (#924).** The "Events" chip opens an overlay listing the
+//! game's recently flushed events (frame, flush point, name, channel,
+//! payload summary, subscribers on that channel) and the events with
+//! global subscribers, from the game's event hub debug tap
+//! (`PieHost::events_snapshot`, polled a few times a second).
 
 use std::sync::Arc;
 use std::time::Instant;
 
 use engine_backend::services::{PieBlit, PieHost};
 use gpui::*;
+use gpui::prelude::FluentBuilder as _;
 use pulsar_pie_abi::{input_kind, InputEvent};
 use rust_i18n::t;
 use ui::{notification::Notification, ActiveTheme as _, ContextModal as _};
@@ -33,7 +40,17 @@ pub struct GameViewport {
     captured: bool,
     /// Track transitions for one-shot notifications.
     was_active: bool,
+    /// The events overlay is open.
+    events_open: bool,
+    /// The game's last event hub snapshot, and when it was taken.
+    events: Option<pulsar_events::EventsSnapshot>,
+    events_polled: Instant,
 }
+
+/// How often the events overlay re-reads the game's event tap.
+const EVENTS_POLL: std::time::Duration = std::time::Duration::from_millis(250);
+/// Rows the events overlay shows.
+const EVENTS_ROWS: usize = 24;
 
 impl GameViewport {
     pub fn new(
@@ -49,7 +66,66 @@ impl GameViewport {
             last_frame: Instant::now(),
             captured: false,
             was_active: false,
+            events_open: false,
+            events: None,
+            events_polled: Instant::now(),
         }
+    }
+
+    /// Refresh the events snapshot (on the thread that ticks the game).
+    fn poll_events(&mut self) {
+        if !self.events_open || self.events_polled.elapsed() < EVENTS_POLL {
+            return;
+        }
+        self.events_polled = Instant::now();
+        self.events = self.pie_host.as_ref().and_then(PieHost::events_snapshot);
+    }
+
+    fn events_overlay(&self, cx: &App) -> AnyElement {
+        let theme = cx.theme();
+        let row = |text: String| div().text_xs().whitespace_nowrap().overflow_hidden().child(text);
+        let mut list = div().flex().flex_col().gap(px(2.0));
+        match &self.events {
+            None => {
+                list = list.child(row("No event data (game not running, or built without the events tap).".into()));
+            }
+            Some(snapshot) => {
+                list = list.child(row(format!(
+                    "frame {} · {} queued · {} recent",
+                    snapshot.frame,
+                    snapshot.queued,
+                    snapshot.recent.len()
+                )));
+                for r in snapshot.recent.iter().rev().take(EVENTS_ROWS) {
+                    list = list.child(row(format!(
+                        "#{} f{} [{}] {} @ {} ({} subs) {}",
+                        r.seq, r.frame, r.point, r.name, r.channel, r.subscribers, r.summary
+                    )));
+                }
+                let listened: Vec<String> = snapshot
+                    .events
+                    .iter()
+                    .filter(|e| e.global_subscribers > 0)
+                    .map(|e| format!("{} ×{}", e.name, e.global_subscribers))
+                    .collect();
+                if !listened.is_empty() {
+                    list = list.child(row(format!("global subscribers: {}", listened.join(", "))));
+                }
+            }
+        }
+        div()
+            .absolute()
+            .top(px(36.0))
+            .right(px(8.0))
+            .w(px(520.0))
+            .max_h(px(420.0))
+            .overflow_hidden()
+            .p_2()
+            .rounded(px(4.0))
+            .bg(gpui::rgba(0x000000c0))
+            .text_color(theme.foreground)
+            .child(list)
+            .into_any_element()
     }
 
     fn forward(&self, ev: InputEvent) {
@@ -324,6 +400,7 @@ impl Render for GameViewport {
             }
         }
 
+        self.poll_events();
         let running = self.pie_host.is_some();
         let building = self.shared_state.read().play.pie.building;
         let status: SharedString = if running {
@@ -380,5 +457,31 @@ impl Render for GameViewport {
                             .child(status),
                     ),
             )
+            .child(
+                div()
+                    .id("pie-events-toggle")
+                    .absolute()
+                    .top_2()
+                    .right_2()
+                    .px_2()
+                    .py_1()
+                    .rounded(px(4.0))
+                    .bg(gpui::rgba(0x000000a0))
+                    .text_color(cx.theme().foreground)
+                    .text_sm()
+                    .cursor_pointer()
+                    .child(if self.events_open { "Events ▾" } else { "Events ▸" })
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this, _, _, cx| {
+                            this.events_open = !this.events_open;
+                            // Poll right away when opened.
+                            this.events_polled = Instant::now() - EVENTS_POLL;
+                            cx.stop_propagation();
+                            cx.notify();
+                        }),
+                    ),
+            )
+            .when(self.events_open, |el| el.child(self.events_overlay(cx)))
     }
 }

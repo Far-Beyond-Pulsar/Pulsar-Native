@@ -317,6 +317,9 @@ pub struct PulsarApp {
     /// window's per-frame rebuild. Gameplay mutations land here too, so an
     /// actor-spawned entity renders on the next frame.
     scene_store: engine_backend::scene::SharedScene,
+    /// The tick loop's event hub (shared): key and mouse input is published
+    /// here and delivered at the next tick's after-input flush.
+    events: pulsar_events::EventHub,
 
     /// Which window currently owns the cursor (receives mouse-look).
     focused_window: Option<WindowHandle>,
@@ -338,6 +341,7 @@ impl PulsarApp {
         // The tick loop's store handle is cloned BEFORE the loop moves into
         // `self.tick_loop` -- renderer and gameplay then share one world.
         let scene_store = tick_loop.scene_store.clone();
+        let events = tick_loop.events.clone();
         Self {
             bridge,
             gpu: GpuContext::new(display),
@@ -348,6 +352,7 @@ impl PulsarApp {
             project_root,
             default_scene,
             scene_store,
+            events,
             focused_window: None,
             cursor_captured: false,
             last_frame: Instant::now(),
@@ -613,6 +618,17 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 event: key_event, ..
             } => {
                 let pressed = key_event.state == ElementState::Pressed;
+                if !key_event.repeat {
+                    if let winit::keyboard::PhysicalKey::Code(code) = key_event.physical_key {
+                        let key = code as i64;
+                        let channel = pulsar_events::gamma::Channel::Global;
+                        if pressed {
+                            self.events.publish(channel, pulsar_events::builtin::KeyDown { key });
+                        } else {
+                            self.events.publish(channel, pulsar_events::builtin::KeyUp { key });
+                        }
+                    }
+                }
 
                 // Escape releases the cursor.
                 if pressed {
@@ -629,14 +645,25 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 }
             }
 
-            // ── Mouse click — capture cursor ──────────────────────────────────
-            WindowEvent::MouseInput {
-                state: ElementState::Pressed,
-                button: winit::event::MouseButton::Left,
-                ..
-            } => {
-                if !self.cursor_captured {
-                    self.capture_cursor(handle);
+            // ── Mouse buttons — published as input events; a left click
+            //    also captures the cursor ─────────────────────────────────────
+            WindowEvent::MouseInput { state, button, .. } => {
+                let index = match button {
+                    winit::event::MouseButton::Left => 0,
+                    winit::event::MouseButton::Right => 1,
+                    winit::event::MouseButton::Middle => 2,
+                    winit::event::MouseButton::Back => 3,
+                    winit::event::MouseButton::Forward => 4,
+                    winit::event::MouseButton::Other(n) => i64::from(n),
+                };
+                let channel = pulsar_events::gamma::Channel::Global;
+                if state == ElementState::Pressed {
+                    self.events.publish(channel, pulsar_events::builtin::MouseButtonDown { button: index });
+                    if button == winit::event::MouseButton::Left && !self.cursor_captured {
+                        self.capture_cursor(handle);
+                    }
+                } else {
+                    self.events.publish(channel, pulsar_events::builtin::MouseButtonUp { button: index });
                 }
             }
 

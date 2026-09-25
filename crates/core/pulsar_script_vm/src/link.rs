@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use crate::error::LinkError;
-use crate::module::{Constant, Module};
+use crate::events::{check_handler, EventCatalog, EventSignature};
+use crate::module::{Constant, EventRef, Module, SubscriptionScope};
 use crate::native::{NativeFn, NativeRegistry};
 use crate::types::{Type, TypeRegistry};
 use crate::value::Value;
@@ -19,7 +20,23 @@ pub struct Program {
     /// Initial register values per function (defaults for every register).
     pub(crate) registers: Vec<Vec<Value>>,
     variables: Vec<Value>,
+    subscriptions: Vec<LinkedSubscription>,
     generation: u64,
+}
+
+/// A module subscription after linking: the handler checked against the
+/// event's fields.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LinkedSubscription {
+    pub event: EventRef,
+    /// The event's name, when known (always for events by name).
+    pub event_name: Option<String>,
+    /// The event's id, when the catalog knows it (0 is never an id).
+    pub event_id: Option<u64>,
+    pub handler: FuncId,
+    pub scope: SubscriptionScope,
+    /// Handler parameters: the first `params` fields of the event.
+    pub params: usize,
 }
 
 /// Per-instance state of a program: its variables. Read and written
@@ -41,7 +58,21 @@ impl Program {
     /// Verify `module`, check that every type it names exists, and bind its
     /// imports to `registry`'s natives (names and full signatures must
     /// match).
+    ///
+    /// Event handlers are checked against events the module declares only;
+    /// use [`link_with_events`](Self::link_with_events) to check the rest.
     pub fn link(module: Arc<Module>, registry: &NativeRegistry) -> Result<Self, LinkError> {
+        Self::link_with_events(module, registry, None)
+    }
+
+    /// [`link`](Self::link), also checking every subscription's handler
+    /// against `events` (the engine's event catalog): an event neither the
+    /// module declares nor the catalog knows is an error.
+    pub fn link_with_events(
+        module: Arc<Module>,
+        registry: &NativeRegistry,
+        events: Option<&dyn EventCatalog>,
+    ) -> Result<Self, LinkError> {
         verify(&module)?;
         let types = TypeRegistry::global();
         let default = |ty: &Type| {
@@ -54,9 +85,16 @@ impl Program {
                 default(&param.ty)?;
             }
             default(&import.sig.ret)?;
-            let native = registry
-                .get(&import.name)
-                .ok_or_else(|| LinkError::MissingNative { name: import.name.clone() })?;
+            let native = match registry.get(&import.name) {
+                Some(native) => Arc::clone(native),
+                None => match registry.poly(crate::native::poly_base_name(&import.name)) {
+                    Some(poly) => Arc::new(
+                        poly.instantiate(&import.sig)
+                            .map_err(|message| LinkError::PolyNative { name: import.name.clone(), message })?,
+                    ),
+                    None => return Err(LinkError::MissingNative { name: import.name.clone() }),
+                },
+            };
             if native.sig != import.sig {
                 return Err(LinkError::SignatureMismatch {
                     name: import.name.clone(),
@@ -64,7 +102,7 @@ impl Program {
                     found: Box::new(native.sig.clone()),
                 });
             }
-            natives.push(Arc::clone(native));
+            natives.push(native);
         }
 
         let registers = module
@@ -84,8 +122,14 @@ impl Program {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let constants = module.constants.iter().map(constant_value).collect();
+        let subscriptions = link_subscriptions(&module, events)?;
 
-        Ok(Self { module, natives, constants, registers, variables, generation: registry.generation() })
+        Ok(Self { module, natives, constants, registers, variables, subscriptions, generation: registry.generation() })
+    }
+
+    /// The module's event subscriptions, checked.
+    pub fn subscriptions(&self) -> &[LinkedSubscription] {
+        &self.subscriptions
     }
 
     pub fn module(&self) -> &Arc<Module> {
@@ -134,6 +178,52 @@ impl Program {
         instance.vars[index] = value;
         Ok(())
     }
+}
+
+fn link_subscriptions(module: &Module, events: Option<&dyn EventCatalog>) -> Result<Vec<LinkedSubscription>, LinkError> {
+    let mut linked = Vec::with_capacity(module.subscriptions.len());
+    for subscription in &module.subscriptions {
+        // The verifier checked the handler index.
+        let handler = &module.functions[subscription.handler as usize];
+        let declared = match &subscription.event {
+            EventRef::Name(name) => module.events.iter().find(|e| &e.name == name).map(EventSignature::from),
+            EventRef::Id(_) => None,
+        };
+        let known = events.and_then(|catalog| match &subscription.event {
+            EventRef::Name(name) => catalog.event_by_name(name),
+            EventRef::Id(id) => catalog.event_by_id(*id),
+        });
+        let signature = match (known, declared) {
+            (Some(known), _) => Some(known),
+            (None, Some(declared)) => Some(declared),
+            (None, None) if events.is_some() => {
+                return Err(LinkError::UnknownEvent { event: subscription.event.to_string() })
+            }
+            (None, None) => None,
+        };
+        if let Some(signature) = &signature {
+            check_handler(&handler.params, &signature.field_types()).map_err(|message| LinkError::HandlerMismatch {
+                event: signature.name.clone(),
+                handler: handler.name.clone(),
+                message,
+            })?;
+        }
+        linked.push(LinkedSubscription {
+            event: subscription.event.clone(),
+            event_name: signature.as_ref().map(|s| s.name.clone()).or_else(|| match &subscription.event {
+                EventRef::Name(name) => Some(name.clone()),
+                EventRef::Id(_) => None,
+            }),
+            event_id: signature.as_ref().map(|s| s.id).filter(|id| *id != 0).or(match subscription.event {
+                EventRef::Id(id) => Some(id),
+                EventRef::Name(_) => None,
+            }),
+            handler: FuncId(subscription.handler),
+            scope: subscription.scope,
+            params: handler.params.len(),
+        });
+    }
+    Ok(linked)
 }
 
 fn constant_value(constant: &Constant) -> Value {

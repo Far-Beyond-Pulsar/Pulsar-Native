@@ -16,6 +16,8 @@
 //!   accessors), and the standard library.
 //! - [`library`]: hot-reloadable native libraries.
 //! - [`link`] / [`interp`]: linking into a [`Program`] and running it.
+//! - [`events`]: declared events, handler subscriptions and the `event::*`
+//!   natives, over traits the engine's event hub implements.
 //!
 //! Scripts refer to the world through [`Value::Entity`] and
 //! [`Value::Component`] (a liveness-checked `ComponentRef`), never
@@ -24,6 +26,7 @@
 
 pub(crate) mod adapters;
 pub mod error;
+pub mod events;
 pub mod interp;
 pub mod library;
 pub mod link;
@@ -37,13 +40,15 @@ pub mod verify;
 pub use error::{LinkError, ScriptError, ScriptErrorKind, VerifyError};
 pub use interp::{Budget, Completion, Continuation, Vm};
 pub use library::{LibraryError, LibraryId, LibraryRegistrar, NativeLibraries};
-pub use link::{FuncId, Instance, Program};
+pub use events::{EventCatalog, EventSignature, EventSink, EventTarget};
+pub use link::{FuncId, Instance, LinkedSubscription, Program};
 pub use module::{
-    BinOp, Constant, Function, Import, Instr, Module, Param, Reg, Signature, UnOp, Variable,
-    FORMAT_VERSION,
+    BinOp, Constant, EventDecl, EventField, EventRef, Function, Import, Instr, Module, Param, Reg,
+    Signature, Subscription, SubscriptionScope, UnOp, Variable, FORMAT_VERSION, MIN_FORMAT_VERSION,
 };
 pub use native::{
     Host, NativeBuilder, NativeFn, NativeProvider, NativeRegistration, NativeRegistry, Origin,
+    PolyNative,
 };
 pub use types::{ComponentProvider, Obj, ProvidedComponent, ScriptValue, Type, TypeRegistry};
 pub use value::{Object, Value};
