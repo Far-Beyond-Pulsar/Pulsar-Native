@@ -3762,6 +3762,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "gamma"
+version = "0.2.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Gamma?rev=b4ebf98486fb716d090d35b689a4eb8a0e414cc1#b4ebf98486fb716d090d35b689a4eb8a0e414cc1"
+dependencies = [
+ "gamma-core",
+ "gamma-derive",
+]
+
+[[package]]
+name = "gamma-core"
+version = "0.2.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Gamma?rev=b4ebf98486fb716d090d35b689a4eb8a0e414cc1#b4ebf98486fb716d090d35b689a4eb8a0e414cc1"
+dependencies = [
+ "rustc-hash 2.1.3",
+]
+
+[[package]]
+name = "gamma-derive"
+version = "0.2.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Gamma?rev=b4ebf98486fb716d090d35b689a4eb8a0e414cc1#b4ebf98486fb716d090d35b689a4eb8a0e414cc1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "generator"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8734,7 +8761,10 @@ dependencies = [
 name = "pulsar_events"
 version = "0.1.0"
 dependencies = [
+ "gamma",
+ "profiling 0.1.0",
  "serde",
+ "serde_json",
  "tracing",
  "ui_types_common",
 ]

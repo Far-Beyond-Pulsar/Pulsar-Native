@@ -277,3 +277,112 @@ fn waiting_events_resume_after_game_time_passes() {
     rt.reload_class(m).unwrap();
     assert_eq!(rt.waiting_calls("b"), 0);
 }
+
+// ---- events (#924) ----------------------------------------------------------
+
+mod events {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    use pulsar_script_runtime::EventHost;
+    use pulsar_script_vm::{
+        EventCatalog, EventDecl, EventField, EventRef, EventSignature, EventSink, EventTarget, FuncId,
+        Subscription, SubscriptionScope,
+    };
+
+    #[derive(Default)]
+    struct Hub {
+        declared: Mutex<Vec<EventSignature>>,
+        emitted: Mutex<Vec<(EventTarget, String, Vec<Value>)>>,
+    }
+
+    impl EventSink for Hub {
+        fn emit(&self, target: EventTarget, name: &str, fields: &[Value]) -> Result<(), String> {
+            self.emitted.lock().unwrap().push((target, name.into(), fields.to_vec()));
+            Ok(())
+        }
+    }
+
+    impl EventCatalog for Hub {
+        fn event_by_name(&self, name: &str) -> Option<EventSignature> {
+            self.declared.lock().unwrap().iter().find(|e| e.name == name).cloned()
+        }
+        fn event_by_id(&self, id: u64) -> Option<EventSignature> {
+            self.declared.lock().unwrap().iter().find(|e| e.id == id).cloned()
+        }
+    }
+
+    impl EventHost for Hub {
+        fn declare(&self, _class: &str, decl: &EventDecl) -> Result<(), String> {
+            let mut declared = self.declared.lock().unwrap();
+            let id = declared.len() as u64 + 1;
+            if let Some(existing) = declared.iter().find(|e| e.name == decl.name) {
+                return if existing.fields == decl.fields { Ok(()) } else { Err("conflict".into()) };
+            }
+            declared.push(EventSignature { id, name: decl.name.clone(), fields: decl.fields.clone() });
+            Ok(())
+        }
+    }
+
+    /// Declares `Ping(n: int)`, handles it with a non-exported `on_ping`
+    /// that adds `n` to `total`, and emits `Ping(5)` from `send`.
+    fn pinger(name: &str, other_event: Option<&str>) -> Module {
+        let mut m = Module::new(name);
+        m.variables = vec![Variable { name: "total".into(), ty: Type::Int, default: None }];
+        m.constants = vec![Constant::Str("Ping".into()), Constant::Int(5)];
+        m.imports = vec![Import {
+            name: "event::emit".into(),
+            sig: Signature::new([Param::new(Type::Str), Param::new(Type::Int)], Type::Unit),
+        }];
+        let mut on_ping = function("on_ping", vec![Type::Int], vec![Type::Int], vec![
+            LoadVar { dst: 1, var: 0 },
+            Binary { op: BinOp::Add, dst: 1, a: 1, b: 0 },
+            StoreVar { var: 0, src: 1 },
+            Return { value: None },
+        ]);
+        on_ping.exported = false;
+        m.functions = vec![
+            on_ping,
+            function("send", vec![], vec![Type::Str, Type::Int], vec![
+                Const { dst: 0, index: 0 },
+                Const { dst: 1, index: 1 },
+                CallNative { import: 0, args: vec![0, 1], dst: None },
+                Return { value: None },
+            ]),
+        ];
+        m.events = vec![EventDecl { name: "Ping".into(), fields: vec![EventField::new("n", Type::Int)] }];
+        m.subscriptions = vec![Subscription {
+            event: EventRef::Name(other_event.unwrap_or("Ping").into()),
+            handler: 0,
+            scope: SubscriptionScope::Self_,
+        }];
+        m
+    }
+
+    #[test]
+    fn classes_declare_link_against_and_publish_through_the_host() {
+        let hub = Arc::new(Hub::default());
+        let mut rt = runtime();
+        rt.set_event_host(Some(hub.clone() as Arc<dyn EventHost>));
+        let mut world = World::new();
+        rt.load_class(pinger("Pinger", None)).unwrap();
+        assert_eq!(hub.event_by_name("Ping").unwrap().fields.len(), 1, "declared before linking");
+        let subs = rt.subscriptions("Pinger").unwrap();
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].event_id, Some(1), "linked against the host's catalog");
+        assert_eq!(subs[0].handler, FuncId(0));
+
+        rt.spawn("p", "Pinger", None, &[]).unwrap();
+        rt.send_event("p", "send", &[], &mut world).unwrap();
+        let emitted = hub.emitted.lock().unwrap().clone();
+        assert_eq!(emitted, vec![(EventTarget::Global, "Ping".to_owned(), vec![Value::Int(5)])]);
+
+        // Handlers need not be exported.
+        rt.call_function("p", FuncId(0), &[Value::Int(3)], &mut world).unwrap();
+        assert_eq!(rt.variable("p", "total"), Some(&Value::Int(3)));
+
+        // A class subscribing to an event nobody declared does not link.
+        let err = rt.load_class(pinger("Other", Some("Nope"))).unwrap_err();
+        assert!(err.to_string().contains("Nope"), "{err}");
+    }
+}
