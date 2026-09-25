@@ -69,5 +69,5 @@ ashpd = { version = "0.13", default-features = false, features = ["async-io", "s
 
 [dev-dependencies]
 gpui = { package = "gpui-ce", path = "../wgpui", features = ["test-support", "inspector", "flamegraph"] }
-indoc = "2"
+indoc = "=2.0.7"
 
