@@ -158,7 +158,12 @@ impl Render for HelioViewport {
                 .map(|mhz| mhz as f64 / 1000.0)
                 .filter(|hz| *hz > 0.0);
 
-            match window.create_wgpu_surface(1600, 900, format) {
+            match window.create_wgpu_surface_with_color_conversion(
+                1600,
+                900,
+                format,
+                gpui::SurfaceColorConversion::LinearToSrgb,
+            ) {
                 Some(s) => {
                     tracing::info!("[HELIO-VIEWPORT] WgpuSurface created (format={:?})", format);
                     self.start_render_thread(s.clone(), refresh_hz);
