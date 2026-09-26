@@ -173,10 +173,13 @@ impl VoxelBackendRegistry {
         for entry in entries.iter().filter(|entry| entry.visible) {
             for backend in &self.backends {
                 if entry.renderer_id == backend.renderer_id()
-                    || (entry.renderer_id.is_empty() && backend.supports(entry)) {
+                    || (entry.renderer_id.is_empty() && backend.supports(entry))
+                {
                     if let Some((near, far)) = backend.camera_clip_range(entry, eye) {
                         if near.is_finite() && far.is_finite() && near > 0.0 && far > near {
-                            range = Some(range.map_or((near, far), |old| (old.0.min(near), old.1.max(far))));
+                            range = Some(
+                                range.map_or((near, far), |old| (old.0.min(near), old.1.max(far))),
+                            );
                         }
                     }
                 }
@@ -312,9 +315,14 @@ impl TinyVoxelBackend {
             );
         }
         let step = (entry.voxel_size * 10.0).round();
-        if !entry.voxel_size.is_finite() || !(1.0..=10.0).contains(&step)
-            || (step * 0.1 - entry.voxel_size).abs() > 1.0e-9 {
-            return Err("this backend supports base voxels from 0.1 to 1.0 metres in 0.1 metre increments".into());
+        if !entry.voxel_size.is_finite()
+            || !(1.0..=10.0).contains(&step)
+            || (step * 0.1 - entry.voxel_size).abs() > 1.0e-9
+        {
+            return Err(
+                "this backend supports base voxels from 0.1 to 1.0 metres in 0.1 metre increments"
+                    .into(),
+            );
         }
         // Recipe backends own their acceleration layout. Component chunk/LOD
         // metadata describes live payloads, which this backend rejects below;
@@ -384,12 +392,18 @@ impl VoxelRenderBackend for TinyVoxelBackend {
 
     fn camera_clip_range(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<(f32, f32)> {
         let far = (eye.length() + 30_000_000.0) as f32;
-        let near = self.cached_recipe.as_ref()
-            .filter(|(id, revision, recipe, world)| *id == source.id
-                && *revision == source.source_revision
-                && source.generator.as_ref() == Some(recipe)
-                && (world.voxel_size() - source.voxel_size).abs() < 1e-9)
-            .map_or(0.05, |(_, _, _, world)| (world.air_clearance(eye) * 0.25).max(0.05) as f32);
+        let near = self
+            .cached_recipe
+            .as_ref()
+            .filter(|(id, revision, recipe, world)| {
+                *id == source.id
+                    && *revision == source.source_revision
+                    && source.generator.as_ref() == Some(recipe)
+                    && (world.voxel_size() - source.voxel_size).abs() < 1e-9
+            })
+            .map_or(0.05, |(_, _, _, world)| {
+                (world.air_clearance(eye) * 0.25).max(0.05) as f32
+            });
         Some((near, far))
     }
 
@@ -485,9 +499,18 @@ impl VoxelRenderBackend for TinyVoxelBackend {
                 Arc::clone(world)
             }
             _ => {
-                let mut world = TinyWorld::from_recipe_json(&generator.parameters)?;
-                world.set_voxel_size(entry.voxel_size)?;
-                let world = Arc::new(world);
+                let decoded =
+                    TinyWorld::from_recipe_json(&generator.parameters).and_then(|mut world| {
+                        world.set_voxel_size(entry.voxel_size)?;
+                        Ok(world)
+                    });
+                let world = match decoded {
+                    Ok(world) => Arc::new(world),
+                    Err(error) => {
+                        self.clear()?;
+                        return Err(error);
+                    }
+                };
                 self.cached_recipe = Some((
                     entry.id,
                     entry.source_revision,
@@ -582,10 +605,33 @@ mod tests {
 
         revised.voxel_size = 1.0;
         backend.publish_frame(&[&revised], view()).unwrap();
-        let coarse = backend.frame.lock().unwrap().as_ref().unwrap().world.clone();
+        let coarse = backend
+            .frame
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .world
+            .clone();
         assert_eq!(coarse.voxel_size(), 1.0);
         assert!(!Arc::ptr_eq(&third, &coarse));
-        assert_eq!(first.voxel_size(), 0.1, "old frame snapshots remain immutable");
+        assert_eq!(
+            first.voxel_size(),
+            0.1,
+            "old frame snapshots remain immutable"
+        );
+
+        let orbit = coarse.ground_spawn(0.0, 0.0, 300_000.0);
+        let (near, far) = backend.camera_clip_range(&revised, orbit).unwrap();
+        assert!(near > 1_000.0 && far > orbit.length() as f32);
+        let mut invalid = revised.clone();
+        invalid.generator.as_mut().unwrap().parameters = "{".into();
+        assert!(backend.publish_frame(&[&invalid], view()).is_err());
+        assert!(
+            backend.frame.lock().unwrap().is_none(),
+            "invalid recipes must not retain stale terrain"
+        );
+        backend.publish_frame(&[&revised], view()).unwrap();
 
         revised
             .store
