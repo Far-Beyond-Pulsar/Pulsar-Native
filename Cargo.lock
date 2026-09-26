@@ -8097,6 +8097,7 @@ dependencies = [
  "gpui-ce",
  "pulsar_events",
  "pulsar_reflection",
+ "pulsar_script_vm",
  "schemars",
  "serde",
  "serde_json",
@@ -8677,6 +8678,7 @@ name = "pulsar_class"
 version = "0.1.0"
 dependencies = [
  "engine_class_derive",
+ "engine_fs",
  "glam 0.33.5",
  "inventory",
  "pulsar_reflection",
@@ -8688,6 +8690,21 @@ dependencies = [
  "tempfile",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "pulsar_content"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_fs",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+ "twox-hash",
 ]
 
 [[package]]
@@ -8777,6 +8794,7 @@ version = "0.1.0"
 dependencies = [
  "engine_backend",
  "engine_class_derive",
+ "engine_fs",
  "engine_state",
  "glam 0.33.5",
  "helio",
@@ -8789,6 +8807,7 @@ dependencies = [
  "pollster 1.0.1",
  "profiling 0.1.0",
  "pulsar_class",
+ "pulsar_content",
  "pulsar_core",
  "pulsar_events",
  "pulsar_pie_abi",
@@ -8845,6 +8864,30 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "pulsar_package"
+version = "0.1.0"
+dependencies = [
+ "blueprint_editor_plugin",
+ "clap",
+ "engine_state",
+ "plugin_editor_api",
+ "pulsar_class",
+ "pulsar_content",
+ "pulsar_events",
+ "pulsar_game",
+ "pulsar_script_runtime",
+ "pulsar_script_vm",
+ "pulsar_settings",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "toml 1.1.4+spec-1.1.0",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -8986,6 +9029,7 @@ dependencies = [
 name = "pulsar_script_vm"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "inventory",
  "libloading 0.9.0",
  "pulsar_reflection",

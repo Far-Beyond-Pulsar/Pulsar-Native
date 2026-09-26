@@ -305,6 +305,11 @@ impl EmbeddedGame {
             let msg = "PiE hot reload: actor registrations will re-bind to existing entities";
             (ctx.log)(ctx.userdata, LOG_INFO, msg.as_ptr(), msg.len());
         }
+        // The project's content is the editor's project, as loose files:
+        // `setup()`'s `enable_project_scripting` reads its classes and
+        // settings from here (the dylib has its own copy of this global).
+        pulsar_content::ContentRoot::project(project_root.clone()).install();
+
         // NOTE: `setup()` deliberately runs AFTER adoption so project actors
         // register against the host's world. The scene file is NOT loaded:
         // under v2 the shared world already holds the hydrated level.

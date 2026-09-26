@@ -123,9 +123,9 @@ impl ClassDefinition {
     pub fn variables(&self) -> Vec<ClassVariable> {
         let defaults = self.prefab.variable_defaults();
         let module =
-            std::fs::read_to_string(self.dir.join("events").join(".build").join("module.json"))
+            engine_fs::virtual_fs::read_file(&self.dir.join("events").join(".build").join("module.json"))
                 .ok()
-                .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+                .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok());
         let mut out: Vec<ClassVariable> = Vec::new();
         if let Some(vars) = module
             .as_ref()
@@ -196,9 +196,14 @@ pub fn is_class_dir(dir: &Path) -> bool {
 }
 
 impl ClassRegistry {
-    /// Scan `<project>/src/classes/*`, assigning a GUID to every class that
-    /// has none yet.
+    /// The project's classes: from its class index (`Pulsar/class_index.json`,
+    /// written into packaged content, where nothing is scanned or
+    /// written), otherwise by scanning `<project>/src/classes/*` and
+    /// assigning a GUID to every class that has none yet.
     pub fn scan(project_root: &Path) -> Self {
+        if let Some(index) = ClassIndex::read(project_root) {
+            return index.registry(project_root);
+        }
         Self::scan_classes_dir(&classes_dir(project_root))
     }
 
@@ -305,9 +310,95 @@ impl ClassRegistry {
     }
 }
 
+/// The class index file, relative to the project (or content) root.
+pub const CLASS_INDEX_FILE: &str = "Pulsar/class_index.json";
+
+/// One class in a [`ClassIndex`].
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ClassIndexEntry {
+    pub id: ClassId,
+    pub name: String,
+    /// The class directory, relative to the root, `/`-separated.
+    pub dir: String,
+}
+
+/// Class GUID -> class directory, resolved ahead of time (by the
+/// packager) so a packaged game never scans or writes class directories.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ClassIndex {
+    pub format: u32,
+    pub classes: Vec<ClassIndexEntry>,
+}
+
+impl ClassIndex {
+    pub const FORMAT: u32 = 1;
+
+    /// The index of `registry`'s classes, with directories relative to
+    /// `root`. Classes outside `root` are left out.
+    pub fn from_registry(registry: &ClassRegistry, root: &Path) -> Self {
+        let classes = registry
+            .entries()
+            .iter()
+            .filter_map(|entry| {
+                let rel = entry.dir.strip_prefix(root).ok()?;
+                let dir = rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
+                Some(ClassIndexEntry { id: entry.id.clone(), name: entry.name.clone(), dir })
+            })
+            .collect();
+        Self { format: Self::FORMAT, classes }
+    }
+
+    /// Read `<root>/Pulsar/class_index.json` (through the virtual
+    /// filesystem). `None` when there is none.
+    pub fn read(root: &Path) -> Option<Self> {
+        let bytes = engine_fs::virtual_fs::read_file(&root.join(CLASS_INDEX_FILE)).ok()?;
+        match serde_json::from_slice(&bytes) {
+            Ok(index) => Some(index),
+            Err(error) => {
+                tracing::warn!(root = %root.display(), "Unreadable class index: {error}");
+                None
+            }
+        }
+    }
+
+    pub fn to_json(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_else(|_| "{}".into())
+    }
+
+    /// The registry these classes form under `root`.
+    pub fn registry(&self, root: &Path) -> ClassRegistry {
+        ClassRegistry::from_entries(
+            self.classes
+                .iter()
+                .map(|c| ClassEntry { id: c.id.clone(), name: c.name.clone(), dir: root.join(&c.dir) })
+                .collect(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_class_index_replaces_the_scan() {
+        let root = tempfile::tempdir().unwrap();
+        let classes = classes_dir(root.path());
+        std::fs::create_dir_all(classes.join("Lamp")).unwrap();
+        std::fs::write(classes.join("Lamp").join("graph_save.json"), "{}").unwrap();
+        let scanned = ClassRegistry::scan(root.path());
+        let index = ClassIndex::from_registry(&scanned, root.path());
+        assert_eq!(index.classes[0].dir, "src/classes/Lamp");
+
+        // Elsewhere (a packaged game): only the index, no class dirs to scan.
+        let shipped = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(shipped.path().join("Pulsar")).unwrap();
+        std::fs::write(shipped.path().join(CLASS_INDEX_FILE), index.to_json()).unwrap();
+        let registry = ClassRegistry::scan(shipped.path());
+        let lamp = registry.by_name("Lamp").unwrap();
+        assert_eq!(lamp.id, scanned.by_name("Lamp").unwrap().id);
+        assert_eq!(lamp.dir, shipped.path().join("src/classes/Lamp"));
+    }
 
     #[test]
     fn scan_assigns_ids_and_resolves_paths() {

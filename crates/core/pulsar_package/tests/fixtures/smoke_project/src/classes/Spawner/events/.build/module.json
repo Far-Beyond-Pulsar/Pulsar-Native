@@ -1,0 +1,249 @@
+{
+  "format_version": 2,
+  "name": "Spawner",
+  "constants": [
+    {
+      "Str": "Minion"
+    },
+    {
+      "Float": 0.0
+    },
+    {
+      "Str": "Spawner.Ping"
+    },
+    {
+      "Int": 1
+    }
+  ],
+  "imports": [
+    {
+      "name": "world::spawn",
+      "sig": {
+        "params": [
+          {
+            "ty": {
+              "kind": "str"
+            },
+            "inout": false
+          },
+          {
+            "ty": {
+              "kind": "float"
+            },
+            "inout": false
+          },
+          {
+            "ty": {
+              "kind": "float"
+            },
+            "inout": false
+          },
+          {
+            "ty": {
+              "kind": "float"
+            },
+            "inout": false
+          }
+        ],
+        "ret": {
+          "kind": "entity"
+        }
+      }
+    },
+    {
+      "name": "event::emit",
+      "sig": {
+        "params": [
+          {
+            "ty": {
+              "kind": "str"
+            },
+            "inout": false
+          },
+          {
+            "ty": {
+              "kind": "int"
+            },
+            "inout": false
+          }
+        ],
+        "ret": {
+          "kind": "unit"
+        }
+      }
+    }
+  ],
+  "variables": [
+    {
+      "name": "minion",
+      "ty": {
+        "kind": "entity"
+      },
+      "default": null
+    },
+    {
+      "name": "pings",
+      "ty": {
+        "kind": "int"
+      },
+      "default": {
+        "Int": 0
+      }
+    }
+  ],
+  "functions": [
+    {
+      "name": "begin_play",
+      "exported": true,
+      "params": [],
+      "ret": {
+        "kind": "unit"
+      },
+      "registers": [
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "entity"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "int"
+        }
+      ],
+      "code": [
+        {
+          "Const": {
+            "dst": 0,
+            "index": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 1,
+            "index": 1
+          }
+        },
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              0,
+              1,
+              1,
+              1
+            ],
+            "dst": 2
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 2
+          }
+        },
+        {
+          "Const": {
+            "dst": 3,
+            "index": 2
+          }
+        },
+        {
+          "Const": {
+            "dst": 4,
+            "index": 3
+          }
+        },
+        {
+          "CallNative": {
+            "import": 1,
+            "args": [
+              3,
+              4
+            ],
+            "dst": null
+          }
+        },
+        {
+          "Return": {
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "on_ping",
+      "exported": false,
+      "params": [
+        {
+          "kind": "int"
+        }
+      ],
+      "ret": {
+        "kind": "unit"
+      },
+      "registers": [
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "int"
+        }
+      ],
+      "code": [
+        {
+          "LoadVar": {
+            "dst": 1,
+            "var": 1
+          }
+        },
+        {
+          "Binary": {
+            "op": "Add",
+            "dst": 1,
+            "a": 1,
+            "b": 0
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 1,
+            "src": 1
+          }
+        },
+        {
+          "Return": {
+            "value": null
+          }
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "Spawner.Ping",
+      "fields": [
+        {
+          "name": "amount",
+          "ty": {
+            "kind": "int"
+          }
+        }
+      ]
+    }
+  ],
+  "subscriptions": [
+    {
+      "event": {
+        "Name": "Spawner.Ping"
+      },
+      "handler": 1,
+      "scope": "Global"
+    }
+  ]
+}

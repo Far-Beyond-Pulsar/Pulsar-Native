@@ -483,3 +483,59 @@ fn continuations_rebase_onto_compatible_modules() {
     v4.functions[0].code[1] = Move { dst: 1, src: 1 };
     assert!(continuation.rebase(&std::sync::Arc::new(v4)).unwrap_err().contains("no longer waits"));
 }
+
+// ---- checked arithmetic (#858) ------------------------------------------
+
+fn overflow_program() -> pulsar_script_vm::Program {
+    let mut asm = Asm::new();
+    let max = asm.constant(Constant::Int(i64::MAX));
+    let one = asm.constant(Constant::Int(1));
+    asm.function("add", vec![], Type::Int, vec![Type::Int, Type::Int], vec![
+        Const { dst: 0, index: max },
+        Const { dst: 1, index: one },
+        Binary { op: BinOp::Add, dst: 0, a: 0, b: 1 },
+        Return { value: Some(0) },
+    ]);
+    asm.function("to_int", vec![Type::Float], Type::Int, vec![Type::Int], vec![
+        Unary { op: UnOp::FloatToInt, dst: 1, src: 0 },
+        Return { value: Some(1) },
+    ]);
+    asm.link(&NativeRegistry::new())
+}
+
+#[test]
+fn integer_overflow_wraps_by_default() {
+    let program = overflow_program();
+    let mut h = Harness::new();
+    assert!(!h.vm.checked_arithmetic);
+    assert_eq!(h.run(&program, "add", &[]).unwrap(), int(i64::MIN));
+    assert_eq!(h.run(&program, "to_int", &[float(1e300)]).unwrap(), int(i64::MAX));
+}
+
+#[test]
+fn checked_arithmetic_turns_overflow_into_an_error() {
+    let program = overflow_program();
+    let mut h = Harness::new();
+    h.vm.checked_arithmetic = true;
+    let err = h.run(&program, "add", &[]).unwrap_err();
+    assert_eq!(err.kind, ScriptErrorKind::Overflow { op: "Add".into() });
+    assert_eq!(err.trace, vec![("add".to_string(), 2)]);
+    let err = h.run(&program, "to_int", &[float(f64::NAN)]).unwrap_err();
+    assert_eq!(err.kind, ScriptErrorKind::Overflow { op: "FloatToInt".into() });
+    assert_eq!(h.run(&program, "to_int", &[float(-3.9)]).unwrap(), int(-3));
+}
+
+#[test]
+fn the_call_depth_limit_is_configurable() {
+    let mut asm = Asm::new();
+    asm.function("forever", vec![], Type::Unit, vec![], vec![
+        Call { func: 0, args: vec![], dst: None },
+        Return { value: None },
+    ]);
+    let program = asm.link(&NativeRegistry::new());
+    let mut h = Harness::new();
+    h.vm.max_depth = 4;
+    let err = h.run(&program, "forever", &[]).unwrap_err();
+    assert_eq!(err.kind, ScriptErrorKind::StackOverflow);
+    assert_eq!(err.trace.len(), 4);
+}

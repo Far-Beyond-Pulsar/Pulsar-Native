@@ -41,7 +41,10 @@ pub use plan::{plan_instance, InstancePlan, LocalTransform, PlannedChild, Planne
 pub use prefab::{
     is_slot_uuid, new_slot_id, BlueprintClassRef, PrefabAsset, PrefabComponent, PREFAB_FILE,
 };
-pub use registry::{ClassDefinition, ClassEntry, ClassRegistry, ClassVariable, VariableKind};
+pub use registry::{
+    ClassDefinition, ClassEntry, ClassIndex, ClassIndexEntry, ClassRegistry, ClassVariable, VariableKind,
+    CLASS_INDEX_FILE,
+};
 pub use world::{ClassPlacement, SlotHandle};
 
 /// Component class name of [`ClassInstance`].

@@ -1,8 +1,11 @@
 //! The bytecode module format every scripting frontend compiles to.
 //!
-//! A [`Module`] is self-describing and serializable (serde; JSON today, a
-//! compact binary encoding can be added without changing the model). It
-//! contains:
+//! A [`Module`] is self-describing and serializable in two encodings
+//! (#852): JSON ([`Module::to_json`], what the editor writes, easy to
+//! read and diff) and a compact binary one ([`Module::to_binary`], what
+//! packaged games ship). [`Module::decode`] reads either, telling them
+//! apart by the binary header ([`BINARY_MAGIC`] plus the format version).
+//! It contains:
 //!
 //! - **functions**, each with typed parameters, a typed register file and
 //!   straight-line [`Instr`]uctions with explicit jumps;
@@ -32,6 +35,7 @@
 //! module declares; the linker checks the rest against the engine's event
 //! catalog.
 
+use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
 use crate::types::Type;
@@ -44,10 +48,35 @@ pub const FORMAT_VERSION: u32 = 2;
 /// no events or subscriptions (both default to empty).
 pub const MIN_FORMAT_VERSION: u32 = 1;
 
+/// First bytes of a binary module ([`Module::to_binary`]). JSON modules
+/// start with `{` or whitespace, so the two never collide.
+pub const BINARY_MAGIC: [u8; 4] = *b"PSVM";
+
+/// Length of the binary header: [`BINARY_MAGIC`], then the format version
+/// as a little-endian `u32`.
+pub const BINARY_HEADER_LEN: usize = 8;
+
+/// Why bytes could not be read as a module.
+#[derive(Debug, thiserror::Error)]
+pub enum ModuleDecodeError {
+    #[error("invalid JSON module: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("binary module header is truncated")]
+    Truncated,
+    #[error("binary module has format version {found}; this engine reads version {expected}")]
+    UnsupportedVersion { found: u32, expected: u32 },
+    #[error("corrupt binary module: {0}")]
+    Corrupt(String),
+}
+
+fn bincode_config() -> impl bincode::config::Config {
+    bincode::config::standard()
+}
+
 /// Register index within a function.
 pub type Reg = u16;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Encode, Decode)]
 pub struct Module {
     pub format_version: u32,
     pub name: String,
@@ -89,6 +118,56 @@ impl Module {
         serde_json::from_str(json)
     }
 
+    /// The compact binary encoding: [`BINARY_MAGIC`], [`FORMAT_VERSION`]
+    /// (little-endian `u32`), then the module (bincode, standard config).
+    /// Debug info is kept; strip [`Function::debug`] first to drop it.
+    pub fn to_binary(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(256);
+        out.extend_from_slice(&BINARY_MAGIC);
+        out.extend_from_slice(&FORMAT_VERSION.to_le_bytes());
+        let body = bincode::encode_to_vec(self, bincode_config())
+            .expect("encoding a module into memory cannot fail");
+        out.extend_from_slice(&body);
+        out
+    }
+
+    /// Read a binary module ([`to_binary`](Self::to_binary)). Only the
+    /// current [`FORMAT_VERSION`] is accepted: binary modules are build
+    /// outputs, rebuilt with the engine, never hand-kept.
+    pub fn from_binary(bytes: &[u8]) -> Result<Self, ModuleDecodeError> {
+        if bytes.len() < BINARY_HEADER_LEN || bytes[..4] != BINARY_MAGIC {
+            return Err(ModuleDecodeError::Truncated);
+        }
+        let found = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+        if found != FORMAT_VERSION {
+            return Err(ModuleDecodeError::UnsupportedVersion { found, expected: FORMAT_VERSION });
+        }
+        let (module, read): (Self, usize) =
+            bincode::decode_from_slice(&bytes[BINARY_HEADER_LEN..], bincode_config())
+                .map_err(|error| ModuleDecodeError::Corrupt(error.to_string()))?;
+        if BINARY_HEADER_LEN + read != bytes.len() {
+            return Err(ModuleDecodeError::Corrupt(format!(
+                "{} trailing bytes",
+                bytes.len() - BINARY_HEADER_LEN - read
+            )));
+        }
+        Ok(module)
+    }
+
+    /// Whether `bytes` start like a binary module.
+    pub fn is_binary(bytes: &[u8]) -> bool {
+        bytes.starts_with(&BINARY_MAGIC)
+    }
+
+    /// Read a module in either encoding, detected from the first bytes.
+    pub fn decode(bytes: &[u8]) -> Result<Self, ModuleDecodeError> {
+        if Self::is_binary(bytes) {
+            Self::from_binary(bytes)
+        } else {
+            Ok(serde_json::from_slice(bytes)?)
+        }
+    }
+
     pub fn function(&self, name: &str) -> Option<(u32, &Function)> {
         self.functions
             .iter()
@@ -115,7 +194,8 @@ impl Module {
             LinkError::Verify(verify) => at_function(verify.function.as_deref()?, verify.pc),
             LinkError::MissingNative { name }
             | LinkError::SignatureMismatch { name, .. }
-            | LinkError::PolyNative { name, .. } => {
+            | LinkError::PolyNative { name, .. }
+            | LinkError::CapabilityDenied { name, .. } => {
                 let import = self.imports.iter().position(|i| &i.name == name)? as u32;
                 self.functions.iter().find_map(|function| {
                     let pc = function.code.iter().position(
@@ -163,7 +243,7 @@ impl std::fmt::Display for ErrorSite {
 
 /// An event a module declares: registered on the engine event hub as a
 /// dynamic descriptor with these fields when the module loads.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
 pub struct EventDecl {
     /// Unique engine-wide. Frontends qualify it (the Blueprint compiler
     /// uses `<Class>.<Event>`).
@@ -172,7 +252,7 @@ pub struct EventDecl {
     pub fields: Vec<EventField>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
 pub struct EventField {
     pub name: String,
     /// `bool`, `int`, `float`, `string` or `entity`.
@@ -186,7 +266,7 @@ impl EventField {
 }
 
 /// Which event a subscription is for.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
 pub enum EventRef {
     /// By descriptor name (the usual form).
     Name(String),
@@ -204,7 +284,7 @@ impl std::fmt::Display for EventRef {
 }
 
 /// The channel a subscription listens on, relative to the instance.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
 pub enum SubscriptionScope {
     /// The entity channel of the entity the instance is bound to: events
     /// about or sent to this object only. Not subscribed for an unbound
@@ -220,7 +300,7 @@ pub enum SubscriptionScope {
 }
 
 /// "Run `handler` when `event` arrives on `scope`".
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
 pub struct Subscription {
     pub event: EventRef,
     /// Index into [`Module::functions`].
@@ -229,7 +309,7 @@ pub struct Subscription {
     pub scope: SubscriptionScope,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Encode, Decode)]
 pub enum Constant {
     Bool(bool),
     Int(i64),
@@ -249,14 +329,14 @@ impl Constant {
 }
 
 /// A native function the module calls.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
 pub struct Import {
     /// Stable qualified name, e.g. `math::sin` or `Health::damage`.
     pub name: String,
     pub sig: Signature,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
 pub struct Signature {
     pub params: Vec<Param>,
     pub ret: Type,
@@ -284,7 +364,7 @@ impl std::fmt::Display for Signature {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
 pub struct Param {
     pub ty: Type,
     /// The callee may modify the argument; the new value is written back to
@@ -304,7 +384,7 @@ impl Param {
 }
 
 /// Per-instance state.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Encode, Decode)]
 pub struct Variable {
     pub name: String,
     pub ty: Type,
@@ -313,7 +393,7 @@ pub struct Variable {
     pub default: Option<Constant>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Encode, Decode)]
 pub struct Function {
     pub name: String,
     /// Callable from outside the module (entry points and events).
@@ -351,7 +431,7 @@ impl Function {
 /// fills what it has. The Blueprint compiler sets `node` to the graph node
 /// id and `file` to the graph file relative to the class directory; a
 /// text language would use `file` plus `line` / `column`.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
 pub struct SourceLoc {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub file: String,
@@ -392,14 +472,14 @@ impl std::fmt::Display for SourceLoc {
 
 /// A function's pc → source table: sorted, non-overlapping ranges. Pcs no
 /// range covers have no location.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
 pub struct DebugInfo {
     #[serde(default)]
     pub ranges: Vec<DebugRange>,
 }
 
 /// Instructions `start..end` came from `loc`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
 pub struct DebugRange {
     pub start: u32,
     /// Exclusive.
@@ -432,7 +512,7 @@ impl DebugInfo {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
 pub enum UnOp {
     /// `int -> int`, `float -> float`.
     Neg,
@@ -446,9 +526,12 @@ pub enum UnOp {
     ToStr,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
 pub enum BinOp {
-    /// `int`/`float` (wrapping for ints); `string` concatenation.
+    /// `int`/`float`; `string` concatenation. Integer `Add`, `Sub`, `Mul`,
+    /// `Div` and `Rem` wrap, unless the VM runs with checked arithmetic
+    /// ([`Vm::checked_arithmetic`](crate::Vm::checked_arithmetic)), where
+    /// overflow is a runtime error.
     Add,
     Sub,
     Mul,
@@ -474,7 +557,7 @@ impl BinOp {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Encode, Decode)]
 pub enum Instr {
     /// `dst = constants[index]`.
     Const { dst: Reg, index: u32 },

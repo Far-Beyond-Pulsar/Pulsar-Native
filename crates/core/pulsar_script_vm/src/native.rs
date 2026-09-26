@@ -112,6 +112,13 @@ impl NativeFn {
         self.attrs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
     }
 
+    /// The capability a module needs to import this native (#869): its
+    /// [`CAPABILITY_ATTR`](crate::capability::CAPABILITY_ATTR) attribute.
+    /// `None`: every module may import it.
+    pub fn capability(&self) -> Option<&str> {
+        self.attr(crate::capability::CAPABILITY_ATTR).filter(|c| !c.is_empty())
+    }
+
     pub(crate) fn attach_library(&mut self, id: LibraryId, library: Arc<ShadowLibrary>) {
         self.origin = Origin::Library(id);
         self.library = Some(library);
@@ -160,6 +167,13 @@ impl NativeBuilder {
     pub fn attr(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.attrs.push((key.into(), value.into()));
         self
+    }
+
+    /// Gate this native behind `capability` (`fs`, `net`, `process`, ..):
+    /// only modules linked with a policy allowing it may import it. See
+    /// [`CapabilityPolicy`](crate::capability::CapabilityPolicy).
+    pub fn capability(self, capability: impl Into<String>) -> Self {
+        self.attr(crate::capability::CAPABILITY_ATTR, capability)
     }
 
     pub fn params<S: Into<String>>(mut self, names: impl IntoIterator<Item = S>) -> Self {

@@ -83,11 +83,12 @@ impl PrefabAsset {
     /// is read-only the ids still work for this session, with a warning.
     pub fn load_from_dir(dir: &Path) -> Result<Self, String> {
         let path = dir.join(PREFAB_FILE);
-        if !path.exists() {
+        if !engine_fs::virtual_fs::exists(&path).unwrap_or(false) {
             return Ok(Self::default());
         }
-        let text = std::fs::read_to_string(&path)
+        let bytes = engine_fs::virtual_fs::read_file(&path)
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+        let text = String::from_utf8(bytes).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         let mut prefab: Self = serde_json::from_str(&text)
             .map_err(|e| format!("failed to parse {}: {e}", path.display()))?;
         if prefab.fill_missing_slot_ids() {

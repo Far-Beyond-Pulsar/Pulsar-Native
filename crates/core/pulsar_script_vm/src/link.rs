@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use crate::capability::CapabilityPolicy;
 use crate::error::LinkError;
 use crate::events::{check_handler, EventCatalog, EventSignature};
 use crate::module::{Constant, EventRef, Module, SubscriptionScope};
@@ -73,6 +74,17 @@ impl Program {
         registry: &NativeRegistry,
         events: Option<&dyn EventCatalog>,
     ) -> Result<Self, LinkError> {
+        Self::link_with_policy(module, registry, events, &CapabilityPolicy::allow_all())
+    }
+
+    /// [`link_with_events`](Self::link_with_events), also refusing any
+    /// import of a native whose capability `policy` does not allow (#869).
+    pub fn link_with_policy(
+        module: Arc<Module>,
+        registry: &NativeRegistry,
+        events: Option<&dyn EventCatalog>,
+        policy: &CapabilityPolicy,
+    ) -> Result<Self, LinkError> {
         verify(&module)?;
         let types = TypeRegistry::global();
         let default = |ty: &Type| {
@@ -95,6 +107,12 @@ impl Program {
                     None => return Err(LinkError::MissingNative { name: import.name.clone() }),
                 },
             };
+            if !policy.allows(native.capability()) {
+                return Err(LinkError::CapabilityDenied {
+                    name: import.name.clone(),
+                    capability: native.capability().unwrap_or_default().to_owned(),
+                });
+            }
             if native.sig != import.sig {
                 return Err(LinkError::SignatureMismatch {
                     name: import.name.clone(),

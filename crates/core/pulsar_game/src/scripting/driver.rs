@@ -113,10 +113,10 @@ impl ScriptingConfig {
     /// with a warning.
     pub fn load(project_root: &Path) -> Self {
         let path = scripting_config_path(project_root);
-        let Ok(text) = std::fs::read_to_string(&path) else {
+        let Ok(bytes) = engine_fs::virtual_fs::read_file(&path) else {
             return Self::default();
         };
-        serde_json::from_str(&text).unwrap_or_else(|error| {
+        serde_json::from_slice(&bytes).unwrap_or_else(|error| {
             tracing::warn!(path = %path.display(), "Unreadable scripting config; using defaults: {error}");
             Self::default()
         })
@@ -133,9 +133,32 @@ pub fn global_instance_id(class: &ClassId) -> String {
     format!("global::{class}")
 }
 
-/// Where a class's compiled script module lives.
-fn module_file(entry: &ClassEntry) -> PathBuf {
-    entry.dir.join("events").join(".build").join("module.json")
+/// File name of a class's compiled module in the editor's JSON encoding.
+pub const MODULE_JSON_FILE: &str = "module.json";
+/// File name of a class's compiled module in the binary encoding packaged
+/// games ship (#852).
+pub const MODULE_BINARY_FILE: &str = "module.pvm";
+
+/// Where a class's compiled script module lives: the binary one when the
+/// class has it (packaged content), else the editor's JSON one. Either may
+/// be missing. Checked through the virtual filesystem, so a pak counts.
+pub fn module_file(entry: &ClassEntry) -> PathBuf {
+    let build = entry.dir.join("events").join(".build");
+    let binary = build.join(MODULE_BINARY_FILE);
+    if engine_fs::virtual_fs::exists(&binary).unwrap_or(false) {
+        binary
+    } else {
+        build.join(MODULE_JSON_FILE)
+    }
+}
+
+/// Read a compiled module file (JSON or binary) through the virtual
+/// filesystem. `None` when it does not exist.
+fn read_module_bytes(path: &Path) -> Option<std::io::Result<Vec<u8>>> {
+    if !engine_fs::virtual_fs::exists(path).unwrap_or(false) {
+        return None;
+    }
+    Some(engine_fs::virtual_fs::read_file(path).map_err(|e| std::io::Error::other(e.to_string())))
 }
 
 /// What one reconcile or frame did.
@@ -280,8 +303,8 @@ impl ScriptDriver {
         }
         for entry in self.registry.entries() {
             let path = module_file(entry);
-            let Ok(json) = std::fs::read_to_string(&path) else { continue };
-            match pulsar_script_vm::Module::from_json(&json) {
+            let Some(Ok(bytes)) = read_module_bytes(&path) else { continue };
+            match pulsar_script_vm::Module::decode(&bytes) {
                 Ok(module) => {
                     if let Err(error) = self.runtime.declare_events(&module) {
                         tracing::warn!("{error}");
@@ -749,11 +772,15 @@ impl ScriptDriver {
             return Some(entry.name.clone());
         }
         let module = module_file(entry);
-        if !module.is_file() {
-            tracing::debug!(class = %entry.name, "Class has no compiled script module; nothing runs for it");
-            return None;
-        }
-        match self.runtime.load_class_file(&module) {
+        let loaded = match read_module_bytes(&module) {
+            None => {
+                tracing::debug!(class = %entry.name, "Class has no compiled script module; nothing runs for it");
+                return None;
+            }
+            Some(Ok(bytes)) => self.runtime.load_class_bytes(&bytes, &module).map(|(name, _)| name),
+            Some(Err(source)) => Err(RuntimeError::Io { path: module.clone(), source }),
+        };
+        match loaded {
             Ok(name) => {
                 self.loaded.insert(entry.id.clone(), name.clone());
                 Some(name)
@@ -818,8 +845,11 @@ impl ScriptDriver {
 
         if let Some(class) = self.loaded.get(&entry.id).cloned() {
             let module = module_file(&entry);
-            if module.is_file() {
-                match self.runtime.load_class_file_reporting(&module) {
+            if let Some(read) = read_module_bytes(&module) {
+                let loaded = read
+                    .map_err(|source| RuntimeError::Io { path: module.clone(), source })
+                    .and_then(|bytes| self.runtime.load_class_bytes(&bytes, &module));
+                match loaded {
                     Ok((name, reloaded)) => {
                         report
                             .dropped_calls

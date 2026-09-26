@@ -64,7 +64,8 @@ pub struct ClassMeta {
 impl ClassMeta {
     /// Read `<dir>/class.json`. `None` when missing or unreadable.
     pub fn read(dir: &Path) -> Option<Self> {
-        let text = std::fs::read_to_string(dir.join(CLASS_META_FILE)).ok()?;
+        let bytes = engine_fs::virtual_fs::read_file(&dir.join(CLASS_META_FILE)).ok()?;
+        let text = String::from_utf8(bytes).ok()?;
         match serde_json::from_str::<Self>(&text) {
             Ok(meta) => Some(meta),
             Err(error) => {

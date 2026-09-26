@@ -22,6 +22,9 @@ engine_subsystems = { workspace = true }
 pulsar_reflection = { workspace = true }
 # Asset-update notifications (`asset_events`), shared with the engine.
 pulsar_events = { workspace = true }
+# Headless script compiles (`ScriptLanguage::compile_project`) link against
+# the engine's native registry.
+pulsar_script_vm = { workspace = true }
 [build-dependencies]
 tracing = { workspace = true }
 

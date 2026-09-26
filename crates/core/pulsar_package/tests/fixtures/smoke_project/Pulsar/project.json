@@ -1,0 +1,8 @@
+{
+  "name": "Smoke Test",
+  "startup_level": "scenes/main.level",
+  "window": { "title": "Pulsar smoke test", "width": 640, "height": 360 },
+  "scripting": {
+    "shipping": { "instruction_budget": 200000 }
+  }
+}
