@@ -72,7 +72,7 @@ because it reduced arrival latency but worsened descent frame times. These
 offscreen measurements are not a populated level or whole-editor performance
 qualification.
 
-The [latest profiling checkpoint](https://github.com/Far-Beyond-Pulsar/Helio/blob/24e522966c164bf0f82e8fbbe35d6b9e21f7d0b0/crates/passes/3d/helio-pass-tiny-voxel/VALIDATION_2026_09_26_GOAL.md)
+The [preceding profiling checkpoint](https://github.com/Far-Beyond-Pulsar/Helio/blob/24e522966c164bf0f82e8fbbe35d6b9e21f7d0b0/crates/passes/3d/helio-pass-tiny-voxel/VALIDATION_2026_09_26_GOAL.md)
 pins Helio `24e52296` (terrain runtime `c5f80ee0`, evidence `61364975`,
 plus profiler identity). It retains source-frame-labelled
 terrain/graph timestamps, allocation reporting, exact primary-ray replay,
@@ -84,6 +84,24 @@ met the repeated performance gates. The retained source passed 25 terrain tests
 and does not establish acceptance timings. This Pulsar pointer passed all nine
 native voxel integration tests. Arrival, far fidelity, stable frame times and
 the visible contour/noise defects remain unresolved.
+
+The current Helio pointer is `ab07c84e`. The
+[canonical audit](https://github.com/Far-Beyond-Pulsar/Helio/blob/ab07c84e9d8d46304631845ed8220a29eff43cbf/crates/passes/3d/helio-pass-tiny-voxel/CANONICAL_FIDELITY_2026_09_26.md)
+fixes a half-voxel displacement at clamped brick entry. The
+[bounds and traversal checkpoint](https://github.com/Far-Beyond-Pulsar/Helio/blob/ab07c84e9d8d46304631845ed8220a29eff43cbf/crates/passes/3d/helio-pass-tiny-voxel/BOUNDS_AND_TRAVERSAL_2026_09_26.md)
+adds tighter conservative certificates for the same canonical field and fixes
+a near-coincident corner crossing that could cycle sunlight traversal.
+The CPU selection benchmark requests 5.8% fewer ground bricks, 23.1% fewer at
+200 m and 16.0% fewer at 1 km; some cold selections are slower. The adaptive
+Quality ground budget improves from 2.289 to 1.831 pixels. Neither those counts
+nor the unchanged 512 MiB material pool establish a GPU performance saving.
+Validation includes 27 terrain tests, two voxel-field tests, 904,932 exact
+noise samples and 546,940 edited/procedural cell checks. The 1,124-frame Quality
+recording passed 368 capture audits; the 1,165-frame native diagnostic passed
+21. These recorded/instrumented flights are not performance acceptance.
+Far GPU cells still disagree with exact CPU occupancy; the appearance, regional
+publication, latency, populated-editor and simulation gates remain open.
+All nine native voxel integration tests passed with this paired pointer.
 
 Pulsar's Flamegraph recorder supplies CPU/thread context and saves the Helio GPU
 durations. The GPU events now retain the profiler instance, producing GPU frame, observing CPU
