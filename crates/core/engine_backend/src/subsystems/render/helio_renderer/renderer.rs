@@ -719,6 +719,7 @@ impl HelioRenderer {
                     self.scene_store.read()
                 };
                 store.world.flush_gpu_mirror(&inner.queue);
+                crate::scene::end_change_window(&store.world);
             }
             {
                 profiling::profile_scope!("helio_renderer_render");

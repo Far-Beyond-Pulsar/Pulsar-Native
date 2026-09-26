@@ -14,7 +14,8 @@ use engine_backend::scene::SharedScene;
 use parking_lot::{
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
-use pulsar_scenedb::World;
+use pulsar_scenedb::{Entity, World};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -60,6 +61,10 @@ pub struct SceneDomain {
     /// Immutable snapshot captured before PIE; it carries parent links and
     /// component instances atomically.
     pub snapshot: Option<SceneHistorySnapshot>,
+    /// Every entity alive when the snapshot was taken. Stop despawns the
+    /// rest, including entities spawned during Play without a StableId
+    /// (which the snapshot restore can't see).
+    play_entities: Option<HashSet<Entity>>,
     /// Current editor mode.
     pub editor_mode: EditorMode,
     /// Bumped when a class update rebuilt placed instances (#935), from
@@ -88,6 +93,7 @@ impl Default for SceneDomain {
             scene: Arc::new(RwLock::new(engine_backend::scene::new_scene())),
             rebuild_epoch: 0,
             snapshot: None,
+            play_entities: None,
             editor_mode: EditorMode::Edit,
             class_updates: 0,
             current_scene: None,
@@ -302,6 +308,8 @@ impl SceneDomain {
     pub fn enter_play_mode(&mut self) {
         if self.snapshot.is_none() {
             self.snapshot = Some(self.capture_history_snapshot());
+            let live = self.world().query::<()>().map(|(entity, ())| entity).collect();
+            self.play_entities = Some(live);
         }
         self.editor_mode = EditorMode::Play;
     }
@@ -317,9 +325,24 @@ impl SceneDomain {
     /// object with a StableId is removed first, which includes everything
     /// scripts spawned during Play (`world::spawn` objects carry runtime
     /// StableIds, `<Class>_rt<n>`), and the snapshot's objects come back
-    /// with their components. Call it only once the game stopped (see
-    /// `end_pie`), so no game code runs against the restored world.
+    /// with their components. Entities spawned during Play without a
+    /// StableId (e.g. by native actors) are despawned first. Call it only
+    /// once the game stopped (see `end_pie`), so no game code runs against
+    /// the restored world.
     pub fn exit_play_mode(&mut self) {
+        if let Some(before) = self.play_entities.take() {
+            let mut world = self.world_mut();
+            let spawned: Vec<Entity> = world
+                .query::<()>()
+                .map(|(entity, ())| entity)
+                .filter(|entity| !before.contains(entity))
+                .collect();
+            for entity in spawned {
+                if world.is_alive(entity) {
+                    world.despawn(entity);
+                }
+            }
+        }
         if let Some(snapshot) = self.snapshot.take() {
             // The restore rebuilds the complete hierarchy and rehydrates registered
             // components together with the object data.

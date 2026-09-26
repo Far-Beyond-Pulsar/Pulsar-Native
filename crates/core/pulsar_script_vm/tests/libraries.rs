@@ -7,9 +7,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use common::{int, Asm, Harness};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use pulsar_script_vm::{
-    Instr, LibraryError, LinkError, NativeLibraries, NativeRegistry, Origin, Param, Program, Type,
-    Value,
+    HostAllocator, Instr, LibraryError, LinkError, NativeLibraries, NativeRegistry, Origin, Param,
+    Program, Type, Value,
 };
 
 fn fixture_path() -> PathBuf {
@@ -110,4 +112,49 @@ fn non_libraries_are_rejected() {
     let mut libraries = NativeLibraries::new(dir.join("shadow"));
     let err = libraries.load(&garbage, &mut NativeRegistry::new()).unwrap_err();
     assert!(matches!(err, LibraryError::Load { .. }), "{err}");
+}
+
+static COUNTED_ALLOCS: AtomicUsize = AtomicUsize::new(0);
+
+/// The global allocator, counting what goes through it.
+static COUNTING: HostAllocator = {
+    unsafe extern "C" fn alloc(size: usize, align: usize) -> *mut u8 {
+        COUNTED_ALLOCS.fetch_add(1, Ordering::Relaxed);
+        (HostAllocator::global().alloc)(size, align)
+    }
+    unsafe extern "C" fn alloc_zeroed(size: usize, align: usize) -> *mut u8 {
+        COUNTED_ALLOCS.fetch_add(1, Ordering::Relaxed);
+        (HostAllocator::global().alloc_zeroed)(size, align)
+    }
+    unsafe extern "C" fn dealloc(ptr: *mut u8, size: usize, align: usize) {
+        (HostAllocator::global().dealloc)(ptr, size, align)
+    }
+    unsafe extern "C" fn realloc(ptr: *mut u8, size: usize, align: usize, new_size: usize) -> *mut u8 {
+        COUNTED_ALLOCS.fetch_add(1, Ordering::Relaxed);
+        (HostAllocator::global().realloc)(ptr, size, align, new_size)
+    }
+    HostAllocator { alloc, alloc_zeroed, dealloc, realloc }
+};
+
+#[test]
+fn a_library_allocates_with_the_host_allocator() {
+    let mut registry = NativeRegistry::new();
+    let mut libraries = NativeLibraries::new(shadow_dir("alloc")).with_allocator(&COUNTING);
+    libraries.load(fixture_path(), &mut registry).unwrap();
+    // Registration itself allocates (the natives' names and closures).
+    let after_load = COUNTED_ALLOCS.load(Ordering::Relaxed);
+    assert!(after_load > 0, "registering natives did not allocate through the host");
+
+    let mut greet = Asm::new();
+    let f = greet.import("fixture::greet", vec![Param::new(Type::Str)], Type::Str);
+    greet.function("greet", vec![Type::Str], Type::Str, vec![Type::Str], vec![
+        Instr::CallNative { import: f, args: vec![0], dst: Some(1) },
+        Instr::Return { value: Some(1) },
+    ]);
+    let greet = greet.link(&registry);
+    // The returned string is allocated by the library, through the host,
+    // and freed here by the host.
+    let out = Harness::new().run(&greet, "greet", &[Value::from("host")]).unwrap();
+    assert_eq!(out, Value::from("hello host"));
+    assert!(COUNTED_ALLOCS.load(Ordering::Relaxed) > after_load);
 }
