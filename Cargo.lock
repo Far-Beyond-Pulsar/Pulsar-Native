@@ -8677,6 +8677,7 @@ name = "pulsar_class"
 version = "0.1.0"
 dependencies = [
  "engine_class_derive",
+ "engine_fs",
  "glam 0.33.5",
  "inventory",
  "pulsar_reflection",
@@ -8792,6 +8793,7 @@ version = "0.1.0"
 dependencies = [
  "engine_backend",
  "engine_class_derive",
+ "engine_fs",
  "engine_state",
  "glam 0.33.5",
  "helio",
@@ -8804,6 +8806,7 @@ dependencies = [
  "pollster 1.0.1",
  "profiling 0.1.0",
  "pulsar_class",
+ "pulsar_content",
  "pulsar_core",
  "pulsar_events",
  "pulsar_pie_abi",

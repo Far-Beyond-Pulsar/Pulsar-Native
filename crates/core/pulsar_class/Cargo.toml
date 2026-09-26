@@ -16,6 +16,9 @@ serde_json            = { workspace = true }
 tracing               = { workspace = true }
 uuid                  = { workspace = true, features = ["v4"] }
 glam                  = { workspace = true }
+# Class files are read through the virtual filesystem, so a packaged game
+# (pulsar_content's pak provider) serves them from its pak.
+engine_fs             = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -30,6 +30,9 @@ pub mod windowed_app;
 // Play In Editor — host-driven embedding (issue #243)
 pub mod embed;
 
+// Standalone entry point: content discovery, headless runs (#926)
+pub mod standalone;
+
 // Legacy tick loop (uses extracted primitives)
 pub mod tick;
 
@@ -81,7 +84,7 @@ pub mod prelude {
     pub use crate::{
         scripting::ScriptRuntime,
         freecam::FreeCam,
-        tick::{SharedTickLoop, TickLoop},
+        tick::{ScriptStats, SharedTickLoop, TickLoop},
         window::{RenderCamera, WindowDescriptor, WindowHandle, WindowManager},
     };
     pub use pulsar_core::{EventReader, EventWriter, GameTime, TaskPool, TickMode};
