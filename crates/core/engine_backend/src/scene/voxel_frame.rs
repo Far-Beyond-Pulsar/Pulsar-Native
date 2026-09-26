@@ -11,7 +11,7 @@ use helio_voxel_data::{
 };
 use pulsar_scenedb::{Entity, World};
 
-use crate::scene::Transform;
+use crate::scene::{Transform, Visibility};
 
 /// SceneDB entity bits include its generation; kind distinguishes source rows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -24,15 +24,21 @@ pub struct VoxelEntryId {
 #[derive(Clone)]
 pub struct VoxelSceneEntry {
     pub id: VoxelEntryId,
+    /// Editor visibility is independent of whether this source owns the
+    /// camera environment (for example a planet's atmosphere).
+    pub visible: bool,
     pub store: VoxelPayloadStore,
     pub domain: VoxelDomain,
     pub source_revision: u64,
+    pub editable: bool,
     pub origin: [f64; 3],
     pub voxel_size: f64,
     /// Logical width of a chunk address at LOD zero, in base voxel units.
     /// The payload format determines how that region is represented.
     pub chunk_edge_voxels: u32,
     pub lod_scale: u32,
+    /// Opaque renderer selection, independent of the generation recipe.
+    pub renderer_id: String,
     pub material_ids: Vec<u32>,
     pub generator: Option<VoxelGeneratorConfig>,
     pub initial_cube: Option<VoxelCubeInit>,
@@ -169,7 +175,10 @@ pub fn project_voxel_entries(world: &World) -> (Vec<VoxelSceneEntry>, Vec<String
             continue;
         }
         match object_entry(world, entity, component) {
-            Ok(entry) => entries.push(entry),
+            Ok(mut entry) => {
+                entry.visible = world.get::<Visibility>(entity).is_none_or(|v| v.visible);
+                entries.push(entry);
+            }
             Err(error) => errors.push(format!("voxel object {}: {error}", entity.bits())),
         }
     }
@@ -178,7 +187,10 @@ pub fn project_voxel_entries(world: &World) -> (Vec<VoxelSceneEntry>, Vec<String
             continue;
         }
         match terrain_entry(world, entity, component) {
-            Ok(entry) => entries.push(entry),
+            Ok(mut entry) => {
+                entry.visible = world.get::<Visibility>(entity).is_none_or(|v| v.visible);
+                entries.push(entry);
+            }
             Err(error) => errors.push(format!("voxel terrain {}: {error}", entity.bits())),
         }
     }
@@ -233,6 +245,7 @@ pub(super) fn object_entry(
             entity_bits: entity.bits(),
             kind: 0,
         },
+        visible: true,
         store: component.payload_store(),
         domain: VoxelDomain::Bounded {
             min: [0; 3],
@@ -240,10 +253,12 @@ pub(super) fn object_entry(
             max_lod: 0,
         },
         source_revision: 0,
+        editable: component.editable,
         origin,
         voxel_size: component.voxel_size * scale,
         chunk_edge_voxels: 8,
         lod_scale: 1,
+        renderer_id: component.renderer_id.clone(),
         material_ids: component.material_ids.clone(),
         generator: None,
         initial_cube: Some(VoxelCubeInit {
@@ -316,13 +331,16 @@ pub(super) fn terrain_entry(
             entity_bits: entity.bits(),
             kind: 1,
         },
+        visible: true,
         store: component.payload_store(),
         domain,
         source_revision: component.source_revision,
+        editable: component.editable,
         origin,
         voxel_size,
         chunk_edge_voxels: component.chunk_edge_voxels,
         lod_scale: component.lod_scale,
+        renderer_id: component.renderer_id.clone(),
         material_ids: component.material_ids.clone(),
         generator: (!component.generator_id.is_empty()).then(|| VoxelGeneratorConfig {
             id: component.generator_id.clone(),
@@ -350,6 +368,7 @@ mod tests {
         component.chunk_edge_voxels = 32;
         component.max_chunk_lod = 4;
         component.lod_scale = 3;
+        component.renderer_id = "test.renderer".into();
         component.generator_id = "test.world".into();
         component.generator_version = 7;
         component.seed = 42;
@@ -359,6 +378,7 @@ mod tests {
 
         let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
         assert_eq!(entry.chunk_edge_voxels, 32);
+        assert_eq!(entry.renderer_id, "test.renderer");
         assert_eq!(
             entry.domain,
             VoxelDomain::BoundedBase {

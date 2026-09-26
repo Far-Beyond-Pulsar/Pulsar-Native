@@ -175,6 +175,9 @@ helio                      = { path = "crates/renderer/helio/crates/helio" }
 helio-asset-compat         = { path = "crates/renderer/helio/crates/helio-asset-compat" }
 helio-default-graphs       = { path = "crates/renderer/helio/crates/helio-default-graphs" }
 helio-voxel-data = { path = "crates/renderer/helio/crates/helio-voxel-data" }
+helio-pass-tiny-voxel = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-tiny-voxel", features = ["engine"] }
+helio-pass-sky = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-sky" }
+helio-pass-tsr = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-tsr" }
 helio-pass-billboard = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-billboard" }
 helio-pass-forward-lit = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-forward-lit" }
 helio-pass-decal = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-decal" }

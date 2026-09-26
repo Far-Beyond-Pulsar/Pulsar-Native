@@ -251,3 +251,25 @@ pub(crate) fn load_with_classes<P: AsRef<Path>>(
     );
     Ok(level_file.editor.and_then(|editor| editor.camera))
 }
+
+#[cfg(test)]
+mod voxel_example_tests {
+    use super::*;
+
+    #[test]
+    fn voxel_planet_example_loads_as_a_scenedb_backend_source() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../assets/examples/voxel_planet.level");
+        let mut world = World::new();
+        let camera = load_from_file_with_editor_camera(&mut world, path)
+            .expect("example level loads")
+            .expect("example camera is present");
+        assert_eq!(camera.position, [0.0, 6_371_758.7, 0.0]);
+
+        let (entries, errors) = engine_backend::scene::voxel_frame::project_voxel_entries(&world);
+        assert!(errors.is_empty(), "{errors:?}");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].renderer_id, "helio.tiny-voxel");
+        assert_eq!(entries[0].generator.as_ref().unwrap().version, 5);
+    }
+}

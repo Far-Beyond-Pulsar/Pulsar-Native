@@ -379,8 +379,10 @@ fn default_level_loads_the_cathedral() {
         .filter(|o| matches!(o.object_type, ObjectType::Light(_)))
         .count();
     assert_eq!((meshes, lights), (14, 17));
+    // The committed level has a hand-authored view, independent of the
+    // generator's initial camera. Loading must preserve that saved position.
     assert_eq!(
         camera.expect("editor camera saved").position,
-        [0.0, 2.0, 24.0]
+        [0.13914977, 6.0, 12.8173485]
     );
 }

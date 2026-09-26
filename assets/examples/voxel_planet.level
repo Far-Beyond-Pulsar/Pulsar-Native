@@ -1,0 +1,205 @@
+{
+  "version": "2.1",
+  "objects": [
+    {
+      "id": "voxel_planet",
+      "name": "Voxel Planet",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Voxel Planet",
+      "props": {}
+    },
+    {
+      "id": "voxel_sun",
+      "name": "Sun",
+      "object_type": {
+        "Light": "Directional"
+      },
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Sun",
+      "props": {}
+    }
+  ],
+  "components": {
+    "voxel_planet": [
+      {
+        "class_name": "VoxelTerrainComponent",
+        "enabled": true,
+        "data": {
+          "enabled": true,
+          "domain_mode": 1,
+          "bounds_min_x": 0.0,
+          "bounds_min_y": 0.0,
+          "bounds_min_z": 0.0,
+          "bounds_max_x": 0.0,
+          "bounds_max_y": 0.0,
+          "bounds_max_z": 0.0,
+          "voxel_size": 0.1,
+          "chunk_edge_voxels": 32,
+          "max_chunk_lod": 20,
+          "lod_scale": 2,
+          "renderer_id": "helio.tiny-voxel",
+          "generator_id": "helio.tiny-voxel.default",
+          "generator_version": 5,
+          "seed": 0,
+          "generator_parameters": "",
+          "material_ids": [
+            0
+          ],
+          "editable": true,
+          "source_revision": 0
+        }
+      }
+    ],
+    "voxel_sun": [
+      {
+        "class_name": "LightComponent",
+        "enabled": true,
+        "data": {
+          "general": {
+            "enabled": true,
+            "affects_world": true,
+            "light_type": "Directional",
+            "light_channels": 255,
+            "lighting_channel_0": true,
+            "lighting_channel_1": false,
+            "lighting_channel_2": false
+          },
+          "intensity": {
+            "intensity": 1.0,
+            "intensity_units": "Lumens",
+            "exposure_compensation": 0.0,
+            "inverse_squared_falloff": true,
+            "indirect_intensity": 1.0,
+            "max_draw_distance": 0.0,
+            "max_distance_fade_range": 0.0
+          },
+          "color": {
+            "color": [
+              1.0,
+              0.96,
+              0.85,
+              1.0
+            ],
+            "use_temperature": false,
+            "temperature_kelvin": 6500.0,
+            "temperature_tint": 0.0,
+            "color_saturation": 1.0,
+            "color_contrast": 1.0,
+            "use_physical_light_color": true
+          },
+          "attenuation": {
+            "range": 4.0,
+            "falloff_start": 0.0,
+            "attenuation_exponent": 2.0,
+            "source_radius": 0.0,
+            "source_length": 0.0,
+            "inner_cone_angle": 30.0,
+            "outer_cone_angle": 45.0
+          },
+          "shadows": {
+            "cast_shadows": false,
+            "cast_static_shadows": false,
+            "cast_dynamic_shadows": false,
+            "cast_volumetric_shadow": true,
+            "cast_contact_shadows": false,
+            "shadow_bias": 0.5,
+            "shadow_normal_bias": 0.5,
+            "shadow_slope_bias": 0.5,
+            "shadow_filter_sharpen": 0.0,
+            "shadow_softness": 1.0,
+            "shadow_resolution_scale": 1.0,
+            "contact_shadow_non_shadow_casting_intensity": 0.0
+          },
+          "volumetrics": {
+            "affects_volumetric_fog": true,
+            "volumetric_scattering_intensity": 1.0,
+            "volumetric_shadow_intensity": 1.0,
+            "fog_inscattering_intensity": 1.0,
+            "contact_shadow_length": 0.0
+          },
+          "light_function": {
+            "light_function_material": "",
+            "light_function_scale": [
+              1.0,
+              1.0,
+              1.0
+            ],
+            "light_function_fade_distance": 0.0,
+            "light_function_disabled_brightness": 0.0
+          },
+          "performance": {
+            "mobile_quality_level": "High",
+            "ray_tracing_inclusion": true,
+            "virtual_shadow_map_enabled": true,
+            "shadow_cache_mode": "Auto",
+            "per_view_visibility_mask": 65535
+          },
+          "advanced": {
+            "affects_translucency": true,
+            "affects_reflections": true,
+            "affects_global_illumination": true,
+            "specular_scale": 1.0,
+            "diffuse_scale": 1.0
+          }
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "created": "2026-09-24T00:00:00Z",
+    "modified": "2026-09-24T00:00:00Z",
+    "editor_version": "0.1.34"
+  },
+  "editor": {
+    "camera": {
+      "position": [
+        0.0,
+        6371758.7,
+        0.0
+      ],
+      "yaw": 0.0,
+      "pitch": -0.15
+    }
+  }
+}

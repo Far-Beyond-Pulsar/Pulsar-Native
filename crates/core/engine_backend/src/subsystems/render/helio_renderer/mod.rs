@@ -2,6 +2,7 @@
 
 pub mod core;
 mod interaction;
+pub mod voxel_backend;
 mod gizmo_geometry;
 pub mod renderer;
 

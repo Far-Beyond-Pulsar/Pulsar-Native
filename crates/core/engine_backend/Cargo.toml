@@ -73,6 +73,9 @@ flume = { workspace = true, optional = true }
 helio = { workspace = true, optional = true }
 helio-asset-compat = { workspace = true, optional = true }
 helio-default-graphs = { workspace = true, optional = true }
+helio-pass-tiny-voxel = { workspace = true, optional = true }
+helio-pass-sky = { workspace = true, optional = true }
+helio-pass-tsr = { workspace = true, optional = true }
 # Opt-in live SceneDB inspector bridge; inert unless launched by scenedb_inspector.
 scenedb-inspector-agent = { path = "../../renderer/helio/crates/scenedb-inspector-agent", optional = true }
 glam.workspace = true
@@ -107,7 +110,7 @@ default = ["render", "editor-ui", "pie", "networking", "vcs", "physics"]
 # documented there first. Implied by `render` (GPU-column registration is
 # meaningless without wgpu anyway), not standalone-selectable.
 gpu        = []
-render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:helio-pass-decal", "dep:helio-pass-billboard", "dep:helio-pass-forward-lit", "dep:helio-pass-gbuffer", "dep:helio-pass-water-sim", "dep:wgpu", "dep:bytemuck", "gpu"]
+render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:helio-pass-tiny-voxel", "dep:helio-pass-sky", "dep:helio-pass-tsr", "dep:helio-pass-decal", "dep:helio-pass-billboard", "dep:helio-pass-forward-lit", "dep:helio-pass-gbuffer", "dep:helio-pass-water-sim", "dep:wgpu", "dep:bytemuck", "gpu"]
 editor-ui  = ["dep:gpui-ce", "dep:ui", "dep:pulsar_lsp", "dep:lsp-types", "dep:ropey", "dep:flume"]
 pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "dep:wgpu"]
 networking = ["dep:reqwest", "dep:async-tungstenite", "dep:futures"]

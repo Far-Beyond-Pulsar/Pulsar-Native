@@ -10,6 +10,14 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
         serde_json::from_value(voxel_json).expect("restore voxel component");
     assert_eq!(voxel_restored.material_ids, voxel.material_ids);
     assert_eq!(voxel_restored.dimensions, voxel.dimensions);
+    assert!(voxel_restored.renderer_id.is_empty());
+    let mut older_voxel_json = serde_json::to_value(&voxel).unwrap();
+    older_voxel_json
+        .as_object_mut()
+        .unwrap()
+        .remove("renderer_id");
+    let older_voxel: VoxelComponent = serde_json::from_value(older_voxel_json).unwrap();
+    assert!(older_voxel.renderer_id.is_empty());
 
     let terrain = VoxelTerrainComponent::default();
     assert_eq!(terrain.domain_mode, 1);
@@ -35,10 +43,19 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
 #[test]
 fn service_revision_is_persisted_but_not_exposed_as_an_inspector_property() {
     let properties = VoxelTerrainComponent::default().get_properties();
-    assert_eq!(properties.len(), 18);
-    assert!(properties.iter().any(|property| property.name == "chunk_edge_voxels"));
-    assert!(properties.iter().any(|property| property.name == "max_chunk_lod"));
-    assert!(properties.iter().any(|property| property.name == "lod_scale"));
+    assert_eq!(properties.len(), 19);
+    assert!(properties
+        .iter()
+        .any(|property| property.name == "renderer_id"));
+    assert!(properties
+        .iter()
+        .any(|property| property.name == "chunk_edge_voxels"));
+    assert!(properties
+        .iter()
+        .any(|property| property.name == "max_chunk_lod"));
+    assert!(properties
+        .iter()
+        .any(|property| property.name == "lod_scale"));
     assert!(properties
         .iter()
         .all(|property| property.name != "source_revision"));

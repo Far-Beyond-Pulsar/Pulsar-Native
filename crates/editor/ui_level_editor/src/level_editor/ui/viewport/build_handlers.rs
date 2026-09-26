@@ -136,7 +136,7 @@ pub(super) fn handle_mouse_move(
                     } else {
                         crate::level_editor::tool_modes::PointerKind::Hover
                     };
-                    let consumed = dispatch_tool_pointer(
+                    let tool_result = dispatch_tool_pointer(
                         &state_arc_move,
                         &gpu_engine_move,
                         tool_camera_frame(camera_state),
@@ -146,8 +146,26 @@ pub(super) fn handle_mouse_move(
                         norm_x,
                         norm_y,
                         event.modifiers,
-                    ) == crate::level_editor::tool_modes::ToolPointerResult::Consumed;
-                    if consumed { return; }
+                    );
+                    match tool_result {
+                        crate::level_editor::tool_modes::ToolPointerResult::Consumed => return,
+                        crate::level_editor::tool_modes::ToolPointerResult::VoxelBrush { radius, material } => {
+                            if let Some(events) = &pointer_events_move {
+                                if let Ok(mut events) = events.lock() {
+                                    let brush = engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush {
+                                        norm_x, norm_y, radius, material,
+                                    };
+                                    if matches!(events.last(), Some(engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush { .. })) {
+                                        *events.last_mut().expect("checked above") = brush;
+                                    } else {
+                                        events.push(brush);
+                                    }
+                                }
+                            }
+                            return;
+                        }
+                        crate::level_editor::tool_modes::ToolPointerResult::PassThrough => {}
+                    }
                     // Queue the latest hover/drag position for the render
                     // thread. The old direct try_lock path dropped movement
                     // whenever a frame was rendering, which made gizmos feel
@@ -448,10 +466,19 @@ pub(super) fn handle_left_mouse_down(
                         norm_y,
                         event.modifiers,
                     );
-                    if dispatch_result
-                        == crate::level_editor::tool_modes::ToolPointerResult::Consumed
-                    {
-                        return;
+                    match dispatch_result {
+                        crate::level_editor::tool_modes::ToolPointerResult::Consumed => return,
+                        crate::level_editor::tool_modes::ToolPointerResult::VoxelBrush { radius, material } => {
+                            if let Some(events) = &pointer_events {
+                                if let Ok(mut events) = events.lock() {
+                                    events.push(engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush {
+                                        norm_x, norm_y, radius, material,
+                                    });
+                                }
+                            }
+                            return;
+                        }
+                        crate::level_editor::tool_modes::ToolPointerResult::PassThrough => {}
                     }
 
                     if let Some(events) = &pointer_events {

@@ -2913,6 +2913,9 @@ dependencies = [
  "helio-pass-decal",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
+ "helio-pass-sky",
+ "helio-pass-tiny-voxel",
+ "helio-pass-tsr",
  "helio-pass-water-sim",
  "helio-voxel-data",
  "helio_component",
@@ -4956,6 +4959,20 @@ dependencies = [
  "bytemuck",
  "helio-core",
  "helio-pass-hiz",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-tiny-voxel"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio-core",
+ "rustc-hash 2.1.3",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "wgpu",
 ]
 

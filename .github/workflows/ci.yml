@@ -124,7 +124,9 @@ jobs:
               (($_["manifest_path"] -replace "\\", "/") -match "/plugins/vendor/")
             } | ForEach-Object { $_["name"] } | Sort-Object
           )
-          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin")
+          # These two are explicit root-workspace members: the built-in asset
+          # viewer and the Blueprint compiler tested against Pulsar's VM.
+          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin", "blueprint_compiler")
           $workspaceMemberDifference = @(
             Compare-Object $expectedVendorWorkspaceMembers $vendorWorkspaceMembers
           )

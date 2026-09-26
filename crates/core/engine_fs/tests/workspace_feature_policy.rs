@@ -113,6 +113,9 @@ fn workspace_engine_fs_callers_declare_their_minimum_surface() {
         ("agent_chat_tools".to_owned(), features(&["editor"])),
         ("engine_backend".to_owned(), features(&[])),
         ("engine_state".to_owned(), features(&["editor"])),
+        ("pulsar_class".to_owned(), features(&[])),
+        ("pulsar_content".to_owned(), features(&[])),
+        ("pulsar_game".to_owned(), features(&[])),
         // `pulsar_rendering` (now `helio_component`) moved to
         // `crates/renderer/helio/crates/helio-component` -- outside the fixed
         // `crates/{core,editor,subsystems,agent-providers}` tree

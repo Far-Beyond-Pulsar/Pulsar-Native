@@ -93,6 +93,7 @@ fn trait_vtable_dispatch() {
 
         impl plugin_editor_api::statusbar::EditorPluginStatusbar for FullTestPlugin {}
         impl plugin_editor_api::ai::EditorPluginAi for FullTestPlugin {}
+        impl plugin_editor_api::scripting::EditorPluginScripting for FullTestPlugin {}
         impl plugin_editor_api::components::EditorPluginComponents for FullTestPlugin {
             fn component_definitions(
                 &self,

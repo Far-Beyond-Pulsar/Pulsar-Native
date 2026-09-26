@@ -12,6 +12,7 @@ struct View {
     forward: Vec3,
     matrix: Mat4,
     size: Vec2,
+    far: f32,
 }
 impl Default for View {
     fn default() -> Self {
@@ -20,6 +21,7 @@ impl Default for View {
             forward: -Vec3::Z,
             matrix: Mat4::IDENTITY,
             size: Vec2::new(1600.0, 900.0),
+            far: 10_000.0,
         }
     }
 }
@@ -36,7 +38,7 @@ impl View {
     }
     fn length(self, p: Vec3) -> Option<f32> {
         let depth = (p - self.position).dot(self.forward);
-        (depth > 0.1).then_some(
+        (depth > 0.1 && depth < self.far).then_some(
             2.0 * depth * std::f32::consts::FRAC_PI_8.tan() * HANDLE_PIXELS / self.size.y,
         )
     }
@@ -83,12 +85,13 @@ impl SceneInteraction {
             self.mode = mode;
         }
     }
-    pub fn set_view(&mut self, position: Vec3, forward: Vec3, matrix: Mat4, size: Vec2) {
+    pub fn set_view(&mut self, position: Vec3, forward: Vec3, matrix: Mat4, size: Vec2, far: f32) {
         self.view = View {
             position,
             forward,
             matrix,
             size: size.max(Vec2::ONE),
+            far,
         };
     }
     pub fn is_dragging(&self) -> bool {
@@ -595,8 +598,23 @@ mod tests {
             -Vec3::Z,
             Mat4::perspective_rh(std::f32::consts::FRAC_PI_4, 1.0, 0.1, 10000.0),
             Vec2::splat(900.0),
+            10_000.0,
         );
         (world, interaction, entity)
+    }
+
+    #[test]
+    fn distant_planet_origin_has_no_gizmo_beyond_camera_far_plane() {
+        let (mut world, interaction, entity) = setup(GizmoType::Translate);
+        let mut planet = *world.get::<Transform>(entity).unwrap();
+        planet.position = [0.0, 0.0, -1_000_000.0];
+        world.insert(entity, planet);
+        assert_eq!(world.selected_entity(), Some(entity));
+        assert!(interaction.selected(&world).is_some());
+        assert!(interaction
+            .view
+            .length(Vec3::from_array(planet.position))
+            .is_none());
     }
 
     #[test]
