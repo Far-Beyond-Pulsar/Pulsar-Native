@@ -329,6 +329,8 @@ pub struct PulsarApp {
     cursor_captured: bool,
     /// Time of last `about_to_wait` — used to compute per-frame dt for freecam.
     last_frame: Instant,
+    /// When the last frame was drawn, for the profiler's frame markers.
+    last_redraw: Option<Instant>,
 }
 
 impl PulsarApp {
@@ -358,6 +360,7 @@ impl PulsarApp {
             focused_window: None,
             cursor_captured: false,
             last_frame: Instant::now(),
+            last_redraw: None,
         }
     }
 
@@ -673,6 +676,12 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
 
             // ── Render ────────────────────────────────────────────────────────
             WindowEvent::RedrawRequested => {
+                profiling::profile_scope!("Game::Frame");
+                // Frame markers drive the profiler's frame-time graph.
+                let now = Instant::now();
+                if let Some(last) = self.last_redraw.replace(now) {
+                    profiling::record_frame_time(now.duration_since(last).as_secs_f32() * 1000.0);
+                }
                 // Advance the shared world's authoritative SceneDB state and
                 // flush its GPU mirror. World content is read by Helio passes
                 // directly from that mirror -- there is no renderer-owned

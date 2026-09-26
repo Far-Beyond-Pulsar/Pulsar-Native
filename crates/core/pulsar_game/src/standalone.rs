@@ -41,6 +41,9 @@ pub struct LaunchOptions {
     /// Use this directory as the content (cooked content or a project)
     /// instead of discovering it.
     pub content: Option<PathBuf>,
+    /// Publish the process for the editor's profiler
+    /// (`--pulsar-profile`, or the `PULSAR_PROFILE` environment variable).
+    pub profile: bool,
 }
 
 /// Headless frames when `--frames` is not given.
@@ -50,10 +53,11 @@ pub const DEFAULT_HEADLESS_FRAMES: u64 = 60;
 /// tools and CI to find.
 pub const HEADLESS_REPORT_PREFIX: &str = "PULSAR_HEADLESS_REPORT ";
 
-pub const USAGE: &str = "usage: <game> [--headless] [--frames N] [--content DIR]\n\
+pub const USAGE: &str = "usage: <game> [--headless] [--frames N] [--content DIR] [--pulsar-profile]\n\
     \n  --headless       run the game loop without a window or renderer\
     \n  --frames N       with --headless: run N ticks, then exit (default 60)\
-    \n  --content DIR    read content from DIR instead of <exe dir>/Content or the project";
+    \n  --content DIR    read content from DIR instead of <exe dir>/Content or the project\
+    \n  --pulsar-profile let the editor's profiler record this process";
 
 impl LaunchOptions {
     /// Parse arguments (without the program name).
@@ -80,6 +84,7 @@ impl LaunchOptions {
                         Some(raw.parse().map_err(|_| format!("--frames: `{raw}` is not a number\n{USAGE}"))?);
                 }
                 "--content" => options.content = Some(PathBuf::from(value("--content")?)),
+                profiling::remote::ARG_FLAG => options.profile = true,
                 "--help" | "-h" => return Err(USAGE.to_owned()),
                 other => return Err(format!("unknown argument `{other}`\n{USAGE}")),
             }
@@ -182,6 +187,16 @@ pub fn run_with(
     setup: impl FnOnce(&mut TickLoop) -> Result<(), String>,
 ) -> Result<Option<HeadlessReport>, String> {
     let content = install_content(&options)?;
+    if options.profile || profiling::remote::requested() {
+        let published = profiling::remote::publish_process(profiling::remote::TargetDescription {
+            kind: "game".into(),
+            name: game_name(),
+            project: content.root().display().to_string(),
+        });
+        if published {
+            tracing::info!("Profiling enabled: the editor's profiler can record this process");
+        }
+    }
     let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
     if options.headless {
         let mut game = TickLoop::new(TickMode::Fixed { dt: HEADLESS_STEP }, threads);
@@ -350,6 +365,8 @@ mod tests {
         assert!(options.headless);
         assert_eq!(options.frames, Some(5));
         assert_eq!(options.content.as_deref(), Some(std::path::Path::new("/x")));
+        assert!(LaunchOptions::from_args(["--pulsar-profile"]).unwrap().profile);
+        assert!(!LaunchOptions::from_args(["--headless"]).unwrap().profile);
         assert!(LaunchOptions::from_args(["--frames"]).is_err());
         assert!(LaunchOptions::from_args(["--frames", "many"]).is_err());
         assert!(LaunchOptions::from_args(["--bogus"]).is_err());

@@ -5,6 +5,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
+profiling = { workspace = true }
 # UI framework
 gpui-ce.workspace = true
 ui.workspace = true

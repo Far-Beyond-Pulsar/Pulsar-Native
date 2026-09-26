@@ -109,6 +109,13 @@ impl PulsarApp {
         if let Some(ref path) = project_path {
             engine_state::set_project_path(path.to_string_lossy().into_owned());
             tracing::info!("Set engine project path to {:?}", path);
+            // Let other editors' profilers list and record this one (cheap
+            // until a viewer starts recording; once per process).
+            profiling::remote::publish_process(profiling::remote::TargetDescription {
+                kind: "editor".into(),
+                name: "Pulsar Editor".into(),
+                project: path.display().to_string(),
+            });
         }
 
         // ── Level editor ───────────────────────────────────────────────────────
