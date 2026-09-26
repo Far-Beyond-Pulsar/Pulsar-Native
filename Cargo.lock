@@ -4480,6 +4480,7 @@ dependencies = [
  "helio-pass-shadow-matrix",
  "helio-pass-sky",
  "helio-pass-tsr",
+ "helio-pass-volumetric-fog",
  "helio-xr",
  "image",
  "log",
