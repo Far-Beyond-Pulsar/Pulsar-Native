@@ -3,13 +3,14 @@
 use glam::{DVec3, Mat4, Vec3};
 use std::collections::HashSet;
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 use helio::{Camera, Renderer, RendererConfig};
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 use crate::scene::{GizmoType, SceneWorldExt};
 
+use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
 use super::voxel_backend::{
     TinyVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRenderBackend, VoxelView,
@@ -215,11 +216,12 @@ pub struct HelioRenderer {
     // ── Metrics ──
     pub metrics: Arc<Mutex<RenderMetrics>>,
     pub gpu_profiler: GpuProfilerData,
+    gpu_profiler_instance: u64,
     last_frame: Instant,
     frame_count: u64,
     spike_log_config: RenderSpikeLogConfig,
     last_spike_warning: Option<Instant>,
-    last_reported_gpu_frame: Option<u64>,
+    last_reported_gpu_frame: Option<(u64, u64)>,
 
     // ── Idle tracking ──
     /// Set when raw keyboard/mouse input was non-zero this frame, cleared
@@ -278,6 +280,7 @@ impl HelioRenderer {
             viewport_size: (0, 0),
             metrics: Arc::new(Mutex::new(RenderMetrics::default())),
             gpu_profiler: GpuProfilerData::default(),
+            gpu_profiler_instance: 0,
             last_frame: Instant::now(),
             frame_count: 0,
             spike_log_config: RenderSpikeLogConfig::default(),
@@ -923,18 +926,24 @@ impl HelioRenderer {
         // readback. Keep the old 30-frame cadence only for the cheap
         // always-on diagnostic cache when no instrumentation capture owns the
         // profiler.
-        if profiling::is_profiling_enabled() || self.profiler_frame_counter >= 30 {
+        let profiler_id = inner.renderer.profiling_instance_id();
+        if profiling::is_profiling_enabled()
+            || self.profiler_frame_counter >= 30
+            || self.gpu_profiler_instance != profiler_id
+        {
             profiling::profile_scope!("helio_gpu_profiler_update");
             self.profiler_frame_counter = 0;
             self.gpu_profiler
                 .update_from_snapshot(inner.renderer.timing_snapshot());
+            self.gpu_profiler_instance = profiler_id;
         }
 
         let gpu_frame = self.gpu_profiler.gpu_frame_count;
-        let new_gpu_result = gpu_frame.is_some() && gpu_frame != self.last_reported_gpu_frame;
+        let gpu_sample = gpu_frame.map(|frame| (profiler_id, frame));
+        let new_gpu_result = gpu_sample.is_some() && gpu_sample != self.last_reported_gpu_frame;
         if new_gpu_result {
             profiling::profile_scope!("helio_emit_gpu_passes");
-            emit_helio_gpu_passes(&self.gpu_profiler);
+            emit_helio_gpu_passes(&self.gpu_profiler, profiler_id);
         }
         let gpu_spike = new_gpu_result
             && self
@@ -977,7 +986,7 @@ impl HelioRenderer {
             self.last_spike_warning = Some(Instant::now());
         }
         if new_gpu_result {
-            self.last_reported_gpu_frame = gpu_frame;
+            self.last_reported_gpu_frame = gpu_sample;
         }
 
         {
@@ -1303,69 +1312,5 @@ impl HelioRenderer {
                 .interaction
                 .set_view(camera_position, forward, projection * view, size, 10_000.0);
         }
-    }
-}
-
-/// Publish completed Helio timestamp-query results into the shared trace.
-///
-/// These are deliberately submitted as GPU-track events rather than pretending
-/// that the asynchronous query result ran on the render thread. `parent_name`
-/// gives the viewer a stable relationship to the Helio frame scope, while the
-/// GPU thread identity keeps the samples on the dedicated GPU lane.
-fn emit_helio_gpu_passes(data: &GpuProfilerData) {
-    if !profiling::is_profiling_enabled() {
-        return;
-    }
-
-    let Some(total_gpu_ms) = data.total_gpu_ms else {
-        return;
-    };
-    let now_ns = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_nanos() as u64)
-        .unwrap_or(0);
-    let mut cursor_ns = now_ns.saturating_sub((total_gpu_ms * 1_000_000.0) as u64);
-    let profiler = profiling::init_profiler();
-    let total_duration_ns = (total_gpu_ms * 1_000_000.0) as u64;
-    let gpu_frame_scope_id = profiling::allocate_scope_id();
-    let logical_parent = profiling::current_scope_context().parent_scope_id;
-
-    profiler.submit_event(profiling::ProfileEvent {
-        scope_id: gpu_frame_scope_id,
-        parent_scope_id: logical_parent,
-        name: "helio_frame".to_string(),
-        thread_id: 0,
-        thread_name: Some("GPU".to_string()),
-        process_id: profiler.get_process_id(),
-        parent_name: None,
-        start_ns: cursor_ns,
-        duration_ns: total_duration_ns,
-        depth: 0,
-        location: None,
-        metadata: Some("domain=helio;track=gpu".to_string()),
-        track_name: Some("GPU".to_string()),
-    });
-
-    for pass in &data.render_metrics {
-        let Some(gpu_ms) = pass.gpu_ms else {
-            continue;
-        };
-        let duration_ns = (gpu_ms * 1_000_000.0) as u64;
-        profiler.submit_event(profiling::ProfileEvent {
-            scope_id: profiling::allocate_scope_id(),
-            parent_scope_id: Some(gpu_frame_scope_id),
-            name: pass.name.to_string(),
-            thread_id: 0,
-            thread_name: Some("GPU".to_string()),
-            process_id: profiler.get_process_id(),
-            parent_name: Some("helio_frame".to_string()),
-            start_ns: cursor_ns,
-            duration_ns,
-            depth: 1,
-            location: None,
-            metadata: Some("domain=helio;track=gpu".to_string()),
-            track_name: Some("GPU".to_string()),
-        });
-        cursor_ns = cursor_ns.saturating_add(duration_ns);
     }
 }

@@ -1,6 +1,7 @@
 //! Helio renderer — wgpu-based, renders directly into a WgpuSurface each frame.
 
 pub mod core;
+mod gpu_trace;
 mod interaction;
 pub mod voxel_backend;
 mod gizmo_geometry;

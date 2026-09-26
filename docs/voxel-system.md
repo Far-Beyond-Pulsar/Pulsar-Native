@@ -72,6 +72,35 @@ because it reduced arrival latency but worsened descent frame times. These
 offscreen measurements are not a populated level or whole-editor performance
 qualification.
 
+The [latest profiling checkpoint](https://github.com/Far-Beyond-Pulsar/Helio/blob/24e522966c164bf0f82e8fbbe35d6b9e21f7d0b0/crates/passes/3d/helio-pass-tiny-voxel/VALIDATION_2026_09_26_GOAL.md)
+pins Helio `24e52296` (terrain runtime `c5f80ee0`, evidence `61364975`,
+plus profiler identity). It retains source-frame-labelled
+terrain/graph timestamps, allocation reporting, exact primary-ray replay,
+sunlight readback checks and a leaf-exit rounding correction. Empty-brick
+skipping remains disabled and the parent-link experiment was reverted: neither
+met the repeated performance gates. The retained source passed 25 terrain tests
+(one CPU benchmark ignored), the full deferred-graph GPU test, and a 1,180-frame
+1080p Quality flight with 21 capture audits. The latter was heavily instrumented
+and does not establish acceptance timings. This Pulsar pointer passed all nine
+native voxel integration tests. Arrival, far fidelity, stable frame times and
+the visible contour/noise defects remain unresolved.
+
+Pulsar's Flamegraph recorder supplies CPU/thread context and saves the Helio GPU
+durations. The GPU events now retain the profiler instance, producing GPU frame, observing CPU
+frame, readback lag and dropped/overflowed query counts in saved event metadata.
+The profiler identity distinguishes restarted frame counters after graph rebuilds.
+The frame bar is labelled **estimated GPU placement** because this bridge has
+durations, not calibrated CPU/GPU clocks or original GPU scope offsets. It no
+longer assigns a delayed GPU result to the CPU scope active during readback, or
+adds the graph envelopes a second time as child passes. Pass durations are
+packed for display; their visual order and CPU overlap are not measured facts.
+Use the source-frame-labelled flight CSV for terrain comparisons and a native
+GPU capture when exact execution scheduling or shader hardware counters are
+needed. This change does not add terrain sub-stage scopes to the editor trace.
+The final paired revision passed 21 renderer-focused tests, including delayed
+GPU identity, reused frame numbers and metadata round-tripping through SQLite.
+Helio's four profiling tests also passed, including real GPU timestamp queries.
+
 The graph capture test runs with `HELIO_VOXEL_CAPTURE` set to an output PNG path:
 `cargo test -p helio-default-graphs --test voxel_pass_graph` from the Helio
 submodule. The capture validates pass ordering, attachment formats, and visible
