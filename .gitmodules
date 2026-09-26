@@ -37,4 +37,4 @@
 [submodule "crates/renderer/helio"]
 	path = crates/renderer/helio
 	url = https://github.com/Far-Beyond-Pulsar/Helio.git
-	branch = scenedb20-m3
+	branch = main
