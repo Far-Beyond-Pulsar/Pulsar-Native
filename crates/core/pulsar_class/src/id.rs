@@ -106,7 +106,8 @@ pub fn ensure_class_id(dir: &Path) -> ClassId {
             meta.class_id
         }
         Err(error) => {
-            let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            let name = crate::registry::class_name_of_dir(dir);
+            let name = name.as_str();
             tracing::warn!(
                 dir = %dir.display(),
                 "Could not write class.json ({error}); using a name-derived class id"

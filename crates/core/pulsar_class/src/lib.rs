@@ -42,7 +42,8 @@ pub use prefab::{
     is_slot_uuid, new_slot_id, BlueprintClassRef, PrefabAsset, PrefabComponent, PREFAB_FILE,
 };
 pub use registry::{
-    ClassDefinition, ClassEntry, ClassIndex, ClassIndexEntry, ClassRegistry, ClassVariable, VariableKind,
+    class_name_of_dir, find_class_dirs, project_root_of_class_dir, strip_class_ext, ClassDefinition,
+    ClassEntry, ClassIndex, ClassIndexEntry, ClassRegistry, ClassVariable, VariableKind, CLASS_DIR_EXTENSION,
     CLASS_INDEX_FILE,
 };
 pub use world::{ClassPlacement, SlotHandle};
