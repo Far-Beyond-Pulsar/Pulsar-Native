@@ -167,7 +167,15 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
 
     for class in &compiled.classes {
         let entry = &class.entry;
-        let dir = format!("src/classes/{}", entry.name);
+        // The class directory relative to the project (`src/classes/Door`,
+        // or a `Door.class/` folder anywhere in the project).
+        let dir = entry
+            .dir
+            .strip_prefix(&project)
+            .ok()
+            .map(|rel| rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/"))
+            .filter(|rel| !rel.is_empty())
+            .unwrap_or_else(|| format!("src/classes/{}", entry.name));
         files.insert(
             format!("{dir}/{}", pulsar_class::CLASS_META_FILE),
             json(&serde_json::json!({ "class_id": entry.id.as_str() })),
