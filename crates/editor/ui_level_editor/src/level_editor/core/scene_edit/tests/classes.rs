@@ -562,6 +562,7 @@ fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
         (objects, light(&world, &a).intensity.intensity)
     };
     let before = describe(&state);
+    let entities_before = state.scene.world().query::<()>().count();
 
     state.scene.enter_play_mode();
     {
@@ -584,7 +585,13 @@ fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
             };
             pulsar_class::world::instantiate_class_into(&mut world, &def, Default::default(), spec, reserved).unwrap();
         }
+        // A native actor spawns bare entities (#947): one with a light, one
+        // with nothing.
+        let bare = world.spawn();
+        world.insert(bare, LightComponent::default());
+        world.spawn();
     }
+    let entity_count = |state: &LevelEditorState| state.scene.world().query::<()>().count();
     // Play again while running (a hot reload): the snapshot stays.
     state.scene.enter_play_mode();
     assert_ne!(describe(&state), before);
@@ -595,4 +602,5 @@ fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
     assert!(world.entity_for("Lamp_rt1").is_none() && world.entity_for("Lamp_rt2").is_none(), "runtime spawns are gone");
     drop(world);
     assert!(!state.scene.has_play_snapshot());
+    assert_eq!(entity_count(&state), entities_before, "entities spawned without a StableId are gone");
 }
