@@ -113,10 +113,21 @@ impl ScriptStats {
         self.stopped += report.stopped.len() as u64;
         self.spawned += report.spawned.len() as u64;
         self.destroyed += report.destroyed.len() as u64;
-        self.script_errors += report.script_errors.len() as u64;
+        // Log the first errors; a handler failing every tick would flood.
+        for error in &report.script_errors {
+            if self.script_errors < LOGGED_SCRIPT_ERRORS {
+                tracing::error!("script error: {error}");
+            } else if self.script_errors == LOGGED_SCRIPT_ERRORS {
+                tracing::error!("further script errors are counted but not logged");
+            }
+            self.script_errors += 1;
+        }
         self.load_errors += report.load_errors.len() as u64;
     }
 }
+
+/// Script runtime errors logged before the rest are only counted.
+const LOGGED_SCRIPT_ERRORS: u64 = 50;
 
 /// Problems kept between two [`TickLoop::take_script_problems`] calls; the
 /// oldest are dropped past this.
