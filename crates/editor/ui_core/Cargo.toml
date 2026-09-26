@@ -39,6 +39,8 @@ window_manager.workspace = true
 # Plugin system
 plugin_manager = { workspace = true }
 plugin_editor_api = { workspace = true }
+# Script problems from Play-in-Editor on the host bus (#854, #868).
+pulsar_events = { workspace = true }
 
 # Built-in plugins (local vendor clones). Plugins with a dynamic loader ABI must
 # disable those process-global exports when linked into the editor executable.

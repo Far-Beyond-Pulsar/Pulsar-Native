@@ -96,6 +96,69 @@ impl Module {
             .find(|(_, f)| f.name == name)
             .map(|(i, f)| (i as u32, f))
     }
+
+    /// Where in this module a link error comes from (#868): the function
+    /// and, with debug info, the source location of the first instruction
+    /// or subscription involved. `None` for errors about the module as a
+    /// whole.
+    pub fn locate_link_error(&self, error: &crate::error::LinkError) -> Option<ErrorSite> {
+        use crate::error::LinkError;
+        let at_function = |name: &str, pc: Option<usize>| {
+            let (_, function) = self.function(name)?;
+            let location = match pc {
+                Some(pc) => function.location(pc),
+                None => function.first_location(),
+            };
+            Some(ErrorSite { function: function.name.clone(), pc, location: location.cloned() })
+        };
+        match error {
+            LinkError::Verify(verify) => at_function(verify.function.as_deref()?, verify.pc),
+            LinkError::MissingNative { name }
+            | LinkError::SignatureMismatch { name, .. }
+            | LinkError::PolyNative { name, .. } => {
+                let import = self.imports.iter().position(|i| &i.name == name)? as u32;
+                self.functions.iter().find_map(|function| {
+                    let pc = function.code.iter().position(
+                        |instr| matches!(instr, Instr::CallNative { import: i, .. } if *i == import),
+                    )?;
+                    Some(ErrorSite {
+                        function: function.name.clone(),
+                        pc: Some(pc),
+                        location: function.location(pc).cloned(),
+                    })
+                })
+            }
+            LinkError::HandlerMismatch { handler, .. } => at_function(handler, None),
+            LinkError::UnknownEvent { event } => {
+                let subscription = self.subscriptions.iter().find(|s| s.event.to_string() == *event)?;
+                let function = self.functions.get(subscription.handler as usize)?;
+                at_function(&function.name, None)
+            }
+            LinkError::UnknownType { .. } => None,
+        }
+    }
+}
+
+/// Where in a module an error is: a function, maybe an instruction, and
+/// the source location debug info gives for it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ErrorSite {
+    pub function: String,
+    pub pc: Option<usize>,
+    pub location: Option<SourceLoc>,
+}
+
+impl std::fmt::Display for ErrorSite {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.function)?;
+        if let Some(pc) = self.pc {
+            write!(f, "@{pc}")?;
+        }
+        if let Some(location) = &self.location {
+            write!(f, " ({location})")?;
+        }
+        Ok(())
+    }
 }
 
 /// An event a module declares: registered on the engine event hub as a
@@ -263,6 +326,110 @@ pub struct Function {
     /// start at their type's default on each call.
     pub registers: Vec<Type>,
     pub code: Vec<Instr>,
+    /// Optional debug info: which source location produced each range of
+    /// instructions (#854). Runtime errors and link errors resolve their
+    /// pc through it. Absent in modules built without it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub debug: Option<DebugInfo>,
+}
+
+impl Function {
+    /// The source location of instruction `pc`, if the function has debug
+    /// info covering it.
+    pub fn location(&self, pc: usize) -> Option<&SourceLoc> {
+        self.debug.as_ref()?.location(pc)
+    }
+
+    /// The first source location recorded for the function (its entry
+    /// node, for a Blueprint event).
+    pub fn first_location(&self) -> Option<&SourceLoc> {
+        self.debug.as_ref()?.ranges.first().map(|r| &r.loc)
+    }
+}
+
+/// Where some instructions came from. Opaque to the VM: each frontend
+/// fills what it has. The Blueprint compiler sets `node` to the graph node
+/// id and `file` to the graph file relative to the class directory; a
+/// text language would use `file` plus `line` / `column`.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SourceLoc {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub file: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub node: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column: Option<u32>,
+}
+
+impl SourceLoc {
+    /// A location naming graph node `node` in `file`.
+    pub fn node(file: impl Into<String>, node: impl Into<String>) -> Self {
+        Self { file: file.into(), node: node.into(), line: None, column: None }
+    }
+}
+
+impl std::fmt::Display for SourceLoc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut parts = Vec::new();
+        if !self.node.is_empty() {
+            parts.push(format!("node {}", self.node));
+        }
+        if !self.file.is_empty() {
+            let mut at = self.file.clone();
+            if let Some(line) = self.line {
+                at.push_str(&format!(":{line}"));
+                if let Some(column) = self.column {
+                    at.push_str(&format!(":{column}"));
+                }
+            }
+            parts.push(format!("in {at}"));
+        }
+        f.write_str(&parts.join(" "))
+    }
+}
+
+/// A function's pc → source table: sorted, non-overlapping ranges. Pcs no
+/// range covers have no location.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebugInfo {
+    #[serde(default)]
+    pub ranges: Vec<DebugRange>,
+}
+
+/// Instructions `start..end` came from `loc`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebugRange {
+    pub start: u32,
+    /// Exclusive.
+    pub end: u32,
+    pub loc: SourceLoc,
+}
+
+impl DebugInfo {
+    /// The location of `pc`.
+    pub fn location(&self, pc: usize) -> Option<&SourceLoc> {
+        let pc = u32::try_from(pc).ok()?;
+        let index = self.ranges.partition_point(|r| r.end <= pc);
+        self.ranges.get(index).filter(|r| r.start <= pc).map(|r| &r.loc)
+    }
+
+    /// Record that instruction `pc` came from `loc`. Pcs must be recorded
+    /// in increasing order; a pc continuing the last range with the same
+    /// location extends it.
+    pub fn record(&mut self, pc: u32, loc: &SourceLoc) {
+        if let Some(last) = self.ranges.last_mut() {
+            if last.end == pc && last.loc == *loc {
+                last.end = pc + 1;
+                return;
+            }
+            if pc < last.end {
+                return;
+            }
+        }
+        self.ranges.push(DebugRange { start: pc, end: pc + 1, loc: loc.clone() });
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

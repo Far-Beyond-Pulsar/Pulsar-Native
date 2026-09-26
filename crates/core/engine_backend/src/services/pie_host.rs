@@ -31,7 +31,9 @@ use pulsar_pie_abi::{
     FnShutdown, FnTick,
     InputEvent, INIT_OK, LOG_DEBUG, LOG_ERROR, LOG_INFO, LOG_TRACE, LOG_WARN, PIE_ABI_VERSION,
     FnEventsSnapshot, SYM_ABI_VERSION, SYM_ASSET_UPDATED, SYM_EVENTS_SNAPSHOT, SYM_INIT, SYM_INPUT, SYM_RESIZE, SYM_SHUTDOWN, SYM_TICK,
+    FnControl, FnEventBus, FnTakeProblems, SYM_CONTROL, SYM_EVENT_BUS, SYM_TAKE_PROBLEMS,
 };
+use pulsar_events::gamma::ffi::{ForeignBus, RawBus};
 
 
 /// The host-side half of the ABI v2 shared-world contract (#635).
@@ -129,6 +131,15 @@ pub struct PieHost {
     asset_updated: Option<FnAssetUpdated>,
     /// Optional (#924): the game's event hub debug snapshot.
     events_snapshot: Option<FnEventsSnapshot>,
+    /// Optional (#925): pause / step.
+    control: Option<FnControl>,
+    /// Optional (#854): script problems raised by the game.
+    take_problems: Option<FnTakeProblems>,
+    /// Optional (#942): the game's event hub for editor plugins.
+    event_bus: Option<FnEventBus>,
+    /// The editor's handle onto the game's hub, announced to plugins
+    /// (`pulsar_events::session`); dropped before the game shuts down.
+    session_bus: Option<ForeignBus>,
 
     /// Boxed so its address stays fixed while the game holds `&mut *ctx`.
     ctx: Box<PieContext>,
@@ -268,6 +279,10 @@ impl PieHost {
             lib.get::<FnAssetUpdated>(SYM_ASSET_UPDATED).ok().map(|symbol| *symbol);
         let events_snapshot: Option<FnEventsSnapshot> =
             lib.get::<FnEventsSnapshot>(SYM_EVENTS_SNAPSHOT).ok().map(|symbol| *symbol);
+        let control: Option<FnControl> = lib.get::<FnControl>(SYM_CONTROL).ok().map(|symbol| *symbol);
+        let take_problems: Option<FnTakeProblems> =
+            lib.get::<FnTakeProblems>(SYM_TAKE_PROBLEMS).ok().map(|symbol| *symbol);
+        let event_bus: Option<FnEventBus> = lib.get::<FnEventBus>(SYM_EVENT_BUS).ok().map(|symbol| *symbol);
 
         let color_format = format_to_u32(format)
             .ok_or_else(|| format!("Unsupported viewport format for PiE: {format:?}"))?;
@@ -331,6 +346,26 @@ impl PieHost {
 
         let out_texture = ctx.out_texture;
 
+        // #942: the game's hub for editor plugins, for the session.
+        let session_bus = event_bus.and_then(|export| {
+            let mut raw = std::mem::MaybeUninit::<RawBus>::uninit();
+            let ok = export(raw.as_mut_ptr() as *mut c_void, std::mem::size_of::<RawBus>());
+            if ok != 1 {
+                return None;
+            }
+            // SAFETY: the game wrote a fresh export whose reference we own.
+            match ForeignBus::from_raw(raw.assume_init()) {
+                Ok(bus) => Some(bus),
+                Err(error) => {
+                    tracing::warn!("PiE: the game's event bus speaks another Gamma FFI version: {error:?}");
+                    None
+                }
+            }
+        });
+        if let Some(bus) = &session_bus {
+            pulsar_events::announce_session_started(bus);
+        }
+
         Ok(Self {
             tick,
             resize,
@@ -338,6 +373,10 @@ impl PieHost {
             shutdown,
             asset_updated,
             events_snapshot,
+            control,
+            take_problems,
+            event_bus,
+            session_bus,
             ctx,
             out_texture,
             world_bridge: Some(world_bridge),
@@ -410,6 +449,75 @@ impl PieHost {
         None
     }
 
+    fn control(&self, command: u32, arg: u64) -> Option<u64> {
+        let (Some(control), true) = (self.control, self.started) else {
+            return None;
+        };
+        Some(unsafe { control(command, arg) })
+    }
+
+    /// Pause the game's simulation (it keeps rendering). `false` for games
+    /// built without the control entry point.
+    pub fn pause(&self) -> bool {
+        self.control(pulsar_pie_abi::control::PAUSE, 0).is_some()
+    }
+
+    /// Resume the simulation.
+    pub fn resume(&self) -> bool {
+        self.control(pulsar_pie_abi::control::RESUME, 0).is_some()
+    }
+
+    /// While paused, run `frames` more simulation frames (one per tick).
+    pub fn step(&self, frames: u32) -> bool {
+        self.control(pulsar_pie_abi::control::STEP, u64::from(frames)) == Some(1)
+    }
+
+    /// Whether the simulation is paused; `None` without the entry point.
+    pub fn is_paused(&self) -> Option<bool> {
+        self.control(pulsar_pie_abi::control::IS_PAUSED, 0).map(|v| v != 0)
+    }
+
+    /// Whether the game supports pause / step.
+    pub fn has_simulation_control(&self) -> bool {
+        self.control.is_some()
+    }
+
+    /// The script problems the game raised since the last call. Call on
+    /// the thread that ticks the game. Empty for games built without the
+    /// entry point.
+    pub fn take_problems(&self) -> Vec<pulsar_events::ScriptProblem> {
+        let (Some(take), true) = (self.take_problems, self.started) else {
+            return Vec::new();
+        };
+        let mut buf: Vec<u8> = Vec::new();
+        for _ in 0..3 {
+            let len = unsafe { take(buf.as_mut_ptr(), buf.len()) };
+            if len == 0 {
+                return Vec::new();
+            }
+            if len <= buf.len() {
+                buf.truncate(len);
+                return serde_json::from_slice(&buf).unwrap_or_else(|error| {
+                    tracing::warn!("PiE: unreadable script problems: {error}");
+                    Vec::new()
+                });
+            }
+            buf = vec![0; len + len / 4];
+        }
+        Vec::new()
+    }
+
+    /// The editor's handle onto the running game's event hub (#942), if
+    /// the game exports it. Valid until [`stop`](Self::stop).
+    pub fn session_bus(&self) -> Option<&ForeignBus> {
+        self.session_bus.as_ref()
+    }
+
+    /// Whether the game exports its event hub.
+    pub fn has_event_bus(&self) -> bool {
+        self.event_bus.is_some()
+    }
+
     /// Forward one input event to the game.
     pub fn input(&self, ev: &InputEvent) {
         if self.started {
@@ -430,6 +538,12 @@ impl PieHost {
 
     /// Stop the game: run its teardown and unload the library.
     pub fn stop(&mut self) {
+        // #942: plugins drop their handles onto the game's hub now, while
+        // its code is still loaded; then the editor's own.
+        if let Some(bus) = self.session_bus.take() {
+            pulsar_events::announce_session_stopping();
+            drop(bus);
+        }
         if self.started {
             unsafe { (self.shutdown)() };
             self.started = false;

@@ -7,6 +7,7 @@ mod manual_tool_panel;
 mod open_editors;
 mod panel_window;
 mod render;
+mod script_problems;
 mod state;
 mod tab_management;
 mod window_management;

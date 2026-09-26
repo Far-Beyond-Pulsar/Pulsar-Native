@@ -39,7 +39,7 @@ pub use build::BuildDomain;
 pub use editor::EditorDomain;
 pub use hierarchy::HierarchyDomain;
 pub use overlays::OverlayDomain;
-pub use play::{PieControl, PieStartRequest, PlayDomain};
+pub use play::{PieControl, PieStartRequest, PlayDomain, MAX_PIE_PROBLEMS};
 pub use scene::SceneDomain;
 pub use spline::SplineDomain;
 

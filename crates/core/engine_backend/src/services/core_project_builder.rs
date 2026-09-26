@@ -599,7 +599,8 @@ struct LevelConfig {
 /// Generate `src/lib.rs` — the Play-In-Editor (PiE) embedding shim.
 ///
 /// When the editor builds the project as a `cdylib` (`cargo build --lib`) and
-/// loads it for Play-In-Editor, it resolves these six `extern "C"` symbols. The
+/// loads it for Play-In-Editor, it resolves these `extern "C"` symbols (six
+/// required, the rest optional). The
 /// shim is deliberately thin: every entry point wraps a `catch_unwind` (unwinding
 /// across the FFI boundary is UB) and delegates to `pulsar_game::embed`, where
 /// the real logic lives type-checked against Helio. `pulsar_pie_init` hands the
@@ -696,6 +697,36 @@ pub unsafe extern "C" fn pulsar_pie_asset_updated(
 pub unsafe extern "C" fn pulsar_pie_events_snapshot(out: *mut u8, capacity: usize) -> usize {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         embed::pie_events_snapshot(out, capacity)
+    }))
+    .unwrap_or(0)
+}
+
+/// Simulation control for the editor's pause / step buttons.
+#[no_mangle]
+pub extern "C" fn pulsar_pie_control(command: u32, arg: u64) -> u64 {
+    std::panic::catch_unwind(|| embed::pie_control(command, arg)).unwrap_or(0)
+}
+
+/// Script problems raised since the last call (JSON) for the problems panel.
+///
+/// # Safety
+/// `out` must be valid for `capacity` bytes of writes (or `capacity` 0).
+#[no_mangle]
+pub unsafe extern "C" fn pulsar_pie_take_problems(out: *mut u8, capacity: usize) -> usize {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        embed::pie_take_problems(out, capacity)
+    }))
+    .unwrap_or(0)
+}
+
+/// The session's event hub for editor plugins (a Gamma `RawBus`).
+///
+/// # Safety
+/// `out` must be valid for `out_size` bytes of writes.
+#[no_mangle]
+pub unsafe extern "C" fn pulsar_pie_event_bus(out: *mut std::ffi::c_void, out_size: usize) -> u32 {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        embed::pie_event_bus(out, out_size)
     }))
     .unwrap_or(0)
 }

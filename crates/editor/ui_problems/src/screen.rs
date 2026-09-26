@@ -29,6 +29,10 @@ pub struct ProblemsDrawer {
     pub(crate) diff_editors: HashMap<(usize, usize), (Entity<InputState>, Entity<InputState>)>,
     pub(crate) search_input: Entity<InputState>,
     pub(crate) project_root: Option<PathBuf>,
+    /// Diagnostics from other sources than the language server (e.g. the
+    /// running game's script problems), by source; shown after the
+    /// language server's, which keep their indices.
+    pub(crate) external: std::collections::BTreeMap<String, Vec<Diagnostic>>,
 }
 
 impl EventEmitter<NavigateToDiagnostic> for ProblemsDrawer {}
@@ -51,6 +55,7 @@ impl ProblemsDrawer {
             diff_editors: HashMap::new(),
             search_input,
             project_root: None,
+            external: std::collections::BTreeMap::new(),
         }
     }
 
@@ -62,6 +67,7 @@ impl ProblemsDrawer {
     pub fn clear_diagnostics(&mut self, cx: &mut Context<Self>) {
         self.diagnostics.lock().unwrap().clear();
         self.last_published.clear();
+        self.external.clear();
         self.selected_index = None;
         self.preview_inputs.clear();
         cx.notify();
@@ -81,10 +87,41 @@ impl ProblemsDrawer {
             return false;
         }
         self.last_published = diagnostics.clone();
-        *self.diagnostics.lock().unwrap() = diagnostics;
+        let mut all = diagnostics;
+        all.extend(self.external.values().flatten().cloned());
+        *self.diagnostics.lock().unwrap() = all;
         self.selected_index = None;
         self.preview_inputs.clear();
         self.diff_editors.clear();
+        cx.notify();
+        true
+    }
+
+    /// Replace the diagnostics of an external `source` (anything but the
+    /// language server, which uses [`Self::set_diagnostics`]). Returns
+    /// whether anything changed.
+    pub fn set_external_diagnostics(
+        &mut self,
+        source: &str,
+        diagnostics: Vec<Diagnostic>,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        if self.external.get(source).map_or(diagnostics.is_empty(), |d| *d == diagnostics) {
+            return false;
+        }
+        if diagnostics.is_empty() {
+            self.external.remove(source);
+        } else {
+            self.external.insert(source.to_owned(), diagnostics);
+        }
+        {
+            let mut all = self.diagnostics.lock().unwrap();
+            // The language server's entries (with their fetched hints) stay
+            // first; the external ones follow.
+            all.truncate(self.last_published.len());
+            all.extend(self.external.values().flatten().cloned());
+        }
+        self.selected_index = None;
         cx.notify();
         true
     }

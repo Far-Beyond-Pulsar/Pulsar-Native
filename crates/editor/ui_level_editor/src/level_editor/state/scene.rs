@@ -62,6 +62,9 @@ pub struct SceneDomain {
     pub snapshot: Option<SceneHistorySnapshot>,
     /// Current editor mode.
     pub editor_mode: EditorMode,
+    /// Bumped when a class update rebuilt placed instances (#935), from
+    /// whatever thread published it; the level editor redraws on a change.
+    pub class_updates: u64,
     /// Currently open scene file path.
     pub current_scene: Option<PathBuf>,
     /// Whether the scene has unsaved changes.
@@ -86,6 +89,7 @@ impl Default for SceneDomain {
             rebuild_epoch: 0,
             snapshot: None,
             editor_mode: EditorMode::Edit,
+            class_updates: 0,
             current_scene: None,
             has_unsaved_changes: false,
             revision: 0,
@@ -291,12 +295,30 @@ impl SceneDomain {
     // ── Play mode ─────────────────────────────────────────────────────────
 
     /// Enter play mode — snapshot scene and start game thread.
+    ///
+    /// The snapshot is the world as it was before the FIRST Play: pressing
+    /// Play again while a game runs (a hot reload) keeps it, so Stop still
+    /// restores the pre-Play world, not a mid-play one.
     pub fn enter_play_mode(&mut self) {
-        self.snapshot = Some(self.capture_history_snapshot());
+        if self.snapshot.is_none() {
+            self.snapshot = Some(self.capture_history_snapshot());
+        }
         self.editor_mode = EditorMode::Play;
     }
 
+    /// Whether a pre-Play snapshot is waiting to be restored.
+    pub fn has_play_snapshot(&self) -> bool {
+        self.snapshot.is_some()
+    }
+
     /// Exit play mode — restore scene state from snapshot.
+    ///
+    /// The restore rebuilds the scene from the pre-Play snapshot: every
+    /// object with a StableId is removed first, which includes everything
+    /// scripts spawned during Play (`world::spawn` objects carry runtime
+    /// StableIds, `<Class>_rt<n>`), and the snapshot's objects come back
+    /// with their components. Call it only once the game stopped (see
+    /// `end_pie`), so no game code runs against the restored world.
     pub fn exit_play_mode(&mut self) {
         if let Some(snapshot) = self.snapshot.take() {
             // The restore rebuilds the complete hierarchy and rehydrates registered

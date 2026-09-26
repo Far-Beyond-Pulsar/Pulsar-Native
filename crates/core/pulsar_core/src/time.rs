@@ -57,6 +57,14 @@ impl Clock {
         }
     }
 
+    /// Forget the wall time since the last tick (a pause): the next tick's
+    /// delta starts now, and `elapsed` does not count the gap.
+    pub fn skip_to_now(&mut self) {
+        let now = Instant::now();
+        self.start += now.duration_since(self.last_tick);
+        self.last_tick = now;
+    }
+
     pub fn reset(&mut self) {
         let now = Instant::now();
         self.start = now;

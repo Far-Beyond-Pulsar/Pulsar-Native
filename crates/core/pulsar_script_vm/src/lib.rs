@@ -43,8 +43,9 @@ pub use library::{LibraryError, LibraryId, LibraryRegistrar, NativeLibraries};
 pub use events::{EventCatalog, EventSignature, EventSink, EventTarget};
 pub use link::{FuncId, Instance, LinkedSubscription, Program};
 pub use module::{
-    BinOp, Constant, EventDecl, EventField, EventRef, Function, Import, Instr, Module, Param, Reg,
-    Signature, Subscription, SubscriptionScope, UnOp, Variable, FORMAT_VERSION, MIN_FORMAT_VERSION,
+    BinOp, Constant, DebugInfo, DebugRange, ErrorSite, EventDecl, EventField, EventRef, Function,
+    Import, Instr, Module, Param, Reg, Signature, SourceLoc, Subscription, SubscriptionScope, UnOp,
+    Variable, FORMAT_VERSION, MIN_FORMAT_VERSION,
 };
 pub use native::{
     Host, NativeBuilder, NativeFn, NativeProvider, NativeRegistration, NativeRegistry, Origin,

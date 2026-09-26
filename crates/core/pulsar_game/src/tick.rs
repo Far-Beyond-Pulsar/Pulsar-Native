@@ -75,7 +75,23 @@ pub struct TickLoop {
     pub(crate) rebinding: Vec<crate::scripts::ReboundActor>,
     /// Set once a reload has been armed, even after every tag is claimed.
     pub(crate) reload_armed: bool,
+    // ── Pause / step (Play-in-Editor simulate controls, #925) ───────────────
+    paused: bool,
+    pending_steps: u32,
+    /// The last tick's time, which a paused tick reports again.
+    last_time: GameTime,
+    /// Problems scripts raised, kept for [`take_script_problems`](Self::take_script_problems)
+    /// while [`collect_script_problems`](Self::collect_script_problems) is on.
+    script_problems: Vec<pulsar_events::ScriptProblem>,
+    collect_problems: bool,
 }
+
+/// Problems kept between two [`TickLoop::take_script_problems`] calls; the
+/// oldest are dropped past this.
+const MAX_KEPT_PROBLEMS: usize = 256;
+
+/// The simulation step of one [`TickLoop::step`] in variable-timestep mode.
+const STEP_DELTA: std::time::Duration = std::time::Duration::from_micros(16_667);
 
 impl TickLoop {
     /// Build a new `TickLoop` with its own fresh scene store.
@@ -109,6 +125,11 @@ impl TickLoop {
             pending_rebinds: Vec::new(),
             rebinding: Vec::new(),
             reload_armed: false,
+            paused: false,
+            pending_steps: 0,
+            last_time: GameTime { elapsed: std::time::Duration::ZERO, delta: std::time::Duration::ZERO, tick: 0 },
+            script_problems: Vec::new(),
+            collect_problems: false,
         }
     }
 
@@ -142,13 +163,40 @@ impl TickLoop {
             pending_rebinds: Vec::new(),
             rebinding: Vec::new(),
             reload_armed: false,
+            paused: false,
+            pending_steps: 0,
+            last_time: GameTime { elapsed: std::time::Duration::ZERO, delta: std::time::Duration::ZERO, tick: 0 },
+            script_problems: Vec::new(),
+            collect_problems: false,
         }
     }
 
     /// Execute one logical tick against the shared world.
     ///
     /// Returns the `GameTime` snapshot for this tick.
+    ///
+    /// While [paused](Self::set_paused) nothing runs (no systems, actors,
+    /// scripts or event flushes) and the last tick's time comes back with a
+    /// zero delta, unless a [`step`](Self::step) is pending: then one tick
+    /// runs with a fixed delta (the fixed timestep, or 1/60 s).
     pub fn tick_once(&mut self) -> GameTime {
+        if self.paused {
+            if self.pending_steps == 0 {
+                return GameTime { delta: std::time::Duration::ZERO, ..self.last_time };
+            }
+            self.pending_steps -= 1;
+            let delta = match self.mode {
+                TickMode::Fixed { dt } => dt,
+                TickMode::Variable { .. } => STEP_DELTA,
+            };
+            self.clock.tick_counter += 1;
+            let time = GameTime {
+                elapsed: self.last_time.elapsed + delta,
+                delta,
+                tick: self.last_time.tick + 1,
+            };
+            return self.run_tick(time);
+        }
         let time = match self.mode {
             TickMode::Fixed { dt } => {
                 let t = self.clock.tick_counter;
@@ -161,7 +209,58 @@ impl TickLoop {
             }
             TickMode::Variable { .. } => self.clock.tick(),
         };
+        self.run_tick(time)
+    }
 
+    /// Pause or resume the simulation (Play-in-Editor's pause button).
+    /// Rendering is the host's business and goes on.
+    pub fn set_paused(&mut self, paused: bool) {
+        if self.paused == paused {
+            return;
+        }
+        self.paused = paused;
+        if !paused {
+            self.pending_steps = 0;
+            // The paused wall time is not game time.
+            self.clock.skip_to_now();
+        }
+    }
+
+    /// Whether the simulation is paused.
+    pub fn is_paused(&self) -> bool {
+        self.paused
+    }
+
+    /// While paused: run `frames` more ticks, one per [`tick_once`](Self::tick_once)
+    /// call. Ignored while running.
+    pub fn step(&mut self, frames: u32) {
+        if self.paused {
+            self.pending_steps = self.pending_steps.saturating_add(frames);
+        }
+    }
+
+    /// Ticks run so far (paused ticks do not count).
+    pub fn ticks(&self) -> u64 {
+        self.last_time.tick
+    }
+
+    /// Keep the problems scripts raise (errors, link errors, dropped
+    /// waiting calls, as editor problems) for [`take_script_problems`](Self::take_script_problems).
+    /// Play-in-Editor turns it on; without it they are only logged.
+    pub fn collect_script_problems(&mut self, on: bool) {
+        self.collect_problems = on;
+        if !on {
+            self.script_problems.clear();
+        }
+    }
+
+    /// The problems collected since the last call.
+    pub fn take_script_problems(&mut self) -> Vec<pulsar_events::ScriptProblem> {
+        std::mem::take(&mut self.script_problems)
+    }
+
+    fn run_tick(&mut self, time: GameTime) -> GameTime {
+        self.last_time = time;
         profiling::profile_scope!("TickLoop::tick");
         let scenedb_time = to_scenedb_time(time);
 
@@ -210,8 +309,18 @@ impl TickLoop {
         // window is ready. Errors are per instance and logged.
         if let Some(driver) = &self.scripts {
             let mut driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            let mut store = self.scene_store.write();
-            driver.run_frame(&mut store.world, time.delta.as_secs_f64());
+            let report = {
+                let mut store = self.scene_store.write();
+                driver.run_frame(&mut store.world, time.delta.as_secs_f64())
+            };
+            if self.collect_problems && report.has_problems() {
+                for mut problem in driver.problems(&report) {
+                    problem.frame = Some(time.tick);
+                    self.script_problems.push(problem);
+                }
+                let excess = self.script_problems.len().saturating_sub(MAX_KEPT_PROBLEMS);
+                self.script_problems.drain(..excess);
+            }
         }
 
         // Flush 3 (after scripts): what scripts sent (`event::*`,

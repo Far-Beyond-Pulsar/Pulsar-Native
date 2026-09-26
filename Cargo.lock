@@ -12936,6 +12936,7 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "plugin_matter",
+ "pulsar_events",
  "pulsar_physics",
  "pulsar_reflection",
  "rfd",

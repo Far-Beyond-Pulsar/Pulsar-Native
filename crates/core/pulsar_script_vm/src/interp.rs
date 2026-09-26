@@ -57,6 +57,65 @@ impl Continuation {
     pub fn module(&self) -> &Arc<crate::module::Module> {
         &self.module
     }
+
+    /// Names of the suspended functions, outermost first.
+    pub fn functions(&self) -> Vec<&str> {
+        self.frames.iter().map(|f| self.module.functions[f.func as usize].name.as_str()).collect()
+    }
+
+    /// Move this suspended call onto `module`, a new version of the module
+    /// it was running (a class reload, #862), if its code layout is
+    /// compatible. For every suspended frame, the new module must have a
+    /// function with the same name and the same parameter, return and
+    /// register types and the same number of instructions; the innermost
+    /// frame must still resume right after a `Wait`, and every outer
+    /// frame must still be at a `Call` of the next frame's function. Then
+    /// the call continues in the new code at the same pcs with its
+    /// registers as they are. Otherwise the reason is returned and the
+    /// call cannot continue.
+    pub fn rebase(&self, module: &Arc<crate::module::Module>) -> Result<Continuation, String> {
+        let mut frames = Vec::with_capacity(self.frames.len());
+        let mut new_indices = Vec::with_capacity(self.frames.len());
+        for frame in &self.frames {
+            let old = &self.module.functions[frame.func as usize];
+            let (index, new) = module
+                .function(&old.name)
+                .ok_or_else(|| format!("function `{}` no longer exists", old.name))?;
+            if new.params != old.params || new.ret != old.ret || new.registers != old.registers {
+                return Err(format!("function `{}` changed its parameters or registers", old.name));
+            }
+            if new.code.len() != old.code.len() {
+                return Err(format!(
+                    "function `{}` changed its instruction count ({} -> {})",
+                    old.name,
+                    old.code.len(),
+                    new.code.len()
+                ));
+            }
+            new_indices.push(index);
+            frames.push(Frame { func: index, ..frame.clone() });
+        }
+        for (depth, frame) in frames.iter().enumerate() {
+            let code = &module.functions[frame.func as usize].code;
+            let name = &module.functions[frame.func as usize].name;
+            match new_indices.get(depth + 1) {
+                // Outer frame: parked on the call of the next frame.
+                Some(&callee) => {
+                    if !matches!(code.get(frame.pc), Some(Instr::Call { func, .. }) if *func == callee) {
+                        return Err(format!("function `{name}` no longer calls the waiting function at {}", frame.pc));
+                    }
+                }
+                // Innermost: resumes right after its `Wait`.
+                None => {
+                    let waited = frame.pc.checked_sub(1).and_then(|pc| code.get(pc));
+                    if !matches!(waited, Some(Instr::Wait { .. })) {
+                        return Err(format!("function `{name}` no longer waits at {}", frame.pc.saturating_sub(1)));
+                    }
+                }
+            }
+        }
+        Ok(Continuation { module: Arc::clone(module), frames, regs: self.regs.clone() })
+    }
 }
 
 /// Execution state reused across calls (register stack and scratch).
@@ -183,12 +242,10 @@ impl Vm {
 
     fn fail(&self, program: &Program, frame_base: usize, kind: ScriptErrorKind) -> ScriptError {
         let module = program.module();
-        let trace = self.frames[frame_base..]
-            .iter()
-            .rev()
-            .map(|f| (module.functions[f.func as usize].name.clone(), f.pc))
-            .collect();
-        ScriptError { kind, trace }
+        let frames = self.frames[frame_base..].iter().rev();
+        let trace = frames.clone().map(|f| (module.functions[f.func as usize].name.clone(), f.pc)).collect();
+        let locations = frames.map(|f| module.functions[f.func as usize].location(f.pc).cloned()).collect();
+        ScriptError { kind, trace, locations }
     }
 
     fn run(

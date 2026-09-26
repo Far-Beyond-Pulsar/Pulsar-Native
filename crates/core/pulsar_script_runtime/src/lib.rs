@@ -17,8 +17,18 @@
 //!
 //! Latent calls: a function that waits (the VM's `Wait`) is suspended and
 //! resumed by [`ScriptRuntime::tick_all`] once enough game time has
-//! passed; an instance can have several waiting at once. Reloading a
-//! class or despawning an instance drops its waiting calls.
+//! passed; an instance can have several waiting at once. Despawning an
+//! instance drops its waiting calls. Reloading a class keeps a waiting call
+//! when the new code has the same layout for every function it is
+//! suspended in (same name, parameter, return and register types, and
+//! instruction count, still waiting / calling at the same pc: see
+//! `pulsar_script_vm::Continuation::rebase`), and drops it with a warning
+//! naming the class and function otherwise ([`ReloadReport`]).
+//!
+//! Errors (#854, #868): a script error carries the class and the VM trace
+//! with each frame's source location from the module's debug info; a link
+//! error the function (and node) that uses what failed to link.
+//! [`RuntimeError::details`] breaks either down for an editor.
 //!
 //! Events (#924): with an [`EventHost`] attached
 //! ([`ScriptRuntime::set_event_host`]), a class's declared events are
@@ -40,9 +50,9 @@ use std::sync::Arc;
 
 use pulsar_scenedb::{Entity, World};
 use pulsar_script_vm::{
-    Budget, Completion, Continuation, EventCatalog, EventDecl, EventSink, FuncId, Host, Instance,
-    LibraryError, LibraryId, LinkError, LinkedSubscription, Module, NativeFn, NativeLibraries,
-    NativeRegistry, Program, ScriptError, Type, Value, Vm,
+    Budget, Completion, Continuation, ErrorSite, EventCatalog, EventDecl, EventSink, FuncId, Host,
+    Instance, LibraryError, LibraryId, LinkError, LinkedSubscription, Module, NativeFn,
+    NativeLibraries, NativeRegistry, Program, ScriptError, SourceLoc, Type, Value, Vm,
 };
 
 /// The engine's event hub, as the runtime sees it: a sink for the event
@@ -78,10 +88,16 @@ pub enum RuntimeError {
     UnknownEvent { class: String, name: String },
     #[error("variable `{name}`: {reason}")]
     BadVariable { name: String, reason: String },
-    #[error("script class `{class}`: {source}")]
-    Link { class: String, source: LinkError },
-    #[error("script instance `{object_id}`: {source}")]
-    Script { object_id: String, source: ScriptError },
+    #[error("script class `{class}`: {source}{}", site_suffix(.site.as_ref()))]
+    Link {
+        class: String,
+        source: LinkError,
+        /// Where in the class the error is, when the module can tell
+        /// (with debug info: the graph node).
+        site: Option<ErrorSite>,
+    },
+    #[error("script instance `{object_id}` of `{class}`: {source}")]
+    Script { object_id: String, class: String, source: ScriptError },
     #[error(transparent)]
     Library(#[from] LibraryError),
     #[error("could not read `{path}`: {source}")]
@@ -106,8 +122,10 @@ struct Class {
 impl Class {
     fn link(module: Arc<Module>, natives: &NativeRegistry, events: Option<&dyn EventCatalog>) -> Result<Self, RuntimeError> {
         let class = module.name.clone();
-        let program = Program::link_with_events(module, natives, events)
-            .map_err(|source| RuntimeError::Link { class: class.clone(), source })?;
+        let program = Program::link_with_events(Arc::clone(&module), natives, events).map_err(|source| {
+            let site = module.locate_link_error(&source);
+            RuntimeError::Link { class: class.clone(), source, site }
+        })?;
         let entry = |name: &'static str, params: &[Type], expected: &'static str| {
             match program.module().function(name) {
                 Some((index, f)) if f.exported => {
@@ -136,6 +154,24 @@ struct ScriptInstance {
     entity: Option<Entity>,
     /// Suspended calls and the game time each resumes at.
     waiting: Vec<(f64, Continuation)>,
+}
+
+/// What a class reload did with the instances' waiting calls.
+#[derive(Debug, Default)]
+pub struct ReloadReport {
+    /// Waiting calls that continue in the new code.
+    pub kept: usize,
+    /// Waiting calls dropped because their code changed shape.
+    pub dropped: Vec<DroppedCall>,
+}
+
+/// A waiting call a reload could not keep.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DroppedCall {
+    pub object_id: String,
+    /// The suspended (innermost) function.
+    pub function: String,
+    pub reason: String,
 }
 
 /// Classes that failed to relink after the native registry changed. They
@@ -299,18 +335,28 @@ impl ScriptRuntime {
 
     /// Read a JSON module and load it (or reload it, if already loaded).
     pub fn load_class_file(&mut self, path: impl AsRef<Path>) -> Result<String, RuntimeError> {
+        self.load_class_file_reporting(path).map(|(name, _)| name)
+    }
+
+    /// [`load_class_file`](Self::load_class_file), also returning what a
+    /// reload did with waiting calls (empty for a first load).
+    pub fn load_class_file_reporting(
+        &mut self,
+        path: impl AsRef<Path>,
+    ) -> Result<(String, ReloadReport), RuntimeError> {
         let path = path.as_ref();
         let json = std::fs::read_to_string(path)
             .map_err(|source| RuntimeError::Io { path: path.to_owned(), source })?;
         let module = Module::from_json(&json)
             .map_err(|source| RuntimeError::Parse { path: path.to_owned(), source })?;
         let name = module.name.clone();
-        if self.classes.contains_key(&name) {
-            self.reload_class(module)?;
+        let report = if self.classes.contains_key(&name) {
+            self.reload_class(module)?
         } else {
             self.load_class(module)?;
-        }
-        Ok(name)
+            ReloadReport::default()
+        };
+        Ok((name, report))
     }
 
     pub fn has_class(&self, name: &str) -> bool {
@@ -332,8 +378,11 @@ impl ScriptRuntime {
 
     /// Swap a loaded class's code. Instances keep their identity, binding
     /// and every variable whose name and type are unchanged; new or
-    /// retyped variables start at their defaults. On error nothing changes.
-    pub fn reload_class(&mut self, module: Module) -> Result<(), RuntimeError> {
+    /// retyped variables start at their defaults. Waiting calls continue
+    /// in the new code when their functions' layout is unchanged (see
+    /// `Continuation::rebase`), and are dropped otherwise, listed in the
+    /// report. On error nothing changes.
+    pub fn reload_class(&mut self, module: Module) -> Result<ReloadReport, RuntimeError> {
         let name = module.name.clone();
         if !self.classes.contains_key(&name) {
             return Err(RuntimeError::UnknownClass(name));
@@ -344,7 +393,9 @@ impl ScriptRuntime {
 
         let old_module = Arc::clone(old.program.module());
         let mut migrated = 0;
-        for instance in self.instances.values_mut().filter(|i| i.class == name) {
+        let mut kept = 0;
+        let mut report = ReloadReport::default();
+        for (object_id, instance) in self.instances.iter_mut().filter(|(_, i)| i.class == name) {
             let mut state = new.program.instantiate();
             for (index, var) in new.program.module().variables.iter().enumerate() {
                 let Some(old_index) = old_module.variables.iter().position(|v| v.name == var.name && v.ty == var.ty)
@@ -357,16 +408,32 @@ impl ScriptRuntime {
                 }
             }
             instance.state = state;
-            if !instance.waiting.is_empty() {
-                // Suspended calls belong to the old code.
-                tracing::warn!(class = %name, dropped = instance.waiting.len(), "reload dropped waiting script calls");
-                instance.waiting.clear();
+            // Suspended calls ran the old code: they continue in the new
+            // code where its layout is compatible (#862), see
+            // `Continuation::rebase`; the others are dropped.
+            for (wake, continuation) in std::mem::take(&mut instance.waiting) {
+                match continuation.rebase(new.program.module()) {
+                    Ok(rebased) => {
+                        instance.waiting.push((wake, rebased));
+                        kept += 1;
+                    }
+                    Err(reason) => {
+                        let function = continuation.functions().last().map(|f| f.to_string()).unwrap_or_default();
+                        tracing::warn!(
+                            class = %name,
+                            function = %function,
+                            "reload dropped a waiting script call of `{name}::{function}`: {reason}"
+                        );
+                        report.dropped.push(DroppedCall { object_id: object_id.clone(), function, reason });
+                    }
+                }
             }
             migrated += 1;
         }
-        tracing::info!(class = %name, instances = migrated, "reloaded script class");
+        tracing::info!(class = %name, instances = migrated, kept_waiting = kept, "reloaded script class");
+        report.kept = kept;
         self.classes.insert(name, new);
-        Ok(())
+        Ok(report)
     }
 
     // ---- instances -----------------------------------------------------
@@ -538,7 +605,11 @@ impl ScriptRuntime {
                 Ok(Completion::Waiting { seconds, continuation }) => {
                     instance.waiting.push((now + seconds, continuation));
                 }
-                Err(source) => errors.push(RuntimeError::Script { object_id: object_id.to_owned(), source }),
+                Err(source) => errors.push(RuntimeError::Script {
+                    object_id: object_id.to_owned(),
+                    class: instance.class.clone(),
+                    source,
+                }),
             }
         }
         errors
@@ -623,7 +694,70 @@ impl ScriptRuntime {
                 instance.waiting.push((self.time + seconds, continuation));
                 Ok(Value::Unit)
             }
-            Err(source) => Err(RuntimeError::Script { object_id: object_id.to_owned(), source }),
+            Err(source) => Err(RuntimeError::Script {
+                object_id: object_id.to_owned(),
+                class: instance.class.clone(),
+                source,
+            }),
+        }
+    }
+}
+
+fn site_suffix(site: Option<&ErrorSite>) -> String {
+    site.map(|site| format!(" (at {site})")).unwrap_or_default()
+}
+
+/// A script error broken down for an editor's problems list (#854, #868):
+/// which class, instance and function, and the source location debug info
+/// gives (the Blueprint node).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ErrorDetails {
+    pub class: Option<String>,
+    pub object_id: Option<String>,
+    pub function: Option<String>,
+    pub pc: Option<usize>,
+    pub location: Option<SourceLoc>,
+    /// The error itself, without the location.
+    pub message: String,
+}
+
+impl RuntimeError {
+    /// This error's class, instance, function and source location, where
+    /// it has them.
+    pub fn details(&self) -> ErrorDetails {
+        match self {
+            Self::Script { object_id, class, source } => ErrorDetails {
+                class: Some(class.clone()),
+                object_id: Some(object_id.clone()),
+                function: source.function().map(|(f, _)| f.to_owned()),
+                pc: source.function().map(|(_, pc)| pc),
+                location: source.location().cloned(),
+                message: source.kind.to_string(),
+            },
+            Self::Link { class, source, site } => ErrorDetails {
+                class: Some(class.clone()),
+                object_id: None,
+                function: site.as_ref().map(|s| s.function.clone()),
+                pc: site.as_ref().and_then(|s| s.pc),
+                location: site.as_ref().and_then(|s| s.location.clone()),
+                message: source.to_string(),
+            },
+            Self::UnknownClass(class) | Self::ClassLoaded(class) => {
+                ErrorDetails { class: Some(class.clone()), message: self.to_string(), ..Default::default() }
+            }
+            Self::BadEntryPoint { class, name, .. } => ErrorDetails {
+                class: Some(class.clone()),
+                function: Some((*name).to_owned()),
+                message: self.to_string(),
+                ..Default::default()
+            },
+            Self::UnknownEvent { class, .. } | Self::EventDeclaration { class, .. } => {
+                ErrorDetails { class: Some(class.clone()), message: self.to_string(), ..Default::default() }
+            }
+            Self::UnknownInstance(id) | Self::DuplicateInstance(id) => {
+                ErrorDetails { object_id: Some(id.clone()), message: self.to_string(), ..Default::default() }
+            }
+            _ => ErrorDetails { message: self.to_string(), ..Default::default() },
         }
     }
 }

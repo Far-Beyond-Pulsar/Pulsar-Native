@@ -128,10 +128,10 @@ impl fmt::Display for PublishError {
 
 impl std::error::Error for PublishError {}
 
-struct Inner {
-    bus: SyncEventBus,
+pub(crate) struct Inner {
+    pub(crate) bus: SyncEventBus,
     info: RwLock<HashMap<u64, (EventCategory, bool)>>,
-    tap: Tap,
+    pub(crate) tap: Tap,
     frame: AtomicU64,
 }
 
@@ -344,8 +344,11 @@ impl EventHub {
     /// separate library (it wraps it in `gamma::ffi::ForeignBus`). The table
     /// holds a strong reference, released when the plugin drops its
     /// `ForeignBus`.
+    ///
+    /// Publishes made through the table are noted in the debug tap like
+    /// the hub's own (#942); see [`crate::foreign_tap`].
     pub fn export_raw(&self) -> RawBus {
-        self.inner.bus.export_raw()
+        crate::foreign_tap::export_tapped(self.inner.bus.export_raw(), Arc::downgrade(&self.inner))
     }
 
     // ---- debug tap ----------------------------------------------------------
@@ -478,6 +481,42 @@ mod tests {
         assert!(back.events.iter().any(|e| e.name == "Hit" && e.category == "Physics"));
         hub.set_tap(false, 0);
         assert!(hub.recent_events().is_empty());
+    }
+
+    /// #942: a plugin publishing through a `ForeignBus` on the exported
+    /// table reaches the hub's subscribers and shows in the tap.
+    #[test]
+    fn foreign_publishes_are_tapped() {
+        let hub = EventHub::new();
+        hub.set_tap(true, 16);
+        let got = Arc::new(Mutex::new(Vec::new()));
+        let g = Arc::clone(&got);
+        let _s = hub.bus().subscribe(move |e: &KeyDown| g.lock().unwrap().push(e.key));
+        let plugin = unsafe { gamma::ffi::ForeignBus::from_raw(hub.export_raw()) }.unwrap();
+        let second = plugin.clone();
+        let descriptor = hub.descriptor_by_name("KeyDown").unwrap();
+        second
+            .publish_dyn_deferred(Channel::Global, &gamma::DynEvent::new(descriptor.id, vec![DynValue::I64(7)]))
+            .unwrap();
+        drop(second);
+        assert!(got.lock().unwrap().is_empty(), "deferred until the flush");
+        hub.flush(FlushPoint::AfterInput);
+        assert_eq!(*got.lock().unwrap(), vec![7]);
+        let recent = hub.recent_events();
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].name, "KeyDown");
+        assert!(recent[0].summary.starts_with("(plugin)"), "{}", recent[0].summary);
+        assert!(recent[0].summary.contains("key=7"), "{}", recent[0].summary);
+        // Subscriptions through the table work and are dropped with it.
+        let seen = Arc::new(Mutex::new(0));
+        let s2 = Arc::clone(&seen);
+        let sub = plugin.subscribe_dyn(descriptor.id, SubscribeOptions::default(), move |_| *s2.lock().unwrap() += 1);
+        hub.publish(Channel::Global, KeyDown { key: 1 });
+        hub.flush(FlushPoint::AfterInput);
+        assert_eq!(*seen.lock().unwrap(), 1);
+        drop(sub);
+        assert_eq!(hub.subscriber_count(descriptor.id, Channel::Global), 1, "only the hub's own left");
+        drop(plugin);
     }
 
     #[test]
