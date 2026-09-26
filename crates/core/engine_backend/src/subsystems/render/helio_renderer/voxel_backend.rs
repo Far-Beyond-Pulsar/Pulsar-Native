@@ -57,6 +57,11 @@ pub trait VoxelRenderBackend: Send {
     fn outdoor_sky(&self) -> bool {
         false
     }
+    /// Optional clipping range for a source. A backend may certify empty space
+    /// around the eye to improve depth precision without clipping its terrain.
+    fn camera_clip_range(&self, _source: &VoxelSceneEntry, _eye: DVec3) -> Option<(f32, f32)> {
+        None
+    }
     fn edit_ray(
         &self,
         _source: &VoxelSceneEntry,
@@ -161,6 +166,23 @@ impl VoxelBackendRegistry {
             }
         }
         quality
+    }
+
+    pub fn camera_clip_range(&self, entries: &[VoxelSceneEntry], eye: DVec3) -> Option<(f32, f32)> {
+        let mut range: Option<(f32, f32)> = None;
+        for entry in entries.iter().filter(|entry| entry.visible) {
+            for backend in &self.backends {
+                if entry.renderer_id == backend.renderer_id()
+                    || (entry.renderer_id.is_empty() && backend.supports(entry)) {
+                    if let Some((near, far)) = backend.camera_clip_range(entry, eye) {
+                        if near.is_finite() && far.is_finite() && near > 0.0 && far > near {
+                            range = Some(range.map_or((near, far), |old| (old.0.min(near), old.1.max(far))));
+                        }
+                    }
+                }
+            }
+        }
+        range
     }
 
     pub fn edit_ray(
@@ -289,12 +311,16 @@ impl TinyVoxelBackend {
                 "this backend requires its matching generator ID, revision, and zero seed".into(),
             );
         }
-        if (entry.voxel_size - 0.1).abs() > 1.0e-9
-            || entry.chunk_edge_voxels != 32
-            || entry.lod_scale != 2
-            || entry.origin != [0.0; 3]
-        {
-            return Err("this backend requires 0.1 m voxels, 32-cell chunks, LOD scale 2, and world origin at the planet center".into());
+        let step = (entry.voxel_size * 10.0).round();
+        if !entry.voxel_size.is_finite() || !(1.0..=10.0).contains(&step)
+            || (step * 0.1 - entry.voxel_size).abs() > 1.0e-9 {
+            return Err("this backend supports base voxels from 0.1 to 1.0 metres in 0.1 metre increments".into());
+        }
+        // Recipe backends own their acceleration layout. Component chunk/LOD
+        // metadata describes live payloads, which this backend rejects below;
+        // it must not dictate private GPU brick dimensions or base-cell size.
+        if entry.origin != [0.0; 3] {
+            return Err("this planet recipe requires world origin at the planet center".into());
         }
         if !matches!(entry.domain, VoxelDomain::Unbounded { .. }) {
             return Err("this planet backend requires an unbounded source domain".into());
@@ -356,6 +382,17 @@ impl VoxelRenderBackend for TinyVoxelBackend {
         true
     }
 
+    fn camera_clip_range(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<(f32, f32)> {
+        let far = (eye.length() + 30_000_000.0) as f32;
+        let near = self.cached_recipe.as_ref()
+            .filter(|(id, revision, recipe, world)| *id == source.id
+                && *revision == source.source_revision
+                && source.generator.as_ref() == Some(recipe)
+                && (world.voxel_size() - source.voxel_size).abs() < 1e-9)
+            .map_or(0.05, |(_, _, _, world)| (world.air_clearance(eye) * 0.25).max(0.05) as f32);
+        Some((near, far))
+    }
+
     fn edit_ray(
         &self,
         source: &VoxelSceneEntry,
@@ -366,7 +403,11 @@ impl VoxelRenderBackend for TinyVoxelBackend {
     ) -> Result<Option<VoxelBrushCommit>, String> {
         let generator = Self::validate_source(source)?;
         let mut world = TinyWorld::from_recipe_json(&generator.parameters)?;
-        let Some((solid, air, distance)) = world.raycast(origin, direction, 1_000.0) else {
+        world.set_voxel_size(source.voxel_size)?;
+        // The world clips the ray against its finite bounds before converting
+        // to exact cells. Editing must not inherit the viewport's draw distance
+        // or an arbitrary gameplay reach: orbital tools use this same source.
+        let Some((solid, air, distance)) = world.raycast(origin, direction, f64::INFINITY) else {
             return Ok(None);
         };
         let cell = if material == 0 { solid } else { air };
@@ -438,12 +479,15 @@ impl VoxelRenderBackend for TinyVoxelBackend {
             Some((entity, revision, cached, world))
                 if *entity == entry.id
                     && *revision == entry.source_revision
+                    && (world.voxel_size() - entry.voxel_size).abs() < 1.0e-9
                     && *cached == generator =>
             {
                 Arc::clone(world)
             }
             _ => {
-                let world = Arc::new(TinyWorld::from_recipe_json(&generator.parameters)?);
+                let mut world = TinyWorld::from_recipe_json(&generator.parameters)?;
+                world.set_voxel_size(entry.voxel_size)?;
+                let world = Arc::new(world);
                 self.cached_recipe = Some((
                     entry.id,
                     entry.source_revision,
@@ -536,6 +580,13 @@ mod tests {
             .clone();
         assert!(!Arc::ptr_eq(&first, &third));
 
+        revised.voxel_size = 1.0;
+        backend.publish_frame(&[&revised], view()).unwrap();
+        let coarse = backend.frame.lock().unwrap().as_ref().unwrap().world.clone();
+        assert_eq!(coarse.voxel_size(), 1.0);
+        assert!(!Arc::ptr_eq(&third, &coarse));
+        assert_eq!(first.voxel_size(), 0.1, "old frame snapshots remain immutable");
+
         revised
             .store
             .write()
@@ -617,6 +668,18 @@ mod tests {
             0
         );
         assert_ne!(original.material(solid), 0);
+        // A source edit addresses the same canonical cell from the ground,
+        // orbit, and beyond the renderer's integer anchor range.
+        for distance in [2_000.0, 300_000.0, 1_000_000_000.0] {
+            let remote = registry
+                .edit_ray(&entries, eye + DVec3::Y * distance, -DVec3::Y, 0.05, 0)
+                .unwrap()
+                .expect("remote terrain remains editable");
+            let edited = TinyWorld::from_recipe_json(&remote.recipe).unwrap();
+            assert_eq!(edited.edits.last().unwrap().cell, solid);
+            assert_eq!(edited.material(solid), 0);
+            assert!(remote.distance > distance);
+        }
         assert!(super::super::renderer::apply_voxel_brush_commit(
             &mut scene, commit
         ));

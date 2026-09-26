@@ -740,7 +740,7 @@ impl HelioRenderer {
         }
 
         // ── Camera / gizmo / render ─────────────────────────────────────────────
-        let (voxel_entries, mut voxel_errors, authored_sky) = {
+        let (voxel_entries, mut voxel_errors, authored_sky, authored_meshes) = {
             let store = self.scene_store.read();
             let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&store.world);
             let authored_sky = store
@@ -748,9 +748,16 @@ impl HelioRenderer {
                 .query::<&helio_pass_sky::SkyComponent>()
                 .next()
                 .is_some();
-            (entries, errors, authored_sky)
+            let authored_meshes = store.world
+                .query::<&helio_pass_gbuffer::StaticObjectComponent>().next().is_some();
+            (entries, errors, authored_sky, authored_meshes)
         };
         let (camera_relative, outdoor_sky) = self.voxel_backends.frame_environment(&voxel_entries);
+        let (terrain_near, far) = self.voxel_backends.camera_clip_range(&voxel_entries, self.cam_pos)
+            .unwrap_or((0.1, 10_000.0));
+        // A terrain's empty-space certificate says nothing about authored
+        // meshes. Preserve their close clipping plane in mixed scenes.
+        let near = if authored_meshes { terrain_near.min(0.1) } else { terrain_near };
         inner.renderer.set_tsr_quality(
             self.voxel_backends
                 .temporal_quality(&voxel_entries, [width, height]),
@@ -775,8 +782,8 @@ impl HelioRenderer {
                 Vec3::Y,
                 std::f32::consts::FRAC_PI_4,
                 aspect,
-                0.1,
-                10_000.0,
+                near,
+                far,
             );
 
             // Debug geometry is transient GPU execution state. World content is
@@ -830,7 +837,7 @@ impl HelioRenderer {
                 forward: forward.to_array(),
                 tan_half_fov_y: (std::f32::consts::FRAC_PI_4 * 0.5).tan(),
                 aspect: width as f32 / height.max(1) as f32,
-                far: 10_000.0,
+                far,
                 size: [width, height],
             },
         ));

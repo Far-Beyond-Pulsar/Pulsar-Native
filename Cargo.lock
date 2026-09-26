@@ -5054,7 +5054,6 @@ dependencies = [
  "helio-pass-water-sim",
  "helio-voxel-data",
  "plugin_editor_api",
- "pulsar_events",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
