@@ -24,6 +24,21 @@ Flamegraph.WaitingForData: "Waiting for profiling data to appear..."
 Flamegraph.RecordingActive: "Recording Active"
 Flamegraph.DataWillAppear: "Data will appear here once profiling events are captured"
 
+# Targets
+Flamegraph.ChooseTarget: "Choose what to profile"
+Flamegraph.ChooseTargetDesc: "Games run from the editor, or started with --pulsar-profile, appear here while they run."
+Flamegraph.ThisEditor: "This editor"
+Flamegraph.KindGame: "game"
+Flamegraph.KindEditor: "editor"
+Flamegraph.RecordTarget: "Record %{target}"
+Flamegraph.RecordingTarget: "Recording %{target}"
+Flamegraph.TargetAvailable: "Available"
+Flamegraph.TargetBusy: "Recorded by another profiler"
+Flamegraph.TargetNotResponding: "Not responding"
+Flamegraph.TargetUptime: "up %{time}"
+Flamegraph.NoOtherTargets: "No other profilable processes are running. Build & Run a game, or start one with --pulsar-profile."
+Flamegraph.StartFailed: "Could not start recording: %{error}"
+
 # Pro Tips
 Flamegraph.ProTips: "Pro Tips"
 Flamegraph.Tip1: "Use Ctrl+Scroll to zoom horizontally, Shift+Scroll for vertical panning"

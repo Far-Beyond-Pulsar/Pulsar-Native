@@ -1,20 +1,56 @@
 //! Real-time profiler using instrumentation for cross-platform profiling
 
 use crate::trace_data::{ThreadInfo, TraceData, TraceFrame, TraceSpan};
+use parking_lot::Mutex;
+use profiling::remote::TargetConnection;
+use profiling::ProfileEvent;
 use std::collections::HashMap;
 use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
 use std::thread;
 use std::time::Duration;
+
+/// Where a recording's events come from.
+enum Source {
+    /// This process's own instrumentation queue.
+    Local,
+    /// Another process, through its shared-memory ring
+    /// (`profiling::remote`).
+    Remote(TargetConnection),
+}
+
+impl Source {
+    fn collect(&mut self, session: &Mutex<Vec<ProfileEvent>>) -> Vec<ProfileEvent> {
+        match self {
+            Source::Local => profiling::collect_events(),
+            Source::Remote(connection) => {
+                let mut events = Vec::new();
+                connection.read_events(&mut events);
+                // The target keeps nothing, so the session is kept here for
+                // saving (bounded like the local profiler's retention).
+                let mut session = session.lock();
+                let room = profiling::profiler::DEFAULT_RETAINED_EVENT_CAPACITY.saturating_sub(session.len());
+                session.extend(events.iter().take(room).cloned());
+                events
+            }
+        }
+    }
+}
 
 /// Background collector that periodically grabs instrumentation events
 pub struct InstrumentationCollector {
     trace_data: Arc<TraceData>,
     running: Arc<AtomicBool>,
     update_interval_ms: u64,
+    /// Taken by the collector thread when it starts.
+    source: Mutex<Option<Source>>,
+    remote: bool,
+    uncap_frame_rate: bool,
+    /// A remote recording's events, for saving.
+    session: Arc<Mutex<Vec<ProfileEvent>>>,
 }
 
 impl InstrumentationCollector {
-    /// Create a new instrumentation collector
+    /// A collector for this process's own instrumentation.
     ///
     /// # Arguments
     /// * `trace_data` - Shared TraceData to update with profiling results
@@ -24,46 +60,89 @@ impl InstrumentationCollector {
             trace_data,
             running: Arc::new(AtomicBool::new(false)),
             update_interval_ms,
+            source: Mutex::new(Some(Source::Local)),
+            remote: false,
+            uncap_frame_rate: false,
+            session: Arc::default(),
         }
     }
 
-    /// Start collecting in a background thread
-    pub fn start(&self) {
-        if self
-            .running
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            tracing::trace!("[PROFILER] Already running, ignoring start request");
-            return;
+    /// A collector for another process (a running game, another editor).
+    pub fn remote(
+        trace_data: Arc<TraceData>,
+        update_interval_ms: u64,
+        connection: TargetConnection,
+        uncap_frame_rate: bool,
+    ) -> Self {
+        Self {
+            trace_data,
+            running: Arc::new(AtomicBool::new(false)),
+            update_interval_ms,
+            source: Mutex::new(Some(Source::Remote(connection))),
+            remote: true,
+            uncap_frame_rate,
+            session: Arc::default(),
         }
+    }
 
-        // Profiling is only live while the Flamegraph panel is actively
-        // recording — enabling it here (rather than for the whole process
-        // lifetime) is what keeps profile_scope! from leaking events into
-        // an unbounded channel when nobody is collecting them.
-        profiling::clear_events();
-        profiling::enable_profiling();
+    /// Whether this records another process.
+    pub fn is_remote(&self) -> bool {
+        self.remote
+    }
 
-        tracing::trace!(
-            "[PROFILER] Profiling enabled: {}",
-            profiling::is_profiling_enabled()
-        );
+    /// The events of a remote recording so far (local recordings are kept
+    /// by the in-process profiler: `profiling::get_all_events`).
+    pub fn session_events(&self) -> Vec<ProfileEvent> {
+        self.session.lock().clone()
+    }
 
-        // Drain the producer queue once so the collector can begin from a
-        // known boundary. Do not synthesize a test span or sleep here: both
-        // change the timing of the application being profiled.
-        let initial_events = profiling::collect_events();
+    /// Start collecting in a background thread. Fails when a remote target
+    /// cannot be recorded (e.g. another viewer is recording it).
+    pub fn start(&self) -> Result<(), String> {
+        let Some(mut source) = self.source.lock().take() else {
+            tracing::trace!("[PROFILER] Already running, ignoring start request");
+            return Ok(());
+        };
+        match &mut source {
+            Source::Local => {
+                // Profiling is only live while the Flamegraph panel is actively
+                // recording — enabling it here (rather than for the whole process
+                // lifetime) is what keeps profile_scope! from leaking events into
+                // an unbounded channel when nobody is collecting them.
+                profiling::clear_events();
+                profiling::enable_profiling();
 
-        tracing::trace!("[PROFILER] Current event count: {}", initial_events.len());
+                tracing::trace!(
+                    "[PROFILER] Profiling enabled: {}",
+                    profiling::is_profiling_enabled()
+                );
+
+                // Drain the producer queue once so the collector can begin from a
+                // known boundary. Do not synthesize a test span or sleep here: both
+                // change the timing of the application being profiled.
+                let initial_events = profiling::collect_events();
+
+                tracing::trace!("[PROFILER] Current event count: {}", initial_events.len());
+            }
+            Source::Remote(connection) => {
+                if let Err(error) = connection.start_recording(self.uncap_frame_rate) {
+                    *self.source.lock() = Some(source);
+                    return Err(error);
+                }
+                tracing::info!(pid = connection.pid(), "[PROFILER] Recording another process");
+            }
+        }
+        self.running.store(true, Ordering::Release);
 
         let trace_data = Arc::clone(&self.trace_data);
         let running_flag = Arc::clone(&self.running);
         let update_interval = self.update_interval_ms;
+        let session = Arc::clone(&self.session);
 
         thread::spawn(move || {
-            collector_loop(trace_data, running_flag, update_interval);
+            collector_loop(trace_data, running_flag, update_interval, source, session);
         });
+        Ok(())
     }
 
     /// Stop collecting
@@ -73,7 +152,11 @@ impl InstrumentationCollector {
         // Do not join from the UI thread. The collector only owns lock-free
         // queues and will observe this flag on its next tick; joining here
         // created a UI/render shutdown dependency and was a deadlock vector.
-        profiling::disable_profiling();
+        // A remote target stops streaming when the thread drops its
+        // connection.
+        if !self.remote {
+            profiling::disable_profiling();
+        }
     }
 
     /// Check if collector is running
@@ -87,6 +170,8 @@ fn collector_loop(
     trace_data: Arc<TraceData>,
     running: Arc<AtomicBool>,
     update_interval_ms: u64,
+    mut source: Source,
+    session: Arc<Mutex<Vec<ProfileEvent>>>,
 ) {
     tracing::trace!("[PROFILER] Starting instrumentation collector");
 
@@ -100,7 +185,7 @@ fn collector_loop(
         // Consuming that delta avoids cloning the complete session history
         // every 100ms, which used to make the profiler increasingly expensive
         // during long captures.
-        let new_events = profiling::collect_events();
+        let new_events = source.collect(&session);
         if new_events.is_empty() {
             continue;
         }
@@ -371,4 +456,53 @@ pub fn convert_profile_events_to_trace(
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use profiling::remote::{self, TargetDescription};
+    use std::time::Instant;
+
+    /// A remote collector records another target through shared memory:
+    /// spans reach the trace, frame markers the frame-time graph, and the
+    /// session is kept for saving. (The target publishes from this process
+    /// here; `profiling`'s own test covers two real processes.)
+    #[test]
+    fn a_remote_collector_records_a_published_target() {
+        let dir = std::env::temp_dir().join(format!("flamegraph-remote-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let description = TargetDescription { kind: "game".into(), name: "g".into(), project: String::new() };
+        let publisher = remote::serve_in(&dir, description, 1 << 20).unwrap();
+        let target = remote::list_targets_in(&dir).pop().expect("listed");
+        assert!(target.is_current_process());
+
+        let trace = Arc::new(TraceData::new());
+        let connection = TargetConnection::open(&target.path).unwrap();
+        let collector = InstrumentationCollector::remote(Arc::clone(&trace), 10, connection, false);
+        assert!(collector.is_remote());
+        collector.start().unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while collector.session_events().iter().filter(|e| e.name == "remote_frame").count() < 20 {
+            assert!(Instant::now() < deadline, "no events arrived");
+            {
+                profiling::profile_scope!("remote_frame");
+                profiling::profile_scope!("remote_work");
+                std::hint::black_box((0..100u64).sum::<u64>());
+            }
+            profiling::record_frame_time(2.0);
+            thread::sleep(Duration::from_millis(2));
+        }
+        // Let the collector publish a batch to the trace.
+        thread::sleep(Duration::from_millis(100));
+        collector.stop();
+
+        let frame = trace.get_frame();
+        assert!(frame.spans.iter().any(|s| s.name == "remote_work" && s.depth == 1), "spans reached the trace");
+        assert!(!frame.frame_times_ms.is_empty(), "frame markers reached the frame-time graph");
+        assert!(collector.session_events().iter().any(|e| e.name == "remote_work"));
+        drop(publisher);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

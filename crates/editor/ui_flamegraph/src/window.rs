@@ -4,6 +4,7 @@ use crate::{
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use rust_i18n::t;
+use profiling::remote::{TargetConnection, TargetInfo};
 use std::sync::Arc;
 use ui::{
     button::Button,
@@ -26,6 +27,37 @@ pub struct FlamegraphWindow {
     /// "Uncap frame rate while recording": lifts the engine's frame-rate target and
     /// vsync for the duration of the next recording.
     uncap_frame_rate: bool,
+    /// Other profilable processes on this machine (games, other editors),
+    /// refreshed every second (`profiling::remote`).
+    targets: Vec<TargetInfo>,
+    /// The process to record: `None` is this editor, in-process.
+    selected_target: Option<u32>,
+    /// What the current (or last) recording records.
+    recording_label: String,
+    /// Why the last start failed.
+    start_error: Option<String>,
+    _refresh_targets: Task<()>,
+}
+
+/// How often the start screen re-lists profilable processes.
+const TARGET_REFRESH: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Profilable processes other than this one.
+fn other_targets() -> Vec<TargetInfo> {
+    profiling::remote::list_targets().into_iter().filter(|t| !t.is_current_process()).collect()
+}
+
+fn uptime(started_unix_ms: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let secs = now.saturating_sub(started_unix_ms) / 1000;
+    match secs {
+        0..=59 => format!("{secs}s"),
+        60..=3599 => format!("{}m {}s", secs / 60, secs % 60),
+        _ => format!("{}h {}m", secs / 3600, secs % 3600 / 60),
+    }
 }
 
 impl Drop for FlamegraphWindow {
@@ -44,6 +76,13 @@ impl FlamegraphWindow {
 
         cx.new(|cx| {
             let resizable_state = ResizableState::new(cx);
+            let refresh = cx.spawn(async move |this, cx| loop {
+                cx.background_executor().timer(TARGET_REFRESH).await;
+                let targets = cx.background_executor().spawn(async { other_targets() }).await;
+                if this.update(cx, |window: &mut FlamegraphWindow, cx| window.set_targets(targets, cx)).is_err() {
+                    break;
+                }
+            });
 
             Self {
                 view,
@@ -56,6 +95,11 @@ impl FlamegraphWindow {
                 statistics_panel: None,
                 resizable_state,
                 uncap_frame_rate: false,
+                targets: other_targets(),
+                selected_target: None,
+                recording_label: String::new(),
+                start_error: None,
+                _refresh_targets: refresh,
             }
         })
     }
@@ -64,9 +108,37 @@ impl FlamegraphWindow {
     /// is running with the box ticked. Sets both halves of the cap: the Helio
     /// render thread's frame pacer, and vsync on the window swapchain.
     fn apply_frame_rate_cap(&self) {
-        let uncapped = self.is_profiling && self.uncap_frame_rate;
+        // A remote target lifts its own cap (the option travels with the
+        // recording request); this editor stays as it is.
+        let local = self.collector.as_ref().is_none_or(|c| !c.is_remote());
+        let uncapped = self.is_profiling && self.uncap_frame_rate && local;
         profiling::set_uncap_frame_rate(uncapped);
         gpui::render_stats::set_uncapped_presentation(uncapped);
+    }
+
+    fn set_targets(&mut self, targets: Vec<TargetInfo>, cx: &mut Context<Self>) {
+        self.targets = targets;
+        // A selected process that exited falls back to this editor.
+        if let Some(pid) = self.selected_target {
+            if !self.targets.iter().any(|t| t.pid == pid) && !self.is_profiling {
+                self.selected_target = None;
+            }
+        }
+        if !self.is_profiling {
+            cx.notify();
+        }
+    }
+
+    fn selected_target(&self) -> Option<&TargetInfo> {
+        let pid = self.selected_target?;
+        self.targets.iter().find(|t| t.pid == pid)
+    }
+
+    fn selected_label(&self) -> String {
+        match self.selected_target() {
+            Some(target) => format!("{} (pid {})", target.name, target.pid),
+            None => t!("Flamegraph.ThisEditor").to_string(),
+        }
     }
 
     fn start_profiling(&mut self, _cx: &mut Context<Self>) {
@@ -75,6 +147,32 @@ impl FlamegraphWindow {
         }
 
         tracing::trace!("[PROFILER] Starting instrumentation collector");
+        self.start_error = None;
+
+        // This editor records in-process; any other target through its
+        // shared-memory ring.
+        let collector = match self.selected_target().cloned() {
+            None => InstrumentationCollector::new(Arc::clone(&self.trace_data), 100),
+            Some(target) => match TargetConnection::open(&target.path) {
+                Ok(connection) => InstrumentationCollector::remote(
+                    Arc::clone(&self.trace_data),
+                    100,
+                    connection,
+                    self.uncap_frame_rate,
+                ),
+                Err(error) => {
+                    self.start_error = Some(t!("Flamegraph.StartFailed", error => error.to_string()).to_string());
+                    _cx.notify();
+                    return;
+                }
+            },
+        };
+        if let Err(error) = collector.start() {
+            self.start_error = Some(t!("Flamegraph.StartFailed", error => error).to_string());
+            _cx.notify();
+            return;
+        }
+        self.recording_label = self.selected_label();
 
         // Create database file in project directory
         if let Some(project_path) = engine_state::get_project_path() {
@@ -100,14 +198,7 @@ impl FlamegraphWindow {
             }
         }
 
-        // Create instrumentation collector
-        let collector = Arc::new(InstrumentationCollector::new(
-            Arc::clone(&self.trace_data),
-            100, // Update UI every 100ms
-        ));
-
-        collector.start();
-        self.collector = Some(collector);
+        self.collector = Some(Arc::new(collector));
         self.is_profiling = true;
         self.apply_frame_rate_cap();
 
@@ -131,7 +222,10 @@ impl FlamegraphWindow {
 
         // Save all events to database before stopping
         if let Some(db_conn) = &self.db_connection {
-            let events = profiling::get_all_events();
+            let events = match &self.collector {
+                Some(collector) if collector.is_remote() => collector.session_events(),
+                _ => profiling::get_all_events(),
+            };
             if let Err(e) = profiling::database::save_events(db_conn, &events) {
                 tracing::error!("[PROFILER] Failed to save events to database: {}", e);
             } else {
@@ -251,11 +345,165 @@ impl FlamegraphWindow {
         }
     }
 
+    /// One row of the target list.
+    fn render_target_row(
+        &self,
+        key: Option<u32>,
+        icon: IconName,
+        title: String,
+        detail: String,
+        status: Option<(String, bool)>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let selectable = status.as_ref().is_none_or(|(_, ok)| *ok);
+        let selected = self.selected_target == key;
+        let listener = cx.listener(move |this, _event, _window, cx| {
+            if selectable {
+                this.selected_target = key;
+                this.start_error = None;
+                cx.notify();
+            }
+        });
+        let theme = cx.theme();
+        let accent = theme.accent;
+        h_flex()
+            .id(SharedString::from(format!("profiling-target-{}", key.unwrap_or(0))))
+            .w_full()
+            .px_4()
+            .py_3()
+            .gap_3()
+            .items_center()
+            .rounded(px(10.0))
+            .border_1()
+            .when(selected, |el| el.bg(accent.opacity(0.12)).border_color(accent.opacity(0.6)))
+            .when(!selected, |el| el.bg(theme.popover).border_color(theme.border))
+            .when(selectable && !selected, |el| {
+                el.cursor_pointer().hover(|style| style.border_color(accent.opacity(0.3)))
+            })
+            .when(!selectable, |el| el.opacity(0.55))
+            .on_mouse_down(MouseButton::Left, listener)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .size(px(36.0))
+                    .flex_shrink_0()
+                    .rounded(px(8.0))
+                    .bg(accent.opacity(0.12))
+                    .child(Icon::new(icon).size(px(20.0)).text_color(accent)),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .gap_0p5()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.foreground)
+                            .child(title),
+                    )
+                    .child(div().text_xs().text_color(theme.muted_foreground).truncate().child(detail)),
+            )
+            .when_some(status, |el, (label, ok)| {
+                el.child(
+                    div()
+                        .flex_shrink_0()
+                        .px_2()
+                        .py_0p5()
+                        .rounded(px(6.0))
+                        .text_xs()
+                        .when(ok, |el| el.bg(gpui::green().opacity(0.12)).text_color(gpui::green()))
+                        .when(!ok, |el| el.bg(theme.muted.opacity(0.2)).text_color(theme.muted_foreground))
+                        .child(label),
+                )
+            })
+            .into_any_element()
+    }
+
+    /// The start screen's list of profilable processes: this editor first,
+    /// then every game and editor found on this machine.
+    fn render_targets(&self, cx: &mut Context<Self>) -> AnyElement {
+        let project = engine_state::get_project_path().unwrap_or_default();
+        let mut rows = vec![self.render_target_row(
+            None,
+            IconName::LayoutDashboard,
+            t!("Flamegraph.ThisEditor").to_string(),
+            format!("editor · pid {} · {project}", std::process::id()),
+            None,
+            cx,
+        )];
+        for target in self.targets.clone() {
+            let (icon, kind) = match target.kind.as_str() {
+                "game" => (IconName::Gamepad, t!("Flamegraph.KindGame").to_string()),
+                "editor" => (IconName::LayoutDashboard, t!("Flamegraph.KindEditor").to_string()),
+                other => (IconName::Cpu, other.to_owned()),
+            };
+            let status = if !target.responsive() {
+                (t!("Flamegraph.TargetNotResponding").to_string(), false)
+            } else if target.viewer_pid.is_some() {
+                (t!("Flamegraph.TargetBusy").to_string(), false)
+            } else {
+                (t!("Flamegraph.TargetAvailable").to_string(), true)
+            };
+            let detail = format!(
+                "{kind} · pid {} · {} · {}",
+                target.pid,
+                t!("Flamegraph.TargetUptime", time => uptime(target.started_unix_ms)),
+                target.project
+            );
+            rows.push(self.render_target_row(Some(target.pid), icon, target.name.clone(), detail, Some(status), cx));
+        }
+        let no_others = self.targets.is_empty();
+        let error = self.start_error.clone();
+        let theme = cx.theme();
+        v_flex()
+            .w_full()
+            .gap_2()
+            .child(
+                v_flex()
+                    .gap_0p5()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(theme.muted_foreground)
+                            .child(t!("Flamegraph.ChooseTarget").to_string().to_uppercase()),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground.opacity(0.8))
+                            .child(t!("Flamegraph.ChooseTargetDesc").to_string()),
+                    ),
+            )
+            .children(rows)
+            .when(no_others, |el| {
+                el.child(
+                    div()
+                        .px_4()
+                        .py_2()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(t!("Flamegraph.NoOtherTargets").to_string()),
+                )
+            })
+            .when_some(error, |el, error| {
+                el.child(div().px_4().py_2().text_sm().text_color(gpui::red()).child(error))
+            })
+            .into_any_element()
+    }
+
     fn render_empty_state(
         &mut self,
         is_profiling: bool,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let targets = (!is_profiling).then(|| self.render_targets(cx));
+        let record_title = t!("Flamegraph.RecordTarget", target => self.selected_label()).to_string();
+        let recording_title = t!("Flamegraph.RecordingTarget", target => self.recording_label.clone()).to_string();
         let theme = cx.theme();
         let accent_color = theme.accent;
 
@@ -310,7 +558,8 @@ impl FlamegraphWindow {
                 this.child(
                     v_flex()
                         .gap_3()
-                        .w(px(480.0))
+                        .w(px(560.0))
+                        .children(targets)
                         .child(
                             h_flex()
                                 .w_full()
@@ -358,7 +607,7 @@ impl FlamegraphWindow {
                                                 .text_lg()
                                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                                 .text_color(theme.foreground)
-                                                .child(t!("Flamegraph.StartRecording").to_string()),
+                                                .child(record_title),
                                         )
                                         .child(
                                             div()
@@ -579,7 +828,7 @@ impl FlamegraphWindow {
                                         .text_base()
                                         .font_weight(gpui::FontWeight::MEDIUM)
                                         .text_color(theme.foreground)
-                                        .child(t!("Flamegraph.RecordingActive").to_string()),
+                                        .child(recording_title),
                                 ),
                         )
                         .child(
