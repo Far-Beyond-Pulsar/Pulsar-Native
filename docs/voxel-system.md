@@ -65,10 +65,12 @@ filtered reduction of the edited leaf volume. Small edits can therefore be
 visually unresolved until refinement. The current backend is not yet
 qualified for AAA visual quality or seamless exact-detail arrival.
 
-The [25–26 September full-graph validation report](https://github.com/Far-Beyond-Pulsar/Helio/blob/608e599fc16576d13207c8025a91903e149b1c84/crates/passes/3d/helio-pass-tiny-voxel/VALIDATION_2026_09_25.md)
+The [26 September full-graph validation report](https://github.com/Far-Beyond-Pulsar/Helio/blob/156f6a7b28e3ef224facbd950d9b6f9753c327cc/crates/passes/3d/helio-pass-tiny-voxel/VALIDATION_2026_09_26.md)
 contains reproducible flights, raw frame timings, capture audits and the
-remaining quality failures. These offscreen measurements are not a populated
-level or whole-editor performance qualification.
+remaining quality failures. A larger generation-batch experiment was reverted
+because it reduced arrival latency but worsened descent frame times. These
+offscreen measurements are not a populated level or whole-editor performance
+qualification.
 
 The graph capture test runs with `HELIO_VOXEL_CAPTURE` set to an output PNG path:
 `cargo test -p helio-default-graphs --test voxel_pass_graph` from the Helio
