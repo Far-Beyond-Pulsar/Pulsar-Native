@@ -1,0 +1,77 @@
+{
+  "format_version": 2,
+  "name": "GameRules",
+  "constants": [
+    {
+      "Int": 1
+    }
+  ],
+  "imports": [],
+  "variables": [
+    {
+      "name": "ticks",
+      "ty": {
+        "kind": "int"
+      },
+      "default": null
+    }
+  ],
+  "functions": [
+    {
+      "name": "tick",
+      "exported": true,
+      "params": [
+        {
+          "kind": "float"
+        }
+      ],
+      "ret": {
+        "kind": "unit"
+      },
+      "registers": [
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "int"
+        }
+      ],
+      "code": [
+        {
+          "LoadVar": {
+            "dst": 1,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 2,
+            "index": 0
+          }
+        },
+        {
+          "Binary": {
+            "op": "Add",
+            "dst": 1,
+            "a": 1,
+            "b": 2
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 1
+          }
+        },
+        {
+          "Return": {
+            "value": null
+          }
+        }
+      ]
+    }
+  ]
+}

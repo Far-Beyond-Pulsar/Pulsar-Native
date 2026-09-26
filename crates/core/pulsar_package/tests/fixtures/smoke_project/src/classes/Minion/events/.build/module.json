@@ -1,0 +1,53 @@
+{
+  "format_version": 2,
+  "name": "Minion",
+  "constants": [
+    {
+      "Bool": true
+    }
+  ],
+  "imports": [],
+  "variables": [
+    {
+      "name": "alive",
+      "ty": {
+        "kind": "bool"
+      },
+      "default": null
+    }
+  ],
+  "functions": [
+    {
+      "name": "begin_play",
+      "exported": true,
+      "params": [],
+      "ret": {
+        "kind": "unit"
+      },
+      "registers": [
+        {
+          "kind": "bool"
+        }
+      ],
+      "code": [
+        {
+          "Const": {
+            "dst": 0,
+            "index": 0
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 0
+          }
+        },
+        {
+          "Return": {
+            "value": null
+          }
+        }
+      ]
+    }
+  ]
+}

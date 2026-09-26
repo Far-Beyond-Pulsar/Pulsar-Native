@@ -1,0 +1,42 @@
+{
+  "version": "2.1",
+  "objects": [
+    {
+      "id": "spawner",
+      "name": "Spawner",
+      "object_type": "Empty",
+      "transform": { "position": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0] },
+      "visible": true,
+      "locked": true,
+      "parent": null,
+      "children": [],
+      "scene_path": "Spawner",
+      "props": {},
+      "component_instances": [
+        {
+          "index": 0,
+          "class_name": "ClassInstance",
+          "data": { "class": "", "class_name": "Spawner" }
+        }
+      ]
+    },
+    {
+      "id": "floor",
+      "name": "Floor",
+      "object_type": { "Mesh": "Custom" },
+      "transform": { "position": [0.0, -1.0, 0.0], "rotation": [0.0, 0.0, 0.0], "scale": [4.0, 0.1, 4.0] },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Floor",
+      "props": { "mesh_asset": "meshes/glass_red.mesh" },
+      "component_instances": [
+        { "index": 0, "class_name": "StaticMeshComponent", "data": { "mesh_asset": "meshes/glass_red.mesh" } }
+      ]
+    }
+  ],
+  "components": {},
+  "metadata": { "name": "Main" },
+  "editor": { "camera": { "position": [0.0, 2.0, 8.0], "yaw": 0.0, "pitch": -0.2 } }
+}
