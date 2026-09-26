@@ -251,3 +251,67 @@ jobs:
 
       - name: Run tests
         run: cargo nextest run --all --no-fail-fast
+
+  # Packaging (#926, #889): package the smoke-test project, copy it away from
+  # the source tree, run it headless for a few frames and check that
+  # begin_play, a runtime spawn and an event handler ran, from game.pak and
+  # from loose files. Once per supported platform.
+  package-smoke:
+    name: packaging smoke test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - run_on: ubuntu-latest
+          - run_on: macos-latest
+          - run_on: windows-latest
+    runs-on: ${{ matrix.run_on }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+
+      - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1
+
+      - name: Install Linux system dependencies
+        if: ${{ matrix.run_on == 'ubuntu-latest' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config libssl-dev libglib2.0-dev libgtk-3-dev \
+            libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev \
+            clang libclang-dev
+
+      # Script VM pieces packaged games rely on: binary modules, limits,
+      # checked arithmetic, capabilities.
+      - name: Script VM and runtime tests
+        run: cargo test -p pulsar_script_vm -p pulsar_script_runtime -p pulsar_content
+
+      # Package (pak and --loose), copy to a clean directory, delete the
+      # project, run headless through pulsar_game::standalone (the generated
+      # main's code path) and check the report and the log.
+      - name: Packaging smoke test
+        run: cargo test -p pulsar_package --no-default-features --test smoke -- --nocapture
+
+      # The `pulsar` CLI on the same project (content only; a release build
+      # of a generated game is the drift check's job).
+      - name: pulsar package (CLI)
+        shell: bash
+        run: |
+          cargo run -p pulsar_package --no-default-features --bin pulsar -- package \
+            --project crates/core/pulsar_package/tests/fixtures/smoke_project \
+            --out "${RUNNER_TEMP}/smoke-package" --profile shipping --skip-build \
+            --report "${RUNNER_TEMP}/smoke-package/report.json"
+          test -f "${RUNNER_TEMP}/smoke-package/Content/game.pak"
+
+      # Headless Blueprint compile (#879) through the plugin's
+      # ScriptLanguage::compile_project.
+      - name: Blueprint headless compile
+        run: cargo test -p pulsar_package --test blueprint_compile
+
+      # #889: the generated project (main.rs now calls
+      # pulsar_game::standalone::run) must still compile against the pins.
+      - name: Generated project compiles
+        if: ${{ matrix.run_on == 'ubuntu-latest' }}
+        run: cargo test -p pulsar_game --test generated_project_compiles -- --ignored

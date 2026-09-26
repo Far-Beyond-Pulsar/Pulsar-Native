@@ -49,6 +49,7 @@ fn natives_run_through_the_vm() {
             Instr::CallNative { import: 0, args: vec![0, 1], dst: Some(2) },
             Instr::Return { value: Some(2) },
         ],
+        debug: None,
     }];
     let program = Program::link(Arc::new(module), &registry).unwrap();
     let mut world = World::new();
@@ -88,4 +89,25 @@ fn control_flow_nodes_become_selector_natives() {
     }
     let fired = registry.get("std::branch").unwrap().call(&mut host, &mut [Value::Bool(false)]).unwrap();
     assert_eq!(fired, Value::Int(1), "branch(false) fires False");
+}
+
+/// #869: natives of file, process, network and environment nodes are
+/// capability-gated; everything else is not.
+#[test]
+fn sensitive_natives_carry_a_capability() {
+    let registry = NativeRegistry::with_engine_natives();
+    assert_eq!(registry.get("std::add").unwrap().capability(), None);
+    let mut gated = 0;
+    for native in registry.functions().filter(|n| n.name.starts_with("std::")) {
+        let expected = match native.attr("category") {
+            Some("File I/O") => Some("fs"),
+            Some("Process" | "Shell") => Some("process"),
+            Some("HTTP" | "Network") => Some("net"),
+            Some("Env") => Some("env"),
+            _ => None,
+        };
+        assert_eq!(native.capability(), expected, "{}", native.name);
+        gated += usize::from(expected.is_some());
+    }
+    assert!(gated > 0, "no capability-gated std natives");
 }

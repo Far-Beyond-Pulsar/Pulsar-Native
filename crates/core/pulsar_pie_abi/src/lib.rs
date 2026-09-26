@@ -287,6 +287,42 @@ pub type FnAssetUpdated =
 /// game is running). Call with capacity 0 to size the buffer.
 pub type FnEventsSnapshot = unsafe extern "C" fn(*mut u8, usize) -> usize;
 
+/// Optional (#925): `extern "C" fn(cmd, arg) -> u64` — simulation control
+/// for the editor's pause / step buttons. `cmd` is one of the [`control`]
+/// constants; unknown commands return 0.
+pub type FnControl = unsafe extern "C" fn(u32, u64) -> u64;
+
+/// Commands for [`FnControl`].
+pub mod control {
+    /// Pause the simulation (rendering continues). Returns 1.
+    pub const PAUSE: u32 = 1;
+    /// Resume. Returns 1.
+    pub const RESUME: u32 = 2;
+    /// While paused, run `arg` more frames (one per tick). Returns 1 if
+    /// paused (the steps were queued), 0 otherwise.
+    pub const STEP: u32 = 3;
+    /// Returns 1 while paused, 0 while running.
+    pub const IS_PAUSED: u32 = 4;
+    /// Returns the number of simulation frames run so far.
+    pub const FRAME: u32 = 5;
+}
+
+/// Optional (#854, #925): `extern "C" fn(out, capacity) -> len` — the script
+/// problems (errors, link errors, dropped waiting calls) the game raised
+/// since the last successful call, as a UTF-8 JSON array of
+/// `pulsar_events::ScriptProblem`. Returns the length; the problems are
+/// written to `out` and forgotten only if `len <= capacity` (call with
+/// capacity 0 to size the buffer). 0 means no problems.
+pub type FnTakeProblems = unsafe extern "C" fn(*mut u8, usize) -> usize;
+
+/// Optional (#942): `extern "C" fn(out, out_size) -> u32` — write a Gamma
+/// `gamma::ffi::RawBus` exporting the session's event hub to `out`, which
+/// points to `out_size` bytes (must be `size_of::<RawBus>()`). Returns 1 on
+/// success; the caller then owns one strong reference (wrap it in a
+/// `ForeignBus`) and must drop it, and everything made through it, before
+/// [`SYM_SHUTDOWN`].
+pub type FnEventBus = unsafe extern "C" fn(*mut c_void, usize) -> u32;
+
 /// Success/failure sentinel for [`FnInit`].
 pub const INIT_OK: u32 = 1;
 pub const INIT_ERR: u32 = 0;
@@ -303,3 +339,9 @@ pub const SYM_SHUTDOWN: &[u8] = b"pulsar_pie_shutdown";
 pub const SYM_ASSET_UPDATED: &[u8] = b"pulsar_pie_asset_updated";
 /// Optional; see [`FnEventsSnapshot`].
 pub const SYM_EVENTS_SNAPSHOT: &[u8] = b"pulsar_pie_events_snapshot";
+/// Optional; see [`FnControl`].
+pub const SYM_CONTROL: &[u8] = b"pulsar_pie_control";
+/// Optional; see [`FnTakeProblems`].
+pub const SYM_TAKE_PROBLEMS: &[u8] = b"pulsar_pie_take_problems";
+/// Optional; see [`FnEventBus`].
+pub const SYM_EVENT_BUS: &[u8] = b"pulsar_pie_event_bus";

@@ -4,7 +4,7 @@ mod common;
 
 use common::{float, int, Asm, Harness};
 use pulsar_script_vm::{
-    BinOp, Budget, Constant, Host, Instr, Module, NativeRegistry, Param, ScriptErrorKind, Type,
+    BinOp, Budget, Completion, Constant, Host, Instr, Module, NativeRegistry, Param, ScriptErrorKind, Type,
     UnOp, Value,
 };
 
@@ -385,4 +385,157 @@ fn continuations_only_resume_in_their_program() {
     let mut ib = b.instantiate();
     let err = h.vm.resume(&b, &mut ib, continuation, &mut Host::new(&mut h.world, h.entity), &mut Budget::new(10)).unwrap_err();
     assert!(matches!(err.kind, ScriptErrorKind::BadEntryCall(_)));
+}
+
+/// #854: debug info maps each frame of a trace to its source location, and
+/// the verifier rejects a table that does not fit the code.
+#[test]
+fn traces_resolve_source_locations() {
+    use pulsar_script_vm::{DebugInfo, DebugRange, SourceLoc};
+    let mut asm = Asm::new();
+    asm.function("div", vec![Type::Int, Type::Int], Type::Int, vec![Type::Int], vec![
+        Binary { op: BinOp::Div, dst: 2, a: 0, b: 1 },
+        Return { value: Some(2) },
+    ]);
+    asm.function("outer", vec![], Type::Int, vec![Type::Int, Type::Int], vec![
+        Call { func: 0, args: vec![0, 1], dst: Some(0) },
+        Return { value: Some(0) },
+    ]);
+    let mut debug = DebugInfo::default();
+    debug.record(0, &SourceLoc::node("g.json", "div_node"));
+    asm.module.functions[0].debug = Some(debug);
+    let mut debug = DebugInfo::default();
+    debug.record(0, &SourceLoc::node("g.json", "call_node"));
+    debug.record(1, &SourceLoc::node("g.json", "call_node"));
+    assert_eq!(debug.ranges.len(), 1, "contiguous pcs of one node merge");
+    asm.module.functions[1].debug = Some(debug);
+    let program = asm.link(&NativeRegistry::new());
+    let err = Harness::new().run(&program, "outer", &[]).unwrap_err();
+    assert_eq!(err.locations.len(), 2);
+    assert_eq!(err.location().map(|l| l.node.as_str()), Some("div_node"));
+    assert_eq!(err.locations[1].as_ref().map(|l| l.node.as_str()), Some("call_node"));
+    assert!(err.to_string().contains("div@0 (node div_node in g.json)"), "{err}");
+
+    // The table survives JSON, and a range past the code fails verification.
+    let json = asm.module.to_json().unwrap();
+    assert_eq!(Module::from_json(&json).unwrap(), asm.module);
+    let mut bad = asm.module.clone();
+    bad.functions[0].debug = Some(DebugInfo {
+        ranges: vec![DebugRange { start: 1, end: 5, loc: SourceLoc::default() }],
+    });
+    assert!(pulsar_script_vm::verify(&bad).is_err());
+}
+
+/// #862: a continuation moves onto a reloaded module whose waiting
+/// functions keep their layout, through nested calls, and is refused when
+/// a waiting function changed shape.
+#[test]
+fn continuations_rebase_onto_compatible_modules() {
+    let mut asm = Asm::new();
+    let one = asm.constant(Constant::Float(1.0));
+    let seven = asm.constant(Constant::Int(7));
+    asm.function("inner", vec![], Type::Int, vec![Type::Float, Type::Int], vec![
+        Const { dst: 0, index: one },
+        Wait { seconds: 0 },
+        Const { dst: 1, index: seven },
+        Return { value: Some(1) },
+    ]);
+    asm.function("outer", vec![], Type::Int, vec![Type::Int], vec![
+        Call { func: 0, args: vec![], dst: Some(0) },
+        Return { value: Some(0) },
+    ]);
+    let program = asm.link(&NativeRegistry::new());
+    let mut h = Harness::new();
+    let mut instance = program.instantiate();
+    let func = program.entry("outer").unwrap();
+    let mut host = Host::new(&mut h.world, h.entity);
+    let Completion::Waiting { continuation, .. } =
+        h.vm.start(&program, &mut instance, func, &[], &mut host, &mut Budget::new(1000)).unwrap()
+    else {
+        panic!("waits");
+    };
+    assert_eq!(continuation.functions(), ["outer", "inner"]);
+
+    // v2: a different constant, same layout, functions reordered.
+    let mut v2 = asm.module.clone();
+    v2.constants[seven as usize] = Constant::Int(8);
+    v2.functions.swap(0, 1);
+    if let Call { func, .. } = &mut v2.functions[0].code[0] {
+        *func = 1;
+    }
+    let v2 = std::sync::Arc::new(v2);
+    let rebased = continuation.rebase(&v2).expect("compatible");
+    let program2 = pulsar_script_vm::Program::link(v2, &NativeRegistry::new()).unwrap();
+    let mut instance2 = program2.instantiate();
+    let mut host = Host::new(&mut h.world, h.entity);
+    match h.vm.resume(&program2, &mut instance2, rebased, &mut host, &mut Budget::new(1000)).unwrap() {
+        Completion::Returned(value) => assert_eq!(value, int(8), "finished in the new code"),
+        Completion::Waiting { .. } => panic!("finished"),
+    }
+
+    // v3: `inner` gained an instruction: refused.
+    let mut v3 = asm.module.clone();
+    v3.functions[0].code.insert(2, Move { dst: 1, src: 1 });
+    let error = continuation.rebase(&std::sync::Arc::new(v3)).unwrap_err();
+    assert!(error.contains("inner") && error.contains("instruction count"), "{error}");
+    // v4: `inner` no longer waits there.
+    let mut v4 = asm.module.clone();
+    v4.functions[0].code[1] = Move { dst: 1, src: 1 };
+    assert!(continuation.rebase(&std::sync::Arc::new(v4)).unwrap_err().contains("no longer waits"));
+}
+
+// ---- checked arithmetic (#858) ------------------------------------------
+
+fn overflow_program() -> pulsar_script_vm::Program {
+    let mut asm = Asm::new();
+    let max = asm.constant(Constant::Int(i64::MAX));
+    let one = asm.constant(Constant::Int(1));
+    asm.function("add", vec![], Type::Int, vec![Type::Int, Type::Int], vec![
+        Const { dst: 0, index: max },
+        Const { dst: 1, index: one },
+        Binary { op: BinOp::Add, dst: 0, a: 0, b: 1 },
+        Return { value: Some(0) },
+    ]);
+    asm.function("to_int", vec![Type::Float], Type::Int, vec![Type::Int], vec![
+        Unary { op: UnOp::FloatToInt, dst: 1, src: 0 },
+        Return { value: Some(1) },
+    ]);
+    asm.link(&NativeRegistry::new())
+}
+
+#[test]
+fn integer_overflow_wraps_by_default() {
+    let program = overflow_program();
+    let mut h = Harness::new();
+    assert!(!h.vm.checked_arithmetic);
+    assert_eq!(h.run(&program, "add", &[]).unwrap(), int(i64::MIN));
+    assert_eq!(h.run(&program, "to_int", &[float(1e300)]).unwrap(), int(i64::MAX));
+}
+
+#[test]
+fn checked_arithmetic_turns_overflow_into_an_error() {
+    let program = overflow_program();
+    let mut h = Harness::new();
+    h.vm.checked_arithmetic = true;
+    let err = h.run(&program, "add", &[]).unwrap_err();
+    assert_eq!(err.kind, ScriptErrorKind::Overflow { op: "Add".into() });
+    assert_eq!(err.trace, vec![("add".to_string(), 2)]);
+    let err = h.run(&program, "to_int", &[float(f64::NAN)]).unwrap_err();
+    assert_eq!(err.kind, ScriptErrorKind::Overflow { op: "FloatToInt".into() });
+    assert_eq!(h.run(&program, "to_int", &[float(-3.9)]).unwrap(), int(-3));
+}
+
+#[test]
+fn the_call_depth_limit_is_configurable() {
+    let mut asm = Asm::new();
+    asm.function("forever", vec![], Type::Unit, vec![], vec![
+        Call { func: 0, args: vec![], dst: None },
+        Return { value: None },
+    ]);
+    let program = asm.link(&NativeRegistry::new());
+    let mut h = Harness::new();
+    h.vm.max_depth = 4;
+    let err = h.run(&program, "forever", &[]).unwrap_err();
+    assert_eq!(err.kind, ScriptErrorKind::StackOverflow);
+    assert_eq!(err.trace.len(), 4);
 }

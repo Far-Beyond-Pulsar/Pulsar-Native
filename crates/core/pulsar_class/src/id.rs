@@ -64,7 +64,8 @@ pub struct ClassMeta {
 impl ClassMeta {
     /// Read `<dir>/class.json`. `None` when missing or unreadable.
     pub fn read(dir: &Path) -> Option<Self> {
-        let text = std::fs::read_to_string(dir.join(CLASS_META_FILE)).ok()?;
+        let bytes = engine_fs::virtual_fs::read_file(&dir.join(CLASS_META_FILE)).ok()?;
+        let text = String::from_utf8(bytes).ok()?;
         match serde_json::from_str::<Self>(&text) {
             Ok(meta) => Some(meta),
             Err(error) => {
@@ -105,7 +106,8 @@ pub fn ensure_class_id(dir: &Path) -> ClassId {
             meta.class_id
         }
         Err(error) => {
-            let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            let name = crate::registry::class_name_of_dir(dir);
+            let name = name.as_str();
             tracing::warn!(
                 dir = %dir.display(),
                 "Could not write class.json ({error}); using a name-derived class id"

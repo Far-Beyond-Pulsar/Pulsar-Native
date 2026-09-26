@@ -1,0 +1,45 @@
+[package]
+name = "pulsar_package"
+version = "0.1.0"
+edition = "2021"
+description = "Packages a Pulsar project as a standalone game (Pulsar-Native#926): compiles every script class headlessly, cooks levels and prefabs (class GUIDs resolved, editor-only data dropped, asset paths made content-relative), collects the assets they use, writes Content/game.pak with an asset registry, and builds the game binary. The `pulsar` CLI (`pulsar package`, `pulsar build-scripts`)."
+
+[[bin]]
+name = "pulsar"
+path = "src/main.rs"
+
+[features]
+# Link the Blueprint language so `pulsar package` / `pulsar build-scripts`
+# compile Blueprint graphs headlessly (ScriptLanguage::compile_project,
+# #879). Without it, classes must already have compiled modules (the
+# editor writes them on save); they are still verified and linked.
+default = ["blueprint"]
+blueprint = ["dep:blueprint_editor_plugin", "dep:plugin_editor_api"]
+
+[dependencies]
+pulsar_content = { workspace = true }
+pulsar_class = { workspace = true }
+pulsar_script_vm = { workspace = true }
+pulsar_script_runtime = { workspace = true }
+# The engine's full native registry and event hub: modules are linked
+# against exactly what the game will run.
+pulsar_game = { workspace = true }
+pulsar_events = { workspace = true }
+engine_state = { workspace = true }
+pulsar_settings = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+clap = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+thiserror = { workspace = true }
+
+blueprint_editor_plugin = { path = "../../../plugins/vendor/blueprint_editor", features = ["builtin"], optional = true }
+plugin_editor_api = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

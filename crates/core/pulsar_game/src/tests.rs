@@ -311,14 +311,23 @@ mod generated_setup_script_section {
     use crate::prelude::*;
 
     fn setup(game: &mut TickLoop) -> Result<(), String> {
-        game.enable_scripting(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+        game.enable_project_scripting()?;
         Ok(())
     }
 
     #[test]
     fn generated_setup_compiles_and_enables_scripting() {
+        // The launcher (or Play-in-Editor) installs the content first; the
+        // generated setup names no path.
+        let project = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(project.path().join("Pulsar")).unwrap();
+        pulsar_content::ContentRoot::project(project.path()).install();
         let mut game = TickLoop::new(TickMode::default(), 0);
         setup(&mut game).unwrap();
+        assert_eq!(
+            game.scripts.as_ref().unwrap().lock().unwrap().project_root(),
+            project.path()
+        );
         assert!(game.scripts.is_some());
         game.tick_once();
         let driver = game.scripts.as_ref().unwrap().lock().unwrap();

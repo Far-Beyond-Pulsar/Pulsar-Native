@@ -38,11 +38,19 @@ macro_rules! scope {
 pub mod assets;
 pub mod builtin;
 pub mod channel;
+pub mod foreign_tap;
 pub mod host;
 pub mod hub;
+pub mod problems;
+pub mod session;
 pub mod tap;
 
 pub use assets::{AssetSubscription, AssetUpdated, publish_asset_updated, subscribe_asset_updates};
+pub use problems::{
+    ProblemSeverity, ScriptProblem, ScriptProblemsEvent, publish_script_problem, publish_script_problems_cleared,
+    subscribe_script_problems,
+};
+pub use session::{PieSessionEvent, announce_session_started, announce_session_stopping, subscribe_pie_sessions};
 pub use channel::{class_channel, class_channel_id, entity_channel};
 pub use hub::{EventCategory, EventHub, EventInfo, FlushPoint};
 pub use tap::{EventsSnapshot, SnapshotEvent, SnapshotRecord, TapRecord};

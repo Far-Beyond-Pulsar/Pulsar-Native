@@ -5,8 +5,11 @@
 //! event published through [`EventHub`](crate::EventHub)'s own publish
 //! methods is noted while it waits in the queue, and moved into a ring
 //! buffer when a flush delivers it, with the subscriber count of its
-//! channel at that moment. Events a plugin queues straight on the bus
-//! through Gamma's FFI are not seen.
+//! channel at that moment. Events a plugin publishes through the hub's
+//! exported FFI table ([`EventHub::export_raw`](crate::EventHub::export_raw))
+//! are noted the same way (summaries start with `(plugin)`); only
+//! publishes made on [`EventHub::bus`](crate::EventHub::bus) directly are
+//! not seen.
 //!
 //! The tap is off by default (the editor turns it on for PIE sessions);
 //! when off, publishing costs one relaxed atomic load more.

@@ -18,7 +18,7 @@ fn runtime() -> ScriptRuntime {
 fn function(name: &str, params: Vec<Type>, extra: Vec<Type>, code: Vec<Instr>) -> Function {
     let mut registers = params.clone();
     registers.extend(extra);
-    Function { name: name.into(), exported: true, params, ret: Type::Unit, registers, code }
+    Function { name: name.into(), exported: true, params, ret: Type::Unit, registers, code, debug: None }
 }
 
 /// `elapsed` accumulates delta time, `ticks` counts ticks, `started` is set
@@ -270,12 +270,90 @@ fn waiting_events_resume_after_game_time_passes() {
     assert_eq!(rt.waiting_calls("a"), 0);
     assert!((rt.time() - 1.1).abs() < 1e-9);
 
-    // Reloading drops calls suspended in the old code.
+    // #862: a reload whose code keeps the waiting function's layout keeps
+    // the waiting call, and it finishes in the NEW code (here the second
+    // constant changed from "b" to "B").
     rt.spawn("b", "Latent", None, &[]).unwrap();
     rt.dispatch_pending_begin_play(&mut world);
     assert_eq!(rt.waiting_calls("b"), 1);
-    rt.reload_class(m).unwrap();
-    assert_eq!(rt.waiting_calls("b"), 0);
+    let mut v2 = m.clone();
+    v2.constants[1] = Constant::Str("B".into());
+    let report = rt.reload_class(v2.clone()).unwrap();
+    assert_eq!((report.kept, report.dropped.len()), (1, 0));
+    assert_eq!(rt.waiting_calls("b"), 1);
+    rt.tick_all(&mut world, 1.0);
+    assert_eq!(rt.variable("b", "log"), Some(&Value::from("aB")), "resumed in the new code");
+
+    // A reload that changes the waiting function's instruction count drops
+    // the call and names it.
+    rt.spawn("c", "Latent", None, &[]).unwrap();
+    rt.dispatch_pending_begin_play(&mut world);
+    assert_eq!(rt.waiting_calls("c"), 1);
+    let mut v3 = v2;
+    v3.functions[0].code.insert(0, Move { dst: 0, src: 0 });
+    let report = rt.reload_class(v3).unwrap();
+    assert_eq!(rt.waiting_calls("c"), 0);
+    assert_eq!(report.dropped.len(), 1);
+    assert_eq!(report.dropped[0].object_id, "c");
+    assert_eq!(report.dropped[0].function, "begin_play");
+    assert!(report.dropped[0].reason.contains("instruction count"), "{}", report.dropped[0].reason);
+}
+
+/// #854: a runtime error names the class, the instance, the function and
+/// the graph node the function's debug info maps the failing pc to; a link
+/// error names the node that calls the missing native.
+#[test]
+fn errors_carry_class_function_and_node() {
+    use pulsar_script_vm::{DebugInfo, SourceLoc};
+    let mut rt = runtime();
+    let mut world = World::new();
+    let mut m = Module::new("Divider");
+    m.constants = vec![Constant::Int(1), Constant::Int(0)];
+    let mut tick = function("tick", vec![Type::Float], vec![Type::Int, Type::Int], vec![
+        Const { dst: 1, index: 0 },
+        Const { dst: 2, index: 1 },
+        Binary { op: BinOp::Div, dst: 1, a: 1, b: 2 },
+        Return { value: None },
+    ]);
+    let mut debug = DebugInfo::default();
+    let consts = SourceLoc::node("graph_save.json", "literal_1");
+    let divide = SourceLoc::node("graph_save.json", "divide_7");
+    debug.record(0, &consts);
+    debug.record(1, &consts);
+    debug.record(2, &divide);
+    tick.debug = Some(debug);
+    m.functions = vec![tick];
+    rt.load_class(m.clone()).unwrap();
+    rt.spawn("d", "Divider", None, &[]).unwrap();
+    rt.dispatch_pending_begin_play(&mut world);
+    let errors = rt.tick_all(&mut world, 0.1);
+    assert_eq!(errors.len(), 1);
+    let details = errors[0].details();
+    assert_eq!(details.class.as_deref(), Some("Divider"));
+    assert_eq!(details.object_id.as_deref(), Some("d"));
+    assert_eq!(details.function.as_deref(), Some("tick"));
+    assert_eq!(details.pc, Some(2));
+    assert_eq!(details.location.as_ref().map(|l| l.node.as_str()), Some("divide_7"));
+    let text = errors[0].to_string();
+    assert!(text.contains("Divider") && text.contains("node divide_7"), "{text}");
+
+    // Link error: the native the `tick` of a new class calls is missing.
+    let mut broken = Module::new("Broken");
+    broken.imports = vec![Import { name: "nope::missing".into(), sig: Signature::new([], Type::Unit) }];
+    let mut f = function("tick", vec![Type::Float], vec![], vec![
+        CallNative { import: 0, args: vec![], dst: None },
+        Return { value: None },
+    ]);
+    let mut debug = DebugInfo::default();
+    debug.record(0, &SourceLoc::node("graph_save.json", "call_3"));
+    f.debug = Some(debug);
+    broken.functions = vec![f];
+    let error = rt.load_class(broken).unwrap_err();
+    let details = error.details();
+    assert_eq!(details.class.as_deref(), Some("Broken"));
+    assert_eq!(details.function.as_deref(), Some("tick"));
+    assert_eq!(details.location.map(|l| l.node), Some("call_3".to_owned()));
+    assert!(error.to_string().contains("node call_3"), "{error}");
 }
 
 // ---- events (#924) ----------------------------------------------------------
@@ -385,4 +463,109 @@ mod events {
         let err = rt.load_class(pinger("Other", Some("Nope"))).unwrap_err();
         assert!(err.to_string().contains("Nope"), "{err}");
     }
+}
+
+// ---- packaging: binary modules, limits, capabilities (#852, #857, #858, #869)
+
+#[test]
+fn class_files_load_as_json_or_binary() {
+    let dir = std::env::temp_dir().join(format!("pulsar_rt_formats_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let json_path = dir.join("module.json");
+    let bin_path = dir.join("module.pvm");
+    std::fs::write(&json_path, counter("FromJson").to_json().unwrap()).unwrap();
+    std::fs::write(&bin_path, counter("FromBinary").to_binary()).unwrap();
+
+    let mut rt = runtime();
+    assert_eq!(rt.load_class_file(&json_path).unwrap(), "FromJson");
+    assert_eq!(rt.load_class_file(&bin_path).unwrap(), "FromBinary");
+    // Loading the same class again from bytes is a reload.
+    let (name, _) = rt.load_class_bytes(&counter("FromBinary").to_binary(), &bin_path).unwrap();
+    assert_eq!(name, "FromBinary");
+    assert!(matches!(
+        rt.load_class_bytes(b"PSVM\x01\0\0\0", &bin_path),
+        Err(RuntimeError::Parse { .. })
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn limits_apply_per_runtime_and_per_class() {
+    use pulsar_script_runtime::ScriptLimits;
+    let mut rt = runtime();
+    let mut world = World::new();
+    let mut spin = Module::new("Spin");
+    // Spins 2000 instructions, then returns.
+    spin.constants = vec![Constant::Int(1), Constant::Int(1000)];
+    spin.functions = vec![function("begin_play", vec![], vec![Type::Int, Type::Int, Type::Int, Type::Bool], vec![
+        Const { dst: 1, index: 0 },
+        Const { dst: 2, index: 1 },
+        Binary { op: BinOp::Add, dst: 0, a: 0, b: 1 },
+        Binary { op: BinOp::Lt, dst: 3, a: 0, b: 2 },
+        Branch { cond: 3, then: 2, otherwise: 5 },
+        Return { value: None },
+    ])];
+    rt.load_class(spin).unwrap();
+    rt.set_limits(ScriptLimits { instruction_budget: 500, ..ScriptLimits::shipping() });
+    assert_eq!(rt.limits().max_call_depth, 64);
+    assert!(!rt.limits().checked_arithmetic);
+    rt.spawn("a", "Spin", None, &[]).unwrap();
+    let errors = rt.dispatch_pending_begin_play(&mut world);
+    assert!(matches!(&errors[..], [RuntimeError::Script { source, .. }] if source.kind == pulsar_script_vm::ScriptErrorKind::BudgetExceeded));
+
+    // A per-class budget overrides the default.
+    let mut limits = ScriptLimits { instruction_budget: 500, ..ScriptLimits::development() };
+    limits.class_budgets.insert("Spin".into(), 10_000);
+    rt.set_limits(limits);
+    rt.spawn("b", "Spin", None, &[]).unwrap();
+    assert!(rt.dispatch_pending_begin_play(&mut world).is_empty());
+}
+
+#[test]
+fn checked_arithmetic_follows_the_limits() {
+    use pulsar_script_runtime::ScriptLimits;
+    let mut rt = runtime();
+    let mut world = World::new();
+    let mut m = Module::new("Overflow");
+    m.variables = vec![Variable { name: "v".into(), ty: Type::Int, default: Some(Constant::Int(i64::MAX)) }];
+    m.constants = vec![Constant::Int(1)];
+    m.functions = vec![function("begin_play", vec![], vec![Type::Int, Type::Int], vec![
+        LoadVar { dst: 0, var: 0 },
+        Const { dst: 1, index: 0 },
+        Binary { op: BinOp::Add, dst: 0, a: 0, b: 1 },
+        StoreVar { var: 0, src: 0 },
+        Return { value: None },
+    ])];
+    rt.load_class(m).unwrap();
+    rt.set_limits(ScriptLimits::development());
+    rt.spawn("dev", "Overflow", None, &[]).unwrap();
+    assert_eq!(rt.dispatch_pending_begin_play(&mut world).len(), 1);
+    rt.set_limits(ScriptLimits::shipping());
+    rt.spawn("ship", "Overflow", None, &[]).unwrap();
+    assert!(rt.dispatch_pending_begin_play(&mut world).is_empty());
+    assert_eq!(rt.variable("ship", "v"), Some(&Value::Int(i64::MIN)));
+}
+
+#[test]
+fn capability_policy_is_checked_at_link_time() {
+    let mut natives = NativeRegistry::new();
+    natives
+        .register(NativeFn::builder("net::ping").capability("net").build(|| 1_i64))
+        .unwrap();
+    let mut rt = ScriptRuntime::with_natives(natives, std::env::temp_dir());
+    let mut m = Module::new("Pinger");
+    m.imports = vec![Import { name: "net::ping".into(), sig: Signature::new([], Type::Int) }];
+    m.functions = vec![function("begin_play", vec![], vec![Type::Int], vec![
+        CallNative { import: 0, args: vec![], dst: Some(0) },
+        Return { value: None },
+    ])];
+    rt.set_capabilities(pulsar_script_vm::CapabilityPolicy::only(["fs"]));
+    let err = rt.load_class(m.clone()).unwrap_err();
+    assert!(err.to_string().contains("needs capability `net`"), "{err}");
+
+    // Allowed: it links; narrowing the policy later fails the relink.
+    rt.set_capabilities(pulsar_script_vm::CapabilityPolicy::allow_all());
+    rt.load_class(m).unwrap();
+    let report = rt.set_capabilities(pulsar_script_vm::CapabilityPolicy::only(Vec::<String>::new()));
+    assert_eq!(report.failed.len(), 1);
 }

@@ -53,13 +53,32 @@ pub fn set_fallback_project_root(root: Option<std::path::PathBuf>) {
         .unwrap_or_else(|p| p.into_inner()) = root;
 }
 
-/// The registry for a class directory: the project it lives in
-/// (`<project>/src/classes/<Name>`), else just its parent directory.
+/// The registry for a class directory: every class of the project it
+/// lives in (`<project>/src/classes/<Name>` or a `<Name>.class/` folder
+/// anywhere in the project), else just its parent directory's classes.
 pub fn registry_for_class_dir(class_dir: &Path) -> ClassRegistry {
+    if let Some(root) = pulsar_class::project_root_of_class_dir(class_dir) {
+        let registry = ClassRegistry::scan(&root);
+        if registry.entries().iter().any(|e| same_dir(&e.dir, class_dir)) {
+            return registry;
+        }
+    }
     match class_dir.parent() {
-        Some(classes) => ClassRegistry::scan_classes_dir(classes),
+        Some(parent) => {
+            let mut dirs: Vec<std::path::PathBuf> = std::fs::read_dir(parent)
+                .map(|entries| entries.flatten().map(|e| e.path()).filter(|p| pulsar_class::registry::is_class_dir(p)).collect())
+                .unwrap_or_default();
+            if !dirs.iter().any(|d| same_dir(d, class_dir)) && pulsar_class::registry::is_class_dir(class_dir) {
+                dirs.push(class_dir.to_path_buf());
+            }
+            ClassRegistry::from_dirs(dirs)
+        }
         None => ClassRegistry::default(),
     }
+}
+
+fn same_dir(a: &Path, b: &Path) -> bool {
+    a == b || matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
 }
 
 /// The registry to resolve a legacy `script_asset` path with: the classes

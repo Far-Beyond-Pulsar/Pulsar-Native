@@ -266,7 +266,23 @@ impl GameViewport {
             let mut state = self.shared_state.write();
             state.play.pie.active = false;
             state.play.pie.pending_asset_updates.clear();
+            state.play.pie.loaded_artifact = None;
+            state.play.pie.supports_control = false;
+            // The game is gone: now restore the editor world (#925).
+            crate::level_editor::ui::panel::pie::finish_stop(&mut state, true);
         }
+
+        // Play again with only script changes (#833): keep the running game
+        // and reload every class in it; no new library.
+        let pending = match pending {
+            Some(req) if req.scripts_only && self.pie_host.is_some() => {
+                let events = crate::level_editor::ui::panel::pie::class_reload_events(&req.project_root);
+                tracing::info!(classes = events.len(), "PiE: script-only change; reloading classes in the running game");
+                self.shared_state.write().play.pie.pending_asset_updates.extend(events);
+                None
+            }
+            other => other,
+        };
 
         if let Some(req) = pending {
             // Native hot reload (#653): a pending start while a game is
@@ -302,11 +318,16 @@ impl GameViewport {
             };
             match loaded {
                 Ok(host) => {
-                    self.pie_host = Some(host);
-                    self.last_frame = Instant::now();
                     let mut st = self.shared_state.write();
                     st.play.pie.active = true;
                     st.play.pie.last_error = None;
+                    st.play.pie.supports_control = host.has_simulation_control();
+                    st.play.pie.paused = false;
+                    st.play.pie.loaded_artifact = crate::level_editor::ui::panel::pie::artifact_mtime(&req.dylib_path)
+                        .map(|mtime| (req.dylib_path.clone(), mtime));
+                    drop(st);
+                    self.pie_host = Some(host);
+                    self.last_frame = Instant::now();
                 }
                 Err(e) => {
                     tracing::error!("PiE load failed: {e}");
@@ -324,16 +345,38 @@ impl GameViewport {
         }
 
         if let Some(host) = self.pie_host.as_mut() {
-            // Class edits made while playing (#921): the game reloads them.
-            let pending = std::mem::take(&mut self.shared_state.write().play.pie.pending_asset_updates);
+            // Class edits made while playing (#921): the game reloads them
+            // at its next frame, no rebuild (#833).
+            let (pending, pause, step) = {
+                let mut st = self.shared_state.write();
+                (
+                    std::mem::take(&mut st.play.pie.pending_asset_updates),
+                    st.play.pie.pause_request.take(),
+                    std::mem::take(&mut st.play.pie.step_request),
+                )
+            };
             for event in &pending {
                 host.asset_updated(event);
+            }
+            // Pause / step (#925), wired to the game's TickLoop.
+            match pause {
+                Some(true) => {
+                    host.pause();
+                }
+                Some(false) => {
+                    host.resume();
+                }
+                None => {}
+            }
+            if step > 0 {
+                host.step(step);
             }
             host.resize(w, h);
             let now = Instant::now();
             let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
             self.last_frame = now;
             host.tick(dt);
+            Self::report_problems(host, &self.shared_state);
         }
 
         let format = surface.format();
@@ -345,6 +388,45 @@ impl GameViewport {
                 blit.blit(surface.device(), surface.queue(), tex, view);
             }
         }
+    }
+
+    /// Forward the game's script problems (#854, #868) to the editor: the
+    /// problems panel and the Blueprint editor hear them on the host bus.
+    /// With the "pause on script error" setting, an error pauses the game
+    /// before its next frame.
+    fn report_problems(host: &PieHost, shared_state: &Arc<parking_lot::RwLock<LevelEditorState>>) {
+        let problems = host.take_problems();
+        if problems.is_empty() {
+            let paused = host.is_paused().unwrap_or(false);
+            let mut st = shared_state.write();
+            if st.play.pie.paused != paused {
+                st.play.pie.paused = paused;
+            }
+            return;
+        }
+        let pause = pause_on_script_error()
+            && problems.iter().any(|p| p.severity == pulsar_events::ProblemSeverity::Error);
+        for problem in &problems {
+            match problem.severity {
+                pulsar_events::ProblemSeverity::Error => tracing::error!("Script error: {}", problem.summary()),
+                pulsar_events::ProblemSeverity::Warning => tracing::warn!("Script warning: {}", problem.summary()),
+            }
+            pulsar_events::publish_script_problem(problem.clone());
+        }
+        if pause {
+            host.pause();
+        }
+        let paused = host.is_paused().unwrap_or(false);
+        let mut st = shared_state.write();
+        st.play.pie.paused = paused;
+        st.play.pie.problems.extend(problems);
+        let excess = st
+            .play
+            .pie
+            .problems
+            .len()
+            .saturating_sub(crate::level_editor::state::MAX_PIE_PROBLEMS);
+        st.play.pie.problems.drain(..excess);
     }
 
     /// Notify once when the game becomes active. Build progress + failures are
@@ -484,4 +566,18 @@ impl Render for GameViewport {
             )
             .when(self.events_open, |el| el.child(self.events_overlay(cx)))
     }
+}
+
+/// The editor setting `editor.debugger.pie_on_script_error`: `"pause"`
+/// pauses Play-in-Editor on a script error, `"continue"` (the default) keeps
+/// it running and only reports the error.
+pub(crate) fn pause_on_script_error() -> bool {
+    matches!(
+        engine_state::settings::global_config().get(
+            engine_state::settings::NS_EDITOR,
+            "debugger",
+            "pie_on_script_error",
+        ),
+        Ok(engine_state::settings::ConfigValue::String(ref value)) if value == "pause"
+    )
 }

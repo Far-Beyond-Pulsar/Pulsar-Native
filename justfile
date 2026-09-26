@@ -58,6 +58,16 @@ ci-drift-probe:
 ci-drift-check:
     cargo test -p pulsar_game --test generated_project_compiles -- --ignored --nocapture
 
+# ── Packaging (#926) ──────────────────────────────────────────────────────────
+# Package a project as a standalone game: `just package <project> <out>`.
+package project out profile="shipping":
+    cargo run -p pulsar_package --bin pulsar -- package --project {{project}} --out {{out}} --profile {{profile}}
+
+# Package the smoke-test project, copy it away, run it headless and check
+# begin_play, a spawn and an event handler ran (what CI runs).
+package-smoke:
+    cargo test -p pulsar_package --no-default-features --test smoke -- --nocapture
+
 # ── Submodules ───────────────────────────────────────────────────────────────
 
 # Init all submodules

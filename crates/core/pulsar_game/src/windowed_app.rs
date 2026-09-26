@@ -310,7 +310,9 @@ pub struct PulsarApp {
     initial_windows: Vec<(WindowHandle, WindowDescriptor)>,
     winit_to_handle: HashMap<WindowId, WindowHandle>,
     windows: HashMap<WindowHandle, GameWindow>,
-    project_root: PathBuf,
+    /// The game's content (project or packaged); levels and classes load
+    /// from it.
+    content: pulsar_content::ContentRoot,
     default_scene: Option<PathBuf>,
     /// The ONE shared, SceneDB-owned world (Pulsar-Native#634): cloned out
     /// of the TickLoop, hydrated with the requested level, and read by every
@@ -334,7 +336,7 @@ impl PulsarApp {
         bridge: Arc<WindowBridge>,
         tick_loop: crate::tick::TickLoop,
         initial_windows: Vec<(WindowHandle, WindowDescriptor)>,
-        project_root: PathBuf,
+        content: pulsar_content::ContentRoot,
         default_scene: Option<PathBuf>,
         display: winit::event_loop::OwnedDisplayHandle,
     ) -> Self {
@@ -349,7 +351,7 @@ impl PulsarApp {
             initial_windows,
             winit_to_handle: HashMap::new(),
             windows: HashMap::new(),
-            project_root,
+            content,
             default_scene,
             scene_store,
             events,
@@ -448,12 +450,14 @@ impl PulsarApp {
         if let Some(ref path) = scene_path {
             tracing::info!(scene = %path.display(), window = handle.id(), "Loading scene into shared world");
             // Asset-resolving hydrates (`StaticMeshComponent`'s mesh load)
-            // read the project path from the engine global -- must be set
-            // before hydration, not after.
-            engine_state::set_project_path(self.project_root.display().to_string());
+            // read the asset root from the engine global, which
+            // `standalone::prepare_engine` set before the event loop ran.
+            // Placed classes resolve against the content's classes (its
+            // class index when packaged).
+            let registry = pulsar_class::ClassRegistry::scan(self.content.root());
             let load_result = {
                 let mut store = self.scene_store.write();
-                RuntimeLevel::load_into(path, &mut store.world)
+                RuntimeLevel::load_into_with_classes(path, &mut store.world, &registry)
             };
             match load_result {
                 Ok(extras) => {

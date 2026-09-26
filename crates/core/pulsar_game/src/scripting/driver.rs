@@ -113,10 +113,10 @@ impl ScriptingConfig {
     /// with a warning.
     pub fn load(project_root: &Path) -> Self {
         let path = scripting_config_path(project_root);
-        let Ok(text) = std::fs::read_to_string(&path) else {
+        let Ok(bytes) = engine_fs::virtual_fs::read_file(&path) else {
             return Self::default();
         };
-        serde_json::from_str(&text).unwrap_or_else(|error| {
+        serde_json::from_slice(&bytes).unwrap_or_else(|error| {
             tracing::warn!(path = %path.display(), "Unreadable scripting config; using defaults: {error}");
             Self::default()
         })
@@ -133,9 +133,32 @@ pub fn global_instance_id(class: &ClassId) -> String {
     format!("global::{class}")
 }
 
-/// Where a class's compiled script module lives.
-fn module_file(entry: &ClassEntry) -> PathBuf {
-    entry.dir.join("events").join(".build").join("module.json")
+/// File name of a class's compiled module in the editor's JSON encoding.
+pub const MODULE_JSON_FILE: &str = "module.json";
+/// File name of a class's compiled module in the binary encoding packaged
+/// games ship (#852).
+pub const MODULE_BINARY_FILE: &str = "module.pvm";
+
+/// Where a class's compiled script module lives: the binary one when the
+/// class has it (packaged content), else the editor's JSON one. Either may
+/// be missing. Checked through the virtual filesystem, so a pak counts.
+pub fn module_file(entry: &ClassEntry) -> PathBuf {
+    let build = entry.dir.join("events").join(".build");
+    let binary = build.join(MODULE_BINARY_FILE);
+    if engine_fs::virtual_fs::exists(&binary).unwrap_or(false) {
+        binary
+    } else {
+        build.join(MODULE_JSON_FILE)
+    }
+}
+
+/// Read a compiled module file (JSON or binary) through the virtual
+/// filesystem. `None` when it does not exist.
+fn read_module_bytes(path: &Path) -> Option<std::io::Result<Vec<u8>>> {
+    if !engine_fs::virtual_fs::exists(path).unwrap_or(false) {
+        return None;
+    }
+    Some(engine_fs::virtual_fs::read_file(path).map_err(|e| std::io::Error::other(e.to_string())))
 }
 
 /// What one reconcile or frame did.
@@ -151,8 +174,20 @@ pub struct DriverReport {
     pub destroyed: Vec<Entity>,
     /// Errors raised by scripts (per instance, never fatal).
     pub script_errors: Vec<RuntimeError>,
+    /// Class modules that did not load or reload (link errors, unreadable
+    /// modules), per class.
+    pub load_errors: Vec<RuntimeError>,
+    /// Waiting calls class reloads had to drop, as `(class, call)`.
+    pub dropped_calls: Vec<(String, pulsar_script_runtime::DroppedCall)>,
     /// Instances or commands that could not be applied, as messages.
     pub failures: Vec<String>,
+}
+
+impl DriverReport {
+    /// Whether the frame raised any error or warning worth reporting.
+    pub fn has_problems(&self) -> bool {
+        !self.script_errors.is_empty() || !self.load_errors.is_empty() || !self.dropped_calls.is_empty()
+    }
 }
 
 /// One class instance the driver follows.
@@ -268,8 +303,8 @@ impl ScriptDriver {
         }
         for entry in self.registry.entries() {
             let path = module_file(entry);
-            let Ok(json) = std::fs::read_to_string(&path) else { continue };
-            match pulsar_script_vm::Module::from_json(&json) {
+            let Some(Ok(bytes)) = read_module_bytes(&path) else { continue };
+            match pulsar_script_vm::Module::decode(&bytes) {
                 Ok(module) => {
                     if let Err(error) = self.runtime.declare_events(&module) {
                         tracing::warn!("{error}");
@@ -318,7 +353,8 @@ impl ScriptDriver {
             })
             .collect();
         for (id, class_name, guid, entity) in targets {
-            for failure in events.subscribe(&self.runtime, &id, &class_name, &guid, entity) {
+            // Timers and queued handler calls survive a class reload.
+            for failure in events.resubscribe(&self.runtime, &id, &class_name, &guid, entity) {
                 tracing::warn!("{failure}");
             }
         }
@@ -736,11 +772,15 @@ impl ScriptDriver {
             return Some(entry.name.clone());
         }
         let module = module_file(entry);
-        if !module.is_file() {
-            tracing::debug!(class = %entry.name, "Class has no compiled script module; nothing runs for it");
-            return None;
-        }
-        match self.runtime.load_class_file(&module) {
+        let loaded = match read_module_bytes(&module) {
+            None => {
+                tracing::debug!(class = %entry.name, "Class has no compiled script module; nothing runs for it");
+                return None;
+            }
+            Some(Ok(bytes)) => self.runtime.load_class_bytes(&bytes, &module).map(|(name, _)| name),
+            Some(Err(source)) => Err(RuntimeError::Io { path: module.clone(), source }),
+        };
+        match loaded {
             Ok(name) => {
                 self.loaded.insert(entry.id.clone(), name.clone());
                 Some(name)
@@ -749,6 +789,7 @@ impl ScriptDriver {
                 let message = format!("script module of class '{}' did not load: {error}", entry.name);
                 tracing::warn!("{message}");
                 report.failures.push(message);
+                report.load_errors.push(error);
                 None
             }
         }
@@ -804,18 +845,27 @@ impl ScriptDriver {
 
         if let Some(class) = self.loaded.get(&entry.id).cloned() {
             let module = module_file(&entry);
-            if module.is_file() {
-                match self.runtime.load_class_file(&module) {
-                    Ok(name) if name != class => {
-                        // The module was renamed: follow it.
-                        tracing::warn!(class = %entry.name, module = %name, "Class module name changed on reload");
-                        self.loaded.insert(entry.id.clone(), name.clone());
+            if let Some(read) = read_module_bytes(&module) {
+                let loaded = read
+                    .map_err(|source| RuntimeError::Io { path: module.clone(), source })
+                    .and_then(|bytes| self.runtime.load_class_bytes(&bytes, &module));
+                match loaded {
+                    Ok((name, reloaded)) => {
+                        report
+                            .dropped_calls
+                            .extend(reloaded.dropped.into_iter().map(|call| (name.clone(), call)));
+                        if name != class {
+                            // The module was renamed: follow it.
+                            tracing::warn!(class = %entry.name, module = %name, "Class module name changed on reload");
+                            self.loaded.insert(entry.id.clone(), name.clone());
+                        }
+                        // Its subscriptions may have changed.
                         self.resubscribe(Some(&name));
                     }
-                    // Its subscriptions may have changed.
-                    Ok(name) => self.resubscribe(Some(&name)),
                     Err(error) => {
+                        // The old code keeps running.
                         tracing::warn!(class = %entry.name, "Class updated but its script module did not reload: {error}");
+                        report.load_errors.push(error);
                         return None;
                     }
                 }
@@ -845,6 +895,65 @@ impl ScriptDriver {
             }
         }
         Some(entry.name)
+    }
+
+    // ---- problems ------------------------------------------------------------
+
+    /// The frame's errors and dropped calls as editor problems (#854,
+    /// #868): class, instance, function, graph node and the class's source
+    /// file, where known.
+    pub fn problems(&self, report: &DriverReport) -> Vec<pulsar_events::ScriptProblem> {
+        let mut problems: Vec<_> = report
+            .script_errors
+            .iter()
+            .chain(&report.load_errors)
+            .map(|error| self.problem_for(error))
+            .collect();
+        for (class, call) in &report.dropped_calls {
+            let mut problem = pulsar_events::ScriptProblem {
+                severity: pulsar_events::ProblemSeverity::Warning,
+                class: Some(class.clone()),
+                instance: Some(call.object_id.clone()),
+                function: Some(call.function.clone()),
+                message: format!("class reload dropped a waiting call: {}", call.reason),
+                ..Default::default()
+            };
+            self.fill_class(&mut problem, None);
+            problems.push(problem);
+        }
+        problems
+    }
+
+    /// One error as an editor problem.
+    pub fn problem_for(&self, error: &RuntimeError) -> pulsar_events::ScriptProblem {
+        let details = error.details();
+        let mut problem = pulsar_events::ScriptProblem {
+            severity: pulsar_events::ProblemSeverity::Error,
+            class: details.class,
+            instance: details.object_id,
+            function: details.function,
+            node: details.location.as_ref().map(|l| l.node.clone()).filter(|n| !n.is_empty()),
+            line: details.location.as_ref().and_then(|l| l.line),
+            message: details.message,
+            ..Default::default()
+        };
+        self.fill_class(&mut problem, details.location.as_ref().map(|l| l.file.as_str()));
+        problem
+    }
+
+    /// Fill the class GUID and source path from the registry.
+    fn fill_class(&self, problem: &mut pulsar_events::ScriptProblem, file: Option<&str>) {
+        let Some(entry) = problem.class.as_deref().and_then(|name| {
+            let guid = self.loaded.iter().find(|(_, n)| n.as_str() == name).map(|(guid, _)| guid.clone());
+            guid.and_then(|g| self.registry.by_id(&g)).or_else(|| self.registry.by_name(name))
+        }) else {
+            return;
+        };
+        problem.class_id = Some(entry.id.as_str().to_owned());
+        problem.path = Some(match file.filter(|f| !f.is_empty()) {
+            Some(file) => entry.dir.join(file),
+            None => entry.dir.clone(),
+        });
     }
 
     // ---- world commands -----------------------------------------------------

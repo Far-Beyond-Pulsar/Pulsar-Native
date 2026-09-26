@@ -379,9 +379,54 @@ impl ScriptEvents {
         entity: Option<Entity>,
     ) -> Vec<String> {
         self.unsubscribe(id);
+        self.subscribe_handlers(runtime, id, class, class_guid, entity).0
+    }
+
+    /// Subscribe instance `id` again after its class was reloaded (#925):
+    /// like [`subscribe`](Self::subscribe), but its timers keep running and
+    /// handler calls already queued for it go to the new code's handler of
+    /// the same event (they are dropped if the class no longer handles it).
+    pub fn resubscribe(
+        &mut self,
+        runtime: &ScriptRuntime,
+        id: &str,
+        class: &str,
+        class_guid: &str,
+        entity: Option<Entity>,
+    ) -> Vec<String> {
+        // Only the bus handles; timers and queued calls stay.
+        self.instances.remove(id);
+        let (failures, handlers) = self.subscribe_handlers(runtime, id, class, class_guid, entity);
+        self.lock_calls().retain_mut(|call| {
+            if &*call.instance != id {
+                return true;
+            }
+            match handlers.iter().find(|(event, _, _)| *event == call.event.id) {
+                Some(&(_, handler, params)) => {
+                    call.handler = handler;
+                    call.params = params;
+                    true
+                }
+                None => false,
+            }
+        });
+        failures
+    }
+
+    /// Subscribe the handlers; returns the failures and, per subscribed
+    /// event id, its handler and parameter count.
+    fn subscribe_handlers(
+        &mut self,
+        runtime: &ScriptRuntime,
+        id: &str,
+        class: &str,
+        class_guid: &str,
+        entity: Option<Entity>,
+    ) -> (Vec<String>, Vec<(u64, FuncId, usize)>) {
         let mut failures = Vec::new();
+        let mut handlers = Vec::new();
         let Some(subscriptions) = runtime.subscriptions(class) else {
-            return failures;
+            return (failures, handlers);
         };
         let hub = self.bridge.hub();
         let instance: Arc<str> = Arc::from(id);
@@ -410,6 +455,7 @@ impl ScriptEvents {
             let calls = Arc::clone(&self.calls);
             let instance = Arc::clone(&instance);
             let (handler, params) = (sub.handler, sub.params);
+            handlers.push((descriptor.id, handler, params));
             handles.push(hub.bus().subscribe_dyn(descriptor.id, SubscribeOptions::channel(channel), move |event| {
                 calls.lock().unwrap_or_else(|p| p.into_inner()).push(PendingCall {
                     instance: Arc::clone(&instance),
@@ -420,7 +466,7 @@ impl ScriptEvents {
             }));
         }
         self.instances.insert(id.to_owned(), InstanceSubscriptions { entity, handles });
-        failures
+        (failures, handlers)
     }
 
     /// Drop instance `id`'s subscriptions, queued calls and timers.

@@ -201,6 +201,10 @@ impl PulsarApp {
             });
         }
 
+        // Script problems from Play-in-Editor (#854, #868) join the
+        // language server's in the problems panel.
+        super::script_problems::watch(problems_drawer.clone(), cx);
+
         // Subscribe to drawer events
         cx.subscribe_in(
             &file_manager_drawer,

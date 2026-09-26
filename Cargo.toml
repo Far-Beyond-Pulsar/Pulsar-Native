@@ -119,6 +119,7 @@ engine_class_derive                = { path = "crates/core/engine_class_derive" 
 pulsar_world_registry              = { path = "crates/core/pulsar_world_registry" }
 pulsar_scene_model                 = { path = "crates/core/pulsar_scene_model" }
 pulsar_class                       = { path = "crates/core/pulsar_class" }
+pulsar_content                     = { path = "crates/core/pulsar_content" }
 pulsar_script_object_model         = { path = "crates/core/pulsar_script_object_model" }
 pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
 
@@ -281,6 +282,9 @@ bytemuck = { version = "1", features = ["derive"] }
 similar = "3"
 quinn = "0.11"
 rusqlite = { version = "0.32", features = ["bundled"] }
+# Compact binary script modules (#852). Already in the tree through gpui-ce;
+# the VM uses its native derive (not serde), see pulsar_script_vm::module.
+bincode = { version = "2", default-features = false, features = ["std", "derive"] }
 
 
 

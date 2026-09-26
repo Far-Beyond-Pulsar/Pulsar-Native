@@ -33,8 +33,8 @@ mod tests;
 pub use commands::WorldCommand;
 pub use events::{ScriptEventBridge, ScriptEvents};
 pub use driver::{
-    global_instance_id, instance_id_for, scripting_config_path, DriverReport, ReloadRequests,
-    ScriptDriver, ScriptingConfig, SCRIPTING_CONFIG_FILE,
+    global_instance_id, instance_id_for, module_file, scripting_config_path, DriverReport, ReloadRequests,
+    ScriptDriver, ScriptingConfig, MODULE_BINARY_FILE, MODULE_JSON_FILE, SCRIPTING_CONFIG_FILE,
 };
 
 // Scene-object lookup for scripts. The result is `entity::none()` when no
@@ -94,6 +94,45 @@ pub fn new_runtime() -> ScriptRuntime {
 /// A driver for the project at `project_root` on a fresh [`new_runtime`].
 pub fn new_driver(project_root: impl Into<PathBuf>) -> ScriptDriver {
     ScriptDriver::new(new_runtime(), project_root)
+}
+
+/// The script runtime limits `settings` ask for in their own profile
+/// (#857, #858): budgets, call depth, checked arithmetic, per-class budgets.
+pub fn script_limits(settings: &pulsar_content::ProjectSettings) -> pulsar_script_runtime::ScriptLimits {
+    let limits = settings.script_limits();
+    pulsar_script_runtime::ScriptLimits {
+        instruction_budget: limits.instruction_budget,
+        max_call_depth: limits.max_call_depth as usize,
+        checked_arithmetic: limits.checked_arithmetic,
+        class_budgets: settings.scripting.class_budgets.clone().into_iter().collect(),
+    }
+}
+
+/// The native capability allowlist `settings` ask for (#869).
+pub fn capability_policy(settings: &pulsar_content::ProjectSettings) -> pulsar_script_vm::CapabilityPolicy {
+    match &settings.scripting.allowed_capabilities {
+        Some(allowed) => pulsar_script_vm::CapabilityPolicy::only(allowed.iter().cloned()),
+        None => pulsar_script_vm::CapabilityPolicy::allow_all(),
+    }
+}
+
+/// A driver for `content` (a project, or a packaged game's content): its
+/// classes and global scripts, with the limits and capability allowlist of
+/// its `Pulsar/project.json` in that file's profile.
+pub fn new_content_driver(content: &pulsar_content::ContentRoot) -> ScriptDriver {
+    let settings = content.settings();
+    let mut runtime = new_runtime();
+    runtime.set_limits(script_limits(&settings));
+    runtime.set_capabilities(capability_policy(&settings));
+    tracing::info!(
+        profile = settings.profile.as_str(),
+        budget = runtime.limits().instruction_budget,
+        max_call_depth = runtime.limits().max_call_depth,
+        checked_arithmetic = runtime.limits().checked_arithmetic,
+        capabilities = ?settings.scripting.allowed_capabilities,
+        "Script runtime limits"
+    );
+    ScriptDriver::new(runtime, content.root())
 }
 
 // ---- class component slots (#921) ------------------------------------------

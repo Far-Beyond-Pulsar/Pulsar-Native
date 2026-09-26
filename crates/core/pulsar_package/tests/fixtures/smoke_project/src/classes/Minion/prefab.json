@@ -1,0 +1,12 @@
+{
+  "prefab_version": 1,
+  "name": "Minion",
+  "components": [
+    {
+      "slot_id": "f2c7f25e-fa0a-47af-8faa-efd988688653",
+      "class_name": "StaticMeshComponent",
+      "enabled": true,
+      "data": { "mesh_asset": "meshes/glass_red.mesh" }
+    }
+  ]
+}

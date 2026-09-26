@@ -44,10 +44,17 @@ pub fn handle_asset_update(
         let state = state.read();
         let mut world = state.scene.world_mut();
         let touched = classes::apply_class_asset_update(&mut world, event);
-        // Rebuilt generated children are new entities: give them render rows.
+        // #935: rebuilt generated children are new entities, and their
+        // components were inserted before anything watched them, so the
+        // renderer saw no change for them. Arm their render-row
+        // subscriptions, then report every rebuilt component as changed
+        // (GPU mirror refresh + a `Mut` write, what a property edit does),
+        // so each instance's light / mesh rows are re-derived at the next
+        // frame, not when the object is next touched.
         for id in &touched {
             if let Some(entity) = world.entity_for(id) {
                 engine_backend::scene::arm_render_row_subscriptions_for_entity(&mut world, entity);
+                engine_backend::scene::mark_render_components_changed(&mut world, entity);
             }
         }
         touched
@@ -57,6 +64,9 @@ pub fn handle_asset_update(
         // The instances still match what a save would write (overrides are
         // unchanged), so this is not an unsaved level edit.
         state.scene.bump_revision(false);
+        // Wake the level editor (this runs on the publisher's thread,
+        // outside GPUI): its poller notifies the panel when this moves.
+        state.scene.class_updates = state.scene.class_updates.wrapping_add(1);
     }
     if state.play.pie.active {
         state.play.pie.pending_asset_updates.push(event.clone());

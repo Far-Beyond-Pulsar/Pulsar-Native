@@ -25,6 +25,7 @@
 //! [`types`] for how they bind to Rust types.
 
 pub(crate) mod adapters;
+pub mod capability;
 pub mod error;
 pub mod events;
 pub mod interp;
@@ -37,14 +38,16 @@ pub mod types;
 pub mod value;
 pub mod verify;
 
+pub use capability::{CapabilityPolicy, CAPABILITY_ATTR};
 pub use error::{LinkError, ScriptError, ScriptErrorKind, VerifyError};
-pub use interp::{Budget, Completion, Continuation, Vm};
+pub use interp::{Budget, Completion, Continuation, Vm, DEFAULT_MAX_DEPTH};
 pub use library::{LibraryError, LibraryId, LibraryRegistrar, NativeLibraries};
 pub use events::{EventCatalog, EventSignature, EventSink, EventTarget};
 pub use link::{FuncId, Instance, LinkedSubscription, Program};
 pub use module::{
-    BinOp, Constant, EventDecl, EventField, EventRef, Function, Import, Instr, Module, Param, Reg,
-    Signature, Subscription, SubscriptionScope, UnOp, Variable, FORMAT_VERSION, MIN_FORMAT_VERSION,
+    BinOp, Constant, DebugInfo, DebugRange, ErrorSite, EventDecl, EventField, EventRef, Function,
+    Import, Instr, Module, ModuleDecodeError, Param, Reg, Signature, SourceLoc, Subscription,
+    SubscriptionScope, UnOp, Variable, BINARY_MAGIC, FORMAT_VERSION, MIN_FORMAT_VERSION,
 };
 pub use native::{
     Host, NativeBuilder, NativeFn, NativeProvider, NativeRegistration, NativeRegistry, Origin,

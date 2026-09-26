@@ -75,7 +75,55 @@ pub struct TickLoop {
     pub(crate) rebinding: Vec<crate::scripts::ReboundActor>,
     /// Set once a reload has been armed, even after every tag is claimed.
     pub(crate) reload_armed: bool,
+    // ── Pause / step (Play-in-Editor simulate controls, #925) ───────────────
+    paused: bool,
+    pending_steps: u32,
+    /// The last tick's time, which a paused tick reports again.
+    last_time: GameTime,
+    /// Problems scripts raised, kept for [`take_script_problems`](Self::take_script_problems)
+    /// while [`collect_script_problems`](Self::collect_script_problems) is on.
+    script_problems: Vec<pulsar_events::ScriptProblem>,
+    collect_problems: bool,
+    script_stats: ScriptStats,
 }
+
+/// Totals of what the script phase did since the loop was created.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct ScriptStats {
+    /// Script phases run.
+    pub frames: u64,
+    /// Instances started (`begin_play` queued).
+    pub started: u64,
+    /// Instances stopped.
+    pub stopped: u64,
+    /// Objects built by `world::spawn` / `world::spawn_child`.
+    pub spawned: u64,
+    /// Objects removed by `world::destroy`.
+    pub destroyed: u64,
+    /// Script runtime errors.
+    pub script_errors: u64,
+    /// Class modules that did not load or link.
+    pub load_errors: u64,
+}
+
+impl ScriptStats {
+    fn absorb(&mut self, report: &crate::scripting::DriverReport) {
+        self.frames += 1;
+        self.started += report.started.len() as u64;
+        self.stopped += report.stopped.len() as u64;
+        self.spawned += report.spawned.len() as u64;
+        self.destroyed += report.destroyed.len() as u64;
+        self.script_errors += report.script_errors.len() as u64;
+        self.load_errors += report.load_errors.len() as u64;
+    }
+}
+
+/// Problems kept between two [`TickLoop::take_script_problems`] calls; the
+/// oldest are dropped past this.
+const MAX_KEPT_PROBLEMS: usize = 256;
+
+/// The simulation step of one [`TickLoop::step`] in variable-timestep mode.
+const STEP_DELTA: std::time::Duration = std::time::Duration::from_micros(16_667);
 
 impl TickLoop {
     /// Build a new `TickLoop` with its own fresh scene store.
@@ -109,6 +157,12 @@ impl TickLoop {
             pending_rebinds: Vec::new(),
             rebinding: Vec::new(),
             reload_armed: false,
+            paused: false,
+            pending_steps: 0,
+            last_time: GameTime { elapsed: std::time::Duration::ZERO, delta: std::time::Duration::ZERO, tick: 0 },
+            script_problems: Vec::new(),
+            collect_problems: false,
+            script_stats: ScriptStats::default(),
         }
     }
 
@@ -142,13 +196,41 @@ impl TickLoop {
             pending_rebinds: Vec::new(),
             rebinding: Vec::new(),
             reload_armed: false,
+            paused: false,
+            pending_steps: 0,
+            last_time: GameTime { elapsed: std::time::Duration::ZERO, delta: std::time::Duration::ZERO, tick: 0 },
+            script_problems: Vec::new(),
+            collect_problems: false,
+            script_stats: ScriptStats::default(),
         }
     }
 
     /// Execute one logical tick against the shared world.
     ///
     /// Returns the `GameTime` snapshot for this tick.
+    ///
+    /// While [paused](Self::set_paused) nothing runs (no systems, actors,
+    /// scripts or event flushes) and the last tick's time comes back with a
+    /// zero delta, unless a [`step`](Self::step) is pending: then one tick
+    /// runs with a fixed delta (the fixed timestep, or 1/60 s).
     pub fn tick_once(&mut self) -> GameTime {
+        if self.paused {
+            if self.pending_steps == 0 {
+                return GameTime { delta: std::time::Duration::ZERO, ..self.last_time };
+            }
+            self.pending_steps -= 1;
+            let delta = match self.mode {
+                TickMode::Fixed { dt } => dt,
+                TickMode::Variable { .. } => STEP_DELTA,
+            };
+            self.clock.tick_counter += 1;
+            let time = GameTime {
+                elapsed: self.last_time.elapsed + delta,
+                delta,
+                tick: self.last_time.tick + 1,
+            };
+            return self.run_tick(time);
+        }
         let time = match self.mode {
             TickMode::Fixed { dt } => {
                 let t = self.clock.tick_counter;
@@ -161,7 +243,64 @@ impl TickLoop {
             }
             TickMode::Variable { .. } => self.clock.tick(),
         };
+        self.run_tick(time)
+    }
 
+    /// Pause or resume the simulation (Play-in-Editor's pause button).
+    /// Rendering is the host's business and goes on.
+    pub fn set_paused(&mut self, paused: bool) {
+        if self.paused == paused {
+            return;
+        }
+        self.paused = paused;
+        if !paused {
+            self.pending_steps = 0;
+            // The paused wall time is not game time.
+            self.clock.skip_to_now();
+        }
+    }
+
+    /// Whether the simulation is paused.
+    pub fn is_paused(&self) -> bool {
+        self.paused
+    }
+
+    /// While paused: run `frames` more ticks, one per [`tick_once`](Self::tick_once)
+    /// call. Ignored while running.
+    pub fn step(&mut self, frames: u32) {
+        if self.paused {
+            self.pending_steps = self.pending_steps.saturating_add(frames);
+        }
+    }
+
+    /// Ticks run so far (paused ticks do not count).
+    pub fn ticks(&self) -> u64 {
+        self.last_time.tick
+    }
+
+    /// Keep the problems scripts raise (errors, link errors, dropped
+    /// waiting calls, as editor problems) for [`take_script_problems`](Self::take_script_problems).
+    /// Play-in-Editor turns it on; without it they are only logged.
+    pub fn collect_script_problems(&mut self, on: bool) {
+        self.collect_problems = on;
+        if !on {
+            self.script_problems.clear();
+        }
+    }
+
+    /// The problems collected since the last call.
+    pub fn take_script_problems(&mut self) -> Vec<pulsar_events::ScriptProblem> {
+        std::mem::take(&mut self.script_problems)
+    }
+
+    /// What the script phase did so far (instances started, objects
+    /// spawned, errors).
+    pub fn script_stats(&self) -> &ScriptStats {
+        &self.script_stats
+    }
+
+    fn run_tick(&mut self, time: GameTime) -> GameTime {
+        self.last_time = time;
         profiling::profile_scope!("TickLoop::tick");
         let scenedb_time = to_scenedb_time(time);
 
@@ -210,8 +349,19 @@ impl TickLoop {
         // window is ready. Errors are per instance and logged.
         if let Some(driver) = &self.scripts {
             let mut driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            let mut store = self.scene_store.write();
-            driver.run_frame(&mut store.world, time.delta.as_secs_f64());
+            let report = {
+                let mut store = self.scene_store.write();
+                driver.run_frame(&mut store.world, time.delta.as_secs_f64())
+            };
+            self.script_stats.absorb(&report);
+            if self.collect_problems && report.has_problems() {
+                for mut problem in driver.problems(&report) {
+                    problem.frame = Some(time.tick);
+                    self.script_problems.push(problem);
+                }
+                let excess = self.script_problems.len().saturating_sub(MAX_KEPT_PROBLEMS);
+                self.script_problems.drain(..excess);
+            }
         }
 
         // Flush 3 (after scripts): what scripts sent (`event::*`,
@@ -277,6 +427,33 @@ impl TickLoop {
         }))
     }
 
+    /// Turn on the script phase for the game's content: the content root
+    /// the process installed (`pulsar_content::current`, set by the
+    /// standalone launcher and by Play-in-Editor), with the script limits
+    /// and capability allowlist of its project settings. Idempotent. The
+    /// generated `engine_main::setup()` calls this; nothing about the
+    /// project's location is compiled into the game.
+    pub fn enable_project_scripting(&mut self) -> Result<Arc<Mutex<crate::scripting::ScriptDriver>>, String> {
+        if let Some(driver) = &self.scripts {
+            return Ok(Arc::clone(driver));
+        }
+        let content = match pulsar_content::current() {
+            Some(content) => content,
+            None => {
+                let content = pulsar_content::ContentRoot::discover()?;
+                content.install();
+                content
+            }
+        };
+        let events = self.events.clone();
+        tracing::info!(content = %content.root().display(), "Script driver enabled");
+        let mut driver = crate::scripting::new_content_driver(&content);
+        driver.attach_events(events);
+        let driver = Arc::new(Mutex::new(driver));
+        self.scripts = Some(Arc::clone(&driver));
+        Ok(driver)
+    }
+
     /// Run `end_play` on every running script instance (shutdown). Script
     /// subscriptions, queued handler calls and timers are dropped and the
     /// hub's queue is drained (see `EventHub::drain_queued`): a stopped
@@ -329,15 +506,37 @@ impl TickLoop {
     ///     });
     /// }
     /// ```
-    /// `project_root` must be the directory that contains the project's
-    /// `Cargo.toml` and `.pulsar/` settings tree.  Pass
-    /// `std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))` from the game
-    /// project's `main.rs` so the macro expands in the right crate context.
+    /// `project_root` is the project directory (loose dev files). Prefer
+    /// [`run_with_content`](Self::run_with_content), which also serves
+    /// packaged content; [`crate::standalone::run`] picks the content for
+    /// you.
     pub fn run_with_windows(
-        mut self,
+        self,
         event_loop: winit::event_loop::EventLoop<WindowCommand>,
         primary_window: WindowDescriptor,
         project_root: std::path::PathBuf,
+    ) {
+        let content = match pulsar_content::current() {
+            Some(content) if content.root() == project_root => content,
+            _ => {
+                let content = pulsar_content::ContentRoot::project(project_root);
+                content.install();
+                content
+            }
+        };
+        self.run_with_content(event_loop, primary_window, content);
+    }
+
+    /// Start a windowed game session on `content` (a project, or a
+    /// packaged game's `Content/`): opens `primary_window`, loads the
+    /// startup level ([`crate::standalone::startup_level`]) into the shared
+    /// world and starts the tick thread. See
+    /// [`run_with_windows`](Self::run_with_windows).
+    pub fn run_with_content(
+        mut self,
+        event_loop: winit::event_loop::EventLoop<WindowCommand>,
+        primary_window: WindowDescriptor,
+        content: pulsar_content::ContentRoot,
     ) {
         use crate::windowed_app::PulsarApp;
 
@@ -358,66 +557,18 @@ impl TickLoop {
         // Capture running_flag so the app can stop the ECS after exit.
         let running_flag = Arc::clone(&self.running_flag);
 
-        // Register all schema definitions so the config manager knows about them.
-        tracing::info!(root = %project_root.display(), "Loading project settings");
-        pulsar_settings::register_all_settings(engine_state::settings::global_config());
-
-        // Load persisted project settings from <project_root>/.pulsar/
-        let default_scene: Option<std::path::PathBuf> = {
-            let ps_result = engine_state::settings::ProjectSettings::new(&project_root);
-            tracing::debug!(ok = ps_result.is_some(), "ProjectSettings::new");
-
-            let raw_value = ps_result.and_then(|ps| {
-                ps.load_all();
-                let v = ps.get("project", "default_map");
-                tracing::debug!(found = v.is_some(), "settings key project.default_map");
-                v
-            });
-
-            let raw_path = raw_value
-                .as_ref()
-                .and_then(|v| v.as_str().ok())
-                .map(|s| s.to_owned());
-            tracing::info!(raw_map = ?raw_path, "default_map from settings");
-
-            raw_value
-                .and_then(|v| v.as_str().ok().map(|s| project_root.join(s)))
-                .and_then(|p| {
-                    tracing::info!(scene = %p.display(), exists = p.exists(), "Checking default scene path");
-                    if p.exists() {
-                        tracing::info!(scene = %p.display(), "Default scene found — will load");
-                        Some(p)
-                    } else {
-                        // Try common fallback locations
-                        let fallbacks = [
-                            project_root.join("scene/default.level"),
-                            project_root.join("scenes/default_level.json"),
-                            project_root.join("Pulsar/level.json"),
-                        ];
-                        for fb in &fallbacks {
-                            if fb.exists() {
-                                tracing::warn!(
-                                    configured = %p.display(),
-                                    fallback = %fb.display(),
-                                    "Configured scene not found — using fallback"
-                                );
-                                return Some(fb.clone());
-                            }
-                        }
-                        tracing::warn!(
-                            scene = %p.display(),
-                            "Default scene not found on disk and no fallback matched — starting with empty world"
-                        );
-                        None
-                    }
-                })
-        };
-
-        // Set up EngineContext globally before any scene loading or
-        // component sync (component hydration and runtime behaviours may
-        // read EngineContext::global()).
-        let engine_ctx = engine_state::EngineContext::new();
-        engine_ctx.clone().set_global();
+        // Settings schemas, the global EngineContext (component hydration
+        // and runtime behaviours may read it) and the asset root, all
+        // before any scene loading.
+        tracing::info!(root = %content.root().display(), packaged = content.is_packaged(), "Loading game content");
+        if let Err(error) = crate::standalone::prepare_engine(&content) {
+            tracing::error!("{error}");
+        }
+        let default_scene = crate::standalone::startup_level(&content);
+        match &default_scene {
+            Some(scene) => tracing::info!(scene = %scene.display(), "Startup level"),
+            None => tracing::warn!("No startup level found; starting with an empty world"),
+        }
 
         // PulsarApp owns the TickLoop; it spawns the ECS thread in `resumed()`
         // *after* all initial windows are open. The renderer shares THIS
@@ -428,7 +579,7 @@ impl TickLoop {
             bridge,
             self,
             initial_windows,
-            project_root,
+            content,
             default_scene,
             display,
         );

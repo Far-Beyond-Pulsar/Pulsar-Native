@@ -57,19 +57,94 @@ impl Continuation {
     pub fn module(&self) -> &Arc<crate::module::Module> {
         &self.module
     }
+
+    /// Names of the suspended functions, outermost first.
+    pub fn functions(&self) -> Vec<&str> {
+        self.frames.iter().map(|f| self.module.functions[f.func as usize].name.as_str()).collect()
+    }
+
+    /// Move this suspended call onto `module`, a new version of the module
+    /// it was running (a class reload, #862), if its code layout is
+    /// compatible. For every suspended frame, the new module must have a
+    /// function with the same name and the same parameter, return and
+    /// register types and the same number of instructions; the innermost
+    /// frame must still resume right after a `Wait`, and every outer
+    /// frame must still be at a `Call` of the next frame's function. Then
+    /// the call continues in the new code at the same pcs with its
+    /// registers as they are. Otherwise the reason is returned and the
+    /// call cannot continue.
+    pub fn rebase(&self, module: &Arc<crate::module::Module>) -> Result<Continuation, String> {
+        let mut frames = Vec::with_capacity(self.frames.len());
+        let mut new_indices = Vec::with_capacity(self.frames.len());
+        for frame in &self.frames {
+            let old = &self.module.functions[frame.func as usize];
+            let (index, new) = module
+                .function(&old.name)
+                .ok_or_else(|| format!("function `{}` no longer exists", old.name))?;
+            if new.params != old.params || new.ret != old.ret || new.registers != old.registers {
+                return Err(format!("function `{}` changed its parameters or registers", old.name));
+            }
+            if new.code.len() != old.code.len() {
+                return Err(format!(
+                    "function `{}` changed its instruction count ({} -> {})",
+                    old.name,
+                    old.code.len(),
+                    new.code.len()
+                ));
+            }
+            new_indices.push(index);
+            frames.push(Frame { func: index, ..frame.clone() });
+        }
+        for (depth, frame) in frames.iter().enumerate() {
+            let code = &module.functions[frame.func as usize].code;
+            let name = &module.functions[frame.func as usize].name;
+            match new_indices.get(depth + 1) {
+                // Outer frame: parked on the call of the next frame.
+                Some(&callee) => {
+                    if !matches!(code.get(frame.pc), Some(Instr::Call { func, .. }) if *func == callee) {
+                        return Err(format!("function `{name}` no longer calls the waiting function at {}", frame.pc));
+                    }
+                }
+                // Innermost: resumes right after its `Wait`.
+                None => {
+                    let waited = frame.pc.checked_sub(1).and_then(|pc| code.get(pc));
+                    if !matches!(waited, Some(Instr::Wait { .. })) {
+                        return Err(format!("function `{name}` no longer waits at {}", frame.pc.saturating_sub(1)));
+                    }
+                }
+            }
+        }
+        Ok(Continuation { module: Arc::clone(module), frames, regs: self.regs.clone() })
+    }
 }
+
+/// Default [`Vm::max_depth`].
+pub const DEFAULT_MAX_DEPTH: usize = 256;
 
 /// Execution state reused across calls (register stack and scratch).
 pub struct Vm {
     regs: Vec<Value>,
     frames: Vec<Frame>,
     args: Vec<Value>,
+    /// Call depth limit ([`ScriptErrorKind::StackOverflow`] past it).
     pub max_depth: usize,
+    /// Integer `Add`, `Sub`, `Mul`, `Div`, `Rem` and `Neg` that overflow,
+    /// and `FloatToInt` of a value outside `int` (or NaN), raise
+    /// [`ScriptErrorKind::Overflow`] instead of wrapping or saturating
+    /// (#858). Off by default, like a Rust release build; the engine turns
+    /// it on in the editor and Play-in-Editor and off in shipping builds.
+    pub checked_arithmetic: bool,
 }
 
 impl Default for Vm {
     fn default() -> Self {
-        Self { regs: Vec::new(), frames: Vec::new(), args: Vec::new(), max_depth: 256 }
+        Self {
+            regs: Vec::new(),
+            frames: Vec::new(),
+            args: Vec::new(),
+            max_depth: DEFAULT_MAX_DEPTH,
+            checked_arithmetic: false,
+        }
     }
 }
 
@@ -183,12 +258,10 @@ impl Vm {
 
     fn fail(&self, program: &Program, frame_base: usize, kind: ScriptErrorKind) -> ScriptError {
         let module = program.module();
-        let trace = self.frames[frame_base..]
-            .iter()
-            .rev()
-            .map(|f| (module.functions[f.func as usize].name.clone(), f.pc))
-            .collect();
-        ScriptError { kind, trace }
+        let frames = self.frames[frame_base..].iter().rev();
+        let trace = frames.clone().map(|f| (module.functions[f.func as usize].name.clone(), f.pc)).collect();
+        let locations = frames.map(|f| module.functions[f.func as usize].location(f.pc).cloned()).collect();
+        ScriptError { kind, trace, locations }
     }
 
     fn run(
@@ -220,10 +293,12 @@ impl Vm {
                     self.regs[r(*dst)] = self.regs[r(*src)].clone();
                 }
                 Instr::Unary { op, dst, src } => {
-                    self.regs[r(*dst)] = unary(*op, &self.regs[r(*src)]);
+                    let value = unary(*op, &self.regs[r(*src)], self.checked_arithmetic)
+                        .map_err(|kind| self.fail(program, frame_base, kind))?;
+                    self.regs[r(*dst)] = value;
                 }
                 Instr::Binary { op, dst, a, b } => {
-                    let value = binary(*op, &self.regs[r(*a)], &self.regs[r(*b)])
+                    let value = binary(*op, &self.regs[r(*a)], &self.regs[r(*b)], self.checked_arithmetic)
                         .map_err(|kind| self.fail(program, frame_base, kind))?;
                     self.regs[r(*dst)] = value;
                 }
@@ -341,18 +416,27 @@ fn panic_message(panic: &(dyn std::any::Any + Send)) -> String {
     format!("panicked: {message}")
 }
 
-fn unary(op: UnOp, value: &Value) -> Value {
-    match (op, value) {
+fn overflow(op: &str) -> ScriptErrorKind {
+    ScriptErrorKind::Overflow { op: op.to_owned() }
+}
+
+fn unary(op: UnOp, value: &Value, checked: bool) -> Result<Value, ScriptErrorKind> {
+    Ok(match (op, value) {
+        (UnOp::Neg, Value::Int(i)) if checked => Value::Int(i.checked_neg().ok_or_else(|| overflow("Neg"))?),
         (UnOp::Neg, Value::Int(i)) => Value::Int(i.wrapping_neg()),
         (UnOp::Neg, Value::Float(f)) => Value::Float(-f),
         (UnOp::Not, Value::Bool(b)) => Value::Bool(!b),
         (UnOp::IntToFloat, Value::Int(i)) => Value::Float(*i as f64),
+        // `i64::MAX as f64` rounds up to 2^63, which is already out of range.
+        (UnOp::FloatToInt, Value::Float(f)) if checked && !(f.is_finite() && *f >= -(2f64.powi(63)) && *f < 2f64.powi(63)) => {
+            return Err(overflow("FloatToInt"));
+        }
         // `as` saturates and maps NaN to 0.
         (UnOp::FloatToInt, Value::Float(f)) => Value::Int(*f as i64),
         (UnOp::ToStr, v) => Value::Str(display(v).into()),
         // The verifier rules out every other combination.
         _ => unreachable!("unverified unary operand"),
-    }
+    })
 }
 
 fn display(value: &Value) -> String {
@@ -368,8 +452,24 @@ fn display(value: &Value) -> String {
     }
 }
 
-fn binary(op: BinOp, a: &Value, b: &Value) -> Result<Value, ScriptErrorKind> {
+fn binary(op: BinOp, a: &Value, b: &Value, checked: bool) -> Result<Value, ScriptErrorKind> {
     use Value::{Bool, Float, Int, Str};
+    if checked {
+        if let (Int(x), Int(y)) = (a, b) {
+            let result = match op {
+                BinOp::Add => Some(x.checked_add(*y)),
+                BinOp::Sub => Some(x.checked_sub(*y)),
+                BinOp::Mul => Some(x.checked_mul(*y)),
+                BinOp::Div | BinOp::Rem if *y == 0 => return Err(ScriptErrorKind::DivideByZero),
+                BinOp::Div => Some(x.checked_div(*y)),
+                BinOp::Rem => Some(x.checked_rem(*y)),
+                _ => None,
+            };
+            if let Some(result) = result {
+                return result.map(Int).ok_or_else(|| overflow(&format!("{op:?}")));
+            }
+        }
+    }
     Ok(match (op, a, b) {
         (BinOp::Add, Int(a), Int(b)) => Int(a.wrapping_add(*b)),
         (BinOp::Sub, Int(a), Int(b)) => Int(a.wrapping_sub(*b)),

@@ -49,7 +49,7 @@ pub mod helio_bridge;
 #[cfg(feature = "render")]
 pub use helio_bridge::{
     arm_render_row_subscriptions, arm_render_row_subscriptions_for_entity, ensure_gpu_mirror,
-    retire_gpu_rows_for_entity, sync_static_mesh_rows,
+    mark_render_components_changed, retire_gpu_rows_for_entity, sync_static_mesh_rows,
 };
 #[cfg(feature = "render")]
 pub use editor_rows::sync_editor_light_rows;
