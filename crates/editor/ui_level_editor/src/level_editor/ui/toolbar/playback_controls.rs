@@ -60,18 +60,55 @@ impl PlaybackControls {
                 }
             })
             .child({
-                let disabled = state.scene.is_edit_mode();
+                // Pause / resume the running game's simulation (#925). The
+                // viewport applies it to the game's TickLoop; rendering and
+                // editing go on while paused.
+                let state_clone = state_arc.clone();
+                let pie = &state.play.pie;
+                let enabled = pie.active && pie.supports_control;
+                let paused = pie.paused;
                 let btn = Button::new("pause")
-                    .icon(IconName::Pause)
-                    .tooltip(t!("LevelEditor.Toolbar.PauseSimulation"))
+                    .icon(if paused { IconName::Play } else { IconName::Pause })
+                    .tooltip(if paused {
+                        t!("LevelEditor.Toolbar.ResumeSimulation")
+                    } else {
+                        t!("LevelEditor.Toolbar.PauseSimulation")
+                    })
+                    .ghost()
+                    .selected(paused)
+                    .on_click(move |_, _, _| {
+                        let mut st = state_clone.write();
+                        if st.play.pie.active {
+                            let paused = st.play.pie.paused;
+                            st.play.pie.pause_request = Some(!paused);
+                            st.play.pie.paused = !paused;
+                        }
+                    });
+                if enabled {
+                    btn.into_any_element()
+                } else {
+                    btn.opacity(0.5).into_any_element()
+                }
+            })
+            .child({
+                // Step one frame while paused.
+                let state_clone = state_arc.clone();
+                let pie = &state.play.pie;
+                let enabled = pie.active && pie.supports_control && pie.paused;
+                let btn = Button::new("step")
+                    .icon(IconName::SkipNext)
+                    .tooltip(t!("LevelEditor.Toolbar.StepSimulation"))
                     .ghost()
                     .on_click(move |_, _, _| {
-                        // TODO: Implement pause
+                        let mut st = state_clone.write();
+                        if st.play.pie.active && st.play.pie.paused {
+                            st.play.pie.step_request = st.play.pie.step_request.saturating_add(1);
+                        }
                     });
-                if disabled {
-                    btn.opacity(0.5).into_any_element()
-                } else {
+                if enabled {
                     btn.into_any_element()
+                } else {
+                    btn.opacity(0.5).into_any_element()
                 }
             })
             .child({

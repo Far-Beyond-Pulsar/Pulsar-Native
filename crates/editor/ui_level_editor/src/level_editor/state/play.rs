@@ -56,7 +56,35 @@ pub struct PieControl {
     /// Asset updates (e.g. an edited class) waiting to be forwarded to the
     /// running game; the viewport delivers them on the render thread.
     pub pending_asset_updates: Vec<plugin_editor_api::AssetUpdated>,
+    /// Set with [`Self::stop_requested`] while a game runs: the viewport
+    /// restores the editor world (`SceneDomain::exit_play_mode`) right
+    /// after the game shut down, so no game code runs against the restored
+    /// world (#925). See `end_pie`.
+    pub restore_after_stop: bool,
+    /// When the pending stop was requested, for the fallback restore when
+    /// no viewport processes it.
+    pub stop_requested_at: Option<std::time::Instant>,
+    /// Pause (`Some(true)`) or resume (`Some(false)`) the running game's
+    /// simulation; the viewport applies it on the render thread.
+    pub pause_request: Option<bool>,
+    /// Frames to step while paused; the viewport applies them.
+    pub step_request: u32,
+    /// Whether the game's simulation is paused (mirrored by the viewport).
+    pub paused: bool,
+    /// Whether the running game supports pause / step (games built before
+    /// the control entry point do not).
+    pub supports_control: bool,
+    /// Script problems (errors with class / function / node) the running
+    /// game reported this session, oldest first (bounded).
+    pub problems: Vec<pulsar_events::ScriptProblem>,
+    /// The library the running game was loaded from, and its modification
+    /// time then. Pressing Play again reloads only the script classes when
+    /// neither the sources nor this library changed since (#833).
+    pub loaded_artifact: Option<(PathBuf, std::time::SystemTime)>,
 }
+
+/// Problems kept in [`PieControl::problems`].
+pub const MAX_PIE_PROBLEMS: usize = 200;
 
 /// Everything the viewport needs to load an embedded game.
 #[derive(Clone)]
@@ -71,4 +99,8 @@ pub struct PieStartRequest {
     /// world keeps its entities/components, and the guest re-binds actor
     /// registrations instead of spawning duplicates (native hot reload).
     pub reload: bool,
+    /// True when a game is running and nothing native changed since it was
+    /// loaded (#833): the viewport keeps the running game and reloads every
+    /// script class in it instead of swapping the library.
+    pub scripts_only: bool,
 }

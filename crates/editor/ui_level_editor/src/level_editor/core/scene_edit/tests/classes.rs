@@ -381,6 +381,62 @@ fn class_asset_updates_rebuild_placed_instances() {
     );
 }
 
+/// #935: a class edit reaches every placed instance's LIVE components and
+/// the renderer hears about it: after `AssetUpdated`, both instances' lights
+/// (root and generated child) have the new color, and each light entity is
+/// in the change events the renderer drains to re-derive its light rows,
+/// without touching any instance.
+#[test]
+fn class_color_edit_reaches_live_lights_and_their_render_rows() {
+    use crate::level_editor::core::asset_updates;
+    use crate::level_editor::state::LevelEditorState;
+    use plugin_editor_api::{AssetKind, AssetUpdated};
+
+    let (_project, dir) = project_with_lamp(1.0);
+    let state = std::sync::Arc::new(parking_lot::RwLock::new(LevelEditorState::new()));
+    let (a, b) = {
+        let st = state.read();
+        let mut world = st.scene.world_mut();
+        let a = place(&mut world, &dir, 0.0);
+        let b = place(&mut world, &dir, 4.0);
+        // The renderer armed its row subscriptions and drained its events.
+        engine_backend::scene::arm_render_row_subscriptions(&mut world);
+        world.take_component_change_events();
+        (a, b)
+    };
+    let classes_before = state.read().scene.class_updates;
+
+    // The class's lights turn red.
+    let mut prefab: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("prefab.json")).unwrap()).unwrap();
+    for component in prefab["components"].as_array_mut().unwrap() {
+        component["data"]["color"]["color"] = json!([1.0, 0.0, 0.0, 1.0]);
+    }
+    std::fs::write(dir.join("prefab.json"), prefab.to_string()).unwrap();
+    let touched = asset_updates::handle_asset_update(
+        &state,
+        &AssetUpdated::new(AssetKind::Blueprint).with_path(dir.clone()),
+    );
+    assert!(!touched.is_empty());
+    assert_ne!(state.read().scene.class_updates, classes_before, "the editor is woken");
+
+    let st = state.read();
+    let mut world = st.scene.world_mut();
+    let dirty: std::collections::HashSet<_> =
+        world.take_component_change_events().into_iter().map(|e| e.entity).collect();
+    for id in [&a, &b] {
+        let kids = children(&world, id);
+        assert_eq!(kids.len(), 1);
+        for object in [id, &kids[0]] {
+            assert_eq!(light(&world, object).color.color, [1.0, 0.0, 0.0, 1.0], "{object}: live light");
+            let entity = world.entity_for(object).unwrap();
+            assert!(dirty.contains(&entity), "{object}: the renderer re-derives its light row");
+        }
+    }
+    // What the renderer does with them: rows follow the live lights.
+    engine_backend::scene::sync_editor_light_rows(&mut world, true, Some(&dirty));
+}
+
 /// Reverting a class-slot property and setting/reverting a class variable
 /// go through the normal command path, so undo brings the override back.
 #[test]
@@ -481,4 +537,62 @@ fn placed_classes_are_class_objects_with_owned_children() {
     let root = world.entity_for(&a).unwrap();
     let placement = pulsar_class::world::placement(world, root);
     assert_eq!(placement.handle(&slot0).unwrap().entity, root);
+}
+
+/// #925: Stop restores the editor world exactly as it was before the first
+/// Play, including removing objects scripts spawned during Play
+/// (`world::spawn` builds class instances with runtime StableIds) and
+/// undoing gameplay edits; a second Play while running keeps the pre-Play
+/// snapshot.
+#[test]
+fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
+    use crate::level_editor::state::LevelEditorState;
+    use engine_backend::scene::{ObjectType, SpawnObject};
+
+    let (_project, dir) = project_with_lamp(1.0);
+    let mut state = LevelEditorState::new();
+    let a = place(&mut state.scene.world_mut(), &dir, 0.0);
+    let describe = |state: &LevelEditorState| {
+        let world = state.scene.world();
+        let mut objects: Vec<String> = objects::get_all_objects(&world)
+            .into_iter()
+            .map(|o| format!("{} {:?} {:?} {:?}", o.id, o.parent, o.transform.position, components::get_component_class_names(&world, &o.id)))
+            .collect();
+        objects.sort();
+        (objects, light(&world, &a).intensity.intensity)
+    };
+    let before = describe(&state);
+
+    state.scene.enter_play_mode();
+    {
+        let mut world = state.scene.world_mut();
+        // Gameplay moves the lamp and dims it.
+        objects::set_transform(&mut world, &a, Some([5.0, 0.0, 0.0]), None, None);
+        let entity = world.entity_for(&a).unwrap();
+        world.get_mut::<LightComponent>(entity).unwrap().intensity.intensity = 0.25;
+        // A script spawns a Lamp at runtime, and another under the first.
+        let def = classes::registry_for_class_dir(&dir).by_name("Lamp").unwrap().load_definition().unwrap();
+        for (id, parent) in [("Lamp_rt1", None), ("Lamp_rt2", Some(entity))] {
+            let reserved = world.spawn();
+            let spec = SpawnObject {
+                stable_id: Some(id.into()),
+                name: "Lamp".into(),
+                parent,
+                transform: Default::default(),
+                visibility: Default::default(),
+                object_type: ObjectType::Blueprint,
+            };
+            pulsar_class::world::instantiate_class_into(&mut world, &def, Default::default(), spec, reserved).unwrap();
+        }
+    }
+    // Play again while running (a hot reload): the snapshot stays.
+    state.scene.enter_play_mode();
+    assert_ne!(describe(&state), before);
+
+    state.scene.exit_play_mode();
+    assert_eq!(describe(&state), before, "the editor world is back exactly");
+    let world = state.scene.world();
+    assert!(world.entity_for("Lamp_rt1").is_none() && world.entity_for("Lamp_rt2").is_none(), "runtime spawns are gone");
+    drop(world);
+    assert!(!state.scene.has_play_snapshot());
 }

@@ -27,8 +27,19 @@ pub(crate) fn begin_pie(
     window: &mut Window,
     cx: &mut App,
 ) {
-    // Snapshot the scene (also flips to play mode).
-    shared_state.write().scene.enter_play_mode();
+    {
+        let mut st = shared_state.write();
+        // Play pressed again before the viewport processed a Stop: the
+        // game keeps running and nothing is restored.
+        if st.play.pie.restore_after_stop {
+            st.play.pie.stop_requested = false;
+            st.play.pie.restore_after_stop = false;
+            st.play.pie.stop_requested_at = None;
+        }
+        // Snapshot the scene (also flips to play mode). A Play while a game
+        // runs keeps the pre-Play snapshot.
+        st.scene.enter_play_mode();
+    }
 
     let Some(root) = engine_state::get_project_path().map(std::path::PathBuf::from) else {
         window.push_notification(
@@ -65,14 +76,19 @@ pub(crate) fn begin_pie(
     // Native hot reload (#653): pressing Play while a game runs rebuilds
     // and swaps the library WITHOUT dropping the world — the viewport stops
     // the old host only once the new build is in hand.
-    let reload = {
+    let (reload, loaded_artifact) = {
         let mut st = shared_state.write();
         st.play.pie.building = true;
         st.play.pie.stop_requested = false;
         st.play.pie.last_error = None;
         st.play.pie.pending_start = None;
-        st.play.pie.active
+        (st.play.pie.active, st.play.pie.loaded_artifact.clone())
     };
+    if !reload {
+        // A new session: the problems panel forgets the last one's.
+        shared_state.write().play.pie.problems.clear();
+        pulsar_events::publish_script_problems_cleared();
+    }
 
     if reload {
         tracing::info!("PiE: game already running — this Play is a NATIVE HOT RELOAD");
@@ -88,7 +104,7 @@ pub(crate) fn begin_pie(
     let _ = std::thread::Builder::new()
         .name("pie-build".into())
         .spawn(move || {
-            let result = build_pie_dylib(&root, &scene_path, reload);
+            let result = build_pie_dylib(&root, &scene_path, reload, loaded_artifact.as_ref());
             let mut st = shared.write();
             st.play.pie.building = false;
             match result {
@@ -102,14 +118,56 @@ pub(crate) fn begin_pie(
 }
 
 /// Ask the viewport to tear down the embedded game, then exit play mode.
+///
+/// With a game running, the editor world is restored only after the game
+/// shut down (#925): the viewport stops it on its next frame (scripts get
+/// `end_play` while the world still holds their objects, and nothing
+/// ticks after), then restores the pre-Play snapshot, which also removes
+/// what scripts spawned. Without a running game it restores now.
 pub(crate) fn end_pie(shared_state: Arc<parking_lot::RwLock<LevelEditorState>>) {
-    {
-        let mut st = shared_state.write();
+    let mut st = shared_state.write();
+    st.play.pie.pending_start = None;
+    st.play.pie.building = false;
+    st.play.pie.pause_request = None;
+    st.play.pie.step_request = 0;
+    if st.play.pie.active {
         st.play.pie.stop_requested = true;
-        st.play.pie.pending_start = None;
-        st.play.pie.building = false;
+        st.play.pie.restore_after_stop = true;
+        st.play.pie.stop_requested_at = Some(std::time::Instant::now());
+    } else {
+        st.play.pie.stop_requested = true;
+        st.scene.exit_play_mode();
     }
-    shared_state.write().scene.exit_play_mode();
+}
+
+/// How long a Stop waits for the viewport to shut the game down before the
+/// editor world is restored anyway (the Game tab is not being drawn).
+pub(crate) const STOP_RESTORE_FALLBACK: std::time::Duration = std::time::Duration::from_millis(750);
+
+/// Finish a Stop: restore the editor world if the game is gone (called by
+/// the viewport right after it stopped the game), or, as a fallback, once
+/// [`STOP_RESTORE_FALLBACK`] passed without a viewport doing it. Returns
+/// whether it restored.
+pub(crate) fn finish_stop(state: &mut LevelEditorState, game_stopped: bool) -> bool {
+    if !state.play.pie.restore_after_stop {
+        return false;
+    }
+    let overdue = state
+        .play
+        .pie
+        .stop_requested_at
+        .is_some_and(|at| at.elapsed() >= STOP_RESTORE_FALLBACK);
+    if !game_stopped && !overdue {
+        return false;
+    }
+    if !game_stopped {
+        tracing::warn!("PiE: no viewport stopped the game in time; restoring the editor world anyway");
+    }
+    state.play.pie.restore_after_stop = false;
+    state.play.pie.stop_requested_at = None;
+    state.play.pie.paused = false;
+    state.scene.exit_play_mode();
+    true
 }
 
 /// Regenerate the project scaffolding and build it as a `cdylib`, returning what
@@ -126,6 +184,7 @@ fn build_pie_dylib(
     root: &Path,
     scene_path: &Path,
     reload: bool,
+    loaded_artifact: Option<&(std::path::PathBuf, std::time::SystemTime)>,
 ) -> Result<PieStartRequest, String> {
     // PiE uses the release library (faster at runtime, and matches the artifact
     // `cargo build --release` / `cargo run --release` produce).
@@ -148,8 +207,14 @@ fn build_pie_dylib(
         let dylib_path =
             engine_backend::services::PieHost::output_dylib_path(root, &crate_name, release);
         if dylib_path.exists() && !any_source_newer(root, &dylib_path) {
+            // #833: script classes are data (their compiled modules are
+            // reloaded in place); only native sources need cargo. With the
+            // running game loaded from this very artifact, Play again only
+            // reloads the classes.
+            let scripts_only = reload && same_artifact(&dylib_path, loaded_artifact);
             tracing::info!(
                 lib = %dylib_path.display(),
+                scripts_only,
                 "PiE fastpath: no .rs/.toml changes since last build — reusing artifact"
             );
             return Ok(PieStartRequest {
@@ -157,6 +222,7 @@ fn build_pie_dylib(
                 project_root: root.to_path_buf(),
                 scene_path: scene_path.to_path_buf(),
                 reload,
+                scripts_only,
             });
         }
     }
@@ -195,7 +261,34 @@ fn build_pie_dylib(
         project_root: root.to_path_buf(),
         scene_path: scene_path.to_path_buf(),
         reload,
+        scripts_only: false,
     })
+}
+
+/// Whether `dylib` is the library the running game was loaded from,
+/// unchanged since.
+fn same_artifact(dylib: &Path, loaded: Option<&(std::path::PathBuf, std::time::SystemTime)>) -> bool {
+    let Some((path, mtime)) = loaded else { return false };
+    path == dylib && artifact_mtime(dylib).is_some_and(|now| now == *mtime)
+}
+
+/// The modification time of a built library.
+pub(crate) fn artifact_mtime(path: &Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+/// The asset updates that reload every script class of the project at
+/// `root` in a running game (Play pressed again with only script changes).
+pub(crate) fn class_reload_events(root: &Path) -> Vec<plugin_editor_api::AssetUpdated> {
+    pulsar_class::ClassRegistry::scan(root)
+        .entries()
+        .iter()
+        .map(|entry| {
+            plugin_editor_api::AssetUpdated::new(plugin_editor_api::AssetKind::Blueprint)
+                .with_id(entry.id.as_str())
+                .with_path(entry.dir.clone())
+        })
+        .collect()
 }
 
 /// Whether any `.rs` or `.toml` file under `root` is newer than `artifact`.
@@ -256,4 +349,52 @@ fn read_crate_name(root: &Path) -> Result<String, String> {
         }
     }
     Err("Could not find package name in Cargo.toml".to_string())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// #833: saving and compiling a Blueprint writes only data files
+    /// (graph, variables, prefab, the compiled module), so Play reuses the
+    /// built library without cargo; a native source change does not.
+    #[test]
+    fn script_only_changes_do_not_need_cargo() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("src/classes/Door/events/.build")).unwrap();
+        std::fs::write(root.path().join("src/lib.rs"), "// lib").unwrap();
+        let artifact = root.path().join("target/release/libgame.so");
+        std::fs::create_dir_all(artifact.parent().unwrap()).unwrap();
+        // The artifact is built after the sources.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(&artifact, b"lib").unwrap();
+        assert!(!any_source_newer(root.path(), &artifact));
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let class = root.path().join("src/classes/Door");
+        for file in ["graph_save.json", "vars_save.json", "prefab.json", "class.json", "events/.build/module.json"] {
+            std::fs::write(class.join(file), "{}").unwrap();
+        }
+        assert!(!any_source_newer(root.path(), &artifact), "script data never needs a rebuild");
+
+        let loaded = (artifact.clone(), artifact_mtime(&artifact).unwrap());
+        assert!(same_artifact(&artifact, Some(&loaded)), "Play again reloads scripts only");
+        assert!(!same_artifact(&artifact, None), "no running game: a normal start");
+
+        std::fs::write(root.path().join("src/lib.rs"), "// changed").unwrap();
+        assert!(any_source_newer(root.path(), &artifact), "native changes still rebuild");
+    }
+
+    #[test]
+    fn class_reload_events_name_every_class() {
+        let root = tempfile::tempdir().unwrap();
+        for (name, guid) in [("Door", "door-guid"), ("Lamp", "lamp-guid")] {
+            let dir = root.path().join("src/classes").join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("class.json"), format!("{{\"class_id\":\"{guid}\"}}")).unwrap();
+            std::fs::write(dir.join("graph_save.json"), "{}").unwrap();
+        }
+        let mut ids: Vec<String> = class_reload_events(root.path()).into_iter().filter_map(|e| e.id).collect();
+        ids.sort();
+        assert_eq!(ids, ["door-guid", "lamp-guid"]);
+    }
 }

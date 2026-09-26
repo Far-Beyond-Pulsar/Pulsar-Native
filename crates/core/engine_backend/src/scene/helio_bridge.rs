@@ -56,6 +56,33 @@ pub fn arm_render_row_subscriptions_for_entity(
     }
 }
 
+/// Report `entity`'s render-relevant components as changed to the render-row
+/// subscriptions (#935), as a property edit through `Mut` would: its light
+/// and mesh rows are re-derived at the renderer's next sync. Use after
+/// components were (re)inserted before the entity's subscriptions were
+/// armed (a class instance rebuilt from its class), which records no
+/// change event. Also refreshes every registered class's GPU mirror.
+pub fn mark_render_components_changed(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+    if !world.is_alive(entity) {
+        return;
+    }
+    let classes: Vec<&'static str> = pulsar_world_registry::registered_world_component_classes().collect();
+    for class_name in classes {
+        if pulsar_world_registry::world_component_present_for_class(class_name, world, entity) {
+            pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(class_name, world, entity);
+        }
+    }
+    if let Some(mut light) = world.get_mut::<helio_component::components::LightComponent>(entity) {
+        std::ops::DerefMut::deref_mut(&mut light);
+    }
+    if let Some(mut mesh) = world.get_mut::<StaticMeshComponent>(entity) {
+        std::ops::DerefMut::deref_mut(&mut mesh);
+    }
+    if let Some(mut transform) = world.get_mut::<Transform>(entity) {
+        std::ops::DerefMut::deref_mut(&mut transform);
+    }
+}
+
 struct EditorMeshRow;
 
 /// Remove `entity`'s `StaticObjectComponent` row so it stops being drawn.

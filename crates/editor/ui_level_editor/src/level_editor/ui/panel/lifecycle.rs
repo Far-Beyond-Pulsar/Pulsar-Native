@@ -278,7 +278,7 @@ impl LevelEditorPanel {
         let poll_gpu = gpu_engine.clone();
         let poller = cx.spawn(async move |this, cx| {
             let mut last: Option<(
-                (bool, bool, bool, bool),
+                (bool, bool, bool, bool, u64),
                 (Option<std::path::PathBuf>, bool),
                 (Option<String>, TransformTool),
             )> = None;
@@ -286,6 +286,12 @@ impl LevelEditorPanel {
                 cx.background_executor()
                     .timer(std::time::Duration::from_millis(50))
                     .await;
+                // A Stop the Game viewport did not process in time still
+                // restores the editor world (#925).
+                if poll_state.read().play.pie.restore_after_stop {
+                    let mut s = poll_state.write();
+                    crate::level_editor::ui::panel::pie::finish_stop(&mut s, false);
+                }
                 let snapshot = {
                     let s = poll_state.read();
                     (
@@ -294,6 +300,8 @@ impl LevelEditorPanel {
                             s.play.pie.active,
                             s.play.pie.pending_start.is_some(),
                             s.play.pie.last_error.is_some(),
+                            // Class updates rebuilt placed instances (#935).
+                            s.scene.class_updates,
                         ),
                         (s.scene.current_scene.clone(), s.scene.has_unsaved_changes),
                         (s.scene.selected_object(), s.editor.current_tool),

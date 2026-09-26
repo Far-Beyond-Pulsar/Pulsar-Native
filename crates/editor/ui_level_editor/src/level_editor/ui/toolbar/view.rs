@@ -47,6 +47,10 @@ pub struct ToolbarSignature {
     spline_length_m: f32,
     // playback_controls / mode_indicator
     editor_mode: EditorMode,
+    // playback_controls: PIE pause / step (#925)
+    pie_active: bool,
+    pie_supports_control: bool,
+    pie_paused: bool,
     // time_scale_dropdown
     time_scale: f32,
     // multiplayer_dropdown
@@ -72,6 +76,9 @@ impl ToolbarSignature {
             spline_point_count: state.editor.spline.points.len(),
             spline_length_m: state.editor.spline.total_length_m(),
             editor_mode: state.scene.editor_mode,
+            pie_active: state.play.pie.active,
+            pie_supports_control: state.play.pie.supports_control,
+            pie_paused: state.play.pie.paused,
             time_scale: state.play.time_scale,
             multiplayer_mode: state.play.multiplayer_mode,
             build_config: state.build.config,
