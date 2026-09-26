@@ -26,6 +26,30 @@ pub enum SceneCommand {
         parent_id: Option<String>,
     },
     /// Remove an object and all descendants.
+    /// Place an instance of the class in `class_dir` (#921): the root with
+    /// its `ClassInstance`, every prefab component and generated children.
+    InstantiateClass {
+        class_dir: std::path::PathBuf,
+        transform: crate::level_editor::scene_edit::Transform,
+        parent_id: Option<String>,
+    },
+    /// Put one property of a component built from a class slot back to the
+    /// class default (#921). The default is read from the current class
+    /// definition; the write takes the same path as `SetComponentProperty`.
+    RevertComponentProperty {
+        id: String,
+        class_name: String,
+        component_index: usize,
+        prop_name: String,
+    },
+    /// Set a placed class instance's script variable (`Some`), stored as an
+    /// override only when it differs from the class default, or revert it
+    /// to the class default (`None`).
+    SetClassVariable {
+        id: String,
+        name: String,
+        value: Option<serde_json::Value>,
+    },
     RemoveObject { id: String },
     /// Overwrite all mutable fields of an existing object (looked up by `data.id`).
     UpdateObject { data: SceneObjectData },
@@ -107,6 +131,33 @@ impl std::fmt::Debug for SceneCommand {
                 .field("data.id", &data.id)
                 .field("data.name", &data.name)
                 .field("parent_id", parent_id)
+                .finish(),
+            Self::InstantiateClass {
+                class_dir,
+                parent_id,
+                ..
+            } => f
+                .debug_struct("InstantiateClass")
+                .field("class_dir", class_dir)
+                .field("parent_id", parent_id)
+                .finish(),
+            Self::RevertComponentProperty {
+                id,
+                class_name,
+                component_index,
+                prop_name,
+            } => f
+                .debug_struct("RevertComponentProperty")
+                .field("id", id)
+                .field("class_name", class_name)
+                .field("component_index", component_index)
+                .field("prop_name", prop_name)
+                .finish(),
+            Self::SetClassVariable { id, name, value } => f
+                .debug_struct("SetClassVariable")
+                .field("id", id)
+                .field("name", name)
+                .field("value", value)
                 .finish(),
             Self::RemoveObject { id } => f.debug_struct("RemoveObject").field("id", id).finish(),
             Self::UpdateObject { data } => f

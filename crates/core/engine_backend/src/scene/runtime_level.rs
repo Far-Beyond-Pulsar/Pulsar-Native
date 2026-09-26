@@ -32,9 +32,7 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 use pulsar_scene::component_instances_from_props;
-use pulsar_scene::format::{
-    BlueprintBindings, ObjectType as FileObjectType, SceneFile, SceneLoadError,
-};
+use pulsar_scene::format::{ObjectType as FileObjectType, SceneFile};
 use serde_json::Value;
 
 use pulsar_scenedb::{Entity, World};
@@ -71,23 +69,18 @@ pub struct EditorCamera {
     pub pitch: f32,
 }
 
-/// What a level load reports beyond hydration itself (#650): the editor
-/// camera seed and the file's Blueprint class bindings. Hosts apply the
-/// bindings through `pulsar_game::scripting`, which
-/// resolves each StableId against the hydrated store and spawns one bound
-/// dispatcher instance per (object, class) pair.
+/// What a level load reports beyond hydration itself: the editor camera
+/// seed. Which scripts run is not an extra: placed classes are
+/// `ClassInstance` components in the world, which the script driver
+/// (`pulsar_game::scripting::ScriptDriver`) follows (#922).
 #[derive(Clone, Debug, Default)]
 pub struct LevelExtras {
     /// The camera saved under `editor.camera`, if any.
     pub editor_camera: Option<EditorCamera>,
-    /// Object → Blueprint class bindings keyed by StableId; empty for
-    /// pre-#650 files.
-    pub blueprint_bindings: BlueprintBindings,
 }
 
 /// A scene loaded for runtime use: one shared SceneDB scene plus
-/// the level-file extras gameplay cares about (editor camera seed, Blueprint
-/// class bindings).
+/// the level-file extras gameplay cares about (editor camera seed).
 pub struct RuntimeLevel {
     scene: SharedScene,
     extras: LevelExtras,
@@ -98,8 +91,17 @@ impl RuntimeLevel {
     /// contract; call `engine_state::set_project_path` first so asset-
     /// resolving hydrates (`StaticMeshComponent`) can find project files.
     pub fn load(path: &Path) -> Result<Self, RuntimeLevelError> {
-        let file = load_scene_file(path)?;
-        Self::from_scene_file(file)
+        Self::load_with_classes(path, &project_class_registry())
+    }
+
+    /// [`load`](Self::load) with an explicit class registry instead of the
+    /// current project's (tools, tests).
+    pub fn load_with_classes(
+        path: &Path,
+        registry: &pulsar_class::ClassRegistry,
+    ) -> Result<Self, RuntimeLevelError> {
+        let file = load_scene_file(path, registry)?;
+        Self::from_scene_file_with_classes(file, registry)
     }
     /// Load a level file and hydrate it into an EXISTING world -- the
     /// one-world play-mode path (Pulsar-Native#637/#634): the tick loop's
@@ -108,38 +110,57 @@ impl RuntimeLevel {
     /// level constructing its own store. Duplicate stable ids between the
     /// file and live state are errors, never silent re-spawns.
     ///
-    /// Returns the file's extras ([`LevelExtras`]: editor camera + Blueprint
-    /// class bindings). Call `engine_state::set_project_path` first so
-    /// asset-resolving hydrates (`StaticMeshComponent`) can find project
-    /// files.
+    /// Returns the file's extras ([`LevelExtras`]: the editor camera). Call
+    /// `engine_state::set_project_path` first so asset-resolving hydrates
+    /// (`StaticMeshComponent`) can find project files and placed classes
+    /// resolve against the project's classes.
     pub fn load_into(path: &Path, world: &mut World) -> Result<LevelExtras, RuntimeLevelError> {
-        let file = load_scene_file(path)?;
-        let extras = LevelExtras {
-            editor_camera: editor_camera(&file.editor),
-            blueprint_bindings: file.blueprint_bindings.clone(),
-        };
-        Self::hydrate_scene_file(file, world)?;
-        Ok(extras)
+        Self::load_into_with_classes(path, world, &project_class_registry())
+    }
+
+    /// [`load_into`](Self::load_into) with an explicit class registry
+    /// (tools, tests).
+    pub fn load_into_with_classes(
+        path: &Path,
+        world: &mut World,
+        registry: &pulsar_class::ClassRegistry,
+    ) -> Result<LevelExtras, RuntimeLevelError> {
+        let file = load_scene_file(path, registry)?;
+        let editor_camera = editor_camera(&file.editor);
+        Self::hydrate_scene_file(file, world, registry)?;
+        Ok(LevelExtras { editor_camera })
     }
     /// Hydrate from an already-parsed [`SceneFile`] into a fresh store
     /// (import/legacy callers that get their JSON from somewhere other than
     /// disk).
     pub fn from_scene_file(file: SceneFile) -> Result<Self, RuntimeLevelError> {
-        let extras = LevelExtras {
-            editor_camera: editor_camera(&file.editor),
-            blueprint_bindings: file.blueprint_bindings.clone(),
-        };
+        Self::from_scene_file_with_classes(file, &project_class_registry())
+    }
+
+    /// [`from_scene_file`](Self::from_scene_file) with an explicit class
+    /// registry.
+    pub fn from_scene_file_with_classes(
+        file: SceneFile,
+        registry: &pulsar_class::ClassRegistry,
+    ) -> Result<Self, RuntimeLevelError> {
+        let editor_camera = editor_camera(&file.editor);
         let mut scene = crate::scene::new_scene();
-        Self::hydrate_scene_file(file, &mut scene.world)?;
+        Self::hydrate_scene_file(file, &mut scene.world, registry)?;
+        let extras = LevelExtras { editor_camera };
         Ok(Self {
             scene: Arc::new(RwLock::new(scene)),
             extras,
         })
     }
 
-    /// Shared hydration core: version gate + objects + components into
-    /// `world`.
-    fn hydrate_scene_file(file: SceneFile, world: &mut World) -> Result<(), RuntimeLevelError> {
+    /// Shared hydration core: version gate + class migration + objects +
+    /// components + class instances into `world`.
+    fn hydrate_scene_file(
+        mut file: SceneFile,
+        world: &mut World,
+        registry: &pulsar_class::ClassRegistry,
+    ) -> Result<(), RuntimeLevelError> {
+        migrate_scene_file(&mut file, registry);
         let version = version_string(&file.version);
         // Same accepted set as the editor's own loader: 1.x and 2.x.
         if !version.starts_with("1.") && !version.starts_with("2.") && version != "1" {
@@ -192,6 +213,30 @@ impl RuntimeLevel {
             }
             hydrate_components(world, entity, &obj.id, &instances)?;
         }
+
+        // Placed classes (#921): rebuild each instance from the current class
+        // definition, then apply its overrides. Unresolved classes keep their
+        // ClassInstance and are only warned about.
+        let roots: Vec<Entity> = file
+            .objects
+            .iter()
+            .filter_map(|obj| world.entity_for(&obj.id))
+            .collect();
+        let report = pulsar_class::world::expand_roots(world, registry, &roots);
+        for id in &report.unresolved {
+            tracing::warn!(object = %id, "Placed class instance has no class in this project");
+        }
+        // What the migration could not turn into a ClassInstance (a second
+        // class bound to one object) has no script instance any more.
+        for (stable_id, bindings) in &file.blueprint_bindings {
+            for binding in bindings {
+                tracing::warn!(
+                    object = %stable_id,
+                    class = %binding.class_name,
+                    "Legacy script binding not migrated (one class per object); it does not run"
+                );
+            }
+        }
         Ok(())
     }
 
@@ -201,10 +246,7 @@ impl RuntimeLevel {
         Arc::clone(&self.scene)
     }
 
-    /// The level's extras: editor camera seed + Blueprint class bindings
-    /// (#650). Bindings are NOT applied by hydration itself — hosts apply
-    /// them through `pulsar_game::scripting` so the
-    /// dispatcher stays a gameplay-side concern.
+    /// The level's extras: the editor camera seed.
     pub fn extras(&self) -> &LevelExtras {
         &self.extras
     }
@@ -228,18 +270,86 @@ struct ComponentRecord {
     enabled: bool,
 }
 
-fn load_scene_file(path: &Path) -> Result<SceneFile, RuntimeLevelError> {
-    SceneFile::load(path).map_err(|error| match error {
-        SceneLoadError::Io(message) => RuntimeLevelError::Io {
-            path: path.display().to_string(),
-            message,
-        },
-        SceneLoadError::Parse(message) => RuntimeLevelError::Parse {
-            path: path.display().to_string(),
-            message,
-        },
-    })
+fn load_scene_file(
+    path: &Path,
+    registry: &pulsar_class::ClassRegistry,
+) -> Result<SceneFile, RuntimeLevelError> {
+    let io_error = |message: String| RuntimeLevelError::Io {
+        path: path.display().to_string(),
+        message,
+    };
+    let parse_error = |message: String| RuntimeLevelError::Parse {
+        path: path.display().to_string(),
+        message,
+    };
+    let bytes = engine_fs::virtual_fs::read_file(path).map_err(|e| io_error(e.to_string()))?;
+    let mut value: Value =
+        serde_json::from_slice(&bytes).map_err(|e| parse_error(e.to_string()))?;
+    // Migrate on the raw JSON first: it still sees fields the typed
+    // `SceneFile` drops (a `Blueprint` object type, a flat `script_asset`).
+    let report = pulsar_class::migrate::migrate_level_value(&mut value, registry);
+    if report.changed() {
+        tracing::info!(
+            path = %path.display(),
+            script_components = report.script_components.len(),
+            bindings = report.bindings.len(),
+            "Migrated level classes to ClassInstance"
+        );
+    }
+    serde_json::from_value(value).map_err(|error| parse_error(error.to_string()))
 }
+
+/// Classes of the current project (`engine_state`'s project path); empty
+/// when no project is set, which leaves every placed class unresolved.
+fn project_class_registry() -> pulsar_class::ClassRegistry {
+    match engine_state::get_project_path() {
+        Some(root) => pulsar_class::ClassRegistry::scan(Path::new(&root)),
+        None => pulsar_class::ClassRegistry::default(),
+    }
+}
+
+/// Run the #921 class migration over an already-parsed file: its objects'
+/// component lists, the top-level `components` section and
+/// `blueprint_bindings`.
+fn migrate_scene_file(file: &mut SceneFile, registry: &pulsar_class::ClassRegistry) {
+    let objects: Vec<Value> = file
+        .objects
+        .iter()
+        .map(|obj| {
+            let mut entry = serde_json::json!({ "id": obj.id, "props": obj.props });
+            if let Some(instances) = &obj.component_instances {
+                entry["component_instances"] = instances.clone();
+            }
+            entry
+        })
+        .collect();
+    let mut value = serde_json::json!({
+        "objects": objects,
+        "components": file.components,
+        "blueprint_bindings": file.blueprint_bindings,
+    });
+    let report = pulsar_class::migrate::migrate_level_value(&mut value, registry);
+    if !report.changed() {
+        return;
+    }
+    if let Some(objects) = value.get("objects").and_then(Value::as_array) {
+        for (obj, migrated) in file.objects.iter_mut().zip(objects) {
+            if let Some(props) = migrated
+                .get("props")
+                .and_then(|p| serde_json::from_value(p.clone()).ok())
+            {
+                obj.props = props;
+            }
+            obj.component_instances = migrated.get("component_instances").cloned();
+        }
+    }
+    file.components = value.get("components").cloned().unwrap_or(Value::Null);
+    file.blueprint_bindings = value
+        .get("blueprint_bindings")
+        .and_then(|b| serde_json::from_value(b.clone()).ok())
+        .unwrap_or_default();
+}
+
 fn version_string(version: &Value) -> String {
     match version {
         Value::String(s) => s.clone(),
@@ -735,28 +845,98 @@ mod tests {
         );
     }
 
-    /// #650 additive guarantee: files without `blueprint_bindings` load with
-    /// empty extras, and an authored bindings section rides along unharmed
-    /// (hydration itself never applies it — hosts do, via
-    /// `pulsar_game::scripting`).
+    /// Legacy `blueprint_bindings` (#650) are read only through the #921
+    /// migration: a binding becomes the object's `ClassInstance`, with its
+    /// overrides as variable overrides, which the script driver follows
+    /// (#922). Nothing is left for hosts to apply.
     #[test]
-    fn blueprint_bindings_are_additive_extras() {
-        let old: SceneFile = serde_json::from_str(SAMPLE_LEVEL).expect("sample parses");
-        let level = RuntimeLevel::from_scene_file(old).expect("old shape hydrates");
-        assert!(level.extras().blueprint_bindings.is_empty());
-        assert!(level.editor_camera().is_some(), "camera extras unchanged");
+    fn legacy_blueprint_bindings_load_as_class_instances() {
+        let project = tempfile::tempdir().unwrap();
+        let class_dir = project.path().join("src").join("classes").join("TickProbe");
+        std::fs::create_dir_all(&class_dir).unwrap();
+        std::fs::write(class_dir.join("graph_save.json"), "{}").unwrap();
+        let registry = pulsar_class::ClassRegistry::scan(project.path());
 
         let mut file: SceneFile = serde_json::from_str(SAMPLE_LEVEL).expect("sample parses");
         file.blueprint_bindings.insert(
             "cube".to_string(),
             vec![pulsar_scene::BlueprintBinding {
                 class_name: "TickProbe".to_string(),
-                overrides: std::collections::HashMap::new(),
+                overrides: [("speed".to_string(), serde_json::json!(2.5))].into(),
             }],
         );
-        let level = RuntimeLevel::from_scene_file(file).expect("bound shape hydrates");
-        let bound = &level.extras().blueprint_bindings["cube"];
-        assert_eq!(bound.len(), 1);
-        assert_eq!(bound[0].class_name, "TickProbe");
+        let level = RuntimeLevel::from_scene_file_with_classes(file, &registry)
+            .expect("bound shape hydrates");
+        assert!(level.editor_camera().is_some(), "camera extras unchanged");
+        let scene = level.scene();
+        let scene = scene.read();
+        let cube = scene.world.entity_for("cube").unwrap();
+        let instance = scene
+            .world
+            .get::<pulsar_class::ClassInstance>(cube)
+            .expect("binding migrated to a ClassInstance");
+        assert_eq!(instance.class_name, "TickProbe");
+        assert_eq!(instance.class, registry.by_name("TickProbe").unwrap().id);
+        assert_eq!(instance.variable_overrides["speed"], serde_json::json!(2.5));
+    }
+
+    /// #921: an old level whose Blueprint object carries
+    /// `ScriptComponent { script_asset }` loads as a `ClassInstance` with the
+    /// class's prefab components built on it (the script driver follows
+    /// that component, #922).
+    #[test]
+    fn legacy_script_component_levels_load_as_class_instances() {
+        let project = tempfile::tempdir().unwrap();
+        let class_dir = project.path().join("src").join("classes").join("Lamp");
+        std::fs::create_dir_all(&class_dir).unwrap();
+        std::fs::write(class_dir.join("graph_save.json"), "{}").unwrap();
+        let mut light = LightComponent::default();
+        light.intensity.intensity = 42.0;
+        std::fs::write(
+            class_dir.join("prefab.json"),
+            serde_json::json!({
+                "prefab_version": 1, "name": "Lamp",
+                "components": [
+                    { "class_name": "LightComponent", "enabled": true, "data": serde_json::to_value(&light).unwrap() }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let registry = pulsar_class::ClassRegistry::scan(project.path());
+
+        let level_path = project.path().join("old.level");
+        std::fs::write(
+            &level_path,
+            serde_json::json!({
+                "version": "2.1",
+                "objects": [
+                    { "id": "lamp", "name": "Lamp", "object_type": "Blueprint", "props": {},
+                      "transform": { "position": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0] } }
+                ],
+                "components": {
+                    "lamp": [ { "class_name": "ScriptComponent", "enabled": true,
+                                "data": { "script_asset": "C:/elsewhere/src/classes/Lamp" } } ]
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let level = RuntimeLevel::load_with_classes(&level_path, &registry).expect("old level loads");
+        let scene = level.scene();
+        let scene = scene.read();
+        let world = &scene.world;
+        let lamp = world.entity_for("lamp").unwrap();
+        let instance = world
+            .get::<pulsar_class::ClassInstance>(lamp)
+            .expect("migrated to ClassInstance");
+        assert_eq!(instance.class_name, "Lamp");
+        assert!(!instance.class.is_empty(), "resolved to the class GUID");
+        assert_eq!(
+            world.get::<LightComponent>(lamp).unwrap().intensity.intensity,
+            42.0,
+            "prefab component built on the placed object"
+        );
     }
 }

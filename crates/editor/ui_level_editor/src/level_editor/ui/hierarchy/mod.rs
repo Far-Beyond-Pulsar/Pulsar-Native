@@ -34,12 +34,24 @@ impl Render for HierarchyDragPayload {
 
 // ── Scene Object Item ─────────────────────────────────────────────────────────
 
+/// How an object relates to a placed class (#921).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ClassRole {
+    None,
+    /// A placed class instance: shown as one class object.
+    Root,
+    /// A child object the class generated (rebuilt from the class, not
+    /// saved on its own): nested under its root and marked class-owned.
+    Owned,
+}
+
 #[derive(Clone)]
 struct SceneObjectItem {
     object: Rc<SceneObjectData>,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     is_selected: bool,
     is_folder: bool,
+    class_role: ClassRole,
 }
 
 impl HierarchyItem for SceneObjectItem {
@@ -55,6 +67,9 @@ impl HierarchyItem for SceneObjectItem {
     }
 
     fn icon(&self) -> IconName {
+        if self.class_role == ClassRole::Root {
+            return IconName::Code;
+        }
         if self
             .object
             .props
@@ -72,6 +87,11 @@ impl HierarchyItem for SceneObjectItem {
     where
         V: Render,
     {
+        match self.class_role {
+            ClassRole::Root => return cx.theme().primary,
+            ClassRole::Owned => return cx.theme().muted_foreground,
+            ClassRole::None => {}
+        }
         if self
             .object
             .props
@@ -183,14 +203,36 @@ impl HierarchyItem for SceneObjectItem {
                 cx.stop_propagation();
             });
 
-        Some(
-            h_flex()
-                .gap_0p5()
+        let badge = |text: &'static str, cx: &mut Context<V>| {
+            div()
+                .px_1()
+                .rounded(px(3.0))
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .border_1()
+                .border_color(cx.theme().border)
+                .child(text)
+        };
+        let row = h_flex().gap_0p5();
+        Some(match self.class_role {
+            // Class-owned children come and go with their class: no
+            // duplicate/delete of their own.
+            ClassRole::Owned => row
+                .child(badge("class-owned", cx))
+                .child(visibility_button)
+                .into_any_element(),
+            ClassRole::Root => row
+                .child(badge("class", cx))
                 .child(visibility_button)
                 .child(duplicate_button)
                 .child(delete_button)
                 .into_any_element(),
-        )
+            ClassRole::None => row
+                .child(visibility_button)
+                .child(duplicate_button)
+                .child(delete_button)
+                .into_any_element(),
+        })
     }
 
     fn build_context_menu(
@@ -201,6 +243,9 @@ impl HierarchyItem for SceneObjectItem {
     ) -> PopupMenu {
         use crate::level_editor::commands::{execute_command, SceneCommand};
 
+        if self.class_role == ClassRole::Owned {
+            return menu;
+        }
         let duplicate_id = self.object.id.clone();
         let delete_id = self.object.id.clone();
         let duplicate_state = self.state_arc.clone();
@@ -272,20 +317,30 @@ impl HierarchyPanel {
             return;
         }
 
-        let (all_objects, root_ids) = crate::level_editor::scene_edit::objects::get_hierarchy_snapshot(&state.scene.world(), );
+        let world = state.scene.world();
+        let (all_objects, root_ids) = crate::level_editor::scene_edit::objects::get_hierarchy_snapshot(&world);
         self.cached_items = all_objects
             .into_iter()
             .map(|obj| {
                 let is_selected = selected.as_deref() == Some(obj.id.as_str());
                 let is_folder = matches!(obj.object_type, ObjectType::Folder);
+                let class_role = if crate::level_editor::scene_edit::classes::is_class_root(&world, &obj.id) {
+                    ClassRole::Root
+                } else if crate::level_editor::scene_edit::classes::is_generated_child(&world, &obj.id) {
+                    ClassRole::Owned
+                } else {
+                    ClassRole::None
+                };
                 SceneObjectItem {
                     object: Rc::new(obj),
                     state_arc: state_arc.clone(),
                     is_selected,
                     is_folder,
+                    class_role,
                 }
             })
             .collect();
+        drop(world);
         self.cached_root_ids = root_ids;
         self.cache_key = Some(key);
     }

@@ -47,7 +47,6 @@ pub use helio_component::LightComponent as _ForceLink_LightComponent;
 pub use helio_component::PortalComponent as _ForceLink_PortalComponent;
 pub use helio_component::PostProcessVolumeComponent as _ForceLink_PostProcessVolumeComponent;
 pub use helio_component::ReflectionCaptureComponent as _ForceLink_ReflectionCaptureComponent;
-pub use helio_component::ScriptComponent as _ForceLink_ScriptComponent;
 pub use helio_component::StaticMeshComponent as _ForceLink_StaticMeshComponent;
 pub use helio_component::WaterVolumeComponent as _ForceLink_WaterVolumeComponent;
 

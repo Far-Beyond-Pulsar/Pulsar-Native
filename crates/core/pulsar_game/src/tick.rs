@@ -47,8 +47,17 @@ pub struct TickLoop {
     pub schedule: Schedule,
     pub actors: ActorRegistry,
     pub tasks: Arc<TaskPool>,
-    /// Script classes on the engine script VM (see `crate::scripting`).
-    pub script_runtime: Option<Arc<Mutex<crate::scripting::ScriptRuntime>>>,
+    /// The script phase: the script runtime, following the world's class
+    /// instances (see `crate::scripting::ScriptDriver`). `None` runs no
+    /// scripts; [`enable_scripting`](Self::enable_scripting) creates it.
+    pub scripts: Option<Arc<Mutex<crate::scripting::ScriptDriver>>>,
+    /// The session's engine event hub (`pulsar_events::EventHub`): built-in
+    /// events, script events and plugin events, flushed at four fixed
+    /// points of every tick (see [`tick_once`](Self::tick_once)). The
+    /// script driver is attached to it by
+    /// [`enable_scripting`](Self::enable_scripting). Publish input with
+    /// [`publish_input`](Self::publish_input).
+    pub events: pulsar_events::EventHub,
     /// Set by [`run_with_windows`][Self::run_with_windows]; game code can
     /// clone this to open/close/configure windows from actors and systems.
     pub window_manager: Option<Arc<WindowManager>>,
@@ -90,7 +99,8 @@ impl TickLoop {
             schedule: Schedule::new(),
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
-            script_runtime: None,
+            scripts: None,
+            events: pulsar_events::EventHub::new(),
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,
@@ -122,7 +132,8 @@ impl TickLoop {
             schedule: Schedule::new(),
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
-            script_runtime: None,
+            scripts: None,
+            events: pulsar_events::EventHub::new(),
             window_manager: None,
             clock: Clock::new(max_delta),
             mode,
@@ -154,6 +165,11 @@ impl TickLoop {
         profiling::profile_scope!("TickLoop::tick");
         let scenedb_time = to_scenedb_time(time);
 
+        // Flush 1 (after input): input published since the last tick
+        // (`publish_input`, PIE input forwarding) and anything else queued
+        // between ticks.
+        self.events.flush(pulsar_events::FlushPoint::AfterInput);
+
         // Phase 1: ECS systems. Short write scope -- the renderer takes this
         // same lock every frame to rebuild its draw lists (see
         // HelioRenderer::sync_scene_delta's phase docs), so nothing here may
@@ -178,22 +194,42 @@ impl TickLoop {
             }
         }
 
-        // Phase 3: script lifecycle and tick events, AFTER ECS + actor
-        // updates. `begin_play` for newly spawned instances is deferred to
-        // here (rather than fired at registration during level setup) so it
-        // observes a fully initialised window/world/scene: registration
-        // happens before the primary window opens, but `tick_once` only runs
-        // after `spawn_ecs_thread`, once the window is ready. Errors are per
-        // instance and logged by the runtime.
-        if let Some(runtime) = &self.script_runtime {
-            let mut runtime = runtime.lock().unwrap();
+        // Flush 2 (after physics): physics runs in the ECS schedule; its
+        // hits and overlaps (and whatever systems and actors published)
+        // are delivered before the script phase, which runs the script
+        // handlers they queued.
+        self.events.flush(pulsar_events::FlushPoint::AfterPhysics);
+
+        // Phase 3: the script phase, AFTER ECS + actor updates: the driver
+        // starts/stops script instances to match the world's class
+        // instances, runs `begin_play` for the ones it started, `tick` for
+        // all, then applies the spawns/destroys scripts queued. Deferring
+        // `begin_play` to here (rather than firing it at registration during
+        // level setup) means it observes a fully initialised window/world/
+        // scene: `tick_once` only runs after `spawn_ecs_thread`, once the
+        // window is ready. Errors are per instance and logged.
+        if let Some(driver) = &self.scripts {
+            let mut driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             let mut store = self.scene_store.write();
-            let world = &mut store.world;
-            runtime.dispatch_pending_begin_play(world);
-            runtime.tick_all(world, time.delta.as_secs_f64());
+            driver.run_frame(&mut store.world, time.delta.as_secs_f64());
         }
 
+        // Flush 3 (after scripts): what scripts sent (`event::*`,
+        // BeginPlay, LevelLoaded, spawns...). Neither the world nor the
+        // driver is locked, so host subscribers may use both; script
+        // handlers are queued for the next script phase. Flush 4 (end of
+        // frame) delivers anything published after that, e.g. by host
+        // handlers of flush 3 on another thread.
+        self.events.flush(pulsar_events::FlushPoint::AfterScripts);
+        self.events.flush(pulsar_events::FlushPoint::EndOfFrame);
+
         time
+    }
+
+    /// Queue an input event (a `pulsar_events::builtin::KeyDown`, ...) on
+    /// the global channel; delivered at the next tick's first flush.
+    pub fn publish_input<T: pulsar_events::gamma::Event + Send>(&self, event: T) {
+        self.events.publish(pulsar_events::gamma::Channel::Global, event);
     }
 
     /// Block the calling thread, running the tick loop at the target rate.
@@ -220,10 +256,38 @@ impl TickLoop {
         // Loop is shutting down — give script instances a chance to run
         // their `end_play` teardown logic, mirroring `ActorRegistry`'s
         // begin_play/end_play contract for native actors.
-        if let Some(runtime) = &self.script_runtime {
+        self.end_scripts();
+    }
+
+    /// Turn on the script phase for the project at `project_root`: a script
+    /// driver on a fresh runtime (every engine native), following this
+    /// loop's world. Idempotent; returns the driver. The generated
+    /// `engine_main::setup()` calls this.
+    pub fn enable_scripting(
+        &mut self,
+        project_root: impl Into<std::path::PathBuf>,
+    ) -> Arc<Mutex<crate::scripting::ScriptDriver>> {
+        let project_root = project_root.into();
+        let events = self.events.clone();
+        Arc::clone(self.scripts.get_or_insert_with(|| {
+            tracing::info!(project = %project_root.display(), "Script driver enabled");
+            let mut driver = crate::scripting::new_driver(project_root);
+            driver.attach_events(events);
+            Arc::new(Mutex::new(driver))
+        }))
+    }
+
+    /// Run `end_play` on every running script instance (shutdown). Script
+    /// subscriptions, queued handler calls and timers are dropped and the
+    /// hub's queue is drained (see `EventHub::drain_queued`): a stopped
+    /// session leaves nothing on its hub.
+    pub fn end_scripts(&mut self) {
+        if let Some(driver) = &self.scripts {
+            let mut driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             let mut store = self.scene_store.write();
-            runtime.lock().unwrap().end_play_all(&mut store.world);
+            driver.end_play_all(&mut store.world);
         }
+        self.events.drain_queued();
     }
 
     /// Signal the loop to stop after the current tick.
@@ -350,8 +414,8 @@ impl TickLoop {
         };
 
         // Set up EngineContext globally before any scene loading or
-        // component sync (e.g. ScriptComponent::sync_component calls
-        // script_registry() which reads EngineContext::global()).
+        // component sync (component hydration and runtime behaviours may
+        // read EngineContext::global()).
         let engine_ctx = engine_state::EngineContext::new();
         engine_ctx.clone().set_global();
 

@@ -39,6 +39,7 @@
 //! | [`error`] | `PluginError` type |
 //! | [`statusbar`] | Statusbar button definitions |
 //! | [`actions`] | `OpenAsset` action |
+//! | [`asset_events`] | `AssetUpdated`: publish / subscribe to asset changes by kind |
 //! | [`ai`] | `AiToolDefinition`, `FsContext` |
 //! | [`components`] | `ComponentDefinition`, `EditorPluginComponents` |
 //! | [`subsystems`] | `EditorPluginSubsystems`, `Subsystem` re-exports |
@@ -79,6 +80,7 @@
 
 pub mod actions;
 pub mod ai;
+pub mod asset_events;
 pub mod asset_payload;
 pub mod components;
 pub mod editor_element;
@@ -103,6 +105,7 @@ pub mod version;
 
 pub use actions::*;
 pub use ai::*;
+pub use asset_events::*;
 pub use asset_payload::*;
 pub use components::*;
 pub use editor_element::*;
@@ -128,3 +131,8 @@ pub use ui::dock::{Panel, PanelView};
 /// Re-export serde_json::Value for plugin use.
 /// The `export_plugin!` macro references `$crate::JsonValue`.
 pub use serde_json::Value as JsonValue;
+
+/// The engine's event plumbing (Gamma v2 host bus, engine event hub,
+/// built-in events). `export_plugin!` wires every plugin library to the
+/// host's bus through it (Pulsar-Native#930).
+pub use pulsar_events;

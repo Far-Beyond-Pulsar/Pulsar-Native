@@ -46,6 +46,8 @@ parking_lot = { workspace = true }
 
 # Scene loading + settings
 pulsar_scene    = { workspace = true }
+pulsar_class    = { workspace = true }
+pulsar_events   = { workspace = true }
 engine_state    = { workspace = true }
 pulsar_settings = { workspace = true }
 
@@ -74,3 +76,6 @@ engine_class_derive = { workspace = true }
 tempfile = { workspace = true }
 # The Rust-export drift guards (blueprint_*_codegen, live dispatch) run PBGC.
 pbgc = { workspace = true }
+# Loads pulsar_events' separately compiled test plugin (script events from
+# a plugin library, #924).
+libloading = { workspace = true }

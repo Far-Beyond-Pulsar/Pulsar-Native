@@ -22,9 +22,8 @@
 //!   when used; storing refs freely is safe and supported. Staleness is an
 //!   ordinary, expected result (`ReferenceDespawned`), not misuse.
 //! - **Never panics on bad handles.** Every accessor returns `Err` for dead,
-//!   missing, or mismatched targets ([`errors`]). Debug builds additionally
-//!   assert loudly on the one never-valid id, the `Entity::DANGLING`
-//!   sentinel reaching an accessor -- raw-id abuse across a boundary; see
+//!   missing, or mismatched targets ([`errors`]), including the
+//!   `Entity::DANGLING` sentinel (scripts' `entity::none()`, #888); see
 //!   [`contract`] for the full handle-semantics page (#641).
 //! - **Panel-parity routing.** Property reads/writes route exactly like the
 //!   properties panel (#519/#575): the first enabled instance of a class is

@@ -40,7 +40,12 @@ pub struct SceneFile {
     #[serde(default, skip_serializing)]
     pub editor: Value,
 
-    // ── Blueprint class bindings (#650) ───────────────────────────────────
+    // ── Blueprint class bindings (#650, legacy) ───────────────────────────
+    /// **Legacy** (#921): placed classes are now a `ClassInstance` component
+    /// on the object (`pulsar_class`). Loaders still read this section and
+    /// migrate it (`pulsar_class::migrate`); writers no longer emit migrated
+    /// entries.
+    ///
     /// Per-object Blueprint class bindings keyed by the object's **StableId**
     /// (`SceneObject::id`), never its display name — so renaming an object
     /// never orphans a binding. Multiple classes may bind to one object.

@@ -127,53 +127,28 @@ impl HelioViewport {
                     .into());
                 }
 
-                let class_name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("Unknown")
-                    .to_string();
-                let script_path = path.to_string_lossy().replace('\\', "/");
-
+                // A placed class is a real instance (#921): the root with a
+                // `ClassInstance` referencing the class GUID, every prefab
+                // component, and child objects where one entity can't hold
+                // them. Undoable as one command.
                 let mut state = shared_state.write();
-                let blueprint_object = SceneObjectData {
-                    id: String::new(),
-                    name: class_name,
-                    object_type: ObjectType::Blueprint,
-                    transform: Transform::default(),
-                    visible: true,
-                    locked: false,
-                    parent: None,
-                    children: vec![],
-                    props: std::collections::HashMap::new(),
-                    scene_path: path.display().to_string(),
-                    component_instances: None,
-                };
-
-                let add_result = execute_command(
+                let result = execute_command(
                     &mut state,
-                    SceneCommand::AddObject {
-                        data: blueprint_object,
+                    SceneCommand::InstantiateClass {
+                        class_dir: path.to_path_buf(),
+                        transform: Transform::default(),
                         parent_id: None,
                     },
                 );
-
-                if let Some(id) = add_result.affected_ids.first() {
-                    if let Some((class_name, data_field)) = component_class_for_asset(&kind) {
-                        if REGISTRY.has_class(class_name) {
-                            crate::level_editor::scene_edit::components::add_component(&mut state.scene.world_mut(), 
-                                id,
-                                class_name.to_string(),
-                                serde_json::json!({ data_field: script_path }),
-                            );
-                            let _ = execute_command(
-                                &mut state,
-                                SceneCommand::SelectObject {
-                                    id: Some(id.clone()),
-                                },
-                            );
-                        }
-                    }
-                }
+                let Some(id) = result.affected_ids.first().cloned() else {
+                    return Err(format!(
+                        "Could not place blueprint class {}: {}",
+                        path.display(),
+                        result.no_op_reason
+                    )
+                    .into());
+                };
+                let _ = execute_command(&mut state, SceneCommand::SelectObject { id: Some(id) });
             }
             _ => {
                 return Err(format!("Unsupported asset type: {:?}", kind).into());

@@ -61,7 +61,7 @@ impl Default for FreeCam {
             // facing toward the scene.  The first rendered frame will show
             // something sensible even with an empty scene.
             position: glam::Vec3::new(0.0, 3.0, 10.0),
-            yaw: PI,      // face -Z (into the scene)
+            yaw: 0.0,      // face -Z (into the scene)
             pitch: -0.15, // very slight downward tilt
             move_speed: 8.0,
             mouse_sensitivity: 0.002,
@@ -103,7 +103,8 @@ impl FreeCam {
     /// `dx` is raw horizontal pixels (right = positive), `dy` is raw vertical
     /// pixels (down = positive in winit).
     pub fn on_mouse_delta(&mut self, dx: f64, dy: f64) {
-        self.yaw -= dx as f32 * self.mouse_sensitivity;
+        // Match the editor camera: moving the mouse right increases yaw.
+        self.yaw += dx as f32 * self.mouse_sensitivity;
         // Invert dy: moving mouse down (dy > 0) should look down (pitch decreases).
         self.pitch -= dy as f32 * self.mouse_sensitivity;
 
@@ -121,8 +122,9 @@ impl FreeCam {
 
         // Forward direction lies in the XZ plane (no pitch for movement — FPS style).
         let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
-        let forward = glam::Vec3::new(sin_yaw, 0.0, cos_yaw);
-        let right = glam::Vec3::new(cos_yaw, 0.0, -sin_yaw);
+        // Match the editor renderer's camera convention: yaw 0 faces -Z.
+        let forward = glam::Vec3::new(sin_yaw, 0.0, -cos_yaw);
+        let right = glam::Vec3::new(cos_yaw, 0.0, sin_yaw);
         let world_up = glam::Vec3::Y;
 
         if self.keys.forward {
@@ -152,7 +154,8 @@ impl FreeCam {
         let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
         let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
         // Standard spherical → Cartesian, Y-up convention.
-        glam::Vec3::new(cos_pitch * sin_yaw, sin_pitch, cos_pitch * cos_yaw).normalize()
+        // Match Helio's editor camera: yaw 0 looks down -Z.
+        glam::Vec3::new(cos_pitch * sin_yaw, sin_pitch, -cos_pitch * cos_yaw).normalize()
     }
 
     /// Produce a [`RenderCamera`] for this frame.

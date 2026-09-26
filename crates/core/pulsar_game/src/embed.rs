@@ -35,6 +35,9 @@ use crate::freecam::FreeCam;
 use crate::tick::TickLoop;
 use pulsar_core::TickMode;
 
+/// Events the PIE session's debug tap keeps.
+const PIE_EVENT_TAP_CAPACITY: usize = 256;
+
 thread_local! {
     /// The single live embedded game for this thread. `None` before init /
     /// after shutdown.
@@ -63,6 +66,10 @@ pub struct EmbeddedGame {
     scene_store: engine_backend::scene::SharedScene,
     /// Fallback free-look camera (used until an ECS camera drives the view).
     freecam: FreeCam,
+    /// Queues edited classes for reload by the script driver (#921/#922).
+    /// Events come from the host via [`pie_asset_updated`], published on
+    /// this dylib's own asset bus.
+    _class_reloads: Option<pulsar_events::AssetSubscription>,
 
     // ── Host log callback ───────────────────────────────────────────────────
     userdata: *mut std::ffi::c_void,
@@ -220,8 +227,28 @@ impl EmbeddedGame {
         // editor-camera file seeding is gone too -- camera selection prefers
         // Camera-typed entities from the shared world instead.
         let freecam = FreeCam::default();
+        // Scripts follow the shared world (#922): the driver `setup()`
+        // enabled finds the level the host already hydrated at its first
+        // reconcile, and objects placed during Play the same way. Class
+        // edits reach it as reload requests applied at its next frame.
+        let class_reloads = tick_loop.scripts.as_ref().map(|driver| {
+            driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .subscribe_class_reloads()
+        });
         engine_state::set_project_path(project_root.display().to_string());
-        drop(scene_path); // advisory-only under v2 (world comes pre-hydrated)
+        // Advisory only under v2 (the world comes pre-hydrated); it names
+        // the level `LevelLoaded` reports.
+        if let (Some(path), Some(driver)) = (&scene_path, &tick_loop.scripts) {
+            driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .set_level_name(path.display().to_string());
+        }
+        // Play-in-Editor is a debugging session: record recently flushed
+        // events for the editor's events panel (`pie_events_snapshot`).
+        tick_loop.events.set_tap(true, PIE_EVENT_TAP_CAPACITY);
 
         Ok(Self {
             tick_loop,
@@ -235,6 +262,7 @@ impl EmbeddedGame {
             out_view,
             scene_store,
             freecam,
+            _class_reloads: class_reloads,
             userdata: ctx.userdata,
             log: ctx.log,
         })
@@ -313,6 +341,24 @@ impl EmbeddedGame {
             }
             input_kind::MOUSE_WHEEL => {
                 self.freecam.on_mouse_delta(0.0, ev.delta as f64);
+            }
+            // Keys and buttons become input events on the session's hub,
+            // delivered at the next tick's after-input flush.
+            input_kind::KEY => {
+                let key = i64::from(ev.button_or_key);
+                if ev.pressed != 0 {
+                    self.tick_loop.publish_input(pulsar_events::builtin::KeyDown { key });
+                } else {
+                    self.tick_loop.publish_input(pulsar_events::builtin::KeyUp { key });
+                }
+            }
+            input_kind::MOUSE_BUTTON => {
+                let button = i64::from(ev.button_or_key);
+                if ev.pressed != 0 {
+                    self.tick_loop.publish_input(pulsar_events::builtin::MouseButtonDown { button });
+                } else {
+                    self.tick_loop.publish_input(pulsar_events::builtin::MouseButtonUp { button });
+                }
             }
             _ => {}
         }
@@ -399,12 +445,59 @@ pub unsafe fn pie_input(ev: *const InputEvent) {
     });
 }
 
+/// Deliver an asset-update notification from the host (#921): published on
+/// this game's own asset bus, where the running game's subscribers (the
+/// class reloader) pick it up. Strings are UTF-8 pointer/length pairs; an
+/// empty or null id/path means "not given".
+///
+/// # Safety
+/// Each pointer/length pair must describe a valid UTF-8 range or be null.
+pub unsafe fn pie_asset_updated(
+    kind_ptr: *const u8,
+    kind_len: usize,
+    id_ptr: *const u8,
+    id_len: usize,
+    path_ptr: *const u8,
+    path_len: usize,
+) {
+    let Some(kind) = read_str(kind_ptr, kind_len)
+        .and_then(|k| serde_json::from_str::<pulsar_events::AssetKind>(&k).ok())
+    else {
+        tracing::warn!("PiE: asset update with an unreadable kind; ignored");
+        return;
+    };
+    let mut event = pulsar_events::AssetUpdated::new(kind);
+    event.id = read_str(id_ptr, id_len);
+    event.path = read_str(path_ptr, path_len).map(PathBuf::from);
+    pulsar_events::publish_asset_updated(event);
+}
+
+/// Write the session's event hub debug snapshot (JSON) into `out` if it
+/// fits in `capacity` bytes; returns its length (0 when no game runs).
+///
+/// # Safety
+/// `out` must be valid for `capacity` bytes of writes, or `capacity` 0.
+pub unsafe fn pie_events_snapshot(out: *mut u8, capacity: usize) -> usize {
+    let json = GAME.with(|g| {
+        g.borrow()
+            .as_ref()
+            .and_then(|game| serde_json::to_vec(&game.tick_loop.events.snapshot()).ok())
+    });
+    let Some(json) = json else { return 0 };
+    if !out.is_null() && json.len() <= capacity {
+        std::ptr::copy_nonoverlapping(json.as_ptr(), out, json.len());
+    }
+    json.len()
+}
+
 /// Tear down the embedded game, dropping its world + renderer before the host
 /// unloads the library.
 pub fn pie_shutdown() {
     GAME.with(|g| {
-        if let Some(game) = g.borrow_mut().take() {
+        if let Some(mut game) = g.borrow_mut().take() {
             game.log(LOG_INFO, "PiE game shutting down");
+            // Scripts get end_play while the world still holds their objects.
+            game.tick_loop.end_scripts();
             drop(game);
         }
     });

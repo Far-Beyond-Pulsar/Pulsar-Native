@@ -104,12 +104,7 @@ pub(super) fn run_scratch(
                 }
                 Ok(Err(msg)) => {
                     let _ = async_app.update_window(window_handle, |_, window, cx| {
-                        window.push_notification(
-                            Notification::error(msg)
-                                .id::<BuildCoreNotification>()
-                                .title(title.clone()),
-                            cx,
-                        );
+                        show_build_failure(msg, title.clone(), window, cx);
                     });
                     return;
                 }
@@ -191,10 +186,10 @@ pub(super) fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App
                             .autohide_delay(Duration::from_secs(3)),
                             cx,
                         ),
-                        Err(msg) => window.push_notification(
-                            Notification::error(msg)
-                                .id::<BuildCoreNotification>()
-                                .title(t!("Notification.Title.Check").to_string()),
+                        Err(msg) => show_build_failure(
+                            msg,
+                            t!("Notification.Title.Check").to_string(),
+                            window,
                             cx,
                         ),
                     });
@@ -278,10 +273,10 @@ pub(super) fn run_update(project_root: PathBuf, window: &mut Window, cx: &mut Ap
                             .autohide_delay(Duration::from_secs(3)),
                             cx,
                         ),
-                        Err(msg) => window.push_notification(
-                            Notification::error(msg)
-                                .id::<BuildCoreNotification>()
-                                .title(t!("Notification.Title.Update").to_string()),
+                        Err(msg) => show_build_failure(
+                            msg,
+                            t!("Notification.Title.Update").to_string(),
+                            window,
                             cx,
                         ),
                     });
@@ -401,12 +396,7 @@ pub(super) fn run_update_build_and_run(
                 }
                 Ok(Err(msg)) => {
                     let _ = async_app.update_window(window_handle, |_, window, cx| {
-                        window.push_notification(
-                            Notification::error(msg)
-                                .id::<BuildCoreNotification>()
-                                .title(title.clone()),
-                            cx,
-                        );
+                        show_build_failure(msg, title.clone(), window, cx);
                     });
                     return;
                 }

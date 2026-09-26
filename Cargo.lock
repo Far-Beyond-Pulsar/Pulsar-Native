@@ -2924,6 +2924,7 @@ dependencies = [
  "parking_lot",
  "pollster 0.4.0",
  "profiling 0.1.0",
+ "pulsar_class",
  "pulsar_events",
  "pulsar_lsp",
  "pulsar_pie_abi",
@@ -3761,6 +3762,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c31b6d751ae2c7f11320402d34e41349dd1016f8d5d45e48c4312bc8625af50c"
 dependencies = [
  "byteorder",
+]
+
+[[package]]
+name = "gamma"
+version = "0.2.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Gamma?rev=b4ebf98486fb716d090d35b689a4eb8a0e414cc1#b4ebf98486fb716d090d35b689a4eb8a0e414cc1"
+dependencies = [
+ "gamma-core",
+ "gamma-derive",
+]
+
+[[package]]
+name = "gamma-core"
+version = "0.2.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Gamma?rev=b4ebf98486fb716d090d35b689a4eb8a0e414cc1#b4ebf98486fb716d090d35b689a4eb8a0e414cc1"
+dependencies = [
+ "rustc-hash 2.1.3",
+]
+
+[[package]]
+name = "gamma-derive"
+version = "0.2.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Gamma?rev=b4ebf98486fb716d090d35b689a4eb8a0e414cc1#b4ebf98486fb716d090d35b689a4eb8a0e414cc1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -5944,11 +5972,13 @@ name = "level_migrate"
 version = "0.1.0"
 dependencies = [
  "helio_component",
+ "pulsar_class",
  "pulsar_physics",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_world_registry",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -8081,6 +8111,7 @@ version = "0.1.0"
 dependencies = [
  "engine_subsystems",
  "gpui-ce",
+ "pulsar_events",
  "pulsar_reflection",
  "schemars",
  "serde",
@@ -8110,6 +8141,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "plugin_loader_fixture",
+ "pulsar_events",
  "serde_json",
  "sha2 0.11.0",
  "tracing",
@@ -8657,6 +8689,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_class"
+version = "0.1.0"
+dependencies = [
+ "engine_class_derive",
+ "glam 0.33.5",
+ "inventory",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "pulsar_core"
 version = "0.1.0"
 dependencies = [
@@ -8728,9 +8778,13 @@ dependencies = [
 name = "pulsar_events"
 version = "0.1.0"
 dependencies = [
- "engine_state",
+ "gamma",
+ "libloading 0.9.0",
+ "profiling 0.1.0",
  "serde",
+ "serde_json",
  "tracing",
+ "ui_types_common",
 ]
 
 [[package]]
@@ -8745,11 +8799,14 @@ dependencies = [
  "helio-default-graphs",
  "helio_component",
  "inventory",
+ "libloading 0.9.0",
  "parking_lot",
  "pbgc",
  "pollster 1.0.1",
  "profiling 0.1.0",
+ "pulsar_class",
  "pulsar_core",
+ "pulsar_events",
  "pulsar_pie_abi",
  "pulsar_reflection",
  "pulsar_scene",
@@ -8870,7 +8927,6 @@ dependencies = [
  "helio",
  "helio-asset-compat",
  "helio_component",
- "pulsar_events",
  "pulsar_reflection",
  "serde",
  "serde_json",
@@ -13097,6 +13153,8 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "profiling 0.1.0",
+ "pulsar_class",
+ "pulsar_events",
  "pulsar_physics",
  "pulsar_pie_abi",
  "pulsar_reflection",
@@ -13110,6 +13168,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smol",
+ "tempfile",
  "tool_registry",
  "tracing",
  "ui",

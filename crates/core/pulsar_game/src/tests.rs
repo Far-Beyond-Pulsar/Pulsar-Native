@@ -205,84 +205,17 @@ mod schedule_tests {
     }
 }
 
-/// Level bindings and project discovery on the script runtime
-/// (`crate::scripting`).
+/// Script helpers on the engine VM (`crate::scripting`): world lookup
+/// natives and component-slot binding. The world-driven lifecycle is tested
+/// in `scripting::tests`.
 #[cfg(test)]
 mod script_runtime_bindings {
-    use crate::scripting::{self, instance_id_for, BindingError};
+    use crate::scripting;
     use engine_backend::scene::{RuntimeLevel, SceneWorldExt};
-    use pulsar_script_vm::{BinOp, Function, Instr, Module, Type, Value, Variable};
+    use pulsar_script_vm::{Module, Type, Value, Variable};
 
     const BINDINGS_FIXTURE: &str =
         include_str!("../tests/fixtures/level_bindings_sample.level.json");
-
-    /// `total += speed * delta_time` every tick.
-    fn tick_probe_module() -> Module {
-        let mut m = Module::new("TickProbe");
-        m.variables = vec![
-            Variable { name: "speed".into(), ty: Type::Float, default: None },
-            Variable { name: "total".into(), ty: Type::Float, default: None },
-        ];
-        m.functions = vec![Function {
-            name: "tick".into(),
-            exported: true,
-            params: vec![Type::Float],
-            ret: Type::Unit,
-            registers: vec![Type::Float, Type::Float, Type::Float],
-            code: vec![
-                Instr::LoadVar { dst: 1, var: 0 },
-                Instr::Binary { op: BinOp::Mul, dst: 1, a: 1, b: 0 },
-                Instr::LoadVar { dst: 2, var: 1 },
-                Instr::Binary { op: BinOp::Add, dst: 2, a: 2, b: 1 },
-                Instr::StoreVar { var: 1, src: 2 },
-                Instr::Return { value: None },
-            ],
-        }];
-        m
-    }
-
-    #[test]
-    fn module_classes_bind_to_their_objects_and_tick() {
-        let root = std::env::temp_dir().join(format!("pulsar_game_script_bindings_{}", std::process::id()));
-        let module_path = scripting::module_path_for_class(&root, "TickProbe");
-        std::fs::create_dir_all(module_path.parent().unwrap()).unwrap();
-        std::fs::write(&module_path, tick_probe_module().to_json().unwrap()).unwrap();
-
-        let file: pulsar_scene::SceneFile = serde_json::from_str(BINDINGS_FIXTURE).unwrap();
-        let level = RuntimeLevel::from_scene_file(file).unwrap();
-        let store = level.scene();
-        let mut bindings = level.extras().blueprint_bindings.clone();
-        drop(level);
-        // A class with no compiled module is a reported failure.
-        bindings.get_mut("lever_a").unwrap().push(pulsar_scene::format::BlueprintBinding {
-            class_name: "LegacyOnly".into(),
-            overrides: Default::default(),
-        });
-
-        let mut runtime = scripting::new_runtime();
-        let report = {
-            let guard = store.read();
-            scripting::apply_script_bindings(&mut runtime, &guard, &root, &bindings)
-        };
-        assert_eq!(report.applied.len(), 2);
-        assert_eq!(report.failures.len(), 1);
-        assert_eq!(report.failures[0].class_name, "LegacyOnly");
-        assert!(matches!(report.failures[0].error, BindingError::ModuleMissing { .. }));
-
-        let a = instance_id_for("lever_a", "TickProbe");
-        let b = instance_id_for("lever_b", "TickProbe");
-        {
-            let guard = store.read();
-            assert_eq!(runtime.entity_of(&a), guard.world.entity_for("lever_a"));
-        }
-        let mut guard = store.write();
-        runtime.dispatch_pending_begin_play(&mut guard.world);
-        runtime.tick_all(&mut guard.world, 1.0);
-        runtime.tick_all(&mut guard.world, 1.0);
-        assert_eq!(runtime.variable(&a, "total"), Some(&Value::Float(5.0)));
-        assert_eq!(runtime.variable(&b, "total"), Some(&Value::Float(18.0)));
-        let _ = std::fs::remove_dir_all(&root);
-    }
 
     #[test]
     fn world_lookup_natives_find_level_objects() {
@@ -303,18 +236,92 @@ mod script_runtime_bindings {
         assert!(runtime.natives().get("world::find_by_name").is_some());
     }
 
+    /// #921: binding a script instance to a placed class fills each hidden
+    /// `__slot:<uuid>` variable once with a handle to that instance's real
+    /// component (here the second LightComponent, on a generated child).
+    /// A slot the instance does not have stays `none`, reported; there is
+    /// no fallback to the root.
     #[test]
-    fn project_discovery_loads_module_classes() {
-        let root = std::env::temp_dir().join(format!("pulsar_game_script_discovery_{}", std::process::id()));
-        let module_path = scripting::module_path_for_class(&root, "TickProbe");
-        std::fs::create_dir_all(module_path.parent().unwrap()).unwrap();
-        std::fs::write(&module_path, tick_probe_module().to_json().unwrap()).unwrap();
-        std::fs::create_dir_all(root.join("src/classes/NoModule/events/.build")).unwrap();
+    fn class_slot_handles_are_resolved_once_at_bind() {
+        use helio_component::components::LightComponent;
 
+        let root = std::env::temp_dir().join(format!("pulsar_game_slot_bind_{}", std::process::id()));
+        let class_dir = root.join("src/classes/Lamp");
+        std::fs::create_dir_all(&class_dir).unwrap();
+        let light = serde_json::to_value(LightComponent::default()).unwrap();
+        std::fs::write(
+            class_dir.join("prefab.json"),
+            serde_json::json!({
+                "prefab_version": 1, "name": "Lamp",
+                "components": [
+                    { "class_name": "LightComponent", "enabled": true, "data": light },
+                    { "class_name": "LightComponent", "enabled": true, "data": light }
+                ]
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let registry = pulsar_class::ClassRegistry::scan(&root);
+        let def = registry.by_name("Lamp").unwrap().load_definition().unwrap();
+        let second_slot = def.prefab.components[1].slot_id.clone();
+        let missing_slot = pulsar_class::new_slot_id();
+
+        let mut scene = engine_backend::scene::new_scene();
+        let placement = pulsar_class::world::instantiate_class(
+            &mut scene.world,
+            &def,
+            pulsar_class::ClassInstance::default(),
+            engine_backend::scene::SpawnObject::new("Lamp").with_id("lamp"),
+        )
+        .unwrap();
+        let child = placement.handle(&second_slot).unwrap().entity;
+        assert_ne!(child, placement.root(), "second copy lives on a generated child");
+
+        let mut module = Module::new("Lamp");
+        for slot in [&second_slot, &missing_slot] {
+            module.variables.push(Variable {
+                name: pulsar_class::slot_variable_name(slot),
+                ty: Type::Component("LightComponent".into()),
+                default: None,
+            });
+        }
         let mut runtime = scripting::new_runtime();
-        let loaded = scripting::load_project_classes(&mut runtime, &root.join("src/classes"));
-        assert_eq!(loaded, ["TickProbe"]);
-        assert_eq!(runtime.instance_ids(), ["TickProbe__vm_default"]);
+        runtime.load_class(module).unwrap();
+        runtime.spawn("lamp::Lamp", "Lamp", Some(placement.root()), &[]).unwrap();
+        let unresolved = scripting::bind_class_slots(&mut runtime, "lamp::Lamp", &scene.world, placement.root());
+        assert_eq!(unresolved, [missing_slot.clone()]);
+
+        let light_id = pulsar_world_registry::component_id_for_class("LightComponent").unwrap();
+        assert_eq!(
+            runtime.variable("lamp::Lamp", &pulsar_class::slot_variable_name(&second_slot)),
+            Some(&Value::Component(pulsar_scenedb::ComponentRef::new(child, light_id)))
+        );
+        match runtime.variable("lamp::Lamp", &pulsar_class::slot_variable_name(&missing_slot)) {
+            Some(Value::Component(handle)) => assert_eq!(handle.entity, pulsar_scenedb::Entity::DANGLING, "none, not the root"),
+            other => panic!("unexpected {other:?}"),
+        }
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// #922: the script section of the generated `engine_main::setup()`
+/// (`engine_backend::services::core_project_builder`), compiled in-tree.
+#[cfg(test)]
+mod generated_setup_script_section {
+    use crate::prelude::*;
+
+    fn setup(game: &mut TickLoop) -> Result<(), String> {
+        game.enable_scripting(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+        Ok(())
+    }
+
+    #[test]
+    fn generated_setup_compiles_and_enables_scripting() {
+        let mut game = TickLoop::new(TickMode::default(), 0);
+        setup(&mut game).unwrap();
+        assert!(game.scripts.is_some());
+        game.tick_once();
+        let driver = game.scripts.as_ref().unwrap().lock().unwrap();
+        assert!(driver.runtime().instance_ids().is_empty(), "no default instances");
     }
 }

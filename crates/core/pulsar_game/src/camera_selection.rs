@@ -71,10 +71,10 @@ mod tests {
 
         let resolved = select_world_camera(&store).expect("world camera");
         assert_eq!(resolved.position, [3.0, 4.0, 5.0]);
-        // Zero rotation looks down +Z (yaw = 0 in FreeCam's convention).
+        // Zero rotation looks down -Z, matching the editor camera convention.
         assert!(
-            resolved.target[2] > resolved.position[2],
-            "must face +Z at zero yaw"
+            resolved.target[2] < resolved.position[2],
+            "must face -Z at zero yaw"
         );
     }
 

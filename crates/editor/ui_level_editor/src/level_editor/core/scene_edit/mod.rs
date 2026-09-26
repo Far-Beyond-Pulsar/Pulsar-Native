@@ -13,6 +13,7 @@
 //! | [`level_io`] | `.level` file save/load |
 //! | [`history`] | undo/redo snapshots (editor-owned; SceneDB has no undo) |
 //! | [`changes`] | which component properties changed, for the properties panel's relevance gate |
+//! | [`classes`] | placed class instances: placement, rebuild, overrides, revert (#921) |
 //!
 //! JSON is used for persistence and for dormant or unregistered component
 //! instances; live registered component values in the world are authoritative.
@@ -23,6 +24,7 @@ use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
 pub mod changes;
+pub mod classes;
 pub mod components;
 pub mod history;
 pub mod level_io;
@@ -170,13 +172,13 @@ pub struct LevelFile {
     /// Reflection component instances keyed by object id.
     #[serde(default)]
     pub components: HashMap<ObjectId, Vec<ComponentInstance>>,
-    /// Per-object Blueprint class bindings keyed by StableId (#650).
+    /// Legacy per-object Blueprint class bindings keyed by StableId (#650).
     ///
-    /// The editor has no binding-authoring UI yet (editor phase F); the
-    /// field exists so hand-authored or future sections survive editor
-    /// re-saves instead of being silently dropped. Saving preserves it by
-    /// reading it back from the file on disk, mirroring how the editor camera
-    /// state is kept.
+    /// Retired by `ClassInstance` (#921): loading migrates each entry to a
+    /// `ClassInstance` on the bound object (overrides become
+    /// `variable_overrides`) and saving no longer writes migrated entries.
+    /// Only entries one `ClassInstance` per object cannot express (a second
+    /// class on the same object) are carried over from the file on disk.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub blueprint_bindings: pulsar_scene::BlueprintBindings,
     pub metadata: LevelMetadata,
@@ -224,7 +226,8 @@ fn static_mesh_component_json(mesh_asset: &str) -> Value {
     })
 }
 
-/// Extract the script asset path for a Blueprint object.
+/// Extract the legacy script asset path for a Blueprint object (a class
+/// directory, which `objects::add_object` turns into a `ClassInstance`).
 ///
 /// Checks `component_instances[ScriptComponent].data.script_asset` first
 /// (modern path), falls back to the legacy `props["__component_instances"]`

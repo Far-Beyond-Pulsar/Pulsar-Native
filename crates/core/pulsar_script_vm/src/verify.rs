@@ -8,13 +8,14 @@
 use std::collections::HashSet;
 
 use crate::error::VerifyError;
-use crate::module::{BinOp, Instr, Module, Reg, UnOp, FORMAT_VERSION};
+use crate::events::{check_handler, is_event_field_type};
+use crate::module::{BinOp, EventRef, Instr, Module, Reg, UnOp, FORMAT_VERSION, MIN_FORMAT_VERSION};
 use crate::types::Type;
 
 pub fn verify(module: &Module) -> Result<(), VerifyError> {
-    if module.format_version != FORMAT_VERSION {
+    if !(MIN_FORMAT_VERSION..=FORMAT_VERSION).contains(&module.format_version) {
         return Err(VerifyError::module(format!(
-            "format version {} (this VM reads {FORMAT_VERSION})",
+            "format version {} (this VM reads {MIN_FORMAT_VERSION} to {FORMAT_VERSION})",
             module.format_version
         )));
     }
@@ -50,6 +51,58 @@ pub fn verify(module: &Module) -> Result<(), VerifyError> {
 
     for function in &module.functions {
         FunctionVerifier { module, function }.verify()?;
+    }
+    verify_events(module)
+}
+
+/// Declared events and subscriptions. A handler for an event the module
+/// declares is checked here; one for any other event at link time.
+fn verify_events(module: &Module) -> Result<(), VerifyError> {
+    let mut names = HashSet::new();
+    for event in &module.events {
+        if event.name.trim().is_empty() {
+            return Err(VerifyError::module("an event has an empty name"));
+        }
+        if !names.insert(event.name.as_str()) {
+            return Err(VerifyError::module(format!("event `{}` declared twice", event.name)));
+        }
+        let mut fields = HashSet::new();
+        for field in &event.fields {
+            if !fields.insert(field.name.as_str()) {
+                return Err(VerifyError::module(format!(
+                    "event `{}` has two fields named `{}`",
+                    event.name, field.name
+                )));
+            }
+            if !is_event_field_type(&field.ty) {
+                return Err(VerifyError::module(format!(
+                    "event `{}` field `{}` is {}; event fields are bool, int, float, string or entity",
+                    event.name, field.name, field.ty
+                )));
+            }
+        }
+    }
+    for (index, subscription) in module.subscriptions.iter().enumerate() {
+        let what = || format!("subscription {index} (`{}`)", subscription.event);
+        let handler = module.functions.get(subscription.handler as usize).ok_or_else(|| {
+            VerifyError::module(format!("{}: handler {} out of range", what(), subscription.handler))
+        })?;
+        let err = |message: String| VerifyError { function: Some(handler.name.clone()), pc: None, message };
+        if handler.ret != crate::types::Type::Unit {
+            return Err(err(format!("{}: an event handler must return unit", what())));
+        }
+        if let Some(bad) = handler.params.iter().find(|ty| !is_event_field_type(ty)) {
+            return Err(err(format!("{}: handler parameter type {bad} is not an event field type", what())));
+        }
+        if let EventRef::Name(name) = &subscription.event {
+            if name.trim().is_empty() {
+                return Err(err(format!("subscription {index}: empty event name")));
+            }
+            if let Some(event) = module.events.iter().find(|e| &e.name == name) {
+                let fields: Vec<_> = event.fields.iter().map(|f| f.ty.clone()).collect();
+                check_handler(&handler.params, &fields).map_err(|m| err(format!("{}: {m}", what())))?;
+            }
+        }
     }
     Ok(())
 }

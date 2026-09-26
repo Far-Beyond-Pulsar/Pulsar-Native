@@ -1,105 +1,49 @@
-//! Central script-event registry for Pulsar Engine.
+//! Engine-wide event plumbing for Pulsar, on [Gamma v2](gamma).
 //!
-//! [`script_registry`] provides a handle to a process-global map from actor keys
-//! to [`ScriptRegistration`] entries.  It is written by [`ScriptComponent`]'s
-//! `sync_component` every render/sync pass and read by the game runtime's
-//! script runtime to know which scene objects have scripts attached and
-//! where their bytecode lives.
+//! Three pieces:
 //!
-//! The registry is intentionally free of execution logic — it is a pure
-//! registry.  Dispatching `BeginPlay`, `Tick`, and other events is the
-//! responsibility of the consumer (`pulsar_game`).
+//! - [`hub`]: the **engine event hub**. One [`EventHub`] per world / game
+//!   session (`pulsar_game::tick::TickLoop` owns it) wraps a Gamma
+//!   `SyncEventBus`. Built-in events ([`builtin`]), script events and
+//!   plugin events are published *deferred* and delivered when the tick
+//!   loop flushes the hub at its fixed [`FlushPoint`]s. Script-declared
+//!   events are registered on it as dynamic descriptors. A bounded debug
+//!   [`tap`] records recently flushed events for the editor's PIE events
+//!   panel.
+//! - [`host`]: the **process-wide host bus**. In the editor (or game)
+//!   binary it is a local `SyncEventBus`; a plugin loaded as a separate
+//!   dynamic library receives the host's bus as a Gamma
+//!   [`RawBus`](gamma::ffi::RawBus) when it is loaded
+//!   ([`host::attach_host_bus`]) and uses it through `ForeignBus`, so there
+//!   is one bus per process instead of one per copy of this crate
+//!   (Pulsar-Native#930).
+//! - [`assets`]: asset-update notifications ([`AssetUpdated`]) on the host
+//!   bus. Anything that rewrites an asset publishes one; the level editor,
+//!   the game runtime and plugins subscribe by [`AssetKind`].
+//!
+//! This crate is GPUI-free so the game runtime can use it; editor plugins
+//! reach it through `plugin_editor_api`, which re-exports the asset API.
 
-use std::collections::{HashMap, HashSet};
+pub use gamma;
 
-use engine_state::{EngineContext, ResourceHandle};
-use serde::{Deserialize, Serialize};
-
-// ── Registration entry ────────────────────────────────────────────────────────
-
-/// A single script attached to a scene object.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ScriptRegistration {
-    /// Unique actor key — formatted as `"<scene_object_id>::script::<component_index>"`.
-    pub actor_key: String,
-
-    /// The scene object that owns this script.
-    pub scene_object_id: String,
-
-    /// Absolute or project-relative path to the blueprint directory
-    /// (the directory containing `graph_save.json`).
-    pub script_path: String,
+/// Profiler scope when the `profiling` feature is on; nothing otherwise.
+macro_rules! scope {
+    ($name:literal) => {
+        #[cfg(feature = "profiling")]
+        profiling::profile_scope!($name);
+    };
 }
 
-// ── Registry ──────────────────────────────────────────────────────────────────
 
-/// Thread-safe registry of all currently live [`ScriptRegistration`] entries.
-pub struct ScriptRegistry {
-    entries: HashMap<String, ScriptRegistration>,
-}
+pub mod assets;
+pub mod builtin;
+pub mod channel;
+pub mod host;
+pub mod hub;
+pub mod tap;
 
-impl Default for ScriptRegistry {
-    fn default() -> Self {
-        Self {
-            entries: HashMap::new(),
-        }
-    }
-}
-
-impl ScriptRegistry {
-    /// Insert or replace the registration for `reg.actor_key`.
-    pub fn register(&mut self, reg: ScriptRegistration) {
-        self.entries.insert(reg.actor_key.clone(), reg);
-    }
-
-    /// Remove the registration for `actor_key`, if present.
-    pub fn unregister(&mut self, actor_key: &str) {
-        self.entries.remove(actor_key);
-    }
-
-    /// Retain only entries whose `actor_key` is in `live_keys`.
-    ///
-    /// Called at the end of each sync pass to cull stale script registrations
-    /// (scene objects that were removed or had their ScriptComponent detached).
-    pub fn retain_keys(&mut self, live_keys: &HashSet<String>) {
-        self.entries.retain(|k, _| live_keys.contains(k));
-    }
-
-    /// Remove all entries.  Used when a scene is unloaded.
-    pub fn clear(&mut self) {
-        self.entries.clear();
-    }
-
-    /// Iterate over all registered scripts.
-    pub fn iter(&self) -> impl Iterator<Item = &ScriptRegistration> {
-        self.entries.values()
-    }
-
-    /// Look up a registration by actor key.
-    pub fn get(&self, actor_key: &str) -> Option<&ScriptRegistration> {
-        self.entries.get(actor_key)
-    }
-
-    /// Return the number of registered scripts.
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    /// Returns `true` if no scripts are registered.
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-}
-
-// ── Global singleton ──────────────────────────────────────────────────────────
-
-/// Returns a handle to the process-global script registry.
-///
-/// Written each sync/render pass by [`ScriptComponent::sync_component`].
-/// Read by the game runtime to build its script runtime instance map.
-pub fn script_registry() -> ResourceHandle<ScriptRegistry> {
-    EngineContext::global()
-        .expect("EngineContext not initialized")
-        .store
-        .get_or_init::<ScriptRegistry>()
-}
+pub use assets::{AssetSubscription, AssetUpdated, publish_asset_updated, subscribe_asset_updates};
+pub use channel::{class_channel, class_channel_id, entity_channel};
+pub use hub::{EventCategory, EventHub, EventInfo, FlushPoint};
+pub use tap::{EventsSnapshot, SnapshotEvent, SnapshotRecord, TapRecord};
+pub use ui_types_common::AssetKind;

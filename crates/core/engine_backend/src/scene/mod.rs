@@ -51,6 +51,8 @@ pub use helio_bridge::{
     arm_render_row_subscriptions, arm_render_row_subscriptions_for_entity, ensure_gpu_mirror,
     retire_gpu_rows_for_entity, sync_static_mesh_rows,
 };
+#[cfg(feature = "render")]
+pub use editor_rows::sync_editor_light_rows;
 
 /// Hook a `World` up to the SceneDB Inspector (CPU + GPU live view). Inert
 /// unless this process was launched by `scenedb_inspector`; safe to call for

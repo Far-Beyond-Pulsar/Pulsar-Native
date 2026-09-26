@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Instant;
 
 use winit::{
@@ -18,7 +18,9 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-use engine_backend::scene::{ensure_gpu_mirror, sync_static_mesh_rows, RuntimeLevel};
+use engine_backend::scene::{
+    ensure_gpu_mirror, sync_editor_light_rows, sync_static_mesh_rows, RuntimeLevel,
+};
 use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera, Renderer,
     RendererConfig,
@@ -315,6 +317,9 @@ pub struct PulsarApp {
     /// window's per-frame rebuild. Gameplay mutations land here too, so an
     /// actor-spawned entity renders on the next frame.
     scene_store: engine_backend::scene::SharedScene,
+    /// The tick loop's event hub (shared): key and mouse input is published
+    /// here and delivered at the next tick's after-input flush.
+    events: pulsar_events::EventHub,
 
     /// Which window currently owns the cursor (receives mouse-look).
     focused_window: Option<WindowHandle>,
@@ -336,6 +341,7 @@ impl PulsarApp {
         // The tick loop's store handle is cloned BEFORE the loop moves into
         // `self.tick_loop` -- renderer and gameplay then share one world.
         let scene_store = tick_loop.scene_store.clone();
+        let events = tick_loop.events.clone();
         Self {
             bridge,
             gpu: GpuContext::new(display),
@@ -346,6 +352,7 @@ impl PulsarApp {
             project_root,
             default_scene,
             scene_store,
+            events,
             focused_window: None,
             cursor_captured: false,
             last_frame: Instant::now(),
@@ -472,42 +479,9 @@ impl PulsarApp {
                         );
                     }
 
-                    // Spawn the level's script class bindings (#650): one
-                    // bound instance per (object, class) pair, addressed at
-                    // its own hydrated entity. Per-binding failures are
-                    // logged + collected — one stale entry never blocks play.
-                    if !extras.blueprint_bindings.is_empty() {
-                        if let Some(tick_loop) = self.tick_loop.as_mut() {
-                            let runtime = tick_loop.script_runtime.get_or_insert_with(|| {
-                                Arc::new(Mutex::new(crate::scripting::new_runtime()))
-                            });
-                            // Same lock order as TickLoop phase 3: runtime
-                            // mutex, then store write.
-                            let report = {
-                                let mut runtime = runtime.lock().expect("script runtime mutex");
-                                let store = self.scene_store.write();
-                                crate::scripting::apply_script_bindings(
-                                    &mut runtime,
-                                    &store,
-                                    &self.project_root,
-                                    &extras.blueprint_bindings,
-                                )
-                            };
-                            for applied in &report.applied {
-                                tracing::info!(
-                                    object = %applied.stable_id,
-                                    class = %applied.class_name,
-                                    instance = %applied.instance_id,
-                                    "Level script binding spawned"
-                                );
-                            }
-                            tracing::info!(
-                                applied = report.applied.len(),
-                                failed = report.failures.len(),
-                                "Applied level script bindings"
-                            );
-                        }
-                    }
+                    // Scripts need nothing here: the tick loop's script
+                    // driver finds the level's class instances in the shared
+                    // world at its first reconcile (#922).
 
                     tracing::info!(
                         window = handle.id(),
@@ -644,6 +618,17 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 event: key_event, ..
             } => {
                 let pressed = key_event.state == ElementState::Pressed;
+                if !key_event.repeat {
+                    if let winit::keyboard::PhysicalKey::Code(code) = key_event.physical_key {
+                        let key = code as i64;
+                        let channel = pulsar_events::gamma::Channel::Global;
+                        if pressed {
+                            self.events.publish(channel, pulsar_events::builtin::KeyDown { key });
+                        } else {
+                            self.events.publish(channel, pulsar_events::builtin::KeyUp { key });
+                        }
+                    }
+                }
 
                 // Escape releases the cursor.
                 if pressed {
@@ -660,14 +645,25 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 }
             }
 
-            // ── Mouse click — capture cursor ──────────────────────────────────
-            WindowEvent::MouseInput {
-                state: ElementState::Pressed,
-                button: winit::event::MouseButton::Left,
-                ..
-            } => {
-                if !self.cursor_captured {
-                    self.capture_cursor(handle);
+            // ── Mouse buttons — published as input events; a left click
+            //    also captures the cursor ─────────────────────────────────────
+            WindowEvent::MouseInput { state, button, .. } => {
+                let index = match button {
+                    winit::event::MouseButton::Left => 0,
+                    winit::event::MouseButton::Right => 1,
+                    winit::event::MouseButton::Middle => 2,
+                    winit::event::MouseButton::Back => 3,
+                    winit::event::MouseButton::Forward => 4,
+                    winit::event::MouseButton::Other(n) => i64::from(n),
+                };
+                let channel = pulsar_events::gamma::Channel::Global;
+                if state == ElementState::Pressed {
+                    self.events.publish(channel, pulsar_events::builtin::MouseButtonDown { button: index });
+                    if button == winit::event::MouseButton::Left && !self.cursor_captured {
+                        self.capture_cursor(handle);
+                    }
+                } else {
+                    self.events.publish(channel, pulsar_events::builtin::MouseButtonUp { button: index });
                 }
             }
 
@@ -680,6 +676,11 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 // zero-copy seam the editor viewport renderer uses).
                 {
                     let mut store = self.scene_store.write();
+                    // Runtime uses Helio directly, so it does not pass through
+                    // HelioRenderer's editor-row projection. Hydrated
+                    // LightComponents therefore need the same derived light
+                    // rows authored before SceneDB flushes the GPU mirror.
+                    sync_editor_light_rows(&mut store.world, false, None);
                     sync_static_mesh_rows(&mut store, None);
                     store.step();
                 }

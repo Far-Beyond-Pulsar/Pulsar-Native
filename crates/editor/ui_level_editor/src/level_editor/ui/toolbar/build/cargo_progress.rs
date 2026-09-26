@@ -77,9 +77,12 @@ pub fn run_cargo_clean(
         .map_err(|e| format!("Failed to spawn cargo clean: {e}"))?;
 
     let stderr = BufReader::new(child.stderr.take().unwrap());
+    let mut output = String::new();
     for line in stderr.lines() {
         let Ok(line) = line else { break };
         eprintln!("{line}");
+        output.push_str(&line);
+        output.push('\n');
         tracing::debug!("[CARGO-PROGRESS] clean: {line}");
     }
 
@@ -92,7 +95,7 @@ pub fn run_cargo_clean(
         tracing::info!("[CARGO-PROGRESS] clean done → {up_to_pct}%");
         Ok(())
     } else {
-        Err("cargo clean failed — check the editor output for details".into())
+        Err(format!("cargo clean failed:\n\n{}", output.trim()))
     }
 }
 
@@ -129,11 +132,14 @@ pub fn run_cargo_update_to(
         .map_err(|e| format!("Failed to spawn cargo update: {e}"))?;
 
     let stderr = BufReader::new(child.stderr.take().unwrap());
+    let mut output = String::new();
     let mut updates_seen: u32 = 0;
 
     for line in stderr.lines() {
         let Ok(line) = line else { break };
         eprintln!("{line}");
+        output.push_str(&line);
+        output.push('\n');
 
         let trimmed = line.trim_start();
         if trimmed.starts_with("Updating ") || trimmed.starts_with("Locking ") {
@@ -161,7 +167,7 @@ pub fn run_cargo_update_to(
         tracing::info!("[CARGO-PROGRESS] update success → {up_to_pct}%");
         Ok(())
     } else {
-        Err("cargo update failed — check the editor output for details".into())
+        Err(format!("cargo update failed:\n\n{}", output.trim()))
     }
 }
 
@@ -202,9 +208,12 @@ fn run_cargo(
     let status_stderr = Arc::clone(&status);
     let stderr_thread = std::thread::spawn(move || {
         let mut updates_seen: u32 = 0;
+        let mut output = String::new();
         for line in stderr.lines() {
             let Ok(line) = line else { break };
             eprintln!("{line}");
+            output.push_str(&line);
+            output.push('\n');
             let trimmed = line.trim_start();
             if trimmed.starts_with("Updating ") || trimmed.starts_with("Locking ") {
                 updates_seen += 1;
@@ -222,6 +231,7 @@ fn run_cargo(
                 tracing::info!("[CARGO-PROGRESS] stderr: {trimmed} → {pct}%");
             }
         }
+        output
     });
 
     // ── stdout: parse JSON compiler-artifact lines → (from_pct+10)..95 % ────
@@ -230,6 +240,7 @@ fn run_cargo(
     let artifact_start = from_pct + 10;
     let mut seen: u32 = 0;
     let mut rolling_total: f32 = 4.0;
+    let mut compiler_errors = Vec::new();
 
     for line in stdout.lines() {
         let Ok(line) = line else { continue };
@@ -241,6 +252,16 @@ fn run_cargo(
         };
 
         match msg["reason"].as_str() {
+            Some("compiler-message") => {
+                let message = &msg["message"];
+                if message["level"].as_str() == Some("error") {
+                    if let Some(rendered) = message["rendered"].as_str() {
+                        if !compiler_errors.iter().any(|error| error == rendered) {
+                            compiler_errors.push(rendered.to_string());
+                        }
+                    }
+                }
+            }
             Some("compiler-artifact") => {
                 seen += 1;
                 if rolling_total < seen as f32 + 4.0 {
@@ -270,7 +291,7 @@ fn run_cargo(
         }
     }
 
-    let _ = stderr_thread.join();
+    let stderr_output = stderr_thread.join().unwrap_or_default();
     tracing::info!("[CARGO-PROGRESS] stdout closed seen={seen}");
 
     let status_val = child
@@ -283,9 +304,14 @@ fn run_cargo(
         Ok(())
     } else {
         tracing::error!("[CARGO-PROGRESS] cargo exited non-zero");
+        let diagnostics = if compiler_errors.is_empty() {
+            stderr_output.trim().to_string()
+        } else {
+            compiler_errors.join("\n\n--- PULSAR BUILD ERROR ---\n\n")
+        };
         Err(format!(
-            "cargo {} failed — check the editor output for details",
-            subcommand[0]
+            "cargo {} failed:\n\n{}",
+            subcommand[0], diagnostics
         ))
     }
 }

@@ -20,6 +20,15 @@
 //! passed; an instance can have several waiting at once. Reloading a
 //! class or despawning an instance drops its waiting calls.
 //!
+//! Events (#924): with an [`EventHost`] attached
+//! ([`ScriptRuntime::set_event_host`]), a class's declared events are
+//! registered with it before the class links, handlers are linked against
+//! its catalog, and natives publish through it (`event::emit`, ...). Which
+//! instance subscribes to what, and when handlers run, is the host's
+//! business (the engine's script driver): the runtime only exposes each
+//! class's checked [`subscriptions`](ScriptRuntime::subscriptions) and
+//! [`call_function`](ScriptRuntime::call_function) to run a handler.
+//!
 //! Hot reload: [`ScriptRuntime::reload_class`] swaps a class's code and
 //! keeps each instance's variables whose name and type are unchanged;
 //! loading, reloading or unloading a native library relinks every class
@@ -31,9 +40,20 @@ use std::sync::Arc;
 
 use pulsar_scenedb::{Entity, World};
 use pulsar_script_vm::{
-    Budget, Completion, Continuation, FuncId, Host, Instance, LibraryError, LibraryId, LinkError,
-    Module, NativeFn, NativeLibraries, NativeRegistry, Program, ScriptError, Type, Value, Vm,
+    Budget, Completion, Continuation, EventCatalog, EventDecl, EventSink, FuncId, Host, Instance,
+    LibraryError, LibraryId, LinkError, LinkedSubscription, Module, NativeFn, NativeLibraries,
+    NativeRegistry, Program, ScriptError, Type, Value, Vm,
 };
+
+/// The engine's event hub, as the runtime sees it: a sink for the event
+/// natives, a catalog to link handlers against, and a registry for the
+/// events classes declare.
+pub trait EventHost: EventSink + EventCatalog + Send + Sync {
+    /// Register event `decl`, declared by class (module) `class`.
+    /// Registering the same declaration again is a no-op; a different
+    /// event under the same name is an error.
+    fn declare(&self, class: &str, decl: &EventDecl) -> Result<(), String>;
+}
 
 pub const BEGIN_PLAY: &str = "begin_play";
 pub const TICK: &str = "tick";
@@ -68,6 +88,8 @@ pub enum RuntimeError {
     Io { path: PathBuf, source: std::io::Error },
     #[error("`{path}` is not a script module: {source}")]
     Parse { path: PathBuf, source: serde_json::Error },
+    #[error("script class `{class}` declares event `{event}`: {reason}")]
+    EventDeclaration { class: String, event: String, reason: String },
 }
 
 struct Entries {
@@ -82,9 +104,9 @@ struct Class {
 }
 
 impl Class {
-    fn link(module: Arc<Module>, natives: &NativeRegistry) -> Result<Self, RuntimeError> {
+    fn link(module: Arc<Module>, natives: &NativeRegistry, events: Option<&dyn EventCatalog>) -> Result<Self, RuntimeError> {
         let class = module.name.clone();
-        let program = Program::link(module, natives)
+        let program = Program::link_with_events(module, natives, events)
             .map_err(|source| RuntimeError::Link { class: class.clone(), source })?;
         let entry = |name: &'static str, params: &[Type], expected: &'static str| {
             match program.module().function(name) {
@@ -138,6 +160,7 @@ pub struct ScriptRuntime {
     time: f64,
     /// Step budget for one event on one instance.
     pub budget: u64,
+    events: Option<Arc<dyn EventHost>>,
 }
 
 impl ScriptRuntime {
@@ -158,7 +181,48 @@ impl ScriptRuntime {
             pending_begin_play: Vec::new(),
             time: 0.0,
             budget: DEFAULT_BUDGET,
+            events: None,
         }
+    }
+
+    // ---- events --------------------------------------------------------
+
+    /// Attach (or detach) the engine's event hub. Every loaded class's
+    /// events are declared on it and every class relinks against its
+    /// catalog.
+    pub fn set_event_host(&mut self, events: Option<Arc<dyn EventHost>>) -> RelinkReport {
+        self.events = events;
+        if let Some(events) = &self.events {
+            for class in self.classes.values() {
+                if let Err(error) = declare_events(events.as_ref(), class.program.module()) {
+                    tracing::error!("{error}");
+                }
+            }
+        }
+        self.relink_all()
+    }
+
+    pub fn event_host(&self) -> Option<&Arc<dyn EventHost>> {
+        self.events.as_ref()
+    }
+
+    fn catalog(&self) -> Option<&dyn EventCatalog> {
+        self.events.as_deref().map(|e| e as &dyn EventCatalog)
+    }
+
+    /// Declare `module`'s events on the event host now (before loading it),
+    /// so classes loaded earlier can subscribe to them. No-op without a
+    /// host.
+    pub fn declare_events(&self, module: &Module) -> Result<(), RuntimeError> {
+        match &self.events {
+            Some(events) => declare_events(events.as_ref(), module),
+            None => Ok(()),
+        }
+    }
+
+    /// The checked event subscriptions of a loaded class.
+    pub fn subscriptions(&self, class: &str) -> Option<&[LinkedSubscription]> {
+        Some(self.classes.get(class)?.program.subscriptions())
     }
 
     /// Game time in seconds (advanced by [`tick_all`](Self::tick_all)).
@@ -203,8 +267,9 @@ impl ScriptRuntime {
 
     fn relink_all(&mut self) -> RelinkReport {
         let mut report = RelinkReport::default();
+        let catalog = self.events.as_deref().map(|e| e as &dyn EventCatalog);
         for (name, class) in &mut self.classes {
-            match Class::link(Arc::clone(class.program.module()), &self.natives) {
+            match Class::link(Arc::clone(class.program.module()), &self.natives, catalog) {
                 Ok(relinked) => {
                     *class = relinked;
                     report.relinked.push(name.clone());
@@ -226,7 +291,8 @@ impl ScriptRuntime {
         if self.classes.contains_key(&module.name) {
             return Err(RuntimeError::ClassLoaded(module.name));
         }
-        let class = Class::link(Arc::new(module), &self.natives)?;
+        self.declare_events(&module)?;
+        let class = Class::link(Arc::new(module), &self.natives, self.catalog())?;
         self.classes.insert(class.program.module().name.clone(), class);
         Ok(())
     }
@@ -251,13 +317,30 @@ impl ScriptRuntime {
         self.classes.contains_key(name)
     }
 
+    /// The variables a loaded class declares, as `(name, type)`, in slot
+    /// order. Hosts use it to find variables they fill at bind time (e.g.
+    /// the hidden `__slot:<uuid>` component handles of class instances).
+    pub fn class_variables(&self, class: &str) -> Option<Vec<(String, Type)>> {
+        let module = self.classes.get(class)?.program.module();
+        Some(module.variables.iter().map(|v| (v.name.clone(), v.ty.clone())).collect())
+    }
+
+    /// The class an instance runs.
+    pub fn class_of(&self, object_id: &str) -> Option<&str> {
+        self.instances.get(object_id).map(|i| i.class.as_str())
+    }
+
     /// Swap a loaded class's code. Instances keep their identity, binding
     /// and every variable whose name and type are unchanged; new or
     /// retyped variables start at their defaults. On error nothing changes.
     pub fn reload_class(&mut self, module: Module) -> Result<(), RuntimeError> {
         let name = module.name.clone();
-        let old = self.classes.get(&name).ok_or_else(|| RuntimeError::UnknownClass(name.clone()))?;
-        let new = Class::link(Arc::new(module), &self.natives)?;
+        if !self.classes.contains_key(&name) {
+            return Err(RuntimeError::UnknownClass(name));
+        }
+        self.declare_events(&module)?;
+        let new = Class::link(Arc::new(module), &self.natives, self.catalog())?;
+        let old = &self.classes[&name];
 
         let old_module = Arc::clone(old.program.module());
         let mut migrated = 0;
@@ -447,7 +530,8 @@ impl ScriptRuntime {
         for (_, continuation) in due {
             let Some(instance) = self.instances.get_mut(object_id) else { break };
             let Some(class) = self.classes.get(&instance.class) else { break };
-            let mut host = Host::at_time(world, instance.entity.unwrap_or(Entity::DANGLING), now);
+            let mut host = Host::at_time(world, instance.entity.unwrap_or(Entity::DANGLING), now)
+                .with_events(self.events.as_deref().map(|e| e as &dyn EventSink));
             let mut budget = Budget::new(self.budget);
             match self.vm.resume(&class.program, &mut instance.state, continuation, &mut host, &mut budget) {
                 Ok(Completion::Returned(_)) => {}
@@ -491,6 +575,24 @@ impl ScriptRuntime {
         self.call(object_id, func, args, world)
     }
 
+    /// Run function `func` (any function of the instance's class, exported
+    /// or not: event handlers) on an instance, like an event. A function
+    /// that waits finishes on a later tick; the caller gets unit now.
+    pub fn call_function(
+        &mut self,
+        object_id: &str,
+        func: FuncId,
+        args: &[Value],
+        world: &mut World,
+    ) -> Result<Value, RuntimeError> {
+        self.call(object_id, func, args, world)
+    }
+
+    /// Whether `object_id` has run `begin_play` (or has none pending).
+    pub fn has_begun(&self, object_id: &str) -> bool {
+        self.instances.contains_key(object_id) && !self.pending_begin_play.iter().any(|id| id == object_id)
+    }
+
     fn run_lifecycle(&mut self, object_id: &str, event: &str, world: &mut World) -> Result<(), RuntimeError> {
         let instance = self.instances.get(object_id).ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
         let Some(class) = self.classes.get(&instance.class) else { return Ok(()) };
@@ -510,7 +612,8 @@ impl ScriptRuntime {
         let class = self.classes.get(&instance.class).ok_or_else(|| RuntimeError::UnknownClass(instance.class.clone()))?;
         // Unbound instances run with a dangling entity: every component
         // access fails its liveness check instead of reaching anything.
-        let mut host = Host::at_time(world, instance.entity.unwrap_or(Entity::DANGLING), self.time);
+        let mut host = Host::at_time(world, instance.entity.unwrap_or(Entity::DANGLING), self.time)
+            .with_events(self.events.as_deref().map(|e| e as &dyn EventSink));
         let mut budget = Budget::new(self.budget);
         match self.vm.start(&class.program, &mut instance.state, func, args, &mut host, &mut budget) {
             Ok(Completion::Returned(value)) => Ok(value),
@@ -523,6 +626,17 @@ impl ScriptRuntime {
             Err(source) => Err(RuntimeError::Script { object_id: object_id.to_owned(), source }),
         }
     }
+}
+
+fn declare_events(events: &dyn EventHost, module: &Module) -> Result<(), RuntimeError> {
+    for decl in &module.events {
+        events.declare(&module.name, decl).map_err(|reason| RuntimeError::EventDeclaration {
+            class: module.name.clone(),
+            event: decl.name.clone(),
+            reason,
+        })?;
+    }
+    Ok(())
 }
 
 /// Convert a JSON value (from a level file) to a script value of type `ty`.
