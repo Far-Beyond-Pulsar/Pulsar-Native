@@ -85,14 +85,37 @@ pub use runtime_level::{EditorCamera, LevelExtras, RuntimeLevel, RuntimeLevelErr
 /// renderer and the play-mode runtime. This alias only names the sharing.
 pub type SharedScene = std::sync::Arc<parking_lot::RwLock<pulsar_scenedb::SceneDb>>;
 
-/// A fresh scene with a change tracker attached, so [`pulsar_scenedb::World::revision`]
-/// and any subsystem reading `world.change_tracker()` work from the first mutation.
+/// A fresh scene with a change tracker attached, so any subsystem reading
+/// `world.change_tracker()` works from the first mutation.
+///
+/// The tracker records every spawn, insert, change and removal until it is
+/// drained. The renderer and the game tick each close the window once per
+/// frame ([`end_change_window`]), so it only ever holds the current
+/// frame's changes.
 pub fn new_scene() -> pulsar_scenedb::SceneDb {
     let mut scene = pulsar_scenedb::SceneDb::new();
     scene
         .world
         .attach_change_tracker(pulsar_scenedb::SharedChangeTracker::new());
     scene
+}
+
+/// Close this frame's change window: drop everything the world's change
+/// tracker recorded since the last call and start a new frame.
+///
+/// Nothing in the engine consumes the tracker's history yet (replication
+/// will drain it itself), and an undrained tracker grows with every write,
+/// forever: component deltas, spawns, despawns and removals. It also slows
+/// every change record down, since each one searches the frame's list.
+/// Called once per frame by the game tick and the renderer; calling it
+/// more often is harmless.
+pub fn end_change_window(world: &pulsar_scenedb::World) {
+    if let Some(tracker) = world.change_tracker() {
+        profiling::profile_scope!("scene::end_change_window");
+        drop(tracker.drain_with_world(world));
+        drop(tracker.drain_component_removals());
+        tracker.end_frame();
+    }
 }
 
 use glam::Mat4;
@@ -129,5 +152,39 @@ impl Default for GizmoState {
             highlighted_axis: None,
             scale_factor: 1.0,
         }
+    }
+}
+
+#[cfg(test)]
+mod change_window_tests {
+    use pulsar_scene_model::components::{Name, Visibility};
+
+    /// The tracker only holds one frame of history: after
+    /// `end_change_window`, spawns, changes, despawns and removals recorded
+    /// before it are gone.
+    #[test]
+    fn end_change_window_empties_the_change_tracker() {
+        let mut scene = super::new_scene();
+        let world = &mut scene.world;
+        for i in 0..100 {
+            let entity = world.spawn();
+            world.insert(entity, Name(format!("e{i}")));
+            world.insert(entity, Visibility::default());
+            world.remove::<Visibility>(entity);
+            if i % 2 == 0 {
+                world.despawn(entity);
+            }
+        }
+        let tracker = world.change_tracker().expect("attached").clone();
+        assert!(!tracker.lock().drain_component_removals().is_empty(), "removals were recorded");
+
+        let entity = world.spawn();
+        world.insert(entity, Visibility::default());
+        world.remove::<Visibility>(entity);
+        super::end_change_window(world);
+
+        let delta = tracker.drain_with_world(world);
+        assert!(delta.spawned.is_empty() && delta.despawned.is_empty() && delta.component_deltas.is_empty());
+        assert!(tracker.drain_component_removals().is_empty());
     }
 }

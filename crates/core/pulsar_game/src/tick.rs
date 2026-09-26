@@ -384,6 +384,9 @@ impl TickLoop {
         self.events.flush(pulsar_events::FlushPoint::AfterScripts);
         self.events.flush(pulsar_events::FlushPoint::EndOfFrame);
 
+        // The world's change history only covers the current frame.
+        engine_backend::scene::end_change_window(&self.scene_store.read().world);
+
         time
     }
 
