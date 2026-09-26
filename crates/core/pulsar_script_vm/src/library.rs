@@ -28,15 +28,21 @@
 //!   stale pointer.
 //!
 //! Libraries may register natives but not types (see [`crate::types`]).
+//!
 //! Memory crosses the boundary (e.g. strings a native returns), so a
-//! library must use the same global allocator as the engine (by default
-//! both use the system allocator).
+//! library must allocate with the engine's allocator. `native_library!`
+//! installs a [`ForwardingAllocator`] as the library's global allocator,
+//! and the loader hands it the host's [`HostAllocator`] before calling
+//! anything else in the library. Every allocation the library makes then
+//! goes through the engine's global allocator (and shows up in its memory
+//! tracking), so memory can be freed on either side.
 
+use std::alloc::{GlobalAlloc, Layout, System};
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crate::native::{DuplicateNative, NativeFn, NativeRegistry, Origin};
@@ -57,15 +63,127 @@ impl LibraryRegistrar {
     }
 }
 
+/// The host's allocation functions, handed to a library at load time.
+#[repr(C)]
+pub struct HostAllocator {
+    pub alloc: unsafe extern "C" fn(size: usize, align: usize) -> *mut u8,
+    pub alloc_zeroed: unsafe extern "C" fn(size: usize, align: usize) -> *mut u8,
+    pub dealloc: unsafe extern "C" fn(ptr: *mut u8, size: usize, align: usize),
+    pub realloc: unsafe extern "C" fn(ptr: *mut u8, size: usize, align: usize, new_size: usize) -> *mut u8,
+}
+
+impl HostAllocator {
+    /// The global allocator of the binary this is called from.
+    pub const fn global() -> &'static HostAllocator {
+        unsafe extern "C" fn alloc(size: usize, align: usize) -> *mut u8 {
+            std::alloc::alloc(Layout::from_size_align_unchecked(size, align))
+        }
+        unsafe extern "C" fn alloc_zeroed(size: usize, align: usize) -> *mut u8 {
+            std::alloc::alloc_zeroed(Layout::from_size_align_unchecked(size, align))
+        }
+        unsafe extern "C" fn dealloc(ptr: *mut u8, size: usize, align: usize) {
+            std::alloc::dealloc(ptr, Layout::from_size_align_unchecked(size, align))
+        }
+        unsafe extern "C" fn realloc(ptr: *mut u8, size: usize, align: usize, new_size: usize) -> *mut u8 {
+            std::alloc::realloc(ptr, Layout::from_size_align_unchecked(size, align), new_size)
+        }
+        static GLOBAL: HostAllocator = HostAllocator { alloc, alloc_zeroed, dealloc, realloc };
+        &GLOBAL
+    }
+}
+
+/// A library's global allocator: forwards to the [`HostAllocator`] the
+/// loader installs, and to the system allocator until then (the loader
+/// installs it before calling anything else in the library, so only code
+/// that runs while the library is mapped, such as initializers, can see
+/// the fallback).
+pub struct ForwardingAllocator {
+    host: AtomicPtr<HostAllocator>,
+}
+
+impl ForwardingAllocator {
+    pub const fn new() -> Self {
+        Self { host: AtomicPtr::new(std::ptr::null_mut()) }
+    }
+
+    /// Route every later allocation to `host`.
+    pub fn install(&self, host: &'static HostAllocator) {
+        self.host.store(host as *const HostAllocator as *mut HostAllocator, Ordering::Release);
+    }
+
+    #[inline]
+    fn host(&self) -> Option<&'static HostAllocator> {
+        // SAFETY: only ever set from a `&'static HostAllocator`.
+        unsafe { self.host.load(Ordering::Acquire).as_ref() }
+    }
+}
+
+impl Default for ForwardingAllocator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+unsafe impl GlobalAlloc for ForwardingAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        match self.host() {
+            Some(host) => (host.alloc)(layout.size(), layout.align()),
+            None => System.alloc(layout),
+        }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        match self.host() {
+            Some(host) => (host.alloc_zeroed)(layout.size(), layout.align()),
+            None => System.alloc_zeroed(layout),
+        }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        match self.host() {
+            Some(host) => (host.dealloc)(ptr, layout.size(), layout.align()),
+            None => System.dealloc(ptr, layout),
+        }
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        match self.host() {
+            Some(host) => (host.realloc)(ptr, layout.size(), layout.align(), new_size),
+            None => System.realloc(ptr, layout, new_size),
+        }
+    }
+}
+
 /// Symbol names of a library's entry points.
 pub const ABI_SYMBOL: &[u8] = b"pulsar_script_library_abi";
 pub const REGISTER_SYMBOL: &[u8] = b"pulsar_script_library_register";
+/// Optional: present when the library forwards allocations to the host.
+pub const SET_ALLOCATOR_SYMBOL: &[u8] = b"pulsar_script_library_set_allocator";
 
 /// Declare this crate's native library entry point. `$register` is a
 /// `fn(&mut LibraryRegistrar)`.
+///
+/// This also makes the crate's global allocator a [`ForwardingAllocator`],
+/// so the library allocates with the engine's allocator. A crate that also
+/// links into a binary with its own `#[global_allocator]` can opt out with
+/// `native_library!($register, without_host_allocator)`; it must then use
+/// the same allocator as the engine by other means.
 #[macro_export]
 macro_rules! native_library {
     ($register:path) => {
+        #[global_allocator]
+        static PULSAR_SCRIPT_LIBRARY_ALLOCATOR: $crate::library::ForwardingAllocator =
+            $crate::library::ForwardingAllocator::new();
+
+        #[doc(hidden)]
+        #[no_mangle]
+        pub fn pulsar_script_library_set_allocator(host: &'static $crate::library::HostAllocator) {
+            PULSAR_SCRIPT_LIBRARY_ALLOCATOR.install(host)
+        }
+
+        $crate::native_library!($register, without_host_allocator);
+    };
+    ($register:path, without_host_allocator) => {
         #[doc(hidden)]
         #[no_mangle]
         pub fn pulsar_script_library_abi() -> ::std::any::TypeId {
@@ -120,6 +238,7 @@ pub struct NativeLibraries {
     loaded: HashMap<LibraryId, Loaded>,
     next_id: u32,
     shadow_dir: PathBuf,
+    allocator: &'static HostAllocator,
 }
 
 static SHADOW_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -127,7 +246,19 @@ static SHADOW_COUNTER: AtomicU64 = AtomicU64::new(0);
 impl NativeLibraries {
     /// Shadow copies go in `shadow_dir` (created if missing).
     pub fn new(shadow_dir: impl Into<PathBuf>) -> Self {
-        Self { loaded: HashMap::new(), next_id: 1, shadow_dir: shadow_dir.into() }
+        Self {
+            loaded: HashMap::new(),
+            next_id: 1,
+            shadow_dir: shadow_dir.into(),
+            allocator: HostAllocator::global(),
+        }
+    }
+
+    /// Libraries loaded from now on allocate through `allocator` instead of
+    /// this binary's global allocator.
+    pub fn with_allocator(mut self, allocator: &'static HostAllocator) -> Self {
+        self.allocator = allocator;
+        self
     }
 
     /// Load the library at `path` and register its natives.
@@ -226,6 +357,12 @@ impl NativeLibraries {
                 library.library.get(ABI_SYMBOL).map_err(|_| not_a_library(ABI_SYMBOL))?;
             if abi() != TypeId::of::<LibraryRegistrar>() {
                 return Err(LibraryError::AbiMismatch { path: path.to_owned() });
+            }
+            // Before anything that allocates.
+            if let Ok(set_allocator) =
+                library.library.get::<fn(&'static HostAllocator)>(SET_ALLOCATOR_SYMBOL)
+            {
+                set_allocator(self.allocator);
             }
             let register: libloading::Symbol<'_, fn(&mut LibraryRegistrar)> =
                 library.library.get(REGISTER_SYMBOL).map_err(|_| not_a_library(REGISTER_SYMBOL))?;
