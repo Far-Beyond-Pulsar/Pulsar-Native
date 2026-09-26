@@ -50,7 +50,7 @@ use std::sync::Arc;
 
 use pulsar_scenedb::{Entity, World};
 use pulsar_script_vm::{
-    Budget, Completion, Continuation, ErrorSite, EventCatalog, EventDecl, EventSink, FuncId, Host,
+    Budget, CapabilityPolicy, Completion, Continuation, ErrorSite, EventCatalog, EventDecl, EventSink, FuncId, Host,
     Instance, LibraryError, LibraryId, LinkError, LinkedSubscription, Module, NativeFn,
     NativeLibraries, NativeRegistry, Program, ScriptError, SourceLoc, Type, Value, Vm,
 };
@@ -71,6 +71,59 @@ pub const END_PLAY: &str = "end_play";
 
 /// Default step budget for one event on one instance.
 pub const DEFAULT_BUDGET: u64 = 1_000_000;
+
+/// Execution limits of a runtime (#857, #858): what stops a runaway
+/// script, and whether integer overflow is an error.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScriptLimits {
+    /// Instructions one event on one instance may run
+    /// ([`ScriptErrorKind::BudgetExceeded`](pulsar_script_vm::ScriptErrorKind::BudgetExceeded)
+    /// past it).
+    pub instruction_budget: u64,
+    /// Script call depth ([`ScriptErrorKind::StackOverflow`](pulsar_script_vm::ScriptErrorKind::StackOverflow)
+    /// past it).
+    pub max_call_depth: usize,
+    /// Integer overflow is a runtime error instead of wrapping.
+    pub checked_arithmetic: bool,
+    /// Per-class instruction budgets, by class (module) name, replacing
+    /// `instruction_budget` for that class.
+    pub class_budgets: HashMap<String, u64>,
+}
+
+impl ScriptLimits {
+    /// Editor and Play-in-Editor: generous limits, checked arithmetic on.
+    pub fn development() -> Self {
+        Self {
+            instruction_budget: DEFAULT_BUDGET,
+            max_call_depth: pulsar_script_vm::DEFAULT_MAX_DEPTH,
+            checked_arithmetic: true,
+            class_budgets: HashMap::new(),
+        }
+    }
+
+    /// Shipping builds: strict limits, checked arithmetic off.
+    pub fn shipping() -> Self {
+        Self {
+            instruction_budget: 100_000,
+            max_call_depth: 64,
+            checked_arithmetic: false,
+            class_budgets: HashMap::new(),
+        }
+    }
+}
+
+impl Default for ScriptLimits {
+    /// The VM's own defaults: [`DEFAULT_BUDGET`], the VM's depth limit,
+    /// wrapping arithmetic.
+    fn default() -> Self {
+        Self {
+            instruction_budget: DEFAULT_BUDGET,
+            max_call_depth: pulsar_script_vm::DEFAULT_MAX_DEPTH,
+            checked_arithmetic: false,
+            class_budgets: HashMap::new(),
+        }
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum RuntimeError {
@@ -103,7 +156,7 @@ pub enum RuntimeError {
     #[error("could not read `{path}`: {source}")]
     Io { path: PathBuf, source: std::io::Error },
     #[error("`{path}` is not a script module: {source}")]
-    Parse { path: PathBuf, source: serde_json::Error },
+    Parse { path: PathBuf, source: pulsar_script_vm::ModuleDecodeError },
     #[error("script class `{class}` declares event `{event}`: {reason}")]
     EventDeclaration { class: String, event: String, reason: String },
 }
@@ -120,9 +173,14 @@ struct Class {
 }
 
 impl Class {
-    fn link(module: Arc<Module>, natives: &NativeRegistry, events: Option<&dyn EventCatalog>) -> Result<Self, RuntimeError> {
+    fn link(
+        module: Arc<Module>,
+        natives: &NativeRegistry,
+        events: Option<&dyn EventCatalog>,
+        policy: &CapabilityPolicy,
+    ) -> Result<Self, RuntimeError> {
         let class = module.name.clone();
-        let program = Program::link_with_events(Arc::clone(&module), natives, events).map_err(|source| {
+        let program = Program::link_with_policy(Arc::clone(&module), natives, events, policy).map_err(|source| {
             let site = module.locate_link_error(&source);
             RuntimeError::Link { class: class.clone(), source, site }
         })?;
@@ -194,8 +252,12 @@ pub struct ScriptRuntime {
     pending_begin_play: Vec<String>,
     /// Game time in seconds: the sum of every `tick_all` delta.
     time: f64,
-    /// Step budget for one event on one instance.
+    /// Step budget for one event on one instance (see [`ScriptLimits`]).
     pub budget: u64,
+    /// Per-class step budgets, by class name.
+    class_budgets: HashMap<String, u64>,
+    /// Which native capabilities classes may import (#869).
+    capabilities: CapabilityPolicy,
     events: Option<Arc<dyn EventHost>>,
 }
 
@@ -217,8 +279,43 @@ impl ScriptRuntime {
             pending_begin_play: Vec::new(),
             time: 0.0,
             budget: DEFAULT_BUDGET,
+            class_budgets: HashMap::new(),
+            capabilities: CapabilityPolicy::allow_all(),
             events: None,
         }
+    }
+
+    // ---- limits and capabilities ----------------------------------------
+
+    /// Apply execution limits (budget, call depth, checked arithmetic,
+    /// per-class budgets). Takes effect from the next call.
+    pub fn set_limits(&mut self, limits: ScriptLimits) {
+        self.budget = limits.instruction_budget;
+        self.vm.max_depth = limits.max_call_depth;
+        self.vm.checked_arithmetic = limits.checked_arithmetic;
+        self.class_budgets = limits.class_budgets;
+    }
+
+    /// The current execution limits.
+    pub fn limits(&self) -> ScriptLimits {
+        ScriptLimits {
+            instruction_budget: self.budget,
+            max_call_depth: self.vm.max_depth,
+            checked_arithmetic: self.vm.checked_arithmetic,
+            class_budgets: self.class_budgets.clone(),
+        }
+    }
+
+    /// Set which native capabilities classes may import (#869), then
+    /// relink every class: one importing a native outside the policy fails
+    /// to link ([`LinkError::CapabilityDenied`](pulsar_script_vm::LinkError::CapabilityDenied)).
+    pub fn set_capabilities(&mut self, policy: CapabilityPolicy) -> RelinkReport {
+        self.capabilities = policy;
+        self.relink_all()
+    }
+
+    pub fn capabilities(&self) -> &CapabilityPolicy {
+        &self.capabilities
     }
 
     // ---- events --------------------------------------------------------
@@ -305,7 +402,7 @@ impl ScriptRuntime {
         let mut report = RelinkReport::default();
         let catalog = self.events.as_deref().map(|e| e as &dyn EventCatalog);
         for (name, class) in &mut self.classes {
-            match Class::link(Arc::clone(class.program.module()), &self.natives, catalog) {
+            match Class::link(Arc::clone(class.program.module()), &self.natives, catalog, &self.capabilities) {
                 Ok(relinked) => {
                     *class = relinked;
                     report.relinked.push(name.clone());
@@ -328,14 +425,30 @@ impl ScriptRuntime {
             return Err(RuntimeError::ClassLoaded(module.name));
         }
         self.declare_events(&module)?;
-        let class = Class::link(Arc::new(module), &self.natives, self.catalog())?;
+        let class = Class::link(Arc::new(module), &self.natives, self.catalog(), &self.capabilities)?;
         self.classes.insert(class.program.module().name.clone(), class);
         Ok(())
     }
 
-    /// Read a JSON module and load it (or reload it, if already loaded).
+    /// Read a module, JSON or binary (detected from its first bytes,
+    /// #852), and load it (or reload it, if already loaded).
     pub fn load_class_file(&mut self, path: impl AsRef<Path>) -> Result<String, RuntimeError> {
         self.load_class_file_reporting(path).map(|(name, _)| name)
+    }
+
+    /// [`load_class_file`](Self::load_class_file) from bytes already read
+    /// (from a pak, say); `origin` names them in errors.
+    pub fn load_class_bytes(&mut self, bytes: &[u8], origin: &Path) -> Result<(String, ReloadReport), RuntimeError> {
+        let module = Module::decode(bytes)
+            .map_err(|source| RuntimeError::Parse { path: origin.to_owned(), source })?;
+        let name = module.name.clone();
+        let report = if self.classes.contains_key(&name) {
+            self.reload_class(module)?
+        } else {
+            self.load_class(module)?;
+            ReloadReport::default()
+        };
+        Ok((name, report))
     }
 
     /// [`load_class_file`](Self::load_class_file), also returning what a
@@ -345,18 +458,8 @@ impl ScriptRuntime {
         path: impl AsRef<Path>,
     ) -> Result<(String, ReloadReport), RuntimeError> {
         let path = path.as_ref();
-        let json = std::fs::read_to_string(path)
-            .map_err(|source| RuntimeError::Io { path: path.to_owned(), source })?;
-        let module = Module::from_json(&json)
-            .map_err(|source| RuntimeError::Parse { path: path.to_owned(), source })?;
-        let name = module.name.clone();
-        let report = if self.classes.contains_key(&name) {
-            self.reload_class(module)?
-        } else {
-            self.load_class(module)?;
-            ReloadReport::default()
-        };
-        Ok((name, report))
+        let bytes = std::fs::read(path).map_err(|source| RuntimeError::Io { path: path.to_owned(), source })?;
+        self.load_class_bytes(&bytes, path)
     }
 
     pub fn has_class(&self, name: &str) -> bool {
@@ -388,7 +491,7 @@ impl ScriptRuntime {
             return Err(RuntimeError::UnknownClass(name));
         }
         self.declare_events(&module)?;
-        let new = Class::link(Arc::new(module), &self.natives, self.catalog())?;
+        let new = Class::link(Arc::new(module), &self.natives, self.catalog(), &self.capabilities)?;
         let old = &self.classes[&name];
 
         let old_module = Arc::clone(old.program.module());
@@ -599,7 +702,7 @@ impl ScriptRuntime {
             let Some(class) = self.classes.get(&instance.class) else { break };
             let mut host = Host::at_time(world, instance.entity.unwrap_or(Entity::DANGLING), now)
                 .with_events(self.events.as_deref().map(|e| e as &dyn EventSink));
-            let mut budget = Budget::new(self.budget);
+            let mut budget = Budget::new(self.class_budgets.get(&instance.class).copied().unwrap_or(self.budget));
             match self.vm.resume(&class.program, &mut instance.state, continuation, &mut host, &mut budget) {
                 Ok(Completion::Returned(_)) => {}
                 Ok(Completion::Waiting { seconds, continuation }) => {
@@ -685,7 +788,7 @@ impl ScriptRuntime {
         // access fails its liveness check instead of reaching anything.
         let mut host = Host::at_time(world, instance.entity.unwrap_or(Entity::DANGLING), self.time)
             .with_events(self.events.as_deref().map(|e| e as &dyn EventSink));
-        let mut budget = Budget::new(self.budget);
+        let mut budget = Budget::new(self.class_budgets.get(&instance.class).copied().unwrap_or(self.budget));
         match self.vm.start(&class.program, &mut instance.state, func, args, &mut host, &mut budget) {
             Ok(Completion::Returned(value)) => Ok(value),
             // A latent event: it finishes on a later tick, so the caller

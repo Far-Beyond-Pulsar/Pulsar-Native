@@ -417,6 +417,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         })
         .collect();
 
+    let capability = native_capability(&args_str, &category_str);
     let script_native = script_native_registration(
         &input,
         &fn_name_str,
@@ -424,6 +425,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         &category_str,
         &docs.join("\n"),
         args_str.contains("wasm_safe : false") || args_str.contains("wasm_safe:false"),
+        capability.as_deref(),
     );
 
     // Create a clean function without macro attributes for source code display
@@ -629,6 +631,7 @@ fn control_flow_selector(
     category: &str,
     doc: &str,
     native_only: bool,
+    capability: Option<&str>,
 ) -> proc_macro2::TokenStream {
     use syn::visit_mut::VisitMut;
 
@@ -688,6 +691,7 @@ fn control_flow_selector(
         quote! { let _ = __bp_ret; }
     };
     let labels = rewriter.labels.join(",");
+    let capability = capability_call(capability);
     let native_name = format!("std::{name}");
     let selector = quote::format_ident!("__bp_select_{}", input.sig.ident);
     let cfg = if native_only {
@@ -709,6 +713,7 @@ fn control_flow_selector(
                 build: || ::pulsar_script_vm::NativeFn::builder(#native_name)
                     .doc(#doc)
                     .attr("category", #category)
+                    #capability
                     .attr("exec_outputs", #labels)
                     .params::<&str>([#(#params),*])
                     .build_raw(
@@ -751,10 +756,12 @@ fn script_native_registration(
     category: &str,
     doc: &str,
     native_only: bool,
+    capability: Option<&str>,
 ) -> proc_macro2::TokenStream {
     if node_type == "control_flow" && input.sig.generics.params.is_empty() {
-        return control_flow_selector(input, name, category, doc, native_only);
+        return control_flow_selector(input, name, category, doc, native_only, capability);
     }
+    let capability = capability_call(capability);
     if !matches!(node_type, "pure" | "fn_") || !input.sig.generics.params.is_empty() {
         return quote! {};
     }
@@ -802,11 +809,36 @@ fn script_native_registration(
                 build: || ::pulsar_script_vm::NativeFn::builder(#native_name)
                     .doc(#doc)
                     .attr("category", #category)
+                    #capability
                     .params::<&str>([#(#params),*])
                     #pure
                     .build(|#(#closure_params),*| #fn_ident(#(#call_args),*)),
             }
         }
+    }
+}
+
+/// The capability (#869) a node's script native needs: an explicit
+/// `capability: "..."` argument (empty for none), otherwise one implied by
+/// the category (file IO, processes and shells, networking, environment).
+fn native_capability(args: &str, category: &str) -> Option<String> {
+    if let Some(explicit) = extract_string_value(args, "capability") {
+        return (!explicit.is_empty()).then_some(explicit);
+    }
+    let implied = match category {
+        "File I/O" => "fs",
+        "Process" | "Shell" => "process",
+        "HTTP" | "Network" => "net",
+        "Env" => "env",
+        _ => return None,
+    };
+    Some(implied.to_string())
+}
+
+fn capability_call(capability: Option<&str>) -> proc_macro2::TokenStream {
+    match capability {
+        Some(capability) => quote! { .capability(#capability) },
+        None => quote! {},
     }
 }
 

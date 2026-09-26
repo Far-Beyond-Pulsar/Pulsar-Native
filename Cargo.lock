@@ -8691,6 +8691,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_content"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_fs",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tracing",
+ "twox-hash",
+]
+
+[[package]]
 name = "pulsar_core"
 version = "0.1.0"
 dependencies = [
@@ -8986,6 +9001,7 @@ dependencies = [
 name = "pulsar_script_vm"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "inventory",
  "libloading 0.9.0",
  "pulsar_reflection",

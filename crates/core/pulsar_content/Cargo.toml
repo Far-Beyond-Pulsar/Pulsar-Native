@@ -1,0 +1,21 @@
+[package]
+name = "pulsar_content"
+version = "0.1.0"
+edition = "2021"
+description = "Shipped game content (Pulsar-Native#926): the game.pak archive format, the content root resolver (packaged <exe dir>/Content or a dev project root), the virtual-filesystem provider that serves a pak, the asset registry and the runtime project settings (Pulsar/project.json). GPUI- and renderer-free."
+
+[dependencies]
+engine_fs  = { workspace = true }
+serde      = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+anyhow     = { workspace = true }
+tracing    = { workspace = true }
+parking_lot = { workspace = true }
+twox-hash  = { workspace = true }
+thiserror  = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

@@ -138,3 +138,31 @@ fn wrong_format_version() {
     asm.module.format_version = 999;
     assert!(rejected(&asm).contains("format version 999"));
 }
+
+// ---- capabilities (#869) --------------------------------------------------
+
+#[test]
+fn capability_gated_natives_need_the_policy_to_allow_them() {
+    use pulsar_script_vm::CapabilityPolicy;
+    let mut registry = NativeRegistry::new();
+    registry
+        .register(NativeFn::builder("fs::read").capability("fs").build(|path: String| path))
+        .unwrap();
+    let mut asm = Asm::new();
+    let import = asm.import("fs::read", vec![Param::new(Type::Str)], Type::Str);
+    asm.function("go", vec![Type::Str], Type::Str, vec![], vec![
+        Instr::CallNative { import, args: vec![0], dst: Some(0) },
+        Instr::Return { value: Some(0) },
+    ]);
+    let module = std::sync::Arc::new(asm.module.clone());
+    assert_eq!(registry.get("fs::read").unwrap().capability(), Some("fs"));
+
+    // Default: everything links.
+    assert!(Program::link(module.clone(), &registry).is_ok());
+    assert!(Program::link_with_policy(module.clone(), &registry, None, &CapabilityPolicy::only(["fs"])).is_ok());
+    let Err(err) = Program::link_with_policy(module.clone(), &registry, None, &CapabilityPolicy::only(["net"])) else {
+        panic!("linked against a policy without `fs`");
+    };
+    assert_eq!(err, LinkError::CapabilityDenied { name: "fs::read".into(), capability: "fs".into() });
+    assert_eq!(module.locate_link_error(&err).unwrap().function, "go");
+}

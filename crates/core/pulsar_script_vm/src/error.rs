@@ -44,6 +44,10 @@ pub enum LinkError {
     HandlerMismatch { event: String, handler: String, message: String },
     #[error("`{name}`: {message}")]
     PolyNative { name: String, message: String },
+    /// The module imports a native gated behind a capability the link
+    /// policy does not allow (#869).
+    #[error("native `{name}` needs capability `{capability}`, which this project does not allow")]
+    CapabilityDenied { name: String, capability: String },
 }
 
 /// What went wrong while running.
@@ -56,6 +60,9 @@ pub enum ScriptErrorKind {
     BudgetExceeded,
     /// Call depth limit reached.
     StackOverflow,
+    /// Integer overflow in `op` with checked arithmetic on
+    /// ([`Vm::checked_arithmetic`](crate::Vm::checked_arithmetic)).
+    Overflow { op: String },
     /// A call from the host passed the wrong arguments.
     BadEntryCall(String),
     /// The function waited (`Wait`) under [`Vm::call`](crate::Vm::call),
@@ -70,6 +77,7 @@ impl fmt::Display for ScriptErrorKind {
             Self::DivideByZero => f.write_str("integer division by zero"),
             Self::BudgetExceeded => f.write_str("step budget exceeded"),
             Self::StackOverflow => f.write_str("call depth limit exceeded"),
+            Self::Overflow { op } => write!(f, "integer overflow in {op} (checked arithmetic)"),
             Self::BadEntryCall(message) => write!(f, "bad call: {message}"),
             Self::Suspended => f.write_str("the function waited; run it with Vm::start"),
         }

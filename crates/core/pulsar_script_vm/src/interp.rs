@@ -118,17 +118,33 @@ impl Continuation {
     }
 }
 
+/// Default [`Vm::max_depth`].
+pub const DEFAULT_MAX_DEPTH: usize = 256;
+
 /// Execution state reused across calls (register stack and scratch).
 pub struct Vm {
     regs: Vec<Value>,
     frames: Vec<Frame>,
     args: Vec<Value>,
+    /// Call depth limit ([`ScriptErrorKind::StackOverflow`] past it).
     pub max_depth: usize,
+    /// Integer `Add`, `Sub`, `Mul`, `Div`, `Rem` and `Neg` that overflow,
+    /// and `FloatToInt` of a value outside `int` (or NaN), raise
+    /// [`ScriptErrorKind::Overflow`] instead of wrapping or saturating
+    /// (#858). Off by default, like a Rust release build; the engine turns
+    /// it on in the editor and Play-in-Editor and off in shipping builds.
+    pub checked_arithmetic: bool,
 }
 
 impl Default for Vm {
     fn default() -> Self {
-        Self { regs: Vec::new(), frames: Vec::new(), args: Vec::new(), max_depth: 256 }
+        Self {
+            regs: Vec::new(),
+            frames: Vec::new(),
+            args: Vec::new(),
+            max_depth: DEFAULT_MAX_DEPTH,
+            checked_arithmetic: false,
+        }
     }
 }
 
@@ -277,10 +293,12 @@ impl Vm {
                     self.regs[r(*dst)] = self.regs[r(*src)].clone();
                 }
                 Instr::Unary { op, dst, src } => {
-                    self.regs[r(*dst)] = unary(*op, &self.regs[r(*src)]);
+                    let value = unary(*op, &self.regs[r(*src)], self.checked_arithmetic)
+                        .map_err(|kind| self.fail(program, frame_base, kind))?;
+                    self.regs[r(*dst)] = value;
                 }
                 Instr::Binary { op, dst, a, b } => {
-                    let value = binary(*op, &self.regs[r(*a)], &self.regs[r(*b)])
+                    let value = binary(*op, &self.regs[r(*a)], &self.regs[r(*b)], self.checked_arithmetic)
                         .map_err(|kind| self.fail(program, frame_base, kind))?;
                     self.regs[r(*dst)] = value;
                 }
@@ -398,18 +416,27 @@ fn panic_message(panic: &(dyn std::any::Any + Send)) -> String {
     format!("panicked: {message}")
 }
 
-fn unary(op: UnOp, value: &Value) -> Value {
-    match (op, value) {
+fn overflow(op: &str) -> ScriptErrorKind {
+    ScriptErrorKind::Overflow { op: op.to_owned() }
+}
+
+fn unary(op: UnOp, value: &Value, checked: bool) -> Result<Value, ScriptErrorKind> {
+    Ok(match (op, value) {
+        (UnOp::Neg, Value::Int(i)) if checked => Value::Int(i.checked_neg().ok_or_else(|| overflow("Neg"))?),
         (UnOp::Neg, Value::Int(i)) => Value::Int(i.wrapping_neg()),
         (UnOp::Neg, Value::Float(f)) => Value::Float(-f),
         (UnOp::Not, Value::Bool(b)) => Value::Bool(!b),
         (UnOp::IntToFloat, Value::Int(i)) => Value::Float(*i as f64),
+        // `i64::MAX as f64` rounds up to 2^63, which is already out of range.
+        (UnOp::FloatToInt, Value::Float(f)) if checked && !(f.is_finite() && *f >= -(2f64.powi(63)) && *f < 2f64.powi(63)) => {
+            return Err(overflow("FloatToInt"));
+        }
         // `as` saturates and maps NaN to 0.
         (UnOp::FloatToInt, Value::Float(f)) => Value::Int(*f as i64),
         (UnOp::ToStr, v) => Value::Str(display(v).into()),
         // The verifier rules out every other combination.
         _ => unreachable!("unverified unary operand"),
-    }
+    })
 }
 
 fn display(value: &Value) -> String {
@@ -425,8 +452,24 @@ fn display(value: &Value) -> String {
     }
 }
 
-fn binary(op: BinOp, a: &Value, b: &Value) -> Result<Value, ScriptErrorKind> {
+fn binary(op: BinOp, a: &Value, b: &Value, checked: bool) -> Result<Value, ScriptErrorKind> {
     use Value::{Bool, Float, Int, Str};
+    if checked {
+        if let (Int(x), Int(y)) = (a, b) {
+            let result = match op {
+                BinOp::Add => Some(x.checked_add(*y)),
+                BinOp::Sub => Some(x.checked_sub(*y)),
+                BinOp::Mul => Some(x.checked_mul(*y)),
+                BinOp::Div | BinOp::Rem if *y == 0 => return Err(ScriptErrorKind::DivideByZero),
+                BinOp::Div => Some(x.checked_div(*y)),
+                BinOp::Rem => Some(x.checked_rem(*y)),
+                _ => None,
+            };
+            if let Some(result) = result {
+                return result.map(Int).ok_or_else(|| overflow(&format!("{op:?}")));
+            }
+        }
+    }
     Ok(match (op, a, b) {
         (BinOp::Add, Int(a), Int(b)) => Int(a.wrapping_add(*b)),
         (BinOp::Sub, Int(a), Int(b)) => Int(a.wrapping_sub(*b)),

@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use crate::value::{Object, Value};
 
 /// The type of a register, variable, parameter or return value.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
 #[serde(tag = "kind", content = "name", rename_all = "snake_case")]
 pub enum Type {
     Unit,
