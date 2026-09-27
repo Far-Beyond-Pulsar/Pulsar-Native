@@ -38,5 +38,29 @@
   "crates/core/pulsar_core/tests/task_pool_startup.rs": {
     "sha256": "230d6646f99eb2c4905909617b69d94257636e5993c323e125728f547c596b22",
     "bytes": 2166
+  },
+  "target/voxel-current-ci-windows.log": {
+    "sha256": "fe61eeff21e29d0a2d0ac7e110f93daa5d3c0aeef1916eddc423ca4bd2e6587c",
+    "bytes": 4343297
+  },
+  "target/voxel-current-ci-result.json": {
+    "sha256": "17e7164085815934353fbede9d138c9f6505ee16d823f2ebbb3ebe49a862e7bf",
+    "bytes": 684
+  },
+  "target/voxel-heap-local-fixed.log": {
+    "sha256": "fe524902d76c1544a22eb18001b142dd5e3d3c8b9ef6c2cd2937f36e686ab742",
+    "bytes": 107730
+  },
+  "target/voxel-heap-local-disposition.json": {
+    "sha256": "93ce660707a7ae0a19c7389db00115d3e0c3d8f5d4624d0bed60cd901145376f",
+    "bytes": 614
+  },
+  "target/voxel-regional-integration.log": {
+    "sha256": "443d041f91f97449232789827afcd9b60cd6e31bce6b76e5914c8b6b172e2f02",
+    "bytes": 99264
+  },
+  "target/voxel-regional-evidence-verify.log": {
+    "sha256": "d88bfbea2313bf8a825c86148dad99e92e5ad068b53bc72ffa22de00177ab926",
+    "bytes": 81
   }
 }

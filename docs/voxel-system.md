@@ -103,7 +103,7 @@ Far GPU cells still disagree with exact CPU occupancy; the appearance, regional
 publication, latency, populated-editor and simulation gates remain open.
 All nine native voxel integration tests passed with this paired pointer.
 
-The current pointer is `66100ff8`. Its
+The preceding pointer `66100ff8` introduced the
 [canonical reference experiment](https://github.com/Far-Beyond-Pulsar/Helio/blob/66100ff8990c94ab5374e857355fe2b7d047b774/crates/passes/3d/helio-pass-tiny-voxel/CANONICAL_REFERENCE_2026_09_26.md)
 adds an opt-in source-faithful far tracer with published-snapshot edit isolation.
 The feature is disabled in the engine's normal configuration. It agrees with
@@ -112,7 +112,20 @@ is much too slow to qualify as the runtime far renderer. The report includes
 the rejected arithmetic variants, source-specific flights and remaining
 visual/performance gates. It does not resolve the default renderer's far-field
 or regional-publication limitations.
-All nine native voxel integration tests passed with this pointer.
+All nine native voxel integration tests passed with that pointer.
+
+The current pointer is `daf5d51d`. The optional
+[regional publication experiment](https://github.com/Far-Beyond-Pulsar/Helio/blob/daf5d51dfed73cf5d631603a925001d504a59f2b/crates/passes/3d/helio-pass-tiny-voxel/REGIONAL_PUBLICATION_2026_09_26.md)
+publishes ready regions with clipped ancestor payloads. A recorded 1,168-frame
+720p flight made 488 partial publications and passed 367 primary/sunlight
+validity captures. However, visual inspection exposed patch boundaries and
+complete arrival refinement still took 3.38 seconds. It is rejected for default
+adoption. Both this experiment and the canonical reference remain disabled in
+the engine. The report preserves source snapshots, raw diagnostics, control
+runs and open gates; these results do not qualify the terrain goal.
+All nine native voxel integration tests passed with `daf5d51d`; all 9,387
+regional evidence entries and the retained source snapshot verified from the
+fresh submodule checkout.
 
 Related CI repairs and their validation are recorded in
 [task-pool startup validation](task-pool-startup-validation.md).
