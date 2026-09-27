@@ -151,5 +151,16 @@ The graph capture test runs with `HELIO_VOXEL_CAPTURE` set to an output PNG path
 submodule. The capture validates pass ordering, attachment formats, and visible
 terrain. It is not a whole-editor performance qualification.
 
+The Helio `6bbda83c` pin adds an opt-in canonical surface-reference harness
+and fixes texture aliasing that reused incompatible attachment dimensions.
+The [surface reference report](https://github.com/Far-Beyond-Pulsar/Helio/blob/6bbda83c4b29a0059def5d1a2c23be07adbca183/crates/passes/3d/helio-pass-tiny-voxel/SURFACE_REFERENCE_2026_09_27.md)
+records 32 patch/light/translation cases at 16, 64 and 256 spatial samples per
+pixel. That offline mode retains separate lit voxel-face contributions and
+does not enable a new far renderer in the editor. The nine native voxel
+integration tests passed against this pin on 27 September, covering source
+publication, snapshot identity, renderer selection and recipe editing.
+Generated output stays under ignored `target/`. Populated editor visuals,
+arrival latency and runtime performance remain unqualified.
+
 See [the source API example](voxel-component-api-example.md) for batch
 publication and snapshot export.
