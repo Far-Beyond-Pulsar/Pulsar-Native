@@ -27,5 +27,8 @@ tracing.workspace = true
 # Serialization (for window state)
 serde = { workspace = true, features = ["derive"] }
 
+[dev-dependencies]
+gpui-ce = { workspace = true, features = ["test-support"] }
+
 [lints]
 workspace = true

@@ -20,6 +20,8 @@ pub struct WindowManager {
     state: WindowState,
     telemetry: TelemetrySender,
     next_id: Arc<AtomicU64>,
+    /// Set once the `on_window_closed` observer is installed.
+    close_observer: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for WindowManager {
@@ -44,6 +46,7 @@ impl WindowManager {
             state: WindowState::new(),
             telemetry: TelemetrySender::new(),
             next_id: Arc::new(AtomicU64::new(1)),
+            close_observer: Arc::default(),
         }
     }
 
@@ -82,6 +85,7 @@ impl WindowManager {
         let before = HookContext::from_command(&command);
         self.hooks.execute_before(&before)?;
 
+        self.observe_closed_windows(cx);
         let window_id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let wtype = window_type.clone();
 
@@ -235,17 +239,48 @@ impl WindowManager {
         self.state.window_exists(window_id)
     }
 
-    /// Focus an existing window matching the given request, if one is open.
-    /// Returns `true` if a matching window was found and focused.
-    pub fn focus_window_by_request(&self, request: &WindowRequest, cx: &mut App) -> bool {
-        if let Some(info) = self.state.find_by_request(request) {
-            let _ = info.handle.update(cx, |_, window, _| {
-                window.activate_window();
-            });
-            true
-        } else {
-            false
+    /// Forget a window as soon as GPUI closes it, however it was closed.
+    ///
+    /// Windows closed from their title bar or by the OS never pass through
+    /// [`close_window`](Self::close_window), so without this their entries
+    /// stayed registered forever and `focus_window_by_request` kept
+    /// "finding" them: the tool could not be opened again until restart.
+    /// Installed once, on the first window created.
+    fn observe_closed_windows(&self, cx: &mut App) {
+        if self.close_observer.swap(true, Ordering::AcqRel) {
+            return;
         }
+        let state = self.state.clone();
+        let telemetry = self.telemetry.clone();
+        cx.on_window_closed(move |_, closed| {
+            if let Some(info) = state.unregister_by_gpui_id(closed) {
+                telemetry.record_window_closed(info.window_id);
+                telemetry.record_window_count(state.window_count());
+            }
+        })
+        .detach();
+    }
+
+    /// Focus an existing window matching the given request, if one is open.
+    /// Returns `true` if a matching window was found and focused; `false`
+    /// when none is open, so the caller opens a new one.
+    pub fn focus_window_by_request(&self, request: &WindowRequest, cx: &mut App) -> bool {
+        // Only windows GPUI still has count; drop any that closed without
+        // telling us (see `observe_closed_windows`).
+        let live: std::collections::HashSet<gpui::WindowId> =
+            cx.windows().iter().map(|handle| handle.window_id()).collect();
+        if self.state.retain_live(&live) > 0 {
+            self.telemetry.record_window_count(self.state.window_count());
+        }
+        while let Some(info) = self.state.find_by_request(request) {
+            let focused = info.handle.update(cx, |_, window, _| window.activate_window()).is_ok();
+            if focused {
+                return true;
+            }
+            // Its window is gone: forget it and look for another.
+            self.state.unregister_window(info.window_id);
+        }
+        false
     }
 }
 
@@ -260,3 +295,66 @@ pub enum WindowManagerEvent {
 }
 
 impl EventEmitter<WindowManagerEvent> for WindowManager {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{IntoElement, TestAppContext};
+
+    struct Tool;
+
+    impl Render for Tool {
+        fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+            gpui::div()
+        }
+    }
+
+    fn tool() -> WindowRequest {
+        WindowRequest::Custom { type_name: "Tool".into() }
+    }
+
+    fn open(wm: &WindowManager, cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            wm.create_window(tool(), WindowOptions::default(), |_, cx| cx.new(|_| Tool), cx).unwrap();
+        });
+    }
+
+    /// Closing a tool window from its title bar (GPUI removes the window;
+    /// the manager's `close_window` never runs) must not keep the tool
+    /// "open": it can be opened again, and only one copy is open at a time.
+    #[gpui::test]
+    fn a_window_closed_behind_the_managers_back_can_be_reopened(cx: &mut TestAppContext) {
+        let wm = WindowManager::new();
+        open(&wm, cx);
+        assert!(cx.update(|cx| wm.focus_window_by_request(&tool(), cx)), "open: focused, not duplicated");
+        assert_eq!(wm.window_count(), 1);
+
+        // The title bar's close button.
+        let handle = cx.update(|cx| cx.windows()[0]);
+        cx.update_window(handle, |_, window, _| window.remove_window()).unwrap();
+        cx.run_until_parked();
+        assert_eq!(wm.window_count(), 0, "the closed window is forgotten");
+        assert!(!cx.update(|cx| wm.focus_window_by_request(&tool(), cx)), "nothing to focus: open a new one");
+
+        open(&wm, cx);
+        assert_eq!(wm.window_count(), 1);
+        assert!(cx.update(|cx| wm.focus_window_by_request(&tool(), cx)));
+    }
+
+    /// Even an entry whose close was never observed (a stale registry) does
+    /// not block reopening: the check only trusts windows GPUI still has.
+    #[gpui::test]
+    fn a_stale_entry_does_not_block_reopening(cx: &mut TestAppContext) {
+        let wm = WindowManager::new();
+        open(&wm, cx);
+        let handle = cx.update(|cx| cx.windows()[0]);
+        // Simulate a missed close notification: re-register the entry
+        // after the window is gone.
+        cx.update_window(handle, |_, window, _| window.remove_window()).unwrap();
+        cx.run_until_parked();
+        wm.state.register_window(99, tool(), None, handle);
+        assert_eq!(wm.window_count(), 1);
+        assert!(!cx.update(|cx| wm.focus_window_by_request(&tool(), cx)));
+        assert_eq!(wm.window_count(), 0, "the stale entry was dropped");
+    }
+}
