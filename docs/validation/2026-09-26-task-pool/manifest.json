@@ -1,0 +1,42 @@
+{
+  "target/task-pool-allocation-before.log": {
+    "sha256": "b561fa7b4a9f2a0080c2198b6417307b06f87ae7314afef4312568184570cb84",
+    "bytes": 4558
+  },
+  "target/task-pool-allocation-warmed.log": {
+    "sha256": "5986786b5b71fe03fce4e899aa4a0d7959ad67551e180c2ac654183e0636512c",
+    "bytes": 1150
+  },
+  "target/task-pool-allocation-after.log": {
+    "sha256": "b840c7a854c83cd5ecbbdf3b310bbe99fc6e72ea7c70db558917ab811e8a57f6",
+    "bytes": 1894
+  },
+  "target/task-pool-startup-test.log": {
+    "sha256": "8b056e2c3c61827aed5f94a47858c4f66b6f0635964356ace6768f0defdb5f05",
+    "bytes": 1875
+  },
+  "target/voxel-packaging-compat.log": {
+    "sha256": "65646138348f9c29f0ebcc2e61342bf37cc629bfee45aefd0c26f698ee385b1c",
+    "bytes": 147645
+  },
+  "target/voxel-reference-integration.log": {
+    "sha256": "f2f0ec9d014a1a3c9beb41033422403fa30a19751c73d0cfd64a1db04c6037b7",
+    "bytes": 100145
+  },
+  "target/task-pool-probe/src/main.rs": {
+    "sha256": "5e6ee4e70d8b3b827fd466c6bd893f9373f534ade32bfa7024e35c79be0a7540",
+    "bytes": 1938
+  },
+  "target/task-pool-probe/Cargo.toml": {
+    "sha256": "cee971f7c97b487ec2afa824f16abb956d589348858913561c55285d16756014",
+    "bytes": 165
+  },
+  "target/ci-memory-over-ticks.rs": {
+    "sha256": "ccaa970310f9c27fadca3752476fc5f9efb99d43f9ac2e5d292380728a43ab2e",
+    "bytes": 23608
+  },
+  "crates/core/pulsar_core/tests/task_pool_startup.rs": {
+    "sha256": "230d6646f99eb2c4905909617b69d94257636e5993c323e125728f547c596b22",
+    "bytes": 2166
+  }
+}

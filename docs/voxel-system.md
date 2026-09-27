@@ -85,7 +85,7 @@ and does not establish acceptance timings. This Pulsar pointer passed all nine
 native voxel integration tests. Arrival, far fidelity, stable frame times and
 the visible contour/noise defects remain unresolved.
 
-The current Helio pointer is `ab07c84e`. The
+The preceding Helio checkpoint is `ab07c84e`. The
 [canonical audit](https://github.com/Far-Beyond-Pulsar/Helio/blob/ab07c84e9d8d46304631845ed8220a29eff43cbf/crates/passes/3d/helio-pass-tiny-voxel/CANONICAL_FIDELITY_2026_09_26.md)
 fixes a half-voxel displacement at clamped brick entry. The
 [bounds and traversal checkpoint](https://github.com/Far-Beyond-Pulsar/Helio/blob/ab07c84e9d8d46304631845ed8220a29eff43cbf/crates/passes/3d/helio-pass-tiny-voxel/BOUNDS_AND_TRAVERSAL_2026_09_26.md)
@@ -102,6 +102,20 @@ recording passed 368 capture audits; the 1,165-frame native diagnostic passed
 Far GPU cells still disagree with exact CPU occupancy; the appearance, regional
 publication, latency, populated-editor and simulation gates remain open.
 All nine native voxel integration tests passed with this paired pointer.
+
+The current pointer is `66100ff8`. Its
+[canonical reference experiment](https://github.com/Far-Beyond-Pulsar/Helio/blob/66100ff8990c94ab5374e857355fe2b7d047b774/crates/passes/3d/helio-pass-tiny-voxel/CANONICAL_REFERENCE_2026_09_26.md)
+adds an opt-in source-faithful far tracer with published-snapshot edit isolation.
+The feature is disabled in the engine's normal configuration. It agrees with
+864 sampled CPU rays in the retained diagnostic, but direct recipe evaluation
+is much too slow to qualify as the runtime far renderer. The report includes
+the rejected arithmetic variants, source-specific flights and remaining
+visual/performance gates. It does not resolve the default renderer's far-field
+or regional-publication limitations.
+All nine native voxel integration tests passed with this pointer.
+
+Related CI repairs and their validation are recorded in
+[task-pool startup validation](task-pool-startup-validation.md).
 
 Pulsar's Flamegraph recorder supplies CPU/thread context and saves the Helio GPU
 durations. The GPU events now retain the profiler instance, producing GPU frame, observing CPU

@@ -12,15 +12,23 @@ impl TaskPool {
     pub fn new(thread_count: usize) -> Self {
         let executor = Arc::new(Executor::new());
         let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // Thread creation does not mean the executor is initialized. Wait for
+        // each worker's first poll so lazy thread-local/queue allocations cannot
+        // appear later in the game loop's steady-state memory measurements.
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(0);
 
         let threads = (0..thread_count.max(1))
             .map(|i| {
                 let ex = executor.clone();
                 let stop = stop.clone();
+                let ready = ready_tx.clone();
                 std::thread::Builder::new()
                     .name(format!("pulsar-task-{i}"))
                     .spawn(move || {
                         smol::block_on(async {
+                            ex.try_tick();
+                            ready.send(()).expect("task pool constructor must wait for workers");
+                            drop(ready);
                             loop {
                                 if stop.load(std::sync::atomic::Ordering::Relaxed) {
                                     break;
@@ -34,6 +42,11 @@ impl TaskPool {
                     .expect("failed to spawn task pool thread")
             })
             .collect();
+
+        drop(ready_tx);
+        for _ in 0..thread_count.max(1) {
+            ready_rx.recv().expect("task pool worker failed during initialization");
+        }
 
         Self {
             executor,
