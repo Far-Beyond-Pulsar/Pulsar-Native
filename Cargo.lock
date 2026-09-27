@@ -4670,6 +4670,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "helio-core",
+ "helio-pass-shadow-matrix",
  "wgpu",
 ]
 
@@ -5064,6 +5065,7 @@ dependencies = [
  "helio-pass-foliage-place",
  "helio-pass-portal-cull",
  "helio-pass-postprocess",
+ "helio-pass-volumetric-fog",
  "helio-pass-water-sim",
  "helio-voxel-data",
  "plugin_editor_api",

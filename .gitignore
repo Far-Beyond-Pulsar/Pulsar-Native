@@ -38,3 +38,4 @@ blueprint_graph_debug.json
 *.lg
 .env
 *.db
+/crates/target/generated
