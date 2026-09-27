@@ -47,6 +47,20 @@ impl WindowState {
         self.windows.remove(&window_id).map(|(_, info)| info)
     }
 
+    /// Forget the window GPUI knows as `id` (it was closed).
+    pub fn unregister_by_gpui_id(&self, id: gpui::WindowId) -> Option<WindowInfo> {
+        let window_id = self.windows.iter().find(|e| e.handle.window_id() == id).map(|e| *e.key())?;
+        self.unregister_window(window_id)
+    }
+
+    /// Forget every window that is not in `live` (GPUI's open windows).
+    /// Returns how many were forgotten.
+    pub fn retain_live(&self, live: &std::collections::HashSet<gpui::WindowId>) -> usize {
+        let before = self.windows.len();
+        self.windows.retain(|_, info| live.contains(&info.handle.window_id()));
+        before - self.windows.len()
+    }
+
     pub fn window_exists(&self, window_id: WindowId) -> bool {
         self.windows.contains_key(&window_id)
     }
