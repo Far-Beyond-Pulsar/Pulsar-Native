@@ -21,8 +21,9 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
 
     let terrain = VoxelTerrainComponent::default();
     assert_eq!(terrain.domain_mode, 1);
-    // New terrain rows start from the built-in flat generator.
-    assert_eq!(terrain.generator_id, helio_voxel_data::VOXEL_FLAT_GENERATOR);
+    // New terrain rows start as a 4 km plane of Helio's terrain generator.
+    assert_eq!(terrain.generator_id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
+    assert_eq!(terrain.voxel_size, 0.1);
     let terrain_json = serde_json::to_value(&terrain).expect("serialize terrain component");
     let terrain_restored: VoxelTerrainComponent =
         serde_json::from_value(terrain_json).expect("restore terrain component");

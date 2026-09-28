@@ -18,9 +18,11 @@ use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape};
 
 use crate::scene::voxel_frame::{VoxelEntryId, VoxelGeneratorConfig, VoxelSceneEntry};
 
-pub const VOXEL_PLANET_RENDERER_ID: &str = "helio.voxel-planet";
-pub const VOXEL_PLANET_GENERATOR_ID: &str = "helio.voxel-planet.default";
-pub const VOXEL_PLANET_GENERATOR_VERSION: u32 = 1;
+pub use helio_voxel_data::{
+    VOXEL_TERRAIN_GENERATOR as VOXEL_PLANET_GENERATOR_ID,
+    VOXEL_TERRAIN_GENERATOR_VERSION as VOXEL_PLANET_GENERATOR_VERSION,
+    VOXEL_TERRAIN_RENDERER as VOXEL_PLANET_RENDERER_ID,
+};
 
 /// Camera coordinates here are f64 so backend recipes can preserve a fine
 /// world-space sample interval at planetary scale.

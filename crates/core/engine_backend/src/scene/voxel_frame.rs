@@ -402,6 +402,7 @@ mod tests {
         component.bounds_max_x = 64.0;
         component.bounds_max_y = 64.0;
         component.bounds_max_z = 64.0;
+        component.voxel_size = 1.0;
         component.chunk_edge_voxels = 32;
         component.max_chunk_lod = 4;
         component.lod_scale = 3;
@@ -514,14 +515,25 @@ mod tests {
 
         let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
         let descriptor = entry.generator_descriptor().unwrap();
-        assert_eq!(descriptor.id, helio_voxel_data::VOXEL_FLAT_GENERATOR);
-        assert_eq!(
-            descriptor.version,
-            helio_voxel_data::VOXEL_BUILTIN_GENERATOR_VERSION
-        );
-        let generated = helio_voxel_data::VoxelGeneratorRegistry::default()
-            .generate(&descriptor, VoxelChunkKey::new(0, -1, 0, 0))
-            .expect("default terrain generator parameters should be valid");
-        assert!(generated.is_some(), "flat generator should produce ground");
+        assert_eq!(descriptor.id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
+        assert_eq!(descriptor.version, helio_voxel_data::VOXEL_TERRAIN_GENERATOR_VERSION);
+        assert_eq!(entry.world.shape, VoxelWorldShape::Plane);
+        assert_eq!(entry.voxel_size, 0.1);
+    }
+
+    #[test]
+    fn presets_set_the_world_form() {
+        let mut world = World::new();
+        for (terrain, shape) in [
+            (VoxelTerrainComponent::planet(1_000.0), VoxelWorldShape::Sphere),
+            (VoxelTerrainComponent::plane(512.0), VoxelWorldShape::Plane),
+            (VoxelTerrainComponent::infinite_plane(), VoxelWorldShape::InfinitePlane),
+        ] {
+            let entity = world.spawn();
+            world.insert(entity, terrain);
+            let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
+            assert_eq!(entry.world.shape, shape);
+            assert_eq!(entry.generator_descriptor().unwrap().id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
+        }
     }
 }
