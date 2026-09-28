@@ -296,6 +296,21 @@ impl LevelEditorPanel {
                     let mut s = poll_state.write();
                     crate::level_editor::ui::panel::pie::finish_stop(&mut s, false);
                 }
+                // Undo/redo from a caller without a renderer handle (the AI
+                // tools). Cleared only once the resync is actually queued.
+                if poll_state.read().scene.pending_renderer_resync {
+                    if let Ok(mut engine) = poll_gpu.try_lock() {
+                        poll_state.write().scene.pending_renderer_resync = false;
+                        engine.force_full_resync();
+                        engine.sync_selection_to_helio();
+                    }
+                }
+                // Play needs a window; render starts it.
+                if poll_state.read().play.pie.play_requested {
+                    cx.update(|cx| {
+                        this.update(cx, |_, cx| cx.notify());
+                    });
+                }
                 let snapshot = {
                     let s = poll_state.read();
                     (

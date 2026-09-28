@@ -126,6 +126,51 @@ pub enum SceneCommand {
         prop_name: String,
         value: Box<dyn Any + Send>,
     },
+    /// Attach a new component instance of `class_name`. `data` is the
+    /// class's whole-instance JSON (the `EngineClass::to_json` shape,
+    /// `#[sub_props]` nesting included).
+    AddComponent {
+        id: String,
+        class_name: String,
+        data: serde_json::Value,
+    },
+    /// Detach the component at `component_index`.
+    RemoveComponent {
+        id: String,
+        component_index: usize,
+    },
+    /// Enable or disable the component at `component_index`.
+    SetComponentEnabled {
+        id: String,
+        component_index: usize,
+        enabled: bool,
+    },
+    /// Copy the component at `component_index`; the copy lands right after it.
+    DuplicateComponent {
+        id: String,
+        component_index: usize,
+    },
+    /// Move a component from `from_index` to `to_index` in the object's list.
+    ReorderComponent {
+        id: String,
+        from_index: usize,
+        to_index: usize,
+    },
+    /// Nest a component under another one on the same object (`None` = top level).
+    SetComponentParent {
+        id: String,
+        component_index: usize,
+        parent_index: Option<usize>,
+    },
+    /// Replace one component instance's whole data (same shape as
+    /// `AddComponent::data`). For callers holding JSON rather than a typed
+    /// widget value -- the AI tools -- so nested fields need no per-property
+    /// setter lookup.
+    SetComponentData {
+        id: String,
+        component_index: usize,
+        data: serde_json::Value,
+    },
 }
 
 impl std::fmt::Debug for SceneCommand {
@@ -229,6 +274,66 @@ impl std::fmt::Debug for SceneCommand {
                 .field("component_index", component_index)
                 .field("prop_name", prop_name)
                 .field("value_type", &value.type_id())
+                .finish(),
+            Self::AddComponent { id, class_name, .. } => f
+                .debug_struct("AddComponent")
+                .field("id", id)
+                .field("class_name", class_name)
+                .finish(),
+            Self::RemoveComponent {
+                id,
+                component_index,
+            } => f
+                .debug_struct("RemoveComponent")
+                .field("id", id)
+                .field("component_index", component_index)
+                .finish(),
+            Self::SetComponentEnabled {
+                id,
+                component_index,
+                enabled,
+            } => f
+                .debug_struct("SetComponentEnabled")
+                .field("id", id)
+                .field("component_index", component_index)
+                .field("enabled", enabled)
+                .finish(),
+            Self::DuplicateComponent {
+                id,
+                component_index,
+            } => f
+                .debug_struct("DuplicateComponent")
+                .field("id", id)
+                .field("component_index", component_index)
+                .finish(),
+            Self::ReorderComponent {
+                id,
+                from_index,
+                to_index,
+            } => f
+                .debug_struct("ReorderComponent")
+                .field("id", id)
+                .field("from_index", from_index)
+                .field("to_index", to_index)
+                .finish(),
+            Self::SetComponentParent {
+                id,
+                component_index,
+                parent_index,
+            } => f
+                .debug_struct("SetComponentParent")
+                .field("id", id)
+                .field("component_index", component_index)
+                .field("parent_index", parent_index)
+                .finish(),
+            Self::SetComponentData {
+                id,
+                component_index,
+                ..
+            } => f
+                .debug_struct("SetComponentData")
+                .field("id", id)
+                .field("component_index", component_index)
                 .finish(),
         }
     }

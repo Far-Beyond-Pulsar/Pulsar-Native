@@ -185,6 +185,12 @@ impl Render for LevelEditorPanel {
         // Initialize workspace on first render
         self.initialize_workspace(window, cx);
 
+        // Play requested without a window (the AI tools).
+        if self.shared_state.read().play.pie.play_requested {
+            self.shared_state.write().play.pie.play_requested = false;
+            self.on_play_scene(&PlayScene, window, cx);
+        }
+
         // Open/close the Play-In-Editor Game tab as the game starts/stops.
         // Guarded: a no-op unless the PiE tuple actually changed since the
         // last render that acted on it (see its doc).

@@ -16,10 +16,46 @@ fn command_scope(cmd: &SceneCommand) -> Vec<String> {
         | SceneCommand::SetVisibility { id, .. }
         | SceneCommand::SetComponentProperty { id, .. }
         | SceneCommand::RevertComponentProperty { id, .. }
-        | SceneCommand::SetClassVariable { id, .. } => vec![id.clone()],
+        | SceneCommand::SetClassVariable { id, .. }
+        | SceneCommand::AddComponent { id, .. }
+        | SceneCommand::RemoveComponent { id, .. }
+        | SceneCommand::SetComponentEnabled { id, .. }
+        | SceneCommand::DuplicateComponent { id, .. }
+        | SceneCommand::ReorderComponent { id, .. }
+        | SceneCommand::SetComponentParent { id, .. }
+        | SceneCommand::SetComponentData { id, .. } => vec![id.clone()],
         SceneCommand::UpdateObject { data } => vec![data.id.clone()],
         SceneCommand::DuplicateObject { source_id, .. } => vec![source_id.clone()],
         SceneCommand::SelectObject { .. } | SceneCommand::InstantiateClass { .. } => Vec::new(),
+    }
+}
+
+/// Run a structural component edit on `id` and report whether it changed
+/// anything. The scene-edit component functions mostly return `()`, so the
+/// object's component list (live values included) is compared before and after.
+fn edit_components(
+    state: &mut LevelEditorState,
+    id: &str,
+    no_op_reason: &'static str,
+    edit: impl FnOnce(&mut pulsar_scenedb::World),
+) -> CommandResult {
+    let fingerprint = |state: &LevelEditorState| {
+        let world = state.scene.world();
+        world.entity_for(id)?;
+        serde_json::to_value(crate::level_editor::scene_edit::components::get_components(
+            &world, id,
+        ))
+        .ok()
+    };
+    let Some(before) = fingerprint(state) else {
+        return CommandResult::noop("Object not found");
+    };
+    edit(&mut state.scene.world_mut());
+    if fingerprint(state).is_some_and(|after| after != before) {
+        state.scene.bump_revision(true);
+        CommandResult::ok(vec![id.to_string()])
+    } else {
+        CommandResult::noop(no_op_reason)
     }
 }
 
@@ -418,6 +454,96 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                     }
                 }
             }
+
+            SceneCommand::AddComponent {
+                ref id,
+                class_name,
+                data,
+            } => edit_components(state, id, "Component could not be added", |world| {
+                crate::level_editor::scene_edit::components::add_component(
+                    world, id, class_name, data,
+                )
+            }),
+
+            SceneCommand::RemoveComponent {
+                ref id,
+                component_index,
+            } => edit_components(state, id, "No component at that index", |world| {
+                crate::level_editor::scene_edit::components::remove_component(
+                    world,
+                    id,
+                    component_index,
+                )
+            }),
+
+            SceneCommand::SetComponentEnabled {
+                ref id,
+                component_index,
+                enabled,
+            } => edit_components(
+                state,
+                id,
+                "No component at that index, or already in that state",
+                |world| {
+                    crate::level_editor::scene_edit::components::set_component_enabled(
+                        world,
+                        id,
+                        component_index,
+                        enabled,
+                    );
+                },
+            ),
+
+            SceneCommand::DuplicateComponent {
+                ref id,
+                component_index,
+            } => edit_components(state, id, "No component at that index", |world| {
+                crate::level_editor::scene_edit::components::duplicate_component(
+                    world,
+                    id,
+                    component_index,
+                );
+            }),
+
+            SceneCommand::ReorderComponent {
+                ref id,
+                from_index,
+                to_index,
+            } => edit_components(state, id, "Index out of range or unchanged", |world| {
+                crate::level_editor::scene_edit::components::reorder_component(
+                    world, id, from_index, to_index,
+                )
+            }),
+
+            SceneCommand::SetComponentParent {
+                ref id,
+                component_index,
+                parent_index,
+            } => edit_components(state, id, "Parent rejected or unchanged", |world| {
+                crate::level_editor::scene_edit::components::set_component_parent(
+                    world,
+                    id,
+                    component_index,
+                    parent_index,
+                )
+            }),
+
+            SceneCommand::SetComponentData {
+                ref id,
+                component_index,
+                data,
+            } => edit_components(state, id, "No component at that index, or no change", |world| {
+                if component_index
+                    < crate::level_editor::scene_edit::components::component_count(world, id)
+                {
+                    crate::level_editor::scene_edit::components::update_component(
+                        world,
+                        id,
+                        component_index,
+                        data,
+                    )
+                }
+            }),
         }
     })();
 
