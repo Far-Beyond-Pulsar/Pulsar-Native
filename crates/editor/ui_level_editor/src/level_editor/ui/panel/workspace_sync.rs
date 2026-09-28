@@ -253,7 +253,8 @@ impl LevelEditorPanel {
             if !layout_panels.is_empty() {
                 let item = DockItem::tabs(layout_panels, Some(0), &dock_area_weak, window, cx);
                 dock_area.update(cx, |da, cx| {
-                    da.set_left_dock(item, Some(px(280.0)), true, window, cx);
+                    let width = if current == crate::level_editor::tool_modes::ToolModeId::SPLINE { 360.0 } else { 280.0 };
+                    da.set_left_dock(item, Some(px(width)), true, window, cx);
                 });
             } else {
                 let left_open = dock_area.read(cx).is_dock_open(DockPlacement::Left, cx);

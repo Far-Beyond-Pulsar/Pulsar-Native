@@ -840,7 +840,7 @@ impl FoliageSetsPanel {
 
 impl ui::dock::Panel for FoliageSetsPanel {
     fn panel_name(&self) -> &'static str {
-        super::super::layout::TERRAIN_FOLIAGE
+        "terrain.foliage"
     }
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {

@@ -713,7 +713,7 @@ impl TerrainPanel {
 
 impl ui::dock::Panel for TerrainPanel {
     fn panel_name(&self) -> &'static str {
-        super::super::layout::TERRAIN_PANEL
+        "terrain.panel"
     }
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {

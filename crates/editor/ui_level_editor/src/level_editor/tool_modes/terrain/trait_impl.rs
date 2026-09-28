@@ -47,8 +47,8 @@ impl ToolMode for TerrainMode {
     }
 
     fn layout(&self) -> ModeLayout {
-        // Terrain's controls live in its own real panels (`contributes_panels`
-        // below). The right dock stays: picking objects and inspecting World
+        // Terrain's controls live in the Terrain editor layout's panels. The
+        // right dock stays: picking objects and inspecting World
         // Settings while sculpting is a normal part of the workflow.
         ModeLayout {
             show_right_dock: true,

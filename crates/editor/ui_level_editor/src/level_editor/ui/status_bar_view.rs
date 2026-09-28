@@ -38,9 +38,6 @@ struct StatusBarSignature {
     camera_mode: CameraMode,
     current_tool: TransformTool,
     tool_mode: ToolModeId,
-    // Spline mode's status text depends on both of these (Milestone 5).
-    spline_point_count: usize,
-    spline_length_m: f32,
 }
 
 impl StatusBarSignature {
@@ -52,8 +49,6 @@ impl StatusBarSignature {
             camera_mode: state.editor.camera_mode,
             current_tool: state.editor.current_tool,
             tool_mode: state.editor.tool_mode_registry.selected_id(),
-            spline_point_count: state.editor.spline.points.len(),
-            spline_length_m: state.editor.spline.total_length_m(),
         }
     }
 }

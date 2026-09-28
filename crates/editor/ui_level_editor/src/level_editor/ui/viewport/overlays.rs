@@ -24,6 +24,9 @@ impl ViewportPanel {
             .left_0()
             .right(scrollbar_width)
             .bottom(scrollbar_width)
+            .children((state.editor.tool_mode_registry.selected_id() == crate::level_editor::tool_modes::ToolModeId::SPLINE).then(|| {
+                super::super::spline_preview::viewport(state, gpu_engine.clone(), cx.theme().primary, cx.theme().muted_foreground)
+            }))
             // Top-left: Viewport options
             .child(
                 div()
