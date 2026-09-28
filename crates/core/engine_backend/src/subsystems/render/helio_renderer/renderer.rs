@@ -13,7 +13,7 @@ use crate::scene::{GizmoType, SceneWorldExt};
 use super::gpu_trace::emit_helio_gpu_passes;
 use super::interaction::SceneInteraction;
 use super::voxel_backend::{
-    TinyVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRenderBackend, VoxelView,
+    PlanetVoxelBackend, VoxelBackendRegistry, VoxelBrushCommit, VoxelRenderBackend, VoxelView,
 };
 type GizmoMode = GizmoType;
 
@@ -258,7 +258,7 @@ impl HelioRenderer {
         let (command_sender, command_receiver) = mpsc::channel();
         let mut voxel_backends = VoxelBackendRegistry::new();
         voxel_backends
-            .register(Box::new(TinyVoxelBackend::new()))
+            .register(Box::new(PlanetVoxelBackend::new()))
             .expect("built-in voxel renderer ID must be unique");
         Self {
             camera_input: Arc::new(Mutex::new(CameraInput::new())),
@@ -743,7 +743,7 @@ impl HelioRenderer {
         }
 
         // ── Camera / gizmo / render ─────────────────────────────────────────────
-        let (voxel_entries, mut voxel_errors, authored_sky, authored_meshes) = {
+        let (voxel_entries, mut voxel_errors, authored_sky, authored_meshes, sun) = {
             let store = self.scene_store.read();
             let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&store.world);
             let authored_sky = store
@@ -753,7 +753,17 @@ impl HelioRenderer {
                 .is_some();
             let authored_meshes = store.world
                 .query::<&helio_pass_gbuffer::StaticObjectComponent>().next().is_some();
-            (entries, errors, authored_sky, authored_meshes)
+            // Voxel terrain traces sunlight towards the scene's directional
+            // light (its row stores the direction the light travels).
+            let sun = store
+                .world
+                .query::<&helio_pass_forward_lit::LightComponent>()
+                .find(|(_, light)| light.light_type == helio::LightType::Directional as u32)
+                .map(|(_, light)| {
+                    let d = light.direction_outer;
+                    [-d[0], -d[1], -d[2]]
+                });
+            (entries, errors, authored_sky, authored_meshes, sun)
         };
         let (camera_relative, outdoor_sky) = self.voxel_backends.frame_environment(&voxel_entries);
         let (terrain_near, far) = self.voxel_backends.camera_clip_range(&voxel_entries, self.cam_pos)
@@ -823,6 +833,15 @@ impl HelioRenderer {
         } else {
             inner.renderer.set_ambient([0.0, 0.0, 0.0], 0.0);
         }
+        // Hemisphere fill around a terrain's local vertical, with a
+        // sunlit-ground bounce from below; plain ambient otherwise.
+        let ambient_up = outdoor_sky
+            .then(|| self.voxel_backends.ambient_up(&voxel_entries, self.cam_pos))
+            .flatten();
+        inner.renderer.set_ambient_hemisphere(
+            ambient_up.map_or([0.0, 1.0, 0.0], |up| up.as_vec3().to_array()),
+            ambient_up.map(|_| [0.3, 0.34, 0.2]),
+        );
         inner
             .renderer
             .set_fallback_sky_enabled(outdoor_sky && !authored_sky);
@@ -842,6 +861,7 @@ impl HelioRenderer {
                 aspect: width as f32 / height.max(1) as f32,
                 far,
                 size: [width, height],
+                sun,
             },
         ));
         if voxel_errors != self.last_voxel_errors {

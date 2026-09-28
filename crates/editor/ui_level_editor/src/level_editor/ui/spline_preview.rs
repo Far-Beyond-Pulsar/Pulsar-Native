@@ -137,7 +137,7 @@ pub(super) fn viewport(
                 return;
             };
             let frame = CameraFrame {
-                position: camera.position,
+                position: camera.position.map(|v| v as f32),
                 yaw: camera.yaw,
                 pitch: camera.pitch,
                 fov: 45.,

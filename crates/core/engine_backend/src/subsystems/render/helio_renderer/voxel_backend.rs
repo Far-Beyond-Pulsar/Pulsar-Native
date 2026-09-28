@@ -7,17 +7,17 @@ use std::sync::{Arc, Mutex};
 
 use glam::{DVec3, Vec3};
 use helio_default_graphs::VoxelPassFactory;
-use helio_pass_tiny_voxel::{
-    engine::{EngineVoxelFrame, LazyEngineVoxelPass, SharedVoxelFrame},
-    world::{render_origin, Edit, GENERATOR_REVISION},
-    Params, World as TinyWorld,
+use helio_pass_voxel_planet::{
+    engine::{PlanetFrame, PlanetPass, SharedPlanetFrame},
+    Brush, BrushOp, BrushShape, Planet, PlanetRecipe,
 };
 use helio_voxel_data::VoxelDomain;
 
 use crate::scene::voxel_frame::{VoxelEntryId, VoxelGeneratorConfig, VoxelSceneEntry};
 
-pub const TINY_VOXEL_RENDERER_ID: &str = "helio.tiny-voxel";
-pub const TINY_VOXEL_GENERATOR_ID: &str = "helio.tiny-voxel.default";
+pub const VOXEL_PLANET_RENDERER_ID: &str = "helio.voxel-planet";
+pub const VOXEL_PLANET_GENERATOR_ID: &str = "helio.voxel-planet.default";
+pub const VOXEL_PLANET_GENERATOR_VERSION: u32 = 1;
 
 /// Camera coordinates here are f64 so backend recipes can preserve a fine
 /// world-space sample interval at planetary scale.
@@ -31,6 +31,8 @@ pub struct VoxelView {
     pub aspect: f32,
     pub far: f32,
     pub size: [u32; 2],
+    /// Direction towards the scene's directional light, if it has one.
+    pub sun: Option<[f32; 3]>,
 }
 
 /// A backend edit becomes an update to its opaque source recipe. SceneDB owns
@@ -56,6 +58,10 @@ pub trait VoxelRenderBackend: Send {
     /// scene has no explicitly authored sky component.
     fn outdoor_sky(&self) -> bool {
         false
+    }
+    /// Local vertical at `eye` for hemisphere ambient (a planet's radial).
+    fn ambient_up(&self, _source: &VoxelSceneEntry, _eye: DVec3) -> Option<DVec3> {
+        None
     }
     /// Optional clipping range for a source. A backend may certify empty space
     /// around the eye to improve depth precision without clipping its terrain.
@@ -138,6 +144,19 @@ impl VoxelBackendRegistry {
                 relative || backend.camera_relative(),
                 sky || backend.outdoor_sky(),
             )
+        })
+    }
+
+    /// Local vertical of the first visible source that defines one.
+    pub fn ambient_up(&self, entries: &[VoxelSceneEntry], eye: DVec3) -> Option<DVec3> {
+        entries.iter().filter(|entry| entry.visible).find_map(|entry| {
+            self.backends
+                .iter()
+                .filter(|backend| {
+                    entry.renderer_id == backend.renderer_id()
+                        || (entry.renderer_id.is_empty() && backend.supports(entry))
+                })
+                .find_map(|backend| backend.ambient_up(entry, eye))
         })
     }
 
@@ -282,21 +301,71 @@ impl Default for VoxelBackendRegistry {
     }
 }
 
-pub struct TinyVoxelBackend {
-    frame: SharedVoxelFrame,
-    cached_recipe: Option<(VoxelEntryId, u64, VoxelGeneratorConfig, Arc<TinyWorld>)>,
+/// Authored source recipe stored in the terrain's `generator_parameters`: the
+/// landform and the ordered brush edits. SceneDB persists it with the level;
+/// the backend rebuilds its planet from it (appending edits incrementally).
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PlanetSourceRecipe {
+    /// Radius and landform. The component's `voxel_size` overrides the
+    /// recipe's voxel size, and a nonzero component `seed` its landform seed.
+    pub planet: PlanetRecipe,
+    /// Ordered destruction and construction brushes.
+    pub edits: Vec<Brush>,
 }
 
-impl TinyVoxelBackend {
+impl PlanetSourceRecipe {
+    pub fn from_json(json: &str) -> Result<Self, String> {
+        if json.trim().is_empty() {
+            return Ok(Self::default());
+        }
+        serde_json::from_str(json).map_err(|error| format!("invalid voxel planet recipe: {error}"))
+    }
+
+    pub fn to_json(&self) -> Result<String, String> {
+        serde_json::to_string(self).map_err(|error| error.to_string())
+    }
+
+    /// The planet recipe with the component's voxel size and seed applied.
+    fn planet_recipe(&self, entry: &VoxelSceneEntry, seed: u64) -> PlanetRecipe {
+        let mut recipe = self.planet.clone();
+        recipe.voxel_size_m = entry.voxel_size;
+        if seed != 0 {
+            recipe.landform.seed = seed as u32;
+        }
+        recipe
+    }
+}
+
+/// Built planet for one source revision.
+struct CachedPlanet {
+    id: VoxelEntryId,
+    revision: u64,
+    generator: VoxelGeneratorConfig,
+    voxel_size: f64,
+    /// Decoded recipe: a newer recipe that only appends edits reuses the planet.
+    recipe: PlanetSourceRecipe,
+    planet: Arc<Planet>,
+}
+
+/// Destructible voxel planet (`helio-pass-voxel-planet`): a GPU-driven clipmap
+/// of exact voxels from 0.1 m to 1 m, rendered camera-relative with traced
+/// sunlight.
+pub struct PlanetVoxelBackend {
+    frame: SharedPlanetFrame,
+    cached: Option<CachedPlanet>,
+}
+
+impl PlanetVoxelBackend {
     pub fn new() -> Self {
         Self {
             frame: Arc::new(Mutex::new(None)),
-            cached_recipe: None,
+            cached: None,
         }
     }
 
     fn clear(&mut self) -> Result<(), String> {
-        self.cached_recipe = None;
+        self.cached = None;
         *self
             .frame
             .lock()
@@ -306,71 +375,101 @@ impl TinyVoxelBackend {
 
     fn validate_source(entry: &VoxelSceneEntry) -> Result<&VoxelGeneratorConfig, String> {
         let generator = entry.generator.as_ref().ok_or("generator ID is required")?;
-        if generator.id != TINY_VOXEL_GENERATOR_ID
-            || generator.version != GENERATOR_REVISION
-            || generator.seed != 0
-        {
-            return Err(
-                "this backend requires its matching generator ID, revision, and zero seed".into(),
-            );
+        if generator.id != VOXEL_PLANET_GENERATOR_ID || generator.version != VOXEL_PLANET_GENERATOR_VERSION {
+            return Err(format!(
+                "this backend requires generator '{VOXEL_PLANET_GENERATOR_ID}' version {VOXEL_PLANET_GENERATOR_VERSION}"
+            ));
         }
-        let step = (entry.voxel_size * 10.0).round();
-        if !entry.voxel_size.is_finite()
-            || !(1.0..=10.0).contains(&step)
-            || (step * 0.1 - entry.voxel_size).abs() > 1.0e-9
-        {
-            return Err(
-                "this backend supports base voxels from 0.1 to 1.0 metres in 0.1 metre increments"
-                    .into(),
-            );
+        if !entry.voxel_size.is_finite() || !(0.1 - 1e-9..=1.0 + 1e-9).contains(&entry.voxel_size) {
+            return Err("this backend supports base voxels from 0.1 to 1.0 metres".into());
         }
-        // Recipe backends own their acceleration layout. Component chunk/LOD
-        // metadata describes live payloads, which this backend rejects below;
-        // it must not dictate private GPU brick dimensions or base-cell size.
+        // The planet owns its acceleration layout; component chunk/LOD
+        // metadata describes generic live payloads and does not apply.
         if entry.origin != [0.0; 3] {
-            return Err("this planet recipe requires world origin at the planet center".into());
+            return Err("a voxel planet requires its world origin at the planet centre".into());
         }
         if !matches!(entry.domain, VoxelDomain::Unbounded { .. }) {
-            return Err("this planet backend requires an unbounded source domain".into());
+            return Err("a voxel planet requires an unbounded source domain".into());
         }
         Ok(generator)
     }
 
-    fn params(view: VoxelView) -> Params {
-        let eye = DVec3::from_array(view.position);
-        let origin = render_origin(eye);
-        let fraction = std::array::from_fn(|axis| {
-            if axis < 3 {
-                (eye[axis] / 0.1 - f64::from(origin[axis])) as f32
-            } else {
-                0.0
+    /// The planet for this source revision: cached, extended by appended
+    /// edits, or rebuilt from the recipe.
+    fn planet_for(&mut self, entry: &VoxelSceneEntry) -> Result<Arc<Planet>, String> {
+        let generator = Self::validate_source(entry)?.clone();
+        if let Some(cached) = &self.cached {
+            if cached.id == entry.id
+                && cached.revision == entry.source_revision
+                && cached.generator == generator
+                && cached.voxel_size == entry.voxel_size
+            {
+                return Ok(Arc::clone(&cached.planet));
             }
-        });
-        let radial = eye.normalize_or_zero().as_vec3();
-        let light = Vec3::new(0.4, 0.8, 0.3).normalize();
-        Params {
-            origin: [origin[0], origin[1], origin[2], 0],
-            fraction,
-            radial: [radial.x, radial.y, radial.z, 0.0],
-            right: [view.right[0], view.right[1], view.right[2], view.aspect],
-            up: [view.up[0], view.up[1], view.up[2], view.tan_half_fov_y],
-            forward: [view.forward[0], view.forward[1], view.forward[2], 0.0],
-            screen: [view.size[0] as f32, view.size[1] as f32, 0.0, 0.0],
-            lighting: [light.x, light.y, light.z, 0.0],
-            settings: [view.far, 0.0, 1.0, 0.0],
         }
+        let recipe = PlanetSourceRecipe::from_json(&generator.parameters)?;
+        let planet = match &self.cached {
+            // A sculpt stroke appends brushes to an otherwise equal recipe.
+            Some(cached)
+                if cached.id == entry.id
+                    && cached.voxel_size == entry.voxel_size
+                    && cached.generator.seed == generator.seed
+                    && cached.recipe.planet == recipe.planet
+                    && recipe.edits.starts_with(&cached.recipe.edits) =>
+            {
+                let mut planet = (*cached.planet).clone();
+                for brush in &recipe.edits[cached.recipe.edits.len()..] {
+                    planet.apply(*brush)?;
+                }
+                planet
+            }
+            _ => {
+                let mut planet = Planet::new(recipe.planet_recipe(entry, generator.seed))?;
+                for brush in &recipe.edits {
+                    planet.apply(*brush)?;
+                }
+                planet
+            }
+        };
+        let planet = Arc::new(planet);
+        self.cached = Some(CachedPlanet {
+            id: entry.id,
+            revision: entry.source_revision,
+            generator,
+            voxel_size: entry.voxel_size,
+            recipe,
+            planet: Arc::clone(&planet),
+        });
+        Ok(planet)
+    }
+
+    fn cached_planet(&self, entry: &VoxelSceneEntry) -> Option<&Arc<Planet>> {
+        self.cached
+            .as_ref()
+            .filter(|c| c.id == entry.id && c.revision == entry.source_revision && entry.generator.as_ref() == Some(&c.generator))
+            .map(|c| &c.planet)
     }
 }
 
-impl Default for TinyVoxelBackend {
+impl Default for PlanetVoxelBackend {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl VoxelRenderBackend for TinyVoxelBackend {
+/// Tool material 1 builds with cobblestone; other palette indices pass
+/// through when the planet knows them.
+fn build_material(material: u32) -> u32 {
+    if material == 1 || material >= helio_pass_voxel_planet::field::material::COUNT {
+        helio_pass_voxel_planet::field::material::COBBLE
+    } else {
+        material
+    }
+}
+
+impl VoxelRenderBackend for PlanetVoxelBackend {
     fn renderer_id(&self) -> &'static str {
-        TINY_VOXEL_RENDERER_ID
+        VOXEL_PLANET_RENDERER_ID
     }
 
     fn temporal_quality(&self, size: [u32; 2]) -> Option<helio_pass_tsr::TsrQuality> {
@@ -390,20 +489,15 @@ impl VoxelRenderBackend for TinyVoxelBackend {
         true
     }
 
+    fn ambient_up(&self, _source: &VoxelSceneEntry, eye: DVec3) -> Option<DVec3> {
+        eye.try_normalize()
+    }
+
     fn camera_clip_range(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<(f32, f32)> {
-        let far = (eye.length() + 30_000_000.0) as f32;
+        let far = (eye.length() + 40_000_000.0) as f32;
         let near = self
-            .cached_recipe
-            .as_ref()
-            .filter(|(id, revision, recipe, world)| {
-                *id == source.id
-                    && *revision == source.source_revision
-                    && source.generator.as_ref() == Some(recipe)
-                    && (world.voxel_size() - source.voxel_size).abs() < 1e-9
-            })
-            .map_or(0.05, |(_, _, _, world)| {
-                (world.air_clearance(eye) * 0.25).max(0.05) as f32
-            });
+            .cached_planet(source)
+            .map_or(0.05, |planet| (planet.air_clearance(eye) * 0.25).clamp(0.05, 50_000.0) as f32);
         Some((near, far))
     }
 
@@ -416,24 +510,37 @@ impl VoxelRenderBackend for TinyVoxelBackend {
         material: u32,
     ) -> Result<Option<VoxelBrushCommit>, String> {
         let generator = Self::validate_source(source)?;
-        let mut world = TinyWorld::from_recipe_json(&generator.parameters)?;
-        world.set_voxel_size(source.voxel_size)?;
-        // The world clips the ray against its finite bounds before converting
-        // to exact cells. Editing must not inherit the viewport's draw distance
-        // or an arbitrary gameplay reach: orbital tools use this same source.
-        let Some((solid, air, distance)) = world.raycast(origin, direction, f64::INFINITY) else {
+        let mut recipe = PlanetSourceRecipe::from_json(&generator.parameters)?;
+        let planet = match self.cached_planet(source) {
+            Some(planet) => (**planet).clone(),
+            None => {
+                let mut planet = Planet::new(recipe.planet_recipe(source, generator.seed))?;
+                for brush in &recipe.edits {
+                    planet.apply(*brush)?;
+                }
+                planet
+            }
+        };
+        // Rays are clipped to the planet shell, not to a draw distance or a
+        // tool reach: orbital edits use the same exact cells.
+        let Some(hit) = planet.raycast(origin, direction.normalize(), f64::INFINITY) else {
             return Ok(None);
         };
-        let cell = if material == 0 { solid } else { air };
-        world.apply_edit(Edit {
-            cell,
-            radius,
-            material,
-        })?;
+        let (cell, op) = if material == 0 { (hit.cell, BrushOp::Remove) } else { (hit.previous, BrushOp::Add) };
+        let brush = Brush {
+            center: planet.grid().cell_center(cell).to_array(),
+            radius: f64::from(radius).max(planet.grid().voxel_size() * 0.5),
+            shape: BrushShape::Sphere,
+            op,
+            material: if material == 0 { 0 } else { build_material(material) },
+        };
+        let mut check = planet;
+        check.apply(brush)?;
+        recipe.edits.push(brush);
         Ok(Some(VoxelBrushCommit {
             id: source.id,
-            distance,
-            recipe: serde_json::to_string(&world).map_err(|error| error.to_string())?,
+            distance: hit.distance,
+            recipe: recipe.to_json()?,
         }))
     }
 
@@ -441,18 +548,18 @@ impl VoxelRenderBackend for TinyVoxelBackend {
         source
             .generator
             .as_ref()
-            .is_some_and(|generator| generator.id == TINY_VOXEL_GENERATOR_ID)
+            .is_some_and(|generator| generator.id == VOXEL_PLANET_GENERATOR_ID)
     }
 
     fn pass_factory(&self) -> VoxelPassFactory {
         let frame = Arc::clone(&self.frame);
-        Arc::new(move |_, _, _, _| Box::new(LazyEngineVoxelPass::new(Arc::clone(&frame))))
+        Arc::new(move |_, _, _, _| Box::new(PlanetPass::new(Arc::clone(&frame))))
     }
 
     fn needs_frame(&self, renderer: &helio::Renderer) -> bool {
         renderer
-            .find_pass::<LazyEngineVoxelPass>()
-            .is_some_and(LazyEngineVoxelPass::needs_frame)
+            .find_pass::<PlanetPass>()
+            .is_some_and(PlanetPass::needs_frame)
     }
 
     fn publish_frame(
@@ -466,21 +573,14 @@ impl VoxelRenderBackend for TinyVoxelBackend {
         }
         let [entry] = sources else {
             self.clear()?;
-            return Err("multiple terrains selected the single-world tiny voxel backend".into());
+            return Err("the voxel planet renders one terrain source at a time".into());
         };
-        let generator = match Self::validate_source(entry) {
-            Ok(generator) => generator.clone(),
-            Err(error) => {
-                self.clear()?;
-                return Err(error);
-            }
-        };
-        // This pass rebuilds bricks from its recipe. Other formats in the
-        // component's live chunk store must not be silently ignored.
+        // Generic live chunk payloads are not interpreted by this backend yet;
+        // they must not be silently ignored.
         match entry.store.try_read() {
             Ok(state) if !state.1.is_empty() => {
                 self.clear()?;
-                return Err("this backend does not consume live chunk payloads; supply edits in its versioned generator recipe".into());
+                return Err("the voxel planet does not consume live chunk payloads yet; edit through its recipe".into());
             }
             Ok(_) => {}
             Err(std::sync::TryLockError::WouldBlock) => return Ok(()),
@@ -489,44 +589,29 @@ impl VoxelRenderBackend for TinyVoxelBackend {
                 return Err("voxel source payload store was poisoned".into());
             }
         }
-        let world = match &self.cached_recipe {
-            Some((entity, revision, cached, world))
-                if *entity == entry.id
-                    && *revision == entry.source_revision
-                    && (world.voxel_size() - entry.voxel_size).abs() < 1.0e-9
-                    && *cached == generator =>
-            {
-                Arc::clone(world)
-            }
-            _ => {
-                let decoded =
-                    TinyWorld::from_recipe_json(&generator.parameters).and_then(|mut world| {
-                        world.set_voxel_size(entry.voxel_size)?;
-                        Ok(world)
-                    });
-                let world = match decoded {
-                    Ok(world) => Arc::new(world),
-                    Err(error) => {
-                        self.clear()?;
-                        return Err(error);
-                    }
-                };
-                self.cached_recipe = Some((
-                    entry.id,
-                    entry.source_revision,
-                    generator,
-                    Arc::clone(&world),
-                ));
-                world
+        let planet = match self.planet_for(entry) {
+            Ok(planet) => planet,
+            Err(error) => {
+                self.clear()?;
+                return Err(error);
             }
         };
+        let eye = DVec3::from_array(view.position);
+        // Traced sunlight must match the scene's directional light, which
+        // the deferred pass multiplies by the planet's visibility.
+        let sun = view
+            .sun
+            .map(Vec3::from_array)
+            .and_then(Vec3::try_normalize)
+            .unwrap_or(Vec3::new(0.35, 0.75, 0.45).normalize());
         *self
             .frame
             .lock()
-            .map_err(|_| "frame mailbox was poisoned")? = Some(EngineVoxelFrame {
-            params: Self::params(view),
-            world,
-            raytraced_sun: false,
+            .map_err(|_| "frame mailbox was poisoned")? = Some(PlanetFrame {
+            eye,
+            planet,
+            sun,
+            shadows: view.sun.is_some(),
         });
         Ok(())
     }
@@ -537,13 +622,22 @@ mod tests {
     use super::*;
     use crate::scene::Visibility;
     use helio_component::VoxelTerrainComponent;
-    use helio_pass_tiny_voxel::world::RADIUS;
     use helio_voxel_data::VoxelStoredPayload;
     use pulsar_scenedb::World;
 
-    fn view() -> VoxelView {
+    fn planet_terrain() -> VoxelTerrainComponent {
+        let mut terrain = VoxelTerrainComponent::default();
+        terrain.renderer_id = VOXEL_PLANET_RENDERER_ID.into();
+        terrain.generator_id = VOXEL_PLANET_GENERATOR_ID.into();
+        terrain.generator_version = VOXEL_PLANET_GENERATOR_VERSION;
+        terrain.generator_parameters = String::new();
+        terrain.voxel_size = 0.1;
+        terrain
+    }
+
+    fn view(eye: DVec3) -> VoxelView {
         VoxelView {
-            position: [0.0, RADIUS + 3.0, 0.0],
+            position: eye.to_array(),
             right: [1.0, 0.0, 0.0],
             up: [0.0, 0.0, -1.0],
             forward: [0.0, -1.0, 0.0],
@@ -551,87 +645,47 @@ mod tests {
             aspect: 16.0 / 9.0,
             far: 10_000.0,
             size: [1600, 900],
+            sun: Some([0.3, 0.8, 0.5]),
         }
     }
 
+    fn frame_planet(backend: &PlanetVoxelBackend) -> Arc<Planet> {
+        backend.frame.lock().unwrap().as_ref().unwrap().planet.clone()
+    }
+
     #[test]
-    fn renderer_selection_preserves_the_world_snapshot_between_camera_frames() {
+    fn renderer_selection_preserves_the_planet_snapshot_between_camera_frames() {
         let mut scene = World::new();
         let entity = scene.spawn();
-        let mut terrain = VoxelTerrainComponent::default();
-        terrain.renderer_id = TINY_VOXEL_RENDERER_ID.into();
-        terrain.generator_id = TINY_VOXEL_GENERATOR_ID.into();
-        terrain.generator_version = GENERATOR_REVISION;
-        terrain.voxel_size = 0.1;
-        terrain.chunk_edge_voxels = 32;
-        terrain.lod_scale = 2;
-        scene.insert(entity, terrain);
+        scene.insert(entity, planet_terrain());
         let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
-        assert!(errors.is_empty());
+        assert!(errors.is_empty(), "{errors:?}");
+        let eye = DVec3::new(0.0, 6_371_000.0 + 3_000.0, 0.0);
 
-        let mut backend = TinyVoxelBackend::new();
-        backend.publish_frame(&[&entries[0]], view()).unwrap();
-        let first = backend
-            .frame
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .world
-            .clone();
-        backend.publish_frame(&[&entries[0]], view()).unwrap();
-        let second = backend
-            .frame
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .world
-            .clone();
-        assert!(Arc::ptr_eq(&first, &second));
+        let mut backend = PlanetVoxelBackend::new();
+        backend.publish_frame(&[&entries[0]], view(eye)).unwrap();
+        let first = frame_planet(&backend);
+        backend.publish_frame(&[&entries[0]], view(eye)).unwrap();
+        assert!(Arc::ptr_eq(&first, &frame_planet(&backend)));
 
         let mut revised = entries[0].clone();
         revised.source_revision += 1;
-        backend.publish_frame(&[&revised], view()).unwrap();
-        let third = backend
-            .frame
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .world
-            .clone();
-        assert!(!Arc::ptr_eq(&first, &third));
-
         revised.voxel_size = 1.0;
-        backend.publish_frame(&[&revised], view()).unwrap();
-        let coarse = backend
-            .frame
-            .lock()
-            .unwrap()
-            .as_ref()
-            .unwrap()
-            .world
-            .clone();
-        assert_eq!(coarse.voxel_size(), 1.0);
-        assert!(!Arc::ptr_eq(&third, &coarse));
-        assert_eq!(
-            first.voxel_size(),
-            0.1,
-            "old frame snapshots remain immutable"
-        );
+        backend.publish_frame(&[&revised], view(eye)).unwrap();
+        let coarse = frame_planet(&backend);
+        assert!(!Arc::ptr_eq(&first, &coarse));
+        assert_eq!(coarse.grid().voxel_size(), 1.0);
+        assert_eq!(first.grid().voxel_size(), 0.1, "old frame snapshots remain immutable");
 
-        let orbit = coarse.ground_spawn(0.0, 0.0, 300_000.0);
+        let orbit = eye.normalize() * (coarse.grid().radius() + 300_000.0);
         let (near, far) = backend.camera_clip_range(&revised, orbit).unwrap();
         assert!(near > 1_000.0 && far > orbit.length() as f32);
+
         let mut invalid = revised.clone();
         invalid.generator.as_mut().unwrap().parameters = "{".into();
-        assert!(backend.publish_frame(&[&invalid], view()).is_err());
-        assert!(
-            backend.frame.lock().unwrap().is_none(),
-            "invalid recipes must not retain stale terrain"
-        );
-        backend.publish_frame(&[&revised], view()).unwrap();
+        assert!(backend.publish_frame(&[&invalid], view(eye)).is_err());
+        assert!(backend.frame.lock().unwrap().is_none(), "invalid recipes must not retain stale terrain");
+        backend.publish_frame(&[&revised], view(eye)).unwrap();
 
         revised
             .store
@@ -639,10 +693,10 @@ mod tests {
             .unwrap()
             .1
             .insert([0; 4], VoxelStoredPayload::raw_material(vec![1u8; 512]));
-        assert!(backend.publish_frame(&[&revised], view()).is_err());
+        assert!(backend.publish_frame(&[&revised], view(eye)).is_err());
         assert!(backend.frame.lock().unwrap().is_none());
 
-        backend.publish_frame(&[], view()).unwrap();
+        backend.publish_frame(&[], view(eye)).unwrap();
         assert!(backend.frame.lock().unwrap().is_none());
     }
 
@@ -650,92 +704,80 @@ mod tests {
     fn empty_renderer_id_selects_a_unique_compatible_backend() {
         let mut scene = World::new();
         let entity = scene.spawn();
-        let mut terrain = VoxelTerrainComponent::default();
-        terrain.generator_id = TINY_VOXEL_GENERATOR_ID.into();
-        terrain.generator_version = GENERATOR_REVISION;
-        terrain.voxel_size = 0.1;
-        terrain.chunk_edge_voxels = 32;
+        let mut terrain = planet_terrain();
+        terrain.renderer_id.clear();
         scene.insert(entity, terrain);
         let (entries, projection_errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(projection_errors.is_empty());
 
-        let backend = TinyVoxelBackend::new();
+        let backend = PlanetVoxelBackend::new();
         let frame = Arc::clone(&backend.frame);
         let mut registry = VoxelBackendRegistry::new();
         registry.register(Box::new(backend)).unwrap();
-        assert!(registry.publish_frame(&entries, view()).is_empty());
+        let eye = DVec3::new(0.0, 6_371_000.0 + 3_000.0, 0.0);
+        assert!(registry.publish_frame(&entries, view(eye)).is_empty());
         assert!(frame.lock().unwrap().is_some());
 
-        scene.insert(
-            entity,
-            Visibility {
-                visible: false,
-                locked: false,
-            },
-        );
+        scene.insert(entity, Visibility { visible: false, locked: false });
         let (hidden, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty());
         assert!(!hidden[0].visible);
         assert_eq!(registry.frame_environment(&hidden), (true, true));
-        assert!(registry.publish_frame(&hidden, view()).is_empty());
+        assert!(registry.publish_frame(&hidden, view(eye)).is_empty());
         assert!(frame.lock().unwrap().is_none());
     }
 
     #[test]
-    fn exact_brush_edit_round_trips_through_the_generic_terrain_recipe() {
+    fn exact_brush_edits_round_trip_through_the_terrain_recipe() {
         let mut scene = World::new();
         let entity = scene.spawn();
-        let mut terrain = VoxelTerrainComponent::default();
-        terrain.renderer_id = TINY_VOXEL_RENDERER_ID.into();
-        terrain.generator_id = TINY_VOXEL_GENERATOR_ID.into();
-        terrain.generator_version = GENERATOR_REVISION;
-        terrain.voxel_size = 0.1;
-        terrain.chunk_edge_voxels = 32;
-        terrain.lod_scale = 2;
-        scene.insert(entity, terrain);
+        scene.insert(entity, planet_terrain());
         let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty());
-        let original = TinyWorld::default();
-        let eye = original.ground_spawn(0.0, 0.0, 3.0);
-        let (solid, _, _) = original.raycast(eye, -DVec3::Y, 100.0).unwrap();
+        let original = Planet::new(PlanetRecipe::default()).unwrap();
+        let eye = original.surface_point(DVec3::new(0.2, 1.0, 0.3), 3.0);
+        let down = -eye.normalize();
+        let target = original.raycast(eye, down, 100.0).unwrap().cell;
+        assert_ne!(original.material(target), 0);
+
         let mut registry = VoxelBackendRegistry::new();
-        registry
-            .register(Box::new(TinyVoxelBackend::new()))
-            .unwrap();
-        let commit = registry
-            .edit_ray(&entries, eye, -DVec3::Y, 0.5, 0)
-            .unwrap()
-            .unwrap();
+        registry.register(Box::new(PlanetVoxelBackend::new())).unwrap();
+        let commit = registry.edit_ray(&entries, eye, down, 0.5, 0).unwrap().unwrap();
         assert_eq!(commit.id, entries[0].id);
-        assert_eq!(
-            TinyWorld::from_recipe_json(&commit.recipe)
-                .unwrap()
-                .material(solid),
-            0
-        );
-        assert_ne!(original.material(solid), 0);
-        // A source edit addresses the same canonical cell from the ground,
-        // orbit, and beyond the renderer's integer anchor range.
+        let replay = |json: &str| {
+            let recipe = PlanetSourceRecipe::from_json(json).unwrap();
+            let mut planet = Planet::new(recipe.planet.clone()).unwrap();
+            for brush in &recipe.edits {
+                planet.apply(*brush).unwrap();
+            }
+            planet
+        };
+        assert_eq!(replay(&commit.recipe).material(target), 0);
+        // The same canonical cell is addressed from the ground, from orbit
+        // and from far beyond the renderer's precision range.
         for distance in [2_000.0, 300_000.0, 1_000_000_000.0] {
             let remote = registry
-                .edit_ray(&entries, eye + DVec3::Y * distance, -DVec3::Y, 0.05, 0)
+                .edit_ray(&entries, eye - down * distance, down, 0.05, 0)
                 .unwrap()
                 .expect("remote terrain remains editable");
-            let edited = TinyWorld::from_recipe_json(&remote.recipe).unwrap();
-            assert_eq!(edited.edits.last().unwrap().cell, solid);
-            assert_eq!(edited.material(solid), 0);
+            assert_eq!(replay(&remote.recipe).material(target), 0);
             assert!(remote.distance > distance);
         }
-        assert!(super::super::renderer::apply_voxel_brush_commit(
-            &mut scene, commit
-        ));
+        // Building fills the empty cell in front of the hit.
+        let build = registry.edit_ray(&entries, eye, down, 0.05, 1).unwrap().unwrap();
+        let built = PlanetSourceRecipe::from_json(&build.recipe).unwrap();
+        assert_eq!(built.edits[0].op, BrushOp::Add);
+        assert_eq!(built.edits[0].material, helio_pass_voxel_planet::field::material::COBBLE);
+
+        assert!(super::super::renderer::apply_voxel_brush_commit(&mut scene, commit));
         let terrain = scene.get::<VoxelTerrainComponent>(entity).unwrap();
         assert_eq!(terrain.source_revision, 1);
-        assert_eq!(
-            TinyWorld::from_recipe_json(&terrain.generator_parameters)
-                .unwrap()
-                .material(solid),
-            0
-        );
+        assert_eq!(replay(&terrain.generator_parameters).material(target), 0);
+
+        // The backend extends its cached planet with the appended brush.
+        let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        let mut backend = PlanetVoxelBackend::new();
+        backend.publish_frame(&[&entries[0]], view(eye)).unwrap();
+        assert_eq!(frame_planet(&backend).material(target), 0);
     }
 }

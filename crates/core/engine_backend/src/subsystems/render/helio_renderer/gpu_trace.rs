@@ -118,7 +118,7 @@ mod tests {
             readback_drops: 3,
             query_overflows: 4,
             render_metrics: [
-                ("TinyVoxel", Some(5.0)),
+                ("VoxelPlanet", Some(5.0)),
                 ("Lighting", Some(2.0)),
                 ("Pending", None),
                 ("__graph_frame", Some(7.0)),
@@ -141,7 +141,7 @@ mod tests {
         assert_eq!(frame.parent_scope_id, None);
         assert_eq!(frame.start_ns, 93_000_000);
         assert_eq!(frame.duration_ns, 7_000_000);
-        assert_eq!(events[1].name, "TinyVoxel");
+        assert_eq!(events[1].name, "VoxelPlanet");
         assert_eq!(events[1].duration_ns, 5_000_000);
         assert_eq!(events[2].name, "Lighting");
         assert_eq!(events[2].duration_ns, 2_000_000);
