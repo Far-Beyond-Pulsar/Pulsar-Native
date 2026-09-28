@@ -21,11 +21,11 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use engine_backend::services::{PieBlit, PieHost};
-use gpui::*;
 use gpui::prelude::FluentBuilder as _;
-use pulsar_pie_abi::{input_kind, InputEvent};
+use gpui::*;
+use pulsar_pie_abi::{InputEvent, input_kind};
 use rust_i18n::t;
-use ui::{notification::Notification, ActiveTheme as _, ContextModal as _};
+use ui::{ActiveTheme as _, ContextModal as _, notification::Notification};
 
 use crate::level_editor::state::LevelEditorState;
 
@@ -83,11 +83,19 @@ impl GameViewport {
 
     fn events_overlay(&self, cx: &App) -> AnyElement {
         let theme = cx.theme();
-        let row = |text: String| div().text_xs().whitespace_nowrap().overflow_hidden().child(text);
+        let row = |text: String| {
+            div()
+                .text_xs()
+                .whitespace_nowrap()
+                .overflow_hidden()
+                .child(text)
+        };
         let mut list = div().flex().flex_col().gap(px(2.0));
         match &self.events {
             None => {
-                list = list.child(row("No event data (game not running, or built without the events tap).".into()));
+                list = list.child(row(
+                    "No event data (game not running, or built without the events tap).".into(),
+                ));
             }
             Some(snapshot) => {
                 list = list.child(row(format!(
@@ -276,9 +284,18 @@ impl GameViewport {
         // and reload every class in it; no new library.
         let pending = match pending {
             Some(req) if req.scripts_only && self.pie_host.is_some() => {
-                let events = crate::level_editor::ui::panel::pie::class_reload_events(&req.project_root);
-                tracing::info!(classes = events.len(), "PiE: script-only change; reloading classes in the running game");
-                self.shared_state.write().play.pie.pending_asset_updates.extend(events);
+                let events =
+                    crate::level_editor::ui::panel::pie::class_reload_events(&req.project_root);
+                tracing::info!(
+                    classes = events.len(),
+                    "PiE: script-only change; reloading classes in the running game"
+                );
+                self.shared_state
+                    .write()
+                    .play
+                    .pie
+                    .pending_asset_updates
+                    .extend(events);
                 None
             }
             other => other,
@@ -323,8 +340,9 @@ impl GameViewport {
                     st.play.pie.last_error = None;
                     st.play.pie.supports_control = host.has_simulation_control();
                     st.play.pie.paused = false;
-                    st.play.pie.loaded_artifact = crate::level_editor::ui::panel::pie::artifact_mtime(&req.dylib_path)
-                        .map(|mtime| (req.dylib_path.clone(), mtime));
+                    st.play.pie.loaded_artifact =
+                        crate::level_editor::ui::panel::pie::artifact_mtime(&req.dylib_path)
+                            .map(|mtime| (req.dylib_path.clone(), mtime));
                     drop(st);
                     self.pie_host = Some(host);
                     self.last_frame = Instant::now();
@@ -405,11 +423,17 @@ impl GameViewport {
             return;
         }
         let pause = pause_on_script_error()
-            && problems.iter().any(|p| p.severity == pulsar_events::ProblemSeverity::Error);
+            && problems
+                .iter()
+                .any(|p| p.severity == pulsar_events::ProblemSeverity::Error);
         for problem in &problems {
             match problem.severity {
-                pulsar_events::ProblemSeverity::Error => tracing::error!("Script error: {}", problem.summary()),
-                pulsar_events::ProblemSeverity::Warning => tracing::warn!("Script warning: {}", problem.summary()),
+                pulsar_events::ProblemSeverity::Error => {
+                    tracing::error!("Script error: {}", problem.summary())
+                }
+                pulsar_events::ProblemSeverity::Warning => {
+                    tracing::warn!("Script warning: {}", problem.summary())
+                }
             }
             pulsar_events::publish_script_problem(problem.clone());
         }
@@ -552,7 +576,11 @@ impl Render for GameViewport {
                     .text_color(cx.theme().foreground)
                     .text_sm()
                     .cursor_pointer()
-                    .child(if self.events_open { "Events ▾" } else { "Events ▸" })
+                    .child(if self.events_open {
+                        "Events ▾"
+                    } else {
+                        "Events ▸"
+                    })
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this, _, _, cx| {

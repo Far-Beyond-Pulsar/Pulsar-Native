@@ -1,8 +1,8 @@
-use engine_backend::scene::{new_scene, ComponentAttachments, ObjectType, SceneWorldExt};
+use engine_backend::scene::{ComponentAttachments, ObjectType, SceneWorldExt, new_scene};
 use pulsar_physics::PhysicsComponent;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use super::super::{components, history, objects, SceneObjectData};
+use super::super::{SceneObjectData, components, history, objects};
 
 fn object(name: &str) -> SceneObjectData {
     SceneObjectData {
@@ -53,9 +53,11 @@ fn light_edits_remain_canonical_through_object_edits_and_history() {
         components::get_components(world, &id)[0].data["intensity"]["intensity"],
         json!(321.0)
     );
-    assert!(components::get_components_metadata(world, &id)[0]
-        .data
-        .is_null());
+    assert!(
+        components::get_components_metadata(world, &id)[0]
+            .data
+            .is_null()
+    );
     let snapshot = history::capture_history_snapshot(world);
     objects::clear(world);
     history::restore_history_snapshot(world, &snapshot).unwrap();
@@ -130,10 +132,12 @@ fn component_parent_survives_typed_edits_and_history() {
         json!(0)
     );
     components::remove_component(world, &id, 0);
-    assert!(components::get_components(world, &id)[0]
-        .data
-        .get("__parent_index")
-        .is_none());
+    assert!(
+        components::get_components(world, &id)[0]
+            .data
+            .get("__parent_index")
+            .is_none()
+    );
 }
 
 #[test]

@@ -50,9 +50,13 @@ pub enum SceneCommand {
         name: String,
         value: Option<serde_json::Value>,
     },
-    RemoveObject { id: String },
+    RemoveObject {
+        id: String,
+    },
     /// Overwrite all mutable fields of an existing object (looked up by `data.id`).
-    UpdateObject { data: SceneObjectData },
+    UpdateObject {
+        data: SceneObjectData,
+    },
     /// Move an object to a different parent (or root when `None`).
     ReparentObject {
         id: String,
@@ -66,7 +70,9 @@ pub enum SceneCommand {
         position_offset: Option<[f32; 3]>,
     },
     /// Change the editor selection (`None` clears it).
-    SelectObject { id: Option<String> },
+    SelectObject {
+        id: Option<String>,
+    },
     /// Set absolute world-space transform fields; `None` fields are unchanged.
     SetTransform {
         id: String,
@@ -81,7 +87,10 @@ pub enum SceneCommand {
     /// instead of calling `SceneDatabase::update_object` (whole-object
     /// overwrite, NOT undo-tracked despite a comment that used to claim
     /// otherwise) directly.
-    SetName { id: String, name: String },
+    SetName {
+        id: String,
+        name: String,
+    },
     /// Set an object's visible/locked flags; `None` fields are unchanged.
     ///
     /// Pulsar-Native#561, same reasoning as `SetName`.

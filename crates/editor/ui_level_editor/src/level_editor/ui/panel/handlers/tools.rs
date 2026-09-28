@@ -2,7 +2,12 @@ use super::*;
 
 impl LevelEditorPanel {
     // Action handlers
-    pub(in crate::level_editor::ui::panel) fn on_select_tool(&mut self, _: &SelectTool, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_select_tool(
+        &mut self,
+        _: &SelectTool,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state
             .write()
             .editor
@@ -11,7 +16,12 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_move_tool(&mut self, _: &MoveTool, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_move_tool(
+        &mut self,
+        _: &MoveTool,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state
             .write()
             .editor
@@ -20,7 +30,12 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_rotate_tool(&mut self, _: &RotateTool, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_rotate_tool(
+        &mut self,
+        _: &RotateTool,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state
             .write()
             .editor
@@ -29,7 +44,12 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_scale_tool(&mut self, _: &ScaleTool, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_scale_tool(
+        &mut self,
+        _: &ScaleTool,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state
             .write()
             .editor
@@ -95,7 +115,11 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let camera = self.gpu_engine.lock().ok().and_then(|engine| engine.editor_camera_state());
+        let camera = self
+            .gpu_engine
+            .lock()
+            .ok()
+            .and_then(|engine| engine.editor_camera_state());
         let camera = camera
             .map(|c| crate::level_editor::tool_modes::CameraFrame {
                 position: c.position.map(|coordinate| coordinate as f32),
@@ -115,5 +139,4 @@ impl LevelEditorPanel {
         drop(state);
         cx.notify();
     }
-
 }

@@ -16,11 +16,11 @@ mod geometry;
 use demo_data::{CANDLES, CHANDELIER_Z, COLUMN_Z, GLASS_LIGHTS};
 
 use super::{
-    components, level_io, objects, LevelEditorCameraState, LightType, MeshType, ObjectType,
-    SceneObjectData, Transform,
+    LevelEditorCameraState, LightType, MeshType, ObjectType, SceneObjectData, Transform,
+    components, level_io, objects,
 };
 use helio::{MeshUpload, PackedVertex};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -363,12 +363,10 @@ fn committed_meshes_match_generator() {
 
 #[test]
 fn default_level_loads_the_cathedral() {
+    let path = repo_root().join("assets/default.level");
     let mut world = pulsar_scenedb::World::new();
-    let camera = level_io::load_from_file_with_editor_camera(
-        &mut world,
-        repo_root().join("assets/default.level"),
-    )
-    .expect("default level loads");
+    let camera = level_io::load_from_file_with_editor_camera(&mut world, &path)
+        .expect("default level loads");
     let all = objects::get_all_objects(&world);
     let meshes = all
         .iter()
@@ -379,10 +377,10 @@ fn default_level_loads_the_cathedral() {
         .filter(|o| matches!(o.object_type, ObjectType::Light(_)))
         .count();
     assert_eq!((meshes, lights), (14, 17));
-    // The committed level has a hand-authored view, independent of the
-    // generator's initial camera. Loading must preserve that saved position.
-    assert_eq!(
-        camera.expect("editor camera saved").position,
-        [0.13914977, 6.0, 12.8173485]
-    );
+    // The editor rewrites the camera whenever the level is saved, so
+    // compare with what the file holds rather than a fixed position.
+    let file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let saved: [f32; 3] = serde_json::from_value(file["editor"]["camera"]["position"].clone())
+        .expect("editor camera saved in the file");
+    assert_eq!(camera.expect("editor camera loaded").position, saved);
 }

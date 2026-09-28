@@ -107,6 +107,8 @@ fn trait_vtable_dispatch() {
             }
         }
 
+        impl plugin_editor_api::scripting::EditorPluginScripting for FullTestPlugin {}
+
         impl plugin_editor_api::plugin::EditorPluginFull for FullTestPlugin {}
 
         // Leak the box to get &'static (simulating what the DLL does)

@@ -9,7 +9,7 @@ use gpui::{prelude::*, *};
 use serde_json::Value;
 use ui::button::ButtonVariants as _;
 use ui::popover::Popover;
-use ui::{h_flex, ActiveTheme, Sizable};
+use ui::{ActiveTheme, Sizable, h_flex};
 use ui_common::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 
 use super::ObjectTypeFieldsSection;

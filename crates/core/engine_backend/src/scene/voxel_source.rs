@@ -40,6 +40,21 @@ pub struct VoxelSourceSession {
 }
 
 impl VoxelSourceSession {
+    /// Immutable spatial and palette metadata captured when this source
+    /// session was opened. Brush tools use this to map world-space hits to
+    /// LOD-zero sample coordinates without reaching into component internals.
+    pub fn entry(&self) -> &VoxelSceneEntry {
+        &self.entry
+    }
+
+    pub fn entity(&self) -> Entity {
+        self.entity
+    }
+
+    pub fn kind(&self) -> VoxelSourceKind {
+        self.kind
+    }
+
     /// Open on a management/script thread, never in the renderer callback.
     /// The two CPU workers share the canonical store's revision check.
     pub fn open(

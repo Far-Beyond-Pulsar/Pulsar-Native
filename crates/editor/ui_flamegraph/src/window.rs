@@ -4,6 +4,7 @@ use crate::{
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use rust_i18n::t;
+use profiling::remote::{TargetConnection, TargetInfo};
 use std::sync::Arc;
 use ui::{
     button::Button,
@@ -12,6 +13,10 @@ use ui::{
     resizable::{h_resizable, resizable_panel, ResizableState},
     v_flex, ActiveTheme, Icon, IconName, TitleBar,
 };
+
+mod start_screen;
+
+use start_screen::{KindFilter, SessionFile};
 
 pub struct FlamegraphWindow {
     view: Entity<FlamegraphView>,
@@ -26,7 +31,32 @@ pub struct FlamegraphWindow {
     /// "Uncap frame rate while recording": lifts the engine's frame-rate target and
     /// vsync for the duration of the next recording.
     uncap_frame_rate: bool,
+    /// Other profilable processes on this machine (games, other editors),
+    /// refreshed every second (`profiling::remote`).
+    targets: Vec<TargetInfo>,
+    /// The process to record: `None` is this editor, in-process.
+    selected_target: Option<u32>,
+    /// What the current (or last) recording records.
+    recording_label: String,
+    /// Why the last start failed.
+    start_error: Option<String>,
+    /// Start screen: filters the target list by name, project or pid.
+    search: Entity<ui::input::InputState>,
+    /// Start screen: which kinds of target are listed.
+    kind_filter: KindFilter,
+    /// Stop the next recording on its own after this many seconds.
+    auto_stop_secs: Option<u64>,
+    /// Saved sessions of the current project, newest first.
+    recent_sessions: Vec<SessionFile>,
+    /// When the target list was last refreshed.
+    last_refresh: std::time::Instant,
+    /// Bumped per recording, so a pending auto-stop only stops its own.
+    recording_session: u64,
+    _refresh_targets: Task<()>,
 }
+
+/// How often the start screen re-lists profilable processes.
+const TARGET_REFRESH: std::time::Duration = std::time::Duration::from_secs(1);
 
 impl Drop for FlamegraphWindow {
     fn drop(&mut self) {
@@ -37,13 +67,25 @@ impl Drop for FlamegraphWindow {
 }
 
 impl FlamegraphWindow {
-    pub fn new(trace_data: Arc<TraceData>, _window: &mut Window, cx: &mut App) -> Entity<Self> {
+    pub fn new(trace_data: Arc<TraceData>, window: &mut Window, cx: &mut App) -> Entity<Self> {
         // Clone the Arc so window and view share the same TraceData
         let view_trace_data = Arc::clone(&trace_data);
         let view = cx.new(move |_cx| FlamegraphView::new((*view_trace_data).clone()));
 
         cx.new(|cx| {
             let resizable_state = ResizableState::new(cx);
+            let refresh = cx.spawn(async move |this, cx| loop {
+                cx.background_executor().timer(TARGET_REFRESH).await;
+                let listing = cx.background_executor().spawn(async { start_screen::scan() }).await;
+                if this.update(cx, |window: &mut FlamegraphWindow, cx| window.apply_scan(listing, cx)).is_err() {
+                    break;
+                }
+            });
+            let search = cx.new(|cx| {
+                ui::input::InputState::new(window, cx).placeholder(t!("Flamegraph.SearchTargets").to_string())
+            });
+            cx.observe(&search, |_, _, cx| cx.notify()).detach();
+            let (targets, recent_sessions) = start_screen::scan();
 
             Self {
                 view,
@@ -56,6 +98,17 @@ impl FlamegraphWindow {
                 statistics_panel: None,
                 resizable_state,
                 uncap_frame_rate: false,
+                targets,
+                selected_target: None,
+                recording_label: String::new(),
+                start_error: None,
+                search,
+                kind_filter: KindFilter::All,
+                auto_stop_secs: None,
+                recent_sessions,
+                last_refresh: std::time::Instant::now(),
+                recording_session: 0,
+                _refresh_targets: refresh,
             }
         })
     }
@@ -64,9 +117,50 @@ impl FlamegraphWindow {
     /// is running with the box ticked. Sets both halves of the cap: the Helio
     /// render thread's frame pacer, and vsync on the window swapchain.
     fn apply_frame_rate_cap(&self) {
-        let uncapped = self.is_profiling && self.uncap_frame_rate;
+        // A remote target lifts its own cap (the option travels with the
+        // recording request); this editor stays as it is.
+        let local = self.collector.as_ref().is_none_or(|c| !c.is_remote());
+        let uncapped = self.is_profiling && self.uncap_frame_rate && local;
         profiling::set_uncap_frame_rate(uncapped);
         gpui::render_stats::set_uncapped_presentation(uncapped);
+    }
+
+    fn apply_scan(&mut self, (targets, sessions): (Vec<TargetInfo>, Vec<SessionFile>), cx: &mut Context<Self>) {
+        self.recent_sessions = sessions;
+        self.last_refresh = std::time::Instant::now();
+        self.set_targets(targets, cx);
+    }
+
+    /// Re-list targets and sessions now (the refresh button).
+    fn refresh_now(&mut self, cx: &mut Context<Self>) {
+        let listing = start_screen::scan();
+        self.apply_scan(listing, cx);
+        cx.notify();
+    }
+
+    fn set_targets(&mut self, targets: Vec<TargetInfo>, cx: &mut Context<Self>) {
+        self.targets = targets;
+        // A selected process that exited falls back to this editor.
+        if let Some(pid) = self.selected_target {
+            if !self.targets.iter().any(|t| t.pid == pid) && !self.is_profiling {
+                self.selected_target = None;
+            }
+        }
+        if !self.is_profiling {
+            cx.notify();
+        }
+    }
+
+    fn selected_target(&self) -> Option<&TargetInfo> {
+        let pid = self.selected_target?;
+        self.targets.iter().find(|t| t.pid == pid)
+    }
+
+    fn selected_label(&self) -> String {
+        match self.selected_target() {
+            Some(target) => format!("{} (pid {})", target.name, target.pid),
+            None => t!("Flamegraph.ThisEditor").to_string(),
+        }
     }
 
     fn start_profiling(&mut self, _cx: &mut Context<Self>) {
@@ -75,6 +169,32 @@ impl FlamegraphWindow {
         }
 
         tracing::trace!("[PROFILER] Starting instrumentation collector");
+        self.start_error = None;
+
+        // This editor records in-process; any other target through its
+        // shared-memory ring.
+        let collector = match self.selected_target().cloned() {
+            None => InstrumentationCollector::new(Arc::clone(&self.trace_data), 100),
+            Some(target) => match TargetConnection::open(&target.path) {
+                Ok(connection) => InstrumentationCollector::remote(
+                    Arc::clone(&self.trace_data),
+                    100,
+                    connection,
+                    self.uncap_frame_rate,
+                ),
+                Err(error) => {
+                    self.start_error = Some(t!("Flamegraph.StartFailed", error => error.to_string()).to_string());
+                    _cx.notify();
+                    return;
+                }
+            },
+        };
+        if let Err(error) = collector.start() {
+            self.start_error = Some(t!("Flamegraph.StartFailed", error => error).to_string());
+            _cx.notify();
+            return;
+        }
+        self.recording_label = self.selected_label();
 
         // Create database file in project directory
         if let Some(project_path) = engine_state::get_project_path() {
@@ -100,16 +220,22 @@ impl FlamegraphWindow {
             }
         }
 
-        // Create instrumentation collector
-        let collector = Arc::new(InstrumentationCollector::new(
-            Arc::clone(&self.trace_data),
-            100, // Update UI every 100ms
-        ));
-
-        collector.start();
-        self.collector = Some(collector);
+        self.collector = Some(Arc::new(collector));
         self.is_profiling = true;
         self.apply_frame_rate_cap();
+        self.recording_session += 1;
+        if let Some(secs) = self.auto_stop_secs {
+            let session = self.recording_session;
+            _cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(std::time::Duration::from_secs(secs)).await;
+                let _ = this.update(cx, |window: &mut FlamegraphWindow, cx| {
+                    if window.is_profiling && window.recording_session == session {
+                        window.stop_profiling(cx);
+                    }
+                });
+            })
+            .detach();
+        }
 
         tracing::trace!("[PROFILER] Instrumentation profiling started");
         _cx.notify();
@@ -131,7 +257,10 @@ impl FlamegraphWindow {
 
         // Save all events to database before stopping
         if let Some(db_conn) = &self.db_connection {
-            let events = profiling::get_all_events();
+            let events = match &self.collector {
+                Some(collector) if collector.is_remote() => collector.session_events(),
+                _ => profiling::get_all_events(),
+            };
             if let Err(e) = profiling::database::save_events(db_conn, &events) {
                 tracing::error!("[PROFILER] Failed to save events to database: {}", e);
             } else {
@@ -249,347 +378,6 @@ impl FlamegraphWindow {
                 }
             }
         }
-    }
-
-    fn render_empty_state(
-        &mut self,
-        is_profiling: bool,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let theme = cx.theme();
-        let accent_color = theme.accent;
-
-        v_flex()
-            .size_full()
-            .items_center()
-            .justify_center()
-            .gap_12()
-            .child(
-                v_flex()
-                    .items_center()
-                    .gap_4()
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .size(px(96.0))
-                            .rounded(px(16.0))
-                            .bg(theme.muted.opacity(0.1))
-                            .child(
-                                Icon::new(IconName::Activity)
-                                    .size(px(48.0))
-                                    .text_color(theme.muted_foreground.opacity(0.4)),
-                            ),
-                    )
-                    .child(
-                        v_flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_2xl()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .text_color(theme.foreground)
-                                    .child(if is_profiling {
-                                        t!("Flamegraph.RecordingInProgress").to_string()
-                                    } else {
-                                        t!("Flamegraph.NoDataLoaded").to_string()
-                                    }),
-                            )
-                            .child(div().text_base().text_color(theme.muted_foreground).child(
-                                if is_profiling {
-                                    t!("Flamegraph.WaitingForData").to_string()
-                                } else {
-                                    t!("Flamegraph.GetStarted").to_string()
-                                },
-                            )),
-                    ),
-            )
-            .when(!is_profiling, |this| {
-                this.child(
-                    v_flex()
-                        .gap_3()
-                        .w(px(480.0))
-                        .child(
-                            h_flex()
-                                .w_full()
-                                .p_5()
-                                .gap_4()
-                                .rounded(px(12.0))
-                                .bg(theme.popover)
-                                .border_1()
-                                .border_color(theme.border)
-                                .cursor_pointer()
-                                .hover(|style| {
-                                    style
-                                        .bg(theme.accent.opacity(0.08))
-                                        .border_color(theme.accent.opacity(0.3))
-                                })
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(|this, _event, _window, cx| {
-                                        this.start_profiling(cx);
-                                    }),
-                                )
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .size(px(56.0))
-                                        .flex_shrink_0()
-                                        .rounded(px(10.0))
-                                        .bg(gpui::red().opacity(0.15))
-                                        .border_1()
-                                        .border_color(gpui::red().opacity(0.2))
-                                        .child(
-                                            Icon::new(IconName::Circle)
-                                                .size(px(28.0))
-                                                .text_color(gpui::red()),
-                                        ),
-                                )
-                                .child(
-                                    v_flex()
-                                        .flex_1()
-                                        .gap_1p5()
-                                        .child(
-                                            div()
-                                                .text_lg()
-                                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                                .text_color(theme.foreground)
-                                                .child(t!("Flamegraph.StartRecording").to_string()),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(theme.muted_foreground)
-                                                .line_height(relative(1.4))
-                                                .child(
-                                                    t!("Flamegraph.StartRecordingDesc").to_string(),
-                                                ),
-                                        ),
-                                ),
-                        )
-                        .child(
-                            // Recording option, shown with the start card it applies to.
-                            // Not inside the clickable start card: clicking the checkbox
-                            // must toggle the option, not start a recording.
-                            h_flex()
-                                .w_full()
-                                .px_5()
-                                .py_3()
-                                .gap_3()
-                                .items_start()
-                                .rounded(px(10.0))
-                                .bg(theme.muted.opacity(0.08))
-                                .border_1()
-                                .border_color(theme.border.opacity(0.5))
-                                .child(
-                                    Checkbox::new("uncap-frame-rate")
-                                        .checked(self.uncap_frame_rate)
-                                        .on_click(cx.listener(|this, checked: &bool, _window, cx| {
-                                            this.uncap_frame_rate = *checked;
-                                            cx.notify();
-                                        })),
-                                )
-                                .child(
-                                    v_flex()
-                                        .flex_1()
-                                        .gap_1()
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                                .text_color(theme.foreground)
-                                                .child(t!("Flamegraph.UncapFrameRate").to_string()),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(theme.muted_foreground)
-                                                .line_height(relative(1.4))
-                                                .child(t!("Flamegraph.UncapFrameRateDesc").to_string()),
-                                        ),
-                                ),
-                        )
-                        .child(
-                            h_flex()
-                                .w_full()
-                                .p_5()
-                                .gap_4()
-                                .rounded(px(12.0))
-                                .bg(theme.popover)
-                                .border_1()
-                                .border_color(theme.border)
-                                .cursor_pointer()
-                                .hover(|style| {
-                                    style
-                                        .bg(theme.accent.opacity(0.08))
-                                        .border_color(theme.accent.opacity(0.3))
-                                })
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(|this, _event, _window, cx| {
-                                        this.open_database_picker(cx);
-                                    }),
-                                )
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .size(px(56.0))
-                                        .flex_shrink_0()
-                                        .rounded(px(10.0))
-                                        .bg(accent_color.opacity(0.15))
-                                        .border_1()
-                                        .border_color(accent_color.opacity(0.2))
-                                        .child(
-                                            Icon::new(IconName::FolderOpen)
-                                                .size(px(28.0))
-                                                .text_color(accent_color),
-                                        ),
-                                )
-                                .child(
-                                    v_flex()
-                                        .flex_1()
-                                        .gap_1p5()
-                                        .child(
-                                            div()
-                                                .text_lg()
-                                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                                .text_color(theme.foreground)
-                                                .child(
-                                                    t!("Flamegraph.OpenPreviousSession")
-                                                        .to_string(),
-                                                ),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .text_color(theme.muted_foreground)
-                                                .line_height(relative(1.4))
-                                                .child(
-                                                    t!("Flamegraph.OpenSessionDesc").to_string(),
-                                                ),
-                                        ),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .mt_6()
-                                .px_5()
-                                .py_4()
-                                .rounded(px(10.0))
-                                .bg(theme.muted.opacity(0.08))
-                                .border_1()
-                                .border_color(theme.border.opacity(0.5))
-                                .child(
-                                    v_flex()
-                                        .gap_3()
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .font_weight(gpui::FontWeight::SEMIBOLD)
-                                                .text_color(theme.muted_foreground)
-                                                .child(
-                                                    t!("Flamegraph.ProTips")
-                                                        .to_string()
-                                                        .to_uppercase(),
-                                                ),
-                                        )
-                                        .child(
-                                            v_flex()
-                                                .gap_2()
-                                                .child(
-                                                    h_flex()
-                                                        .gap_2()
-                                                        .items_start()
-                                                        .child(div().mt_0p5().text_sm().child("•"))
-                                                        .child(
-                                                            div()
-                                                                .text_sm()
-                                                                .text_color(theme.muted_foreground)
-                                                                .line_height(relative(1.5))
-                                                                .child(
-                                                                    t!("Flamegraph.Tip1")
-                                                                        .to_string(),
-                                                                ),
-                                                        ),
-                                                )
-                                                .child(
-                                                    h_flex()
-                                                        .gap_2()
-                                                        .items_start()
-                                                        .child(div().mt_0p5().text_sm().child("•"))
-                                                        .child(
-                                                            div()
-                                                                .text_sm()
-                                                                .text_color(theme.muted_foreground)
-                                                                .line_height(relative(1.5))
-                                                                .child(
-                                                                    t!("Flamegraph.Tip2")
-                                                                        .to_string(),
-                                                                ),
-                                                        ),
-                                                )
-                                                .child(
-                                                    h_flex()
-                                                        .gap_2()
-                                                        .items_start()
-                                                        .child(div().mt_0p5().text_sm().child("•"))
-                                                        .child(
-                                                            div()
-                                                                .text_sm()
-                                                                .text_color(theme.muted_foreground)
-                                                                .line_height(relative(1.5))
-                                                                .child(
-                                                                    t!("Flamegraph.Tip3")
-                                                                        .to_string(),
-                                                                ),
-                                                        ),
-                                                ),
-                                        ),
-                                ),
-                        ),
-                )
-            })
-            .when(is_profiling, |this| {
-                this.child(
-                    v_flex()
-                        .gap_4()
-                        .items_center()
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_3()
-                                .px_6()
-                                .py_3()
-                                .rounded(px(10.0))
-                                .bg(gpui::red().opacity(0.1))
-                                .border_1()
-                                .border_color(gpui::red().opacity(0.25))
-                                .child(div().size(px(10.0)).rounded(px(5.0)).bg(gpui::red()).child(
-                                    div().size(px(10.0)).rounded(px(5.0)).bg(gpui::red()), // Simple pulse animation via opacity
-                                ))
-                                .child(
-                                    div()
-                                        .text_base()
-                                        .font_weight(gpui::FontWeight::MEDIUM)
-                                        .text_color(theme.foreground)
-                                        .child(t!("Flamegraph.RecordingActive").to_string()),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(theme.muted_foreground)
-                                .child(t!("Flamegraph.DataWillAppear").to_string()),
-                        ),
-                )
-            })
     }
 
     fn render_profiling_overlay(&mut self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -857,7 +645,7 @@ impl Render for FlamegraphWindow {
                     .relative()
                     .when(!has_data && !is_profiling, |this| {
                         // Empty state - no data and not profiling
-                        this.child(self.render_empty_state(false, cx))
+                        this.child(self.render_start_screen(cx))
                     })
                     .when(is_profiling, |this| {
                         // Show overlay when profiling (whether or not there's data from previous sessions)

@@ -77,7 +77,10 @@ pub(super) fn dispatch(
                 .to_string();
 
             let mut state = state_arc.write();
-            let Some(mut object) = crate::level_editor::scene_edit::objects::get_object(&state.scene.world(), &object_id) else {
+            let Some(mut object) = crate::level_editor::scene_edit::objects::get_object(
+                &state.scene.world(),
+                &object_id,
+            ) else {
                 return Ok(Some(Ok(json!({
                     "ok": false,
                     "apply_mode": "editor_state",

@@ -1,8 +1,13 @@
 use super::*;
 
 impl LevelEditorPanel {
-    pub(in crate::level_editor::ui::panel) fn on_add_object(&mut self, _: &AddObject, _: &mut Window, cx: &mut Context<Self>) {
-        use crate::level_editor::commands::{execute_command, SceneCommand};
+    pub(in crate::level_editor::ui::panel) fn on_add_object(
+        &mut self,
+        _: &AddObject,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::level_editor::commands::{SceneCommand, execute_command};
         let mut state = self.shared_state.write();
         execute_command(
             &mut state,
@@ -33,7 +38,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use crate::level_editor::commands::{execute_command, SceneCommand};
+        use crate::level_editor::commands::{SceneCommand, execute_command};
         let mut state = self.shared_state.write();
         execute_command(
             &mut state,
@@ -58,8 +63,13 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_delete_object(&mut self, _: &DeleteObject, _: &mut Window, cx: &mut Context<Self>) {
-        use crate::level_editor::commands::{execute_command, SceneCommand};
+    pub(in crate::level_editor::ui::panel) fn on_delete_object(
+        &mut self,
+        _: &DeleteObject,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::level_editor::commands::{SceneCommand, execute_command};
         let selected = self.shared_state.read().scene.selected_object();
         if let Some(id) = selected {
             let mut state = self.shared_state.write();
@@ -70,8 +80,13 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_duplicate_object(&mut self, _: &DuplicateObject, _: &mut Window, cx: &mut Context<Self>) {
-        use crate::level_editor::commands::{execute_command, SceneCommand};
+    pub(in crate::level_editor::ui::panel) fn on_duplicate_object(
+        &mut self,
+        _: &DuplicateObject,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use crate::level_editor::commands::{SceneCommand, execute_command};
         let selected = self.shared_state.read().scene.selected_object();
         if let Some(id) = selected {
             let mut state = self.shared_state.write();
@@ -91,7 +106,12 @@ impl LevelEditorPanel {
     /// replaces `WorldSceneStore` wholesale, so the renderer's delta-sync
     /// can't diff against it correctly -- `force_full_resync` is required
     /// here, not optional; see its doc for why.
-    pub(in crate::level_editor::ui::panel) fn on_undo(&mut self, _: &crate::level_editor::ui::actions::Undo, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_undo(
+        &mut self,
+        _: &crate::level_editor::ui::actions::Undo,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let mut state = self.shared_state.write();
         if state.scene.undo() {
             state.scene.bump_revision(true);
@@ -108,7 +128,12 @@ impl LevelEditorPanel {
     }
 
     /// Redo the last undone scene command. See [`Self::on_undo`]'s doc.
-    pub(in crate::level_editor::ui::panel) fn on_redo(&mut self, _: &crate::level_editor::ui::actions::Redo, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_redo(
+        &mut self,
+        _: &crate::level_editor::ui::actions::Redo,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let mut state = self.shared_state.write();
         if state.scene.redo() {
             state.scene.bump_revision(true);
@@ -121,7 +146,12 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_select_object(&mut self, action: &SelectObject, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_select_object(
+        &mut self,
+        action: &SelectObject,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state
             .write()
             .scene
@@ -142,5 +172,4 @@ impl LevelEditorPanel {
             .toggle_object_expanded(&action.object_id);
         cx.notify();
     }
-
 }

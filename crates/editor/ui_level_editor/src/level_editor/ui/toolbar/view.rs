@@ -27,12 +27,12 @@ use gpui::*;
 use ui::dock::PanelEvent;
 
 use super::ToolbarPanel;
+use crate::level_editor::LevelEditorState;
 use crate::level_editor::state::{
     BuildConfig, BuildMode, EditorMode, MultiplayerMode, TargetPlatform,
 };
 use crate::level_editor::tool_modes::ToolModeId;
 use crate::level_editor::ui::frame_pump::spawn_frame_pump;
-use crate::level_editor::LevelEditorState;
 
 /// Every piece of [`LevelEditorState`] the toolbar's element tree depends on.
 ///
@@ -42,9 +42,6 @@ use crate::level_editor::LevelEditorState;
 pub struct ToolbarSignature {
     // tool_mode_dropdown / mode_indicator
     tool_mode: ToolModeId,
-    // spline mode controls (Milestone 5 extensibility demo)
-    spline_point_count: usize,
-    spline_length_m: f32,
     // playback_controls / mode_indicator
     editor_mode: EditorMode,
     // playback_controls: PIE pause / step (#925)
@@ -73,8 +70,6 @@ impl ToolbarSignature {
     fn of(state: &LevelEditorState) -> Self {
         Self {
             tool_mode: state.editor.tool_mode_registry.selected_id(),
-            spline_point_count: state.editor.spline.points.len(),
-            spline_length_m: state.editor.spline.total_length_m(),
             editor_mode: state.scene.editor_mode,
             pie_active: state.play.pie.active,
             pie_supports_control: state.play.pie.supports_control,

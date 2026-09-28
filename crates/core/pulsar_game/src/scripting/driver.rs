@@ -432,6 +432,9 @@ impl ScriptDriver {
             events.bridge().set_time(self.runtime.time());
         }
         self.reconcile_into(world, &mut report);
+        if !report.started.is_empty() {
+            tracing::info!(instances = report.started.len(), "Starting script instances (begin_play)");
+        }
         report.script_errors.extend(self.runtime.dispatch_pending_begin_play(world));
         for id in &report.started {
             if let Some(entity) = self.by_instance.get(id) {
@@ -774,7 +777,11 @@ impl ScriptDriver {
         let module = module_file(entry);
         let loaded = match read_module_bytes(&module) {
             None => {
-                tracing::debug!(class = %entry.name, "Class has no compiled script module; nothing runs for it");
+                tracing::info!(
+                    class = %entry.name,
+                    module = %module.display(),
+                    "Class has no compiled script module; nothing runs for it (compile the class)"
+                );
                 return None;
             }
             Some(Ok(bytes)) => self.runtime.load_class_bytes(&bytes, &module).map(|(name, _)| name),
@@ -782,6 +789,7 @@ impl ScriptDriver {
         };
         match loaded {
             Ok(name) => {
+                tracing::info!(class = %entry.name, module = %module.display(), "Loaded script class");
                 self.loaded.insert(entry.id.clone(), name.clone());
                 Some(name)
             }

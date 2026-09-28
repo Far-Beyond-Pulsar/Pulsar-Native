@@ -1,11 +1,14 @@
-use super::*;
 use super::frame_pacer::FramePacer;
+use super::*;
 
 impl HelioViewport {
-
     /// Start a dedicated background thread that continuously renders the Helio
     /// scene into the given `WgpuSurfaceHandle` and presents each frame.
-    pub(super) fn start_render_thread(&mut self, surface: WgpuSurfaceHandle, refresh_hz: Option<f64>) {
+    pub(super) fn start_render_thread(
+        &mut self,
+        surface: WgpuSurfaceHandle,
+        refresh_hz: Option<f64>,
+    ) {
         if self.render_thread_handle.is_some() {
             return;
         }
@@ -154,7 +157,9 @@ impl HelioViewport {
                             // the composited generation, so an unbounded wait there
                             // would stall the viewport for good.
                             let keep_going = {
-                                profiling::profile_scope!("Helio: wait for compositor to consume frame");
+                                profiling::profile_scope!(
+                                    "Helio: wait for compositor to consume frame"
+                                );
                                 wait_for_frame_consumed(&surface, &stop, CONSUMER_WAIT_TIMEOUT)
                             };
                             if !keep_going {
@@ -319,7 +324,6 @@ impl HelioViewport {
         }
     }
 }
-
 
 /// How long to wait for the compositor to consume the previously published
 /// frame before rendering anyway.

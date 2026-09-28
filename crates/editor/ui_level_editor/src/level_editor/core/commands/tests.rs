@@ -34,10 +34,16 @@ mod undo_redo_tests {
         );
         assert!(result.changed);
         assert!(state.scene.can_undo());
-        assert_eq!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).len(), 1);
+        assert_eq!(
+            crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).len(),
+            1
+        );
 
         assert!(state.scene.undo());
-        assert!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
+        assert!(
+            crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world())
+                .is_empty()
+        );
         assert!(!state.scene.can_undo());
         assert!(state.scene.can_redo());
     }
@@ -53,11 +59,17 @@ mod undo_redo_tests {
             },
         );
         state.scene.undo();
-        assert!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
+        assert!(
+            crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world())
+                .is_empty()
+        );
 
         assert!(state.scene.redo());
 
-        assert_eq!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).len(), 1);
+        assert_eq!(
+            crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).len(),
+            1
+        );
         assert!(state.scene.can_undo());
         assert!(!state.scene.can_redo());
     }
@@ -117,7 +129,10 @@ mod undo_redo_tests {
         // Still exactly the one checkpoint from AddObject -- undoing once
         // now must remove the object, not merely revert the selection.
         assert!(state.scene.undo());
-        assert!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
+        assert!(
+            crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world())
+                .is_empty()
+        );
         assert!(!state.scene.can_undo());
     }
 
@@ -225,7 +240,7 @@ mod undo_redo_tests {
         assert_eq!(reverted.downcast_ref::<f32>(), Some(&1000.0)); // IntensityLightProps::default()
     }
 
-// Bool twin of the f32 test above: proves a widget toggling a `bool`
+    // Bool twin of the f32 test above: proves a widget toggling a `bool`
     // property (`BoolEditor`'s Switch → `SetComponentProperty` with a
     // `Box::new(bool)`) flips the live `World` value and is undo-tracked.
     #[test]
@@ -316,7 +331,9 @@ mod undo_redo_tests {
     // the cached editors (Pulsar-Native#575).
     #[test]
     fn a_component_property_command_registers_a_property_change_for_the_object() {
-        use crate::level_editor::scene_edit::changes::{drain_property_changes, has_property_changes_for};
+        use crate::level_editor::scene_edit::changes::{
+            drain_property_changes, has_property_changes_for,
+        };
 
         let mut state = LevelEditorState::new();
         let id = execute_command(

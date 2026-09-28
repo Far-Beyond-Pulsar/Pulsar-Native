@@ -1,8 +1,10 @@
 use super::*;
 
 impl WorldSettingsPanelImpl {
-
-    pub(super) fn render_environment_section(&self, cx: &Context<WorldSettingsPanel>) -> AnyElement {
+    pub(super) fn render_environment_section(
+        &self,
+        cx: &Context<WorldSettingsPanel>,
+    ) -> AnyElement {
         let settings = self.settings.read();
 
         v_flex()

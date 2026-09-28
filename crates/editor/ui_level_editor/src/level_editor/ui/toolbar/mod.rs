@@ -5,10 +5,10 @@ use rust_i18n::t;
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::{
+    ActiveTheme, ContextModal as _,
     button::{Button, ButtonVariants as _},
     h_flex,
     notification::Notification,
-    ActiveTheme, ContextModal as _,
 };
 
 mod actions;
@@ -33,7 +33,7 @@ use tool_mode_dropdown::ToolModeDropdown;
 pub use view::ToolbarView;
 
 use crate::level_editor::ui::mode_widgets::{active_mode_widgets, render_mode_widgets};
-use crate::level_editor::{request_thumbnail_capture, LevelEditorState};
+use crate::level_editor::{LevelEditorState, request_thumbnail_capture};
 
 /// Premium Toolbar - A beautifully crafted control panel for game development
 ///
@@ -167,7 +167,10 @@ impl ToolbarPanel {
 
                 let save_result = {
                     let state = state_clone.read();
-                    let camera_state = gpu_engine.lock().ok().and_then(|engine| engine.editor_camera_state());
+                    let camera_state = gpu_engine
+                        .lock()
+                        .ok()
+                        .and_then(|engine| engine.editor_camera_state());
                     let editor_camera = camera_state.map(|camera| {
                         crate::level_editor::scene_edit::LevelEditorCameraState {
                             position: camera.position,
@@ -176,7 +179,8 @@ impl ToolbarPanel {
                         }
                     });
                     let world = state.scene.world();
-                    crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(&world,
+                    crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(
+                        &world,
                         &path,
                         editor_camera,
                     )
@@ -265,7 +269,10 @@ impl ToolbarPanel {
 
                 let save_result = {
                     let state = state_clone.read();
-                    let camera_state = gpu_engine.lock().ok().and_then(|engine| engine.editor_camera_state());
+                    let camera_state = gpu_engine
+                        .lock()
+                        .ok()
+                        .and_then(|engine| engine.editor_camera_state());
                     let editor_camera = camera_state.map(|camera| {
                         crate::level_editor::scene_edit::LevelEditorCameraState {
                             position: camera.position,
@@ -274,7 +281,8 @@ impl ToolbarPanel {
                         }
                     });
                     let world = state.scene.world();
-                    crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(&world,
+                    crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(
+                        &world,
                         &path,
                         editor_camera,
                     )
@@ -339,10 +347,6 @@ impl ToolbarPanel {
                 s.overlays.state.show_performance_overlay =
                     !s.overlays.state.show_performance_overlay;
             });
-        if is_profiling {
-            btn.primary()
-        } else {
-            btn
-        }
+        if is_profiling { btn.primary() } else { btn }
     }
 }

@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use gpui::Window;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // macOS implementations
 #[cfg(target_os = "macos")]
@@ -22,11 +22,11 @@ unsafe extern "C" {
 #[cfg(target_os = "macos")]
 fn is_accessibility_trusted(prompt_if_missing: bool) -> bool {
     use core::ffi::c_void;
-    use core_foundation_sys::base::{kCFAllocatorDefault, CFRelease};
+    use core_foundation_sys::base::{CFRelease, kCFAllocatorDefault};
     use core_foundation_sys::dictionary::{
-        kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks, CFDictionaryCreate,
+        CFDictionaryCreate, kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks,
     };
-    use core_foundation_sys::string::{kCFStringEncodingUTF8, CFStringCreateWithCString};
+    use core_foundation_sys::string::{CFStringCreateWithCString, kCFStringEncodingUTF8};
 
     unsafe {
         let key = CFStringCreateWithCString(
@@ -97,7 +97,6 @@ fn ensure_accessibility(prompt_if_missing: bool) -> bool {
 pub fn prepare_relative_mouse_mode() -> bool {
     ensure_accessibility(false)
 }
-
 
 #[cfg(target_os = "macos")]
 pub fn set_cursor_position(screen_x: i32, screen_y: i32) {

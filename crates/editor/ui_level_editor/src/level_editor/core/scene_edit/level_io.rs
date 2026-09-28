@@ -42,7 +42,10 @@ pub fn save_to_file_with_editor_camera<P: AsRef<Path>>(
 pub(crate) fn level_contents(
     world: &World,
     registry: &ClassRegistry,
-) -> (Vec<SceneObjectData>, HashMap<ObjectId, Vec<ComponentInstance>>) {
+) -> (
+    Vec<SceneObjectData>,
+    HashMap<ObjectId, Vec<ComponentInstance>>,
+) {
     let all = get_all_objects(world);
     let generated: HashSet<ObjectId> = all
         .iter()

@@ -304,23 +304,22 @@ pub fn for_loop(count: i64) {
 
 /// A node that executes a while loop based on a condition.
 ///
-/// This node repeatedly executes the connected body as long as the input condition is `true`.
+/// This node runs the connected body **once per frame** as long as the input condition is `true`.
 /// The condition is evaluated before each iteration, and the loop terminates when the condition becomes `false`.
 ///
 /// # Inputs
 /// - `condition`: The boolean condition to test before each iteration
 ///
 /// # Execution Outputs
-/// - `Body`: Executes repeatedly while the condition is `true`
+/// - `Body`: Executes once per frame while the condition is `true`
 ///
 /// # Example
-/// If `condition` is initially `true` and becomes `false` after 5 iterations, the body will execute 5 times.
+/// If `condition` is initially `true` and becomes `false` after 5 iterations, the body runs on 5 consecutive frames.
 ///
 /// # Notes
-/// Use caution to avoid infinite loops. The condition should eventually become `false` to terminate the loop.
-/// # While Loop
-/// Executes a loop body repeatedly while a condition is true.
-/// WARNING: Ensure the condition eventually becomes false to avoid infinite loops.
+/// Each iteration waits for the next frame, so a loop whose condition never becomes `false` keeps running
+/// without freezing the game. While a loop is running, triggering the node again does nothing.
+/// Use `for_loop` for a loop that finishes within one frame.
 #[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
 pub fn while_loop(condition: bool) {
     if condition {

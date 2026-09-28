@@ -11,7 +11,7 @@ use gpui::{App, Window};
 use rust_i18n::t;
 use std::path::Path;
 use std::sync::Arc;
-use ui::{notification::Notification, ContextModal as _};
+use ui::{ContextModal as _, notification::Notification};
 
 use crate::level_editor::state::{LevelEditorState, PieStartRequest};
 
@@ -161,7 +161,9 @@ pub(crate) fn finish_stop(state: &mut LevelEditorState, game_stopped: bool) -> b
         return false;
     }
     if !game_stopped {
-        tracing::warn!("PiE: no viewport stopped the game in time; restoring the editor world anyway");
+        tracing::warn!(
+            "PiE: no viewport stopped the game in time; restoring the editor world anyway"
+        );
     }
     state.play.pie.restore_after_stop = false;
     state.play.pie.stop_requested_at = None;
@@ -267,8 +269,13 @@ fn build_pie_dylib(
 
 /// Whether `dylib` is the library the running game was loaded from,
 /// unchanged since.
-fn same_artifact(dylib: &Path, loaded: Option<&(std::path::PathBuf, std::time::SystemTime)>) -> bool {
-    let Some((path, mtime)) = loaded else { return false };
+fn same_artifact(
+    dylib: &Path,
+    loaded: Option<&(std::path::PathBuf, std::time::SystemTime)>,
+) -> bool {
+    let Some((path, mtime)) = loaded else {
+        return false;
+    };
     path == dylib && artifact_mtime(dylib).is_some_and(|now| now == *mtime)
 }
 
@@ -371,17 +378,35 @@ mod tests {
 
         std::thread::sleep(std::time::Duration::from_millis(20));
         let class = root.path().join("src/classes/Door");
-        for file in ["graph_save.json", "vars_save.json", "prefab.json", "class.json", "events/.build/module.json"] {
+        for file in [
+            "graph_save.json",
+            "vars_save.json",
+            "prefab.json",
+            "class.json",
+            "events/.build/module.json",
+        ] {
             std::fs::write(class.join(file), "{}").unwrap();
         }
-        assert!(!any_source_newer(root.path(), &artifact), "script data never needs a rebuild");
+        assert!(
+            !any_source_newer(root.path(), &artifact),
+            "script data never needs a rebuild"
+        );
 
         let loaded = (artifact.clone(), artifact_mtime(&artifact).unwrap());
-        assert!(same_artifact(&artifact, Some(&loaded)), "Play again reloads scripts only");
-        assert!(!same_artifact(&artifact, None), "no running game: a normal start");
+        assert!(
+            same_artifact(&artifact, Some(&loaded)),
+            "Play again reloads scripts only"
+        );
+        assert!(
+            !same_artifact(&artifact, None),
+            "no running game: a normal start"
+        );
 
         std::fs::write(root.path().join("src/lib.rs"), "// changed").unwrap();
-        assert!(any_source_newer(root.path(), &artifact), "native changes still rebuild");
+        assert!(
+            any_source_newer(root.path(), &artifact),
+            "native changes still rebuild"
+        );
     }
 
     #[test]
@@ -390,10 +415,17 @@ mod tests {
         for (name, guid) in [("Door", "door-guid"), ("Lamp", "lamp-guid")] {
             let dir = root.path().join("src/classes").join(name);
             std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join("class.json"), format!("{{\"class_id\":\"{guid}\"}}")).unwrap();
+            std::fs::write(
+                dir.join("class.json"),
+                format!("{{\"class_id\":\"{guid}\"}}"),
+            )
+            .unwrap();
             std::fs::write(dir.join("graph_save.json"), "{}").unwrap();
         }
-        let mut ids: Vec<String> = class_reload_events(root.path()).into_iter().filter_map(|e| e.id).collect();
+        let mut ids: Vec<String> = class_reload_events(root.path())
+            .into_iter()
+            .filter_map(|e| e.id)
+            .collect();
         ids.sort();
         assert_eq!(ids, ["door-guid", "lamp-guid"]);
     }

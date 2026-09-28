@@ -3,8 +3,8 @@
 //! This module provides atomic-based input state tracking with zero mutex contention,
 //! enabling high-performance camera controls with latency tracking.
 
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
 
 use super::components::camera_selector::CameraSpeedControl;
 
@@ -134,7 +134,13 @@ impl CameraSpeedControl for InputState {
         self.move_speed
             .store(new_speed.to_bits(), Ordering::Relaxed);
         let verify = f32::from_bits(self.move_speed.load(Ordering::Relaxed));
-        tracing::info!("[INPUT_STATE] 🔧 adjust_move_speed: current={:.2}, delta={:.2}, new={:.2}, verify={:.2}, ptr={:p}",
-            current, delta, new_speed, verify, &self.move_speed as *const _);
+        tracing::info!(
+            "[INPUT_STATE] 🔧 adjust_move_speed: current={:.2}, delta={:.2}, new={:.2}, verify={:.2}, ptr={:p}",
+            current,
+            delta,
+            new_speed,
+            verify,
+            &self.move_speed as *const _
+        );
     }
 }

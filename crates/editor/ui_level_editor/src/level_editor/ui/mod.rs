@@ -19,3 +19,4 @@ pub use status_bar_view::StatusBarView;
 pub use toolbar::{ToolbarPanel, ToolbarView};
 pub use viewport::ViewportPanel;
 pub use world_settings::WorldSettingsPanelImpl;
+mod spline_preview;

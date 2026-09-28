@@ -8,7 +8,6 @@
 /// Both user GPUI action handlers and AI tool implementations call
 /// `execute_command()`, giving a single auditable code path that is ready for
 /// undo / redo to be layered on top.
-
 mod executor;
 mod types;
 

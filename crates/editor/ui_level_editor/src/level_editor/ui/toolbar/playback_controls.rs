@@ -2,8 +2,8 @@ use gpui::*;
 use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
-    button::{Button, ButtonVariants as _},
     IconName, Selectable,
+    button::{Button, ButtonVariants as _},
 };
 
 use crate::level_editor::state::LevelEditorState;
@@ -68,7 +68,11 @@ impl PlaybackControls {
                 let enabled = pie.active && pie.supports_control;
                 let paused = pie.paused;
                 let btn = Button::new("pause")
-                    .icon(if paused { IconName::Play } else { IconName::Pause })
+                    .icon(if paused {
+                        IconName::Play
+                    } else {
+                        IconName::Pause
+                    })
                     .tooltip(if paused {
                         t!("LevelEditor.Toolbar.ResumeSimulation")
                     } else {

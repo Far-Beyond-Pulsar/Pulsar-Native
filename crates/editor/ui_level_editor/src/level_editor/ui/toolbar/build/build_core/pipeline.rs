@@ -136,6 +136,9 @@ pub(super) async fn launch_and_monitor(
         .args(["run", "--release"])
         .current_dir(&project_root)
         .env("RUST_BACKTRACE", "1")
+        // Publish the game for the profiler (listed in its start screen;
+        // nothing is recorded until a recording starts).
+        .env(profiling::remote::ENV_FLAG, "1")
         .stdin(Stdio::null())
         .stdout(Stdio::inherit())
         .stderr(Stdio::piped())

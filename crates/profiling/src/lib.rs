@@ -19,6 +19,7 @@ pub mod events;
 pub mod macros;
 pub mod options;
 pub mod profiler;
+pub mod remote;
 pub mod scope;
 pub mod utilities;
 

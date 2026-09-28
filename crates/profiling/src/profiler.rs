@@ -87,6 +87,15 @@ impl Profiler {
         collected
     }
 
+    /// Move every pending event into `out` without retaining a copy. Used
+    /// by the cross-process publisher ([`crate::remote`]): the viewer keeps
+    /// the session, so the profiled process must not.
+    pub fn drain_pending(&self, out: &mut Vec<ProfileEvent>) {
+        while let Some(event) = self.pending.pop() {
+            out.push(event);
+        }
+    }
+
     pub fn get_all_events(&self) -> Vec<ProfileEvent> {
         // This is called after collection stops when exporting a session. A
         // lock-free queue has no snapshot operation, so take and restore the

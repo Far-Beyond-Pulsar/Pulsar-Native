@@ -1,7 +1,6 @@
 use super::*;
 
 impl HelioViewport {
-
     /// Handle an asset being dropped on the viewport
     pub(super) fn handle_asset_drop(
         &mut self,
@@ -98,7 +97,8 @@ impl HelioViewport {
                 if let Some(id) = add_result.affected_ids.first() {
                     if let Some((class_name, data_field)) = component_class_for_asset(&kind) {
                         if REGISTRY.has_class(class_name) {
-                            crate::level_editor::scene_edit::components::add_component(&mut state.scene.world_mut(), 
+                            crate::level_editor::scene_edit::components::add_component(
+                                &mut state.scene.world_mut(),
                                 id,
                                 class_name.to_string(),
                                 serde_json::json!({ data_field: asset_path }),

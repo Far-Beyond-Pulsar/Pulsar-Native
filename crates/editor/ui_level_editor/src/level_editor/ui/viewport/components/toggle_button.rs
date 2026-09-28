@@ -5,7 +5,7 @@
 
 use gpui::*;
 use std::sync::Arc;
-use ui::{button::Button, IconName, Selectable};
+use ui::{IconName, Selectable, button::Button};
 
 /// A reusable toggle button that manages state through a callback.
 ///

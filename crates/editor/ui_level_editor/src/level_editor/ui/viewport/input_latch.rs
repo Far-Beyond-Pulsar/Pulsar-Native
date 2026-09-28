@@ -13,8 +13,8 @@
 //! bounded time for it. Same polling code, same thread, just sampled at the last
 //! possible moment.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::Thread;
 use std::time::{Duration, Instant};
 
@@ -92,8 +92,8 @@ pub(crate) fn latch_now() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
 
     /// A stand-in input thread that would only poll every 200 ms on its own.
     /// `latch_now` must get a fresh iteration out of it almost immediately, and
@@ -120,7 +120,10 @@ mod tests {
         set_capturing(false);
         let start = Instant::now();
         latch_now();
-        assert!(start.elapsed() < Duration::from_millis(5), "idle latch must be free");
+        assert!(
+            start.elapsed() < Duration::from_millis(5),
+            "idle latch must be free"
+        );
 
         // Capturing: a fresh iteration happens well inside the 200 ms timer.
         set_capturing(true);
@@ -134,7 +137,10 @@ mod tests {
             if polls.load(Ordering::Acquire) == polls_before {
                 // The frame is allowed to use the previous sample after the
                 // 400 us deadline. The wake must still produce a fresh poll.
-                assert!(took >= MAX_WAIT, "latch returned before polling or timing out");
+                assert!(
+                    took >= MAX_WAIT,
+                    "latch returned before polling or timing out"
+                );
                 let deadline = Instant::now() + Duration::from_millis(50);
                 while polls.load(Ordering::Acquire) == polls_before && Instant::now() < deadline {
                     std::thread::yield_now();

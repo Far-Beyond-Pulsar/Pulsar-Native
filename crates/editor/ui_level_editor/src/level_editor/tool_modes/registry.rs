@@ -3,7 +3,7 @@
 //! Owns registered tool modes and the currently active mode ID.
 //! Provides lookup, switching, and extensibility seams.
 
-use super::{level_edit::LevelEditMode, ToolMode, ToolModeContext};
+use super::{ToolMode, ToolModeContext, level_edit::LevelEditMode};
 
 // ── ToolModeId ─────────────────────────────────────────────────────────────
 
@@ -18,6 +18,8 @@ impl ToolModeId {
     /// [`ToolModeRegistry::builtin`].
     pub const SPLINE: Self = Self("spline");
     pub const VOXEL_SCULPT: Self = Self("voxel_sculpt");
+    /// Terrain sculpt and material painting mode.
+    pub const TERRAIN: Self = Self("terrain");
 }
 
 // ── ToolModeRegistry ───────────────────────────────────────────────────────
@@ -158,4 +160,5 @@ impl Default for ToolModeRegistry {
 pub fn register_tool_modes(registry: &mut ToolModeRegistry) {
     registry.register(Box::new(super::spline::SplineMode::default()));
     registry.register(Box::new(super::voxel_sculpt::VoxelSculptMode::default()));
+    registry.register(Box::new(super::terrain::TerrainMode::default()));
 }

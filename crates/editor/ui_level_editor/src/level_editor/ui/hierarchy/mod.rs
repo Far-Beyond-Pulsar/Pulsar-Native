@@ -1,5 +1,5 @@
-use crate::level_editor::scene_edit::SceneObjectData;
 use crate::level_editor::scene_edit::ObjectType;
+use crate::level_editor::scene_edit::SceneObjectData;
 use crate::level_editor::state::{HierarchyDragPayload, LevelEditorState};
 use gpui::{prelude::*, *};
 use rust_i18n::t;
@@ -7,12 +7,12 @@ use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 use ui::{
+    ActiveTheme, HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout, Icon,
+    IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants as _},
     h_flex,
     hierarchical_tree::tree_colors,
     menu::popup_menu::PopupMenu,
-    ActiveTheme, HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout, Icon,
-    IconName, Sizable, StyledExt,
 };
 
 /// GPUI Render impl for the hierarchy drag ghost label.
@@ -151,7 +151,7 @@ impl HierarchyItem for SceneObjectItem {
                 "Show object"
             })
             .on_click(move |_, _, cx| {
-                use crate::level_editor::commands::{execute_command, SceneCommand};
+                use crate::level_editor::commands::{SceneCommand, execute_command};
                 let mut state = visibility_state.write();
                 let found = {
                     let world = state.scene.world();
@@ -171,7 +171,7 @@ impl HierarchyItem for SceneObjectItem {
             .icon(IconName::Copy)
             .tooltip("Duplicate object")
             .on_click(move |_, _, cx| {
-                use crate::level_editor::commands::{execute_command, SceneCommand};
+                use crate::level_editor::commands::{SceneCommand, execute_command};
                 let mut state = duplicate_state.write();
                 execute_command(
                     &mut state,
@@ -191,7 +191,7 @@ impl HierarchyItem for SceneObjectItem {
             .icon(IconName::Trash)
             .tooltip("Delete object")
             .on_click(move |_, _, cx| {
-                use crate::level_editor::commands::{execute_command, SceneCommand};
+                use crate::level_editor::commands::{SceneCommand, execute_command};
                 let mut state = delete_state.write();
                 execute_command(
                     &mut state,
@@ -241,7 +241,7 @@ impl HierarchyItem for SceneObjectItem {
         _window: &mut Window,
         _cx: &mut Context<PopupMenu>,
     ) -> PopupMenu {
-        use crate::level_editor::commands::{execute_command, SceneCommand};
+        use crate::level_editor::commands::{SceneCommand, execute_command};
 
         if self.class_role == ClassRole::Owned {
             return menu;
@@ -318,19 +318,23 @@ impl HierarchyPanel {
         }
 
         let world = state.scene.world();
-        let (all_objects, root_ids) = crate::level_editor::scene_edit::objects::get_hierarchy_snapshot(&world);
+        let (all_objects, root_ids) =
+            crate::level_editor::scene_edit::objects::get_hierarchy_snapshot(&world);
         self.cached_items = all_objects
             .into_iter()
             .map(|obj| {
                 let is_selected = selected.as_deref() == Some(obj.id.as_str());
                 let is_folder = matches!(obj.object_type, ObjectType::Folder);
-                let class_role = if crate::level_editor::scene_edit::classes::is_class_root(&world, &obj.id) {
-                    ClassRole::Root
-                } else if crate::level_editor::scene_edit::classes::is_generated_child(&world, &obj.id) {
-                    ClassRole::Owned
-                } else {
-                    ClassRole::None
-                };
+                let class_role =
+                    if crate::level_editor::scene_edit::classes::is_class_root(&world, &obj.id) {
+                        ClassRole::Root
+                    } else if crate::level_editor::scene_edit::classes::is_generated_child(
+                        &world, &obj.id,
+                    ) {
+                        ClassRole::Owned
+                    } else {
+                        ClassRole::None
+                    };
                 SceneObjectItem {
                     object: Rc::new(obj),
                     state_arc: state_arc.clone(),
@@ -382,7 +386,7 @@ impl HierarchyPanel {
                     .xsmall()
                     .tooltip(t!("LevelEditor.Hierarchy.AddFolder"))
                     .on_click(move |_, _, _| {
-                        use crate::level_editor::commands::{execute_command, SceneCommand};
+                        use crate::level_editor::commands::{SceneCommand, execute_command};
                         use crate::level_editor::scene_edit::{
                             ObjectType, SceneObjectData, Transform,
                         };
@@ -417,7 +421,7 @@ impl HierarchyPanel {
                     .xsmall()
                     .tooltip(t!("LevelEditor.Hierarchy.DeleteSelected"))
                     .on_click(move |_, _, _| {
-                        use crate::level_editor::commands::{execute_command, SceneCommand};
+                        use crate::level_editor::commands::{SceneCommand, execute_command};
                         if let Some(id) = state_clone.read().scene.selected_object() {
                             let mut state = state_clone.write();
                             execute_command(&mut state, SceneCommand::RemoveObject { id });
@@ -441,7 +445,7 @@ impl HierarchyPanel {
             root_drop_zone: Some((
                 "Root".to_string(),
                 Arc::new(move |payload: HierarchyDragPayload| {
-                    use crate::level_editor::commands::{execute_command, SceneCommand};
+                    use crate::level_editor::commands::{SceneCommand, execute_command};
                     let mut state = state_arc.write();
                     execute_command(
                         &mut state,
@@ -503,7 +507,7 @@ impl HierarchyPanel {
                       modifiers: &Modifiers,
                       _window,
                       cx| {
-                    use crate::level_editor::commands::{execute_command, SceneCommand};
+                    use crate::level_editor::commands::{SceneCommand, execute_command};
                     if payload.object_id == *target_id {
                         return;
                     }

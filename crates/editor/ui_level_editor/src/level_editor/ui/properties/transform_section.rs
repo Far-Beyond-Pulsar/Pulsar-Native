@@ -5,10 +5,10 @@
 
 use gpui::{prelude::*, *};
 use std::sync::Arc;
-use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
+use ui::{ActiveTheme, IconName, Sizable, h_flex, v_flex};
 
 use super::bindings::bound_field::F32BoundField;
-use crate::level_editor::core::commands::{execute_command, SceneCommand};
+use crate::level_editor::core::commands::{SceneCommand, execute_command};
 use crate::level_editor::state::LevelEditorState;
 use engine_backend::scene::SharedScene;
 

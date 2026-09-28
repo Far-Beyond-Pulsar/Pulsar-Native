@@ -219,7 +219,10 @@ impl FoliageSetLibrary {
     }
 
     pub fn member_mut(&mut self, set: SetId, member: MemberId) -> Option<&mut FoliageMember> {
-        self.set_mut(set)?.members.iter_mut().find(|m| m.id == member)
+        self.set_mut(set)?
+            .members
+            .iter_mut()
+            .find(|m| m.id == member)
     }
 
     /// Every member a brush stamp should scatter: enabled members (with a
@@ -311,6 +314,9 @@ mod tests {
     #[test]
     fn display_name_is_the_file_name() {
         let (mut lib, set, member) = library_with_mesh("meshes/trees\\oak.mesh");
-        assert_eq!(lib.member_mut(set, member).unwrap().display_name(), "oak.mesh");
+        assert_eq!(
+            lib.member_mut(set, member).unwrap().display_name(),
+            "oak.mesh"
+        );
     }
 }

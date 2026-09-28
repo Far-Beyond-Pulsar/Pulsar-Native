@@ -5,9 +5,10 @@ use crate::level_editor::ui::HierarchyPanel;
 use gpui::*;
 use std::sync::Arc;
 use ui::{
+    ActiveTheme, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
-    v_flex, ActiveTheme, IconName, Sizable,
+    v_flex,
 };
 
 /// Hierarchy Panel
@@ -34,10 +35,7 @@ impl HierarchyPanelWrapper {
     ) -> Self {
         let last_signature = {
             let state = state.read();
-            (
-                state.scene.world_revision(),
-                state.scene.selected_object(),
-            )
+            (state.scene.world_revision(), state.scene.selected_object())
         };
         Self {
             hierarchy: HierarchyPanel::new(),
@@ -50,10 +48,7 @@ impl HierarchyPanelWrapper {
 
     fn signature(&self) -> (u64, Option<String>) {
         let state = self.state.read();
-        (
-            state.scene.world_revision(),
-            state.scene.selected_object(),
-        )
+        (state.scene.world_revision(), state.scene.selected_object())
     }
 
     fn start_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -100,7 +95,7 @@ impl Render for HierarchyPanelWrapper {
             .ghost()
             .xsmall()
             .on_click(move |_, _, _cx| {
-                use crate::level_editor::commands::{execute_command, SceneCommand};
+                use crate::level_editor::commands::{SceneCommand, execute_command};
                 use crate::level_editor::scene_edit::{ObjectType, SceneObjectData, Transform};
 
                 let mut state = state_clone.write();

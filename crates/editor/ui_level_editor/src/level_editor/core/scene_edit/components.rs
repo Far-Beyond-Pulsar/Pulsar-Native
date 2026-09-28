@@ -18,8 +18,8 @@ use serde_json::Value;
 
 use super::changes::{record_property_change, record_structural_change};
 use super::{
-    attachment_data, is_scenedb_authority_class, overlay_live_data, remap_component_parents,
-    ComponentInstance, ObjectId,
+    ComponentInstance, ObjectId, attachment_data, is_scenedb_authority_class, overlay_live_data,
+    remap_component_parents,
 };
 
 // ── Reads ──────────────────────────────────────────────────────────────────

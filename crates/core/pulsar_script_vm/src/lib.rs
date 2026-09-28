@@ -41,7 +41,9 @@ pub mod verify;
 pub use capability::{CapabilityPolicy, CAPABILITY_ATTR};
 pub use error::{LinkError, ScriptError, ScriptErrorKind, VerifyError};
 pub use interp::{Budget, Completion, Continuation, Vm, DEFAULT_MAX_DEPTH};
-pub use library::{LibraryError, LibraryId, LibraryRegistrar, NativeLibraries};
+pub use library::{
+    ForwardingAllocator, HostAllocator, LibraryError, LibraryId, LibraryRegistrar, NativeLibraries,
+};
 pub use events::{EventCatalog, EventSignature, EventSink, EventTarget};
 pub use link::{FuncId, Instance, LinkedSubscription, Program};
 pub use module::{

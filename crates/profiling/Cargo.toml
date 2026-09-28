@@ -12,6 +12,10 @@ serde = { workspace = true }
 once_cell = { workspace = true }
 rusqlite = { workspace = true }
 chrono = { workspace = true }
+memmap2 = "0.9"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [lib]
 name = "profiling"
