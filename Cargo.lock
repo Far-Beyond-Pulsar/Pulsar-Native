@@ -13206,6 +13206,7 @@ dependencies = [
  "smol",
  "tempfile",
  "tool_registry",
+ "tool_registry_macros",
  "tracing",
  "ui",
  "ui_common",

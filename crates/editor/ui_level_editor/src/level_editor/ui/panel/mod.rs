@@ -6,7 +6,7 @@
 //! Play-In-Editor dylib build pipeline lives in [`pie`].
 
 mod handlers;
-pub(super) mod pie;
+pub(crate) mod pie;
 pub(super) use pie::{begin_pie, end_pie};
 mod camera;
 mod lifecycle;

@@ -171,6 +171,14 @@ pub enum SceneCommand {
         component_index: usize,
         data: serde_json::Value,
     },
+    /// Revert a placed class instance's slot to the class: one property
+    /// (dot `path` into the component data) or, with `path: None`, the whole
+    /// slot (which also restores a slot the instance removed).
+    RevertClassSlot {
+        id: String,
+        slot_id: String,
+        path: Option<String>,
+    },
 }
 
 impl std::fmt::Debug for SceneCommand {
@@ -334,6 +342,12 @@ impl std::fmt::Debug for SceneCommand {
                 .debug_struct("SetComponentData")
                 .field("id", id)
                 .field("component_index", component_index)
+                .finish(),
+            Self::RevertClassSlot { id, slot_id, path } => f
+                .debug_struct("RevertClassSlot")
+                .field("id", id)
+                .field("slot_id", slot_id)
+                .field("path", path)
                 .finish(),
         }
     }

@@ -6,9 +6,9 @@
 //! - [`sessions`] — registry of currently open scenes, keyed by normalized
 //!   file path, so AI tools can find the `LevelEditorState` a `.level` file
 //!   is being edited in.
-//! - [`tools`] — the `AiToolDefinition` catalogue (`ai_tools`,
-//!   `capabilities_for_file`, `execute_ai_tool`) that mutates those states
-//!   through the ordinary `SceneCommand` path.
+//! - [`tools`] — ToolbeltRS `#[tool]` functions, collected by namespace and
+//!   exposed as `ai_tools` / `capabilities_for_file` / `execute_ai_tool`,
+//!   that mutate those states through the ordinary `SceneCommand` path.
 
 pub mod sessions;
 pub mod tools;

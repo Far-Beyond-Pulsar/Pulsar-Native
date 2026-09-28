@@ -2,7 +2,7 @@ mod actions;
 pub(crate) mod frame_pump;
 pub(crate) mod hierarchy;
 pub(crate) mod mode_widgets;
-mod panel;
+pub(crate) mod panel;
 mod properties;
 mod status_bar_view;
 mod toolbar;

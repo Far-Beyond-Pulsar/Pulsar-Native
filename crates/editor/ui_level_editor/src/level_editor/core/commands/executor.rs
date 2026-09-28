@@ -23,7 +23,8 @@ fn command_scope(cmd: &SceneCommand) -> Vec<String> {
         | SceneCommand::DuplicateComponent { id, .. }
         | SceneCommand::ReorderComponent { id, .. }
         | SceneCommand::SetComponentParent { id, .. }
-        | SceneCommand::SetComponentData { id, .. } => vec![id.clone()],
+        | SceneCommand::SetComponentData { id, .. }
+        | SceneCommand::RevertClassSlot { id, .. } => vec![id.clone()],
         SceneCommand::UpdateObject { data } => vec![data.id.clone()],
         SceneCommand::DuplicateObject { source_id, .. } => vec![source_id.clone()],
         SceneCommand::SelectObject { .. } | SceneCommand::InstantiateClass { .. } => Vec::new(),
@@ -544,6 +545,26 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                     )
                 }
             }),
+
+            SceneCommand::RevertClassSlot {
+                ref id,
+                ref slot_id,
+                ref path,
+            } => {
+                let registry = crate::level_editor::scene_edit::classes::project_registry();
+                if crate::level_editor::scene_edit::classes::revert_slot(
+                    &mut state.scene.world_mut(),
+                    id,
+                    slot_id,
+                    path.as_deref(),
+                    &registry,
+                ) {
+                    state.scene.bump_revision(true);
+                    CommandResult::ok(vec![id.clone()])
+                } else {
+                    CommandResult::noop("Not a class instance, or nothing to revert")
+                }
+            }
         }
     })();
 
