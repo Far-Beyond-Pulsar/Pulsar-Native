@@ -8,17 +8,17 @@
 //!
 //! The viewport has been refactored into focused, reusable components for maintainability.
 
-pub mod components;
-pub mod game_viewport;
-pub mod helio_viewport;
-pub mod input_state;
-pub mod performance;
-pub mod cursor;
 mod build;
 mod build_handlers;
+pub mod components;
+pub mod cursor;
+pub mod game_viewport;
+pub mod helio_viewport;
 pub(crate) mod input_latch;
+pub mod input_state;
 mod input_thread;
 mod overlays;
+pub mod performance;
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -32,7 +32,7 @@ use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use helio_viewport::HelioViewport;
 use ui::Sizable;
-use ui::{v_flex, ActiveTheme};
+use ui::{ActiveTheme, v_flex};
 use ui_common::ViewportControls;
 
 use crate::level_editor::state::LevelEditorState;
@@ -190,7 +190,6 @@ pub struct ViewportPanel {
 
     /// Focus handle
     focus_handle: FocusHandle,
-
 }
 
 impl ViewportPanel {
@@ -262,7 +261,6 @@ impl ViewportPanel {
         // Build the viewport UI
         self.build_viewport_ui(state, state_arc, snapshot, gpu_engine, cx)
     }
-
 }
 
 impl ViewportPanel {

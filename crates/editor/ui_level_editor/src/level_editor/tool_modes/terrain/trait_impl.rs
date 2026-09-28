@@ -55,33 +55,6 @@ impl ToolMode for TerrainMode {
         }
     }
 
-    fn contributes_panels(&self) -> Vec<ModePanelDescriptor> {
-        // Declarative half of the mode's own dock contributions — ids, tabs,
-        // placements. The GPUI half lives in `super::panels`; see that file
-        // and the design doc's §11 for why the two are split.
-        layout::contributed_panels()
-    }
-
-    fn build_panel(
-        &self,
-        state: std::sync::Arc<parking_lot::RwLock<crate::level_editor::state::LevelEditorState>>,
-        panel: &ModePanelDescriptor,
-        window: &mut gpui::Window,
-        cx: &mut gpui::Context<crate::level_editor::ui::LevelEditorPanel>,
-    ) -> Option<Box<dyn ui::dock::PanelView>> {
-        match panel.id {
-            layout::TERRAIN_PANEL => {
-                let view = cx.new(|cx| panels::TerrainPanel::new(state.clone(), window, cx));
-                Some(Box::new(view) as Box<dyn ui::dock::PanelView>)
-            }
-            layout::TERRAIN_FOLIAGE => {
-                let view = cx.new(|cx| panels::FoliageSetsPanel::new(state.clone(), window, cx));
-                Some(Box::new(view) as Box<dyn ui::dock::PanelView>)
-            }
-            _ => None,
-        }
-    }
-
     fn status(&self, ctx: &ToolModeContext) -> Option<StatusReadout> {
         let terrain = &ctx.state.editor.terrain;
         let text = if terrain.paint_foliage {

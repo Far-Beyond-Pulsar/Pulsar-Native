@@ -10,6 +10,7 @@ pub(super) mod pie;
 pub(super) use pie::{begin_pie, end_pie};
 mod camera;
 mod lifecycle;
+mod spline;
 mod workspace_sync;
 
 use gpui::*;
@@ -26,7 +27,7 @@ use super::viewport::helio_viewport::HelioViewport;
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
 use std::sync::{Arc, Mutex};
 use ui::settings::EngineSettings;
-use ui::{notification::Notification, ContextModal as _};
+use ui::{ContextModal as _, notification::Notification};
 
 use super::actions::*;
 use super::{StatusBarView, ToolbarView, ViewportPanel};
@@ -91,25 +92,12 @@ pub struct LevelEditorPanel {
     /// avoid here.
     applied_mode_layout: Option<crate::level_editor::tool_modes::ToolModeId>,
 
-    /// Mode-contributed right-dock panels currently inserted, by panel id.
-    ///
-    /// `sync_mode_layout` rebuilds the right dock only when this set actually
-    /// changes between mode switches — the common case (modes contributing no
-    /// right panels) shares the empty set, so the Properties/World Settings
-    /// tab group and `PropertiesPanelWrapper`'s cached sections survive
-    /// untouched. Only a mode that newly contributes right panels (or stops
-    /// doing so) pays for a right-dock rebuild, and only on the switch itself.
-    /// Left-dock contributions need no such tracking: the left dock is a full
-    /// `set_left_dock` rebuild on every mode switch already.
-    mode_right_panels: Vec<&'static str>,
-
     // Keeps the polling task alive for the lifetime of the panel.
     _root_input_poller: gpui::Task<()>,
 
     /// Rebuilds placed class instances when a class asset is updated (#921).
     _class_updates: plugin_editor_api::AssetSubscription,
 }
-
 
 impl Drop for LevelEditorPanel {
     fn drop(&mut self) {

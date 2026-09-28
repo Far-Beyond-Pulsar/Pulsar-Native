@@ -40,10 +40,10 @@ pub use build::BuildDomain;
 pub use editor::EditorDomain;
 pub use hierarchy::HierarchyDomain;
 pub use overlays::OverlayDomain;
-pub use play::{PieControl, PieStartRequest, PlayDomain, MAX_PIE_PROBLEMS};
+pub use play::{MAX_PIE_PROBLEMS, PieControl, PieStartRequest, PlayDomain};
 pub use scene::SceneDomain;
-pub use terrain::TerrainDomain;
 pub use spline::SplineDomain;
+pub use terrain::TerrainDomain;
 
 use std::path::PathBuf;
 use std::sync::Arc;

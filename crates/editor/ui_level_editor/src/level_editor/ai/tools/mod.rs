@@ -1,12 +1,12 @@
 use plugin_editor_api::{AiToolDefinition, PluginError};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use tool_registry::{ChatTool, ToolContext, ToolRegistry};
 
 use super::sessions;
-use crate::level_editor::commands::{execute_command, SceneCommand};
+use crate::level_editor::commands::{SceneCommand, execute_command};
 use engine_backend::scene::{LightType, MeshType, ObjectType};
 
 fn is_level_file(file_path: &Path) -> bool {

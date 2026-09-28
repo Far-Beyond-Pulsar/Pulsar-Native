@@ -1,9 +1,9 @@
 use gpui::*;
 use std::sync::Arc;
 use ui::{
+    IconName, Sizable,
     button::{Button, ButtonVariants as _},
     popup_menu::PopupMenuExt,
-    IconName, Sizable,
 };
 
 use super::actions::SetMultiplayerMode;

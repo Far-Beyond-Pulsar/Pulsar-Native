@@ -25,15 +25,14 @@ pub use core::world_settings_data;
 
 // Public API
 pub use core::scene_edit::SceneObjectData;
+pub use state::LevelEditorState;
 pub use state::request_thumbnail_capture;
 pub use state::spline::SplineDomain;
-pub use state::LevelEditorState;
 pub use state::{CameraMode, EditorMode, TransformTool};
 pub use tool_modes::{
-    register_tool_modes, BrushCursor, CameraFrame, LevelEditMode, ModePanelDescriptor,
-    ModePanelPlacement, PointerKind, SplineMode, StatusReadout, ToolMode,
+    BrushCursor, CameraFrame, LevelEditMode, PointerKind, SplineMode, StatusReadout, ToolMode,
     ToolModeContext, ToolModeDispatcher, ToolModeId, ToolModeRegistry, ToolPointerEvent,
-    ToolPointerResult, ToolWidget, ViewportFrame,
+    ToolPointerResult, ToolWidget, ViewportFrame, register_tool_modes,
 };
 pub use workspace::panels::*;
 

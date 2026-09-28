@@ -195,7 +195,11 @@ impl LevelEditorPanel {
         Ok(panel)
     }
 
-    pub(super) fn new_internal(window_id: Option<u64>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub(super) fn new_internal(
+        window_id: Option<u64>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let _horizontal_resizable_state = ResizableState::new(cx);
         let _vertical_resizable_state = ResizableState::new(cx);
 
@@ -349,7 +353,10 @@ impl LevelEditorPanel {
         // somehow arrived pre-torn-down, which the `if let` call sites below
         // degrade out of harmlessly (same "skip this one tick" shape the old
         // `gpu_engine.lock()` sites already had on any lock failure).
-        let helio_mailbox = gpu_engine.lock().ok().and_then(|engine| engine.editor_mailbox());
+        let helio_mailbox = gpu_engine
+            .lock()
+            .ok()
+            .and_then(|engine| engine.editor_mailbox());
 
         let class_updates =
             crate::level_editor::core::asset_updates::subscribe_class_updates(shared_state.clone());
@@ -368,7 +375,6 @@ impl LevelEditorPanel {
             game_panel: None,
             applied_pie_signature: None,
             applied_mode_layout: None,
-            mode_right_panels: Vec::new(),
             _root_input_poller: poller,
         }
     }

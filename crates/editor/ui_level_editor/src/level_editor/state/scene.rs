@@ -308,7 +308,11 @@ impl SceneDomain {
     pub fn enter_play_mode(&mut self) {
         if self.snapshot.is_none() {
             self.snapshot = Some(self.capture_history_snapshot());
-            let live = self.world().query::<()>().map(|(entity, ())| entity).collect();
+            let live = self
+                .world()
+                .query::<()>()
+                .map(|(entity, ())| entity)
+                .collect();
             self.play_entities = Some(live);
         }
         self.editor_mode = EditorMode::Play;

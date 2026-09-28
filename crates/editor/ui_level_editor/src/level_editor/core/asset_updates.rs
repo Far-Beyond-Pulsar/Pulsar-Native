@@ -16,7 +16,7 @@ use engine_backend::scene::SceneWorldExt;
 use parking_lot::RwLock;
 use plugin_editor_api::{AssetKind, AssetSubscription, AssetUpdated};
 
-use crate::level_editor::scene_edit::{classes, ObjectId};
+use crate::level_editor::scene_edit::{ObjectId, classes};
 use crate::level_editor::state::LevelEditorState;
 
 /// Subscribe the editor at `state` to class asset updates for as long as

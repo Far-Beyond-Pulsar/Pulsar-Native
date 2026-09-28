@@ -9,9 +9,10 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use ui::{
+    ActiveTheme,
     dock::{Panel, PanelEvent},
     input::InputState,
-    v_flex, ActiveTheme,
+    v_flex,
 };
 
 /// Properties Panel
@@ -141,10 +142,7 @@ impl PropertiesPanelWrapper {
     fn sync_sections(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let (store_revision, selected_object_id) = {
             let state = self.state.read();
-            (
-                state.scene.world_revision(),
-                state.scene.selected_object(),
-            )
+            (state.scene.world_revision(), state.scene.selected_object())
         };
 
         let revision_changed = store_revision != self.last_store_revision;
@@ -278,7 +276,7 @@ impl PropertiesPanelWrapper {
     }
 
     fn update_transform_property(&self, property_path: &str, value: f32) {
-        use crate::level_editor::commands::{execute_command, SceneCommand};
+        use crate::level_editor::commands::{SceneCommand, execute_command};
         let selected = self.state.read().scene.selected_object();
         if let Some(object_id) = selected {
             let obj_opt = {

@@ -1,17 +1,32 @@
 use super::*;
 
 impl LevelEditorPanel {
-    pub(in crate::level_editor::ui::panel) fn on_toggle_grid(&mut self, _: &ToggleGrid, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_toggle_grid(
+        &mut self,
+        _: &ToggleGrid,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state.write().editor.toggle_grid();
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_toggle_wireframe(&mut self, _: &ToggleWireframe, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_toggle_wireframe(
+        &mut self,
+        _: &ToggleWireframe,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state.write().editor.toggle_wireframe();
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_toggle_lighting(&mut self, _: &ToggleLighting, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_toggle_lighting(
+        &mut self,
+        _: &ToggleLighting,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state.write().editor.toggle_lighting();
         cx.notify();
     }
@@ -63,12 +78,22 @@ impl LevelEditorPanel {
     }
 
     // Performance metrics toggles
-    pub(in crate::level_editor::ui::panel) fn on_toggle_fps_graph(&mut self, _: &ToggleFpsGraph, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_toggle_fps_graph(
+        &mut self,
+        _: &ToggleFpsGraph,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state.write().overlays.toggle_fps_graph();
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_toggle_tps_graph(&mut self, _: &ToggleTpsGraph, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_toggle_tps_graph(
+        &mut self,
+        _: &ToggleTpsGraph,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state.write().overlays.toggle_tps_graph();
         cx.notify();
     }
@@ -138,5 +163,4 @@ impl LevelEditorPanel {
             .toggle_ui_consistency_graph();
         cx.notify();
     }
-
 }

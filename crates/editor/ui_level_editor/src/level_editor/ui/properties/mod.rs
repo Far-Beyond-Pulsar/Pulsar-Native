@@ -14,18 +14,19 @@ use rust_i18n::t;
 use std::collections::HashSet;
 use std::sync::Arc;
 use ui::{
+    ActiveTheme, CollapsibleSection, IconName, Sizable, StyledExt,
     button::Button,
     h_flex,
     input::{InputState, TextInput},
     scroll::ScrollbarAxis,
-    v_flex, ActiveTheme, CollapsibleSection, IconName, Sizable, StyledExt,
+    v_flex,
 };
 use ui_common::properties_inspector;
 
+use crate::level_editor::SceneObjectData;
 use crate::level_editor::scene_edit::{ObjectType, Transform};
 use crate::level_editor::state::LevelEditorState;
 use crate::level_editor::workspace::panels::PropertiesPanelWrapper;
-use crate::level_editor::SceneObjectData;
 
 /// Properties Panel - Inspector showing properties of the selected object
 pub struct PropertiesPanel;

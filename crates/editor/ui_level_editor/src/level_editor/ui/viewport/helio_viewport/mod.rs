@@ -5,7 +5,7 @@
 //!   2. Each frame: `back_view_with_size()` → render → `swap_buffers()`.
 //!   3. Return `wgpu_surface(handle)` in the element tree so GPUI composits it.
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -15,9 +15,9 @@ use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::*;
 use plugin_editor_api::{AssetKind, AssetPayload};
 use rust_i18n::t;
-use ui::{notification::Notification, ActiveTheme as _, ContextModal};
+use ui::{ActiveTheme as _, ContextModal, notification::Notification};
 
-use crate::level_editor::commands::{execute_command, SceneCommand};
+use crate::level_editor::commands::{SceneCommand, execute_command};
 use crate::level_editor::scene_edit::{MeshType, ObjectType, SceneObjectData, Transform};
 use crate::level_editor::state::LevelEditorState;
 use helio_component::asset_component::component_class_for_asset;
@@ -123,7 +123,6 @@ impl Drop for HelioViewport {
         self.render_thread_stop.store(true, Ordering::Release);
     }
 }
-
 
 impl Focusable for HelioViewport {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {

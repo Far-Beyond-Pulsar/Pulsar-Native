@@ -1,32 +1,30 @@
 //! Terrain sculpt and material-paint mode backed by SceneDB voxel sources.
 
-pub mod layout;
 pub mod panels;
 
 use std::sync::Arc;
 
 use engine_backend::{
     scene::{
-        voxel_source::{VoxelSourceKind, VoxelSourceSession},
         Transform,
+        voxel_source::{VoxelSourceKind, VoxelSourceSession},
     },
     services::gpu_renderer::GpuRenderer,
 };
 use gpui::{AppContext, MouseButton};
 use helio_component::{VoxelComponent, VoxelPayloadStore, VoxelTerrainComponent};
-use helio_voxel_data::{VoxelInboxClose, VoxelSampleEdit, VoxelSourceId, VOXEL_CHUNK_ENCODING_RAW};
+use helio_voxel_data::{VOXEL_CHUNK_ENCODING_RAW, VoxelInboxClose, VoxelSampleEdit, VoxelSourceId};
 use parking_lot::Mutex;
 use pulsar_scenedb::Entity;
 use rust_i18n::t;
 
 use super::{
-    BrushCursor, CameraFrame, ModeLayout, ModePanelDescriptor, PointerKind, StatusReadout,
-    ToolMode, ToolModeContext, ToolModeId, ToolPointerEvent, ToolPointerResult, ToolWidget,
-    ViewportFrame,
+    BrushCursor, CameraFrame, ModeLayout, PointerKind, StatusReadout, ToolMode, ToolModeContext,
+    ToolModeId, ToolPointerEvent, ToolPointerResult, ToolWidget, ViewportFrame,
 };
 use crate::level_editor::state::{
-    terrain::{BrushShape, SculptMode, TerrainTarget},
     LevelEditorState,
+    terrain::{BrushShape, SculptMode, TerrainTarget},
 };
 
 const SOURCE_ID: VoxelSourceId = VoxelSourceId(0x5445_5252_4149_4e01);
@@ -291,28 +289,6 @@ impl ToolMode for TerrainMode {
     fn layout(&self) -> ModeLayout {
         ModeLayout {
             show_right_dock: true,
-        }
-    }
-    fn contributes_panels(&self) -> Vec<ModePanelDescriptor> {
-        layout::contributed_panels()
-    }
-    fn build_panel(
-        &self,
-        state: Arc<parking_lot::RwLock<LevelEditorState>>,
-        panel: &ModePanelDescriptor,
-        window: &mut gpui::Window,
-        cx: &mut gpui::Context<crate::level_editor::ui::LevelEditorPanel>,
-    ) -> Option<Box<dyn ui::dock::PanelView>> {
-        match panel.id {
-            layout::TERRAIN_PANEL => {
-                Some(Box::new(cx.new(|cx| {
-                    panels::TerrainPanel::new(state.clone(), window, cx)
-                })))
-            }
-            layout::TERRAIN_FOLIAGE => Some(Box::new(
-                cx.new(|cx| panels::FoliageSetsPanel::new(state, window, cx)),
-            )),
-            _ => None,
         }
     }
     fn toolbar_controls(&self, ctx: &ToolModeContext) -> Vec<ToolWidget> {

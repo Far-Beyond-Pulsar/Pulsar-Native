@@ -406,10 +406,10 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                                 // should only happen for a genuinely new/
                                 // misconfigured property type, not real usage.
                                 tracing::error!(
-                                "[SetComponentProperty] '{class_name}.{prop_name}' on '{id}' has \
+                                    "[SetComponentProperty] '{class_name}.{prop_name}' on '{id}' has \
                                  no live World value and its type isn't registered for JSON \
                                  fallback either -- edit dropped: {error}"
-                            );
+                                );
                                 CommandResult::noop(
                                     "Property type not registered for World or JSON fallback",
                                 )

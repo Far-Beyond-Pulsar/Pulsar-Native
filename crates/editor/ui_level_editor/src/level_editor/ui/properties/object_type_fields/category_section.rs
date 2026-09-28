@@ -6,7 +6,7 @@
 //! single collapsible section with a coloured header.
 
 use gpui::{prelude::*, *};
-use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
+use ui::{ActiveTheme, Icon, IconName, Sizable, h_flex, v_flex};
 
 use super::ObjectTypeFieldsSection;
 

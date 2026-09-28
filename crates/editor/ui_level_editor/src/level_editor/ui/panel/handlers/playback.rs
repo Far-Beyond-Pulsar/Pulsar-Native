@@ -1,19 +1,34 @@
 use super::*;
 
 impl LevelEditorPanel {
-    pub(in crate::level_editor::ui::panel) fn on_play_scene(&mut self, _: &PlayScene, window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_play_scene(
+        &mut self,
+        _: &PlayScene,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         begin_pie(self.shared_state.clone(), window, cx);
         self.sync_gizmo_to_helio();
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_stop_scene(&mut self, _: &StopScene, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_stop_scene(
+        &mut self,
+        _: &StopScene,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         end_pie(self.shared_state.clone());
         self.sync_gizmo_to_helio();
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_perspective_view(&mut self, _: &PerspectiveView, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_perspective_view(
+        &mut self,
+        _: &PerspectiveView,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state
             .write()
             .editor
@@ -34,7 +49,12 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_top_view(&mut self, _: &TopView, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_top_view(
+        &mut self,
+        _: &TopView,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state
             .write()
             .editor
@@ -42,7 +62,12 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_front_view(&mut self, _: &FrontView, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_front_view(
+        &mut self,
+        _: &FrontView,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state
             .write()
             .editor
@@ -50,7 +75,12 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_side_view(&mut self, _: &SideView, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_side_view(
+        &mut self,
+        _: &SideView,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.shared_state
             .write()
             .editor
@@ -58,7 +88,12 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_save_scene(&mut self, _: &SaveScene, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_save_scene(
+        &mut self,
+        _: &SaveScene,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // If no current scene path, do Save As
         if self.shared_state.read().scene.current_scene.is_none() {
             cx.dispatch_action(&SaveSceneAs);
@@ -93,7 +128,12 @@ impl LevelEditorPanel {
         }
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_save_scene_as(&mut self, _: &SaveSceneAs, _window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_save_scene_as(
+        &mut self,
+        _: &SaveSceneAs,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let state_arc = self.shared_state.clone();
         let scene_db = { state_arc.read().scene.shared_scene() };
         let editor_camera = self.current_editor_camera_state();
@@ -138,5 +178,4 @@ impl LevelEditorPanel {
         })
         .detach();
     }
-
 }

@@ -6,15 +6,14 @@ use gpui::*;
 use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
+    ActiveTheme, Disableable, IconName, Sizable,
     button::{Button, ButtonVariants as _},
-    h_flex, ActiveTheme, Disableable, IconName, Sizable,
+    h_flex,
 };
 
 use crate::level_editor::state::LevelEditorState;
 use crate::level_editor::tool_modes::dispatcher::{ToolModeDispatcher, ToolWidgetEdit};
-use crate::level_editor::tool_modes::{
-    CameraFrame, ToolModeContext, ToolWidget, ViewportFrame,
-};
+use crate::level_editor::tool_modes::{CameraFrame, ToolModeContext, ToolWidget, ViewportFrame};
 
 /// The active tool mode's `toolbar_controls()`, or `None` if it returned
 /// nothing (the toolbar treats that as "render nothing").
@@ -165,16 +164,17 @@ where
             }
             ToolWidget::Toggle { id, label_key, on } => {
                 let state_clone = state_arc.clone();
-                let mut btn = Button::new(id)
-                    .label(t!(label_key))
-                    .small()
-                    .on_click(move |_, _, _| {
-                        let mut st = state_clone.write();
-                        ToolModeDispatcher::dispatch_widget_edit(
-                            &mut st,
-                            &ToolWidgetEdit::SetToggle { id, on: !on },
-                        );
-                    });
+                let mut btn =
+                    Button::new(id)
+                        .label(t!(label_key))
+                        .small()
+                        .on_click(move |_, _, _| {
+                            let mut st = state_clone.write();
+                            ToolModeDispatcher::dispatch_widget_edit(
+                                &mut st,
+                                &ToolWidgetEdit::SetToggle { id, on: !on },
+                            );
+                        });
 
                 let btn = if on { btn.primary() } else { btn.ghost() };
                 container = container.child(btn);
@@ -188,7 +188,10 @@ where
                     .ghost()
                     .on_click(move |_, _, _| {
                         let mut st = state_clone.write();
-                        ToolModeDispatcher::dispatch_widget_edit(&mut st, &ToolWidgetEdit::Invoke { id });
+                        ToolModeDispatcher::dispatch_widget_edit(
+                            &mut st,
+                            &ToolWidgetEdit::Invoke { id },
+                        );
                     });
                 container = container.child(btn);
             }

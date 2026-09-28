@@ -59,16 +59,28 @@ pub fn set_fallback_project_root(root: Option<std::path::PathBuf>) {
 pub fn registry_for_class_dir(class_dir: &Path) -> ClassRegistry {
     if let Some(root) = pulsar_class::project_root_of_class_dir(class_dir) {
         let registry = ClassRegistry::scan(&root);
-        if registry.entries().iter().any(|e| same_dir(&e.dir, class_dir)) {
+        if registry
+            .entries()
+            .iter()
+            .any(|e| same_dir(&e.dir, class_dir))
+        {
             return registry;
         }
     }
     match class_dir.parent() {
         Some(parent) => {
             let mut dirs: Vec<std::path::PathBuf> = std::fs::read_dir(parent)
-                .map(|entries| entries.flatten().map(|e| e.path()).filter(|p| pulsar_class::registry::is_class_dir(p)).collect())
+                .map(|entries| {
+                    entries
+                        .flatten()
+                        .map(|e| e.path())
+                        .filter(|p| pulsar_class::registry::is_class_dir(p))
+                        .collect()
+                })
                 .unwrap_or_default();
-            if !dirs.iter().any(|d| same_dir(d, class_dir)) && pulsar_class::registry::is_class_dir(class_dir) {
+            if !dirs.iter().any(|d| same_dir(d, class_dir))
+                && pulsar_class::registry::is_class_dir(class_dir)
+            {
                 dirs.push(class_dir.to_path_buf());
             }
             ClassRegistry::from_dirs(dirs)

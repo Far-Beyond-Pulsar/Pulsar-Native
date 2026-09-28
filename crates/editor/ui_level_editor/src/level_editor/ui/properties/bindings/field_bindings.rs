@@ -88,7 +88,10 @@ impl FieldBinding for F32FieldBinding {
         {
             if let Some(setter) = &self.setter {
                 setter(&mut obj, value);
-                return crate::level_editor::scene_edit::objects::update_object(&mut world.world, obj);
+                return crate::level_editor::scene_edit::objects::update_object(
+                    &mut world.world,
+                    obj,
+                );
             }
         }
         false
@@ -156,7 +159,10 @@ impl FieldBinding for StringFieldBinding {
         {
             if let Some(setter) = &self.setter {
                 setter(&mut obj, value);
-                return crate::level_editor::scene_edit::objects::update_object(&mut world.world, obj);
+                return crate::level_editor::scene_edit::objects::update_object(
+                    &mut world.world,
+                    obj,
+                );
             }
         }
         false
@@ -222,7 +228,10 @@ impl FieldBinding for BoolFieldBinding {
         {
             if let Some(setter) = &self.setter {
                 setter(&mut obj, value);
-                return crate::level_editor::scene_edit::objects::update_object(&mut world.world, obj);
+                return crate::level_editor::scene_edit::objects::update_object(
+                    &mut world.world,
+                    obj,
+                );
             }
         }
         false

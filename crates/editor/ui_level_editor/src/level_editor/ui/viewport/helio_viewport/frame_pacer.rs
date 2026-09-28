@@ -1,6 +1,5 @@
 use super::*;
 
-
 /// Fallback target when the platform doesn't report a refresh rate.
 const FALLBACK_REFRESH_HZ: f64 = 60.0;
 
@@ -153,7 +152,7 @@ impl FramePacer {
 
 #[cfg(test)]
 mod pacer_tests {
-    use super::{FramePacer, FALLBACK_REFRESH_HZ, MIN_TARGET_HZ};
+    use super::{FALLBACK_REFRESH_HZ, FramePacer, MIN_TARGET_HZ};
 
     /// Drive `adapt` as if `n` frames in a row missed their deadline.
     fn run_late_frames(pacer: &mut FramePacer, n: u32) {

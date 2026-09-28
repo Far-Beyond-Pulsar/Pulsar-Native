@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use gpui::*;
-use ui::{h_flex, ActiveTheme};
+use ui::{ActiveTheme, h_flex};
 
 /// Create a drag handle with mouse event handlers.
 ///

@@ -27,11 +27,11 @@ use pulsar_reflection::{PropertyMetadata, REGISTRY, RUNTIME_TYPE_REGISTRY};
 use pulsar_scenedb::World;
 use std::any::Any;
 use std::sync::Arc;
-use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
+use ui::{ActiveTheme, Icon, IconName, Sizable, h_flex, v_flex};
 
 use super::category_section::group_rows_by_category;
 use super::{ObjectTypeFieldsSection, PropertyMetadataCacheEntry};
-use crate::level_editor::core::commands::{execute_command, SceneCommand};
+use crate::level_editor::core::commands::{SceneCommand, execute_command};
 
 /// Read a property value from the live World, with JSON and default-instance
 /// fallbacks.  Used only when the batch read (via `with_world_component`)
@@ -45,23 +45,20 @@ fn read_property_from_world(
     default_instance: &dyn pulsar_reflection::EngineClass,
 ) -> Box<dyn Any> {
     crate::level_editor::scene_edit::components::read_live_component_property(
-        world,
-        object_id,
-        class_name,
-        prop.name,
+        world, object_id, class_name, prop.name,
     )
     .or_else(|| {
-            component
-                .data
-                .get(prop.name)
-                .filter(|json| !json.is_null())
-                .and_then(|json| {
-                    RUNTIME_TYPE_REGISTRY
-                        .deserialize_json_for_type(prop.type_info, json.clone())
-                        .ok()
-                })
-        })
-        .unwrap_or_else(|| (prop.getter)(default_instance))
+        component
+            .data
+            .get(prop.name)
+            .filter(|json| !json.is_null())
+            .and_then(|json| {
+                RUNTIME_TYPE_REGISTRY
+                    .deserialize_json_for_type(prop.type_info, json.clone())
+                    .ok()
+            })
+    })
+    .unwrap_or_else(|| (prop.getter)(default_instance))
 }
 
 /// Pull a card's value snapshot from its OWN metadata JSON blob (falling
@@ -306,7 +303,8 @@ impl ObjectTypeFieldsSection {
                 // (fresh pull or cache hit -- indistinguishable from here
                 // on). Borrowed, not consumed; it goes back into the cache
                 // right after this loop.
-                for (prop_index, (prop, value)) in properties.iter().zip(values.iter()).enumerate() {
+                for (prop_index, (prop, value)) in properties.iter().zip(values.iter()).enumerate()
+                {
                     let write_back = {
                         let state_arc = self.state_arc.clone();
                         let oid = object_id.clone();
@@ -355,10 +353,11 @@ impl ObjectTypeFieldsSection {
                         .and_then(|d| d.as_ref())
                     {
                         Some(default) => {
-                            let overridden = !crate::level_editor::scene_edit::classes::property_equals_default(
-                                value.as_ref(),
-                                default.as_ref(),
-                            );
+                            let overridden =
+                                !crate::level_editor::scene_edit::classes::property_equals_default(
+                                    value.as_ref(),
+                                    default.as_ref(),
+                                );
                             let revert = {
                                 let state_arc = self.state_arc.clone();
                                 let oid = object_id.clone();
@@ -379,7 +378,10 @@ impl ObjectTypeFieldsSection {
                             ui_common::decorate_property_override(
                                 row,
                                 SharedString::from(format!("revert-{editor_key}-{}", prop.name)),
-                                &ui_common::PropertyOverride { overridden, on_revert: Some(revert) },
+                                &ui_common::PropertyOverride {
+                                    overridden,
+                                    on_revert: Some(revert),
+                                },
                                 cx,
                             )
                         }
@@ -467,7 +469,11 @@ impl ObjectTypeFieldsSection {
     /// reflected property rows as components. Values that differ from the
     /// class default are marked and can be reverted; both edits and reverts
     /// are undoable `SetClassVariable` commands.
-    fn render_class_card(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+    fn render_class_card(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
         use crate::level_editor::scene_edit::classes::ClassVariableView;
         use pulsar_class::VariableKind;
 
@@ -489,52 +495,78 @@ impl ObjectTypeFieldsSection {
         }
 
         for var in &view.variables {
-            let ClassVariableView { name, kind, value, overridden, .. } = var;
+            let ClassVariableView {
+                name,
+                kind,
+                value,
+                overridden,
+                ..
+            } = var;
             // The reflected type and a typed value for the row's editor.
-            let typed: Option<(&'static pulsar_reflection::RuntimeTypeInfo, Box<dyn Any>)> = match kind {
-                VariableKind::Bool => RUNTIME_TYPE_REGISTRY
-                    .get::<bool>()
-                    .map(|t| (t, Box::new(value.as_bool().unwrap_or(false)) as Box<dyn Any>)),
-                VariableKind::Int => RUNTIME_TYPE_REGISTRY
-                    .get::<i64>()
-                    .map(|t| (t, Box::new(value.as_i64().unwrap_or(0)) as Box<dyn Any>))
-                    .or_else(|| {
-                        RUNTIME_TYPE_REGISTRY
-                            .get::<i32>()
-                            .map(|t| (t, Box::new(value.as_i64().unwrap_or(0) as i32) as Box<dyn Any>))
+            let typed: Option<(&'static pulsar_reflection::RuntimeTypeInfo, Box<dyn Any>)> =
+                match kind {
+                    VariableKind::Bool => RUNTIME_TYPE_REGISTRY.get::<bool>().map(|t| {
+                        (
+                            t,
+                            Box::new(value.as_bool().unwrap_or(false)) as Box<dyn Any>,
+                        )
                     }),
-                VariableKind::Float => RUNTIME_TYPE_REGISTRY
-                    .get::<f64>()
-                    .map(|t| (t, Box::new(value.as_f64().unwrap_or(0.0)) as Box<dyn Any>))
-                    .or_else(|| {
-                        RUNTIME_TYPE_REGISTRY
-                            .get::<f32>()
-                            .map(|t| (t, Box::new(value.as_f64().unwrap_or(0.0) as f32) as Box<dyn Any>))
+                    VariableKind::Int => RUNTIME_TYPE_REGISTRY
+                        .get::<i64>()
+                        .map(|t| (t, Box::new(value.as_i64().unwrap_or(0)) as Box<dyn Any>))
+                        .or_else(|| {
+                            RUNTIME_TYPE_REGISTRY.get::<i32>().map(|t| {
+                                (
+                                    t,
+                                    Box::new(value.as_i64().unwrap_or(0) as i32) as Box<dyn Any>,
+                                )
+                            })
+                        }),
+                    VariableKind::Float => RUNTIME_TYPE_REGISTRY
+                        .get::<f64>()
+                        .map(|t| (t, Box::new(value.as_f64().unwrap_or(0.0)) as Box<dyn Any>))
+                        .or_else(|| {
+                            RUNTIME_TYPE_REGISTRY.get::<f32>().map(|t| {
+                                (
+                                    t,
+                                    Box::new(value.as_f64().unwrap_or(0.0) as f32) as Box<dyn Any>,
+                                )
+                            })
+                        }),
+                    VariableKind::String => RUNTIME_TYPE_REGISTRY.get::<String>().map(|t| {
+                        (
+                            t,
+                            Box::new(value.as_str().unwrap_or_default().to_string())
+                                as Box<dyn Any>,
+                        )
                     }),
-                VariableKind::String => RUNTIME_TYPE_REGISTRY.get::<String>().map(|t| {
-                    (t, Box::new(value.as_str().unwrap_or_default().to_string()) as Box<dyn Any>)
-                }),
-                VariableKind::Other(_) => None,
-            };
+                    VariableKind::Other(_) => None,
+                };
             let row = match typed {
                 Some((type_info, current)) => {
                     let write_back = {
                         let state_arc = self.state_arc.clone();
                         let oid = object_id.clone();
                         let var_name = name.clone();
-                        Arc::new(move |new_val: Box<dyn Any + Send>, _window: &mut Window, _cx: &mut App| {
-                            let Ok(json) = RUNTIME_TYPE_REGISTRY.serialize_json_for_any(new_val.as_ref()) else {
-                                return;
-                            };
-                            execute_command(
-                                &mut state_arc.write(),
-                                SceneCommand::SetClassVariable {
-                                    id: oid.clone(),
-                                    name: var_name.clone(),
-                                    value: Some(json),
-                                },
-                            );
-                        })
+                        Arc::new(
+                            move |new_val: Box<dyn Any + Send>,
+                                  _window: &mut Window,
+                                  _cx: &mut App| {
+                                let Ok(json) =
+                                    RUNTIME_TYPE_REGISTRY.serialize_json_for_any(new_val.as_ref())
+                                else {
+                                    return;
+                                };
+                                execute_command(
+                                    &mut state_arc.write(),
+                                    SceneCommand::SetClassVariable {
+                                        id: oid.clone(),
+                                        name: var_name.clone(),
+                                        value: Some(json),
+                                    },
+                                );
+                            },
+                        )
                     };
                     ui_common::render_property_row_runtime(
                         &mut self.property_state,
@@ -553,7 +585,12 @@ impl ObjectTypeFieldsSection {
                 None => h_flex()
                     .w_full()
                     .justify_between()
-                    .child(div().text_sm().text_color(cx.theme().muted_foreground).child(name.clone()))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(name.clone()),
+                    )
                     .child(div().text_sm().child(value.to_string()))
                     .into_any_element(),
             };
@@ -564,14 +601,21 @@ impl ObjectTypeFieldsSection {
                 Arc::new(move |_window: &mut Window, _cx: &mut App| {
                     execute_command(
                         &mut state_arc.write(),
-                        SceneCommand::SetClassVariable { id: oid.clone(), name: var_name.clone(), value: None },
+                        SceneCommand::SetClassVariable {
+                            id: oid.clone(),
+                            name: var_name.clone(),
+                            value: None,
+                        },
                     );
                 })
             };
             rows.push(ui_common::decorate_property_override(
                 row,
                 SharedString::from(format!("revert-class-var-{name}")),
-                &ui_common::PropertyOverride { overridden: *overridden, on_revert: Some(revert) },
+                &ui_common::PropertyOverride {
+                    overridden: *overridden,
+                    on_revert: Some(revert),
+                },
                 cx,
             ));
         }

@@ -22,7 +22,7 @@
 //! like #650's `blueprint_bindings`) and inspector UI are F's follow-up — see
 //! the E3 handoff.
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::level_editor::scene_edit::{ObjectType, SceneObjectData, Transform};
 

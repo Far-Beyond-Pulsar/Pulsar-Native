@@ -20,11 +20,7 @@ pub fn build() -> (Vec<Mesh>, Vec<Mesh>, [MatProps; 8], [[f32; 3]; 6]) {
     for x in -9_i32..9 {
         for z in -23_i32..23 {
             let mat = if x.abs() <= 1 {
-                if (x + z).rem_euclid(2) == 0 {
-                    2
-                } else {
-                    3
-                }
+                if (x + z).rem_euclid(2) == 0 { 2 } else { 3 }
             } else {
                 if (x * 13 + z * 7).rem_euclid(11) == 0 {
                     0

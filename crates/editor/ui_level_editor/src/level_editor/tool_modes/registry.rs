@@ -3,7 +3,7 @@
 //! Owns registered tool modes and the currently active mode ID.
 //! Provides lookup, switching, and extensibility seams.
 
-use super::{level_edit::LevelEditMode, ToolMode, ToolModeContext};
+use super::{ToolMode, ToolModeContext, level_edit::LevelEditMode};
 
 // ── ToolModeId ─────────────────────────────────────────────────────────────
 
@@ -107,7 +107,10 @@ impl ToolModeRegistry {
     }
 
     /// Temporarily swaps the active mode with a placeholder to allow dispatching with `&mut LevelEditorState`.
-    pub fn swap_selected(&mut self, mut placeholder: Box<dyn ToolMode>) -> (Box<dyn ToolMode>, usize) {
+    pub fn swap_selected(
+        &mut self,
+        mut placeholder: Box<dyn ToolMode>,
+    ) -> (Box<dyn ToolMode>, usize) {
         if let Some(idx) = self.modes.iter().position(|m| m.id() == self.selected) {
             std::mem::swap(&mut self.modes[idx], &mut placeholder);
             (placeholder, idx)

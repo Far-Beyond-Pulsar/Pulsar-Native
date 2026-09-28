@@ -1,7 +1,7 @@
 //! Tool execution: dispatch an AI tool call into `SceneCommand` mutations.
 
-use super::*;
 use super::registry::tool_registry as editor_tool_registry;
+use super::*;
 
 pub fn execute_ai_tool(
     file_path: &Path,

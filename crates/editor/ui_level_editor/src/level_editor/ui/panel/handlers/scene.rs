@@ -1,7 +1,12 @@
 use super::*;
 
 impl LevelEditorPanel {
-    pub(in crate::level_editor::ui::panel) fn on_open_scene(&mut self, _: &OpenScene, _window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_open_scene(
+        &mut self,
+        _: &OpenScene,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let state_arc = self.shared_state.clone();
         let scene_db = { state_arc.read().scene.shared_scene() };
         let default_dir = state_arc
@@ -53,7 +58,12 @@ impl LevelEditorPanel {
         .detach();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_new_scene(&mut self, _: &NewScene, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_new_scene(
+        &mut self,
+        _: &NewScene,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // Warn if unsaved changes (TODO: modal dialog)
         // Clear the scene IN-PLACE so the renderer keeps its Arc<SceneDb>.
         let scene_db = { self.shared_state.read().scene.shared_scene() };

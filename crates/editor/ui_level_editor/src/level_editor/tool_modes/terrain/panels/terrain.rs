@@ -13,25 +13,26 @@
 
 use std::collections::HashSet;
 
-use helio_component::{VoxelComponent, VoxelTerrainComponent};
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
+use helio_component::{VoxelComponent, VoxelTerrainComponent};
 use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
+    ActiveTheme, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable,
+    h_flex, v_flex,
 };
 
 use super::widgets::{
-    collapsible_header, info_row, panel_header, segmented_row, stepper_row, swatch_color,
-    tool_grid, SharedState, ToolSpec,
+    SharedState, ToolSpec, collapsible_header, info_row, panel_header, segmented_row, stepper_row,
+    swatch_color, tool_grid,
 };
+use crate::level_editor::commands::{SceneCommand, execute_command};
+use crate::level_editor::scene_edit::{ObjectType, SceneObjectData, Transform};
 use crate::level_editor::state::terrain::{
     BrushShape, SculptBrush, SculptMode, TerrainDomain, TerrainTarget,
 };
-use crate::level_editor::commands::{execute_command, SceneCommand};
-use crate::level_editor::scene_edit::{ObjectType, SceneObjectData, Transform};
 use crate::level_editor::tool_modes::dispatcher::ToolModeDispatcher;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -115,7 +116,8 @@ fn body_rows(state: &crate::level_editor::state::LevelEditorState) -> Vec<BodyRo
             rows.push(BodyRow {
                 hex: format!("{:016x}", entity.bits()),
                 is_planet: false,
-                size_m: f64::from(*component.dimensions.iter().max().unwrap_or(&0)) * component.voxel_size,
+                size_m: f64::from(*component.dimensions.iter().max().unwrap_or(&0))
+                    * component.voxel_size,
                 material: component.default_material_slot as u8,
                 material_slots: component.material_ids.len().min(u8::MAX as usize) as u32,
             });
@@ -226,8 +228,12 @@ impl Render for TerrainPanel {
             .unwrap_or_else(|| t!("LevelEditor.TerrainPalette.NoTarget").to_string());
 
         let body = match self.tab {
-            Tab::Manage => self.render_manage(&signature, &theme, cx).into_any_element(),
-            Tab::Sculpt => self.render_sculpt(&signature, &theme, cx).into_any_element(),
+            Tab::Manage => self
+                .render_manage(&signature, &theme, cx)
+                .into_any_element(),
+            Tab::Sculpt => self
+                .render_sculpt(&signature, &theme, cx)
+                .into_any_element(),
             Tab::Paint => self.render_paint(&signature, &theme, cx).into_any_element(),
         };
 
@@ -256,9 +262,21 @@ impl TerrainPanel {
             .rounded(px(6.0))
             .bg(cx.theme().muted.opacity(0.1));
         for (tab, icon, label_key) in [
-            (Tab::Manage, IconName::Globe, "LevelEditor.TerrainPanel.Tab.Manage"),
-            (Tab::Sculpt, IconName::ArrowUp, "LevelEditor.TerrainPanel.Tab.Sculpt"),
-            (Tab::Paint, IconName::Palette, "LevelEditor.TerrainPanel.Tab.Paint"),
+            (
+                Tab::Manage,
+                IconName::Globe,
+                "LevelEditor.TerrainPanel.Tab.Manage",
+            ),
+            (
+                Tab::Sculpt,
+                IconName::ArrowUp,
+                "LevelEditor.TerrainPanel.Tab.Sculpt",
+            ),
+            (
+                Tab::Paint,
+                IconName::Palette,
+                "LevelEditor.TerrainPanel.Tab.Paint",
+            ),
         ] {
             let button = Button::new(format!("terrain_tab_{label_key}"))
                 .icon(icon)
@@ -360,15 +378,13 @@ impl TerrainPanel {
                     .child(
                         v_flex()
                             .flex_1()
-                            .child(
-                                div().text_xs().font_weight(FontWeight::SEMIBOLD).child(
-                                    if body.is_planet {
-                                        t!("LevelEditor.TerrainPanel.Kind.Planet").to_string()
-                                    } else {
-                                        t!("LevelEditor.TerrainPanel.Kind.FlatWorld").to_string()
-                                    },
-                                ),
-                            )
+                            .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).child(
+                                if body.is_planet {
+                                    t!("LevelEditor.TerrainPanel.Kind.Planet").to_string()
+                                } else {
+                                    t!("LevelEditor.TerrainPanel.Kind.FlatWorld").to_string()
+                                },
+                            ))
                             .child(
                                 div()
                                     .text_xs()
@@ -421,9 +437,23 @@ impl TerrainPanel {
         v_flex()
             .w_full()
             .gap_1()
-            .child(self.header(theme, cx, "manage_actors", "LevelEditor.TerrainPanel.Section.Actors", Some(create)))
-            .when(!self.collapsed.contains("manage_actors"), |el| el.child(actors))
-            .child(self.header(theme, cx, "manage_details", "LevelEditor.TerrainPanel.Section.Details", None))
+            .child(self.header(
+                theme,
+                cx,
+                "manage_actors",
+                "LevelEditor.TerrainPanel.Section.Actors",
+                Some(create),
+            ))
+            .when(!self.collapsed.contains("manage_actors"), |el| {
+                el.child(actors)
+            })
+            .child(self.header(
+                theme,
+                cx,
+                "manage_details",
+                "LevelEditor.TerrainPanel.Section.Details",
+                None,
+            ))
             .when(!self.collapsed.contains("manage_details"), |el| {
                 el.child(details.unwrap_or_else(|| {
                     div()
@@ -464,19 +494,49 @@ impl TerrainPanel {
         v_flex()
             .w_full()
             .gap_2()
-            .child(self.header(theme, cx, "sculpt_tools", "LevelEditor.TerrainPanel.Section.Tools", None))
+            .child(self.header(
+                theme,
+                cx,
+                "sculpt_tools",
+                "LevelEditor.TerrainPanel.Section.Tools",
+                None,
+            ))
             .when(!self.collapsed.contains("sculpt_tools"), |el| {
                 el.child(tool_grid(
                     theme,
                     state.clone(),
                     vec![
-                        Self::sculpt_tool("raise", IconName::ArrowUp, "LevelEditor.Terrain.Raise", SculptMode::Raise, signature),
-                        Self::sculpt_tool("lower", IconName::ArrowDown, "LevelEditor.Terrain.Lower", SculptMode::Lower, signature),
-                        Self::sculpt_tool("flatten", IconName::Ruler, "LevelEditor.Terrain.Flatten", SculptMode::Flatten, signature),
+                        Self::sculpt_tool(
+                            "raise",
+                            IconName::ArrowUp,
+                            "LevelEditor.Terrain.Raise",
+                            SculptMode::Raise,
+                            signature,
+                        ),
+                        Self::sculpt_tool(
+                            "lower",
+                            IconName::ArrowDown,
+                            "LevelEditor.Terrain.Lower",
+                            SculptMode::Lower,
+                            signature,
+                        ),
+                        Self::sculpt_tool(
+                            "flatten",
+                            IconName::Ruler,
+                            "LevelEditor.Terrain.Flatten",
+                            SculptMode::Flatten,
+                            signature,
+                        ),
                     ],
                 ))
             })
-            .child(self.header(theme, cx, "sculpt_brush", "LevelEditor.TerrainPanel.Section.BrushOptions", None))
+            .child(self.header(
+                theme,
+                cx,
+                "sculpt_brush",
+                "LevelEditor.TerrainPanel.Section.BrushOptions",
+                None,
+            ))
             .when(!self.collapsed.contains("sculpt_brush"), |el| {
                 el.child(self.brush_options(&state, brush, true, cx))
             })
@@ -539,7 +599,13 @@ impl TerrainPanel {
         v_flex()
             .w_full()
             .gap_2()
-            .child(self.header(theme, cx, "paint_tools", "LevelEditor.TerrainPanel.Section.Tools", None))
+            .child(self.header(
+                theme,
+                cx,
+                "paint_tools",
+                "LevelEditor.TerrainPanel.Section.Tools",
+                None,
+            ))
             .when(!self.collapsed.contains("paint_tools"), |el| {
                 el.child(tool_grid(
                     theme,
@@ -553,12 +619,26 @@ impl TerrainPanel {
                     }],
                 ))
             })
-            .child(self.header(theme, cx, "paint_brush", "LevelEditor.TerrainPanel.Section.BrushOptions", None))
+            .child(self.header(
+                theme,
+                cx,
+                "paint_brush",
+                "LevelEditor.TerrainPanel.Section.BrushOptions",
+                None,
+            ))
             .when(!self.collapsed.contains("paint_brush"), |el| {
                 el.child(self.brush_options(&state, brush, false, cx))
             })
-            .child(self.header(theme, cx, "paint_materials", "LevelEditor.TerrainPanel.Section.Materials", None))
-            .when(!self.collapsed.contains("paint_materials"), |el| el.child(swatches))
+            .child(self.header(
+                theme,
+                cx,
+                "paint_materials",
+                "LevelEditor.TerrainPanel.Section.Materials",
+                None,
+            ))
+            .when(!self.collapsed.contains("paint_materials"), |el| {
+                el.child(swatches)
+            })
     }
 
     /// Shape + size (+ strength for sculpting) + falloff. Paint has no

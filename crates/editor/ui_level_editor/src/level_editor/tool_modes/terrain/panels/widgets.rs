@@ -13,13 +13,14 @@ use gpui::*;
 use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
+    ActiveTheme, Disableable, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
-    h_flex, v_flex, ActiveTheme, Disableable, Icon, IconName, Sizable,
+    h_flex, v_flex,
 };
 
-use crate::level_editor::state::terrain::TerrainDomain;
 use crate::level_editor::state::LevelEditorState;
+use crate::level_editor::state::terrain::TerrainDomain;
 
 pub type SharedState = Arc<parking_lot::RwLock<LevelEditorState>>;
 
@@ -119,11 +120,7 @@ pub fn tool_grid(theme: &ui::Theme, state: SharedState, tools: Vec<ToolSpec>) ->
         let state = state.clone();
         let apply = tool.apply.clone();
         let (bg, border, fg) = if tool.active {
-            (
-                theme.primary.opacity(0.28),
-                theme.primary,
-                theme.foreground,
-            )
+            (theme.primary.opacity(0.28), theme.primary, theme.foreground)
         } else {
             (
                 theme.muted.opacity(0.10),

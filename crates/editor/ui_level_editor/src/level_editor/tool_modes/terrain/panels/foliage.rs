@@ -26,17 +26,18 @@
 use gpui::*;
 use rust_i18n::t;
 use ui::{
+    ActiveTheme, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
     h_flex,
     input::{InputEvent, InputState, TextInput},
     popover::Popover,
-    v_flex, ActiveTheme, Icon, IconName, Sizable,
+    v_flex,
 };
 use ui_common::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 
 use super::widgets::{
-    checkbox_row, collapsible_header, panel_header, stepper_row, tool_grid, SharedState, ToolSpec,
+    SharedState, ToolSpec, checkbox_row, collapsible_header, panel_header, stepper_row, tool_grid,
 };
 use crate::level_editor::state::foliage_sets::{
     FoliageSelection, FoliageSetLibrary, MemberId, MemberPlacement, SetId,
@@ -336,12 +337,28 @@ impl Render for FoliageSetsPanel {
                 &theme,
                 state.clone(),
                 vec![
-                    tool("paint", IconName::Leaf, "LevelEditor.FoliagePanel.Tool.Paint", FoliageTool::Paint),
-                    tool("erase", IconName::Bin, "LevelEditor.FoliagePanel.Tool.Erase", FoliageTool::Erase),
+                    tool(
+                        "paint",
+                        IconName::Leaf,
+                        "LevelEditor.FoliagePanel.Tool.Paint",
+                        FoliageTool::Paint,
+                    ),
+                    tool(
+                        "erase",
+                        IconName::Bin,
+                        "LevelEditor.FoliagePanel.Tool.Erase",
+                        FoliageTool::Erase,
+                    ),
                 ],
             ))
             // ── Brush Options ──
-            .child(self.header(&theme, cx, "brush", "LevelEditor.FoliagePanel.Section.BrushOptions", None))
+            .child(self.header(
+                &theme,
+                cx,
+                "brush",
+                "LevelEditor.FoliagePanel.Section.BrushOptions",
+                None,
+            ))
             .when(!self.collapsed.contains("brush"), |el| {
                 el.child(
                     v_flex()
@@ -384,7 +401,13 @@ impl Render for FoliageSetsPanel {
                 )
             })
             // ── Sets ──
-            .child(self.header(&theme, cx, "sets", "LevelEditor.FoliagePanel.Section.Sets", Some(add_set)))
+            .child(self.header(
+                &theme,
+                cx,
+                "sets",
+                "LevelEditor.FoliagePanel.Section.Sets",
+                Some(add_set),
+            ))
             .when(!self.collapsed.contains("sets"), |el| {
                 el.child(
                     h_flex()
@@ -396,7 +419,11 @@ impl Render for FoliageSetsPanel {
                         .border_1()
                         .border_color(theme.border.opacity(0.6))
                         .bg(theme.muted.opacity(0.14))
-                        .child(Icon::new(IconName::Search).size_3p5().text_color(theme.muted_foreground))
+                        .child(
+                            Icon::new(IconName::Search)
+                                .size_3p5()
+                                .text_color(theme.muted_foreground),
+                        )
                         .child(TextInput::new(&self.search_input).flex_1()),
                 )
             });
@@ -417,7 +444,13 @@ impl Render for FoliageSetsPanel {
 
         // ── Inspector ──
         root = root
-            .child(self.header(&theme, cx, "inspector", "LevelEditor.FoliagePanel.Section.Inspector", None))
+            .child(self.header(
+                &theme,
+                cx,
+                "inspector",
+                "LevelEditor.FoliagePanel.Section.Inspector",
+                None,
+            ))
             .when(!self.collapsed.contains("inspector"), |el| {
                 el.child(self.render_inspector(library, &state, &theme, cx))
             });
@@ -473,11 +506,7 @@ impl FoliageSetsPanel {
                     state.write().editor.terrain.foliage_sets.selection =
                         Some(FoliageSelection::Set(set_id));
                 });
-            if selected {
-                button.primary()
-            } else {
-                button
-            }
+            if selected { button.primary() } else { button }
         };
         let remove = {
             let state = state.clone();
@@ -518,7 +547,8 @@ impl FoliageSetsPanel {
                 );
             }
             for member in &set.members {
-                members = members.child(self.render_member(set_id, member.id, library, state, theme));
+                members =
+                    members.child(self.render_member(set_id, member.id, library, state, theme));
             }
             let add_mesh = {
                 let state = state.clone();
@@ -558,19 +588,22 @@ impl FoliageSetsPanel {
         let enabled = {
             let state = state.clone();
             let was = member.enabled;
-            Checkbox::new(SharedString::from(format!("member_enabled_{}", member_id.0)))
-                .checked(member.enabled)
-                .on_click(move |_, _, _| {
-                    if let Some(m) = state
-                        .write()
-                        .editor
-                        .terrain
-                        .foliage_sets
-                        .member_mut(set_id, member_id)
-                    {
-                        m.enabled = !was;
-                    }
-                })
+            Checkbox::new(SharedString::from(format!(
+                "member_enabled_{}",
+                member_id.0
+            )))
+            .checked(member.enabled)
+            .on_click(move |_, _, _| {
+                if let Some(m) = state
+                    .write()
+                    .editor
+                    .terrain
+                    .foliage_sets
+                    .member_mut(set_id, member_id)
+                {
+                    m.enabled = !was;
+                }
+            })
         };
         let label = if member.mesh.is_empty() {
             t!("LevelEditor.FoliagePanel.NoMesh").to_string()
@@ -587,11 +620,7 @@ impl FoliageSetsPanel {
                     state.write().editor.terrain.foliage_sets.selection =
                         Some(FoliageSelection::Member(set_id, member_id));
                 });
-            if selected {
-                button.primary()
-            } else {
-                button
-            }
+            if selected { button.primary() } else { button }
         };
         let remove = {
             let state = state.clone();
@@ -657,7 +686,15 @@ impl FoliageSetsPanel {
                 else {
                     return div().into_any_element();
                 };
-                self.render_member_inspector(set_id, member_id, member.mesh.clone(), member.placement, state, theme, cx)
+                self.render_member_inspector(
+                    set_id,
+                    member_id,
+                    member.mesh.clone(),
+                    member.placement,
+                    state,
+                    theme,
+                    cx,
+                )
             }
         }
     }
@@ -712,7 +749,11 @@ impl FoliageSetsPanel {
 
         // A member's placement fields all write through the same helper: find
         // the member, apply the clamped setter.
-        fn edit<F>(set: SetId, member: MemberId, f: F) -> impl Fn(&mut TerrainDomain, f32) + Clone + Send + Sync + 'static
+        fn edit<F>(
+            set: SetId,
+            member: MemberId,
+            f: F,
+        ) -> impl Fn(&mut TerrainDomain, f32) + Clone + Send + Sync + 'static
         where
             F: Fn(&mut MemberPlacement, f32) + Clone + Send + Sync + 'static,
         {

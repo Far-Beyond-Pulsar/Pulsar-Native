@@ -68,10 +68,18 @@ impl ToolModeDispatcher {
         let terrain = &mut state.editor.terrain;
         match edit {
             ToolWidgetEdit::SetSegmented { id, value } => match (*id, *value) {
-                ("sculpt_mode" | "mode", "raise") => terrain.activate_sculpt_tool(SculptMode::Raise),
-                ("sculpt_mode" | "mode", "lower") => terrain.activate_sculpt_tool(SculptMode::Lower),
-                ("sculpt_mode" | "mode", "flatten") => terrain.activate_sculpt_tool(SculptMode::Flatten),
-                ("sculpt_mode" | "mode", "paint") => terrain.activate_sculpt_tool(SculptMode::Paint),
+                ("sculpt_mode" | "mode", "raise") => {
+                    terrain.activate_sculpt_tool(SculptMode::Raise)
+                }
+                ("sculpt_mode" | "mode", "lower") => {
+                    terrain.activate_sculpt_tool(SculptMode::Lower)
+                }
+                ("sculpt_mode" | "mode", "flatten") => {
+                    terrain.activate_sculpt_tool(SculptMode::Flatten)
+                }
+                ("sculpt_mode" | "mode", "paint") => {
+                    terrain.activate_sculpt_tool(SculptMode::Paint)
+                }
                 ("brush_shape", "sphere") => terrain.set_brush_shape(BrushShape::Sphere),
                 ("brush_shape", "box") => terrain.set_brush_shape(BrushShape::Box),
                 _ => {}
@@ -83,7 +91,9 @@ impl ToolModeDispatcher {
                 "material" => terrain.set_brush_material(value.round().max(1.0) as u32),
                 _ => {}
             },
-            ToolWidgetEdit::SetToggle { id, on } if *id == "paint_foliage" => terrain.set_paint_foliage(*on),
+            ToolWidgetEdit::SetToggle { id, on } if *id == "paint_foliage" => {
+                terrain.set_paint_foliage(*on)
+            }
             ToolWidgetEdit::Invoke { .. } | ToolWidgetEdit::SetToggle { .. } => {}
         }
     }

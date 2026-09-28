@@ -119,7 +119,8 @@ impl Render for StatusBarView {
         let objects_count = match self.cached_root_count {
             Some((revision, count)) if revision == state.scene.world_revision() => count,
             _ => {
-                let count = crate::level_editor::scene_edit::objects::root_count(&state.scene.world(), );
+                let count =
+                    crate::level_editor::scene_edit::objects::root_count(&state.scene.world());
                 self.cached_root_count = Some((state.scene.world_revision(), count));
                 count
             }
@@ -127,7 +128,9 @@ impl Render for StatusBarView {
         let selected_name = state
             .scene
             .selected_object()
-            .and_then(|id| crate::level_editor::scene_edit::objects::get_object(&state.scene.world(), &id))
+            .and_then(|id| {
+                crate::level_editor::scene_edit::objects::get_object(&state.scene.world(), &id)
+            })
             .map(|obj| obj.name.clone())
             .unwrap_or_else(|| t!("LevelEditor.StatusBar.None").to_string());
 
@@ -166,7 +169,9 @@ impl Render for StatusBarView {
 
         let mut bar = StatusBar::new()
             .add_left_item(t!("LevelEditor.StatusBar.Objects", count => objects_count).to_string())
-            .add_left_item(t!("LevelEditor.StatusBar.Selected", name => &selected_name).to_string());
+            .add_left_item(
+                t!("LevelEditor.StatusBar.Selected", name => &selected_name).to_string(),
+            );
 
         if let Some(status) = mode_status {
             bar = bar.add_left_item(status.text);

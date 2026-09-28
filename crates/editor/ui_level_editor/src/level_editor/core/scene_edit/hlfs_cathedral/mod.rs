@@ -16,11 +16,11 @@ mod geometry;
 use demo_data::{CANDLES, CHANDELIER_Z, COLUMN_Z, GLASS_LIGHTS};
 
 use super::{
-    components, level_io, objects, LevelEditorCameraState, LightType, MeshType, ObjectType,
-    SceneObjectData, Transform,
+    LevelEditorCameraState, LightType, MeshType, ObjectType, SceneObjectData, Transform,
+    components, level_io, objects,
 };
 use helio::{MeshUpload, PackedVertex};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -379,10 +379,8 @@ fn default_level_loads_the_cathedral() {
     assert_eq!((meshes, lights), (14, 17));
     // The editor rewrites the camera whenever the level is saved, so
     // compare with what the file holds rather than a fixed position.
-    let file: Value =
-        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-    let saved: [f32; 3] =
-        serde_json::from_value(file["editor"]["camera"]["position"].clone())
-            .expect("editor camera saved in the file");
+    let file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let saved: [f32; 3] = serde_json::from_value(file["editor"]["camera"]["position"].clone())
+        .expect("editor camera saved in the file");
     assert_eq!(camera.expect("editor camera loaded").position, saved);
 }

@@ -27,12 +27,12 @@ use gpui::*;
 use ui::dock::PanelEvent;
 
 use super::ToolbarPanel;
+use crate::level_editor::LevelEditorState;
 use crate::level_editor::state::{
     BuildConfig, BuildMode, EditorMode, MultiplayerMode, TargetPlatform,
 };
 use crate::level_editor::tool_modes::ToolModeId;
 use crate::level_editor::ui::frame_pump::spawn_frame_pump;
-use crate::level_editor::LevelEditorState;
 
 /// Every piece of [`LevelEditorState`] the toolbar's element tree depends on.
 ///

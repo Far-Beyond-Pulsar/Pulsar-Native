@@ -22,7 +22,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
 use ui::dropdown::{SearchableList, SearchableListEvent};
-use ui::{v_flex, ActiveTheme};
+use ui::{ActiveTheme, v_flex};
 use ui_common::{MeshAssetPicker, PropertyStateManager};
 
 use crate::level_editor::state::LevelEditorState;

@@ -255,16 +255,18 @@ mod tests {
     #[test]
     fn a_degenerate_viewport_yields_no_hit() {
         let camera = CameraFrame::default();
-        assert!(ground_plane_hit(
-            camera,
-            ViewportFrame {
-                width: 0.0,
-                height: 0.0
-            },
-            0.5,
-            0.5
-        )
-        .is_none());
+        assert!(
+            ground_plane_hit(
+                camera,
+                ViewportFrame {
+                    width: 0.0,
+                    height: 0.0
+                },
+                0.5,
+                0.5
+            )
+            .is_none()
+        );
     }
 
     #[test]

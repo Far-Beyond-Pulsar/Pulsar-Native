@@ -23,8 +23,8 @@ impl LevelEditorPanel {
     pub(super) fn tool_to_gizmo(
         tool: TransformTool,
     ) -> (engine_backend::scene::GizmoType, engine_backend::GizmoMode) {
-        use engine_backend::scene::GizmoType as SceneGizmoType;
         use engine_backend::GizmoMode;
+        use engine_backend::scene::GizmoType as SceneGizmoType;
         match tool {
             TransformTool::Select => (SceneGizmoType::None, GizmoMode::Translate),
             TransformTool::Move => (SceneGizmoType::Translate, GizmoMode::Translate),
