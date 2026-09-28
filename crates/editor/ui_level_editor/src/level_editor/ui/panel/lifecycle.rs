@@ -308,7 +308,7 @@ impl LevelEditorPanel {
                 // Play needs a window; render starts it.
                 if poll_state.read().play.pie.play_requested {
                     cx.update(|cx| {
-                        this.update(cx, |_, cx| cx.notify());
+                        let _ = this.update(cx, |_, cx| cx.notify());
                     });
                 }
                 let snapshot = {

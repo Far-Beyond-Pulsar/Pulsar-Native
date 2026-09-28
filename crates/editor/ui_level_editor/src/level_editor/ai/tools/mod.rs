@@ -352,6 +352,107 @@ mod tests {
         assert_eq!(v, json!({ "a": { "b": 5 }, "d": 3, "e": [1] }));
     }
 
+    /// Drives the tools the way the chat does: through `execute_ai_tool`
+    /// with a level path, against a scene registered as open.
+    #[test]
+    fn tools_edit_an_open_level_undoably() {
+        let dir = std::env::temp_dir().join(format!("le_ai_tools_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let level = dir.join("test.level");
+        std::fs::write(&level, "{}").unwrap();
+        let state: StateArc = Arc::new(parking_lot::RwLock::new(LevelEditorState::new()));
+        sessions::register_open_scene(&level, &state);
+        let call = |tool: &str, args: Value| {
+            execute_ai_tool(&level, tool, args).unwrap_or_else(|e| panic!("{tool}: {e}"))
+        };
+
+        // Spawn an object with a component in one call, patching nested data.
+        let spawned = call(
+            "level_editor_spawn_object",
+            json!({
+                "name": "Lamp",
+                "kind": "light_point",
+                "position": [1.0, 2.0, 3.0],
+                "components": [{
+                    "class_name": "LightComponent",
+                    "properties": { "intensity": { "intensity": 1234.0 } },
+                }],
+            }),
+        );
+        let id = spawned["created_id"].as_str().unwrap().to_string();
+        assert_eq!(spawned["object"]["kind"], "light_point");
+        assert_eq!(spawned["object"]["position"], json!([1.0, 2.0, 3.0]));
+
+        let components = call("level_editor_get_components", json!({ "id": id }));
+        assert_eq!(components["components"][0]["class_name"], "LightComponent");
+        assert_eq!(components["components"][0]["data"]["intensity"]["intensity"], 1234.0);
+
+        // Edit a nested field by class name.
+        let edited = call(
+            "level_editor_set_component_properties",
+            json!({ "id": id, "class_name": "LightComponent", "properties": { "intensity": { "intensity": 50.0 } } }),
+        );
+        assert_eq!(edited["changed"], true);
+        let components = call("level_editor_get_components", json!({ "id": id }));
+        assert_eq!(components["components"][0]["data"]["intensity"]["intensity"], 50.0);
+
+        // Data the class can't take is rejected, not dropped.
+        let bad = execute_ai_tool(
+            &level,
+            "level_editor_set_component_properties",
+            json!({ "id": id, "component_index": 0, "properties": { "intensity": { "intensity": "bright" } } }),
+        );
+        assert!(bad.is_err());
+
+        // Relative moves, duplication with offsets, filters.
+        call("level_editor_move_objects", json!({ "ids": [id], "translate": [0.0, 1.0, 0.0] }));
+        let dupes = call(
+            "level_editor_duplicate_object",
+            json!({ "id": id, "count": 2, "offset": [5.0, 0.0, 0.0] }),
+        );
+        assert_eq!(dupes["affected_ids"].as_array().unwrap().len(), 2);
+        let listed = call(
+            "level_editor_list_objects",
+            json!({ "filter": { "has_component": "LightComponent" } }),
+        );
+        assert_eq!(listed["total_matches"], 3);
+
+        // Undo walks back the duplicate, then the component edit.
+        call("level_editor_undo", json!({ "steps": 2 }));
+        let listed = call("level_editor_list_objects", json!({}));
+        assert_eq!(listed["total_matches"], 1);
+        assert_eq!(listed["items"][0]["position"], json!([1.0, 2.0, 3.0]));
+        assert!(state.read().scene.pending_renderer_resync);
+
+        // Component structure edits.
+        call("level_editor_duplicate_component", json!({ "id": id, "component_index": 0 }));
+        let disabled = call(
+            "level_editor_set_component_enabled",
+            json!({ "id": id, "component_index": 1, "enabled": false }),
+        );
+        assert_eq!(disabled["components"][1]["enabled"], false);
+        call("level_editor_remove_component", json!({ "id": id, "component_index": 1 }));
+        let components = call("level_editor_get_components", json!({ "id": id }));
+        assert_eq!(components["components"].as_array().unwrap().len(), 1);
+
+        // Splines and deletion.
+        let spline = call(
+            "level_editor_create_spline",
+            json!({ "points": [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 0.0, 10.0]] }),
+        );
+        let spline_id = spline["id"].as_str().unwrap().to_string();
+        let edited = call(
+            "level_editor_edit_spline",
+            json!({ "id": spline_id, "append_points": [[0.0, 0.0, 10.0]], "closed": true }),
+        );
+        assert_eq!(edited["point_count"], 4);
+        call("level_editor_delete_objects", json!({ "filter": { "root_only": true } }));
+        assert_eq!(call("level_editor_query_scene", json!({}))["object_count"], 0);
+
+        sessions::unregister_open_scene(&level);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn unopened_level_is_a_clear_error() {
         let err = execute_ai_tool(
