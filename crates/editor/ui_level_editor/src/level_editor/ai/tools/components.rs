@@ -204,33 +204,42 @@ pub fn level_editor_list_component_classes(name_contains: Option<String>) -> Res
     Ok(json!({ "count": classes.len(), "classes": classes }))
 }
 
-/// Show a component class's fields and default data.
+/// List a component class's fields. Call this before setting any component
+/// properties: it gives the exact field paths to use.
 ///
-/// `default_data` is the exact JSON shape used by `properties` in
-/// level_editor_add_component / level_editor_spawn_object and by
-/// level_editor_set_component_properties; nested objects are property groups.
+/// Returns `fields`: every settable field as `{path, type, value}` where
+/// `value` is the default. Paths are dotted because related fields are
+/// grouped (in `LightComponent` the RGBA colour is `color.color`, an array
+/// of 4 numbers, inside the `color` group). Use these paths as the keys of
+/// `properties` in level_editor_add_component, level_editor_spawn_object
+/// components and level_editor_set_component_properties. `example_patch`
+/// is a valid `properties` value to copy and adjust.
 ///
 /// # Arguments
 /// * `class_name` - Component class, e.g. `LightComponent`.
 #[tool(category = "level_editor")]
 pub fn level_editor_describe_component_class(class_name: String) -> Result<Value> {
     let instance = create_instance(&class_name).ok_or_else(|| unknown_class(&class_name))?;
-    let properties: Vec<Value> = instance
-        .get_properties()
-        .iter()
-        .map(|prop| {
-            json!({
-                "name": prop.name,
-                "display_name": prop.display_name,
-                "category": prop.category,
-                "type": prop.type_info.type_name,
-            })
-        })
-        .collect();
+    let data = default_data(instance.as_ref());
+    let fields = field_paths(&data);
+    // A few representative fields, arrays and numbers first: those are what
+    // people change and what models get wrong.
+    let mut example = serde_json::Map::new();
+    for wanted in ["array of", "number", "boolean", "string"] {
+        for field in &fields {
+            if example.len() >= 3 {
+                break;
+            }
+            if field["type"].as_str().is_some_and(|t| t.starts_with(wanted)) {
+                let path = field["path"].as_str().unwrap_or_default().to_string();
+                example.entry(path).or_insert_with(|| field["value"].clone());
+            }
+        }
+    }
     Ok(json!({
         "class_name": class_name,
-        "default_data": default_data(instance.as_ref()),
-        "properties": properties,
+        "fields": fields,
+        "example_patch": example,
     }))
 }
 
@@ -248,13 +257,15 @@ pub fn level_editor_get_components(ctx: &ToolContext, id: String) -> Result<Valu
 }
 
 /// Attach a new component to an object (Add Component in the details panel).
+/// Fields you don't set keep the class defaults.
 ///
 /// # Arguments
 /// * `id` - Object id.
-/// * `class_name` - Component class, e.g. `StaticMeshComponent`.
-/// * `properties` - Optional patch over the class's default data (see
-///   level_editor_describe_component_class), e.g.
-///   `{"intensity": {"intensity": 5000}}`.
+/// * `class_name` - Component class, e.g. `LightComponent`.
+/// * `properties` - Fields to set, keyed by the dotted paths from
+///   level_editor_describe_component_class (call it first). Example for
+///   LightComponent: `{"color.color": [1.0, 0.5, 0.2, 1.0],
+///   "intensity.intensity": 5000.0}`.
 #[tool(category = "level_editor")]
 pub fn level_editor_add_component(
     ctx: &ToolContext,
@@ -268,17 +279,19 @@ pub fn level_editor_add_component(
     })
 }
 
-/// Change fields of a component with a JSON merge patch.
+/// Change fields of a component. Only the fields you name change.
 ///
-/// Objects in the patch merge into the current data and any other value
-/// replaces the field. Don't send `null` to reset a field -- use
-/// level_editor_revert_component_property. Invalid data is rejected with the
-/// reason, and nothing is written.
+/// Field keys are the dotted paths from level_editor_describe_component_class
+/// (call it first). Related fields are grouped, so a group like `color` can't
+/// be set to a value -- set the field inside it, `color.color`. A rejected
+/// edit writes nothing and the error names the correct field paths; fix the
+/// keys and retry. To reset a field use level_editor_revert_component_property.
 ///
 /// # Arguments
 /// * `id` - Object id.
-/// * `properties` - Patch over the component's current data, e.g.
-///   `{"color": {"color": [1.0, 0.5, 0.2]}}`.
+/// * `properties` - Fields to set by path. Example for LightComponent:
+///   `{"color.color": [1.0, 0.5, 0.2, 1.0], "intensity.intensity": 3000.0}`
+///   (colours are RGBA arrays of 4 numbers from 0 to 1).
 /// * `component_index` - Which component (from level_editor_get_components).
 /// * `class_name` - Alternative to `component_index`: the first component of this class.
 #[tool(category = "level_editor")]
@@ -299,8 +312,7 @@ pub fn level_editor_set_component_properties(
             .nth(index)
             .ok_or_else(|| anyhow!("Component {index} vanished"))?;
         let mut data = component.data;
-        merge_json(&mut data, &properties);
-        validate(&component.class_name, &data)?;
+        patch_component(&component.class_name, &mut data, &properties)?;
         Ok(SceneCommand::SetComponentData {
             id,
             component_index: index,
