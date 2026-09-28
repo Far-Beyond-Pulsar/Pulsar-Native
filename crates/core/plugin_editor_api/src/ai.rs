@@ -103,8 +103,13 @@ impl FsContext {
     }
 
     /// Check if a path is allowed
+    ///
+    /// Both sides are compared in resolved form: callers often hand in a
+    /// canonicalized path, which on Windows carries the `\\?\` verbatim
+    /// prefix, while the root is stored as given. Comparing them raw denied
+    /// every file inside the project.
     pub fn is_allowed(&self, path: &std::path::Path) -> bool {
-        if !path.starts_with(&self.allowed_root) {
+        if !resolve_for_compare(path).starts_with(resolve_for_compare(&self.allowed_root)) {
             return false;
         }
 
@@ -118,6 +123,80 @@ impl FsContext {
         }
 
         true
+    }
+}
+
+/// `path` in a form two paths can be compared in: symlinks, `..` and case
+/// resolved through the deepest existing ancestor (so paths of files not
+/// created yet still resolve), and the Windows verbatim prefix removed.
+fn resolve_for_compare(path: &std::path::Path) -> std::path::PathBuf {
+    let mut existing = path;
+    let mut rest = Vec::new();
+    let resolved = loop {
+        if let Ok(canonical) = existing.canonicalize() {
+            break canonical;
+        }
+        match (existing.parent(), existing.file_name()) {
+            (Some(parent), Some(name)) => {
+                rest.push(name.to_os_string());
+                existing = parent;
+            }
+            // Nothing on this path exists: compare it lexically.
+            _ => break path.to_path_buf(),
+        }
+    };
+    let mut resolved = strip_verbatim(resolved);
+    for name in rest.into_iter().rev() {
+        if name == ".." {
+            resolved.pop();
+        } else if name != "." {
+            resolved.push(name);
+        }
+    }
+    resolved
+}
+
+/// `\\?\C:\x` → `C:\x`, `\\?\UNC\server\share` → `\\server\share`.
+fn strip_verbatim(path: std::path::PathBuf) -> std::path::PathBuf {
+    match path.to_str() {
+        Some(s) if s.starts_with(r"\\?\UNC\") => format!(r"\\{}", &s[8..]).into(),
+        Some(s) if s.starts_with(r"\\?\") => s[4..].into(),
+        _ => path,
+    }
+}
+
+#[cfg(test)]
+mod fs_context_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn verbatim_paths_inside_the_root_are_allowed() {
+        let root = std::env::temp_dir().join(format!("fsctx_{}", std::process::id()));
+        std::fs::create_dir_all(root.join("scene")).unwrap();
+        let file = root.join("scene").join("default.level");
+        std::fs::write(&file, "{}").unwrap();
+
+        let ctx = FsContext::unrestricted(root.clone());
+        // What the chat tools actually pass: the canonical (verbatim on Windows) path.
+        assert!(ctx.is_allowed(&file.canonicalize().unwrap()));
+        assert!(ctx.is_allowed(&file));
+        // Not created yet.
+        assert!(ctx.is_allowed(&root.join("scene").join("new.level")));
+        // Escapes.
+        assert!(!ctx.is_allowed(&root.join("..").join("elsewhere.level")));
+        assert!(!ctx.is_allowed(Path::new("/definitely/not/the/root.level")));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn verbatim_prefix_is_stripped() {
+        assert_eq!(strip_verbatim(r"\\?\C:\a\b".into()), std::path::PathBuf::from(r"C:\a\b"));
+        assert_eq!(
+            strip_verbatim(r"\\?\UNC\srv\share\x".into()),
+            std::path::PathBuf::from(r"\\srv\share\x")
+        );
     }
 }
 

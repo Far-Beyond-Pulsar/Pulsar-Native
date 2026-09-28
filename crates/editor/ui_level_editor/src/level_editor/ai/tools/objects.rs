@@ -109,8 +109,11 @@ fn spawn(state: &mut LevelEditorState, spec: SpawnSpec) -> Result<String> {
 /// * `scale` - `[x, y, z]` scale factors. Default `[1, 1, 1]`.
 /// * `visible` - Default true.
 /// * `locked` - Locked objects can't be picked in the viewport. Default false.
-/// * `components` - Components to attach: a list of
-///   `{"class_name": "...", "properties": {patch over defaults}, "enabled": true}`.
+/// * `components` - Components to attach, each
+///   `{"class_name": "...", "properties": {field path: value}}`. Field paths
+///   come from level_editor_describe_component_class (call it first). A red
+///   point light: `[{"class_name": "LightComponent", "properties":
+///   {"color.color": [1.0, 0.1, 0.1, 1.0], "intensity.intensity": 2000.0}}]`.
 #[tool(category = "level_editor")]
 pub fn level_editor_spawn_object(
     ctx: &ToolContext,

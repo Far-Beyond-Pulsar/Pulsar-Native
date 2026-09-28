@@ -28,7 +28,7 @@ use super::sessions;
 use crate::level_editor::LevelEditorState;
 use crate::level_editor::commands::{CommandResult, SceneCommand, execute_command};
 use crate::level_editor::scene_edit::{self, SceneObjectData};
-use engine_backend::scene::{LightType, MeshType, ObjectType};
+use engine_backend::scene::{LightType, MeshType, ObjectType, SceneWorldExt};
 use pulsar_scenedb::World;
 
 mod classes;

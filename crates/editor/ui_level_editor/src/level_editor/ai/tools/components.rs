@@ -326,7 +326,8 @@ pub fn level_editor_set_component_properties(
 ///
 /// # Arguments
 /// * `id` - Object id.
-/// * `property` - Property name as listed by level_editor_describe_component_class.
+/// * `property` - Field path from level_editor_describe_component_class,
+///   e.g. `intensity.intensity`.
 /// * `component_index` - Which component.
 /// * `class_name` - Alternative to `component_index`: the first component of this class.
 #[tool(category = "level_editor")]
@@ -341,32 +342,44 @@ pub fn level_editor_revert_component_property(
         let index = resolve_index(world, &id, component_index, class_name.as_deref())?;
         let class_name = scene_edit::components::get_component_class_names(world, &id)
             .swap_remove(index);
-        let slot_default = scene_edit::classes::slot_defaults(
-            world,
-            &id,
-            &scene_edit::classes::project_registry(),
-        )
-        .remove(&index)
-        .is_some();
-        if slot_default {
-            return Ok(SceneCommand::RevertComponentProperty {
-                id,
-                class_name,
-                component_index: index,
-                prop_name: property,
+        let registry = scene_edit::classes::project_registry();
+        let from_class_slot = scene_edit::classes::slot_defaults(world, &id, &registry)
+            .remove(&index)
+            .is_some();
+        if from_class_slot {
+            // Back to the placed class's value: revert that slot property.
+            let root = scene_edit::classes::class_root_of(world, &id)
+                .and_then(|root| world.stable_id_of(root))
+                .map(|root| root.to_string())
+                .ok_or_else(|| anyhow!("'{id}' has no class instance root"))?;
+            let slot_id = scene_edit::classes::class_instance_view(world, &root, &registry)
+                .and_then(|view| {
+                    view.slots.into_iter().find(|slot| {
+                        slot.object_id.as_deref() == Some(id.as_str()) && slot.class_name == class_name
+                    })
+                })
+                .map(|slot| slot.slot_id)
+                .ok_or_else(|| anyhow!("No class slot for {class_name} on '{id}'"))?;
+            return Ok(SceneCommand::RevertClassSlot {
+                id: root,
+                slot_id,
+                path: Some(property),
             });
         }
-        // Not from a class: the class's own default value.
+        // Not from a class: the component class's own default value.
         let instance = create_instance(&class_name).ok_or_else(|| unknown_class(&class_name))?;
         let default = default_data(instance.as_ref());
-        let value = default
-            .get(&property)
-            .cloned()
-            .ok_or_else(|| anyhow!("{class_name} has no top-level property '{property}'"))?;
+        let pointer = format!("/{}", property.replace('.', "/"));
+        let value = default.pointer(&pointer).cloned().ok_or_else(|| {
+            anyhow!("{class_name} has no field `{property}`. Fields: {}", field_list(&default))
+        })?;
         let mut data = scene_edit::components::get_components(world, &id)
             .swap_remove(index)
             .data;
-        data[property.as_str()] = value;
+        let slot = data
+            .pointer_mut(&pointer)
+            .ok_or_else(|| anyhow!("Component data has no field `{property}`"))?;
+        *slot = value;
         Ok(SceneCommand::SetComponentData {
             id,
             component_index: index,
