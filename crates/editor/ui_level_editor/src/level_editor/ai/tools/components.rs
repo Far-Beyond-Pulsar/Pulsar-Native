@@ -87,24 +87,37 @@ fn default_data(instance: &dyn EngineClass) -> Value {
 fn validate(class_name: &str, data: &Value) -> Result<()> {
     match REGISTRY.create_instance_from_json(class_name, data) {
         Some(Err(error)) => bail!(
-            "Data does not fit {class_name}: {error}. \
-             See level_editor_describe_component_class for its shape."
+            "Data does not fit {class_name}: {error}. Its fields (path, type): {}",
+            field_list(data)
         ),
         _ => Ok(()),
     }
 }
 
-/// Default data for `class_name` with `properties` merged over it.
+/// `path (type)` for every field, for error messages.
+fn field_list(data: &Value) -> String {
+    field_paths(data)
+        .iter()
+        .map(|f| format!("{} ({})", f["path"].as_str().unwrap_or_default(), f["type"].as_str().unwrap_or_default()))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Apply `patch` to `data` for `class_name`, prefixing any error with the
+/// class so the model knows which component it was editing.
+fn patch_component(class_name: &str, data: &mut Value, patch: &Value) -> Result<()> {
+    apply_patch(data, patch).map_err(|e| anyhow!("{class_name}: {e}"))?;
+    validate(class_name, data)
+}
+
+/// Default data for `class_name` with `properties` patched over it.
 pub(super) fn build_component_data(class_name: &str, properties: Option<&Value>) -> Result<Value> {
     let instance = create_instance(class_name).ok_or_else(|| unknown_class(class_name))?;
     let mut data = default_data(instance.as_ref());
-    if let Some(patch) = properties {
-        if !patch.is_object() {
-            bail!("`properties` must be a JSON object (a patch over the class's default data)");
-        }
-        merge_json(&mut data, patch);
+    match properties {
+        Some(patch) => patch_component(class_name, &mut data, patch)?,
+        None => validate(class_name, &data)?,
     }
-    validate(class_name, &data)?;
     Ok(data)
 }
 
