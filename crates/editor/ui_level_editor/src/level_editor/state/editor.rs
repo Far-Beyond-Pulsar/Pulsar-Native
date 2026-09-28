@@ -149,10 +149,8 @@ pub struct EditorDomain {
     pub tool_mode_registry: crate::level_editor::tool_modes::ToolModeRegistry,
     /// Terrain sculpt and material-paint settings persist across mode switches.
     pub terrain: super::terrain::TerrainDomain,
-    /// State for the Milestone 5 extensibility-demo `SplineMode`. Lives here
-    /// (rather than as a field on `SplineMode` itself) because the toolbar
-    /// and status bar both need to read it without going through the mode
-    /// instance -- see `state/spline.rs`'s doc comment.
+    /// Spline tool selection, drawing plane and viewport display preferences.
+    /// Authored curves live on scene objects and save with the level.
     pub spline: super::spline::SplineDomain,
 }
 

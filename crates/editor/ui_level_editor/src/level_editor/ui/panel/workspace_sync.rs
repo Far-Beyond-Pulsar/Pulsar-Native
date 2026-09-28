@@ -226,8 +226,9 @@ impl LevelEditorPanel {
                 layout_panels.push(std::sync::Arc::new(foliage));
             }
             crate::level_editor::tool_modes::ToolModeId::SPLINE => {
+                let owner = cx.entity().downgrade();
                 let spline = cx.new(|cx| {
-                    super::spline::SplinePanel::new(self.shared_state.clone(), window, cx)
+                    super::spline::SplinePanel::new(self.shared_state.clone(), owner, window, cx)
                 });
                 layout_panels.push(std::sync::Arc::new(spline));
             }
