@@ -27,7 +27,10 @@ const CAMERA_KEYS: [(i32, Keycode); 11] = [
 /// shares, so the full sweep made this poll bimodal: ~0.1 ms usually but 2-6 ms
 /// on a fifth of polls, on a thread that runs every ~2 ms while the camera is
 /// captured -- each slow poll delays key state reaching the camera.
-fn held_camera_keys(device_state: &DeviceState) -> Vec<Keycode> {
+///
+/// `device_state` is `None` on Linux without an X display (pure Wayland);
+/// there, and on Wayland generally, keys come from the Wayland bypass.
+fn held_camera_keys(device_state: Option<&DeviceState>) -> Vec<Keycode> {
     #[cfg(target_os = "windows")]
     {
         use winapi::um::winuser::GetAsyncKeyState;
@@ -43,7 +46,15 @@ fn held_camera_keys(device_state: &DeviceState) -> Vec<Keycode> {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        device_state.get_keys()
+        // A Wayland window's keys aren't visible to X queries; the Wayland
+        // bypass tracks them from its own keyboard object.
+        #[cfg(not(target_os = "macos"))]
+        {
+            if let Some(keys) = cursor::held_keys() {
+                return keys;
+            }
+        }
+        device_state.map(DeviceState::get_keys).unwrap_or_default()
     }
 }
 
@@ -76,7 +87,12 @@ impl ViewportPanel {
             // before it reads the camera (see `input_latch`).
             super::input_latch::register_input_thread();
             tracing::debug!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
-            let device_state = DeviceState::new();
+            // `DeviceState::new` panics without an X display (pure Wayland);
+            // on Linux keys then come from the Wayland bypass instead.
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            let device_state = Some(DeviceState::new());
+            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+            let device_state = DeviceState::checked_new();
             let mut _last_mouse_pos: Option<(i32, i32)> = None;
             let mut was_capturing = false;
 
@@ -143,7 +159,7 @@ impl ViewportPanel {
                 // Poll keyboard
                 {
                     profiling::profile_scope!("keyboard_poll");
-                    let keys: Vec<Keycode> = held_camera_keys(&device_state);
+                    let keys: Vec<Keycode> = held_camera_keys(device_state.as_ref());
                     let forward = if keys.contains(&Keycode::W) {
                         1
                     } else if keys.contains(&Keycode::S) {
@@ -271,8 +287,35 @@ impl ViewportPanel {
                         }
                     }
 
+                    // Wayland: relative deltas from the Wayland bypass (no
+                    // global pointer position or warping), like macOS.
                     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-                    {
+                    if cursor::uses_relative_deltas() {
+                        let (dx, dy) = cursor::take_mouse_delta();
+
+                        if !just_activated && (dx != 0.0 || dy != 0.0) {
+                            if let Some(cam) = &camera_input {
+                                if let Ok(mut input) = cam.lock() {
+                                    if is_rotating {
+                                        input.accumulate_look_delta(dx, dy);
+                                    } else if is_panning {
+                                        input.accumulate_pan_delta(dx, dy);
+                                    }
+                                }
+                            }
+
+                            if is_rotating {
+                                input_state.set_mouse_delta(dx, dy);
+                            } else if is_panning {
+                                input_state.set_pan_delta(dx, dy);
+                            }
+                        }
+                    }
+
+                    // X11: measure the pointer's offset from the lock point,
+                    // then warp it back (one shared X connection).
+                    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+                    if !cursor::uses_relative_deltas() {
                         let locked_screen_x = locked_cursor_screen_x.load(Ordering::Relaxed);
                         let locked_screen_y = locked_cursor_screen_y.load(Ordering::Relaxed);
 
