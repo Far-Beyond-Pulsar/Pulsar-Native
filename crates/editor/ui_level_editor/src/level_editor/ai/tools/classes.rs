@@ -49,7 +49,7 @@ pub fn level_editor_place_class(
         None if std::path::Path::new(&class).is_dir() => std::path::PathBuf::from(&class),
         None => bail!("Unknown class '{class}'. Use level_editor_list_classes."),
     };
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     if let Some(parent) = &parent_id {
         require_object(&state, parent)?;
@@ -123,7 +123,7 @@ pub fn level_editor_set_class_variable(
     name: String,
     value: Value,
 ) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     require_object(&state, &id)?;
     let value = (!value.is_null()).then_some(value);
@@ -146,7 +146,7 @@ pub fn level_editor_revert_class_slot(
     slot_id: String,
     path: Option<String>,
 ) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     require_object(&state, &id)?;
     let result = execute_command(&mut state, SceneCommand::RevertClassSlot { id, slot_id, path });

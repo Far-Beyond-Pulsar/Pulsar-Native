@@ -102,7 +102,7 @@ pub fn level_editor_create_spline(
     }
     check_curve(&curve)?;
 
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     if let Some(parent) = &parent_id {
         require_object(&state, parent)?;
@@ -165,7 +165,7 @@ pub fn level_editor_edit_spline(
     operation: Option<String>,
     amount: Option<f32>,
 ) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     let mut object = require_object(&state, &id)?;
     if object.locked {

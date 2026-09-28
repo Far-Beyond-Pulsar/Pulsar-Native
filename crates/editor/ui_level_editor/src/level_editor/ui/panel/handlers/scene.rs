@@ -37,16 +37,10 @@ impl LevelEditorPanel {
                             Ok(editor_camera) => {
                                 this.apply_editor_camera_state(editor_camera.as_ref());
                                 let mut state = state_arc.write();
-                                if let Some(prev) = state.scene.current_scene.clone() {
-                                    ai_sessions::unregister_open_scene(&prev);
-                                }
                                 state.scene.current_scene = Some(path);
                                 state.scene.has_unsaved_changes = false;
                                 // Deselect so properties panel clears stale data.
                                 state.scene.select_object(None);
-                                if let Some(open_path) = state.scene.current_scene.clone() {
-                                    ai_sessions::register_open_scene(&open_path, &state_arc);
-                                }
                             }
                             Err(e) => tracing::error!("Open scene failed: {}", e),
                         }
@@ -97,9 +91,6 @@ impl LevelEditorPanel {
         self.apply_editor_camera_state(editor_camera.as_ref());
         {
             let mut state = self.shared_state.write();
-            if let Some(prev) = state.scene.current_scene.clone() {
-                ai_sessions::unregister_open_scene(&prev);
-            }
             state.scene.current_scene = None;
             state.scene.has_unsaved_changes = false;
             // Deselect so properties panel clears stale data.

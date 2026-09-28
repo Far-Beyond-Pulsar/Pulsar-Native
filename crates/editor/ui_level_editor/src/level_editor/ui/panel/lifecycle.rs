@@ -84,9 +84,6 @@ impl LevelEditorPanel {
                     w.scene.current_scene = Some(default_path);
                     w.scene.has_unsaved_changes = false;
                     w.scene.bump_revision(false);
-                    if let Some(path) = w.scene.current_scene.clone() {
-                        ai_sessions::register_open_scene(&path, &self.shared_state);
-                    }
                 }
                 Err(e) => {
                     tracing::warn!("Default level exists but could not be loaded: {e}");
@@ -146,9 +143,6 @@ impl LevelEditorPanel {
                     w.scene.current_scene = Some(default_path);
                     w.scene.has_unsaved_changes = false;
                     w.scene.bump_revision(false);
-                    if let Some(path) = w.scene.current_scene.clone() {
-                        ai_sessions::register_open_scene(&path, &self.shared_state);
-                    }
                 }
                 Err(e) => {
                     tracing::warn!("Could not create default level at {:?}: {e}", default_path);
@@ -188,9 +182,6 @@ impl LevelEditorPanel {
             state.scene.current_scene = Some(path);
             state.scene.has_unsaved_changes = false;
             state.scene.bump_revision(false);
-            if let Some(open_path) = state.scene.current_scene.clone() {
-                ai_sessions::register_open_scene(&open_path, &panel.shared_state);
-            }
         }
         Ok(panel)
     }
@@ -247,6 +238,9 @@ impl LevelEditorPanel {
         // renderer's next sync pass without a separate write-through call.
 
         let shared_state = Arc::new(parking_lot::RwLock::new(state));
+        // Reachable by the AI tools for as long as this panel lives (unregistered
+        // in `Drop`), whatever level it shows or whether that was ever saved.
+        crate::ai_sessions::register_editor(&shared_state);
 
         // Temporary debug toggle: replace viewport with a solid yellow panel to
         // verify layout/overlap issues independently of GPU rendering.

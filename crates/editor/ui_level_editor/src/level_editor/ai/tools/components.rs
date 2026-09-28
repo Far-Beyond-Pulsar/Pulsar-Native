@@ -145,7 +145,7 @@ fn resolve_index(
 }
 
 fn run(ctx: &ToolContext, id: &str, cmd: impl FnOnce(&World) -> Result<SceneCommand>) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     require_object(&state, id)?;
     let cmd = cmd(&state.scene.world())?;

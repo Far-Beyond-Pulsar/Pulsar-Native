@@ -156,18 +156,9 @@ impl LevelEditorPanel {
                     _this.update(cx, |_, cx| {
                         match result {
                             Ok(_) => {
-                                let previous = state_arc.write().scene.current_scene.clone();
-                                if let Some(prev) = previous {
-                                    ai_sessions::unregister_open_scene(&prev);
-                                }
                                 state_arc.write().scene.current_scene = Some(path);
                                 state_arc.write().scene.has_unsaved_changes = false;
                                 request_thumbnail_capture(&state_arc);
-                                if let Some(open_path) =
-                                    state_arc.read().scene.current_scene.clone()
-                                {
-                                    ai_sessions::register_open_scene(&open_path, &state_arc);
-                                }
                             }
                             Err(e) => tracing::error!("Save failed: {}", e),
                         }

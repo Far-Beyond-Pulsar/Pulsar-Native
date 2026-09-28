@@ -99,18 +99,26 @@ pub fn execute_ai_tool(
 
 // ── Scene access ─────────────────────────────────────────────────────────────
 
-/// The editor state of the level the call was routed for.
+/// The live editor the call is for. Tools only ever act on this in-memory
+/// state -- what the user sees -- never on the level file; the file path in
+/// the context just picks among open editors (see `sessions::find_editor`).
 fn open_scene(ctx: &ToolContext) -> Result<StateArc> {
-    let file = ctx
-        .current_file
-        .as_deref()
-        .ok_or_else(|| anyhow!("No level file in the tool context"))?;
-    sessions::get_open_scene_state(file).ok_or_else(|| {
-        anyhow!(
-            "Level is not open in the editor: {}. Open it first (open_file_in_default_editor).",
-            file.display()
-        )
-    })
+    sessions::find_editor(ctx.current_file.as_deref()).map_err(|e| anyhow!(e))
+}
+
+/// Like [`open_scene`], for tools that change the level. Refused while
+/// Play-In-Editor runs: stopping Play restores the pre-Play level, so an edit
+/// made now would silently vanish, and a save would write the game's
+/// runtime state into the level file.
+fn edit_scene(ctx: &ToolContext) -> Result<StateArc> {
+    let state = open_scene(ctx)?;
+    if !state.read().scene.is_edit_mode() {
+        bail!(
+            "Play-In-Editor is running; the level can't be edited or saved until Play stops. \
+             Stop it with level_editor_play_control {{\"action\": \"stop\"}} or ask the user to."
+        );
+    }
+    Ok(state)
 }
 
 fn command_json(result: &CommandResult) -> Value {
@@ -518,8 +526,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let level = dir.join("test.level");
         std::fs::write(&level, "{}").unwrap();
-        let state: StateArc = Arc::new(parking_lot::RwLock::new(LevelEditorState::new()));
-        sessions::register_open_scene(&level, &state);
+        let _registry = registry_lock();
+        let state = open_editor(Some(&level));
         let call = |tool: &str, args: Value| {
             execute_ai_tool(&level, tool, args).unwrap_or_else(|e| panic!("{tool}: {e}"))
         };
@@ -607,18 +615,76 @@ mod tests {
         call("level_editor_delete_objects", json!({ "filter": { "root_only": true } }));
         assert_eq!(call("level_editor_query_scene", json!({}))["object_count"], 0);
 
-        sessions::unregister_open_scene(&level);
+        sessions::unregister_editor(&state);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Tests that touch the process-wide editor registry run one at a time.
+    fn registry_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        LOCK.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// A registered editor showing `level` (`None`: a never-saved level).
+    fn open_editor(level: Option<&Path>) -> StateArc {
+        let state: StateArc = Arc::new(parking_lot::RwLock::new(LevelEditorState::new()));
+        state.write().scene.current_scene = level.map(Path::to_path_buf);
+        sessions::register_editor(&state);
+        state
+    }
+
+    #[test]
+    fn calls_reach_the_live_editor_not_the_file() {
+        let _registry = registry_lock();
+        let dir = std::env::temp_dir().join(format!("le_ai_route_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (a, b) = (dir.join("a.level"), dir.join("b.level"));
+        std::fs::write(&a, "{}").unwrap();
+        std::fs::write(&b, "{}").unwrap();
+        let spawn = |path: &Path| {
+            execute_ai_tool(path, "level_editor_spawn_object", json!({ "name": "Crate" }))
+        };
+
+        // A never-saved level is reachable: no file needed.
+        let unsaved = open_editor(None);
+        spawn(Path::new("untitled.level")).unwrap();
+        assert_eq!(scene_edit::objects::get_all_objects(&unsaved.read().scene.world()).len(), 1);
+        // A real level that isn't open is not silently redirected.
+        assert!(spawn(&a).unwrap_err().to_string().contains("not open"));
+
+        // With several open, the path picks the editor showing it.
+        let editor_a = open_editor(Some(&a));
+        spawn(&a).unwrap();
+        assert_eq!(scene_edit::objects::get_all_objects(&editor_a.read().scene.world()).len(), 1);
+        assert!(spawn(Path::new("untitled.level")).unwrap_err().to_string().contains("Several levels"));
+
+        // The file on disk is never written by an edit.
+        assert_eq!(std::fs::read_to_string(&a).unwrap(), "{}");
+
+        // Play-In-Editor: reads work, edits and saves are refused.
+        editor_a.write().scene.enter_play_mode();
+        assert!(execute_ai_tool(&a, "level_editor_query_scene", json!({})).is_ok());
+        let refused = spawn(&a).unwrap_err().to_string();
+        assert!(refused.contains("Play-In-Editor is running"), "{refused}");
+        assert!(execute_ai_tool(&a, "level_editor_save_scene", json!({})).is_err());
+        assert_eq!(std::fs::read_to_string(&a).unwrap(), "{}");
+
+        sessions::unregister_editor(&unsaved);
+        sessions::unregister_editor(&editor_a);
+        // Dropped editors are gone.
+        assert!(spawn(&b).unwrap_err().to_string().contains("No level is open"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn unopened_level_is_a_clear_error() {
+        let _registry = registry_lock();
         let err = execute_ai_tool(
             Path::new("definitely/not/open.level"),
             "level_editor_query_scene",
             json!({}),
         )
         .unwrap_err();
-        assert!(err.to_string().contains("not open"), "{err}");
+        assert!(err.to_string().contains("No level is open"), "{err}");
     }
 }

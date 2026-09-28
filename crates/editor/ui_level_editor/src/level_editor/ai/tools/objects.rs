@@ -144,7 +144,7 @@ pub fn level_editor_spawn_object(
         locked,
         components,
     };
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     let id = spawn(&mut state, spec)?;
     let world = state.scene.world();
@@ -165,7 +165,7 @@ pub fn level_editor_spawn_object(
 ///   scale?, visible?, locked?, components?}`.
 #[tool(category = "level_editor")]
 pub fn level_editor_spawn_objects(ctx: &ToolContext, objects: Vec<Value>) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     let mut created: Vec<Option<String>> = Vec::with_capacity(objects.len());
     let mut errors = Vec::new();
@@ -332,7 +332,7 @@ pub fn level_editor_set_transform(
     rotation: Option<[f32; 3]>,
     scale: Option<[f32; 3]>,
 ) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     require_object(&state, &id)?;
     let result = execute_command(
@@ -365,7 +365,7 @@ pub fn level_editor_move_objects(
     rotate: Option<[f32; 3]>,
     scale_by: Option<[f32; 3]>,
 ) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     let ids = target_ids(&state.scene.world(), ids, filter)?;
     let add = |a: [f32; 3], b: [f32; 3]| [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -400,7 +400,7 @@ pub fn level_editor_move_objects(
 /// * `name` - New display name.
 #[tool(category = "level_editor")]
 pub fn level_editor_rename_object(ctx: &ToolContext, id: String, name: String) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     require_object(&state, &id)?;
     Ok(command_json(&execute_command(&mut state, SceneCommand::SetName { id, name })))
@@ -424,7 +424,7 @@ pub fn level_editor_set_object_flags(
     if visible.is_none() && locked.is_none() {
         bail!("Pass `visible` and/or `locked`");
     }
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     let ids = target_ids(&state.scene.world(), ids, filter)?;
     let changed: Vec<String> = ids
@@ -459,7 +459,7 @@ pub fn level_editor_duplicate_object(
     count: Option<usize>,
     offset: Option<[f32; 3]>,
 ) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     require_object(&state, &id)?;
     let result = execute_command(
@@ -484,7 +484,7 @@ pub fn level_editor_delete_objects(
     ids: Option<Vec<String>>,
     filter: Option<Value>,
 ) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     let ids = target_ids(&state.scene.world(), ids, filter)?;
     let mut deleted = Vec::new();
@@ -532,7 +532,7 @@ pub fn level_editor_reparent_object(
     id: String,
     new_parent_id: Option<String>,
 ) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     require_object(&state, &id)?;
     if let Some(parent) = &new_parent_id {
@@ -561,7 +561,7 @@ pub fn level_editor_reorder_object(
     direction: String,
     target_id: Option<String>,
 ) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     require_object(&state, &id)?;
     let changed = {

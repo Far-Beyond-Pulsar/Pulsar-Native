@@ -101,9 +101,7 @@ pub struct LevelEditorPanel {
 
 impl Drop for LevelEditorPanel {
     fn drop(&mut self) {
-        if let Some(path) = self.shared_state.read().scene.current_scene.clone() {
-            ai_sessions::unregister_open_scene(&path);
-        }
+        ai_sessions::unregister_editor(&self.shared_state);
     }
 }
 

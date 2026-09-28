@@ -55,7 +55,7 @@ pub fn level_editor_query_scene(ctx: &ToolContext) -> Result<Value> {
 /// Edits made by any tool live only in the editor until this is called.
 #[tool(category = "level_editor")]
 pub fn level_editor_save_scene(ctx: &ToolContext) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let path = state_arc
         .read()
         .scene
@@ -73,7 +73,7 @@ pub fn level_editor_save_scene(ctx: &ToolContext) -> Result<Value> {
 }
 
 fn step_history(ctx: &ToolContext, steps: Option<u32>, redo: bool) -> Result<Value> {
-    let state_arc = open_scene(ctx)?;
+    let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     let requested = steps.unwrap_or(1).max(1);
     let mut applied = 0;
