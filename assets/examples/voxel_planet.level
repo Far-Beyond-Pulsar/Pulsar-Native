@@ -67,6 +67,8 @@
         "enabled": true,
         "data": {
           "enabled": true,
+          "shape": "Sphere",
+          "planet_radius": 6371000.0,
           "domain_mode": 1,
           "bounds_min_x": 0.0,
           "bounds_min_y": 0.0,

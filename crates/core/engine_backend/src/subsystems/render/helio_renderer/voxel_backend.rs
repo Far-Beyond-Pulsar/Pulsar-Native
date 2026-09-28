@@ -7,8 +7,11 @@ use std::sync::{Arc, Mutex};
 
 use glam::{DVec3, Vec3};
 use helio_default_graphs::VoxelPassFactory;
+use helio_component::VoxelWorldShape;
 use helio_pass_voxel_planet::{
     engine::{PlanetFrame, PlanetPass, SharedPlanetFrame},
+    field::Landform,
+    grid::Shape,
     Brush, BrushOp, BrushShape, Planet, PlanetRecipe,
 };
 use helio_voxel_data::VoxelDomain;
@@ -303,13 +306,14 @@ impl Default for VoxelBackendRegistry {
 
 /// Authored source recipe stored in the terrain's `generator_parameters`: the
 /// landform and the ordered brush edits. SceneDB persists it with the level;
-/// the backend rebuilds its planet from it (appending edits incrementally).
+/// the backend rebuilds its world from it (appending edits incrementally).
+/// The world's shape, size and voxel size come from the component.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct PlanetSourceRecipe {
-    /// Radius and landform. The component's `voxel_size` overrides the
-    /// recipe's voxel size, and a nonzero component `seed` its landform seed.
-    pub planet: PlanetRecipe,
+    /// Continents, mountains, hills, roughness and snowline. A nonzero
+    /// component `seed` replaces the landform seed.
+    pub landform: Landform,
     /// Ordered destruction and construction brushes.
     pub edits: Vec<Brush>,
 }
@@ -326,14 +330,25 @@ impl PlanetSourceRecipe {
         serde_json::to_string(self).map_err(|error| error.to_string())
     }
 
-    /// The planet recipe with the component's voxel size and seed applied.
+    /// The world recipe: the component's shape, size, voxel size and seed
+    /// with this landform.
     fn planet_recipe(&self, entry: &VoxelSceneEntry, seed: u64) -> PlanetRecipe {
-        let mut recipe = self.planet.clone();
-        recipe.voxel_size_m = entry.voxel_size;
+        let mut landform = self.landform.clone();
         if seed != 0 {
-            recipe.landform.seed = seed as u32;
+            landform.seed = seed as u32;
         }
-        recipe
+        PlanetRecipe {
+            shape: match entry.world.shape {
+                VoxelWorldShape::Sphere => Shape::Sphere,
+                VoxelWorldShape::Plane => Shape::Plane,
+                VoxelWorldShape::InfinitePlane => Shape::InfinitePlane,
+            },
+            radius_m: entry.world.planet_radius,
+            plane_size_m: entry.world.plane_size,
+            voxel_size_m: entry.voxel_size,
+            landform,
+            ..PlanetRecipe::default()
+        }
     }
 }
 
@@ -343,6 +358,7 @@ struct CachedPlanet {
     revision: u64,
     generator: VoxelGeneratorConfig,
     voxel_size: f64,
+    world: crate::scene::voxel_frame::VoxelWorldForm,
     /// Decoded recipe: a newer recipe that only appends edits reuses the planet.
     recipe: PlanetSourceRecipe,
     planet: Arc<Planet>,
@@ -383,13 +399,10 @@ impl PlanetVoxelBackend {
         if !entry.voxel_size.is_finite() || !(0.1 - 1e-9..=1.0 + 1e-9).contains(&entry.voxel_size) {
             return Err("this backend supports base voxels from 0.1 to 1.0 metres".into());
         }
-        // The planet owns its acceleration layout; component chunk/LOD
+        // The world owns its acceleration layout; component chunk/LOD
         // metadata describes generic live payloads and does not apply.
         if entry.origin != [0.0; 3] {
-            return Err("a voxel planet requires its world origin at the planet centre".into());
-        }
-        if !matches!(entry.domain, VoxelDomain::Unbounded { .. }) {
-            return Err("a voxel planet requires an unbounded source domain".into());
+            return Err("a voxel world is centred on the world origin; move the entity to (0, 0, 0)".into());
         }
         Ok(generator)
     }
@@ -403,6 +416,7 @@ impl PlanetVoxelBackend {
                 && cached.revision == entry.source_revision
                 && cached.generator == generator
                 && cached.voxel_size == entry.voxel_size
+                && cached.world == entry.world
             {
                 return Ok(Arc::clone(&cached.planet));
             }
@@ -413,8 +427,9 @@ impl PlanetVoxelBackend {
             Some(cached)
                 if cached.id == entry.id
                     && cached.voxel_size == entry.voxel_size
+                    && cached.world == entry.world
                     && cached.generator.seed == generator.seed
-                    && cached.recipe.planet == recipe.planet
+                    && cached.recipe.landform == recipe.landform
                     && recipe.edits.starts_with(&cached.recipe.edits) =>
             {
                 let mut planet = (*cached.planet).clone();
@@ -437,6 +452,7 @@ impl PlanetVoxelBackend {
             revision: entry.source_revision,
             generator,
             voxel_size: entry.voxel_size,
+            world: entry.world,
             recipe,
             planet: Arc::clone(&planet),
         });
@@ -446,7 +462,7 @@ impl PlanetVoxelBackend {
     fn cached_planet(&self, entry: &VoxelSceneEntry) -> Option<&Arc<Planet>> {
         self.cached
             .as_ref()
-            .filter(|c| c.id == entry.id && c.revision == entry.source_revision && entry.generator.as_ref() == Some(&c.generator))
+            .filter(|c| c.id == entry.id && c.revision == entry.source_revision && c.world == entry.world && entry.generator.as_ref() == Some(&c.generator))
             .map(|c| &c.planet)
     }
 }
@@ -489,8 +505,11 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         true
     }
 
-    fn ambient_up(&self, _source: &VoxelSceneEntry, eye: DVec3) -> Option<DVec3> {
-        eye.try_normalize()
+    fn ambient_up(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<DVec3> {
+        match source.world.shape {
+            VoxelWorldShape::Sphere => eye.try_normalize(),
+            VoxelWorldShape::Plane | VoxelWorldShape::InfinitePlane => Some(DVec3::Y),
+        }
     }
 
     fn camera_clip_range(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<(f32, f32)> {
@@ -627,6 +646,7 @@ mod tests {
 
     fn planet_terrain() -> VoxelTerrainComponent {
         let mut terrain = VoxelTerrainComponent::default();
+        terrain.shape = VoxelWorldShape::Sphere;
         terrain.renderer_id = VOXEL_PLANET_RENDERER_ID.into();
         terrain.generator_id = VOXEL_PLANET_GENERATOR_ID.into();
         terrain.generator_version = VOXEL_PLANET_GENERATOR_VERSION;
@@ -746,7 +766,7 @@ mod tests {
         assert_eq!(commit.id, entries[0].id);
         let replay = |json: &str| {
             let recipe = PlanetSourceRecipe::from_json(json).unwrap();
-            let mut planet = Planet::new(recipe.planet.clone()).unwrap();
+            let mut planet = Planet::new(PlanetRecipe { landform: recipe.landform.clone(), ..PlanetRecipe::default() }).unwrap();
             for brush in &recipe.edits {
                 planet.apply(*brush).unwrap();
             }
@@ -779,5 +799,40 @@ mod tests {
         let mut backend = PlanetVoxelBackend::new();
         backend.publish_frame(&[&entries[0]], view(eye)).unwrap();
         assert_eq!(frame_planet(&backend).material(target), 0);
+    }
+
+    #[test]
+    fn plane_worlds_follow_the_component_shape_and_size() {
+        for shape in [VoxelWorldShape::Plane, VoxelWorldShape::InfinitePlane] {
+            let mut scene = World::new();
+            let entity = scene.spawn();
+            let mut terrain = planet_terrain();
+            terrain.shape = shape;
+            terrain.plane_size = 2_048.0;
+            scene.insert(entity, terrain);
+            let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+            assert!(errors.is_empty(), "{errors:?}");
+            let mut registry = VoxelBackendRegistry::new();
+            let backend = PlanetVoxelBackend::new();
+            let frame = Arc::clone(&backend.frame);
+            registry.register(Box::new(backend)).unwrap();
+            let eye = DVec3::new(10.0, 400.0, -20.0);
+            assert!(registry.publish_frame(&entries, view(eye)).is_empty());
+            let planet = frame.lock().unwrap().as_ref().unwrap().planet.clone();
+            assert!(planet.grid().is_plane());
+            if shape == VoxelWorldShape::Plane {
+                let edge = f64::from(planet.grid().cells()) * planet.grid().voxel_size();
+                assert!((edge - 2_048.0).abs() < 200.0, "{edge}");
+            }
+            assert_eq!(registry.ambient_up(&entries, eye), Some(DVec3::Y));
+            // Digging straight down removes the cell below the eye.
+            let ground = planet.surface_point(DVec3::new(10.0, 0.0, -20.0), 3.0);
+            let target = planet.raycast(ground, -DVec3::Y, 100.0).unwrap().cell;
+            let commit = registry.edit_ray(&entries, ground, -DVec3::Y, 0.5, 0).unwrap().unwrap();
+            assert!(super::super::renderer::apply_voxel_brush_commit(&mut scene, commit));
+            let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+            assert!(registry.publish_frame(&entries, view(eye)).is_empty());
+            assert_eq!(frame.lock().unwrap().as_ref().unwrap().planet.material(target), 0);
+        }
     }
 }

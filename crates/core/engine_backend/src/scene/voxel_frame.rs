@@ -3,7 +3,7 @@
 //! This copies configuration and Arc capabilities only. Canonical payload
 //! bytes remain in component rows and are selected by the consuming backend.
 
-use helio_component::{VoxelComponent, VoxelTerrainComponent};
+use helio_component::{VoxelComponent, VoxelTerrainComponent, VoxelWorldShape};
 use helio_voxel_data::{
     VoxelBatchRevision, VoxelChunkBatch, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload,
     VoxelChunkUpdate, VoxelDomain, VoxelGeneratorDescriptor, VoxelPayloadStore, VoxelSourceId,
@@ -42,6 +42,27 @@ pub struct VoxelSceneEntry {
     pub material_ids: Vec<u32>,
     pub generator: Option<VoxelGeneratorConfig>,
     pub initial_cube: Option<VoxelCubeInit>,
+    /// Form and size of a terrain world (scaled with the entity).
+    pub world: VoxelWorldForm,
+}
+
+/// Authored form of a voxel world: shape and size in metres.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VoxelWorldForm {
+    pub shape: VoxelWorldShape,
+    pub planet_radius: f64,
+    pub plane_size: f64,
+}
+
+impl Default for VoxelWorldForm {
+    fn default() -> Self {
+        let terrain = VoxelTerrainComponent::default();
+        Self {
+            shape: terrain.shape,
+            planet_radius: terrain.planet_radius,
+            plane_size: terrain.plane_size,
+        }
+    }
 }
 
 /// Authored generator identity and parameters passed to the specialized voxel
@@ -266,6 +287,7 @@ pub(super) fn object_entry(
             material_slot: u8::try_from(component.default_material_slot)
                 .map_err(|_| "default_material_slot must fit in one byte")?,
         }),
+        world: VoxelWorldForm::default(),
     })
 }
 
@@ -349,6 +371,11 @@ pub(super) fn terrain_entry(
             parameters: component.generator_parameters.clone(),
         }),
         initial_cube: None,
+        world: VoxelWorldForm {
+            shape: component.shape,
+            planet_radius: component.planet_radius * scale,
+            plane_size: component.plane_size * scale,
+        },
     })
 }
 

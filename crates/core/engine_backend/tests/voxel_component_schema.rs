@@ -44,7 +44,7 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
 #[test]
 fn service_revision_is_persisted_but_not_exposed_as_an_inspector_property() {
     let properties = VoxelTerrainComponent::default().get_properties();
-    assert_eq!(properties.len(), 19);
+    assert_eq!(properties.len(), 22);
     assert!(properties
         .iter()
         .any(|property| property.name == "renderer_id"));
