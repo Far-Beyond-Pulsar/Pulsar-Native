@@ -8,6 +8,7 @@ pub mod dispatcher;
 pub mod level_edit;
 pub mod registry;
 pub mod spline;
+pub mod terrain;
 
 use gpui::{App, Window};
 use std::sync::Arc;
@@ -19,6 +20,7 @@ pub use dispatcher::*;
 pub use level_edit::*;
 pub use registry::*;
 pub use spline::*;
+pub use terrain::TerrainMode;
 
 use crate::level_editor::state::LevelEditorState;
 
@@ -282,7 +284,7 @@ pub trait ToolMode: Send + Sync {
         _state: Arc<parking_lot::RwLock<LevelEditorState>>,
         _panel: &ModePanelDescriptor,
         _window: &mut Window,
-        _cx: &mut App,
+        _cx: &mut gpui::Context<crate::level_editor::ui::LevelEditorPanel>,
     ) -> Option<Box<dyn ui::dock::PanelView>> {
         None
     }

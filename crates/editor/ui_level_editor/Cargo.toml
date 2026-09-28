@@ -38,6 +38,7 @@ pulsar_events.workspace = true
 # already unconditional deps of this crate above.
 pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
 helio_component.workspace = true
+helio-voxel-data.workspace = true
 pulsar_physics.workspace = true
 engine_fs.workspace = true
 profiling.workspace = true
