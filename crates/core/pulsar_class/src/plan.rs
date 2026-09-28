@@ -120,6 +120,47 @@ pub fn slot_default(def: &ClassDefinition, slot_id: &str) -> Option<Value> {
     Some(split_meta(&normalized).1)
 }
 
+/// Rewrite `instance`'s override keys that name a replaced slot id to the
+/// slot's current UUID (`def.slot_aliases`, #933). A key that is neither a
+/// current slot nor a known alias is kept (the slot may come back) and
+/// reported. Returns whether any key was rewritten.
+pub fn migrate_slot_keys(def: &ClassDefinition, instance: &mut ClassInstance) -> bool {
+    let current: HashSet<&str> = def
+        .prefab
+        .components
+        .iter()
+        .map(|c| c.slot_id.as_str())
+        .collect();
+    let stale: Vec<String> = instance
+        .component_overrides
+        .keys()
+        .filter(|key| !current.contains(key.as_str()))
+        .cloned()
+        .collect();
+    let mut rewritten = false;
+    for old in stale {
+        let target = def
+            .slot_aliases
+            .get(&old)
+            .filter(|new| current.contains(new.as_str()));
+        match target {
+            // Never overwrite an override already stored under the new id.
+            Some(new) if !instance.component_overrides.contains_key(new) => {
+                if let Some(value) = instance.component_overrides.remove(&old) {
+                    instance.component_overrides.insert(new.clone(), value);
+                    rewritten = true;
+                }
+            }
+            _ => tracing::warn!(
+                class = %def.name,
+                slot = %old,
+                "Instance override names a slot this class does not have; kept as-is"
+            ),
+        }
+    }
+    rewritten
+}
+
 /// Plan the components of `instance` from the current class definition.
 pub fn plan_instance(def: &ClassDefinition, instance: &ClassInstance) -> InstancePlan {
     let mut plan = InstancePlan::default();

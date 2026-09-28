@@ -74,6 +74,14 @@ pub fn new_slot_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
+/// What [`PrefabAsset::reassign_slot_ids`] changed.
+#[derive(Debug, Default)]
+pub struct SlotReassignment {
+    pub changed: bool,
+    /// Replaced readable id → the UUID that replaced it.
+    pub aliases: std::collections::BTreeMap<String, String>,
+}
+
 impl PrefabAsset {
     /// Read `<dir>/prefab.json`. A class without one has no components.
     ///
@@ -91,7 +99,20 @@ impl PrefabAsset {
         let text = String::from_utf8(bytes).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         let mut prefab: Self = serde_json::from_str(&text)
             .map_err(|e| format!("failed to parse {}: {e}", path.display()))?;
-        if prefab.fill_missing_slot_ids() {
+        let renamed = prefab.reassign_slot_ids();
+        if renamed.changed {
+            // Record old → new before rewriting the prefab, so a level keyed
+            // by the old ids can still find its slots (#933).
+            if !renamed.aliases.is_empty() {
+                let mut meta = crate::id::ClassMeta::read(dir).unwrap_or_default();
+                meta.slot_aliases.extend(renamed.aliases);
+                if let Err(error) = meta.write(dir) {
+                    tracing::warn!(
+                        dir = %dir.display(),
+                        "Could not record replaced slot ids in class.json: {error}"
+                    );
+                }
+            }
             match prefab.save_to_dir(dir) {
                 Ok(()) => tracing::info!(path = %path.display(), "Assigned component slot UUIDs"),
                 Err(error) => tracing::warn!(
@@ -112,18 +133,28 @@ impl PrefabAsset {
     /// Give every component whose slot id is missing, duplicated or not a
     /// UUID a fresh UUID. Returns whether anything changed.
     pub fn fill_missing_slot_ids(&mut self) -> bool {
+        self.reassign_slot_ids().changed
+    }
+
+    /// [`Self::fill_missing_slot_ids`], also reporting which non-empty,
+    /// non-UUID ids (the readable `<Class>_<n>` ids) were replaced by what.
+    /// A duplicated readable id maps to the first component that had it.
+    pub fn reassign_slot_ids(&mut self) -> SlotReassignment {
         let mut used: HashSet<String> = HashSet::new();
-        let mut changed = false;
+        let mut result = SlotReassignment::default();
         for component in &mut self.components {
-            let id = component.slot_id.trim();
-            if !is_slot_uuid(id) || !used.insert(id.to_string()) {
+            let id = component.slot_id.trim().to_string();
+            if !is_slot_uuid(&id) || !used.insert(id.clone()) {
                 let fresh = new_slot_id();
                 used.insert(fresh.clone());
+                if !id.is_empty() && !is_slot_uuid(&id) {
+                    result.aliases.entry(id).or_insert_with(|| fresh.clone());
+                }
                 component.slot_id = fresh;
-                changed = true;
+                result.changed = true;
             }
         }
-        changed
+        result
     }
 
     /// The component in slot `slot_id`.
