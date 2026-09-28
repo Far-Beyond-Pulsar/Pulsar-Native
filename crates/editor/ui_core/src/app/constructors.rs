@@ -454,6 +454,7 @@ impl PulsarApp {
                 navigation_history_index: 0,
                 multiuser_refresh_task: Some(multiuser_refresh_task),
                 git_auto_fetch_task,
+                radial: super::radial_menu::RadialHost::new(cx),
             },
         };
 
@@ -681,6 +682,7 @@ impl PulsarApp {
         // action_context is never set, and menu item actions dispatch from PopupMenu's
         // own focus chain — which is a sibling of PulsarApp, not a descendant.
         app.state.focus_handle.focus(window, cx);
+        app.install_radial_menu(window, cx);
 
         // Populate the open-editor snapshot so the AI can see tabs that were created
         // during construction (e.g. the default level editor) without waiting for a

@@ -16,7 +16,7 @@ use super::pie::{begin_pie, end_pie};
 use crate::level_editor::scene_edit::{ObjectType, SceneObjectData, Transform};
 use crate::level_editor::ui::actions::*;
 use crate::level_editor::ui::toolbar;
-use crate::level_editor::{CameraMode, TransformTool, request_thumbnail_capture};
+use crate::level_editor::{CameraMode, TransformTool};
 
 mod objects;
 mod playback;

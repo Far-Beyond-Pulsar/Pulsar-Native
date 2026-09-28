@@ -27,7 +27,7 @@ use pulsar_reflection::{PropertyMetadata, REGISTRY, RUNTIME_TYPE_REGISTRY};
 use pulsar_scenedb::World;
 use std::any::Any;
 use std::sync::Arc;
-use ui::{ActiveTheme, Icon, IconName, Sizable, h_flex, v_flex};
+use ui::{ActiveTheme, Icon, IconName, Sizable, button::ButtonVariants as _, h_flex, v_flex};
 
 use super::category_section::group_rows_by_category;
 use super::{ObjectTypeFieldsSection, PropertyMetadataCacheEntry};
@@ -630,6 +630,42 @@ impl ObjectTypeFieldsSection {
             );
         }
 
+        // Every component slot of the class, grouped by slot, including the
+        // slots the class places on generated child objects -- whose
+        // overrides were otherwise only visible with that child selected
+        // (#932). Overridden properties get the same marker and revert.
+        if !view.slots.is_empty() {
+            rows.push(
+                div()
+                    .pt_1()
+                    .text_xs()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_color(cx.theme().muted_foreground)
+                    .child("Component overrides")
+                    .into_any_element(),
+            );
+        }
+        let any_override = view.variables.iter().any(|var| var.overridden)
+            || view
+                .slots
+                .iter()
+                .any(|slot| slot.removed || !slot.overridden.is_empty());
+        let child_names: std::collections::HashMap<String, String> = {
+            let scene = self.scene_db.read();
+            view.slots
+                .iter()
+                .filter_map(|slot| slot.object_id.as_ref())
+                .filter(|id| **id != object_id)
+                .filter_map(|id| {
+                    crate::level_editor::scene_edit::objects::get_object_name(&scene.world, id)
+                        .map(|name| (id.clone(), name))
+                })
+                .collect()
+        };
+        for slot in &view.slots {
+            rows.push(self.render_slot_overrides(slot, &object_id, &child_names, cx));
+        }
+
         Some(
             v_flex()
                 .w_full()
@@ -647,14 +683,171 @@ impl ObjectTypeFieldsSection {
                         .child(Icon::new(IconName::Code).small())
                         .child(
                             div()
+                                .flex_1()
                                 .text_sm()
                                 .font_weight(FontWeight::SEMIBOLD)
                                 .text_color(cx.theme().foreground)
                                 .child(format!("Class: {}", view.class_name)),
-                        ),
+                        )
+                        .when(any_override, |el| {
+                            let state_arc = self.state_arc.clone();
+                            let oid = object_id.clone();
+                            el.child(
+                                ui::button::Button::new("reset-class-overrides")
+                                    .label("Reset all")
+                                    .xsmall()
+                                    .ghost()
+                                    .tooltip("Put every variable and component back to the class (one undo step)")
+                                    .on_click(move |_, _, _| {
+                                        execute_command(
+                                            &mut state_arc.write(),
+                                            SceneCommand::ResetClassOverrides { id: oid.clone() },
+                                        );
+                                    }),
+                            )
+                        }),
                 )
                 .children(rows)
                 .into_any_element(),
         )
+    }
+
+    /// One class slot on the instance root's card: its component class,
+    /// which object carries it, and each overridden property with a revert
+    /// (`RevertClassSlot` by dot path). A slot the instance removed can be
+    /// restored whole.
+    fn render_slot_overrides(
+        &self,
+        slot: &crate::level_editor::scene_edit::classes::ClassSlotView,
+        root_id: &str,
+        child_names: &std::collections::HashMap<String, String>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let muted = cx.theme().muted_foreground;
+        let place = match slot.object_id.as_deref() {
+            None => "removed".to_string(),
+            Some(id) if id == root_id => "on this object".to_string(),
+            Some(id) => format!(
+                "on {}",
+                child_names.get(id).map(String::as_str).unwrap_or(id)
+            ),
+        };
+        let header = h_flex()
+            .w_full()
+            .gap_1()
+            .items_center()
+            .child(Icon::new(IconName::Component).xsmall().text_color(muted))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().foreground)
+                    .child(slot.class_name.clone()),
+            )
+            .child(div().text_xs().text_color(muted).child(place));
+
+        let revert = |path: Option<String>| {
+            let state_arc = self.state_arc.clone();
+            let root = root_id.to_string();
+            let slot_id = slot.slot_id.clone();
+            Arc::new(move |_window: &mut Window, _cx: &mut App| {
+                execute_command(
+                    &mut state_arc.write(),
+                    SceneCommand::RevertClassSlot {
+                        id: root.clone(),
+                        slot_id: slot_id.clone(),
+                        path: path.clone(),
+                    },
+                );
+            }) as Arc<dyn Fn(&mut Window, &mut App) + Send + Sync>
+        };
+
+        let mut body: Vec<AnyElement> = Vec::new();
+        if slot.removed {
+            body.push(ui_common::decorate_property_override(
+                div()
+                    .text_xs()
+                    .text_color(muted)
+                    .child("Removed on this instance")
+                    .into_any_element(),
+                SharedString::from(format!("restore-slot-{}", slot.slot_id)),
+                &ui_common::PropertyOverride {
+                    overridden: true,
+                    on_revert: Some(revert(None)),
+                },
+                cx,
+            ));
+        } else if slot.overridden.is_empty() {
+            body.push(
+                div()
+                    .text_xs()
+                    .text_color(muted)
+                    .child("Matches the class")
+                    .into_any_element(),
+            );
+        } else {
+            for prop in &slot.overridden {
+                let row = h_flex()
+                    .w_full()
+                    .justify_between()
+                    .gap_2()
+                    .child(div().text_xs().text_color(muted).child(prop.path.clone()))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().foreground)
+                            .max_w(px(160.0))
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
+                            .child(compact_json(&prop.value)),
+                    )
+                    .into_any_element();
+                body.push(ui_common::decorate_property_override(
+                    row,
+                    SharedString::from(format!("revert-slot-{}-{}", slot.slot_id, prop.path)),
+                    &ui_common::PropertyOverride {
+                        overridden: true,
+                        on_revert: Some(revert(Some(prop.path.clone()))),
+                    },
+                    cx,
+                ));
+            }
+        }
+
+        v_flex()
+            .w_full()
+            .gap_1()
+            .pl_1()
+            .child(header)
+            .children(body)
+            .into_any_element()
+    }
+}
+
+/// A JSON value as one short line for an override row.
+fn compact_json(value: &serde_json::Value) -> String {
+    let text = match value {
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    };
+    if text.chars().count() > 48 {
+        format!("{}…", text.chars().take(47).collect::<String>())
+    } else {
+        text
+    }
+}
+
+#[cfg(test)]
+mod slot_override_tests {
+    use super::compact_json;
+    use serde_json::json;
+
+    #[test]
+    fn values_are_shortened_for_one_line() {
+        assert_eq!(compact_json(&json!("text")), "text");
+        assert_eq!(compact_json(&json!([1.0, 0.5])), "[1.0,0.5]");
+        let long = compact_json(&json!("x".repeat(100)));
+        assert_eq!(long.chars().count(), 48);
+        assert!(long.ends_with('…'));
     }
 }

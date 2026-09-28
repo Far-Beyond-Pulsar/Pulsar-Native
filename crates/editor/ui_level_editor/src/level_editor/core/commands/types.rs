@@ -179,6 +179,12 @@ pub enum SceneCommand {
         slot_id: String,
         path: Option<String>,
     },
+    /// Put a placed class instance entirely back to its class: every
+    /// variable override and every slot override (including removed slots,
+    /// and slots on generated children). One undo step.
+    ResetClassOverrides {
+        id: String,
+    },
 }
 
 impl std::fmt::Debug for SceneCommand {
@@ -342,6 +348,10 @@ impl std::fmt::Debug for SceneCommand {
                 .debug_struct("SetComponentData")
                 .field("id", id)
                 .field("component_index", component_index)
+                .finish(),
+            Self::ResetClassOverrides { id } => f
+                .debug_struct("ResetClassOverrides")
+                .field("id", id)
                 .finish(),
             Self::RevertClassSlot { id, slot_id, path } => f
                 .debug_struct("RevertClassSlot")

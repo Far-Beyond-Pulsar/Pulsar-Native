@@ -6,6 +6,7 @@ pub mod event_handlers;
 mod manual_tool_panel;
 mod open_editors;
 mod panel_window;
+mod radial_menu;
 mod render;
 mod script_problems;
 mod state;

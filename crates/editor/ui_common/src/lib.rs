@@ -34,6 +34,7 @@ pub mod panel;
 pub mod profile_dropdown;
 pub mod properties_inspector;
 pub mod property_editor_registry;
+pub mod radial_menu;
 pub mod reflected_properties_panel;
 pub mod shared;
 pub mod shared_state;

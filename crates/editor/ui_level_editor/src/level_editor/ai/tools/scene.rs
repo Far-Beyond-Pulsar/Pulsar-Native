@@ -62,12 +62,9 @@ pub fn level_editor_save_scene(ctx: &ToolContext) -> Result<Value> {
         .current_scene
         .clone()
         .ok_or_else(|| anyhow!("This level has no file yet; the user must use Save As first"))?;
-    {
-        let state = state_arc.read();
-        let world = state.scene.world();
-        scene_edit::level_io::save_to_file(&world, &path).map_err(|e| anyhow!(e))?;
-    }
-    state_arc.write().scene.has_unsaved_changes = false;
+    // Same path as the editor's Save: snapshot under a brief read lock, write
+    // with no lock held, ordered with every other save (#967).
+    crate::level_editor::ui::save::save_now(&state_arc, &path, None).map_err(|e| anyhow!(e))?;
     crate::level_editor::request_thumbnail_capture(&state_arc);
     Ok(json!({ "saved": path.display().to_string() }))
 }

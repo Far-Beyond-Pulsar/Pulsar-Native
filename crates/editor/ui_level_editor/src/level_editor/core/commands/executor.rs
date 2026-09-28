@@ -24,7 +24,8 @@ fn command_scope(cmd: &SceneCommand) -> Vec<String> {
         | SceneCommand::ReorderComponent { id, .. }
         | SceneCommand::SetComponentParent { id, .. }
         | SceneCommand::SetComponentData { id, .. }
-        | SceneCommand::RevertClassSlot { id, .. } => vec![id.clone()],
+        | SceneCommand::RevertClassSlot { id, .. }
+        | SceneCommand::ResetClassOverrides { id } => vec![id.clone()],
         SceneCommand::UpdateObject { data } => vec![data.id.clone()],
         SceneCommand::DuplicateObject { source_id, .. } => vec![source_id.clone()],
         SceneCommand::SelectObject { .. } | SceneCommand::InstantiateClass { .. } => Vec::new(),
@@ -563,6 +564,36 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                     CommandResult::ok(vec![id.clone()])
                 } else {
                     CommandResult::noop("Not a class instance, or nothing to revert")
+                }
+            }
+
+            SceneCommand::ResetClassOverrides { ref id } => {
+                use crate::level_editor::scene_edit::classes;
+                let registry = classes::project_registry();
+                let Some(view) = classes::class_instance_view(&state.scene.world(), id, &registry)
+                else {
+                    return CommandResult::noop("Not a class instance");
+                };
+                let mut changed = false;
+                {
+                    let mut world = state.scene.world_mut();
+                    for var in view.variables.iter().filter(|v| v.overridden) {
+                        changed |= classes::revert_variable(&mut world, id, &var.name);
+                    }
+                    for slot in view
+                        .slots
+                        .iter()
+                        .filter(|s| s.removed || !s.overridden.is_empty())
+                    {
+                        changed |=
+                            classes::revert_slot(&mut world, id, &slot.slot_id, None, &registry);
+                    }
+                }
+                if changed {
+                    state.scene.bump_revision(true);
+                    CommandResult::ok(vec![id.clone()])
+                } else {
+                    CommandResult::noop("Nothing overridden")
                 }
             }
         }

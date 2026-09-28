@@ -16,6 +16,9 @@ use ui_type_debugger::TypeDebuggerDrawer;
 
 /// Core application state
 pub struct AppState {
+    /// Hold-Tab radial quick-action menu (Pulsar-Native#387).
+    pub radial: super::radial_menu::RadialHost,
+
     // Dock system
     pub dock_area: Entity<DockArea>,
     pub center_tabs: Entity<TabPanel>,

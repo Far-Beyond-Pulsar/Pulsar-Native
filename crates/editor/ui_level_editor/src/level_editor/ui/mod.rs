@@ -4,6 +4,7 @@ pub(crate) mod hierarchy;
 pub(crate) mod mode_widgets;
 pub(crate) mod panel;
 mod properties;
+pub(crate) mod save;
 mod status_bar_view;
 mod toolbar;
 mod viewport;

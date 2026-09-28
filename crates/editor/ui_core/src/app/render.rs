@@ -863,6 +863,7 @@ impl Render for PulsarApp {
             .child(self.render_footer(drawer_open || drawer_docked, cx))
             .children(command_palette)
             .children(project_switcher)
+            .child(self.render_radial_menu(window, cx))
             .into_any_element()
     }
 }
