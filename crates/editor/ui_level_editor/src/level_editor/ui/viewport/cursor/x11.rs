@@ -1,4 +1,5 @@
-
+//! X11 cursor control for the viewport's mouse-look: pointer grab, warp and
+//! query, all on one shared X connection (see `SharedDisplay`).
 use core::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -50,7 +51,6 @@ struct XColor {
 #[link(name = "X11")]
 unsafe extern "C" {
     fn XOpenDisplay(display_name: *const c_void) -> *mut Display;
-    fn XCloseDisplay(display: *mut Display) -> core::ffi::c_int;
     fn XDefaultRootWindow(display: *mut Display) -> Window;
     fn XGetInputFocus(
         display: *mut Display,
@@ -146,13 +146,64 @@ unsafe extern "C" {
     ) -> core::ffi::c_int;
 }
 
-fn open_display() -> Option<*mut Display> {
-    let d = unsafe { XOpenDisplay(std::ptr::null()) };
-    if d.is_null() {
-        tracing::warn!("[VIEWPORT] X11: failed to open display");
-        None
-    } else {
-        Some(d)
+// ── The shared connection ────────────────────────────────────────────────────
+
+/// The one X connection every function here uses.
+///
+/// Opened on first use and kept for the life of the process. Two reasons:
+///
+/// - **No leaks.** The input thread warps and queries the pointer on every
+///   poll (~500 Hz) during mouse-look. Opening a display per call used to leak
+///   one client per poll whenever a path forgot `XCloseDisplay`; the X server
+///   allows ~256 clients, after which every `XOpenDisplay` in the process
+///   (winit's included) fails with "Maximum number of clients reached" and the
+///   editor's event loop dies. With a single connection there is nothing to
+///   forget to close.
+/// - **Grabs that last.** X releases a client's pointer grabs, defined cursors
+///   and windows when that client disconnects. A grab made on a connection
+///   that is then closed ends immediately; on the shared connection it lasts
+///   until [`unlock_cursor`].
+///
+/// Xlib displays aren't thread-safe, so the connection is only touched while
+/// the mutex is held (UI thread for lock/unlock, input thread for warps).
+struct SharedDisplay(*mut Display);
+
+// SAFETY: the pointer is only used by Xlib while `SHARED_DISPLAY`'s mutex is
+// held, so no two threads use the connection at once.
+unsafe impl Send for SharedDisplay {}
+
+static SHARED_DISPLAY: std::sync::Mutex<Option<SharedDisplay>> = std::sync::Mutex::new(None);
+
+/// Set once opening a display has failed (no X server): stops retrying, and
+/// the warning, on every poll.
+static DISPLAY_UNAVAILABLE: AtomicBool = AtomicBool::new(false);
+
+/// Run `f` with the shared connection, opening it on first use. `None` when
+/// no X display is available.
+fn with_display<R>(f: impl FnOnce(*mut Display) -> R) -> Option<R> {
+    if DISPLAY_UNAVAILABLE.load(Ordering::Relaxed) {
+        return None;
+    }
+    let mut guard = SHARED_DISPLAY.lock().unwrap_or_else(|p| p.into_inner());
+    if guard.is_none() {
+        let display = unsafe { XOpenDisplay(std::ptr::null()) };
+        if display.is_null() {
+            DISPLAY_UNAVAILABLE.store(true, Ordering::Relaxed);
+            tracing::warn!("[VIEWPORT] X11: no X display; cursor control disabled");
+            return None;
+        }
+        *guard = Some(SharedDisplay(display));
+    }
+    guard.as_ref().map(|shared| f(shared.0))
+}
+
+/// The X11 window behind a gpui window, if it is an X11 window.
+fn x11_window(window: &gpui::Window) -> Option<Window> {
+    let handle = raw_window_handle::HasWindowHandle::window_handle(window).ok()?;
+    match handle.as_raw() {
+        raw_window_handle::RawWindowHandle::Xlib(h) => Some(h.window as XID),
+        raw_window_handle::RawWindowHandle::Xcb(h) => Some(h.window.get() as XID),
+        _ => None,
     }
 }
 
@@ -173,7 +224,7 @@ fn blank_cursor(display: *mut Display) -> Option<Cursor> {
     if pixmap == 0 {
         return None;
     }
-    let fg = XColor {
+    let black = XColor {
         pixel: 0,
         red: 0,
         green: 0,
@@ -181,268 +232,201 @@ fn blank_cursor(display: *mut Display) -> Option<Cursor> {
         flags: 0,
         pad: 0,
     };
-    let bg = XColor {
-        pixel: 0,
-        red: 0,
-        green: 0,
-        blue: 0,
-        flags: 0,
-        pad: 0,
-    };
-    let cursor = unsafe { XCreatePixmapCursor(display, pixmap, pixmap, &fg, &bg, 0, 0) };
+    let cursor = unsafe { XCreatePixmapCursor(display, pixmap, pixmap, &black, &black, 0, 0) };
     unsafe { XFreePixmap(display, pixmap) };
     if cursor == 0 { None } else { Some(cursor) }
 }
 
+// ── Cursor control ───────────────────────────────────────────────────────────
+
 pub fn hide_cursor() {
-    let Some(display) = open_display() else {
-        return;
-    };
-    let Some(win) = focused_window(display) else {
-        unsafe { XCloseDisplay(display) };
-        return;
-    };
-    if let Some(cursor) = blank_cursor(display) {
-        unsafe {
-            XDefineCursor(display, win, cursor);
-            XFreeCursor(display, cursor);
-            XFlush(display);
+    with_display(|display| {
+        let Some(win) = focused_window(display) else {
+            return;
+        };
+        if let Some(cursor) = blank_cursor(display) {
+            unsafe {
+                XDefineCursor(display, win, cursor);
+                XFreeCursor(display, cursor);
+                XFlush(display);
+            }
+            tracing::debug!("[VIEWPORT] 👻 Cursor hidden (X11 blank cursor)");
         }
-        tracing::debug!("[VIEWPORT] 👻 Cursor hidden (X11 blank cursor)");
-    }
-    unsafe {
-        XCloseDisplay(display);
-    }
+    });
 }
 
 pub fn show_cursor() {
-    let Some(display) = open_display() else {
-        return;
-    };
-    let Some(win) = focused_window(display) else {
-        unsafe { XCloseDisplay(display) };
-        return;
-    };
-    unsafe {
-        XUndefineCursor(display, win);
-        XFlush(display);
-    }
-    tracing::debug!("[VIEWPORT] 👁️ Cursor shown (X11 undefine)");
-    unsafe {
-        XCloseDisplay(display);
-    }
+    with_display(|display| {
+        let Some(win) = focused_window(display) else {
+            return;
+        };
+        unsafe {
+            XUndefineCursor(display, win);
+            XFlush(display);
+        }
+        tracing::debug!("[VIEWPORT] 👁️ Cursor shown (X11 undefine)");
+    });
 }
 
+/// Grab the pointer to `window` until [`unlock_cursor`].
 pub fn lock_cursor_to_window(window: &gpui::Window) {
-    let Some(display) = open_display() else {
+    let Some(x11_window) = x11_window(window) else {
+        tracing::warn!("[VIEWPORT] X11: not an X11 window handle");
         return;
     };
-    let raw_handle = unsafe { raw_window_handle::HasWindowHandle::window_handle(window) };
-    let x11_window = match raw_handle {
-        Ok(handle) => match handle.as_raw() {
-            raw_window_handle::RawWindowHandle::Xlib(h) => h.window as XID,
-            raw_window_handle::RawWindowHandle::Xcb(h) => h.window.get() as XID,
-            _ => {
-                tracing::warn!("[VIEWPORT] X11: not an X11 window handle");
-                unsafe { XCloseDisplay(display) };
-                return;
-            }
-        },
-        Err(e) => {
-            tracing::warn!("[VIEWPORT] X11: failed to get window handle: {:?}", e);
-            unsafe { XCloseDisplay(display) };
+    with_display(|display| {
+        let status = unsafe {
+            XGrabPointer(
+                display,
+                x11_window,
+                0,
+                BUTTON_PRESS_MASK | BUTTON_RELEASE_MASK | POINTER_MOTION_MASK,
+                GRAB_MODE_ASYNC,
+                GRAB_MODE_ASYNC,
+                x11_window,
+                0,
+                0,
+            )
+        };
+        unsafe { XFlush(display) };
+        if status == 0 {
+            tracing::debug!("[VIEWPORT] 🔒 Cursor locked to X11 window");
+        } else {
+            tracing::warn!("[VIEWPORT] X11: XGrabPointer failed (status={status})");
+        }
+    });
+}
+
+/// Confine the pointer to a square of `radius` around a screen point, via an
+/// invisible override-redirect window, until [`unlock_cursor`].
+pub fn lock_cursor_to_point(screen_x: i32, screen_y: i32, radius: i32) {
+    with_display(|display| {
+        let root = unsafe { XDefaultRootWindow(display) };
+        let mut attrs: XSetWindowAttributes = unsafe { std::mem::zeroed() };
+        attrs.override_redirect = 1;
+        let confine_win = unsafe {
+            XCreateSimpleWindow(
+                display,
+                root,
+                screen_x - radius,
+                screen_y - radius,
+                (radius * 2) as core::ffi::c_uint,
+                (radius * 2) as core::ffi::c_uint,
+                0,
+                0,
+                0,
+            )
+        };
+        if confine_win == 0 {
+            tracing::warn!("[VIEWPORT] X11: failed to create confine window");
             return;
         }
-    };
-    let status = unsafe {
-        XGrabPointer(
-            display,
-            x11_window,
-            0,
-            BUTTON_PRESS_MASK | BUTTON_RELEASE_MASK | POINTER_MOTION_MASK,
-            GRAB_MODE_ASYNC,
-            GRAB_MODE_ASYNC,
-            x11_window,
-            0,
-            0,
-        )
-    };
-    if status == 0 {
-        tracing::debug!("[VIEWPORT] 🔒 Cursor locked to X11 window");
-    } else {
-        tracing::warn!("[VIEWPORT] X11: XGrabPointer failed (status={status})");
-    }
-    unsafe {
-        XCloseDisplay(display);
-    }
-}
+        unsafe { XChangeWindowAttributes(display, confine_win, CW_OVERRIDE_REDIRECT, &attrs) };
 
-pub fn lock_cursor_to_point(screen_x: i32, screen_y: i32, radius: i32) {
-    let Some(display) = open_display() else {
-        return;
-    };
-    let root = unsafe { XDefaultRootWindow(display) };
-
-    let mut attrs: XSetWindowAttributes = unsafe { std::mem::zeroed() };
-    attrs.override_redirect = 1;
-    let confine_win = unsafe {
-        XCreateSimpleWindow(
-            display,
-            root,
-            screen_x - radius,
-            screen_y - radius,
-            (radius * 2) as core::ffi::c_uint,
-            (radius * 2) as core::ffi::c_uint,
-            0,
-            0,
-            0,
-        )
-    };
-    if confine_win == 0 {
-        tracing::warn!("[VIEWPORT] X11: failed to create confine window");
-        unsafe { XCloseDisplay(display) };
-        return;
-    }
-    unsafe {
-        XChangeWindowAttributes(display, confine_win, CW_OVERRIDE_REDIRECT, &attrs);
-    }
-
-    CONFINE_WINDOW.store(confine_win, Ordering::Relaxed);
-
-    let status = unsafe {
-        XGrabPointer(
-            display,
-            confine_win,
-            0,
-            BUTTON_PRESS_MASK | BUTTON_RELEASE_MASK | POINTER_MOTION_MASK,
-            GRAB_MODE_ASYNC,
-            GRAB_MODE_ASYNC,
-            confine_win,
-            0,
-            0,
-        )
-    };
-    if status == 0 {
-        CONFINE_ACTIVE.store(true, Ordering::Relaxed);
-        tracing::debug!(
-            "[VIEWPORT] 🔒 Cursor confined to {}px radius around ({}, {}) via X11",
-            radius,
-            screen_x,
-            screen_y
-        );
-    } else {
-        tracing::warn!("[VIEWPORT] X11: XGrabPointer failed (status={status})");
-        unsafe {
-            XDestroyWindow(display, confine_win);
+        let status = unsafe {
+            XGrabPointer(
+                display,
+                confine_win,
+                0,
+                BUTTON_PRESS_MASK | BUTTON_RELEASE_MASK | POINTER_MOTION_MASK,
+                GRAB_MODE_ASYNC,
+                GRAB_MODE_ASYNC,
+                confine_win,
+                0,
+                0,
+            )
+        };
+        if status == 0 {
+            CONFINE_WINDOW.store(confine_win, Ordering::Relaxed);
+            CONFINE_ACTIVE.store(true, Ordering::Relaxed);
+            tracing::debug!(
+                "[VIEWPORT] 🔒 Cursor confined to {}px radius around ({}, {}) via X11",
+                radius,
+                screen_x,
+                screen_y
+            );
+        } else {
+            tracing::warn!("[VIEWPORT] X11: XGrabPointer failed (status={status})");
+            unsafe { XDestroyWindow(display, confine_win) };
         }
-        CONFINE_WINDOW.store(0, Ordering::Relaxed);
-    }
-    unsafe {
-        XCloseDisplay(display);
-    }
+        unsafe { XFlush(display) };
+    });
 }
 
+/// Release any grab from [`lock_cursor_to_window`] / [`lock_cursor_to_point`]
+/// and destroy the confine window. Safe to call when nothing is locked.
 pub fn unlock_cursor() {
-    let Some(display) = open_display() else {
-        return;
-    };
-    unsafe {
-        XUngrabPointer(display, 0);
-        XFlush(display);
-    }
-    if CONFINE_ACTIVE.swap(false, Ordering::Relaxed) {
-        let win = CONFINE_WINDOW.swap(0, Ordering::Relaxed);
-        if win != 0 {
-            unsafe {
-                XDestroyWindow(display, win);
+    with_display(|display| {
+        unsafe { XUngrabPointer(display, 0) };
+        if CONFINE_ACTIVE.swap(false, Ordering::Relaxed) {
+            let win = CONFINE_WINDOW.swap(0, Ordering::Relaxed);
+            if win != 0 {
+                unsafe { XDestroyWindow(display, win) };
             }
+            tracing::debug!("[VIEWPORT] 🔓 Cursor unlocked (X11)");
         }
-        tracing::debug!("[VIEWPORT] 🔓 Cursor unlocked (X11)");
-    }
-    unsafe {
-        XCloseDisplay(display);
-    }
+        unsafe { XFlush(display) };
+    });
 }
+
+// ── Pointer position (called every input-thread poll) ────────────────────────
 
 pub fn set_cursor_position(screen_x: i32, screen_y: i32) {
-    let Some(display) = open_display() else {
-        return;
-    };
-    let root = unsafe { XDefaultRootWindow(display) };
-    unsafe {
+    with_display(|display| unsafe {
+        let root = XDefaultRootWindow(display);
         XWarpPointer(display, 0, root, 0, 0, 0, 0, screen_x, screen_y);
         XFlush(display);
-    }
+    });
 }
 
 pub fn get_cursor_position() -> Option<(i32, i32)> {
-    let display = open_display()?;
-    let root = unsafe { XDefaultRootWindow(display) };
-    let mut root_x: core::ffi::c_int = 0;
-    let mut root_y: core::ffi::c_int = 0;
-    let mut win_x: core::ffi::c_int = 0;
-    let mut win_y: core::ffi::c_int = 0;
-    let mut mask: core::ffi::c_uint = 0;
-    let mut root_ret: Window = 0;
-    let mut child_ret: Window = 0;
-    let status = unsafe {
-        XQueryPointer(
-            display,
-            root,
-            &mut root_ret,
-            &mut child_ret,
-            &mut root_x,
-            &mut root_y,
-            &mut win_x,
-            &mut win_y,
-            &mut mask,
-        )
-    };
-    unsafe { XCloseDisplay(display) };
-    if status == 0 {
-        None
-    } else {
-        Some((root_x as i32, root_y as i32))
-    }
+    with_display(|display| {
+        let root = unsafe { XDefaultRootWindow(display) };
+        let (mut root_x, mut root_y, mut win_x, mut win_y) = (0, 0, 0, 0);
+        let mut mask: core::ffi::c_uint = 0;
+        let (mut root_ret, mut child_ret): (Window, Window) = (0, 0);
+        let status = unsafe {
+            XQueryPointer(
+                display,
+                root,
+                &mut root_ret,
+                &mut child_ret,
+                &mut root_x,
+                &mut root_y,
+                &mut win_x,
+                &mut win_y,
+                &mut mask,
+            )
+        };
+        (status != 0).then_some((root_x as i32, root_y as i32))
+    })
+    .flatten()
 }
 
+/// Window-relative coordinates of `window` to root (screen) coordinates.
 pub fn window_to_screen_position(
     window: &gpui::Window,
     window_x: f32,
     window_y: f32,
 ) -> Option<(i32, i32)> {
-    let display = open_display()?;
-    let raw_handle = unsafe { raw_window_handle::HasWindowHandle::window_handle(window) };
-    let x11_window = match raw_handle {
-        Ok(handle) => match handle.as_raw() {
-            raw_window_handle::RawWindowHandle::Xlib(h) => h.window as XID,
-            raw_window_handle::RawWindowHandle::Xcb(h) => h.window.get() as XID,
-            _ => {
-                unsafe { XCloseDisplay(display) };
-                return None;
-            }
-        },
-        Err(_) => {
-            unsafe { XCloseDisplay(display) };
-            return None;
-        }
-    };
-    let root = unsafe { XDefaultRootWindow(display) };
-    let mut dest_x: core::ffi::c_int = 0;
-    let mut dest_y: core::ffi::c_int = 0;
-    let mut child: XID = 0;
-    unsafe {
-        XTranslateCoordinates(
-            display,
-            x11_window,
-            root,
-            window_x as core::ffi::c_int,
-            window_y as core::ffi::c_int,
-            &mut dest_x,
-            &mut dest_y,
-            &mut child,
-        );
-        XCloseDisplay(display);
-    }
-    Some((dest_x as i32, dest_y as i32))
+    let x11_window = x11_window(window)?;
+    with_display(|display| {
+        let root = unsafe { XDefaultRootWindow(display) };
+        let (mut dest_x, mut dest_y): (core::ffi::c_int, core::ffi::c_int) = (0, 0);
+        let mut child: XID = 0;
+        let ok = unsafe {
+            XTranslateCoordinates(
+                display,
+                x11_window,
+                root,
+                window_x as core::ffi::c_int,
+                window_y as core::ffi::c_int,
+                &mut dest_x,
+                &mut dest_y,
+                &mut child,
+            )
+        };
+        (ok != 0).then_some((dest_x as i32, dest_y as i32))
+    })
+    .flatten()
 }

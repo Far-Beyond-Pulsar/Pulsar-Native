@@ -70,6 +70,14 @@ objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"  # separate crate for Foundation types
 
+# Viewport mouse-look on Wayland (`viewport/cursor/wayland.rs`): relative
+# pointer + pointer constraints on winit's own wl_display. Same versions winit
+# already pulls in, so these unify with its copies.
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+wayland-client = "0.31"
+wayland-backend = { version = "0.3", features = ["client_system"] }
+wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
+
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winuser", "shellapi"] }
 
