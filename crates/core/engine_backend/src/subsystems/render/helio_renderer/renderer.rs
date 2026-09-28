@@ -79,6 +79,7 @@ pub struct HelioEditorMailbox {
     pending_gizmo_mode: Arc<Mutex<Option<GizmoMode>>>,
     pending_deselect: Arc<AtomicBool>,
     pending_force_full_resync: Arc<AtomicBool>,
+    viewport_bloom: Arc<AtomicBool>,
 }
 
 impl HelioEditorMailbox {
@@ -101,6 +102,14 @@ impl HelioEditorMailbox {
     pub fn queue_force_full_resync(&self) {
         self.pending_force_full_resync
             .store(true, Ordering::Relaxed);
+    }
+
+    /// Show or hide bloom in the viewport (the toolbar's Bloom toggle). The
+    /// project's graphics settings must also enable it; see
+    /// [`crate::scene::EditorPostProcess`]. Takes the state, not a toggle,
+    /// so the viewport follows the toolbar even if an update is superseded.
+    pub fn set_viewport_bloom(&self, enabled: bool) {
+        self.viewport_bloom.store(enabled, Ordering::Release);
     }
 }
 
@@ -137,7 +146,9 @@ pub struct HelioRenderer {
     pub camera_input: Arc<Mutex<CameraInput>>,
     pub scene_store: crate::scene::SharedScene,
 
-    // ── Legacy (unused) ──
+    // ── Legacy feature commands ──
+    /// Drained every frame and otherwise ignored: viewport feature state
+    /// reaches the renderer through [`HelioEditorMailbox`].
     pub command_sender: mpsc::Sender<RendererCommand>,
     pub command_receiver: mpsc::Receiver<RendererCommand>,
 
@@ -155,6 +166,8 @@ pub struct HelioRenderer {
     /// through this instead of a `gpu_engine.lock()` that could silently
     /// drop the request the same way the old click/release path could.
     pub pending_force_full_resync: Arc<AtomicBool>,
+    /// The toolbar's Bloom toggle; see [`HelioEditorMailbox::set_viewport_bloom`].
+    pub viewport_bloom: Arc<AtomicBool>,
 
     // ── Renderer State ──
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
@@ -222,6 +235,8 @@ impl HelioRenderer {
             pending_deselect: Arc::new(AtomicBool::new(false)),
             pending_pointer_events: Arc::new(Mutex::new(Vec::new())),
             pending_force_full_resync: Arc::new(AtomicBool::new(false)),
+            // Matches the toolbar's default until the UI reports its state.
+            viewport_bloom: Arc::new(AtomicBool::new(true)),
             reset_taa_next_frame: false,
             inner: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
@@ -482,6 +497,13 @@ impl HelioRenderer {
         }
         self.configure_gizmo_view();
         self.viewport_size = previous_viewport_size;
+
+        // Before idle detection: a changed camera row bumps the scene
+        // revision, so this frame steps SceneDB and uploads it.
+        {
+            profiling::profile_scope!("helio_sync_editor_postprocess");
+            self.sync_editor_postprocess();
+        }
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
@@ -891,6 +913,32 @@ impl HelioRenderer {
         }
     }
 
+    /// Keep the editor camera's post-process row in step with the toolbar's
+    /// Bloom toggle and the project's graphics settings. Also drains the
+    /// legacy feature commands, which carry no state.
+    fn sync_editor_postprocess(&mut self) {
+        while let Ok(command) = self.command_receiver.try_recv() {
+            match command {
+                RendererCommand::ToggleFeature(feature) => {
+                    tracing::debug!(%feature, "Feature toggle received; viewport state arrives through the editor mailbox");
+                }
+            }
+        }
+        let desired = crate::scene::EditorPostProcess::from_project_settings(
+            self.viewport_bloom.load(Ordering::Acquire),
+        );
+        let current =
+            crate::scene::editor_postprocess_is_current(&self.scene_store.read().world, desired);
+        if !current {
+            crate::scene::apply_editor_postprocess(&mut self.scene_store.write().world, desired);
+            tracing::info!(
+                bloom = desired.bloom_enabled,
+                intensity = desired.bloom_intensity,
+                "Editor viewport post-process updated"
+            );
+        }
+    }
+
     pub fn is_initialized(&self) -> bool {
         self.inner.is_some()
     }
@@ -949,6 +997,7 @@ impl HelioRenderer {
             pending_gizmo_mode: self.pending_gizmo_mode.clone(),
             pending_deselect: self.pending_deselect.clone(),
             pending_force_full_resync: self.pending_force_full_resync.clone(),
+            viewport_bloom: self.viewport_bloom.clone(),
         }
     }
 

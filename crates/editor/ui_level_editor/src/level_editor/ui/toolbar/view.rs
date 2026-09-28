@@ -23,6 +23,7 @@
 use std::sync::Arc;
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
+use engine_backend::subsystems::render::HelioEditorMailbox;
 use gpui::*;
 use ui::dock::PanelEvent;
 
@@ -98,6 +99,9 @@ pub struct ToolbarView {
     toolbar: ToolbarPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
+    /// Carries the viewport feature toggles to the render thread without
+    /// taking `gpu_engine`; see `HelioEditorMailbox`'s doc.
+    helio_mailbox: Option<HelioEditorMailbox>,
     last_signature: ToolbarSignature,
     pump_started: bool,
 }
@@ -106,12 +110,14 @@ impl ToolbarView {
     pub fn new(
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
         gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
+        helio_mailbox: Option<HelioEditorMailbox>,
     ) -> Self {
         let last_signature = ToolbarSignature::of(&state.read());
         Self {
             toolbar: ToolbarPanel::new(),
             state,
             gpu_engine,
+            helio_mailbox,
             last_signature,
             pump_started: false,
         }
@@ -155,6 +161,12 @@ impl Render for ToolbarView {
         self.last_signature = ToolbarSignature::of(&self.state.read());
 
         let state = self.state.read();
+        // The toolbar renders on every change to its state (see the pump), so
+        // this keeps the viewport's Bloom in step with the toggle, including
+        // its initial value.
+        if let Some(mailbox) = &self.helio_mailbox {
+            mailbox.set_viewport_bloom(state.editor.feature_bloom_enabled);
+        }
         self.toolbar
             .render(&state, self.state.clone(), self.gpu_engine.clone(), cx)
     }

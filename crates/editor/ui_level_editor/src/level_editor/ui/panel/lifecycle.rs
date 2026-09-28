@@ -339,9 +339,6 @@ impl LevelEditorPanel {
             }
         });
 
-        let toolbar = cx.new(|_| ToolbarView::new(shared_state.clone(), gpu_engine.clone()));
-        let status_bar = cx.new(|_| StatusBarView::new(shared_state.clone(), gpu_engine.clone()));
-
         // Fetched once here, not re-acquired via `gpu_engine.lock()` per
         // command -- see `HelioEditorMailbox`'s doc. `GpuRendererBuilder::build`
         // always sets `helio_renderer: Some(...)` synchronously, so this is
@@ -350,6 +347,11 @@ impl LevelEditorPanel {
         // degrade out of harmlessly (same "skip this one tick" shape the old
         // `gpu_engine.lock()` sites already had on any lock failure).
         let helio_mailbox = gpu_engine.lock().ok().and_then(|engine| engine.editor_mailbox());
+
+        let toolbar = cx.new(|_| {
+            ToolbarView::new(shared_state.clone(), gpu_engine.clone(), helio_mailbox.clone())
+        });
+        let status_bar = cx.new(|_| StatusBarView::new(shared_state.clone(), gpu_engine.clone()));
 
         let class_updates =
             crate::level_editor::core::asset_updates::subscribe_class_updates(shared_state.clone());
