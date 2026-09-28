@@ -467,6 +467,7 @@ impl ProviderCrate for DockerModelRunnerProviderCrate {
             id: "docker_model_runner",
             display_name: "Docker Model Runner",
             kind: ProviderKind::Local,
+            template: false,
             default_endpoint: Some("http://localhost:12434/engines/v1/chat/completions"),
             config_fields: vec![],
         }]

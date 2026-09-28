@@ -1,4 +1,3 @@
-use crate::custom_providers::{self, CustomProvider};
 use agent_chat_core::{
     ChatMessage, ChatProvider, ChatRole, ProviderCrate, ProviderEntry, ProviderRegistry,
 };
@@ -43,9 +42,8 @@ pub struct AgentChatPanel {
     pub(crate) provider_list: Entity<SearchableList<ProviderDefinition>>,
     pub(crate) model_list: Entity<SearchableList<ModelDefinition>>,
     pub(crate) provider_catalog: Vec<ProviderDefinition>,
-    pub(crate) custom_providers_list: Vec<CustomProvider>,
-    pub(crate) pending_custom_provider: Option<PendingCustomProvider>,
-    pub(crate) pending_custom_provider_step: Option<AddProviderPromptStep>,
+    /// Saved connections made from provider templates.
+    pub(crate) provider_instances: Vec<agent_chat_core::ProviderInstanceConfig>,
     pub(crate) provider_registry: ProviderRegistry,
     pub(crate) provider_states: HashMap<String, ProviderState>,
     pub(crate) provider_states_shared: Rc<RefCell<HashMap<String, ProviderState>>>,

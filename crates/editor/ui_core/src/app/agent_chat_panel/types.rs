@@ -6,6 +6,9 @@ pub enum ProviderState {
     Ready,
     Unconfigured,
     Disabled,
+    /// A provider template (`ProviderEntry::template`): selecting it starts
+    /// the config flow for a new named connection instead of using it.
+    Template,
 }
 
 /// A single tool call within a `DisplayItem::ToolCallGroup`.
@@ -150,26 +153,6 @@ pub enum ProviderKind {
     Local,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AddProviderPromptStep {
-    ProviderId,
-    ProviderLabel,
-    Endpoint,
-    ModelId,
-    ModelLabel,
-    ModelSupportsTools,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct PendingCustomProvider {
-    pub id: String,
-    pub label: String,
-    pub endpoint: String,
-    pub model_id: String,
-    pub model_label: String,
-    pub model_supports_tools: bool,
-}
-
 #[derive(Clone, Debug)]
 pub struct ModelDefinition {
     pub id: &'static str,
@@ -189,6 +172,8 @@ pub struct ProviderDefinition {
     pub kind: ProviderKind,
     pub endpoint: &'static str,
     pub models: Arc<Vec<ModelDefinition>>,
+    /// A saved connection made from a template; the list offers Delete.
+    pub deletable: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

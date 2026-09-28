@@ -48,6 +48,13 @@ impl AgentChatPanel {
                 }
             }
 
+            // A template: configure a new named connection from it.
+            if self.provider_states.get(provider_id) == Some(&ProviderState::Template) {
+                tracing::debug!(provider = %provider_id, "set_provider: new connection from template");
+                self.start_provider_config(provider_id, cx);
+                return;
+            }
+
             // If unconfigured, start config flow
             if self.provider_states.get(provider_id) == Some(&ProviderState::Unconfigured) {
                 if let Some(entry) = self.provider_entries.get(provider_id) {

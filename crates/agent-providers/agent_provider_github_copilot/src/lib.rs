@@ -700,6 +700,7 @@ impl ProviderCrate for GithubCopilotProviderCrate {
             id: "github_copilot",
             display_name: "GitHub Copilot",
             kind: ProviderKind::Cloud,
+            template: false,
             default_endpoint: Some("https://models.github.ai/inference/chat/completions"),
             config_fields: vec![ConfigField {
                 key: "token",

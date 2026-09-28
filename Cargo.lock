@@ -64,7 +64,9 @@ name = "agent_chat_core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

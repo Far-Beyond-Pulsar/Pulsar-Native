@@ -360,6 +360,7 @@ impl ProviderCrate for GeminiProviderCrate {
             id: "gemini",
             display_name: "Gemini",
             kind: ProviderKind::Cloud,
+            template: false,
             default_endpoint: Some("https://generativelanguage.googleapis.com/v1beta/openai/"),
             config_fields: vec![ConfigField {
                 key: "api_key",
