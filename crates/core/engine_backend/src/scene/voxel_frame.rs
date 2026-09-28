@@ -3,7 +3,8 @@
 //! This copies configuration and Arc capabilities only. Canonical payload
 //! bytes remain in component rows and are selected by the consuming backend.
 
-use helio_component::{VoxelComponent, VoxelTerrainComponent, VoxelWorldShape};
+use helio_component::{VoxelComponent, VoxelLandformComponent, VoxelTerrainComponent, VoxelWorldShape};
+use helio_voxel_data::VoxelBrushEdit;
 use helio_voxel_data::{
     VoxelBatchRevision, VoxelChunkBatch, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload,
     VoxelChunkUpdate, VoxelDomain, VoxelGeneratorDescriptor, VoxelPayloadStore, VoxelSourceId,
@@ -44,6 +45,8 @@ pub struct VoxelSceneEntry {
     pub initial_cube: Option<VoxelCubeInit>,
     /// Form and size of a terrain world (scaled with the entity).
     pub world: VoxelWorldForm,
+    /// The terrain's ordered brush journal.
+    pub edits: Vec<VoxelBrushEdit>,
 }
 
 /// Authored form of a voxel world: shape and size in metres.
@@ -288,6 +291,7 @@ pub(super) fn object_entry(
                 .map_err(|_| "default_material_slot must fit in one byte")?,
         }),
         world: VoxelWorldForm::default(),
+        edits: Vec::new(),
     })
 }
 
@@ -368,7 +372,12 @@ pub(super) fn terrain_entry(
             id: component.generator_id.clone(),
             version: component.generator_version,
             seed: component.seed,
-            parameters: component.generator_parameters.clone(),
+            // A generator settings component on the entity replaces the
+            // opaque parameter string.
+            parameters: world
+                .get::<VoxelLandformComponent>(entity)
+                .and_then(|landform| serde_json::to_string(landform).ok())
+                .unwrap_or_else(|| component.generator_parameters.clone()),
         }),
         initial_cube: None,
         world: VoxelWorldForm {
@@ -376,6 +385,7 @@ pub(super) fn terrain_entry(
             planet_radius: component.planet_radius * scale,
             plane_size: component.plane_size * scale,
         },
+        edits: component.edits.clone(),
     })
 }
 

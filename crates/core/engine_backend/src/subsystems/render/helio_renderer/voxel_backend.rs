@@ -14,7 +14,7 @@ use helio_pass_voxel_planet::{
     grid::Shape,
     Brush, BrushOp, BrushShape, Planet, PlanetRecipe,
 };
-use helio_voxel_data::VoxelDomain;
+use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape};
 
 use crate::scene::voxel_frame::{VoxelEntryId, VoxelGeneratorConfig, VoxelSceneEntry};
 
@@ -38,12 +38,12 @@ pub struct VoxelView {
     pub sun: Option<[f32; 3]>,
 }
 
-/// A backend edit becomes an update to its opaque source recipe. SceneDB owns
-/// the component and persists this string with the level.
+/// A backend edit appends one brush to the terrain's journal. SceneDB owns
+/// the component and persists the journal with the level.
 pub struct VoxelBrushCommit {
     pub id: VoxelEntryId,
     pub distance: f64,
-    pub recipe: String,
+    pub edit: VoxelBrushEdit,
 }
 
 pub trait VoxelRenderBackend: Send {
@@ -304,52 +304,63 @@ impl Default for VoxelBackendRegistry {
     }
 }
 
-/// Authored source recipe stored in the terrain's `generator_parameters`: the
-/// landform and the ordered brush edits. SceneDB persists it with the level;
-/// the backend rebuilds its world from it (appending edits incrementally).
-/// The world's shape, size and voxel size come from the component.
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct PlanetSourceRecipe {
-    /// Continents, mountains, hills, roughness and snowline. A nonzero
-    /// component `seed` replaces the landform seed.
-    pub landform: Landform,
-    /// Ordered destruction and construction brushes.
-    pub edits: Vec<Brush>,
+/// The generator's landform from its parameters: the entity's
+/// `VoxelLandformComponent` (serialized by the scene projection) or a raw
+/// JSON string; empty means the defaults. A nonzero component `seed`
+/// replaces the landform seed.
+pub fn planet_landform(parameters: &str, seed: u64) -> Result<Landform, String> {
+    let mut landform: Landform = if parameters.trim().is_empty() {
+        Landform::default()
+    } else {
+        serde_json::from_str(parameters).map_err(|error| format!("invalid voxel planet landform: {error}"))?
+    };
+    if seed != 0 {
+        landform.seed = seed as u32;
+    }
+    Ok(landform)
 }
 
-impl PlanetSourceRecipe {
-    pub fn from_json(json: &str) -> Result<Self, String> {
-        if json.trim().is_empty() {
-            return Ok(Self::default());
-        }
-        serde_json::from_str(json).map_err(|error| format!("invalid voxel planet recipe: {error}"))
+/// The world recipe: the component's shape, size and voxel size with a landform.
+fn world_recipe(entry: &VoxelSceneEntry, landform: Landform) -> PlanetRecipe {
+    PlanetRecipe {
+        shape: match entry.world.shape {
+            VoxelWorldShape::Sphere => Shape::Sphere,
+            VoxelWorldShape::Plane => Shape::Plane,
+            VoxelWorldShape::InfinitePlane => Shape::InfinitePlane,
+        },
+        radius_m: entry.world.planet_radius,
+        plane_size_m: entry.world.plane_size,
+        voxel_size_m: entry.voxel_size,
+        landform,
+        ..PlanetRecipe::default()
     }
+}
 
-    pub fn to_json(&self) -> Result<String, String> {
-        serde_json::to_string(self).map_err(|error| error.to_string())
+/// A generic journal brush as a planet brush.
+fn planet_brush(edit: &VoxelBrushEdit) -> Brush {
+    Brush {
+        center: edit.center,
+        radius: edit.radius,
+        shape: match edit.shape {
+            VoxelBrushShape::Sphere => BrushShape::Sphere,
+            VoxelBrushShape::Cube => BrushShape::Cube,
+        },
+        op: match edit.op {
+            VoxelBrushOp::Remove => BrushOp::Remove,
+            VoxelBrushOp::Add => BrushOp::Add,
+            VoxelBrushOp::Paint => BrushOp::Paint,
+        },
+        material: edit.material,
     }
+}
 
-    /// The world recipe: the component's shape, size, voxel size and seed
-    /// with this landform.
-    fn planet_recipe(&self, entry: &VoxelSceneEntry, seed: u64) -> PlanetRecipe {
-        let mut landform = self.landform.clone();
-        if seed != 0 {
-            landform.seed = seed as u32;
-        }
-        PlanetRecipe {
-            shape: match entry.world.shape {
-                VoxelWorldShape::Sphere => Shape::Sphere,
-                VoxelWorldShape::Plane => Shape::Plane,
-                VoxelWorldShape::InfinitePlane => Shape::InfinitePlane,
-            },
-            radius_m: entry.world.planet_radius,
-            plane_size_m: entry.world.plane_size,
-            voxel_size_m: entry.voxel_size,
-            landform,
-            ..PlanetRecipe::default()
-        }
+/// Build the world of an entry: its landform with every journal brush.
+fn build_planet(entry: &VoxelSceneEntry, generator: &VoxelGeneratorConfig) -> Result<Planet, String> {
+    let mut planet = Planet::new(world_recipe(entry, planet_landform(&generator.parameters, generator.seed)?))?;
+    for edit in &entry.edits {
+        planet.apply(planet_brush(edit))?;
     }
+    Ok(planet)
 }
 
 /// Built planet for one source revision.
@@ -359,8 +370,9 @@ struct CachedPlanet {
     generator: VoxelGeneratorConfig,
     voxel_size: f64,
     world: crate::scene::voxel_frame::VoxelWorldForm,
-    /// Decoded recipe: a newer recipe that only appends edits reuses the planet.
-    recipe: PlanetSourceRecipe,
+    /// Journal applied to `planet`: a newer journal that only appends
+    /// brushes extends a copy of it.
+    edits: Vec<VoxelBrushEdit>,
     planet: Arc<Planet>,
 }
 
@@ -421,30 +433,22 @@ impl PlanetVoxelBackend {
                 return Ok(Arc::clone(&cached.planet));
             }
         }
-        let recipe = PlanetSourceRecipe::from_json(&generator.parameters)?;
         let planet = match &self.cached {
-            // A sculpt stroke appends brushes to an otherwise equal recipe.
+            // A sculpt stroke appends brushes to an otherwise equal source.
             Some(cached)
                 if cached.id == entry.id
                     && cached.voxel_size == entry.voxel_size
                     && cached.world == entry.world
-                    && cached.generator.seed == generator.seed
-                    && cached.recipe.landform == recipe.landform
-                    && recipe.edits.starts_with(&cached.recipe.edits) =>
+                    && cached.generator == generator
+                    && entry.edits.starts_with(&cached.edits) =>
             {
                 let mut planet = (*cached.planet).clone();
-                for brush in &recipe.edits[cached.recipe.edits.len()..] {
-                    planet.apply(*brush)?;
+                for edit in &entry.edits[cached.edits.len()..] {
+                    planet.apply(planet_brush(edit))?;
                 }
                 planet
             }
-            _ => {
-                let mut planet = Planet::new(recipe.planet_recipe(entry, generator.seed))?;
-                for brush in &recipe.edits {
-                    planet.apply(*brush)?;
-                }
-                planet
-            }
+            _ => build_planet(entry, &generator)?,
         };
         let planet = Arc::new(planet);
         self.cached = Some(CachedPlanet {
@@ -453,7 +457,7 @@ impl PlanetVoxelBackend {
             generator,
             voxel_size: entry.voxel_size,
             world: entry.world,
-            recipe,
+            edits: entry.edits.clone(),
             planet: Arc::clone(&planet),
         });
         Ok(planet)
@@ -462,7 +466,7 @@ impl PlanetVoxelBackend {
     fn cached_planet(&self, entry: &VoxelSceneEntry) -> Option<&Arc<Planet>> {
         self.cached
             .as_ref()
-            .filter(|c| c.id == entry.id && c.revision == entry.source_revision && c.world == entry.world && entry.generator.as_ref() == Some(&c.generator))
+            .filter(|c| c.id == entry.id && c.revision == entry.source_revision && c.world == entry.world && c.edits == entry.edits && entry.generator.as_ref() == Some(&c.generator))
             .map(|c| &c.planet)
     }
 }
@@ -529,38 +533,26 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         material: u32,
     ) -> Result<Option<VoxelBrushCommit>, String> {
         let generator = Self::validate_source(source)?;
-        let mut recipe = PlanetSourceRecipe::from_json(&generator.parameters)?;
         let planet = match self.cached_planet(source) {
             Some(planet) => (**planet).clone(),
-            None => {
-                let mut planet = Planet::new(recipe.planet_recipe(source, generator.seed))?;
-                for brush in &recipe.edits {
-                    planet.apply(*brush)?;
-                }
-                planet
-            }
+            None => build_planet(source, generator)?,
         };
         // Rays are clipped to the planet shell, not to a draw distance or a
         // tool reach: orbital edits use the same exact cells.
         let Some(hit) = planet.raycast(origin, direction.normalize(), f64::INFINITY) else {
             return Ok(None);
         };
-        let (cell, op) = if material == 0 { (hit.cell, BrushOp::Remove) } else { (hit.previous, BrushOp::Add) };
-        let brush = Brush {
+        let (cell, op) = if material == 0 { (hit.cell, VoxelBrushOp::Remove) } else { (hit.previous, VoxelBrushOp::Add) };
+        let edit = VoxelBrushEdit {
             center: planet.grid().cell_center(cell).to_array(),
             radius: f64::from(radius).max(planet.grid().voxel_size() * 0.5),
-            shape: BrushShape::Sphere,
+            shape: VoxelBrushShape::Sphere,
             op,
             material: if material == 0 { 0 } else { build_material(material) },
         };
         let mut check = planet;
-        check.apply(brush)?;
-        recipe.edits.push(brush);
-        Ok(Some(VoxelBrushCommit {
-            id: source.id,
-            distance: hit.distance,
-            recipe: recipe.to_json()?,
-        }))
+        check.apply(planet_brush(&edit))?;
+        Ok(Some(VoxelBrushCommit { id: source.id, distance: hit.distance, edit }))
     }
 
     fn supports(&self, source: &VoxelSceneEntry) -> bool {
@@ -599,7 +591,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         match entry.store.try_read() {
             Ok(state) if !state.1.is_empty() => {
                 self.clear()?;
-                return Err("the voxel planet does not consume live chunk payloads yet; edit through its recipe".into());
+                return Err("the voxel planet does not consume live sample chunks yet; edit with brushes".into());
             }
             Ok(_) => {}
             Err(std::sync::TryLockError::WouldBlock) => return Ok(()),
@@ -748,7 +740,7 @@ mod tests {
     }
 
     #[test]
-    fn exact_brush_edits_round_trip_through_the_terrain_recipe() {
+    fn exact_brush_edits_round_trip_through_the_terrain_journal() {
         let mut scene = World::new();
         let entity = scene.spawn();
         scene.insert(entity, planet_terrain());
@@ -764,15 +756,14 @@ mod tests {
         registry.register(Box::new(PlanetVoxelBackend::new())).unwrap();
         let commit = registry.edit_ray(&entries, eye, down, 0.5, 0).unwrap().unwrap();
         assert_eq!(commit.id, entries[0].id);
-        let replay = |json: &str| {
-            let recipe = PlanetSourceRecipe::from_json(json).unwrap();
-            let mut planet = Planet::new(PlanetRecipe { landform: recipe.landform.clone(), ..PlanetRecipe::default() }).unwrap();
-            for brush in &recipe.edits {
-                planet.apply(*brush).unwrap();
+        let replay = |edits: &[VoxelBrushEdit]| {
+            let mut planet = Planet::new(PlanetRecipe::default()).unwrap();
+            for edit in edits {
+                planet.apply(planet_brush(edit)).unwrap();
             }
             planet
         };
-        assert_eq!(replay(&commit.recipe).material(target), 0);
+        assert_eq!(replay(&[commit.edit]).material(target), 0);
         // The same canonical cell is addressed from the ground, from orbit
         // and from far beyond the renderer's precision range.
         for distance in [2_000.0, 300_000.0, 1_000_000_000.0] {
@@ -780,25 +771,46 @@ mod tests {
                 .edit_ray(&entries, eye - down * distance, down, 0.05, 0)
                 .unwrap()
                 .expect("remote terrain remains editable");
-            assert_eq!(replay(&remote.recipe).material(target), 0);
+            assert_eq!(replay(&[remote.edit]).material(target), 0);
             assert!(remote.distance > distance);
         }
         // Building fills the empty cell in front of the hit.
         let build = registry.edit_ray(&entries, eye, down, 0.05, 1).unwrap().unwrap();
-        let built = PlanetSourceRecipe::from_json(&build.recipe).unwrap();
-        assert_eq!(built.edits[0].op, BrushOp::Add);
-        assert_eq!(built.edits[0].material, helio_pass_voxel_planet::field::material::COBBLE);
+        assert_eq!(build.edit.op, VoxelBrushOp::Add);
+        assert_eq!(build.edit.material, helio_pass_voxel_planet::field::material::COBBLE);
 
         assert!(super::super::renderer::apply_voxel_brush_commit(&mut scene, commit));
         let terrain = scene.get::<VoxelTerrainComponent>(entity).unwrap();
         assert_eq!(terrain.source_revision, 1);
-        assert_eq!(replay(&terrain.generator_parameters).material(target), 0);
+        assert_eq!(terrain.edits.len(), 1);
+        assert_eq!(replay(&terrain.edits).material(target), 0);
 
         // The backend extends its cached planet with the appended brush.
         let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         let mut backend = PlanetVoxelBackend::new();
         backend.publish_frame(&[&entries[0]], view(eye)).unwrap();
         assert_eq!(frame_planet(&backend).material(target), 0);
+    }
+
+    #[test]
+    fn a_landform_component_configures_the_generator() {
+        let mut scene = World::new();
+        let entity = scene.spawn();
+        let mut terrain = planet_terrain();
+        terrain.seed = 99;
+        scene.insert(entity, terrain);
+        let mut landform = helio_component::VoxelLandformComponent::default();
+        landform.snowline_m = 1_234.0;
+        landform.mountain_km = 55.0;
+        scene.insert(entity, landform);
+        let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        assert!(errors.is_empty(), "{errors:?}");
+        let mut backend = PlanetVoxelBackend::new();
+        backend.publish_frame(&[&entries[0]], view(DVec3::new(0.0, 6_371_000.0 + 3_000.0, 0.0))).unwrap();
+        let recipe = frame_planet(&backend).recipe().clone();
+        assert_eq!(recipe.landform.snowline_m, 1_234.0);
+        assert_eq!(recipe.landform.mountain_km, 55.0);
+        assert_eq!(recipe.landform.seed, 99);
     }
 
     #[test]

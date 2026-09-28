@@ -89,7 +89,24 @@
             0
           ],
           "editable": true,
-          "source_revision": 0
+          "source_revision": 0,
+          "edits": []
+        }
+      },
+      {
+        "class_name": "VoxelLandformComponent",
+        "enabled": true,
+        "data": {
+          "continent_km": 3000.0,
+          "ocean_depth_m": 2400.0,
+          "lowland_m": 180.0,
+          "mountain_m": 2400.0,
+          "mountain_km": 20.0,
+          "snowline_m": 3000.0,
+          "hill_m": 140.0,
+          "hill_km": 9.0,
+          "roughness": 0.035,
+          "warp_km": 40.0
         }
       }
     ],

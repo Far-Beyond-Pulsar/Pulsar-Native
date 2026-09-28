@@ -20,8 +20,8 @@ type GizmoMode = GizmoType;
 /// Camera velocity squared below this threshold is considered stopped.
 const CAMERA_IDLE_EPSILON: f32 = 0.001;
 
-/// Commit a backend-specific edit through the generic terrain row. The backend
-/// owns the recipe format; SceneDB only stores it and advances the revision.
+/// Append a backend's brush edit to the terrain's journal and advance the
+/// source revision. SceneDB persists the journal with the level.
 pub(super) fn apply_voxel_brush_commit(
     world: &mut pulsar_scenedb::World,
     commit: VoxelBrushCommit,
@@ -36,7 +36,7 @@ pub(super) fn apply_voxel_brush_commit(
     if !terrain.editable {
         return false;
     }
-    terrain.generator_parameters = commit.recipe;
+    terrain.edits.push(commit.edit);
     terrain.source_revision = terrain.source_revision.wrapping_add(1);
     true
 }
