@@ -80,10 +80,10 @@
           "chunk_edge_voxels": 32,
           "max_chunk_lod": 20,
           "lod_scale": 2,
-          "renderer_id": "helio.voxel-planet",
-          "generator_id": "helio.voxel-planet.default",
+          "renderer_id": "helio.voxel-terrain",
+          "generator_id": "helio.landform",
           "generator_version": 1,
-          "seed": 0,
+          "seed": 7,
           "generator_parameters": "",
           "material_ids": [
             0

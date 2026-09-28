@@ -3,7 +3,7 @@
 //! This copies configuration and Arc capabilities only. Canonical payload
 //! bytes remain in component rows and are selected by the consuming backend.
 
-use helio_component::{VoxelComponent, VoxelLandformComponent, VoxelTerrainComponent, VoxelWorldShape};
+use helio_component::{VoxelComponent, VoxelTerrainComponent, VoxelWorldShape};
 use helio_voxel_data::VoxelBrushEdit;
 use helio_voxel_data::{
     VoxelBatchRevision, VoxelChunkBatch, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload,
@@ -295,6 +295,28 @@ pub(super) fn object_entry(
     })
 }
 
+/// Engine class of the component that holds a terrain generator's settings,
+/// as the generator declares it when registered.
+pub fn generator_settings_component(id: &str, version: u32) -> Option<String> {
+    #[cfg(feature = "render")]
+    {
+        helio_pass_voxel_planet::terrain::find(id, version).and_then(|generator| generator.info().settings_component)
+    }
+    #[cfg(not(feature = "render"))]
+    {
+        let _ = (id, version);
+        None
+    }
+}
+
+/// The generator's settings serialized from its settings component on the
+/// same entity, which replaces the opaque parameter string when present.
+fn generator_settings(world: &World, entity: Entity, terrain: &VoxelTerrainComponent) -> Option<String> {
+    let class = generator_settings_component(&terrain.generator_id, terrain.generator_version)?;
+    let settings = pulsar_world_registry::get_world_component_as_engine_class(&class, world, entity)?;
+    settings.to_json().ok().map(|json| json.to_string())
+}
+
 pub(super) fn terrain_entry(
     world: &World,
     entity: Entity,
@@ -372,11 +394,7 @@ pub(super) fn terrain_entry(
             id: component.generator_id.clone(),
             version: component.generator_version,
             seed: component.seed,
-            // A generator settings component on the entity replaces the
-            // opaque parameter string.
-            parameters: world
-                .get::<VoxelLandformComponent>(entity)
-                .and_then(|landform| serde_json::to_string(landform).ok())
+            parameters: generator_settings(world, entity, component)
                 .unwrap_or_else(|| component.generator_parameters.clone()),
         }),
         initial_cube: None,

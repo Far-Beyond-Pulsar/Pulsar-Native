@@ -23,26 +23,43 @@ reported as an error. Each backend validates its own source format, chunk size,
 LOD, domain, and generator requirements; the generic component does not impose
 one terrain representation. GPU residency remains transient and rebuildable.
 
-## Voxel planet backend
+## Voxel terrain backend
 
-The registered backend `helio.voxel-planet` renders a destructible, Earth-sized
-voxel planet (`helio-pass-voxel-planet` in Helio). It consumes terrain rows
-whose generator is `helio.voxel-planet.default`, version 1.
+The registered backend `helio.voxel-terrain` (`helio-pass-voxel-planet` in
+Helio) renders destructible voxel worlds: planets, square planes and
+infinite planes, each filled by a registered terrain generator.
 
-- **Grid.** Exact voxels on an equal-angle cube sphere aligned with gravity.
-  The component's `voxel_size` sets the base voxel (0.1 m to 1 m); the planet
-  keeps the same shape at every voxel size.
-- **Recipe.** `generator_parameters` holds a JSON `PlanetSourceRecipe`: the
-  planet (radius and landform) and the ordered brush edits. Empty means the
-  default Earth-sized planet with no edits. A nonzero component `seed`
-  replaces the landform seed. The row must be unbounded, with its origin at
-  the planet centre.
+- **Components.** `VoxelTerrainComponent` is the base of every world: its
+  shape (`Sphere`, `Plane`, `InfinitePlane`) and size, voxel size (0.1 m to
+  1 m), generator id, version and seed, and the edit journal. A generator's
+  settings live in its settings component on the same entity, which the scene
+  projection serializes into the generator's parameters. The constructors
+  `VoxelTerrainComponent::planet(radius)`, `::plane(size)` and
+  `::infinite_plane()` are the presets; a new component is a 4 km plane of
+  the landform generator. Game-specific worlds (a planet with water and
+  foliage, say) are classes whose prefab combines these components with
+  others. The world is centred on its entity, which must sit at the origin.
+- **Generators.** A terrain generator is a field: a CPU function for the
+  surface height and ground material of every column, and a WGSL program
+  that computes the same values bit for bit, built from Helio's integer
+  noise library. Generators register by id and version
+  (`helio_pass_voxel_planet::terrain::register`) and name their settings
+  component; `terrain::generators()` lists them. Built in:
+
+  | Generator | Settings component | Terrain |
+  |-----------|--------------------|---------|
+  | `helio.landform` v1 | `VoxelLandformComponent` | continents, basins, mountain ranges, hills; meadows, dry lands, rock, strata, snow |
+  | `helio.flat` v1 | `VoxelFlatTerrainComponent` | level ground: surface over soil over rock |
+
+  A generator's tests should call `engine::verify_field` (CPU against GPU)
+  and `terrain::check_field` (declared bounds). Changing only settings
+  rebuilds the world without recompiling shaders.
 - **Editing.** Select **Voxel Sculpt** in the tool menu, then click or drag to
-  dig; hold Shift to build with cobblestone. The backend ray casts exact
-  cells in `f64` (clipped to the planet shell, so orbital edits work),
-  appends a sphere brush to the recipe and advances the source revision.
-  A stroke that only appends brushes updates the cached planet
-  incrementally. Save the level to keep the edits.
+  dig; hold Shift to build with cobblestone. The backend ray casts exact cells
+  in `f64` (orbital edits work) and appends a brush to the component's
+  `edits` journal, advancing the source revision. A stroke that only appends
+  brushes updates the cached world incrementally. Save the level to keep the
+  edits.
 - **Rendering.** Terrain is traced per pixel through a GPU-driven clipmap of
   exact voxel columns. Nearby voxels stay crisp; distant cells use filtered
   appearance, with no smooth terrain and no visible LOD pop. The viewport

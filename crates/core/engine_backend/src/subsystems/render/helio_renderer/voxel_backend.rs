@@ -10,19 +10,14 @@ use helio_default_graphs::VoxelPassFactory;
 use helio_component::VoxelWorldShape;
 use helio_pass_voxel_planet::{
     engine::{PlanetFrame, PlanetPass, SharedPlanetFrame},
-    field::Landform,
     grid::Shape,
-    Brush, BrushOp, BrushShape, Planet, PlanetRecipe,
+    terrain, Brush, BrushOp, BrushShape, Planet, PlanetRecipe, TerrainSource,
 };
 use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape};
 
 use crate::scene::voxel_frame::{VoxelEntryId, VoxelGeneratorConfig, VoxelSceneEntry};
 
-pub use helio_voxel_data::{
-    VOXEL_TERRAIN_GENERATOR as VOXEL_PLANET_GENERATOR_ID,
-    VOXEL_TERRAIN_GENERATOR_VERSION as VOXEL_PLANET_GENERATOR_VERSION,
-    VOXEL_TERRAIN_RENDERER as VOXEL_PLANET_RENDERER_ID,
-};
+pub use helio_voxel_data::{VOXEL_TERRAIN_GENERATOR, VOXEL_TERRAIN_GENERATOR_VERSION, VOXEL_TERRAIN_RENDERER};
 
 /// Camera coordinates here are f64 so backend recipes can preserve a fine
 /// world-space sample interval at planetary scale.
@@ -306,24 +301,9 @@ impl Default for VoxelBackendRegistry {
     }
 }
 
-/// The generator's landform from its parameters: the entity's
-/// `VoxelLandformComponent` (serialized by the scene projection) or a raw
-/// JSON string; empty means the defaults. A nonzero component `seed`
-/// replaces the landform seed.
-pub fn planet_landform(parameters: &str, seed: u64) -> Result<Landform, String> {
-    let mut landform: Landform = if parameters.trim().is_empty() {
-        Landform::default()
-    } else {
-        serde_json::from_str(parameters).map_err(|error| format!("invalid voxel planet landform: {error}"))?
-    };
-    if seed != 0 {
-        landform.seed = seed as u32;
-    }
-    Ok(landform)
-}
-
-/// The world recipe: the component's shape, size and voxel size with a landform.
-fn world_recipe(entry: &VoxelSceneEntry, landform: Landform) -> PlanetRecipe {
+/// The world recipe: the component's shape, size and voxel size with its
+/// terrain generator, seed and settings.
+fn world_recipe(entry: &VoxelSceneEntry, generator: &VoxelGeneratorConfig) -> PlanetRecipe {
     PlanetRecipe {
         shape: match entry.world.shape {
             VoxelWorldShape::Sphere => Shape::Sphere,
@@ -333,7 +313,12 @@ fn world_recipe(entry: &VoxelSceneEntry, landform: Landform) -> PlanetRecipe {
         radius_m: entry.world.planet_radius,
         plane_size_m: entry.world.plane_size,
         voxel_size_m: entry.voxel_size,
-        landform,
+        terrain: TerrainSource {
+            generator: generator.id.clone(),
+            version: generator.version,
+            seed: generator.seed,
+            settings: generator.parameters.clone(),
+        },
         ..PlanetRecipe::default()
     }
 }
@@ -356,9 +341,9 @@ fn planet_brush(edit: &VoxelBrushEdit) -> Brush {
     }
 }
 
-/// Build the world of an entry: its landform with every journal brush.
+/// Build the world of an entry: its generated terrain with every journal brush.
 fn build_planet(entry: &VoxelSceneEntry, generator: &VoxelGeneratorConfig) -> Result<Planet, String> {
-    let mut planet = Planet::new(world_recipe(entry, planet_landform(&generator.parameters, generator.seed)?))?;
+    let mut planet = Planet::new(world_recipe(entry, generator))?;
     for edit in &entry.edits {
         planet.apply(planet_brush(edit))?;
     }
@@ -378,9 +363,10 @@ struct CachedPlanet {
     planet: Arc<Planet>,
 }
 
-/// Destructible voxel planet (`helio-pass-voxel-planet`): a GPU-driven clipmap
-/// of exact voxels from 0.1 m to 1 m, rendered camera-relative with traced
-/// sunlight.
+/// Streamed destructible voxel terrain (`helio-pass-voxel-planet`): planets,
+/// planes and infinite planes of any registered terrain generator, as a
+/// GPU-driven clipmap of exact voxels from 0.1 m to 1 m rendered
+/// camera-relative with traced sunlight.
 pub struct PlanetVoxelBackend {
     frame: SharedPlanetFrame,
     cached: Option<CachedPlanet>,
@@ -405,9 +391,13 @@ impl PlanetVoxelBackend {
 
     fn validate_source(entry: &VoxelSceneEntry) -> Result<&VoxelGeneratorConfig, String> {
         let generator = entry.generator.as_ref().ok_or("generator ID is required")?;
-        if generator.id != VOXEL_PLANET_GENERATOR_ID || generator.version != VOXEL_PLANET_GENERATOR_VERSION {
+        if terrain::find(&generator.id, generator.version).is_none() {
+            let known: Vec<_> = terrain::generators().into_iter().map(|g| format!("{} v{}", g.id, g.version)).collect();
             return Err(format!(
-                "this backend requires generator '{VOXEL_PLANET_GENERATOR_ID}' version {VOXEL_PLANET_GENERATOR_VERSION}"
+                "unknown terrain generator '{}' version {}; registered: {}",
+                generator.id,
+                generator.version,
+                known.join(", ")
             ));
         }
         if !entry.voxel_size.is_finite() || !(0.1 - 1e-9..=1.0 + 1e-9).contains(&entry.voxel_size) {
@@ -482,8 +472,8 @@ impl Default for PlanetVoxelBackend {
 /// Tool material 1 builds with cobblestone; other palette indices pass
 /// through when the planet knows them.
 fn build_material(material: u32) -> u32 {
-    if material == 1 || material >= helio_pass_voxel_planet::field::material::COUNT {
-        helio_pass_voxel_planet::field::material::COBBLE
+    if material == 1 || material >= helio_pass_voxel_planet::terrain::material::COUNT {
+        helio_pass_voxel_planet::terrain::material::COBBLE
     } else {
         material
     }
@@ -491,7 +481,7 @@ fn build_material(material: u32) -> u32 {
 
 impl VoxelRenderBackend for PlanetVoxelBackend {
     fn renderer_id(&self) -> &'static str {
-        VOXEL_PLANET_RENDERER_ID
+        VOXEL_TERRAIN_RENDERER
     }
 
     fn temporal_quality(&self, size: [u32; 2]) -> Option<helio_pass_tsr::TsrQuality> {
@@ -561,7 +551,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         source
             .generator
             .as_ref()
-            .is_some_and(|generator| generator.id == VOXEL_PLANET_GENERATOR_ID)
+            .is_some_and(|generator| terrain::find(&generator.id, generator.version).is_some())
     }
 
     fn pass_factory(&self) -> VoxelPassFactory {
@@ -641,11 +631,13 @@ mod tests {
     fn planet_terrain() -> VoxelTerrainComponent {
         let mut terrain = VoxelTerrainComponent::default();
         terrain.shape = VoxelWorldShape::Sphere;
-        terrain.renderer_id = VOXEL_PLANET_RENDERER_ID.into();
-        terrain.generator_id = VOXEL_PLANET_GENERATOR_ID.into();
-        terrain.generator_version = VOXEL_PLANET_GENERATOR_VERSION;
+        terrain.renderer_id = VOXEL_TERRAIN_RENDERER.into();
+        terrain.generator_id = VOXEL_TERRAIN_GENERATOR.into();
+        terrain.generator_version = VOXEL_TERRAIN_GENERATOR_VERSION;
         terrain.generator_parameters = String::new();
         terrain.voxel_size = 0.1;
+        // The world `PlanetRecipe::default()` describes.
+        terrain.seed = TerrainSource::default().seed;
         terrain
     }
 
@@ -779,7 +771,7 @@ mod tests {
         // Building fills the empty cell in front of the hit.
         let build = registry.edit_ray(&entries, eye, down, 0.05, 1).unwrap().unwrap();
         assert_eq!(build.edit.op, VoxelBrushOp::Add);
-        assert_eq!(build.edit.material, helio_pass_voxel_planet::field::material::COBBLE);
+        assert_eq!(build.edit.material, helio_pass_voxel_planet::terrain::material::COBBLE);
 
         assert!(super::super::renderer::apply_voxel_brush_commit(&mut scene, commit));
         let terrain = scene.get::<VoxelTerrainComponent>(entity).unwrap();
@@ -810,9 +802,51 @@ mod tests {
         let mut backend = PlanetVoxelBackend::new();
         backend.publish_frame(&[&entries[0]], view(DVec3::new(0.0, 6_371_000.0 + 3_000.0, 0.0))).unwrap();
         let recipe = frame_planet(&backend).recipe().clone();
-        assert_eq!(recipe.landform.snowline_m, 1_234.0);
-        assert_eq!(recipe.landform.mountain_km, 55.0);
-        assert_eq!(recipe.landform.seed, 99);
+        assert_eq!(recipe.terrain.generator, helio_pass_voxel_planet::landform::ID);
+        assert_eq!(recipe.terrain.seed, 99);
+        let settings: helio_pass_voxel_planet::landform::Landform = serde_json::from_str(&recipe.terrain.settings).unwrap();
+        assert_eq!(settings.snowline_m, 1_234.0);
+        assert_eq!(settings.mountain_km, 55.0);
+    }
+
+    #[test]
+    fn shared_ids_name_the_registered_landform_generator() {
+        assert_eq!(VOXEL_TERRAIN_GENERATOR, helio_pass_voxel_planet::landform::ID);
+        assert_eq!(VOXEL_TERRAIN_GENERATOR_VERSION, helio_pass_voxel_planet::landform::VERSION);
+    }
+
+    #[test]
+    fn a_flat_terrain_uses_its_settings_component() {
+        let mut scene = World::new();
+        let entity = scene.spawn();
+        let mut terrain = VoxelTerrainComponent::plane(1_024.0);
+        terrain.generator_id = helio_pass_voxel_planet::landform::FLAT_ID.into();
+        terrain.generator_version = helio_pass_voxel_planet::landform::FLAT_VERSION;
+        scene.insert(entity, terrain);
+        let mut flat = helio_component::VoxelFlatTerrainComponent::default();
+        flat.height = 12.0;
+        flat.surface = helio_component::VoxelTerrainMaterial::Sand;
+        scene.insert(entity, flat);
+        let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        assert!(errors.is_empty(), "{errors:?}");
+        let mut backend = PlanetVoxelBackend::new();
+        backend.publish_frame(&[&entries[0]], view(DVec3::new(0.0, 40.0, 0.0))).unwrap();
+        let planet = frame_planet(&backend);
+        let hit = planet.raycast(DVec3::new(3.0, 40.0, -5.0), -DVec3::Y, 100.0).unwrap();
+        assert!((hit.distance - 28.0).abs() < 0.11, "{}", hit.distance);
+        assert_eq!(planet.material(hit.cell), helio_pass_voxel_planet::terrain::material::SAND);
+    }
+
+    #[test]
+    fn unknown_generators_are_rejected_with_the_registered_list() {
+        let mut scene = World::new();
+        let entity = scene.spawn();
+        let mut terrain = planet_terrain();
+        terrain.generator_id = "example.none".into();
+        scene.insert(entity, terrain);
+        let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        let error = PlanetVoxelBackend::validate_source(&entries[0]).unwrap_err();
+        assert!(error.contains("helio.landform") && error.contains("helio.flat"), "{error}");
     }
 
     #[test]

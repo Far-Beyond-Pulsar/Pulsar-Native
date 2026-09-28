@@ -272,7 +272,7 @@ mod voxel_example_tests {
         let (entries, errors) = engine_backend::scene::voxel_frame::project_voxel_entries(&world);
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].renderer_id, "helio.voxel-planet");
+        assert_eq!(entries[0].renderer_id, "helio.voxel-terrain");
         assert_eq!(entries[0].generator.as_ref().unwrap().version, 1);
     }
 }
