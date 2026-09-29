@@ -448,4 +448,23 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert!(errors[0].contains("default_material_slot"));
     }
+
+    #[test]
+    fn default_terrain_has_a_registered_generator_and_valid_parameters() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert(entity, VoxelTerrainComponent::default());
+
+        let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
+        let descriptor = entry.generator_descriptor().unwrap();
+        assert_eq!(descriptor.id, helio_voxel_data::VOXEL_FLAT_GENERATOR);
+        assert_eq!(
+            descriptor.version,
+            helio_voxel_data::VOXEL_BUILTIN_GENERATOR_VERSION
+        );
+        let generated = helio_voxel_data::VoxelGeneratorRegistry::default()
+            .generate(&descriptor, VoxelChunkKey::new(0, -1, 0, 0))
+            .expect("default terrain generator parameters should be valid");
+        assert!(generated.is_some(), "flat generator should produce ground");
+    }
 }

@@ -15,7 +15,9 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 use ui::{
     VirtualListScrollHandle,
     dock::{DockArea, TabPanel},
-    dropdown::{SearchableList, SearchableListEvent, SearchableListItemState},
+    dropdown::{
+        SearchableList, SearchableListEvent, SearchableListItemAction, SearchableListItemState,
+    },
     input::InputState,
     scroll::ScrollbarState,
 };
@@ -54,6 +56,17 @@ impl AgentChatPanel {
         for crate_impl in &crate_instances {
             let entries = crate_impl.entries();
             for entry in entries {
+                // Templates aren't providers: they list as "New … connection"
+                // and each saved configuration becomes its own provider below.
+                if entry.template {
+                    let id = entry.id.to_string();
+                    provider_states.insert(id.clone(), ProviderState::Template);
+                    provider_states_shared
+                        .borrow_mut()
+                        .insert(id.clone(), ProviderState::Template);
+                    provider_entries.insert(id, entry);
+                    continue;
+                }
                 let needs_config = entry.config_fields.iter().any(|f| f.required);
                 let config = ProviderConfig {
                     values: std::collections::HashMap::new(),
@@ -77,37 +90,38 @@ impl AgentChatPanel {
             }
         }
 
-        let custom_providers_list =
-            custom_providers::load_custom_providers(&Self::custom_provider_config_dir());
-
-        let mut provider_catalog: Vec<ProviderDefinition> = Vec::new();
-        for (id, provider) in provider_registry.all() {
-            provider_catalog.push(ProviderDefinition {
-                id: Box::leak(id.clone().into_boxed_str()),
-                label: Box::leak(provider.display_name().to_string().into_boxed_str()),
-                kind: ProviderKind::Cloud,
-                endpoint: Box::leak(String::new().into_boxed_str()),
-                models: Arc::new(vec![]),
-            });
+        // Saved connections (configured templates) from the engine data dir.
+        // Validated lazily when selected, like every other Ready provider.
+        let provider_instances = custom_providers::load_provider_instances();
+        for instance in &provider_instances {
+            let Some(template) = provider_entries.get(&instance.template_id).cloned() else {
+                tracing::warn!(
+                    "Saved provider '{}' uses unknown template '{}'",
+                    instance.name,
+                    instance.template_id
+                );
+                continue;
+            };
+            match Self::instantiate_provider(&crate_instances, instance) {
+                Ok(provider) => {
+                    provider_registry.register(Arc::from(provider));
+                    provider_states.insert(instance.id.clone(), ProviderState::Ready);
+                    provider_states_shared
+                        .borrow_mut()
+                        .insert(instance.id.clone(), ProviderState::Ready);
+                    provider_entries
+                        .insert(instance.id.clone(), Self::instance_entry(&template, instance));
+                }
+                Err(e) => tracing::warn!("Saved provider '{}' failed to load: {e}", instance.name),
+            }
         }
 
-        let state_order = |id: &str| -> u8 {
-            match provider_states.get(id) {
-                Some(ProviderState::Ready) => 0,
-                Some(ProviderState::Unconfigured) => 1,
-                Some(ProviderState::Disabled) | None => 2,
-            }
-        };
-        provider_catalog.sort_by(|a, b| {
-            let ta = state_order(a.id);
-            let tb = state_order(b.id);
-            ta.cmp(&tb).then_with(|| a.label.cmp(b.label))
-        });
-
-        provider_catalog.extend(
-            custom_providers_list
-                .iter()
-                .map(Self::custom_provider_to_definition),
+        let provider_catalog = Self::build_provider_catalog(
+            &provider_registry,
+            &provider_entries,
+            &provider_states,
+            &provider_instances,
+            &HashMap::new(),
         );
 
         let plugin_bridge = plugin_manager::global().map(|manager_lock| {
@@ -150,9 +164,23 @@ impl AgentChatPanel {
             .with_item_state(move |p: &ProviderDefinition| {
                 let map = states_shared.borrow();
                 match map.get(p.id) {
-                    Some(ProviderState::Ready) => SearchableListItemState::Enabled,
+                    Some(ProviderState::Ready | ProviderState::Template) => {
+                        SearchableListItemState::Enabled
+                    }
                     Some(ProviderState::Unconfigured) => SearchableListItemState::Locked,
                     Some(ProviderState::Disabled) | None => SearchableListItemState::Disabled,
+                }
+            })
+            .with_item_actions(|p: &ProviderDefinition| {
+                if p.deletable {
+                    vec![SearchableListItemAction {
+                        id: "delete".into(),
+                        icon: Some(ui::IconName::Trash),
+                        label: Some("Delete connection".into()),
+                        destructive: true,
+                    }]
+                } else {
+                    vec![]
                 }
             })
         });
@@ -231,9 +259,7 @@ impl AgentChatPanel {
             provider_list,
             model_list,
             provider_catalog,
-            custom_providers_list,
-            pending_custom_provider: None,
-            pending_custom_provider_step: None,
+            provider_instances,
             provider_registry,
             provider_states,
             provider_states_shared,

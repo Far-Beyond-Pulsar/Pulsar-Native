@@ -84,9 +84,6 @@ impl LevelEditorPanel {
                     w.scene.current_scene = Some(default_path);
                     w.scene.has_unsaved_changes = false;
                     w.scene.bump_revision(false);
-                    if let Some(path) = w.scene.current_scene.clone() {
-                        ai_sessions::register_open_scene(&path, &self.shared_state);
-                    }
                 }
                 Err(e) => {
                     tracing::warn!("Default level exists but could not be loaded: {e}");
@@ -146,9 +143,6 @@ impl LevelEditorPanel {
                     w.scene.current_scene = Some(default_path);
                     w.scene.has_unsaved_changes = false;
                     w.scene.bump_revision(false);
-                    if let Some(path) = w.scene.current_scene.clone() {
-                        ai_sessions::register_open_scene(&path, &self.shared_state);
-                    }
                 }
                 Err(e) => {
                     tracing::warn!("Could not create default level at {:?}: {e}", default_path);
@@ -188,14 +182,15 @@ impl LevelEditorPanel {
             state.scene.current_scene = Some(path);
             state.scene.has_unsaved_changes = false;
             state.scene.bump_revision(false);
-            if let Some(open_path) = state.scene.current_scene.clone() {
-                ai_sessions::register_open_scene(&open_path, &panel.shared_state);
-            }
         }
         Ok(panel)
     }
 
-    pub(super) fn new_internal(window_id: Option<u64>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub(super) fn new_internal(
+        window_id: Option<u64>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let _horizontal_resizable_state = ResizableState::new(cx);
         let _vertical_resizable_state = ResizableState::new(cx);
 
@@ -243,6 +238,9 @@ impl LevelEditorPanel {
         // renderer's next sync pass without a separate write-through call.
 
         let shared_state = Arc::new(parking_lot::RwLock::new(state));
+        // Reachable by the AI tools for as long as this panel lives (unregistered
+        // in `Drop`), whatever level it shows or whether that was ever saved.
+        crate::ai_sessions::register_editor(&shared_state);
 
         // Temporary debug toggle: replace viewport with a solid yellow panel to
         // verify layout/overlap issues independently of GPU rendering.
@@ -274,8 +272,21 @@ impl LevelEditorPanel {
         // - Selection + tool: pushed to Helio here rather than in `render`,
         //   which used to take a renderer lock several times a second for a
         //   change that happens once per click.
+        // Fetched once here, not re-acquired via `gpu_engine.lock()` per
+        // command -- see `HelioEditorMailbox`'s doc. `GpuRendererBuilder::build`
+        // always sets `helio_renderer: Some(...)` synchronously, so this is
+        // `Some` immediately after construction; `None` only if `gpu_engine`
+        // somehow arrived pre-torn-down, which the `if let` call sites below
+        // degrade out of harmlessly (same "skip this one tick" shape the old
+        // `gpu_engine.lock()` sites already had on any lock failure).
+        let helio_mailbox = gpu_engine
+            .lock()
+            .ok()
+            .and_then(|engine| engine.editor_mailbox());
+
         let poll_state = Arc::clone(&shared_state);
         let poll_gpu = gpu_engine.clone();
+        let poll_mailbox = helio_mailbox.clone();
         let poller = cx.spawn(async move |this, cx| {
             let mut last: Option<(
                 (bool, bool, bool, bool, u64),
@@ -291,6 +302,34 @@ impl LevelEditorPanel {
                 if poll_state.read().play.pie.restore_after_stop {
                     let mut s = poll_state.write();
                     crate::level_editor::ui::panel::pie::finish_stop(&mut s, false);
+                }
+                // Undo/redo from a caller without a renderer handle (the AI
+                // tools). Cleared only once the resync is actually queued.
+                if poll_state.read().scene.pending_renderer_resync {
+                    if let Ok(mut engine) = poll_gpu.try_lock() {
+                        poll_state.write().scene.pending_renderer_resync = false;
+                        engine.force_full_resync();
+                        engine.sync_selection_to_helio();
+                    }
+                }
+                // A gizmo drag on a Static/Stationary object (#837); the
+                // notification needs a window, so render shows it.
+                if let Some(warning) = poll_mailbox
+                    .as_ref()
+                    .and_then(|mailbox| mailbox.take_static_drag_warning())
+                {
+                    cx.update(|cx| {
+                        let _ = this.update(cx, |panel, cx| {
+                            panel.pending_static_drag_warning = Some(warning);
+                            cx.notify();
+                        });
+                    });
+                }
+                // Play needs a window; render starts it.
+                if poll_state.read().play.pie.play_requested {
+                    cx.update(|cx| {
+                        let _ = this.update(cx, |_, cx| cx.notify());
+                    });
                 }
                 let snapshot = {
                     let s = poll_state.read();
@@ -339,15 +378,6 @@ impl LevelEditorPanel {
             }
         });
 
-        // Fetched once here, not re-acquired via `gpu_engine.lock()` per
-        // command -- see `HelioEditorMailbox`'s doc. `GpuRendererBuilder::build`
-        // always sets `helio_renderer: Some(...)` synchronously, so this is
-        // `Some` immediately after construction; `None` only if `gpu_engine`
-        // somehow arrived pre-torn-down, which the `if let` call sites below
-        // degrade out of harmlessly (same "skip this one tick" shape the old
-        // `gpu_engine.lock()` sites already had on any lock failure).
-        let helio_mailbox = gpu_engine.lock().ok().and_then(|engine| engine.editor_mailbox());
-
         let toolbar = cx.new(|_| {
             ToolbarView::new(shared_state.clone(), gpu_engine.clone(), helio_mailbox.clone())
         });
@@ -370,8 +400,9 @@ impl LevelEditorPanel {
             game_panel: None,
             applied_pie_signature: None,
             applied_mode_layout: None,
-            mode_right_panels: Vec::new(),
             _root_input_poller: poller,
+            pending_static_drag_warning: None,
+            warned_static_drags: Default::default(),
         }
     }
 }

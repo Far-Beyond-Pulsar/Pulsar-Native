@@ -87,5 +87,4 @@ impl BuildDropdowns {
             TargetPlatform::NintendoSwitch => IconName::Gamepad,
         }
     }
-
 }

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use engine_backend::scene::{new_scene, ObjectType, SceneWorldExt, SpawnObject};
+use engine_backend::scene::{ObjectType, SceneWorldExt, SpawnObject, new_scene};
 
 use super::super::{components, objects};
 

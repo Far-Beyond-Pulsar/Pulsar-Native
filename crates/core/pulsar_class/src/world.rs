@@ -30,7 +30,8 @@ use serde_json::Value;
 use crate::component::ClassInstance;
 use crate::overrides::{diff, prune_variable_overrides, split_meta};
 use crate::plan::{
-    is_removed_override, plan_instance, slot_default, LocalTransform, PlannedComponent,
+    is_removed_override, migrate_slot_keys, plan_instance, slot_default, LocalTransform,
+    PlannedComponent,
 };
 use crate::registry::{ClassDefinition, ClassRegistry};
 use crate::{child_stable_id, CLASS_INSTANCE, REMOVED_KEY, SLOT_ID_KEY, TRANSFORM_KEY};
@@ -428,7 +429,12 @@ pub fn expand_class_instance(
     def: &ClassDefinition,
 ) -> ClassPlacement {
     clear_generated(world, root);
-    let instance = class_instance_of(world, root).unwrap_or_default();
+    let mut instance = class_instance_of(world, root).unwrap_or_default();
+    // Overrides saved under slot ids the class has since replaced move to the
+    // replacements, and are stored so the next save writes them that way.
+    if migrate_slot_keys(def, &mut instance) {
+        store_class_instance(world, root, &instance);
+    }
     let plan = plan_instance(def, &instance);
 
     attach_components(

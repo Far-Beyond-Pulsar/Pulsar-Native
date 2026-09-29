@@ -1,7 +1,6 @@
 use super::*;
 
 impl WorldSettingsPanelImpl {
-
     // Field rendering helpers
 
     pub(super) fn render_f32_field(

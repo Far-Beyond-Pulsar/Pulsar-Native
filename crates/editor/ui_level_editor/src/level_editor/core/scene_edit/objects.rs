@@ -17,8 +17,8 @@ use super::components::{
     get_components_metadata, merge_component_props, sync_registered_component_props_to_scene_db,
 };
 use super::{
-    find_script_path, static_mesh_component_json, ComponentInstance, ObjectId, SceneObjectData,
-    Transform,
+    ComponentInstance, ObjectId, SceneObjectData, Transform, find_script_path,
+    static_mesh_component_json,
 };
 
 // ── Read model ─────────────────────────────────────────────────────────────
@@ -317,7 +317,10 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
 /// warning: `ScriptComponent` is retired and nothing runs it.
 fn adopt_legacy_script_path(world: &mut World, object_id: &str, script_path: &str) {
     let components = get_components_metadata(world, object_id);
-    if components.iter().any(|c| c.class_name == pulsar_class::CLASS_INSTANCE) {
+    if components
+        .iter()
+        .any(|c| c.class_name == pulsar_class::CLASS_INSTANCE)
+    {
         return;
     }
     let registry = super::classes::registry_for_script_asset(script_path);

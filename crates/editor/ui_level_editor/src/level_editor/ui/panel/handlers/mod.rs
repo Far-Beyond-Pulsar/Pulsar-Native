@@ -1,4 +1,4 @@
-    //! Action handlers for [`LevelEditorPanel`](super::LevelEditorPanel) — the
+//! Action handlers for [`LevelEditorPanel`](super::LevelEditorPanel) — the
 //! `on_*` methods wired to the editor's actions in `super::Render`.
 //!
 //! Split out of `panel.rs`: every method here is the thin "action → state
@@ -10,15 +10,13 @@
 
 use gpui::*;
 
-use super::pie::{begin_pie, end_pie};
 use super::LevelEditorPanel;
+use super::pie::{begin_pie, end_pie};
 
-use crate::ai_sessions;
 use crate::level_editor::scene_edit::{ObjectType, SceneObjectData, Transform};
 use crate::level_editor::ui::actions::*;
 use crate::level_editor::ui::toolbar;
-use crate::level_editor::{request_thumbnail_capture, CameraMode, TransformTool};
-
+use crate::level_editor::{CameraMode, TransformTool};
 
 mod objects;
 mod playback;

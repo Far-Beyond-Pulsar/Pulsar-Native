@@ -42,7 +42,10 @@ pub fn save_to_file_with_editor_camera<P: AsRef<Path>>(
 pub(crate) fn level_contents(
     world: &World,
     registry: &ClassRegistry,
-) -> (Vec<SceneObjectData>, HashMap<ObjectId, Vec<ComponentInstance>>) {
+) -> (
+    Vec<SceneObjectData>,
+    HashMap<ObjectId, Vec<ComponentInstance>>,
+) {
     let all = get_all_objects(world);
     let generated: HashSet<ObjectId> = all
         .iter()
@@ -95,18 +98,72 @@ pub(crate) fn save_with_classes<P: AsRef<Path>>(
     editor_camera: Option<LevelEditorCameraState>,
     registry: &ClassRegistry,
 ) -> Result<(), String> {
-    profiling::profile_scope!("scene_edit::save_to_file");
-    if let Some(parent_dir) = path.as_ref().parent() {
+    write_level(snapshot_level(world, registry, editor_camera), path.as_ref())
+}
+
+/// Everything a save needs from the world, captured in one pass.
+///
+/// Saving is split so the world is only needed for this snapshot: taking it
+/// is pure in-memory work under the scene lock, while [`write_level`] (reading
+/// the existing file, serializing, writing) needs no world and can run on any
+/// thread with the lock released. See `ui::save`.
+pub struct LevelSnapshot {
+    objects: Vec<SceneObjectData>,
+    components: HashMap<ObjectId, Vec<ComponentInstance>>,
+    /// Resolved class name of each placed class instance, keyed by object id,
+    /// for deciding which legacy blueprint bindings still need carrying over.
+    class_names: HashMap<ObjectId, String>,
+    editor_camera: Option<LevelEditorCameraState>,
+}
+
+/// Capture what [`write_level`] writes. `registry` should be the project's
+/// classes (`classes::project_registry`, which scans the disk -- take it
+/// before locking the world).
+pub fn snapshot_level(
+    world: &World,
+    registry: &ClassRegistry,
+    editor_camera: Option<LevelEditorCameraState>,
+) -> LevelSnapshot {
+    profiling::profile_scope!("scene_edit::snapshot_level");
+    let (objects, components) = level_contents(world, registry);
+    let class_names = objects
+        .iter()
+        .filter_map(|obj| {
+            let instance = classes::class_instance(world, &obj.id)?;
+            let name = registry
+                .resolve(&instance)
+                .map(|entry| entry.name.clone())
+                .unwrap_or(instance.class_name);
+            Some((obj.id.clone(), name))
+        })
+        .collect();
+    LevelSnapshot {
+        objects,
+        components,
+        class_names,
+        editor_camera,
+    }
+}
+
+/// Write a snapshot to `path`. Needs no world or lock.
+pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
+    profiling::profile_scope!("scene_edit::write_level");
+    let LevelSnapshot {
+        objects,
+        components,
+        class_names,
+        editor_camera,
+    } = snapshot;
+    if let Some(parent_dir) = path.parent() {
         virtual_fs::create_dir_all(parent_dir)
             .map_err(|e| format!("Failed to create directory: {e}"))?;
     }
-    let (objects, components) = level_contents(world, registry);
     let now = chrono::Utc::now().to_rfc3339();
     // Read the existing file once: its editor camera is preserved when no fresh
     // camera state was supplied, and its #650 blueprint-binding section always
     // rides along (the editor cannot author it yet, but a re-save must never
     // destroy it).
-    let existing_file = virtual_fs::read_file(path.as_ref())
+    let existing_file = virtual_fs::read_file(path)
         .ok()
         .and_then(|bytes| String::from_utf8(bytes).ok())
         .and_then(|json: String| serde_json::from_str::<LevelFile>(&json).ok());
@@ -120,7 +177,7 @@ pub(crate) fn save_with_classes<P: AsRef<Path>>(
     // (a second class bound to one object) are carried over, so a re-save
     // never destroys them.
     let preserved_bindings = existing_file
-        .map(|file| unmigrated_bindings(world, registry, file.blueprint_bindings))
+        .map(|file| unmigrated_bindings(&class_names, file.blueprint_bindings))
         .unwrap_or_default();
     let level_file = LevelFile {
         version: "2.1".into(),
@@ -140,30 +197,28 @@ pub(crate) fn save_with_classes<P: AsRef<Path>>(
     };
     let json = serde_json::to_string_pretty(&level_file)
         .map_err(|e| format!("Failed to serialize: {e}"))?;
-    virtual_fs::write_file(path.as_ref(), json.as_bytes())
+    virtual_fs::write_file(path, json.as_bytes())
         .map_err(|e| format!("Failed to write file: {e}"))?;
 
-    tracing::info!("Scene saved to: {}", path.as_ref().display());
+    tracing::info!("Scene saved to: {}", path.display());
     Ok(())
 }
 
 /// Bindings of `bindings` not represented by a `ClassInstance` of the same
 /// class on the bound object.
+///
+/// `class_names` is each placed instance's resolved class name
+/// ([`LevelSnapshot::class_names`]).
 fn unmigrated_bindings(
-    world: &World,
-    registry: &ClassRegistry,
+    class_names: &HashMap<ObjectId, String>,
     mut bindings: pulsar_scene::BlueprintBindings,
 ) -> pulsar_scene::BlueprintBindings {
     for (stable_id, entries) in bindings.iter_mut() {
-        let Some(instance) = classes::class_instance(world, stable_id) else {
+        let Some(class_name) = class_names.get(stable_id.as_str()) else {
             // Object gone, or never migrated: nothing represents it.
             continue;
         };
-        let class_name = registry
-            .resolve(&instance)
-            .map(|entry| entry.name.clone())
-            .unwrap_or(instance.class_name);
-        entries.retain(|binding| binding.class_name != class_name);
+        entries.retain(|binding| &binding.class_name != class_name);
     }
     bindings.retain(|_, entries| !entries.is_empty());
     bindings

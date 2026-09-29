@@ -19,6 +19,8 @@ struct Entry {
     /// Override the chat path appended to the endpoint, e.g. "/responses".
     /// When set, build_chat_url appends this instead of "/chat/completions".
     chat_path: Option<&'static str>,
+    /// Connect as many named instances as you like (see `ProviderEntry::template`).
+    template: bool,
 }
 
 const ENTRIES: &[Entry] = &[
@@ -29,6 +31,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("https://api.openai.com/v1"),
         use_ollama_protocol: false,
         chat_path: None,
+        template: false,
     },
     Entry {
         id: "groq",
@@ -37,6 +40,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("https://api.groq.com/openai/v1"),
         use_ollama_protocol: false,
         chat_path: None,
+        template: false,
     },
     Entry {
         id: "together",
@@ -45,6 +49,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("https://api.together.xyz/v1"),
         use_ollama_protocol: false,
         chat_path: None,
+        template: false,
     },
     Entry {
         id: "mistral",
@@ -53,6 +58,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("https://api.mistral.ai/v1"),
         use_ollama_protocol: false,
         chat_path: None,
+        template: false,
     },
     Entry {
         id: "deepseek",
@@ -61,6 +67,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("https://api.deepseek.com/v1"),
         use_ollama_protocol: false,
         chat_path: None,
+        template: false,
     },
     Entry {
         id: "fireworks",
@@ -69,6 +76,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("https://api.fireworks.ai/inference/v1"),
         use_ollama_protocol: false,
         chat_path: None,
+        template: false,
     },
     Entry {
         id: "perplexity",
@@ -77,6 +85,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("https://api.perplexity.ai"),
         use_ollama_protocol: false,
         chat_path: None,
+        template: false,
     },
     Entry {
         id: "xai",
@@ -85,6 +94,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("https://api.x.ai/v1"),
         use_ollama_protocol: false,
         chat_path: None,
+        template: false,
     },
     Entry {
         id: "openrouter",
@@ -93,6 +103,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("https://openrouter.ai/api/v1"),
         use_ollama_protocol: false,
         chat_path: None,
+        template: false,
     },
     Entry {
         id: "cohere",
@@ -101,6 +112,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("https://api.cohere.com/v2"),
         use_ollama_protocol: false,
         chat_path: None,
+        template: false,
     },
     Entry {
         id: "azure_openai",
@@ -109,6 +121,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: None,
         use_ollama_protocol: false,
         chat_path: None,
+        template: false,
     },
     Entry {
         id: "ollama",
@@ -117,6 +130,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("http://localhost:11434"),
         use_ollama_protocol: true,
         chat_path: None,
+        template: true,
     },
     Entry {
         id: "lm_studio",
@@ -125,6 +139,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("http://localhost:1234/v1"),
         use_ollama_protocol: false,
         chat_path: None,
+        template: true,
     },
     Entry {
         id: "llama_cpp",
@@ -133,6 +148,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("http://localhost:8080/v1"),
         use_ollama_protocol: false,
         chat_path: None,
+        template: true,
     },
     Entry {
         id: "vllm",
@@ -141,6 +157,7 @@ const ENTRIES: &[Entry] = &[
         endpoint: Some("http://localhost:8000/v1"),
         use_ollama_protocol: false,
         chat_path: None,
+        template: true,
     },
     Entry {
         id: "custom_openai",
@@ -149,11 +166,36 @@ const ENTRIES: &[Entry] = &[
         endpoint: None,
         use_ollama_protocol: false,
         chat_path: None,
+        template: true,
     },
 ];
 
 fn entry_config_fields(entry: &Entry, is_ollama: bool) -> Vec<ConfigField> {
     let mut fields = Vec::new();
+    if entry.template {
+        // Every instance points at its own server; the key is optional
+        // because most self-hosted servers don't check one.
+        fields.push(ConfigField {
+            key: "endpoint_url",
+            label: "Endpoint URL",
+            description: match entry.endpoint {
+                Some(default) => format!("Server URL. Leave empty for {default}").leak(),
+                None => "API base URL",
+            },
+            sensitive: false,
+            required: entry.endpoint.is_none(),
+            placeholder: Some(entry.endpoint.unwrap_or("http://localhost:8080/v1")),
+        });
+        fields.push(ConfigField {
+            key: "api_key",
+            label: "API Key",
+            description: "Optional. Leave empty if the server doesn't require one",
+            sensitive: true,
+            required: false,
+            placeholder: None,
+        });
+        return fields;
+    }
     if entry.endpoint.is_none() {
         fields.push(ConfigField {
             key: "endpoint_url",
@@ -185,6 +227,20 @@ fn entry_config_fields(entry: &Entry, is_ollama: bool) -> Vec<ConfigField> {
     fields
 }
 
+/// Templates take the configured endpoint, falling back to their default;
+/// fixed entries always use their own.
+fn resolve_endpoint(entry: &Entry, config: &ProviderConfig) -> anyhow::Result<String> {
+    let configured = config
+        .get("endpoint_url")
+        .map(str::trim)
+        .filter(|url| !url.is_empty() && (entry.template || entry.endpoint.is_none()));
+    Ok(match (configured, entry.endpoint) {
+        (Some(url), _) => url.to_string(),
+        (None, Some(default)) => default.to_string(),
+        (None, None) => config.require("endpoint_url")?.to_string(),
+    })
+}
+
 // ── ProviderCrate ──────────────────────────────────────────────────────────
 
 pub struct OpenAiProviderCrate;
@@ -201,6 +257,7 @@ impl ProviderCrate for OpenAiProviderCrate {
                     kind: e.kind,
                     default_endpoint: e.endpoint,
                     config_fields: entry_config_fields(e, is_ollama),
+                    template: e.template,
                 }
             })
             .collect()
@@ -212,10 +269,7 @@ impl ProviderCrate for OpenAiProviderCrate {
             .find(|e| e.id == id)
             .ok_or_else(|| anyhow!("unknown provider id: {id}"))?;
 
-        let endpoint = match entry.endpoint {
-            Some(ep) => ep.to_string(),
-            None => config.require("endpoint_url")?.to_string(),
-        };
+        let endpoint = resolve_endpoint(entry, &config)?;
 
         let api_key = config.get("api_key").unwrap_or_default().to_string();
         let chat_url = build_chat_url(&endpoint, entry.use_ollama_protocol, entry.chat_path);
@@ -928,5 +982,60 @@ fn map_role(role: ChatRole) -> &'static str {
         ChatRole::Assistant => "assistant",
         ChatRole::Tool => "tool",
         ChatRole::AgentEvent => "system",
+    }
+}
+
+#[cfg(test)]
+mod template_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn config(pairs: &[(&str, &str)]) -> ProviderConfig {
+        ProviderConfig {
+            values: pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect::<HashMap<_, _>>(),
+        }
+    }
+
+    #[test]
+    fn self_hosted_entries_are_templates_with_an_optional_endpoint() {
+        let entries = OpenAiProviderCrate.entries();
+        let lm = entries.iter().find(|e| e.id == "lm_studio").unwrap();
+        assert!(lm.template);
+        let endpoint = lm.config_fields.iter().find(|f| f.key == "endpoint_url").unwrap();
+        assert!(!endpoint.required);
+        assert_eq!(endpoint.placeholder, Some("http://localhost:1234/v1"));
+        assert!(!entries.iter().find(|e| e.id == "openai").unwrap().template);
+    }
+
+    fn entry(id: &str) -> &'static Entry {
+        ENTRIES.iter().find(|e| e.id == id).unwrap()
+    }
+
+    #[test]
+    fn templates_fall_back_to_their_default_endpoint() {
+        let lm = entry("lm_studio");
+        assert_eq!(resolve_endpoint(lm, &config(&[])).unwrap(), "http://localhost:1234/v1");
+        assert_eq!(
+            resolve_endpoint(lm, &config(&[("endpoint_url", " http://gpu-box:1234/v1 ")])).unwrap(),
+            "http://gpu-box:1234/v1"
+        );
+        // No default to fall back on.
+        assert!(resolve_endpoint(entry("custom_openai"), &config(&[])).is_err());
+        // Fixed cloud endpoints can't be redirected.
+        assert_eq!(
+            resolve_endpoint(entry("openai"), &config(&[("endpoint_url", "http://evil")])).unwrap(),
+            "https://api.openai.com/v1"
+        );
+    }
+
+    #[test]
+    fn chat_url_uses_the_configured_endpoint() {
+        assert_eq!(
+            build_chat_url("http://gpu-box:1234/v1/", false, None),
+            "http://gpu-box:1234/v1/chat/completions"
+        );
     }
 }

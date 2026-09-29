@@ -3,13 +3,13 @@
 
 use std::path::{Path, PathBuf};
 
-use engine_backend::scene::{new_scene, SceneWorldExt};
+use engine_backend::scene::{SceneWorldExt, new_scene};
 use helio_component::components::LightComponent;
 use pulsar_class::ClassRegistry;
 use pulsar_scenedb::World;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use super::super::{classes, components, history, level_io, objects, Transform};
+use super::super::{Transform, classes, components, history, level_io, objects};
 
 fn light_json(intensity: f32) -> Value {
     let mut light = LightComponent::default();
@@ -225,8 +225,10 @@ fn old_levels_migrate_on_load_and_save_without_the_old_fields() {
             1.0,
             "{id} has the class components"
         );
-        assert!(!components::get_component_class_names(world, id)
-            .contains(&"ScriptComponent".to_string()));
+        assert!(
+            !components::get_component_class_names(world, id)
+                .contains(&"ScriptComponent".to_string())
+        );
     }
     assert_eq!(
         classes::class_instance(world, "bound")
@@ -331,7 +333,7 @@ fn details_view_marks_overrides_and_reverts_them() {
 fn class_asset_updates_rebuild_placed_instances() {
     use crate::level_editor::core::asset_updates;
     use crate::level_editor::state::LevelEditorState;
-    use plugin_editor_api::{publish_asset_updated, AssetKind, AssetUpdated};
+    use plugin_editor_api::{AssetKind, AssetUpdated, publish_asset_updated};
 
     let (_project, dir) = project_with_lamp(1.0);
     let state = std::sync::Arc::new(parking_lot::RwLock::new(LevelEditorState::new()));
@@ -418,19 +420,33 @@ fn class_color_edit_reaches_live_lights_and_their_render_rows() {
         &AssetUpdated::new(AssetKind::Blueprint).with_path(dir.clone()),
     );
     assert!(!touched.is_empty());
-    assert_ne!(state.read().scene.class_updates, classes_before, "the editor is woken");
+    assert_ne!(
+        state.read().scene.class_updates,
+        classes_before,
+        "the editor is woken"
+    );
 
     let st = state.read();
     let mut world = st.scene.world_mut();
-    let dirty: std::collections::HashSet<_> =
-        world.take_component_change_events().into_iter().map(|e| e.entity).collect();
+    let dirty: std::collections::HashSet<_> = world
+        .take_component_change_events()
+        .into_iter()
+        .map(|e| e.entity)
+        .collect();
     for id in [&a, &b] {
         let kids = children(&world, id);
         assert_eq!(kids.len(), 1);
         for object in [id, &kids[0]] {
-            assert_eq!(light(&world, object).color.color, [1.0, 0.0, 0.0, 1.0], "{object}: live light");
+            assert_eq!(
+                light(&world, object).color.color,
+                [1.0, 0.0, 0.0, 1.0],
+                "{object}: live light"
+            );
             let entity = world.entity_for(object).unwrap();
-            assert!(dirty.contains(&entity), "{object}: the renderer re-derives its light row");
+            assert!(
+                dirty.contains(&entity),
+                "{object}: the renderer re-derives its light row"
+            );
         }
     }
     // What the renderer does with them: rows follow the live lights.
@@ -441,7 +457,7 @@ fn class_color_edit_reaches_live_lights_and_their_render_rows() {
 /// go through the normal command path, so undo brings the override back.
 #[test]
 fn reverts_and_variable_edits_are_undoable_commands() {
-    use crate::level_editor::commands::{execute_command, SceneCommand};
+    use crate::level_editor::commands::{SceneCommand, execute_command};
     use crate::level_editor::state::LevelEditorState;
 
     let (project, dir) = project_with_lamp(1.0);
@@ -505,10 +521,12 @@ fn reverts_and_variable_edits_are_undoable_commands() {
             value: None,
         },
     );
-    assert!(classes::class_instance(&state.scene.world(), &a)
-        .unwrap()
-        .variable_overrides
-        .is_empty());
+    assert!(
+        classes::class_instance(&state.scene.world(), &a)
+            .unwrap()
+            .variable_overrides
+            .is_empty()
+    );
     state.scene.undo();
     assert_eq!(
         classes::class_instance(&state.scene.world(), &a)
@@ -556,7 +574,15 @@ fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
         let world = state.scene.world();
         let mut objects: Vec<String> = objects::get_all_objects(&world)
             .into_iter()
-            .map(|o| format!("{} {:?} {:?} {:?}", o.id, o.parent, o.transform.position, components::get_component_class_names(&world, &o.id)))
+            .map(|o| {
+                format!(
+                    "{} {:?} {:?} {:?}",
+                    o.id,
+                    o.parent,
+                    o.transform.position,
+                    components::get_component_class_names(&world, &o.id)
+                )
+            })
             .collect();
         objects.sort();
         (objects, light(&world, &a).intensity.intensity)
@@ -570,9 +596,17 @@ fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
         // Gameplay moves the lamp and dims it.
         objects::set_transform(&mut world, &a, Some([5.0, 0.0, 0.0]), None, None);
         let entity = world.entity_for(&a).unwrap();
-        world.get_mut::<LightComponent>(entity).unwrap().intensity.intensity = 0.25;
+        world
+            .get_mut::<LightComponent>(entity)
+            .unwrap()
+            .intensity
+            .intensity = 0.25;
         // A script spawns a Lamp at runtime, and another under the first.
-        let def = classes::registry_for_class_dir(&dir).by_name("Lamp").unwrap().load_definition().unwrap();
+        let def = classes::registry_for_class_dir(&dir)
+            .by_name("Lamp")
+            .unwrap()
+            .load_definition()
+            .unwrap();
         for (id, parent) in [("Lamp_rt1", None), ("Lamp_rt2", Some(entity))] {
             let reserved = world.spawn();
             let spec = SpawnObject {
@@ -583,7 +617,14 @@ fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
                 visibility: Default::default(),
                 object_type: ObjectType::Blueprint,
             };
-            pulsar_class::world::instantiate_class_into(&mut world, &def, Default::default(), spec, reserved).unwrap();
+            pulsar_class::world::instantiate_class_into(
+                &mut world,
+                &def,
+                Default::default(),
+                spec,
+                reserved,
+            )
+            .unwrap();
         }
         // A native actor spawns bare entities (#947): one with a light, one
         // with nothing.
@@ -599,8 +640,15 @@ fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
     state.scene.exit_play_mode();
     assert_eq!(describe(&state), before, "the editor world is back exactly");
     let world = state.scene.world();
-    assert!(world.entity_for("Lamp_rt1").is_none() && world.entity_for("Lamp_rt2").is_none(), "runtime spawns are gone");
+    assert!(
+        world.entity_for("Lamp_rt1").is_none() && world.entity_for("Lamp_rt2").is_none(),
+        "runtime spawns are gone"
+    );
     drop(world);
     assert!(!state.scene.has_play_snapshot());
-    assert_eq!(entity_count(&state), entities_before, "entities spawned without a StableId are gone");
+    assert_eq!(
+        entity_count(&state),
+        entities_before,
+        "entities spawned without a StableId are gone"
+    );
 }

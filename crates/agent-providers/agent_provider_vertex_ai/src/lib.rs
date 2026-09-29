@@ -91,6 +91,7 @@ impl ProviderCrate for VertexAiProviderCrate {
             id: "vertex_ai",
             display_name: "Vertex AI",
             kind: ProviderKind::Cloud,
+            template: false,
             default_endpoint: None,
             config_fields: vec![ConfigField {
                 key: "info",

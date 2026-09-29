@@ -13,11 +13,11 @@
 
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc,
-};
 use std::rc::Rc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU32, Ordering},
+};
 use std::time::Duration;
 
 use gpui::prelude::FluentBuilder as _;
@@ -26,8 +26,8 @@ use rust_i18n::t;
 use ui::button::{Button, ButtonVariants as _, DropdownButton};
 use ui::notification::Notification;
 use ui::{
-    h_flex, v_flex, v_virtual_list, ActiveTheme as _, ContextModal as _, Disableable as _,
-    IconName, Sizable as _, VirtualListScrollHandle,
+    ActiveTheme as _, ContextModal as _, Disableable as _, IconName, Sizable as _,
+    VirtualListScrollHandle, h_flex, v_flex, v_virtual_list,
 };
 
 use super::super::actions::SetBuildMode;
@@ -63,12 +63,7 @@ struct BuildFailureModal {
 impl BuildFailureModal {
     fn new(errors: Vec<String>) -> Self {
         Self {
-            item_sizes: Rc::new(
-                errors
-                    .iter()
-                    .map(|_| size(px(0.), px(220.)))
-                    .collect(),
-            ),
+            item_sizes: Rc::new(errors.iter().map(|_| size(px(0.), px(220.))).collect()),
             errors,
             scroll_handle: VirtualListScrollHandle::new(),
         }
@@ -90,10 +85,12 @@ impl BuildFailureModal {
                 h_flex()
                     .w_full()
                     .justify_between()
-                    .child(div().text_sm().font_weight(FontWeight::BOLD).child(format!(
-                        "Error {}",
-                        index + 1
-                    )))
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::BOLD)
+                            .child(format!("Error {}", index + 1)),
+                    )
                     .child(
                         Button::new(format!("copy-build-error-{index}"))
                             .small()
@@ -101,7 +98,9 @@ impl BuildFailureModal {
                             .icon(IconName::Copy)
                             .label("Copy")
                             .on_click(move |_, _, cx| {
-                                cx.write_to_clipboard(ClipboardItem::new_string(copy_error.clone()));
+                                cx.write_to_clipboard(ClipboardItem::new_string(
+                                    copy_error.clone(),
+                                ));
                             }),
                     ),
             )
@@ -176,33 +175,29 @@ fn show_build_failure(message: String, title: String, window: &mut Window, cx: &
             .show_close(true)
             .overlay_closable(true)
             .child(
-                v_flex()
-                    .w_full()
-                    .gap_3()
-                    .child(modal_entity)
-                    .child(
-                        h_flex()
-                            .w_full()
-                            .justify_end()
-                            .gap_2()
-                            .child(
-                                Button::new("copy-all-build-errors")
-                                    .primary()
-                                    .icon(IconName::Copy)
-                                    .label("Copy All Errors")
-                                    .on_click(move |_, _, cx| {
-                                        cx.write_to_clipboard(ClipboardItem::new_string(
-                                            copy_all.clone(),
-                                        ));
-                                    }),
-                            )
-                            .child(
-                                Button::new("close-build-errors")
-                                    .ghost()
-                                    .label("Close")
-                                    .on_click(|_, window, cx| window.close_modal(cx)),
-                            ),
-                    ),
+                v_flex().w_full().gap_3().child(modal_entity).child(
+                    h_flex()
+                        .w_full()
+                        .justify_end()
+                        .gap_2()
+                        .child(
+                            Button::new("copy-all-build-errors")
+                                .primary()
+                                .icon(IconName::Copy)
+                                .label("Copy All Errors")
+                                .on_click(move |_, _, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(
+                                        copy_all.clone(),
+                                    ));
+                                }),
+                        )
+                        .child(
+                            Button::new("close-build-errors")
+                                .ghost()
+                                .label("Close")
+                                .on_click(|_, window, cx| window.close_modal(cx)),
+                        ),
+                ),
             )
     });
 }

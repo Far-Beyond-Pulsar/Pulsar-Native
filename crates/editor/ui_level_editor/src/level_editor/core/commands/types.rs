@@ -50,9 +50,13 @@ pub enum SceneCommand {
         name: String,
         value: Option<serde_json::Value>,
     },
-    RemoveObject { id: String },
+    RemoveObject {
+        id: String,
+    },
     /// Overwrite all mutable fields of an existing object (looked up by `data.id`).
-    UpdateObject { data: SceneObjectData },
+    UpdateObject {
+        data: SceneObjectData,
+    },
     /// Move an object to a different parent (or root when `None`).
     ReparentObject {
         id: String,
@@ -66,7 +70,9 @@ pub enum SceneCommand {
         position_offset: Option<[f32; 3]>,
     },
     /// Change the editor selection (`None` clears it).
-    SelectObject { id: Option<String> },
+    SelectObject {
+        id: Option<String>,
+    },
     /// Set absolute world-space transform fields; `None` fields are unchanged.
     SetTransform {
         id: String,
@@ -81,7 +87,10 @@ pub enum SceneCommand {
     /// instead of calling `SceneDatabase::update_object` (whole-object
     /// overwrite, NOT undo-tracked despite a comment that used to claim
     /// otherwise) directly.
-    SetName { id: String, name: String },
+    SetName {
+        id: String,
+        name: String,
+    },
     /// Set an object's visible/locked flags; `None` fields are unchanged.
     ///
     /// Pulsar-Native#561, same reasoning as `SetName`.
@@ -116,6 +125,72 @@ pub enum SceneCommand {
         component_index: usize,
         prop_name: String,
         value: Box<dyn Any + Send>,
+    },
+    /// Attach a new component instance of `class_name`. `data` is the
+    /// class's whole-instance JSON (the `EngineClass::to_json` shape,
+    /// `#[sub_props]` nesting included).
+    AddComponent {
+        id: String,
+        class_name: String,
+        data: serde_json::Value,
+    },
+    /// Detach the component at `component_index`.
+    RemoveComponent {
+        id: String,
+        component_index: usize,
+    },
+    /// Enable or disable the component at `component_index`.
+    SetComponentEnabled {
+        id: String,
+        component_index: usize,
+        enabled: bool,
+    },
+    /// Copy the component at `component_index`; the copy lands right after it.
+    DuplicateComponent {
+        id: String,
+        component_index: usize,
+    },
+    /// Move a component from `from_index` to `to_index` in the object's list.
+    ReorderComponent {
+        id: String,
+        from_index: usize,
+        to_index: usize,
+    },
+    /// Nest a component under another one on the same object (`None` = top level).
+    SetComponentParent {
+        id: String,
+        component_index: usize,
+        parent_index: Option<usize>,
+    },
+    /// Replace one component instance's whole data (same shape as
+    /// `AddComponent::data`). For callers holding JSON rather than a typed
+    /// widget value -- the AI tools -- so nested fields need no per-property
+    /// setter lookup.
+    SetComponentData {
+        id: String,
+        component_index: usize,
+        data: serde_json::Value,
+    },
+    /// Revert a placed class instance's slot to the class: one property
+    /// (dot `path` into the component data) or, with `path: None`, the whole
+    /// slot (which also restores a slot the instance removed).
+    RevertClassSlot {
+        id: String,
+        slot_id: String,
+        path: Option<String>,
+    },
+    /// Put a placed class instance entirely back to its class: every
+    /// variable override and every slot override (including removed slots,
+    /// and slots on generated children). One undo step.
+    ResetClassOverrides {
+        id: String,
+    },
+    /// Set the `movability` of every mesh and light component on each of
+    /// `ids` (Pulsar-Native#837: "Mark selection Static"). One undo step;
+    /// objects with neither component are skipped.
+    SetMovability {
+        ids: Vec<String>,
+        movability: helio_component::components::ObjectMovability,
     },
 }
 
@@ -220,6 +295,81 @@ impl std::fmt::Debug for SceneCommand {
                 .field("component_index", component_index)
                 .field("prop_name", prop_name)
                 .field("value_type", &value.type_id())
+                .finish(),
+            Self::AddComponent { id, class_name, .. } => f
+                .debug_struct("AddComponent")
+                .field("id", id)
+                .field("class_name", class_name)
+                .finish(),
+            Self::RemoveComponent {
+                id,
+                component_index,
+            } => f
+                .debug_struct("RemoveComponent")
+                .field("id", id)
+                .field("component_index", component_index)
+                .finish(),
+            Self::SetComponentEnabled {
+                id,
+                component_index,
+                enabled,
+            } => f
+                .debug_struct("SetComponentEnabled")
+                .field("id", id)
+                .field("component_index", component_index)
+                .field("enabled", enabled)
+                .finish(),
+            Self::DuplicateComponent {
+                id,
+                component_index,
+            } => f
+                .debug_struct("DuplicateComponent")
+                .field("id", id)
+                .field("component_index", component_index)
+                .finish(),
+            Self::ReorderComponent {
+                id,
+                from_index,
+                to_index,
+            } => f
+                .debug_struct("ReorderComponent")
+                .field("id", id)
+                .field("from_index", from_index)
+                .field("to_index", to_index)
+                .finish(),
+            Self::SetComponentParent {
+                id,
+                component_index,
+                parent_index,
+            } => f
+                .debug_struct("SetComponentParent")
+                .field("id", id)
+                .field("component_index", component_index)
+                .field("parent_index", parent_index)
+                .finish(),
+            Self::SetComponentData {
+                id,
+                component_index,
+                ..
+            } => f
+                .debug_struct("SetComponentData")
+                .field("id", id)
+                .field("component_index", component_index)
+                .finish(),
+            Self::ResetClassOverrides { id } => f
+                .debug_struct("ResetClassOverrides")
+                .field("id", id)
+                .finish(),
+            Self::SetMovability { ids, movability } => f
+                .debug_struct("SetMovability")
+                .field("ids", ids)
+                .field("movability", movability)
+                .finish(),
+            Self::RevertClassSlot { id, slot_id, path } => f
+                .debug_struct("RevertClassSlot")
+                .field("id", id)
+                .field("slot_id", slot_id)
+                .field("path", path)
                 .finish(),
         }
     }

@@ -101,7 +101,7 @@ impl ViewportPanel {
                 let state_arc_move = state_arc.clone();
                 let pointer_events_move = snap.pointer_events.clone();
 
-move |event: &gpui::MouseMoveEvent, _window, _cx| {
+                move |event: &gpui::MouseMoveEvent, _window, _cx| {
                     super::build_handlers::handle_mouse_move(
                         event,
                         input_state_clone.clone(),
@@ -129,7 +129,9 @@ move |event: &gpui::MouseMoveEvent, _window, _cx| {
                 let locked_cursor_screen_y = locked_cursor_screen_y.clone();
                 let input_state_clone = self.input_state.clone();
 
-move |event: &gpui::MouseDownEvent, window: &mut gpui::Window, _cx: &mut gpui::App| {
+                move |event: &gpui::MouseDownEvent,
+                      window: &mut gpui::Window,
+                      _cx: &mut gpui::App| {
                     super::build_handlers::handle_right_mouse_down(
                         event,
                         window,
@@ -156,7 +158,7 @@ move |event: &gpui::MouseDownEvent, window: &mut gpui::Window, _cx: &mut gpui::A
                 let locked_cursor_screen_x = locked_cursor_screen_x.clone();
                 let locked_cursor_screen_y = locked_cursor_screen_y.clone();
 
-move |_event, _window, _cx| {
+                move |_event, _window, _cx| {
                     super::build_handlers::handle_right_mouse_up(
                         last_mouse_x.clone(),
                         last_mouse_y.clone(),
@@ -181,7 +183,9 @@ move |_event, _window, _cx| {
                 let locked_cursor_screen_y = locked_cursor_screen_y.clone();
                 let input_state_clone = self.input_state.clone();
 
-move |event: &gpui::MouseDownEvent, window: &mut gpui::Window, _cx: &mut gpui::App| {
+                move |event: &gpui::MouseDownEvent,
+                      window: &mut gpui::Window,
+                      _cx: &mut gpui::App| {
                     super::build_handlers::handle_middle_mouse_down(
                         event,
                         window,
@@ -208,7 +212,7 @@ move |event: &gpui::MouseDownEvent, window: &mut gpui::Window, _cx: &mut gpui::A
                 let locked_cursor_screen_x = locked_cursor_screen_x.clone();
                 let locked_cursor_screen_y = locked_cursor_screen_y.clone();
 
-move |_event, _window, _cx| {
+                move |_event, _window, _cx| {
                     super::build_handlers::handle_middle_mouse_up(
                         last_mouse_x.clone(),
                         last_mouse_y.clone(),
@@ -227,7 +231,7 @@ move |_event, _window, _cx| {
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let input_state_scroll = self.input_state.clone();
 
-move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
+                move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                     super::build_handlers::handle_scroll_wheel(
                         event,
                         mouse_right_captured.clone(),
@@ -245,7 +249,7 @@ move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                 let state_arc_click = state_arc.clone();
                 let gpu_engine_click = gpu_engine.clone();
 
-move |event: &gpui::MouseDownEvent,
+                move |event: &gpui::MouseDownEvent,
                       window: &mut gpui::Window,
                       _cx: &mut gpui::App| {
                     super::build_handlers::handle_left_mouse_down(
@@ -266,7 +270,7 @@ move |event: &gpui::MouseDownEvent,
                 let state_arc_up = state_arc.clone();
                 let gpu_engine_up = gpu_engine.clone();
 
-move |event: &gpui::MouseUpEvent,
+                move |event: &gpui::MouseUpEvent,
                       _window: &mut gpui::Window,
                       _cx: &mut gpui::App| {
                     super::build_handlers::handle_left_mouse_up(
@@ -283,7 +287,10 @@ move |event: &gpui::MouseUpEvent,
                 let engine = gpu_engine.clone();
                 move |event, _window, _cx| {
                     super::build_handlers::handle_left_mouse_up(
-                        event, pointer_events.clone(), state.clone(), engine.clone(),
+                        event,
+                        pointer_events.clone(),
+                        state.clone(),
+                        engine.clone(),
                     );
                 }
             })
@@ -292,39 +299,46 @@ move |event: &gpui::MouseUpEvent,
                 let queue = pointer_events_for_click.clone();
                 let right = mouse_right_captured.clone();
                 let middle = mouse_middle_captured.clone();
-                gpui::canvas(|_, _, _| (), move |bounds, (), window, _cx| {
-                    window.on_mouse_event(move |event: &gpui::MouseMoveEvent, phase, _window, _cx| {
-                        if phase != gpui::DispatchPhase::Capture || bounds.contains(&event.position)
-                            || right.load(Ordering::Relaxed) || middle.load(Ordering::Relaxed) {
-                            return;
-                        }
-                        let x: f32 = (event.position.x - bounds.origin.x).into();
-                        let y: f32 = (event.position.y - bounds.origin.y).into();
-                        let w: f32 = bounds.size.width.into();
-                        let h: f32 = bounds.size.height.into();
-                        if let Some(queue) = &queue {
-                            if let Ok(mut events) = queue.lock() {
-                                use engine_backend::subsystems::render::PendingPointerEvent;
-                                let next = PendingPointerEvent::MouseMove {
-                                    norm_x: x / w.max(1.0), norm_y: y / h.max(1.0),
-                                };
-                                if let Some(last @ PendingPointerEvent::MouseMove { .. }) = events.last_mut() {
-                                    *last = next;
-                                } else {
-                                    events.push(next);
+                gpui::canvas(
+                    |_, _, _| (),
+                    move |bounds, (), window, _cx| {
+                        window.on_mouse_event(
+                            move |event: &gpui::MouseMoveEvent, phase, _window, _cx| {
+                                if phase != gpui::DispatchPhase::Capture
+                                    || bounds.contains(&event.position)
+                                    || right.load(Ordering::Relaxed)
+                                    || middle.load(Ordering::Relaxed)
+                                {
+                                    return;
                                 }
-                            }
-                        }
-                    });
-                }).absolute().size_full()
+                                let x: f32 = (event.position.x - bounds.origin.x).into();
+                                let y: f32 = (event.position.y - bounds.origin.y).into();
+                                let w: f32 = bounds.size.width.into();
+                                let h: f32 = bounds.size.height.into();
+                                if let Some(queue) = &queue {
+                                    if let Ok(mut events) = queue.lock() {
+                                        use engine_backend::subsystems::render::PendingPointerEvent;
+                                        let next = PendingPointerEvent::MouseMove {
+                                            norm_x: x / w.max(1.0),
+                                            norm_y: y / h.max(1.0),
+                                        };
+                                        if let Some(last @ PendingPointerEvent::MouseMove { .. }) =
+                                            events.last_mut()
+                                        {
+                                            *last = next;
+                                        } else {
+                                            events.push(next);
+                                        }
+                                    }
+                                }
+                            },
+                        );
+                    },
+                )
+                .absolute()
+                .size_full()
             })
             // Overlays
-            .child(self.render_overlays(
-                state,
-                state_arc,
-                perf_snapshot,
-                gpu_engine,
-                cx,
-            ))
+            .child(self.render_overlays(state, state_arc, perf_snapshot, gpu_engine, cx))
     }
 }

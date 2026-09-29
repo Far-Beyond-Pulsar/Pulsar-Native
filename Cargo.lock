@@ -64,7 +64,9 @@ name = "agent_chat_core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -4566,7 +4568,6 @@ dependencies = [
  "helio-pass-portal-cull",
  "helio-pass-portal-instances",
  "helio-pass-postprocess",
- "helio-pass-radiance-cascades",
  "helio-pass-shadow",
  "helio-pass-shadow-cull",
  "helio-pass-shadow-dirty",
@@ -4809,6 +4810,7 @@ name = "helio-pass-occlusion-cull"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "helio-bake-types",
  "helio-core",
  "helio-pass-gbuffer",
  "helio-pass-indirect-dispatch",
@@ -5071,6 +5073,7 @@ dependencies = [
  "helio-voxel-data",
  "plugin_editor_api",
  "pulsar_reflection",
+ "pulsar_scene_model",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
  "pulsar_world_registry",
@@ -12990,6 +12993,7 @@ dependencies = [
  "pulsar_events",
  "pulsar_physics",
  "pulsar_reflection",
+ "pulsar_settings",
  "rfd",
  "rust-i18n",
  "schemars",
@@ -13180,6 +13184,7 @@ dependencies = [
  "gpui-ce",
  "helio",
  "helio-asset-compat",
+ "helio-voxel-data",
  "helio_component",
  "image",
  "objc2 0.6.4",
@@ -13206,10 +13211,14 @@ dependencies = [
  "smol",
  "tempfile",
  "tool_registry",
+ "tool_registry_macros",
  "tracing",
  "ui",
  "ui_common",
  "ui_types_common",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-protocols",
  "wgpu",
  "winapi",
  "window_manager",

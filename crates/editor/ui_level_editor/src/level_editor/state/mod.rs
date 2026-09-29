@@ -34,14 +34,16 @@ pub mod overlays;
 pub mod play;
 pub mod scene;
 pub mod spline;
+pub mod terrain;
 
 pub use build::BuildDomain;
 pub use editor::EditorDomain;
 pub use hierarchy::HierarchyDomain;
 pub use overlays::OverlayDomain;
-pub use play::{PieControl, PieStartRequest, PlayDomain, MAX_PIE_PROBLEMS};
+pub use play::{MAX_PIE_PROBLEMS, PieControl, PieStartRequest, PlayDomain};
 pub use scene::SceneDomain;
 pub use spline::SplineDomain;
+pub use terrain::TerrainDomain;
 
 use std::path::PathBuf;
 use std::sync::Arc;

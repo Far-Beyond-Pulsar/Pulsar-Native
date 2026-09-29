@@ -5,9 +5,10 @@ use std::sync::Arc;
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use ui::{
+    ActiveTheme, Icon, IconName,
     button::{Button, ButtonVariants as _},
     chart::AreaChart,
-    h_flex, v_flex, ActiveTheme, Icon, IconName,
+    h_flex, v_flex,
 };
 
 use super::super::performance::*;

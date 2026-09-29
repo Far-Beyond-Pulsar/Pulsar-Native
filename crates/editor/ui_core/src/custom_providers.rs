@@ -1,91 +1,79 @@
-use serde::{Deserialize, Serialize};
+//! Saved AI provider connections: configured provider templates
+//! (`ProviderEntry::template`), each a named, deletable provider.
+//!
+//! Stored in the engine's app data directory at
+//! `<data dir>/configs/ai_providers.json`, next to `engine.toml`.
+
+use agent_chat_core::ProviderInstanceConfig;
+use directories::ProjectDirs;
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
+use std::path::PathBuf;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CustomProvider {
-    pub id: String,
-    pub label: String,
-    pub endpoint: String,
-    pub models: Vec<CustomModel>,
+const PROVIDERS_FILE: &str = "ai_providers.json";
+
+/// Template that pre-template "custom providers" (an OpenAI-compatible
+/// endpoint) become.
+const LEGACY_TEMPLATE: &str = "custom_openai";
+
+pub fn providers_file() -> Option<PathBuf> {
+    ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
+        .map(|dirs| dirs.data_dir().join("configs").join(PROVIDERS_FILE))
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CustomModel {
-    pub id: String,
-    pub label: String,
-    #[serde(default)]
-    pub supports_tools: bool,
+/// Custom providers saved before templates existed, in the OS config dir.
+#[derive(Deserialize)]
+struct LegacyCustomProvider {
+    label: String,
+    endpoint: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CustomProvidersConfig {
-    pub providers: Vec<CustomProvider>,
+#[derive(Deserialize)]
+struct LegacyCustomProvidersConfig {
+    providers: Vec<LegacyCustomProvider>,
 }
 
-const CUSTOM_PROVIDERS_FILE: &str = "custom_providers.json";
+fn legacy_file() -> Option<PathBuf> {
+    dirs::config_dir().map(|dir| dir.join("pulsar").join("custom_providers.json"))
+}
 
-/// Load custom providers from the app data folder
-pub fn load_custom_providers(app_data_dir: &Path) -> Vec<CustomProvider> {
-    let config_path = app_data_dir.join(CUSTOM_PROVIDERS_FILE);
-
-    match fs::read_to_string(&config_path) {
-        Ok(content) => match serde_json::from_str::<CustomProvidersConfig>(&content) {
-            Ok(config) => config.providers,
-            Err(e) => {
-                tracing::warn!("Failed to parse custom providers config: {}", e);
-                Vec::new()
-            }
-        },
-        Err(_) => {
-            // File doesn't exist yet, return empty list
-            Vec::new()
+/// Load saved connections, moving any legacy custom providers into the store
+/// (the legacy file is removed once they are saved).
+pub fn load_provider_instances() -> Vec<ProviderInstanceConfig> {
+    let Some(path) = providers_file() else {
+        return Vec::new();
+    };
+    let mut instances = match agent_chat_core::load_provider_instances(&path) {
+        Ok(instances) => instances,
+        Err(e) => {
+            tracing::warn!("Failed to read {}: {e}", path.display());
+            return Vec::new();
         }
-    }
-}
-
-/// Save custom providers to the app data folder
-pub fn save_custom_providers(
-    app_data_dir: &Path,
-    providers: &[CustomProvider],
-) -> anyhow::Result<()> {
-    let config_path = app_data_dir.join(CUSTOM_PROVIDERS_FILE);
-
-    // Create app data dir if it doesn't exist
-    fs::create_dir_all(app_data_dir)?;
-
-    let config = CustomProvidersConfig {
-        providers: providers.to_vec(),
     };
 
-    let json = serde_json::to_string_pretty(&config)?;
-    fs::write(&config_path, json)?;
-
-    Ok(())
-}
-
-/// Add a new custom provider and save to disk
-pub fn add_custom_provider(app_data_dir: &Path, provider: CustomProvider) -> anyhow::Result<()> {
-    let mut providers = load_custom_providers(app_data_dir);
-
-    // Check if provider with same ID already exists
-    if providers.iter().any(|p| p.id == provider.id) {
-        return Err(anyhow::anyhow!(
-            "Provider with ID '{}' already exists",
-            provider.id
-        ));
+    let Some(legacy_path) = legacy_file().filter(|p| p.exists()) else {
+        return instances;
+    };
+    let legacy = fs::read_to_string(&legacy_path)
+        .ok()
+        .and_then(|text| serde_json::from_str::<LegacyCustomProvidersConfig>(&text).ok());
+    if let Some(legacy) = legacy {
+        for provider in legacy.providers {
+            let taken: Vec<&str> = instances.iter().map(|i| i.id.as_str()).collect();
+            let values = HashMap::from([("endpoint_url".to_string(), provider.endpoint)]);
+            let instance =
+                ProviderInstanceConfig::new(LEGACY_TEMPLATE, &provider.label, values, &taken);
+            instances.push(instance);
+        }
+        if save_provider_instances(&instances).is_ok() {
+            let _ = fs::remove_file(&legacy_path);
+        }
     }
-
-    providers.push(provider);
-    save_custom_providers(app_data_dir, &providers)?;
-
-    Ok(())
+    instances
 }
 
-/// Remove a custom provider by ID
-pub fn remove_custom_provider(app_data_dir: &Path, provider_id: &str) -> anyhow::Result<()> {
-    let mut providers = load_custom_providers(app_data_dir);
-    providers.retain(|p| p.id != provider_id);
-    save_custom_providers(app_data_dir, &providers)?;
-    Ok(())
+pub fn save_provider_instances(instances: &[ProviderInstanceConfig]) -> anyhow::Result<()> {
+    let path = providers_file().ok_or_else(|| anyhow::anyhow!("No app data directory"))?;
+    agent_chat_core::save_provider_instances(&path, instances)
 }

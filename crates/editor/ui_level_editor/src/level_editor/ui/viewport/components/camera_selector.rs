@@ -9,8 +9,9 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use rust_i18n::t;
 use ui::{
+    ActiveTheme, IconName, Selectable, Sizable,
     button::{Button, ButtonVariants as _},
-    h_flex, ActiveTheme, IconName, Selectable, Sizable,
+    h_flex,
 };
 
 use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle};

@@ -23,11 +23,18 @@ pub struct ClassEntry {
 impl ClassEntry {
     /// Load the class's current definition from disk.
     pub fn load_definition(&self) -> Result<ClassDefinition, String> {
+        // Prefab first: loading it may replace readable slot ids and record
+        // the replacements in class.json, which is read after.
+        let prefab = PrefabAsset::load_from_dir(&self.dir)?;
+        let slot_aliases = crate::id::ClassMeta::read(&self.dir)
+            .map(|meta| meta.slot_aliases)
+            .unwrap_or_default();
         Ok(ClassDefinition {
             id: self.id.clone(),
             name: self.name.clone(),
             dir: self.dir.clone(),
-            prefab: PrefabAsset::load_from_dir(&self.dir)?,
+            prefab,
+            slot_aliases,
         })
     }
 }
@@ -40,6 +47,9 @@ pub struct ClassDefinition {
     pub dir: PathBuf,
     /// Components with slot ids filled in, plus variable defaults.
     pub prefab: PrefabAsset,
+    /// Replaced slot id → current slot UUID (`class.json`'s `slot_aliases`),
+    /// for overrides saved before the replacement (#933).
+    pub slot_aliases: std::collections::BTreeMap<String, String>,
 }
 
 /// Value kind of a class script variable, as the instance details panel

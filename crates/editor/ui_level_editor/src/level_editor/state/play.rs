@@ -67,6 +67,9 @@ pub struct PieControl {
     /// Pause (`Some(true)`) or resume (`Some(false)`) the running game's
     /// simulation; the viewport applies it on the render thread.
     pub pause_request: Option<bool>,
+    /// Play requested by a caller with no window (the AI tools); the level
+    /// editor panel starts Play-In-Editor on its next render.
+    pub play_requested: bool,
     /// Frames to step while paused; the viewport applies them.
     pub step_request: u32,
     /// Whether the game's simulation is paused (mirrored by the viewport).

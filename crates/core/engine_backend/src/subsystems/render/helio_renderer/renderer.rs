@@ -80,9 +80,26 @@ pub struct HelioEditorMailbox {
     pending_deselect: Arc<AtomicBool>,
     pending_force_full_resync: Arc<AtomicBool>,
     viewport_bloom: Arc<AtomicBool>,
+    static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
+}
+
+/// A gizmo drag started on an object whose SceneDB `helio::Movability`
+/// promises a fixed transform (Pulsar-Native#837). Moving it anyway leaves
+/// cached data (the static shadow atlas) describing its old place.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StaticDragWarning {
+    pub object_id: String,
+    pub object_name: String,
+    pub movability: helio::Movability,
 }
 
 impl HelioEditorMailbox {
+    /// The latest Static/Stationary drag the render thread saw, if the UI
+    /// has not taken it yet.
+    pub fn take_static_drag_warning(&self) -> Option<StaticDragWarning> {
+        self.static_drag_warning.lock().ok()?.take()
+    }
+
     /// Queue the SceneDB interaction gizmo mode for the render thread to apply
     /// at the next frame boundary.
     pub fn queue_gizmo(&self, mode: GizmoMode) {
@@ -168,6 +185,9 @@ pub struct HelioRenderer {
     pub pending_force_full_resync: Arc<AtomicBool>,
     /// The toolbar's Bloom toggle; see [`HelioEditorMailbox::set_viewport_bloom`].
     pub viewport_bloom: Arc<AtomicBool>,
+    /// Written by the render thread when a gizmo drag starts on a fixed-
+    /// movability object; taken by the UI (`HelioEditorMailbox`).
+    pub static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
 
     // ── Renderer State ──
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
@@ -237,6 +257,7 @@ impl HelioRenderer {
             pending_force_full_resync: Arc::new(AtomicBool::new(false)),
             // Matches the toolbar's default until the UI reports its state.
             viewport_bloom: Arc::new(AtomicBool::new(true)),
+            static_drag_warning: Arc::new(Mutex::new(None)),
             reset_taa_next_frame: false,
             inner: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
@@ -749,14 +770,17 @@ impl HelioRenderer {
                     tracing::error!("Helio render error: {:?}", e);
                 }
             }
-            // An empty `queue.submit` still takes the queue lock and can drain
-            // pending work, so it gets its own span.
-            profiling::profile_scope!("helio_queue_submit (fence)");
-            Some(
-                inner
-                    .queue
-                    .submit(std::iter::empty::<wgpu::CommandBuffer>()),
-            )
+            // The graph's own submission carries the frame. Only when Helio
+            // submitted nothing (an error) fall back to an empty submit, which
+            // takes the queue lock and can drain pending work.
+            inner.renderer.last_submission().or_else(|| {
+                profiling::profile_scope!("helio_queue_submit (fence)");
+                Some(
+                    inner
+                        .queue
+                        .submit(std::iter::empty::<wgpu::CommandBuffer>()),
+                )
+            })
         };
         self.gizmo_dirty = false;
         inner.has_rendered_frame = true;
@@ -998,6 +1022,7 @@ impl HelioRenderer {
             pending_deselect: self.pending_deselect.clone(),
             pending_force_full_resync: self.pending_force_full_resync.clone(),
             viewport_bloom: self.viewport_bloom.clone(),
+            static_drag_warning: self.static_drag_warning.clone(),
         }
     }
 
@@ -1085,6 +1110,23 @@ impl HelioRenderer {
             .interaction
             .try_start_drag(&store.world, ray_origin, ray_direction, self.cam_pos)
         {
+            // SceneDB's projected promise, not the authored property: it is
+            // what the caches the drag would invalidate actually read.
+            let fixed = store.world.selected_entity().and_then(|entity| {
+                let movability = *store.world.get::<helio::Movability>(entity)?;
+                (!movability.can_move()).then(|| StaticDragWarning {
+                    object_id: store.world.stable_id_of(entity).unwrap_or_default().to_string(),
+                    object_name: store
+                        .world
+                        .get::<crate::scene::Name>(entity)
+                        .map(|name| name.0.clone())
+                        .unwrap_or_default(),
+                    movability,
+                })
+            });
+            if let (Some(warning), Ok(mut slot)) = (fixed, self.static_drag_warning.lock()) {
+                *slot = Some(warning);
+            }
             return;
         }
         let target = inner

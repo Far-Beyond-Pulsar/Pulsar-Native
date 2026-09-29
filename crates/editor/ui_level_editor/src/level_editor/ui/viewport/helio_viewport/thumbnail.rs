@@ -1,6 +1,5 @@
 use super::*;
 
-
 /// Renders the current Helio scene into an offscreen texture, reads it back
 /// from the GPU, and writes it to `out_path` as a PNG. Used to capture
 /// project thumbnails on scene save.

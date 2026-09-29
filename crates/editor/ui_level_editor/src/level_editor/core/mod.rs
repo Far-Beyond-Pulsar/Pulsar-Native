@@ -16,4 +16,5 @@ pub mod asset_updates;
 pub mod commands;
 pub mod native_scripts;
 pub mod scene_edit;
+pub mod splines;
 pub mod world_settings_data;

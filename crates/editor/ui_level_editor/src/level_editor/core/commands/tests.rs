@@ -34,10 +34,16 @@ mod undo_redo_tests {
         );
         assert!(result.changed);
         assert!(state.scene.can_undo());
-        assert_eq!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).len(), 1);
+        assert_eq!(
+            crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).len(),
+            1
+        );
 
         assert!(state.scene.undo());
-        assert!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
+        assert!(
+            crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world())
+                .is_empty()
+        );
         assert!(!state.scene.can_undo());
         assert!(state.scene.can_redo());
     }
@@ -53,11 +59,17 @@ mod undo_redo_tests {
             },
         );
         state.scene.undo();
-        assert!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
+        assert!(
+            crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world())
+                .is_empty()
+        );
 
         assert!(state.scene.redo());
 
-        assert_eq!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).len(), 1);
+        assert_eq!(
+            crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).len(),
+            1
+        );
         assert!(state.scene.can_undo());
         assert!(!state.scene.can_redo());
     }
@@ -117,7 +129,10 @@ mod undo_redo_tests {
         // Still exactly the one checkpoint from AddObject -- undoing once
         // now must remove the object, not merely revert the selection.
         assert!(state.scene.undo());
-        assert!(crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
+        assert!(
+            crate::level_editor::scene_edit::objects::get_all_objects(&state.scene.world())
+                .is_empty()
+        );
         assert!(!state.scene.can_undo());
     }
 
@@ -225,7 +240,7 @@ mod undo_redo_tests {
         assert_eq!(reverted.downcast_ref::<f32>(), Some(&1000.0)); // IntensityLightProps::default()
     }
 
-// Bool twin of the f32 test above: proves a widget toggling a `bool`
+    // Bool twin of the f32 test above: proves a widget toggling a `bool`
     // property (`BoolEditor`'s Switch → `SetComponentProperty` with a
     // `Box::new(bool)`) flips the live `World` value and is undo-tracked.
     #[test]
@@ -316,7 +331,9 @@ mod undo_redo_tests {
     // the cached editors (Pulsar-Native#575).
     #[test]
     fn a_component_property_command_registers_a_property_change_for_the_object() {
-        use crate::level_editor::scene_edit::changes::{drain_property_changes, has_property_changes_for};
+        use crate::level_editor::scene_edit::changes::{
+            drain_property_changes, has_property_changes_for,
+        };
 
         let mut state = LevelEditorState::new();
         let id = execute_command(
@@ -394,5 +411,63 @@ mod undo_redo_tests {
             drained.class_changed(&id, "LightComponent"),
             "the section marks cards dirty via class_changed on the drained set"
         );
+    }
+
+    // Pulsar-Native#837: "Mark selection Static" sets every mesh/light on
+    // every selected object in one undo step, skips objects with neither,
+    // and is a no-op when everything already matches.
+    #[test]
+    fn set_movability_marks_the_selection_in_one_undo_step() {
+        use helio_component::components::ObjectMovability;
+        let mut state = LevelEditorState::new();
+        let add = |state: &mut LevelEditorState, name: &str| {
+            execute_command(
+                state,
+                SceneCommand::AddObject {
+                    data: object(name),
+                    parent_id: None,
+                },
+            )
+            .affected_ids[0]
+                .clone()
+        };
+        let lamp = add(&mut state, "Lamp");
+        let empty = add(&mut state, "Empty");
+        {
+            let mut light = helio_component::LightComponent::default();
+            light.general.movability = ObjectMovability::Movable;
+            let mut world = state.scene.world_mut();
+            crate::level_editor::scene_edit::components::add_component(
+                &mut world,
+                &lamp,
+                "LightComponent".to_string(),
+                serde_json::to_value(light).unwrap(),
+            );
+        }
+        let read = |state: &LevelEditorState| {
+            let world = state.scene.world();
+            crate::level_editor::scene_edit::components::read_live_component_property(
+                &world,
+                &lamp,
+                "LightComponent",
+                "movability",
+            )
+            .and_then(|v| v.downcast_ref::<ObjectMovability>().copied())
+        };
+        assert_eq!(read(&state), Some(ObjectMovability::Movable));
+
+        let mark_static = || SceneCommand::SetMovability {
+            ids: vec![lamp.clone(), empty.clone()],
+            movability: ObjectMovability::Static,
+        };
+        let result = execute_command(&mut state, mark_static());
+        assert!(result.changed);
+        assert_eq!(result.affected_ids, vec![lamp.clone()]);
+        assert_eq!(read(&state), Some(ObjectMovability::Static));
+
+        assert!(!execute_command(&mut state, mark_static()).changed, "already Static");
+
+        assert!(state.scene.undo());
+        assert_eq!(read(&state), Some(ObjectMovability::Movable));
     }
 }

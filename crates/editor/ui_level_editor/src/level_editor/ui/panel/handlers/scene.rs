@@ -1,7 +1,12 @@
 use super::*;
 
 impl LevelEditorPanel {
-    pub(in crate::level_editor::ui::panel) fn on_open_scene(&mut self, _: &OpenScene, _window: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_open_scene(
+        &mut self,
+        _: &OpenScene,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let state_arc = self.shared_state.clone();
         let scene_db = { state_arc.read().scene.shared_scene() };
         let default_dir = state_arc
@@ -32,16 +37,10 @@ impl LevelEditorPanel {
                             Ok(editor_camera) => {
                                 this.apply_editor_camera_state(editor_camera.as_ref());
                                 let mut state = state_arc.write();
-                                if let Some(prev) = state.scene.current_scene.clone() {
-                                    ai_sessions::unregister_open_scene(&prev);
-                                }
                                 state.scene.current_scene = Some(path);
                                 state.scene.has_unsaved_changes = false;
                                 // Deselect so properties panel clears stale data.
                                 state.scene.select_object(None);
-                                if let Some(open_path) = state.scene.current_scene.clone() {
-                                    ai_sessions::register_open_scene(&open_path, &state_arc);
-                                }
                             }
                             Err(e) => tracing::error!("Open scene failed: {}", e),
                         }
@@ -53,7 +52,12 @@ impl LevelEditorPanel {
         .detach();
     }
 
-    pub(in crate::level_editor::ui::panel) fn on_new_scene(&mut self, _: &NewScene, _: &mut Window, cx: &mut Context<Self>) {
+    pub(in crate::level_editor::ui::panel) fn on_new_scene(
+        &mut self,
+        _: &NewScene,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         // Warn if unsaved changes (TODO: modal dialog)
         // Clear the scene IN-PLACE so the renderer keeps its Arc<SceneDb>.
         let scene_db = { self.shared_state.read().scene.shared_scene() };
@@ -87,9 +91,6 @@ impl LevelEditorPanel {
         self.apply_editor_camera_state(editor_camera.as_ref());
         {
             let mut state = self.shared_state.write();
-            if let Some(prev) = state.scene.current_scene.clone() {
-                ai_sessions::unregister_open_scene(&prev);
-            }
             state.scene.current_scene = None;
             state.scene.has_unsaved_changes = false;
             // Deselect so properties panel clears stale data.

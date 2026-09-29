@@ -77,6 +77,10 @@ pub struct SceneDomain {
     /// Monotonic revision counter — bumped on every mutation so pollers
     /// (and the observer system) can detect external changes.
     pub revision: u64,
+    /// Set by callers without a renderer handle (the AI tools) after undo/redo;
+    /// the panel poller takes it and forces a full renderer resync, the same
+    /// thing the Undo/Redo actions do directly.
+    pub pending_renderer_resync: bool,
     /// Undo history (Pulsar-Native#554) — one entry per mutating
     /// `SceneCommand` (`commands.rs::execute_command` pushes onto this),
     /// oldest first. Bounded at [`MAX_UNDO_HISTORY`].
@@ -99,6 +103,7 @@ impl Default for SceneDomain {
             current_scene: None,
             has_unsaved_changes: false,
             revision: 0,
+            pending_renderer_resync: false,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
         }
@@ -308,7 +313,11 @@ impl SceneDomain {
     pub fn enter_play_mode(&mut self) {
         if self.snapshot.is_none() {
             self.snapshot = Some(self.capture_history_snapshot());
-            let live = self.world().query::<()>().map(|(entity, ())| entity).collect();
+            let live = self
+                .world()
+                .query::<()>()
+                .map(|(entity, ())| entity)
+                .collect();
             self.play_entities = Some(live);
         }
         self.editor_mode = EditorMode::Play;

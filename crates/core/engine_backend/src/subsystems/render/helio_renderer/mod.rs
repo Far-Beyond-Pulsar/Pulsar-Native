@@ -11,6 +11,7 @@ pub use core::{
 };
 pub use renderer::{
     EditorCameraState, HelioEditorMailbox, HelioRenderer, PendingPointerEvent, RendererCommand,
+    StaticDragWarning,
 };
 
 pub const RENDER_WIDTH: u32 = 1600;

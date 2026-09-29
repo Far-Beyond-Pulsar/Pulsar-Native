@@ -47,6 +47,7 @@ impl ProviderCrate for OpenCodeProviderCrate {
                 id: e.id,
                 display_name: e.display_name,
                 kind: ProviderKind::Cloud,
+                template: false,
                 default_endpoint: Some(e.endpoint),
                 config_fields: vec![ConfigField {
                     key: "api_key",
