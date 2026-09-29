@@ -674,6 +674,14 @@ impl HelioRenderer {
                 self.render_row_subscriptions_armed = true;
             }
             {
+                // Splines are SceneDB components drawn by Helio's editor debug
+                // pass in world space, so they follow the camera like the grid.
+                profiling::profile_scope!("helio_sync_spline_lines");
+                let lines =
+                    helio_component::components::spline_debug_lines(&scene_store.world);
+                inner.renderer.debug_set_editor_lines("splines", lines);
+            }
+            {
                 profiling::profile_scope!("helio_scene_store_step");
                 scene_store.step();
             }

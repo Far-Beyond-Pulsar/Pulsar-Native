@@ -1,11 +1,11 @@
 //! Spline tools: the Spline panel's authoring, driven by data.
 //!
-//! A spline is an ordinary object whose curve lives in its
-//! `editor_spline` property; edits go through `UpdateObject`, so they are
+//! A spline is an ordinary object carrying a `SplineComponent` (Helio's
+//! SceneDB spline component); edits go through `UpdateObject`, so they are
 //! undoable like the panel's.
 
 use super::*;
-use crate::level_editor::core::splines::{self, SPLINE_PROPERTY};
+use crate::level_editor::core::splines;
 use crate::level_editor::scene_edit::Transform;
 use crate::level_editor::state::spline::{CurveAlgorithm, SplineData, SplinePoint};
 use tool_registry_macros::tool;
@@ -124,9 +124,9 @@ pub fn level_editor_create_spline(
         props: Default::default(),
         component_instances: None,
     };
-    object
-        .props
-        .insert(SPLINE_PROPERTY.into(), serde_json::to_value(&curve)?);
+    if !splines::store(&mut object, &curve) {
+        bail!("Spline data could not be stored");
+    }
     let result = execute_command(&mut state, SceneCommand::AddObject { data: object, parent_id });
     let id = result
         .affected_ids
@@ -207,9 +207,9 @@ pub fn level_editor_edit_spline(
         Some(other) => bail!("Unknown operation '{other}'. Use auto_tangents, reverse, smooth or resample."),
     }
     check_curve(&curve)?;
-    object
-        .props
-        .insert(SPLINE_PROPERTY.into(), serde_json::to_value(&curve)?);
+    if !splines::store(&mut object, &curve) {
+        bail!("Spline data could not be stored");
+    }
     let result = execute_command(&mut state, SceneCommand::UpdateObject { data: object });
     let object = require_object(&state, &id)?;
     let mut out = spline_json(&object, &curve);

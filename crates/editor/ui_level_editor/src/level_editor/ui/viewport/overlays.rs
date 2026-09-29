@@ -24,9 +24,8 @@ impl ViewportPanel {
             .left_0()
             .right(scrollbar_width)
             .bottom(scrollbar_width)
-            .children((state.editor.tool_mode_registry.selected_id() == crate::level_editor::tool_modes::ToolModeId::SPLINE).then(|| {
-                super::super::spline_preview::viewport(state, gpu_engine.clone(), cx.theme().primary, cx.theme().muted_foreground)
-            }))
+            // Splines are not painted here: they are SceneDB components that
+            // Helio's editor debug pass draws in world space.
             // Top-left: Viewport options
             .child(
                 div()
