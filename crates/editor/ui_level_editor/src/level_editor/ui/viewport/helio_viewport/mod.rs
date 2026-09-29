@@ -7,7 +7,7 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -56,6 +56,12 @@ pub struct HelioViewport {
     /// triple buffer. Read by the frame pump to decide whether a repaint is
     /// warranted.
     frames_published: Arc<AtomicU64>,
+    /// Refresh rate of the display the window is on, in millihertz (0 = not
+    /// known yet). Written on the UI thread and picked up by the render
+    /// thread's pacer, since on Wayland it's often unknown when the thread starts.
+    display_refresh_millihertz: Arc<AtomicU32>,
+    /// When the display refresh rate was last sampled, while it's still unknown.
+    last_display_refresh_sample: Instant,
     /// Value of `frames_published` at the last repaint this view requested.
     last_published_frame: u64,
     /// A repaint has been requested but `render()` has not run yet. Keeps the
@@ -100,6 +106,8 @@ impl HelioViewport {
             render_thread_stop: Arc::new(AtomicBool::new(false)),
             render_thread_handle: None,
             frames_published: Arc::new(AtomicU64::new(0)),
+            display_refresh_millihertz: Arc::new(AtomicU32::new(0)),
+            last_display_refresh_sample: Instant::now(),
             last_published_frame: 0,
             awaiting_render: false,
             last_full_render: Instant::now(),
@@ -117,7 +125,44 @@ impl HelioViewport {
     pub fn mark_tab_activated(&mut self) {
         self.tab_activated.store(true, Ordering::Release);
     }
+
+    /// Refresh rate of the display this window is on, falling back to the
+    /// fastest connected display. Wayland has no primary output (winit's
+    /// `primary_monitor()` is always `None` there) and a fresh window has no
+    /// current output until the compositor sends `wl_surface.enter`, so both
+    /// earlier fallbacks come up empty and would otherwise leave us at 60 Hz.
+    fn sample_display_refresh_millihertz(window: &Window, cx: &App) -> Option<u32> {
+        window
+            .display(cx)
+            .or_else(|| cx.primary_display())
+            .and_then(|display| display.refresh_rate_millihertz())
+            .filter(|millihertz| *millihertz > 0)
+            .or_else(|| {
+                cx.displays()
+                    .iter()
+                    .filter_map(|display| display.refresh_rate_millihertz())
+                    .max()
+                    .filter(|millihertz| *millihertz > 0)
+            })
+    }
+
+    /// Re-sample the display refresh rate once per
+    /// `DISPLAY_REFRESH_POLL_INTERVAL` until one is found, then stop.
+    fn poll_display_refresh(&mut self, window: &Window, cx: &App) {
+        if self.display_refresh_millihertz.load(Ordering::Relaxed) != 0
+            || self.last_display_refresh_sample.elapsed() < DISPLAY_REFRESH_POLL_INTERVAL
+        {
+            return;
+        }
+        self.last_display_refresh_sample = Instant::now();
+        if let Some(millihertz) = Self::sample_display_refresh_millihertz(window, cx) {
+            self.display_refresh_millihertz
+                .store(millihertz, Ordering::Relaxed);
+        }
+    }
 }
+
+const DISPLAY_REFRESH_POLL_INTERVAL: Duration = Duration::from_secs(1);
 impl Drop for HelioViewport {
     fn drop(&mut self) {
         self.render_thread_stop.store(true, Ordering::Release);
@@ -149,17 +194,15 @@ impl Render for HelioViewport {
 
         // Lazy surface creation (once) + start the background render thread.
         if self.surface.is_none() {
-            // Read the refresh rate here, on the UI thread, while we still have
-            // a `Window`: it's what the render thread starts its pacing at.
-            let refresh_hz = window
-                .display(cx)
-                // Wayland may not have associated the newly-created window
-                // with an output yet. In that case use the compositor's
-                // primary output instead of silently capping at 60 Hz.
-                .or_else(|| cx.primary_display())
-                .and_then(|display| display.refresh_rate_millihertz())
-                .map(|mhz| mhz as f64 / 1000.0)
-                .filter(|hz| *hz > 0.0);
+            // If this comes up empty (Wayland before `wl_surface.enter`), the
+            // frame pump keeps polling via `poll_display_refresh`.
+            self.last_display_refresh_sample = Instant::now();
+            let refresh_millihertz = Self::sample_display_refresh_millihertz(window, cx);
+            if let Some(millihertz) = refresh_millihertz {
+                self.display_refresh_millihertz
+                    .store(millihertz, Ordering::Relaxed);
+            }
+            let refresh_hz = refresh_millihertz.map(|millihertz| millihertz as f64 / 1000.0);
 
             match window.create_wgpu_surface_with_color_conversion(
                 1600,
