@@ -124,8 +124,8 @@ jobs:
               (($_["manifest_path"] -replace "\\", "/") -match "/plugins/vendor/")
             } | ForEach-Object { $_["name"] } | Sort-Object
           )
-          # blueprint_compiler (a library with no examples) is a member so its
-          # tests run against this workspace's script VM.
+          # These two are explicit root-workspace members: the built-in asset
+          # viewer and the Blueprint compiler tested against Pulsar's VM.
           $expectedVendorWorkspaceMembers = @("asset_viewer_plugin", "blueprint_compiler")
           $workspaceMemberDifference = @(
             Compare-Object $expectedVendorWorkspaceMembers $vendorWorkspaceMembers

@@ -122,7 +122,7 @@ impl LevelEditorPanel {
             .and_then(|engine| engine.editor_camera_state());
         let camera = camera
             .map(|c| crate::level_editor::tool_modes::CameraFrame {
-                position: c.position,
+                position: c.position.map(|coordinate| coordinate as f32),
                 yaw: c.yaw,
                 pitch: c.pitch,
                 fov: 60.0,

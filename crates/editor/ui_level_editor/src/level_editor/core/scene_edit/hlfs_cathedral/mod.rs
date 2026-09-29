@@ -380,7 +380,7 @@ fn default_level_loads_the_cathedral() {
     // The editor rewrites the camera whenever the level is saved, so
     // compare with what the file holds rather than a fixed position.
     let file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-    let saved: [f32; 3] = serde_json::from_value(file["editor"]["camera"]["position"].clone())
+    let saved: [f64; 3] = serde_json::from_value(file["editor"]["camera"]["position"].clone())
         .expect("editor camera saved in the file");
     assert_eq!(camera.expect("editor camera loaded").position, saved);
 }

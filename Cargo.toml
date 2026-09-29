@@ -68,6 +68,9 @@ debug = "limited"
 split-debuginfo = "unpacked"
 
 [profile.dev.package]
+# Voxel terrain residency, ray casts and world builds run on the CPU every
+# frame; unoptimized they would misrepresent the editor viewport.
+helio-pass-voxel-planet = { opt-level = 3 }
 resvg = { opt-level = 3 }
 rustybuzz = { opt-level = 3 }
 taffy = { opt-level = 3 }
@@ -195,6 +198,9 @@ helio                      = { path = "crates/renderer/helio/crates/helio" }
 helio-asset-compat         = { path = "crates/renderer/helio/crates/helio-asset-compat" }
 helio-default-graphs       = { path = "crates/renderer/helio/crates/helio-default-graphs" }
 helio-voxel-data = { path = "crates/renderer/helio/crates/helio-voxel-data" }
+helio-pass-voxel-planet = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-voxel-planet", features = ["engine"] }
+helio-pass-sky = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-sky" }
+helio-pass-tsr = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-tsr" }
 helio-pass-billboard = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-billboard" }
 helio-pass-forward-lit = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-forward-lit" }
 helio-pass-decal = { path = "crates/renderer/helio/crates/passes/3d/helio-pass-decal" }

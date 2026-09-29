@@ -196,7 +196,12 @@ fn generated_setup(game: &mut TickLoop) -> Result<(), String> {
 }
 
 fn run_packaged(content: &Path, frames: u64) -> HeadlessReport {
-    let options = LaunchOptions { headless: true, frames: Some(frames), content: Some(content.to_path_buf()), profile: false };
+    let options = LaunchOptions {
+        headless: true,
+        frames: Some(frames),
+        content: Some(content.to_path_buf()),
+        ..LaunchOptions::default()
+    };
     let report = run_with(options, generated_setup).expect("headless run").expect("a headless report");
     eprintln!("{}{}", pulsar_game::standalone::HEADLESS_REPORT_PREFIX, report.to_json());
     report

@@ -3,7 +3,8 @@
 //! This copies configuration and Arc capabilities only. Canonical payload
 //! bytes remain in component rows and are selected by the consuming backend.
 
-use helio_component::{VoxelComponent, VoxelTerrainComponent};
+use helio_component::{VoxelComponent, VoxelTerrainComponent, VoxelWorldShape};
+use helio_voxel_data::VoxelEditJournal;
 use helio_voxel_data::{
     VoxelBatchRevision, VoxelChunkBatch, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload,
     VoxelChunkUpdate, VoxelDomain, VoxelGeneratorDescriptor, VoxelPayloadStore, VoxelSourceId,
@@ -11,7 +12,7 @@ use helio_voxel_data::{
 };
 use pulsar_scenedb::{Entity, World};
 
-use crate::scene::Transform;
+use crate::scene::{Transform, Visibility};
 
 /// SceneDB entity bits include its generation; kind distinguishes source rows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -24,18 +25,47 @@ pub struct VoxelEntryId {
 #[derive(Clone)]
 pub struct VoxelSceneEntry {
     pub id: VoxelEntryId,
+    /// Editor visibility is independent of whether this source owns the
+    /// camera environment (for example a planet's atmosphere).
+    pub visible: bool,
     pub store: VoxelPayloadStore,
     pub domain: VoxelDomain,
     pub source_revision: u64,
+    pub editable: bool,
     pub origin: [f64; 3],
     pub voxel_size: f64,
     /// Logical width of a chunk address at LOD zero, in base voxel units.
     /// The payload format determines how that region is represented.
     pub chunk_edge_voxels: u32,
     pub lod_scale: u32,
+    /// Opaque renderer selection, independent of the generation recipe.
+    pub renderer_id: String,
     pub material_ids: Vec<u32>,
     pub generator: Option<VoxelGeneratorConfig>,
     pub initial_cube: Option<VoxelCubeInit>,
+    /// Form and size of a terrain world (scaled with the entity).
+    pub world: VoxelWorldForm,
+    /// The terrain's ordered brush journal.
+    pub edits: VoxelEditJournal,
+}
+
+/// Authored form of a voxel world: shape and size in metres.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VoxelWorldForm {
+    pub shape: VoxelWorldShape,
+    pub planet_radius: f64,
+    pub plane_size: f64,
+}
+
+impl Default for VoxelWorldForm {
+    fn default() -> Self {
+        let terrain = VoxelTerrainComponent::default();
+        Self {
+            shape: terrain.shape,
+            planet_radius: terrain.planet_radius,
+            plane_size: terrain.plane_size,
+        }
+    }
 }
 
 /// Authored generator identity and parameters passed to the specialized voxel
@@ -162,6 +192,7 @@ pub fn initialize_empty_cube(entry: &VoxelSceneEntry) -> Result<bool, String> {
 }
 
 pub fn project_voxel_entries(world: &World) -> (Vec<VoxelSceneEntry>, Vec<String>) {
+    profiling::profile_scope!("voxel_project_entries");
     let mut entries = Vec::new();
     let mut errors = Vec::new();
     for (entity, component) in world.query::<&VoxelComponent>() {
@@ -169,7 +200,10 @@ pub fn project_voxel_entries(world: &World) -> (Vec<VoxelSceneEntry>, Vec<String
             continue;
         }
         match object_entry(world, entity, component) {
-            Ok(entry) => entries.push(entry),
+            Ok(mut entry) => {
+                entry.visible = world.get::<Visibility>(entity).is_none_or(|v| v.visible);
+                entries.push(entry);
+            }
             Err(error) => errors.push(format!("voxel object {}: {error}", entity.bits())),
         }
     }
@@ -178,7 +212,10 @@ pub fn project_voxel_entries(world: &World) -> (Vec<VoxelSceneEntry>, Vec<String
             continue;
         }
         match terrain_entry(world, entity, component) {
-            Ok(entry) => entries.push(entry),
+            Ok(mut entry) => {
+                entry.visible = world.get::<Visibility>(entity).is_none_or(|v| v.visible);
+                entries.push(entry);
+            }
             Err(error) => errors.push(format!("voxel terrain {}: {error}", entity.bits())),
         }
     }
@@ -233,6 +270,7 @@ pub(super) fn object_entry(
             entity_bits: entity.bits(),
             kind: 0,
         },
+        visible: true,
         store: component.payload_store(),
         domain: VoxelDomain::Bounded {
             min: [0; 3],
@@ -240,10 +278,12 @@ pub(super) fn object_entry(
             max_lod: 0,
         },
         source_revision: 0,
+        editable: component.editable,
         origin,
         voxel_size: component.voxel_size * scale,
         chunk_edge_voxels: 8,
         lod_scale: 1,
+        renderer_id: component.renderer_id.clone(),
         material_ids: component.material_ids.clone(),
         generator: None,
         initial_cube: Some(VoxelCubeInit {
@@ -251,6 +291,8 @@ pub(super) fn object_entry(
             material_slot: u8::try_from(component.default_material_slot)
                 .map_err(|_| "default_material_slot must fit in one byte")?,
         }),
+        world: VoxelWorldForm::default(),
+        edits: VoxelEditJournal::default(),
     })
 }
 
@@ -316,21 +358,30 @@ pub(super) fn terrain_entry(
             entity_bits: entity.bits(),
             kind: 1,
         },
+        visible: true,
         store: component.payload_store(),
         domain,
         source_revision: component.source_revision,
+        editable: component.editable,
         origin,
         voxel_size,
         chunk_edge_voxels: component.chunk_edge_voxels,
         lod_scale: component.lod_scale,
+        renderer_id: component.renderer_id.clone(),
         material_ids: component.material_ids.clone(),
-        generator: (!component.generator_id.is_empty()).then(|| VoxelGeneratorConfig {
-            id: component.generator_id.clone(),
-            version: component.generator_version,
+        generator: (!component.generator.id.is_empty()).then(|| VoxelGeneratorConfig {
+            id: component.generator.id.clone(),
+            version: component.generator.version,
             seed: component.seed,
-            parameters: component.generator_parameters.clone(),
+            parameters: helio_component::voxel_world::generator_settings(world, entity, component),
         }),
         initial_cube: None,
+        world: VoxelWorldForm {
+            shape: component.shape,
+            planet_radius: component.planet_radius * scale,
+            plane_size: component.plane_size * scale,
+        },
+        edits: component.edits.clone(),
     })
 }
 
@@ -347,11 +398,13 @@ mod tests {
         component.bounds_max_x = 64.0;
         component.bounds_max_y = 64.0;
         component.bounds_max_z = 64.0;
+        component.voxel_size = 1.0;
         component.chunk_edge_voxels = 32;
         component.max_chunk_lod = 4;
         component.lod_scale = 3;
-        component.generator_id = "test.world".into();
-        component.generator_version = 7;
+        component.renderer_id = "test.renderer".into();
+        component.generator.id = "test.world".into();
+        component.generator.version = 7;
         component.seed = 42;
         component.generator_parameters = "{\"biome\":1}".into();
         component.material_ids = vec![0; 300];
@@ -359,6 +412,7 @@ mod tests {
 
         let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
         assert_eq!(entry.chunk_edge_voxels, 32);
+        assert_eq!(entry.renderer_id, "test.renderer");
         assert_eq!(
             entry.domain,
             VoxelDomain::BoundedBase {
@@ -457,14 +511,25 @@ mod tests {
 
         let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
         let descriptor = entry.generator_descriptor().unwrap();
-        assert_eq!(descriptor.id, helio_voxel_data::VOXEL_FLAT_GENERATOR);
-        assert_eq!(
-            descriptor.version,
-            helio_voxel_data::VOXEL_BUILTIN_GENERATOR_VERSION
-        );
-        let generated = helio_voxel_data::VoxelGeneratorRegistry::default()
-            .generate(&descriptor, VoxelChunkKey::new(0, -1, 0, 0))
-            .expect("default terrain generator parameters should be valid");
-        assert!(generated.is_some(), "flat generator should produce ground");
+        assert_eq!(descriptor.id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
+        assert_eq!(descriptor.version, helio_voxel_data::VOXEL_TERRAIN_GENERATOR_VERSION);
+        assert_eq!(entry.world.shape, VoxelWorldShape::Plane);
+        assert_eq!(entry.voxel_size, 0.1);
+    }
+
+    #[test]
+    fn presets_set_the_world_form() {
+        let mut world = World::new();
+        for (terrain, shape) in [
+            (VoxelTerrainComponent::planet(1_000.0), VoxelWorldShape::Sphere),
+            (VoxelTerrainComponent::plane(512.0), VoxelWorldShape::Plane),
+            (VoxelTerrainComponent::infinite_plane(), VoxelWorldShape::InfinitePlane),
+        ] {
+            let entity = world.spawn();
+            world.insert(entity, terrain);
+            let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
+            assert_eq!(entry.world.shape, shape);
+            assert_eq!(entry.generator_descriptor().unwrap().id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
+        }
     }
 }

@@ -1748,6 +1748,8 @@ struct PropertyAttrOptions {
     is_property: bool,
     category: Option<String>,
     category_color: Option<String>,
+    /// Display label (`label = "..."`), replacing the title-cased field name.
+    label: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -1812,6 +1814,12 @@ fn parse_property_attr(field: &Field) -> PropertyAttrOptions {
                     && let Lit::Str(lit_str) = &expr_lit.lit
                 {
                     out.category_color = Some(lit_str.value());
+                }
+                if name_value.path.is_ident("label")
+                    && let Expr::Lit(expr_lit) = &name_value.value
+                    && let Lit::Str(lit_str) = &expr_lit.lit
+                {
+                    out.label = Some(lit_str.value());
                 }
             }
         }
@@ -1926,7 +1934,10 @@ fn generate_property_metadata(
     let field_name_str = field_name.to_string();
     // Title-cased, space-separated label (#645): "linear_damping" renders
     // as "Linear Damping", consistent with method display names.
-    let display_name = title_case(&field_name_str.replace('_', " "));
+    let display_name = property_attr
+        .label
+        .clone()
+        .unwrap_or_else(|| title_case(&field_name_str.replace('_', " ")));
     let field_type = &field.ty;
 
     // Generate category option

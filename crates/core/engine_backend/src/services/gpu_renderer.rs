@@ -383,7 +383,9 @@ mod tests {
         let drained = std::mem::take(&mut *queue.lock().unwrap());
         assert_eq!(drained.len(), 2);
         match drained[0] {
-            PendingPointerEvent::MouseMove { .. } => panic!("expected LeftClick first"),
+            PendingPointerEvent::MouseMove { .. } | PendingPointerEvent::VoxelBrush { .. } => {
+                panic!("expected LeftClick first")
+            }
             PendingPointerEvent::LeftClick { norm_x, norm_y } => {
                 assert_eq!((norm_x, norm_y), (0.25, 0.75));
             }

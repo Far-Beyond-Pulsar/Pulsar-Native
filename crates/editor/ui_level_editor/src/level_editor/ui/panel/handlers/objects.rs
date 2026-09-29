@@ -113,6 +113,7 @@ impl LevelEditorPanel {
         cx: &mut Context<Self>,
     ) {
         let mut state = self.shared_state.write();
+        crate::level_editor::state::voxel::VoxelStroke::finish(&mut state, true);
         if state.scene.undo() {
             state.scene.bump_revision(true);
             drop(state);

@@ -38,4 +38,7 @@ blueprint_graph_debug.json
 *.lg
 .env
 *.db
+
+# Local validation outputs and evidence archives.
+/docs/validation/
 /crates/target/generated

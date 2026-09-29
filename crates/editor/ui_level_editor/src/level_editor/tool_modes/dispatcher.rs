@@ -64,6 +64,9 @@ impl ToolModeDispatcher {
     /// authoring settings. Keeping this in one place lets both the toolbar
     /// and the contributed dock panels use the same control identifiers.
     pub fn dispatch_widget_edit(state: &mut LevelEditorState, edit: &ToolWidgetEdit) {
+        if Self::dispatch_voxel_edit(state, edit) {
+            return;
+        }
         use crate::level_editor::state::terrain::{BrushShape, SculptMode};
         let terrain = &mut state.editor.terrain;
         match edit {
@@ -96,6 +99,30 @@ impl ToolModeDispatcher {
             }
             ToolWidgetEdit::Invoke { .. } | ToolWidgetEdit::SetToggle { .. } => {}
         }
+    }
+
+    /// The voxel sculpt tool's controls (`voxel_*` ids).
+    fn dispatch_voxel_edit(state: &mut LevelEditorState, edit: &ToolWidgetEdit) -> bool {
+        use crate::level_editor::state::voxel::VoxelSculptMode;
+        use helio_voxel_data::VoxelBrushShape;
+        let voxel = &mut state.editor.voxel;
+        match edit {
+            ToolWidgetEdit::SetSegmented { id: "voxel_mode", value } => {
+                voxel.mode = match *value {
+                    "build" => VoxelSculptMode::Build,
+                    "paint" => VoxelSculptMode::Paint,
+                    _ => VoxelSculptMode::Dig,
+                }
+            }
+            ToolWidgetEdit::SetSegmented { id: "voxel_shape", value } => {
+                voxel.shape = if *value == "cube" { VoxelBrushShape::Cube } else { VoxelBrushShape::Sphere }
+            }
+            ToolWidgetEdit::SetSlider { id: "voxel_radius", value } => voxel.set_radius(*value),
+            ToolWidgetEdit::SetSlider { id: "voxel_material", value } => voxel.set_material(value.round() as u32),
+            ToolWidgetEdit::SetToggle { id: "voxel_block", on } => voxel.single_block = *on,
+            _ => return false,
+        }
+        true
     }
 
     pub fn select_tool_mode(

@@ -17,6 +17,7 @@ impl ToolModeId {
     /// Registered via [`register_tool_modes`], never added to
     /// [`ToolModeRegistry::builtin`].
     pub const SPLINE: Self = Self("spline");
+    pub const VOXEL_SCULPT: Self = Self("voxel_sculpt");
     /// Terrain sculpt and material painting mode.
     pub const TERRAIN: Self = Self("terrain");
 }
@@ -158,5 +159,6 @@ impl Default for ToolModeRegistry {
 /// this one) rather than by editing `builtin()`.
 pub fn register_tool_modes(registry: &mut ToolModeRegistry) {
     registry.register(Box::new(super::spline::SplineMode::default()));
+    registry.register(Box::new(super::voxel_sculpt::VoxelSculptMode::default()));
     registry.register(Box::new(super::terrain::TerrainMode::default()));
 }

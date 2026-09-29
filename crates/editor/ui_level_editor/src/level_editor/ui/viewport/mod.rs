@@ -124,7 +124,7 @@ fn tool_camera_frame(
 ) -> crate::level_editor::tool_modes::CameraFrame {
     state
         .map(|c| crate::level_editor::tool_modes::CameraFrame {
-            position: c.position,
+            position: c.position.map(|coordinate| coordinate as f32),
             yaw: c.yaw,
             pitch: c.pitch,
             fov: 60.0,

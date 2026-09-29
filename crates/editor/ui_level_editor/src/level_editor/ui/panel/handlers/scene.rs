@@ -102,13 +102,53 @@ impl LevelEditorPanel {
     pub(in crate::level_editor::ui::panel) fn on_focus_selected(
         &mut self,
         _: &FocusSelected,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // TODO: Frame selected object in viewport (move camera to focus on selection)
-        if let Some(_obj) = self.shared_state.read().scene.get_selected_object() {
-            // For now just log - implementing camera movement would require Bevy camera manipulation
+        let camera = self.current_editor_camera_state();
+        let framed = {
+            let state = self.shared_state.read();
+            let world = state.scene.world();
+            engine_backend::scene::SceneWorldExt::selected_entity(&*world)
+                .and_then(|entity| focus_camera(&world, entity, camera.as_ref()))
+        };
+        if let Some(framed) = framed {
+            self.apply_editor_camera_state(Some(&framed));
         }
         cx.notify();
     }
+}
+
+/// A camera framing `entity`: over the ground of a voxel world, or a few
+/// metres back from any other object along the current view.
+fn focus_camera(
+    world: &pulsar_scenedb::World,
+    entity: pulsar_scenedb::Entity,
+    camera: Option<&crate::level_editor::scene_edit::LevelEditorCameraState>,
+) -> Option<crate::level_editor::scene_edit::LevelEditorCameraState> {
+    use glam::DVec3;
+    let eye = camera.map_or(DVec3::ZERO, |c| DVec3::from_array(c.position));
+    let forward = camera.map_or(DVec3::NEG_Z, |c| {
+        let (sy, cy) = f64::from(c.yaw).sin_cos();
+        let (sp, cp) = f64::from(c.pitch).sin_cos();
+        DVec3::new(sy * cp, sp, -cy * cp)
+    });
+    let (position, forward) = if world.get::<helio_component::VoxelTerrainComponent>(entity).is_some() {
+        match helio_component::voxel_world::terrain_world(world, entity) {
+            Ok(planet) => helio_component::voxel_world::frame_view(&planet, eye, forward, 30.0),
+            Err(error) => {
+                tracing::warn!("Focus: {error}");
+                return None;
+            }
+        }
+    } else {
+        let object = crate::level_editor::scene_edit::objects::entity_to_scene_object_data(world, entity);
+        let target = DVec3::from_array(object.transform.position.map(f64::from));
+        (target - forward * 8.0, forward)
+    };
+    Some(crate::level_editor::scene_edit::LevelEditorCameraState {
+        position: position.to_array(),
+        yaw: forward.x.atan2(-forward.z) as f32,
+        pitch: forward.y.clamp(-1.0, 1.0).asin() as f32,
+    })
 }
