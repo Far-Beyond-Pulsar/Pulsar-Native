@@ -68,6 +68,9 @@ debug = "limited"
 split-debuginfo = "unpacked"
 
 [profile.dev.package]
+# Voxel terrain residency, ray casts and world builds run on the CPU every
+# frame; unoptimized they would misrepresent the editor viewport.
+helio-pass-voxel-planet = { opt-level = 3 }
 resvg = { opt-level = 3 }
 rustybuzz = { opt-level = 3 }
 taffy = { opt-level = 3 }

@@ -192,6 +192,7 @@ pub fn initialize_empty_cube(entry: &VoxelSceneEntry) -> Result<bool, String> {
 }
 
 pub fn project_voxel_entries(world: &World) -> (Vec<VoxelSceneEntry>, Vec<String>) {
+    profiling::profile_scope!("voxel_project_entries");
     let mut entries = Vec::new();
     let mut errors = Vec::new();
     for (entity, component) in world.query::<&VoxelComponent>() {
@@ -295,28 +296,6 @@ pub(super) fn object_entry(
     })
 }
 
-/// Engine class of the component that holds a terrain generator's settings,
-/// as the generator declares it when registered.
-pub fn generator_settings_component(id: &str, version: u32) -> Option<String> {
-    #[cfg(feature = "render")]
-    {
-        helio_pass_voxel_planet::terrain::find(id, version).and_then(|generator| generator.info().settings_component)
-    }
-    #[cfg(not(feature = "render"))]
-    {
-        let _ = (id, version);
-        None
-    }
-}
-
-/// The generator's settings serialized from its settings component on the
-/// same entity, which replaces the opaque parameter string when present.
-fn generator_settings(world: &World, entity: Entity, terrain: &VoxelTerrainComponent) -> Option<String> {
-    let class = generator_settings_component(&terrain.generator_id, terrain.generator_version)?;
-    let settings = pulsar_world_registry::get_world_component_as_engine_class(&class, world, entity)?;
-    settings.to_json().ok().map(|json| json.to_string())
-}
-
 pub(super) fn terrain_entry(
     world: &World,
     entity: Entity,
@@ -390,12 +369,11 @@ pub(super) fn terrain_entry(
         lod_scale: component.lod_scale,
         renderer_id: component.renderer_id.clone(),
         material_ids: component.material_ids.clone(),
-        generator: (!component.generator_id.is_empty()).then(|| VoxelGeneratorConfig {
-            id: component.generator_id.clone(),
-            version: component.generator_version,
+        generator: (!component.generator.id.is_empty()).then(|| VoxelGeneratorConfig {
+            id: component.generator.id.clone(),
+            version: component.generator.version,
             seed: component.seed,
-            parameters: generator_settings(world, entity, component)
-                .unwrap_or_else(|| component.generator_parameters.clone()),
+            parameters: helio_component::voxel_world::generator_settings(world, entity, component),
         }),
         initial_cube: None,
         world: VoxelWorldForm {
@@ -425,8 +403,8 @@ mod tests {
         component.max_chunk_lod = 4;
         component.lod_scale = 3;
         component.renderer_id = "test.renderer".into();
-        component.generator_id = "test.world".into();
-        component.generator_version = 7;
+        component.generator.id = "test.world".into();
+        component.generator.version = 7;
         component.seed = 42;
         component.generator_parameters = "{\"biome\":1}".into();
         component.material_ids = vec![0; 300];

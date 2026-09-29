@@ -53,13 +53,34 @@ infinite planes, each filled by a registered terrain generator.
 
   A generator's tests should call `engine::verify_field` (CPU against GPU)
   and `terrain::check_field` (declared bounds). Changing only settings
-  rebuilds the world without recompiling shaders.
-- **Editing.** Select **Voxel Sculpt** in the tool menu, then click or drag to
-  dig; hold Shift to build with cobblestone. The backend ray casts exact cells
-  in `f64` (orbital edits work) and appends a brush to the component's
-  `edits` journal, advancing the source revision. A stroke that only appends
-  brushes updates the cached world incrementally. Save the level to keep the
-  edits.
+  rebuilds the world without recompiling shaders. In the inspector,
+  **Generator** is a searchable picker of the registered generators;
+  choosing one attaches its settings component.
+- **Editing.** Select **Voxel Sculpt** in the tool menu. The toolbar sets
+  the mode (dig, build, paint), the brush shape (sphere or cube), its radius
+  and material, and **One block** for single-block edits; Shift swaps dig
+  and build. Edits are exact cells found by an `f64` ray cast (orbital edits
+  work) and are appended to the component's `edits` journal. Each stroke
+  (press to release) is one undo step (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y).
+  Save the level to keep the edits. **F** frames the selected terrain from
+  30 m above the ground under the camera.
+- **Scripting.** World methods on `VoxelTerrainComponent`, callable from
+  blueprints and scripts, with positions in world metres and terrain
+  material ids (0 is air):
+
+  | Method | Result |
+  |--------|--------|
+  | `get_block(x, y, z)` | material of the block containing the point |
+  | `set_block(x, y, z, material)` | makes that block `material` (0 removes it) |
+  | `fill_sphere(x, y, z, radius, material)` | fills or clears every block within `radius` |
+  | `fill_cube(x, y, z, half_size, material)` | the same for a ground-aligned cube |
+  | `raycast_distance(x, y, z, dx, dy, dz, max_distance)` | distance to the first solid block, or -1 |
+  | `voxel_size()` | block edge length in metres |
+
+  Script edits go into the same journal as the sculpt tool, so the renderer,
+  the editor and gameplay code always agree on every block. On generated
+  terrain, the older `paint_sample`/`erase_sample` methods address the block
+  at `(sample + 0.5) * voxel_size`.
 - **Rendering.** Terrain is traced per pixel through a GPU-driven clipmap of
   exact voxel columns. Nearby voxels stay crisp; distant cells use filtered
   appearance, with no smooth terrain and no visible LOD pop. The viewport

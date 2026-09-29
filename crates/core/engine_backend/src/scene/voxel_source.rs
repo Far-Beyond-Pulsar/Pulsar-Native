@@ -506,7 +506,7 @@ mod tests {
             let mut component = VoxelTerrainComponent::default();
             component.chunk_edge_voxels = 2;
             component.max_chunk_lod = 4;
-            component.generator_id = "test.world".into();
+            component.generator.id = "test.world".into();
             guard.world.insert(entity, component);
             entity
         };

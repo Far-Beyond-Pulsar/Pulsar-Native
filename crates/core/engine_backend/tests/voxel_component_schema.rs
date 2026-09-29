@@ -22,13 +22,13 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
     let terrain = VoxelTerrainComponent::default();
     assert_eq!(terrain.domain_mode, 1);
     // New terrain rows start as a 4 km plane of Helio's terrain generator.
-    assert_eq!(terrain.generator_id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
+    assert_eq!(terrain.generator.id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
     assert_eq!(terrain.voxel_size, 0.1);
     let terrain_json = serde_json::to_value(&terrain).expect("serialize terrain component");
     let terrain_restored: VoxelTerrainComponent =
         serde_json::from_value(terrain_json).expect("restore terrain component");
-    assert_eq!(terrain_restored.generator_id, terrain.generator_id);
-    assert_eq!(terrain_restored.generator_version, 1);
+    assert_eq!(terrain_restored.generator.id, terrain.generator.id);
+    assert_eq!(terrain_restored.generator.version, 1);
     assert_eq!(terrain_restored.chunk_edge_voxels, 8);
     assert_eq!(terrain_restored.max_chunk_lod, 16);
     assert_eq!(terrain_restored.lod_scale, 2);
@@ -39,28 +39,23 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
         .unwrap()
         .remove("generator_version");
     let older: VoxelTerrainComponent = serde_json::from_value(older_json).unwrap();
-    assert_eq!(older.generator_version, 1);
+    assert_eq!(older.generator.version, 1);
 }
 
 #[test]
-fn service_revision_is_persisted_but_not_exposed_as_an_inspector_property() {
-    let properties = VoxelTerrainComponent::default().get_properties();
-    assert_eq!(properties.len(), 22);
-    assert!(properties
-        .iter()
-        .any(|property| property.name == "renderer_id"));
-    assert!(properties
-        .iter()
-        .any(|property| property.name == "chunk_edge_voxels"));
-    assert!(properties
-        .iter()
-        .any(|property| property.name == "max_chunk_lod"));
-    assert!(properties
-        .iter()
-        .any(|property| property.name == "lod_scale"));
-    assert!(properties
-        .iter()
-        .all(|property| property.name != "source_revision"));
+fn the_inspector_shows_world_generation_and_editing_only() {
+    let terrain = VoxelTerrainComponent::default();
+    let names: Vec<_> = terrain.get_properties().iter().map(|property| property.name).collect();
+    assert_eq!(
+        names,
+        ["enabled", "shape", "planet_radius", "plane_size", "voxel_size", "generator", "seed", "editable"]
+    );
+    // Chunk layout, LOD and bookkeeping stay serialized but internal.
+    let json = serde_json::to_value(&terrain).unwrap();
+    for key in ["generator_id", "generator_version", "chunk_edge_voxels", "max_chunk_lod", "lod_scale", "source_revision"] {
+        assert!(json.get(key).is_some(), "{key} is serialized");
+    }
+    assert!(json.get("generator").is_none(), "the generator reference is flattened");
 }
 
 #[test]
@@ -121,7 +116,7 @@ fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
     let mut world = pulsar_scenedb::World::new();
     let entity = world.spawn();
     let mut terrain = VoxelTerrainComponent::default();
-    terrain.generator_id = "test.generator".into();
+    terrain.generator.id = "test.generator".into();
     terrain.seed = 1234;
     let terrain_json = serde_json::to_value(&terrain).unwrap();
     assert!(pulsar_world_registry::hydrate_world_component_for_class(
@@ -134,7 +129,7 @@ fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
     let hydrated = world
         .get::<VoxelTerrainComponent>(entity)
         .expect("typed SceneDB component");
-    assert_eq!(hydrated.generator_id, "test.generator");
+    assert_eq!(hydrated.generator.id, "test.generator");
     assert_eq!(hydrated.seed, 1234);
 
     let voxel = VoxelComponent::default();

@@ -85,10 +85,25 @@ pub enum PendingPointerEvent {
     VoxelBrush {
         norm_x: f32,
         norm_y: f32,
-        radius: f32,
-        material: u32,
+        request: VoxelBrushRequest,
     },
     LeftRelease,
+}
+
+/// One sculpt-tool stroke sample, applied where the pointer ray first hits
+/// voxel terrain.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VoxelBrushRequest {
+    /// Remove digs into the hit block; Add builds on the face in front of
+    /// it; Paint recolours solid blocks.
+    pub op: helio_voxel_data::VoxelBrushOp,
+    pub shape: helio_voxel_data::VoxelBrushShape,
+    /// Brush radius (half size for a cube) in metres.
+    pub radius: f32,
+    /// Terrain material for Add and Paint.
+    pub material: u32,
+    /// Edit exactly one block, whatever the radius.
+    pub single_block: bool,
 }
 
 /// Cheap, `Clone`-able handle bundle for issuing editor commands
@@ -241,6 +256,10 @@ pub struct HelioRenderer {
     /// shared scene and avoids scanning every mesh during a drag.
     render_row_subscriptions_armed: bool,
     voxel_backends: VoxelBackendRegistry,
+    /// Last applied stamp of the sculpt stroke in progress (cleared on release).
+    voxel_stroke_last: Option<VoxelBrushCommit>,
+    /// Camera distance to the nearest voxel ground, from the last frame.
+    voxel_clearance: Option<f64>,
     last_voxel_errors: Vec<String>,
 }
 
@@ -291,6 +310,8 @@ impl HelioRenderer {
             profiler_frame_counter: 0,
             render_row_subscriptions_armed: false,
             voxel_backends,
+            voxel_stroke_last: None,
+            voxel_clearance: None,
             last_voxel_errors: Vec::new(),
         }
     }
@@ -534,13 +555,8 @@ impl HelioRenderer {
                         profiling::profile_scope!("helio_handle_left_release");
                         self.handle_left_release();
                     }
-                    PendingPointerEvent::VoxelBrush {
-                        norm_x,
-                        norm_y,
-                        radius,
-                        material,
-                    } => {
-                        self.handle_voxel_brush(norm_x, norm_y, radius, material);
+                    PendingPointerEvent::VoxelBrush { norm_x, norm_y, request } => {
+                        self.handle_voxel_brush(norm_x, norm_y, request);
                     }
                 }
             }
@@ -766,6 +782,7 @@ impl HelioRenderer {
             (entries, errors, authored_sky, authored_meshes, sun)
         };
         let (camera_relative, outdoor_sky) = self.voxel_backends.frame_environment(&voxel_entries);
+        self.voxel_clearance = self.voxel_backends.ground_clearance(&voxel_entries, self.cam_pos);
         let (terrain_near, far) = self.voxel_backends.camera_clip_range(&voxel_entries, self.cam_pos)
             .unwrap_or((0.1, 10_000.0));
         // A terrain's empty-space certificate says nothing about authored
@@ -1041,7 +1058,10 @@ impl HelioRenderer {
         let (sy, cy) = self.cam_yaw.sin_cos();
         let fwd = Vec3::new(sy, 0.0, -cy);
         let right = Vec3::new(cy, 0.0, sy);
-        let speed = if input.boost {
+        // Over voxel worlds speed grows with height above the ground: the
+        // base speed within 20 m of it, 50x at 1 km, orbit in seconds.
+        let altitude = self.voxel_clearance.map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6) as f32);
+        let speed = altitude * if input.boost {
             input.move_speed * 3.0
         } else {
             input.move_speed
@@ -1062,6 +1082,10 @@ impl HelioRenderer {
         self.cam_pos += (right * self.cam_local_velocity.x * dt).as_dvec3();
         self.cam_pos += (Vec3::Y * self.cam_local_velocity.y * dt).as_dvec3();
         self.cam_pos += (fwd * self.cam_local_velocity.z * dt).as_dvec3();
+        // The editor camera never enters solid voxel terrain.
+        if let Some(lifted) = self.voxel_backends.lift_out_of_ground(self.cam_pos) {
+            self.cam_pos = lifted;
+        }
 
         // Middle-mouse (or right-click + Shift) view-plane pan: translate the camera
         // along its screen right/up axes for a 1:1 "grab" feel. Applied directly from
@@ -1117,7 +1141,8 @@ impl HelioRenderer {
         }
     }
 
-    fn handle_voxel_brush(&mut self, norm_x: f32, norm_y: f32, radius: f32, material: u32) {
+    fn handle_voxel_brush(&mut self, norm_x: f32, norm_y: f32, request: VoxelBrushRequest) {
+        profiling::profile_scope!("voxel_brush");
         let (width, height) = self.viewport_size;
         let aspect = width.max(1) as f32 / height.max(1) as f32;
         let (sy, cy) = self.cam_yaw.sin_cos();
@@ -1140,11 +1165,25 @@ impl HelioRenderer {
         };
         match self
             .voxel_backends
-            .edit_ray(&entries, self.cam_pos, direction, radius, material)
+            .edit_ray(&entries, self.cam_pos, direction, request)
         {
             Ok(Some(commit)) => {
+                // Fill the gap from the stroke's previous stamp, so fast drags
+                // stay continuous at any frame rate.
+                let voxel = entries.iter().find(|e| e.id == commit.id).map_or(0.1, |e| e.voxel_size);
+                let fill = self
+                    .voxel_stroke_last
+                    .as_ref()
+                    .filter(|last| last.id == commit.id)
+                    .map(|last| super::voxel_backend::stroke_fill(&last.edit, &commit.edit, voxel))
+                    .unwrap_or_default();
                 let mut scene = self.scene_store.write();
-                self.gizmo_dirty |= apply_voxel_brush_commit(&mut scene.world, commit);
+                for edit in fill {
+                    let stamp = VoxelBrushCommit { edit, ..commit.clone() };
+                    self.gizmo_dirty |= apply_voxel_brush_commit(&mut scene.world, stamp);
+                }
+                self.gizmo_dirty |= apply_voxel_brush_commit(&mut scene.world, commit.clone());
+                self.voxel_stroke_last = Some(commit);
             }
             Ok(_) => {}
             Err(error) => {
@@ -1304,6 +1343,7 @@ impl HelioRenderer {
 
     pub fn handle_left_release(&mut self) {
         self.gizmo_dirty = true;
+        self.voxel_stroke_last = None;
         if let Some(inner) = &mut self.inner {
             inner.interaction.cancel_drag();
         }
