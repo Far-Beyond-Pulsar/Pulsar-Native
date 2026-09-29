@@ -98,6 +98,7 @@ impl ProviderCrate for AwsBedrockProviderCrate {
             id: "aws_bedrock",
             display_name: "AWS Bedrock",
             kind: ProviderKind::Cloud,
+            template: false,
             default_endpoint: None,
             config_fields: vec![ConfigField {
                 key: "info",

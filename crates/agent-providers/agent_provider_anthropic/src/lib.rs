@@ -690,6 +690,7 @@ impl ProviderCrate for AnthropicProviderCrate {
             id: "anthropic",
             display_name: "Anthropic",
             kind: ProviderKind::Cloud,
+            template: false,
             default_endpoint: Some("https://api.anthropic.com/v1/messages"),
             config_fields: vec![ConfigField {
                 key: "api_key",

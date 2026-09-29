@@ -183,6 +183,7 @@ impl ProviderCrate for DemoRandomProviderCrate {
             id: "demo_random",
             display_name: "Demo Random",
             kind: ProviderKind::Local,
+            template: false,
             default_endpoint: None,
             config_fields: vec![],
         }]

@@ -33,7 +33,7 @@ use tool_mode_dropdown::ToolModeDropdown;
 pub use view::ToolbarView;
 
 use crate::level_editor::ui::mode_widgets::{active_mode_widgets, render_mode_widgets};
-use crate::level_editor::{LevelEditorState, request_thumbnail_capture};
+use crate::level_editor::LevelEditorState;
 
 /// Premium Toolbar - A beautifully crafted control panel for game development
 ///
@@ -143,7 +143,7 @@ impl ToolbarPanel {
             .label("Save")
             .primary()
             .tooltip("Save scene")
-            .on_click(move |_, _, _| {
+            .on_click(move |_, window, cx| {
                 let target_path = {
                     let state = state_clone.read();
                     state
@@ -158,48 +158,27 @@ impl ToolbarPanel {
                     return;
                 };
 
-                if let Some(parent) = path.parent() {
-                    if let Err(e) = engine_fs::virtual_fs::create_dir_all(parent) {
-                        tracing::error!("Save failed: could not create {:?}: {e}", parent);
-                        return;
-                    }
-                }
-
-                let save_result = {
-                    let state = state_clone.read();
-                    let camera_state = gpu_engine
-                        .lock()
-                        .ok()
-                        .and_then(|engine| engine.editor_camera_state());
-                    let editor_camera = camera_state.map(|camera| {
-                        crate::level_editor::scene_edit::LevelEditorCameraState {
-                            position: camera.position,
-                            yaw: camera.yaw,
-                            pitch: camera.pitch,
-                        }
-                    });
-                    let world = state.scene.world();
-                    crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(
-                        &world,
-                        &path,
-                        editor_camera,
-                    )
-                };
-
-                match save_result {
-                    Ok(_) => {
-                        {
-                            let mut state = state_clone.write();
-                            state.scene.current_scene = Some(path);
-                            state.scene.has_unsaved_changes = false;
-                        }
-                        request_thumbnail_capture(&state_clone);
-                    }
-                    Err(e) => {
-                        tracing::error!("Save failed: {e}");
-                    }
-                }
+                // Background save (#967); sets the level's path on success.
+                crate::level_editor::ui::save::save_level(
+                    state_clone.clone(),
+                    path,
+                    Self::editor_camera(&gpu_engine),
+                    window,
+                    cx,
+                );
             })
+    }
+
+    /// The editor camera pose to store in the saved level.
+    fn editor_camera(
+        gpu_engine: &Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+    ) -> Option<crate::level_editor::scene_edit::LevelEditorCameraState> {
+        let camera = gpu_engine.lock().ok()?.editor_camera_state()?;
+        Some(crate::level_editor::scene_edit::LevelEditorCameraState {
+            position: camera.position,
+            yaw: camera.yaw,
+            pitch: camera.pitch,
+        })
     }
 
     fn is_source_build() -> bool {
@@ -267,60 +246,35 @@ impl ToolbarPanel {
                     }
                 }
 
-                let save_result = {
-                    let state = state_clone.read();
-                    let camera_state = gpu_engine
-                        .lock()
-                        .ok()
-                        .and_then(|engine| engine.editor_camera_state());
-                    let editor_camera = camera_state.map(|camera| {
-                        crate::level_editor::scene_edit::LevelEditorCameraState {
-                            position: camera.position,
-                            yaw: camera.yaw,
-                            pitch: camera.pitch,
+                // A copy in the background (#967): the level keeps its own
+                // path and unsaved state. Failures are notified by the saver.
+                let saved_to = path.clone();
+                crate::level_editor::ui::save::save_in_background(
+                    state_clone.clone(),
+                    path,
+                    Self::editor_camera(&gpu_engine),
+                    crate::level_editor::ui::save::SaveKind::Copy,
+                    window,
+                    cx,
+                    move |result, window, cx| {
+                        if result.is_ok() {
+                            tracing::info!("Default level saved to {:?}", saved_to);
+                            window.push_notification(
+                                ui::notification::Notification::success(
+                                    t!("Notification.Title.SaveAsDefaultLevel").to_string(),
+                                )
+                                .message(
+                                    t!(
+                                        "Notification.Message.SavedTo",
+                                        path => saved_to.display().to_string()
+                                    )
+                                    .to_string(),
+                                ),
+                                cx,
+                            );
                         }
-                    });
-                    let world = state.scene.world();
-                    crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(
-                        &world,
-                        &path,
-                        editor_camera,
-                    )
-                };
-
-                match save_result {
-                    Ok(_) => {
-                        tracing::info!("Default level saved to {:?}", path);
-                        window.push_notification(
-                            ui::notification::Notification::success(
-                                t!("Notification.Title.SaveAsDefaultLevel").to_string(),
-                            )
-                            .message(
-                                t!(
-                                    "Notification.Message.SavedTo",
-                                    path => path.display().to_string()
-                                )
-                                .to_string(),
-                            ),
-                            cx,
-                        );
-                    }
-                    Err(e) => {
-                        window.push_notification(
-                            ui::notification::Notification::error(
-                                t!("Notification.Title.SaveAsDefaultLevel").to_string(),
-                            )
-                            .message(
-                                t!(
-                                    "Notification.Message.SaveFailed",
-                                    error => e.to_string()
-                                )
-                                .to_string(),
-                            ),
-                            cx,
-                        );
-                    }
-                }
+                    },
+                );
             })
     }
 

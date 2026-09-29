@@ -91,89 +91,50 @@ impl LevelEditorPanel {
     pub(in crate::level_editor::ui::panel) fn on_save_scene(
         &mut self,
         _: &SaveScene,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         // If no current scene path, do Save As
-        if self.shared_state.read().scene.current_scene.is_none() {
+        let Some(path) = self.shared_state.read().scene.current_scene.clone() else {
             cx.dispatch_action(&SaveSceneAs);
             return;
-        }
-
-        let (scene_db, path_opt) = {
-            let state = self.shared_state.read();
-            (
-                state.scene.shared_scene(),
-                state.scene.current_scene.clone(),
-            )
         };
-
-        if let Some(path) = path_opt {
-            let save_result = {
-                let world = scene_db.read();
-                crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(
-                    &world.world,
-                    &path,
-                    self.current_editor_camera_state(),
-                )
-            };
-            match save_result {
-                Ok(_) => {
-                    self.shared_state.write().scene.has_unsaved_changes = false;
-                    request_thumbnail_capture(&self.shared_state);
-                    cx.notify();
-                }
-                Err(e) => {}
-            }
-        }
+        // Runs in the background; the editor stays responsive (#967).
+        crate::level_editor::ui::save::save_level(
+            self.shared_state.clone(),
+            path,
+            self.current_editor_camera_state(),
+            window,
+            cx,
+        );
     }
 
     pub(in crate::level_editor::ui::panel) fn on_save_scene_as(
         &mut self,
         _: &SaveSceneAs,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let state_arc = self.shared_state.clone();
-        let scene_db = { state_arc.read().scene.shared_scene() };
         let editor_camera = self.current_editor_camera_state();
         let dialog = rfd::AsyncFileDialog::new()
             .set_title("Save Scene As")
             .add_filter("Level file", &["level", "json"])
             .set_file_name("untitled.level");
-        cx.spawn(async move |_this, cx| {
+        cx.spawn_in(window, async move |_this, cx| {
             if let Some(handle) = dialog.save_file().await {
                 let path = handle.path().to_path_buf();
-                let result = {
-                    let world = scene_db.read();
-                    crate::level_editor::scene_edit::level_io::save_to_file_with_editor_camera(
-                        &world.world,
-                        &path,
+                // Background save; on success the level's path becomes `path`.
+                cx.update(|window, cx| {
+                    crate::level_editor::ui::save::save_level(
+                        state_arc,
+                        path,
                         editor_camera,
+                        window,
+                        cx,
                     )
-                };
-                cx.update(|cx| {
-                    _this.update(cx, |_, cx| {
-                        match result {
-                            Ok(_) => {
-                                let previous = state_arc.write().scene.current_scene.clone();
-                                if let Some(prev) = previous {
-                                    ai_sessions::unregister_open_scene(&prev);
-                                }
-                                state_arc.write().scene.current_scene = Some(path);
-                                state_arc.write().scene.has_unsaved_changes = false;
-                                request_thumbnail_capture(&state_arc);
-                                if let Some(open_path) =
-                                    state_arc.read().scene.current_scene.clone()
-                                {
-                                    ai_sessions::register_open_scene(&open_path, &state_arc);
-                                }
-                            }
-                            Err(e) => tracing::error!("Save failed: {}", e),
-                        }
-                        cx.notify();
-                    });
-                });
+                })
+                .ok();
             }
         })
         .detach();

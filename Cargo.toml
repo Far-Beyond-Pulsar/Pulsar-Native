@@ -75,6 +75,26 @@ resvg = { opt-level = 3 }
 rustybuzz = { opt-level = 3 }
 taffy = { opt-level = 3 }
 ttf-parser = { opt-level = 3 }
+# The renderer itself and every editor panel built on it -- excluded from
+# this list until now, but they're exactly the "hot, rarely what you're
+# actually debugging" case this override list exists for (see the four
+# entries above): scene/quad batching, layout-tree diffing, and every
+# panel's own per-frame render() all run through these two crates on every
+# single frame. At the workspace default of opt-level 0, that's commonly a
+# 10-20x slowdown over release for CPU-bound Rust -- easily the difference
+# between "30-40fps" and "hundreds" on its own, before any actual
+# algorithmic issue. `gpui-ce` is excluded from `[workspace] members`
+# (it's WGPUI's own independently-versioned repo, see that exclude's own
+# comment) but that only affects auto-target-discovery, not which profile
+# applies to it when built as a path dependency of this workspace's own
+# binaries -- it still gets *this* Cargo.toml's `[profile.dev.package]`
+# table like any other dependency in the graph.
+gpui-ce = { opt-level = 3 }
+ui = { opt-level = 3 }
+# Path tessellation (`gpui::PathBuilder`, backed by lyon): every icon/SVG
+# already went through this, and the profiler's newly-added smooth-curve
+# charts (`ui::profiler::record::overview`) now do too.
+lyon = { opt-level = 3 }
 
 ###################################
 # Workspace Dependencies

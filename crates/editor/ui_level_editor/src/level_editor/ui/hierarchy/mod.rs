@@ -52,6 +52,27 @@ struct SceneObjectItem {
     is_selected: bool,
     is_folder: bool,
     class_role: ClassRole,
+    /// SceneDB's projected `helio::Movability` (#837); `None` for objects
+    /// with no mesh or light.
+    movability: Option<helio::Movability>,
+}
+
+/// `id` and every object under it, for the subtree actions.
+fn subtree_ids(state: &LevelEditorState, id: &str) -> Vec<String> {
+    use engine_backend::scene::SceneWorldExt;
+    let world = state.scene.world();
+    let Some(root) = world.entity_for(id) else {
+        return Vec::new();
+    };
+    let mut ids = Vec::new();
+    let mut stack = vec![root];
+    while let Some(entity) = stack.pop() {
+        if let Some(stable) = world.stable_id_of(entity) {
+            ids.push(stable.to_string());
+        }
+        stack.extend(world.children_of(Some(entity)));
+    }
+    ids
 }
 
 impl HierarchyItem for SceneObjectItem {
@@ -213,7 +234,10 @@ impl HierarchyItem for SceneObjectItem {
                 .border_color(cx.theme().border)
                 .child(text)
         };
-        let row = h_flex().gap_0p5();
+        let row = h_flex().gap_0p5().when(
+            self.movability == Some(helio::Movability::Static),
+            |row| row.child(badge("static", cx)),
+        );
         Some(match self.class_role {
             // Class-owned children come and go with their class: no
             // duplicate/delete of their own.
@@ -250,8 +274,31 @@ impl HierarchyItem for SceneObjectItem {
         let delete_id = self.object.id.clone();
         let duplicate_state = self.state_arc.clone();
         let delete_state = self.state_arc.clone();
+        // "Mark selection Static" (#837): the object and everything under
+        // it, one undo step. Objects with no mesh or light are skipped.
+        let set_movability = |movability: helio_component::components::ObjectMovability| {
+            let id = self.object.id.clone();
+            let state_arc = self.state_arc.clone();
+            move |_: &mut Window, _: &mut App| {
+                let mut state = state_arc.write();
+                let ids = subtree_ids(&state, &id);
+                execute_command(&mut state, SceneCommand::SetMovability { ids, movability });
+            }
+        };
+        use helio_component::components::ObjectMovability;
 
-        menu.menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
+        menu.menu_handler_with_icon(
+            "Mark Static (with children)",
+            IconName::Pin,
+            set_movability(ObjectMovability::Static),
+        )
+        .menu_handler_with_icon(
+            "Mark Movable (with children)",
+            IconName::Drag,
+            set_movability(ObjectMovability::Movable),
+        )
+        .separator()
+        .menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
             let _ = app;
             let mut state = duplicate_state.write();
             execute_command(
@@ -335,12 +382,19 @@ impl HierarchyPanel {
                     } else {
                         ClassRole::None
                     };
+                let movability = {
+                    use engine_backend::scene::SceneWorldExt;
+                    world
+                        .entity_for(&obj.id)
+                        .and_then(|entity| world.get::<helio::Movability>(entity).copied())
+                };
                 SceneObjectItem {
                     object: Rc::new(obj),
                     state_arc: state_arc.clone(),
                     is_selected,
                     is_folder,
                     class_role,
+                    movability,
                 }
             })
             .collect();

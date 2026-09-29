@@ -126,6 +126,18 @@ pub struct HelioEditorMailbox {
     pending_camera_state: Arc<Mutex<Option<EditorCameraState>>>,
     pending_deselect: Arc<AtomicBool>,
     pending_force_full_resync: Arc<AtomicBool>,
+    viewport_bloom: Arc<AtomicBool>,
+    static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
+}
+
+/// A gizmo drag started on an object whose SceneDB `helio::Movability`
+/// promises a fixed transform (Pulsar-Native#837). Moving it anyway leaves
+/// cached data (the static shadow atlas) describing its old place.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StaticDragWarning {
+    pub object_id: String,
+    pub object_name: String,
+    pub movability: helio::Movability,
 }
 
 impl HelioEditorMailbox {
@@ -134,6 +146,12 @@ impl HelioEditorMailbox {
         if let Ok(mut pending) = self.pending_camera_state.lock() {
             *pending = Some(camera);
         }
+    }
+
+    /// The latest Static/Stationary drag the render thread saw, if the UI
+    /// has not taken it yet.
+    pub fn take_static_drag_warning(&self) -> Option<StaticDragWarning> {
+        self.static_drag_warning.lock().ok()?.take()
     }
 
     /// Queue the SceneDB interaction gizmo mode for the render thread to apply
@@ -155,6 +173,14 @@ impl HelioEditorMailbox {
     pub fn queue_force_full_resync(&self) {
         self.pending_force_full_resync
             .store(true, Ordering::Relaxed);
+    }
+
+    /// Show or hide bloom in the viewport (the toolbar's Bloom toggle). The
+    /// project's graphics settings must also enable it; see
+    /// [`crate::scene::EditorPostProcess`]. Takes the state, not a toggle,
+    /// so the viewport follows the toolbar even if an update is superseded.
+    pub fn set_viewport_bloom(&self, enabled: bool) {
+        self.viewport_bloom.store(enabled, Ordering::Release);
     }
 }
 
@@ -191,7 +217,9 @@ pub struct HelioRenderer {
     pub camera_input: Arc<Mutex<CameraInput>>,
     pub scene_store: crate::scene::SharedScene,
 
-    // ── Legacy (unused) ──
+    // ── Legacy feature commands ──
+    /// Drained every frame and otherwise ignored: viewport feature state
+    /// reaches the renderer through [`HelioEditorMailbox`].
     pub command_sender: mpsc::Sender<RendererCommand>,
     pub command_receiver: mpsc::Receiver<RendererCommand>,
 
@@ -210,6 +238,11 @@ pub struct HelioRenderer {
     /// through this instead of a `gpu_engine.lock()` that could silently
     /// drop the request the same way the old click/release path could.
     pub pending_force_full_resync: Arc<AtomicBool>,
+    /// The toolbar's Bloom toggle; see [`HelioEditorMailbox::set_viewport_bloom`].
+    pub viewport_bloom: Arc<AtomicBool>,
+    /// Written by the render thread when a gizmo drag starts on a fixed-
+    /// movability object; taken by the UI (`HelioEditorMailbox`).
+    pub static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
 
     // ── Renderer State ──
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
@@ -303,6 +336,9 @@ impl HelioRenderer {
             pending_deselect: Arc::new(AtomicBool::new(false)),
             pending_pointer_events: Arc::new(Mutex::new(Vec::new())),
             pending_force_full_resync: Arc::new(AtomicBool::new(false)),
+            // Matches the toolbar's default until the UI reports its state.
+            viewport_bloom: Arc::new(AtomicBool::new(true)),
+            static_drag_warning: Arc::new(Mutex::new(None)),
             reset_taa_next_frame: false,
             inner: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
@@ -632,6 +668,13 @@ impl HelioRenderer {
         self.configure_gizmo_view();
         self.viewport_size = previous_viewport_size;
 
+        // Before idle detection: a changed camera row bumps the scene
+        // revision, so this frame steps SceneDB and uploads it.
+        {
+            profiling::profile_scope!("helio_sync_editor_postprocess");
+            self.sync_editor_postprocess();
+        }
+
         let inner = match self.inner.as_mut() {
             Some(i) => i,
             None => return None,
@@ -779,6 +822,14 @@ impl HelioRenderer {
             if full_projection {
                 crate::scene::arm_render_row_subscriptions(&mut scene_store.world);
                 self.render_row_subscriptions_armed = true;
+            }
+            {
+                // Splines are SceneDB components drawn by Helio's editor debug
+                // pass in world space, so they follow the camera like the grid.
+                profiling::profile_scope!("helio_sync_spline_lines");
+                let lines =
+                    helio_component::components::spline_debug_lines(&scene_store.world);
+                inner.renderer.debug_set_editor_lines("splines", lines);
             }
             {
                 profiling::profile_scope!("helio_scene_store_step");
@@ -980,14 +1031,17 @@ impl HelioRenderer {
                     tracing::error!("Helio render error: {:?}", e);
                 }
             }
-            // An empty `queue.submit` still takes the queue lock and can drain
-            // pending work, so it gets its own span.
-            profiling::profile_scope!("helio_queue_submit (fence)");
-            Some(
-                inner
-                    .queue
-                    .submit(std::iter::empty::<wgpu::CommandBuffer>()),
-            )
+            // The graph's own submission carries the frame. Only when Helio
+            // submitted nothing (an error) fall back to an empty submit, which
+            // takes the queue lock and can drain pending work.
+            inner.renderer.last_submission().or_else(|| {
+                profiling::profile_scope!("helio_queue_submit (fence)");
+                Some(
+                    inner
+                        .queue
+                        .submit(std::iter::empty::<wgpu::CommandBuffer>()),
+                )
+            })
         };
         self.gizmo_dirty = false;
         inner.has_rendered_frame = true;
@@ -1157,6 +1211,32 @@ impl HelioRenderer {
         }
     }
 
+    /// Keep the editor camera's post-process row in step with the toolbar's
+    /// Bloom toggle and the project's graphics settings. Also drains the
+    /// legacy feature commands, which carry no state.
+    fn sync_editor_postprocess(&mut self) {
+        while let Ok(command) = self.command_receiver.try_recv() {
+            match command {
+                RendererCommand::ToggleFeature(feature) => {
+                    tracing::debug!(%feature, "Feature toggle received; viewport state arrives through the editor mailbox");
+                }
+            }
+        }
+        let desired = crate::scene::EditorPostProcess::from_project_settings(
+            self.viewport_bloom.load(Ordering::Acquire),
+        );
+        let current =
+            crate::scene::editor_postprocess_is_current(&self.scene_store.read().world, desired);
+        if !current {
+            crate::scene::apply_editor_postprocess(&mut self.scene_store.write().world, desired);
+            tracing::info!(
+                bloom = desired.bloom_enabled,
+                intensity = desired.bloom_intensity,
+                "Editor viewport post-process updated"
+            );
+        }
+    }
+
     pub fn is_initialized(&self) -> bool {
         self.inner.is_some()
     }
@@ -1266,6 +1346,8 @@ impl HelioRenderer {
             pending_camera_state: self.pending_camera_state.clone(),
             pending_deselect: self.pending_deselect.clone(),
             pending_force_full_resync: self.pending_force_full_resync.clone(),
+            viewport_bloom: self.viewport_bloom.clone(),
+            static_drag_warning: self.static_drag_warning.clone(),
         }
     }
 
@@ -1348,12 +1430,27 @@ impl HelioRenderer {
         let (ray_origin, ray_direction) = self.build_pick_ray(norm_x, norm_y);
         let Some(inner) = &mut self.inner else { return };
         let store = self.scene_store.read();
-        if inner.interaction.try_start_drag(
-            &store.world,
-            ray_origin,
-            ray_direction,
-            self.cam_pos.as_vec3(),
-        ) {
+        if inner
+            .interaction
+            .try_start_drag(&store.world, ray_origin, ray_direction, self.cam_pos.as_vec3())
+        {
+            // SceneDB's projected promise, not the authored property: it is
+            // what the caches the drag would invalidate actually read.
+            let fixed = store.world.selected_entity().and_then(|entity| {
+                let movability = *store.world.get::<helio::Movability>(entity)?;
+                (!movability.can_move()).then(|| StaticDragWarning {
+                    object_id: store.world.stable_id_of(entity).unwrap_or_default().to_string(),
+                    object_name: store
+                        .world
+                        .get::<crate::scene::Name>(entity)
+                        .map(|name| name.0.clone())
+                        .unwrap_or_default(),
+                    movability,
+                })
+            });
+            if let (Some(warning), Ok(mut slot)) = (fixed, self.static_drag_warning.lock()) {
+                *slot = Some(warning);
+            }
             return;
         }
         let target = inner

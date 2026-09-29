@@ -40,7 +40,10 @@ pub struct RuntimeTypeInfo {
 - `String` — string types
 - `Wrapper { wrapper_kind: WrapperType, inner: &'static RuntimeTypeInfo }`
 - `Struct { fields: &'static [FieldInfo] }`
-- `Enum { variants: &'static [&'static str] }`
+- `Enum { variants: &'static [&'static str] }`. `#[derive(Reflectable)]` also
+  registers each variant's `///` doc as `EnumVariantDocs` (look up with
+  `enum_variant_docs(type_id)`); the enum dropdown shows the selected
+  variant's doc as its tooltip.
 - `Wildcard` — type-erased placeholder
 
 `FieldInfo`: `{ name: &'static str, type_info: &'static RuntimeTypeInfo, offset: usize }`

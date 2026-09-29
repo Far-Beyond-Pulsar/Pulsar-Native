@@ -17,6 +17,7 @@ impl HelioViewport {
         let stop = self.render_thread_stop.clone();
         let tab_activated = self.tab_activated.clone();
         let frames_published = self.frames_published.clone();
+        let display_refresh_millihertz = self.display_refresh_millihertz.clone();
 
         let handle = std::thread::Builder::new()
             .name("Helio Render".into())
@@ -44,6 +45,11 @@ impl HelioViewport {
                     loop {
                         if stop.load(Ordering::Acquire) {
                             break;
+                        }
+
+                        let millihertz = display_refresh_millihertz.load(Ordering::Relaxed);
+                        if millihertz > 0 {
+                            pacer.set_display_refresh(millihertz as f64 / 1000.0);
                         }
 
                         {
@@ -250,6 +256,8 @@ impl HelioViewport {
             &cx.entity(),
             window,
             |this, window, cx| {
+                this.poll_display_refresh(window, cx);
+
                 let published = this.frames_published.load(Ordering::Acquire);
                 if published == this.last_published_frame {
                     return;

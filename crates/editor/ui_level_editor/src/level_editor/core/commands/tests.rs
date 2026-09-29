@@ -412,4 +412,62 @@ mod undo_redo_tests {
             "the section marks cards dirty via class_changed on the drained set"
         );
     }
+
+    // Pulsar-Native#837: "Mark selection Static" sets every mesh/light on
+    // every selected object in one undo step, skips objects with neither,
+    // and is a no-op when everything already matches.
+    #[test]
+    fn set_movability_marks_the_selection_in_one_undo_step() {
+        use helio_component::components::ObjectMovability;
+        let mut state = LevelEditorState::new();
+        let add = |state: &mut LevelEditorState, name: &str| {
+            execute_command(
+                state,
+                SceneCommand::AddObject {
+                    data: object(name),
+                    parent_id: None,
+                },
+            )
+            .affected_ids[0]
+                .clone()
+        };
+        let lamp = add(&mut state, "Lamp");
+        let empty = add(&mut state, "Empty");
+        {
+            let mut light = helio_component::LightComponent::default();
+            light.general.movability = ObjectMovability::Movable;
+            let mut world = state.scene.world_mut();
+            crate::level_editor::scene_edit::components::add_component(
+                &mut world,
+                &lamp,
+                "LightComponent".to_string(),
+                serde_json::to_value(light).unwrap(),
+            );
+        }
+        let read = |state: &LevelEditorState| {
+            let world = state.scene.world();
+            crate::level_editor::scene_edit::components::read_live_component_property(
+                &world,
+                &lamp,
+                "LightComponent",
+                "movability",
+            )
+            .and_then(|v| v.downcast_ref::<ObjectMovability>().copied())
+        };
+        assert_eq!(read(&state), Some(ObjectMovability::Movable));
+
+        let mark_static = || SceneCommand::SetMovability {
+            ids: vec![lamp.clone(), empty.clone()],
+            movability: ObjectMovability::Static,
+        };
+        let result = execute_command(&mut state, mark_static());
+        assert!(result.changed);
+        assert_eq!(result.affected_ids, vec![lamp.clone()]);
+        assert_eq!(read(&state), Some(ObjectMovability::Static));
+
+        assert!(!execute_command(&mut state, mark_static()).changed, "already Static");
+
+        assert!(state.scene.undo());
+        assert_eq!(read(&state), Some(ObjectMovability::Movable));
+    }
 }

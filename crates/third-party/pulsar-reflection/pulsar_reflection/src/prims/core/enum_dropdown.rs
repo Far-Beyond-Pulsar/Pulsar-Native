@@ -21,6 +21,9 @@ pub struct EnumDropdownEditor {
     id: gpui::SharedString,
     value: u64,
     variants: Option<&'static [&'static str]>,
+    /// Per-variant docs ([`crate::EnumVariantDocs`]); the selected one is
+    /// the dropdown's tooltip.
+    variant_docs: Option<&'static [&'static str]>,
     write_back: crate::PropertyWriteBack,
     type_info: &'static crate::RuntimeTypeInfo,
 }
@@ -50,10 +53,18 @@ impl gpui::Render for EnumDropdownEditor {
         let label = variants.get(selected_ix).copied().unwrap_or("Select");
         let write_back = self.write_back.clone();
         let type_info: &'static crate::RuntimeTypeInfo = self.type_info;
+        let tooltip = self
+            .variant_docs
+            .and_then(|docs| docs.get(selected_ix).copied())
+            .filter(|doc| !doc.is_empty());
 
+        let mut button = Button::new(self.id.clone());
+        if let Some(tooltip) = tooltip {
+            button = button.tooltip(tooltip);
+        }
         crate::prims::editor_row(
             &self.label,
-            Button::new(self.id.clone())
+            button
                 .label(label)
                 .xsmall()
                 .outline()
@@ -102,6 +113,7 @@ pub fn enum_dropdown_editor(
 
     let type_info: &'static crate::RuntimeTypeInfo = args.type_info;
     let variants = type_info.enum_variants();
+    let variant_docs = crate::enum_variant_docs(type_info.type_id);
     let label = args.display_name.to_string();
     let id: gpui::SharedString = format!(
         "enum-{}-{}-{}",
@@ -120,6 +132,7 @@ pub fn enum_dropdown_editor(
         id,
         value,
         variants,
+        variant_docs,
         write_back,
         type_info,
     });

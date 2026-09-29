@@ -17,6 +17,7 @@ window_manager.workspace = true
 plugin_editor_api.workspace = true
 anyhow.workspace = true
 tool_registry = { workspace = true }
+tool_registry_macros = { workspace = true }
 pulsar_scenedb = { workspace = true }
 pulsar_world_registry = { workspace = true }
 
@@ -38,6 +39,7 @@ pulsar_events.workspace = true
 # already unconditional deps of this crate above.
 pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
 helio_component.workspace = true
+helio.workspace = true
 helio-voxel-data.workspace = true
 pulsar_physics.workspace = true
 engine_fs.workspace = true
@@ -69,11 +71,18 @@ objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"  # separate crate for Foundation types
 
+# Viewport mouse-look on Wayland (`viewport/cursor/wayland.rs`): relative
+# pointer + pointer constraints on winit's own wl_display. Same versions winit
+# already pulls in, so these unify with its copies.
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+wayland-client = "0.31"
+wayland-backend = { version = "0.3", features = ["client_system"] }
+wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
+
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winuser", "shellapi"] }
 
 [dev-dependencies]
-helio.workspace = true
 tempfile = { workspace = true }
 
 [lints]

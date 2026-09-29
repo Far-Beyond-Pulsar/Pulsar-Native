@@ -6,6 +6,7 @@ pub mod extensions;
 pub mod keybindings;
 pub mod localization;
 pub mod performance;
+pub mod radial_menu;
 pub mod source_control;
 pub mod terminal;
 pub mod tooling;
@@ -22,6 +23,7 @@ pub fn register_all(cfg: &'static ConfigManager) {
     performance::register(cfg);
     advanced::register(cfg);
     keybindings::register(cfg);
+    radial_menu::register(cfg);
     terminal::register(cfg);
     debugger::register(cfg);
     extensions::register(cfg);

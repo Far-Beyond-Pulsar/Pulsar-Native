@@ -57,6 +57,12 @@ impl From<String> for ClassId {
 pub struct ClassMeta {
     #[serde(default)]
     pub class_id: ClassId,
+    /// Slot ids the prefab once had, mapped to the UUIDs that replaced them:
+    /// the readable `<Class>_<n>` ids of early #921 builds. Levels saved in
+    /// between key overrides by the old ids; loading rewrites those keys
+    /// through this map instead of dropping them (Pulsar-Native#933).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub slot_aliases: std::collections::BTreeMap<String, String>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }

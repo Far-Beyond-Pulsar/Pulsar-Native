@@ -19,7 +19,6 @@ pub use panel::AgentChatPanel;
 pub(crate) use panel::SubagentCompletionMode;
 pub use types::*;
 
-use crate::custom_providers::{self, CustomProvider};
 use agent_chat_core::{
     ChatMessage, ChatProvider, ChatRole, ProviderCrate, ProviderEntry, ProviderRegistry,
 };
@@ -106,9 +105,6 @@ impl Render for AgentChatPanel {
                     .bg(cx.theme().tab_bar)
                     .child(self.render_header(cx))
                     .when_some(self.render_config_overlay(cx), |el, overlay| {
-                        el.child(overlay)
-                    })
-                    .when_some(self.render_custom_provider_wizard(cx), |el, overlay| {
                         el.child(overlay)
                     }),
             )

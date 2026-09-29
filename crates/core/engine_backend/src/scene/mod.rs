@@ -53,6 +53,12 @@ pub use helio_bridge::{
 };
 #[cfg(feature = "render")]
 pub use editor_rows::sync_editor_light_rows;
+#[cfg(feature = "render")]
+pub mod editor_postprocess;
+#[cfg(feature = "render")]
+pub use editor_postprocess::{
+    apply_editor_postprocess, editor_postprocess_is_current, EditorPostProcess,
+};
 
 /// Hook a `World` up to the SceneDB Inspector (CPU + GPU live view). Inert
 /// unless this process was launched by `scenedb_inspector`; safe to call for

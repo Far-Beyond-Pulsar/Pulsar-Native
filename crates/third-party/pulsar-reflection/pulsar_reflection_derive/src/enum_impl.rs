@@ -17,6 +17,42 @@ pub fn generate_enum_impl(
 
     let variant_name_literals: Vec<_> = variant_names.iter().map(|s| quote! { #s }).collect();
 
+    // `///` docs per variant, lines joined with spaces.
+    let variant_docs: Vec<String> = data_enum
+        .variants
+        .iter()
+        .map(|v| {
+            v.attrs
+                .iter()
+                .filter(|attr| attr.path().is_ident("doc"))
+                .filter_map(|attr| match &attr.meta {
+                    syn::Meta::NameValue(nv) => match &nv.value {
+                        syn::Expr::Lit(syn::ExprLit {
+                            lit: syn::Lit::Str(s),
+                            ..
+                        }) => Some(s.value().trim().to_string()),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .filter(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect();
+    let variant_docs_submit = if variant_docs.iter().any(|d| !d.is_empty()) {
+        quote! {
+            ::pulsar_reflection::inventory::submit! {
+                ::pulsar_reflection::EnumVariantDocs {
+                    type_id: std::any::TypeId::of::<#name #ty_generics>(),
+                    docs: &[#(#variant_docs),*],
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
     let serialize_match_arms = data_enum.variants.iter().enumerate().map(|(idx, variant)| {
         let variant_ident = &variant.ident;
         let variant_name = variant_ident.to_string();
@@ -131,6 +167,8 @@ pub fn generate_enum_impl(
                 },
             }
         }
+
+        #variant_docs_submit
 
         // Auto-register a generic enum dropdown editor for all unit enums.
         // The UiPropertyEditorHint / enum_dropdown_editor / gpui types are

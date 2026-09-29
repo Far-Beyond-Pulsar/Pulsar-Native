@@ -14,23 +14,28 @@ mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::*;
 
+// Linux and other X11/Wayland unixes: `linux` picks the backend per window.
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+mod linux;
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+mod wayland;
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 mod x11;
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-pub use x11::*;
+pub use linux::*;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub fn prepare_relative_mouse_mode() -> bool {
     true
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub fn begin_relative_mouse_mode() {}
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub fn end_relative_mouse_mode() {}
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
 pub fn take_mouse_delta() -> (f32, f32) {
     (0.0, 0.0)
 }
