@@ -272,6 +272,9 @@ pub struct HelioRenderer {
     /// Camera height above the voxel ground below it, from the last frame.
     voxel_altitude: Option<f64>,
     last_voxel_errors: Vec<String>,
+    /// `PULSAR_VOXEL_STATS`: log voxel streaming diagnostics twice a second.
+    voxel_stats_log: bool,
+    last_voxel_stats_log: Instant,
 }
 
 struct HelioInner {
@@ -327,6 +330,8 @@ impl HelioRenderer {
             voxel_stroke_last: None,
             voxel_altitude: None,
             last_voxel_errors: Vec::new(),
+            voxel_stats_log: std::env::var_os("PULSAR_VOXEL_STATS").is_some(),
+            last_voxel_stats_log: Instant::now(),
         }
     }
 
@@ -903,6 +908,16 @@ impl HelioRenderer {
         inner
             .renderer
             .set_fallback_sky_enabled(outdoor_sky && !authored_sky);
+        if self.voxel_stats_log && self.last_voxel_stats_log.elapsed().as_secs_f32() >= 0.5 {
+            self.last_voxel_stats_log = Instant::now();
+            for line in self.voxel_backends.diagnostics(&inner.renderer) {
+                tracing::info!(
+                    "VOXEL_STATS altitude={:.1} speed_scale={:.1} {line}",
+                    self.voxel_altitude.unwrap_or(f64::NAN),
+                    self.voxel_altitude.map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6)),
+                );
+            }
+        }
         let (forward, right, up) = basis(self.cam_frame, self.cam_yaw, self.cam_pitch);
         voxel_errors.extend(self.voxel_backends.publish_frame(
             &voxel_entries,

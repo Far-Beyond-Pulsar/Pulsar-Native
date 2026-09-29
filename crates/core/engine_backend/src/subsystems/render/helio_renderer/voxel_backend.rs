@@ -133,6 +133,11 @@ pub trait VoxelRenderBackend: Send {
     fn needs_frame(&self, _renderer: &helio::Renderer) -> bool {
         false
     }
+    /// One-line streaming/residency diagnostics for logs, if the backend has
+    /// any (see `PULSAR_VOXEL_STATS`).
+    fn diagnostics(&self, _renderer: &helio::Renderer) -> Option<String> {
+        None
+    }
 }
 
 pub struct VoxelBackendRegistry {
@@ -304,6 +309,11 @@ impl VoxelBackendRegistry {
             }
         }
         Ok(closest)
+    }
+
+    /// [`VoxelRenderBackend::diagnostics`] of every backend that has some.
+    pub fn diagnostics(&self, renderer: &helio::Renderer) -> Vec<String> {
+        self.backends.iter().filter_map(|backend| backend.diagnostics(renderer)).collect()
     }
 
     pub fn needs_frame(&self, renderer: &helio::Renderer) -> bool {
@@ -620,6 +630,27 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         renderer
             .find_pass::<PlanetPass>()
             .is_some_and(PlanetPass::needs_frame)
+    }
+
+    fn diagnostics(&self, renderer: &helio::Renderer) -> Option<String> {
+        let pass = renderer.find_pass::<PlanetPass>()?;
+        let s = pass.stats()?;
+        Some(format!(
+            "planet ready={} resident={} pending={} jobs={} failed={} overflow={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={}",
+            s.ready,
+            s.resident_columns,
+            s.pending_columns,
+            s.jobs,
+            s.failed_jobs,
+            s.overflow_columns,
+            s.active_levels,
+            s.finest_level,
+            s.plan_cpu_ms,
+            s.upload_cpu_ms,
+            s.encode_cpu_ms,
+            s.window_rebuild_ms,
+            pass.needs_frame(),
+        ))
     }
 
     fn publish_frame(
