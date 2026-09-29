@@ -144,15 +144,14 @@ pub(super) fn handle_mouse_move(
     );
     match tool_result {
         crate::level_editor::tool_modes::ToolPointerResult::Consumed => return,
-        crate::level_editor::tool_modes::ToolPointerResult::VoxelBrush { radius, material } => {
+        crate::level_editor::tool_modes::ToolPointerResult::VoxelBrush(request) => {
             // A drag stroke keeps only the latest brush position queued.
             if let Some(events) = &pointer_events_move {
                 if let Ok(mut events) = events.lock() {
                     let brush = engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush {
                         norm_x,
                         norm_y,
-                        radius,
-                        material,
+                        request,
                     };
                     if matches!(events.last(), Some(engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush { .. })) {
                         *events.last_mut().expect("checked above") = brush;
@@ -455,14 +454,13 @@ pub(super) fn handle_left_mouse_down(
     );
     match dispatch_result {
         crate::level_editor::tool_modes::ToolPointerResult::Consumed => return,
-        crate::level_editor::tool_modes::ToolPointerResult::VoxelBrush { radius, material } => {
+        crate::level_editor::tool_modes::ToolPointerResult::VoxelBrush(request) => {
             if let Some(events) = &pointer_events {
                 if let Ok(mut events) = events.lock() {
                     events.push(engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush {
                         norm_x,
                         norm_y,
-                        radius,
-                        material,
+                        request,
                     });
                 }
             }

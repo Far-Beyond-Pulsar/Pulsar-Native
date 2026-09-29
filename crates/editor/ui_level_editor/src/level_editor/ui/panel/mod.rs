@@ -294,7 +294,19 @@ impl Render for LevelEditorPanel {
                     "r" => this.on_rotate_tool(&RotateTool, window, cx), // Blender: R = Rotate
                     "s" => this.on_scale_tool(&ScaleTool, window, cx),   // Blender: S = Scale
                     "l" => {}
-                    "f" => cx.dispatch_action(&FocusSelected),
+                    "f" => this.on_focus_selected(&FocusSelected, window, cx),
+                    _ => {}
+                }
+            }))
+            // Undo/redo: Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y.
+            .on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
+                let modifiers = &event.keystroke.modifiers;
+                if !this.focus_handle.contains_focused(window, cx) || !modifiers.control || modifiers.alt {
+                    return;
+                }
+                match (event.keystroke.key.as_ref(), modifiers.shift) {
+                    ("z", false) => this.on_undo(&crate::level_editor::ui::actions::Undo, window, cx),
+                    ("z", true) | ("y", false) => this.on_redo(&crate::level_editor::ui::actions::Redo, window, cx),
                     _ => {}
                 }
             }))

@@ -384,6 +384,12 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                     );
                 match update_result {
                     Ok(()) => {
+                        crate::level_editor::scene_edit::components::after_property_edit(
+                            &mut state.scene.world_mut(),
+                            id,
+                            class_name,
+                            prop_name,
+                        );
                         state.scene.bump_revision(true);
                         CommandResult::ok(vec![id.clone()])
                     }

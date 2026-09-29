@@ -290,6 +290,12 @@ impl LevelEditorPanel {
                 cx.background_executor()
                     .timer(std::time::Duration::from_millis(50))
                     .await;
+                // A released sculpt stroke becomes one undo step once the
+                // render thread applied its last samples.
+                if poll_state.read().editor.voxel_stroke.is_some() {
+                    let mut s = poll_state.write();
+                    crate::level_editor::state::voxel::VoxelStroke::finish(&mut s, false);
+                }
                 // A Stop the Game viewport did not process in time still
                 // restores the editor world (#925).
                 if poll_state.read().play.pie.restore_after_stop {

@@ -152,6 +152,10 @@ pub struct EditorDomain {
     /// Spline tool selection, drawing plane and viewport display preferences.
     /// Authored curves live on scene objects and save with the level.
     pub spline: super::spline::SplineDomain,
+    /// Voxel sculpt brush settings.
+    pub voxel: super::voxel::VoxelSculptDomain,
+    /// The sculpt stroke in progress, recorded as one undo step.
+    pub voxel_stroke: Option<super::voxel::VoxelStroke>,
 }
 
 impl Default for EditorDomain {
@@ -174,6 +178,8 @@ impl Default for EditorDomain {
             tool_mode_registry,
             spline: super::spline::SplineDomain::default(),
             terrain: super::terrain::TerrainDomain::default(),
+            voxel: super::voxel::VoxelSculptDomain::default(),
+            voxel_stroke: None,
         }
     }
 }

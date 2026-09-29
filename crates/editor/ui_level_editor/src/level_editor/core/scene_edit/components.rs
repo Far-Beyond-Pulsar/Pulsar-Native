@@ -212,6 +212,36 @@ pub fn take_world_component_events(world: &mut World) -> Vec<pulsar_scenedb::Com
     world.take_component_change_events()
 }
 
+/// Follow-ups to a successful property edit. Choosing a voxel terrain's
+/// generator attaches that generator's settings component when the object
+/// has none, so its settings appear at once; other settings components are
+/// kept.
+pub fn after_property_edit(world: &mut World, object_id: &str, class_name: &str, prop_name: &str) {
+    if class_name != "VoxelTerrainComponent" || prop_name != "generator" {
+        return;
+    }
+    let Some(entity) = world.entity_for(object_id) else {
+        return;
+    };
+    let Some(terrain) = world.get::<helio_component::VoxelTerrainComponent>(entity) else {
+        return;
+    };
+    let Some(class) = helio_component::voxel_world::generator_settings_component(&terrain.generator.id, terrain.generator.version)
+    else {
+        return;
+    };
+    if get_components(world, object_id).iter().any(|component| component.class_name == class) {
+        return;
+    }
+    let Some(defaults) = pulsar_reflection::REGISTRY
+        .create_instance(&class)
+        .and_then(|instance| instance.to_json().ok())
+    else {
+        return;
+    };
+    add_component(world, object_id, class, defaults);
+}
+
 // ── Attach / remove / enable / reorder ─────────────────────────────────────
 
 pub fn add_component(world: &mut World, object_id: &str, class_name: String, data: Value) {

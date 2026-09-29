@@ -35,6 +35,7 @@ pub mod play;
 pub mod scene;
 pub mod spline;
 pub mod terrain;
+pub mod voxel;
 
 pub use build::BuildDomain;
 pub use editor::EditorDomain;

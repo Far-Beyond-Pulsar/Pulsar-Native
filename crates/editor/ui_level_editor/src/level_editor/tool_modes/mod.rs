@@ -92,7 +92,7 @@ pub enum ToolPointerResult {
     PassThrough,
     /// Commit an exact raycast edit in the render thread, where the camera
     /// retains its double-precision planetary position.
-    VoxelBrush { radius: f32, material: u32 },
+    VoxelBrush(engine_backend::subsystems::render::VoxelBrushRequest),
 }
 
 // ── Declarative Toolbar Widgets ────────────────────────────────────────────
