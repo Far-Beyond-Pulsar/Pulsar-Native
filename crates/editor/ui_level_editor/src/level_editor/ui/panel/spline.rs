@@ -5,7 +5,10 @@ use crate::level_editor::{
     scene_edit::SceneObjectData,
     state::{
         LevelEditorState,
-        spline::{CurveAlgorithm, DrawingPlane, SplineData, SplineDomain, SplinePoint, SplineTool},
+        spline::{
+            CurveAlgorithm, CurveAlgorithmText, DrawingPlane, SplineData, SplineDomain, SplinePoint,
+            SplineTool,
+        },
     },
 };
 use gpui::*;

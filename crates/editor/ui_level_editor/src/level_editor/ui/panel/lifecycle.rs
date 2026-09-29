@@ -378,7 +378,9 @@ impl LevelEditorPanel {
             }
         });
 
-        let toolbar = cx.new(|_| ToolbarView::new(shared_state.clone(), gpu_engine.clone()));
+        let toolbar = cx.new(|_| {
+            ToolbarView::new(shared_state.clone(), gpu_engine.clone(), helio_mailbox.clone())
+        });
         let status_bar = cx.new(|_| StatusBarView::new(shared_state.clone(), gpu_engine.clone()));
 
         let class_updates =

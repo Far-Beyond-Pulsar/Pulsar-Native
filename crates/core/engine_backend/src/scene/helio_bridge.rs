@@ -473,6 +473,12 @@ pub fn ensure_gpu_mirror(
         &device,
     );
     crate::scene::Transform::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
+    // The editor viewport's post-process baseline; see `editor_postprocess`.
+    helio_pass_postprocess::CameraPostProcessComponent::register_gpu_columns_growable(
+        &mut gpu_store,
+        4,
+        &device,
+    );
 
     // SceneDB owns residency budgets and tier configuration. The bridge only
     // installs project settings while constructing the shared store.

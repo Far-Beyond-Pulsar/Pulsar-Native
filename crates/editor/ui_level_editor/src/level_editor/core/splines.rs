@@ -1,7 +1,7 @@
 //! Scene spline storage and undoable authoring operations.
 
 use crate::level_editor::{
-    commands::{SceneCommand, execute_command},
+    commands::{CommandResult, SceneCommand, execute_command},
     scene_edit::{self, ObjectType, SceneObjectData, Transform},
     state::{
         LevelEditorState,
@@ -9,35 +9,102 @@ use crate::level_editor::{
     },
 };
 use glam::{Mat4, Quat, Vec3};
+use pulsar_scenedb::World;
 use rust_i18n::t;
 
-pub const SPLINE_PROPERTY: &str = "editor_spline";
+/// The component class a curve is stored as: Helio's SceneDB spline
+/// component, so it hydrates into the World and the renderer draws it.
+pub const SPLINE_CLASS: &str = helio_component::components::SPLINE_CLASS_NAME;
 
-pub fn data(object: &SceneObjectData) -> Option<SplineData> {
-    let data: SplineData =
-        serde_json::from_value(object.props.get(SPLINE_PROPERTY)?.clone()).ok()?;
-    (data.points.len() <= 4096
-        && data.tension.is_finite()
-        && data.points.iter().all(|p| {
-            p.position
-                .iter()
-                .chain(&p.arrive)
-                .chain(&p.leave)
-                .all(|v| v.is_finite())
-        }))
-    .then_some(data)
-}
-pub fn all(state: &LevelEditorState) -> Vec<(SceneObjectData, SplineData)> {
-    let mut rows: Vec<_> = scene_edit::objects::get_all_objects(&state.scene.world())
+/// Where curves lived before they were components (a JSON prop the
+/// renderer never saw). Still read so older levels load; an edit moves the
+/// curve into the component and drops the prop.
+pub const LEGACY_SPLINE_PROPERTY: &str = "editor_spline";
+
+/// The object's live spline component: its index in the object's
+/// component list and its current value, read off the World (the
+/// `component_instances` on a `SceneObjectData` is only a load-time copy).
+fn live_component(world: &World, id: &str) -> Option<(usize, serde_json::Value)> {
+    scene_edit::components::get_components(world, id)
         .into_iter()
-        .filter_map(|o| data(&o).map(|d| (o, d)))
+        .enumerate()
+        .find(|(_, component)| component.enabled && component.class_name == SPLINE_CLASS)
+        .map(|(index, component)| (index, component.data))
+}
+
+pub fn data(world: &World, object: &SceneObjectData) -> Option<SplineData> {
+    let value = live_component(world, &object.id)
+        .map(|(_, data)| data)
+        .or_else(|| object.props.get(LEGACY_SPLINE_PROPERTY).cloned())?;
+    let data: SplineData = serde_json::from_value(value).ok()?;
+    data.is_valid().then_some(data)
+}
+
+/// `component_instances` for a new spline object: `AddObject` hydrates it
+/// into the World as the object's spline component.
+pub fn component_instances(curve: &SplineData) -> Option<serde_json::Value> {
+    let data = serde_json::to_value(curve).ok()?;
+    Some(serde_json::json!([{
+        "class_name": SPLINE_CLASS,
+        "enabled": true,
+        "data": data,
+    }]))
+}
+
+/// Replace `object`'s curve with `curve`, undoably: through its spline
+/// component, or, for a curve still held in the legacy prop, by attaching a
+/// component and dropping the prop. `None` when the curve can't be stored.
+pub fn write(
+    state: &mut LevelEditorState,
+    object: &SceneObjectData,
+    curve: &SplineData,
+) -> Option<CommandResult> {
+    if !curve.is_valid() {
+        return None;
+    }
+    let data = serde_json::to_value(curve).ok()?;
+    let index = live_component(&state.scene.world(), &object.id).map(|(index, _)| index);
+    let result = match index {
+        Some(component_index) => execute_command(
+            state,
+            SceneCommand::SetComponentData {
+                id: object.id.clone(),
+                component_index,
+                data,
+            },
+        ),
+        None => {
+            let result = execute_command(
+                state,
+                SceneCommand::AddComponent {
+                    id: object.id.clone(),
+                    class_name: SPLINE_CLASS.to_string(),
+                    data,
+                },
+            );
+            if object.props.get(LEGACY_SPLINE_PROPERTY).is_some() {
+                let mut migrated = object.clone();
+                migrated.props.remove(LEGACY_SPLINE_PROPERTY);
+                execute_command(state, SceneCommand::UpdateObject { data: migrated });
+            }
+            result
+        }
+    };
+    Some(result)
+}
+
+pub fn all(state: &LevelEditorState) -> Vec<(SceneObjectData, SplineData)> {
+    let world = state.scene.world();
+    let mut rows: Vec<_> = scene_edit::objects::get_all_objects(&world)
+        .into_iter()
+        .filter_map(|o| data(&world, &o).map(|d| (o, d)))
         .collect();
     rows.sort_by(|a, b| a.0.name.cmp(&b.0.name).then(a.0.id.cmp(&b.0.id)));
     rows
 }
 pub fn selected(state: &LevelEditorState) -> Option<(SceneObjectData, SplineData)> {
     let object = state.scene.get_selected_object()?;
-    let spline = data(&object)?;
+    let spline = data(&state.scene.world(), &object)?;
     Some((object, spline))
 }
 pub fn sync_selection(state: &mut LevelEditorState) {
@@ -56,7 +123,7 @@ pub fn select(state: &mut LevelEditorState, id: String) {
     sync_selection(state);
 }
 pub fn edit(state: &mut LevelEditorState, apply: impl FnOnce(&mut SplineData)) {
-    let Some((mut object, mut curve)) = selected(state) else {
+    let Some((object, mut curve)) = selected(state) else {
         return;
     };
     if object.locked {
@@ -64,21 +131,10 @@ pub fn edit(state: &mut LevelEditorState, apply: impl FnOnce(&mut SplineData)) {
     }
     let before = curve.clone();
     apply(&mut curve);
-    if curve == before
-        || curve.points.len() > 4096
-        || !curve.points.iter().all(|p| {
-            p.position
-                .iter()
-                .chain(&p.arrive)
-                .chain(&p.leave)
-                .all(|v| v.is_finite())
-        })
-    {
+    if curve == before {
         return;
     }
-    if let Ok(value) = serde_json::to_value(curve) {
-        object.props.insert(SPLINE_PROPERTY.into(), value);
-        execute_command(state, SceneCommand::UpdateObject { data: object });
+    if write(state, &object, &curve).is_some() {
         sync_selection(state);
     }
 }
@@ -89,7 +145,7 @@ pub fn create(state: &mut LevelEditorState, curve: SplineData) {
     while names.contains(&format!("{base} {index}")) {
         index += 1;
     }
-    let mut object = SceneObjectData {
+    let object = SceneObjectData {
         id: String::new(),
         name: format!("{base} {index}"),
         object_type: ObjectType::Empty,
@@ -100,12 +156,8 @@ pub fn create(state: &mut LevelEditorState, curve: SplineData) {
         children: vec![],
         scene_path: String::new(),
         props: Default::default(),
-        component_instances: None,
+        component_instances: component_instances(&curve),
     };
-    object.props.insert(
-        SPLINE_PROPERTY.into(),
-        serde_json::to_value(curve).expect("finite spline data"),
-    );
     let result = execute_command(
         state,
         SceneCommand::AddObject {
@@ -232,11 +284,55 @@ mod tests {
         assert_eq!(selected(&state).unwrap().1.points.len(), 1);
         select(&mut state, first);
         assert_eq!(selected(&state).unwrap().1, curve);
-        // The same SceneObjectData serialized into .level files carries all curve data.
+        // Saving goes through `get_components`, which reads the live World
+        // component, so the level file carries the edited curve.
         let object = selected(&state).unwrap().0;
-        let serialized = serde_json::to_string(&object).unwrap();
-        let restored: SceneObjectData = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(data(&restored).unwrap(), curve);
+        let saved = scene_edit::components::get_components(&state.scene.world(), &object.id);
+        let spline = saved.iter().find(|c| c.class_name == SPLINE_CLASS).unwrap();
+        assert_eq!(serde_json::from_value::<SplineData>(spline.data.clone()).unwrap(), curve);
+    }
+    #[test]
+    fn edits_reach_the_world_component_the_renderer_reads() {
+        let mut state = LevelEditorState::new();
+        create(&mut state, preset(&state, "line"));
+        edit(&mut state, |d| d.closed = true);
+        let object = selected(&state).unwrap().0;
+        let world = state.scene.world();
+        let entity = world.entity_for(&object.id).unwrap();
+        let live = world.get::<SplineData>(entity).expect("typed World component");
+        assert!(live.closed);
+        assert!(object.props.get(LEGACY_SPLINE_PROPERTY).is_none());
+    }
+    #[test]
+    fn legacy_prop_curves_load_and_move_to_the_component_on_edit() {
+        let mut state = LevelEditorState::new();
+        let mut legacy = SplineData::default();
+        legacy.points.push(SplinePoint::new([4., 5., 6.]));
+        let mut object = SceneObjectData {
+            id: String::new(),
+            name: "Old spline".into(),
+            object_type: ObjectType::Empty,
+            transform: Transform::default(),
+            visible: true,
+            locked: false,
+            parent: None,
+            children: vec![],
+            scene_path: String::new(),
+            props: Default::default(),
+            component_instances: None,
+        };
+        object.props.insert(
+            LEGACY_SPLINE_PROPERTY.into(),
+            serde_json::to_value(&legacy).unwrap(),
+        );
+        let result = execute_command(&mut state, SceneCommand::AddObject { data: object, parent_id: None });
+        select(&mut state, result.affected_ids[0].clone());
+        assert_eq!(selected(&state).unwrap().1, legacy);
+        edit(&mut state, |d| d.closed = true);
+        let (object, curve) = selected(&state).unwrap();
+        assert!(curve.closed);
+        assert!(object.props.get(LEGACY_SPLINE_PROPERTY).is_none());
+        assert!(live_component(&state.scene.world(), &object.id).is_some());
     }
     #[test]
     fn locked_curve_cannot_be_changed() {

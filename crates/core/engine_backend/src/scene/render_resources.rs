@@ -97,12 +97,15 @@ pub struct SectionedMeshResource {
 /// Persistent object-side render state that was historically kept in Helio's
 /// `ObjectRecord`/sectioned-object pools.  Handles and dense GPU indices are
 /// intentionally not represented here.
+///
+/// Bounds are not stored here either: a mesh's local bounding sphere lives on
+/// Helio's `StaticMeshComponent::bounds_local`, computed from the loaded
+/// vertices at hydrate time, which is what the renderer's culling reads.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MeshObjectResource {
     pub mesh: String,
     #[serde(default)]
     pub sections: Vec<String>,
-    pub bounds: [f32; 4],
     pub flags: u32,
     pub groups: u32,
     pub movable: bool,
@@ -118,7 +121,6 @@ impl Default for MeshObjectResource {
         Self {
             mesh: String::new(),
             sections: Vec::new(),
-            bounds: [0.0, 0.0, 0.0, 1.0],
             flags: 0,
             groups: 0,
             movable: false,

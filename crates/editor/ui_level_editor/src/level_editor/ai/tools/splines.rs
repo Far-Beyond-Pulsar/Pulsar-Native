@@ -1,11 +1,11 @@
 //! Spline tools: the Spline panel's authoring, driven by data.
 //!
-//! A spline is an ordinary object whose curve lives in its
-//! `editor_spline` property; edits go through `UpdateObject`, so they are
+//! A spline is an ordinary object carrying a `SplineComponent` (Helio's
+//! SceneDB spline component); edits go through `UpdateObject`, so they are
 //! undoable like the panel's.
 
 use super::*;
-use crate::level_editor::core::splines::{self, SPLINE_PROPERTY};
+use crate::level_editor::core::splines;
 use crate::level_editor::scene_edit::Transform;
 use crate::level_editor::state::spline::{CurveAlgorithm, SplineData, SplinePoint};
 use tool_registry_macros::tool;
@@ -108,7 +108,7 @@ pub fn level_editor_create_spline(
         require_object(&state, parent)?;
     }
     let name = name.unwrap_or_else(|| format!("Spline {}", splines::all(&state).len() + 1));
-    let mut object = SceneObjectData {
+    let object = SceneObjectData {
         id: String::new(),
         name,
         object_type: ObjectType::Empty,
@@ -122,11 +122,8 @@ pub fn level_editor_create_spline(
         children: vec![],
         scene_path: String::new(),
         props: Default::default(),
-        component_instances: None,
+        component_instances: splines::component_instances(&curve),
     };
-    object
-        .props
-        .insert(SPLINE_PROPERTY.into(), serde_json::to_value(&curve)?);
     let result = execute_command(&mut state, SceneCommand::AddObject { data: object, parent_id });
     let id = result
         .affected_ids
@@ -167,11 +164,11 @@ pub fn level_editor_edit_spline(
 ) -> Result<Value> {
     let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
-    let mut object = require_object(&state, &id)?;
+    let object = require_object(&state, &id)?;
     if object.locked {
         bail!("Spline '{id}' is locked; unlock it with level_editor_set_object_flags");
     }
-    let mut curve = splines::data(&object)
+    let mut curve = splines::data(&state.scene.world(), &object)
         .ok_or_else(|| anyhow!("'{id}' is not a spline. Use level_editor_list_splines."))?;
     let mut new_points = false;
     if let Some(points) = points {
@@ -207,10 +204,8 @@ pub fn level_editor_edit_spline(
         Some(other) => bail!("Unknown operation '{other}'. Use auto_tangents, reverse, smooth or resample."),
     }
     check_curve(&curve)?;
-    object
-        .props
-        .insert(SPLINE_PROPERTY.into(), serde_json::to_value(&curve)?);
-    let result = execute_command(&mut state, SceneCommand::UpdateObject { data: object });
+    let result = splines::write(&mut state, &object, &curve)
+        .ok_or_else(|| anyhow!("Spline data could not be stored"))?;
     let object = require_object(&state, &id)?;
     let mut out = spline_json(&object, &curve);
     out["changed"] = json!(result.changed);
