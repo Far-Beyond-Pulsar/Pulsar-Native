@@ -88,10 +88,12 @@ pub trait VoxelRenderBackend: Send {
     fn ambient_up(&self, _source: &VoxelSceneEntry, _eye: DVec3) -> Option<DVec3> {
         None
     }
-    /// Distance from `eye` to the nearest possible solid voxel of a source
-    /// (conservative), if the backend knows it. The editor camera scales its
-    /// speed with it, so moving from the ground to orbit takes seconds.
-    fn ground_clearance(&self, _source: &VoxelSceneEntry, _eye: DVec3) -> Option<f64> {
+    /// Height of `eye` above the source's ground directly below it, if the
+    /// backend knows it. The editor camera scales its speed with it, so moving
+    /// from the ground to orbit takes seconds at any terrain height. (A
+    /// conservative distance to all terrain would be ~0 anywhere below the
+    /// highest possible mountain.)
+    fn altitude(&self, _source: &VoxelSceneEntry, _eye: DVec3) -> Option<f64> {
         None
     }
     /// Where an editor camera at `eye` should be instead, if `eye` is inside
@@ -203,9 +205,9 @@ impl VoxelBackendRegistry {
         self.backends.iter().find_map(|backend| backend.lift_out_of_ground(eye))
     }
 
-    /// Smallest [`VoxelRenderBackend::ground_clearance`] of the visible sources.
-    pub fn ground_clearance(&self, entries: &[VoxelSceneEntry], eye: DVec3) -> Option<f64> {
-        profiling::profile_scope!("voxel_ground_clearance");
+    /// Smallest [`VoxelRenderBackend::altitude`] of the visible sources.
+    pub fn altitude(&self, entries: &[VoxelSceneEntry], eye: DVec3) -> Option<f64> {
+        profiling::profile_scope!("voxel_altitude");
         entries
             .iter()
             .filter(|entry| entry.visible)
@@ -216,7 +218,7 @@ impl VoxelBackendRegistry {
                         entry.renderer_id == backend.renderer_id()
                             || (entry.renderer_id.is_empty() && backend.supports(entry))
                     })
-                    .find_map(|backend| backend.ground_clearance(entry, eye))
+                    .find_map(|backend| backend.altitude(entry, eye))
             })
             .reduce(f64::min)
     }
@@ -539,8 +541,8 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         planet.solid(cell).then(|| planet.surface_point(eye, 0.5))
     }
 
-    fn ground_clearance(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<f64> {
-        self.cached_planet(source).map(|planet| planet.air_clearance(eye))
+    fn altitude(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<f64> {
+        self.cached_planet(source).map(|planet| planet.ground_height(eye))
     }
 
     fn ambient_up(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<DVec3> {
@@ -863,18 +865,24 @@ mod tests {
     }
 
     #[test]
-    fn ground_clearance_grows_with_altitude() {
+    fn altitude_is_height_above_the_ground_below() {
         let mut scene = World::new();
         let entity = scene.spawn();
         scene.insert(entity, planet_terrain());
         let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         let mut registry = VoxelBackendRegistry::new();
         registry.register(Box::new(PlanetVoxelBackend::new())).unwrap();
-        let ground = Planet::new(PlanetRecipe::default()).unwrap().surface_point(DVec3::Y, 2.0);
+        let planet = Planet::new(PlanetRecipe::default()).unwrap();
+        let ground = planet.surface_point(DVec3::Y, 2.0);
         assert!(registry.publish_frame(&entries, view(ground)).is_empty());
-        let near = registry.ground_clearance(&entries, ground).unwrap();
-        let orbit = registry.ground_clearance(&entries, ground * 1.05).unwrap();
-        assert!(near < 3.0 && orbit > 250_000.0, "{near} {orbit}");
+        let near = registry.altitude(&entries, ground).unwrap();
+        let orbit = registry.altitude(&entries, ground * 1.05).unwrap();
+        assert!((near - 2.0).abs() < 0.2 && orbit > 250_000.0, "{near} {orbit}");
+        // 3 km over lowland: below the highest possible terrain, where a
+        // conservative clearance is ~0, the camera still moves at altitude speed.
+        let high = planet.surface_point(DVec3::Y, 3000.0);
+        let altitude = registry.altitude(&entries, high).unwrap();
+        assert!((altitude - 3000.0).abs() < 1.0, "{altitude}");
     }
 
     #[test]
