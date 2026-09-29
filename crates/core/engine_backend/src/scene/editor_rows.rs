@@ -67,9 +67,9 @@ pub fn sync_editor_light_rows(
             transform.rotation[2].to_radians(),
         );
         gpu.direction_outer[..3].copy_from_slice(&(rotation * -glam::Vec3::Y).to_array());
-        // SceneDB lights currently have no shadow-atlas assignment (same
-        // contract as v3_demo_common::spawn_light). Never sample slot zero.
-        gpu.shadow_index = u32::MAX;
+        // `shadow_index` carries `cast_shadows` as a request (0 = wants a
+        // shadow map, u32::MAX = off). ShadowMatrixPass turns requests into
+        // atlas slots on the GPU when the light rows change (Helio#246).
         let billboard = BillboardComponent {
             world_pos: [
                 transform.position[0],
