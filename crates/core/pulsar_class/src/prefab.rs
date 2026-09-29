@@ -247,4 +247,22 @@ mod tests {
         assert_ne!(prefab.components[1].slot_id, id);
         assert!(!prefab.fill_missing_slot_ids(), "idempotent");
     }
+
+    #[test]
+    fn replaced_readable_ids_are_recorded_in_class_json() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(PREFAB_FILE),
+            r#"{ "prefab_version": 1, "name": "Lamp", "components": [
+                { "slot_id": "LightComponent_1", "class_name": "LightComponent", "data": {} },
+                { "class_name": "StaticMeshComponent", "data": {} }
+            ] }"#,
+        )
+        .unwrap();
+        let prefab = PrefabAsset::load_from_dir(dir.path()).unwrap();
+        let aliases = crate::id::ClassMeta::read(dir.path()).unwrap().slot_aliases;
+        // Only the readable id is an alias; a missing id had nothing to map.
+        assert_eq!(aliases.len(), 1);
+        assert_eq!(aliases["LightComponent_1"], prefab.components[0].slot_id);
+    }
 }

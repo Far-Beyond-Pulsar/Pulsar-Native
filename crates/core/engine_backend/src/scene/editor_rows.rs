@@ -26,6 +26,7 @@ pub fn sync_editor_light_rows(
             world.remove::<LightRow>(entity);
             world.remove::<BillboardComponent>(entity);
             world.remove::<EditorLightRows>(entity);
+            super::helio_bridge::project_movability(world, entity);
         }
     }
     let entities: Vec<_> = dirty.map_or_else(
@@ -41,9 +42,13 @@ pub fn sync_editor_light_rows(
         if world.get::<LightComponent>(entity).is_none() {
             world.remove::<LightRow>(entity);
             world.remove::<BillboardComponent>(entity);
-            world.remove::<EditorLightRows>(entity);
+            if world.get::<EditorLightRows>(entity).is_some() {
+                world.remove::<EditorLightRows>(entity);
+                super::helio_bridge::project_movability(world, entity);
+            }
             continue;
         }
+        super::helio_bridge::project_movability(world, entity);
         let light = world.get::<LightComponent>(entity).expect("queried light");
         let transform = world.get::<Transform>(entity).copied();
         let visible = world.get::<Visibility>(entity).is_none_or(|v| v.visible);
@@ -135,5 +140,25 @@ mod tests {
         world.remove::<LightComponent>(entity);
         sync_editor_light_rows(&mut world, true, None);
         assert!(world.get::<LightRow>(entity).is_none());
+    }
+
+    #[test]
+    fn authored_movability_is_projected_into_scenedb() {
+        use helio_component::components::ObjectMovability;
+        let mut world = pulsar_scenedb::World::new();
+        let entity = world
+            .spawn_object(crate::scene::SpawnObject::new("light").with_id("light"))
+            .unwrap();
+        world.insert(entity, LightComponent::default());
+        sync_editor_light_rows(&mut world, true, None);
+        assert_eq!(world.get::<helio::Movability>(entity), Some(&helio::Movability::Static));
+
+        world.get_mut::<LightComponent>(entity).unwrap().general.movability = ObjectMovability::Movable;
+        sync_editor_light_rows(&mut world, true, None);
+        assert_eq!(world.get::<helio::Movability>(entity), Some(&helio::Movability::Movable));
+
+        world.remove::<LightComponent>(entity);
+        sync_editor_light_rows(&mut world, true, None);
+        assert!(world.get::<helio::Movability>(entity).is_none());
     }
 }

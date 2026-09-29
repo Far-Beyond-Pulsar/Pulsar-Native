@@ -95,6 +95,13 @@ pub struct LevelEditorPanel {
     // Keeps the polling task alive for the lifetime of the panel.
     _root_input_poller: gpui::Task<()>,
 
+    /// A gizmo drag on a Static/Stationary object (#837), handed over by the
+    /// poller and shown as a notification on the next render.
+    pending_static_drag_warning: Option<engine_backend::subsystems::render::StaticDragWarning>,
+    /// Objects already warned about this session: one notice per object,
+    /// not one per drag.
+    warned_static_drags: std::collections::HashSet<String>,
+
     /// Rebuilds placed class instances when a class asset is updated (#921).
     _class_updates: plugin_editor_api::AssetSubscription,
 }
@@ -187,6 +194,25 @@ impl Render for LevelEditorPanel {
         if self.shared_state.read().play.pie.play_requested {
             self.shared_state.write().play.pie.play_requested = false;
             self.on_play_scene(&PlayScene, window, cx);
+        }
+
+        if let Some(warning) = self.pending_static_drag_warning.take() {
+            if self.warned_static_drags.insert(warning.object_id.clone()) {
+                let name = if warning.object_name.is_empty() {
+                    warning.object_id.clone()
+                } else {
+                    warning.object_name.clone()
+                };
+                window.push_notification(
+                    Notification::warning(format!(
+                        "'{name}' is marked {:?}, so its cached shadow stays where it was. \
+                         Set its Movability to Movable if it is meant to move.",
+                        warning.movability
+                    ))
+                    .title(format!("Moving a {:?} object", warning.movability)),
+                    cx,
+                );
+            }
         }
 
         // Open/close the Play-In-Editor Game tab as the game starts/stops.

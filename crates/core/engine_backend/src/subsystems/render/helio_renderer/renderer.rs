@@ -79,9 +79,26 @@ pub struct HelioEditorMailbox {
     pending_gizmo_mode: Arc<Mutex<Option<GizmoMode>>>,
     pending_deselect: Arc<AtomicBool>,
     pending_force_full_resync: Arc<AtomicBool>,
+    static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
+}
+
+/// A gizmo drag started on an object whose SceneDB `helio::Movability`
+/// promises a fixed transform (Pulsar-Native#837). Moving it anyway leaves
+/// cached data (the static shadow atlas) describing its old place.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StaticDragWarning {
+    pub object_id: String,
+    pub object_name: String,
+    pub movability: helio::Movability,
 }
 
 impl HelioEditorMailbox {
+    /// The latest Static/Stationary drag the render thread saw, if the UI
+    /// has not taken it yet.
+    pub fn take_static_drag_warning(&self) -> Option<StaticDragWarning> {
+        self.static_drag_warning.lock().ok()?.take()
+    }
+
     /// Queue the SceneDB interaction gizmo mode for the render thread to apply
     /// at the next frame boundary.
     pub fn queue_gizmo(&self, mode: GizmoMode) {
@@ -155,6 +172,9 @@ pub struct HelioRenderer {
     /// through this instead of a `gpu_engine.lock()` that could silently
     /// drop the request the same way the old click/release path could.
     pub pending_force_full_resync: Arc<AtomicBool>,
+    /// Written by the render thread when a gizmo drag starts on a fixed-
+    /// movability object; taken by the UI (`HelioEditorMailbox`).
+    pub static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
 
     // ── Renderer State ──
     /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
@@ -222,6 +242,7 @@ impl HelioRenderer {
             pending_deselect: Arc::new(AtomicBool::new(false)),
             pending_pointer_events: Arc::new(Mutex::new(Vec::new())),
             pending_force_full_resync: Arc::new(AtomicBool::new(false)),
+            static_drag_warning: Arc::new(Mutex::new(None)),
             reset_taa_next_frame: false,
             inner: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
@@ -949,6 +970,7 @@ impl HelioRenderer {
             pending_gizmo_mode: self.pending_gizmo_mode.clone(),
             pending_deselect: self.pending_deselect.clone(),
             pending_force_full_resync: self.pending_force_full_resync.clone(),
+            static_drag_warning: self.static_drag_warning.clone(),
         }
     }
 
@@ -1036,6 +1058,23 @@ impl HelioRenderer {
             .interaction
             .try_start_drag(&store.world, ray_origin, ray_direction, self.cam_pos)
         {
+            // SceneDB's projected promise, not the authored property: it is
+            // what the caches the drag would invalidate actually read.
+            let fixed = store.world.selected_entity().and_then(|entity| {
+                let movability = *store.world.get::<helio::Movability>(entity)?;
+                (!movability.can_move()).then(|| StaticDragWarning {
+                    object_id: store.world.stable_id_of(entity).unwrap_or_default().to_string(),
+                    object_name: store
+                        .world
+                        .get::<crate::scene::Name>(entity)
+                        .map(|name| name.0.clone())
+                        .unwrap_or_default(),
+                    movability,
+                })
+            });
+            if let (Some(warning), Ok(mut slot)) = (fixed, self.static_drag_warning.lock()) {
+                *slot = Some(warning);
+            }
             return;
         }
         let target = inner

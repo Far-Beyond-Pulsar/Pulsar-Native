@@ -272,8 +272,21 @@ impl LevelEditorPanel {
         // - Selection + tool: pushed to Helio here rather than in `render`,
         //   which used to take a renderer lock several times a second for a
         //   change that happens once per click.
+        // Fetched once here, not re-acquired via `gpu_engine.lock()` per
+        // command -- see `HelioEditorMailbox`'s doc. `GpuRendererBuilder::build`
+        // always sets `helio_renderer: Some(...)` synchronously, so this is
+        // `Some` immediately after construction; `None` only if `gpu_engine`
+        // somehow arrived pre-torn-down, which the `if let` call sites below
+        // degrade out of harmlessly (same "skip this one tick" shape the old
+        // `gpu_engine.lock()` sites already had on any lock failure).
+        let helio_mailbox = gpu_engine
+            .lock()
+            .ok()
+            .and_then(|engine| engine.editor_mailbox());
+
         let poll_state = Arc::clone(&shared_state);
         let poll_gpu = gpu_engine.clone();
+        let poll_mailbox = helio_mailbox.clone();
         let poller = cx.spawn(async move |this, cx| {
             let mut last: Option<(
                 (bool, bool, bool, bool, u64),
@@ -298,6 +311,19 @@ impl LevelEditorPanel {
                         engine.force_full_resync();
                         engine.sync_selection_to_helio();
                     }
+                }
+                // A gizmo drag on a Static/Stationary object (#837); the
+                // notification needs a window, so render shows it.
+                if let Some(warning) = poll_mailbox
+                    .as_ref()
+                    .and_then(|mailbox| mailbox.take_static_drag_warning())
+                {
+                    cx.update(|cx| {
+                        let _ = this.update(cx, |panel, cx| {
+                            panel.pending_static_drag_warning = Some(warning);
+                            cx.notify();
+                        });
+                    });
                 }
                 // Play needs a window; render starts it.
                 if poll_state.read().play.pie.play_requested {
@@ -355,18 +381,6 @@ impl LevelEditorPanel {
         let toolbar = cx.new(|_| ToolbarView::new(shared_state.clone(), gpu_engine.clone()));
         let status_bar = cx.new(|_| StatusBarView::new(shared_state.clone(), gpu_engine.clone()));
 
-        // Fetched once here, not re-acquired via `gpu_engine.lock()` per
-        // command -- see `HelioEditorMailbox`'s doc. `GpuRendererBuilder::build`
-        // always sets `helio_renderer: Some(...)` synchronously, so this is
-        // `Some` immediately after construction; `None` only if `gpu_engine`
-        // somehow arrived pre-torn-down, which the `if let` call sites below
-        // degrade out of harmlessly (same "skip this one tick" shape the old
-        // `gpu_engine.lock()` sites already had on any lock failure).
-        let helio_mailbox = gpu_engine
-            .lock()
-            .ok()
-            .and_then(|engine| engine.editor_mailbox());
-
         let class_updates =
             crate::level_editor::core::asset_updates::subscribe_class_updates(shared_state.clone());
 
@@ -385,6 +399,8 @@ impl LevelEditorPanel {
             applied_pie_signature: None,
             applied_mode_layout: None,
             _root_input_poller: poller,
+            pending_static_drag_warning: None,
+            warned_static_drags: Default::default(),
         }
     }
 }

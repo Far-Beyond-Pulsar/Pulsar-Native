@@ -85,6 +85,43 @@ pub fn mark_render_components_changed(world: &mut pulsar_scenedb::World, entity:
 
 struct EditorMeshRow;
 
+/// Keep SceneDB's `helio::Movability` on `entity` equal to its authored
+/// `movability` (Pulsar-Native#837), written only on change so an idle
+/// frame stays clean. Passes read the SceneDB component, never the
+/// authored property. A mesh's value wins over a light's on the same
+/// entity: the mesh is what the caches that read it describe.
+pub(crate) fn project_movability(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+    let authored = world
+        .get::<StaticMeshComponent>(entity)
+        .map(|mesh| mesh.movability)
+        .or_else(|| {
+            world
+                .get::<helio_component::components::LightComponent>(entity)
+                .map(|light| light.general.movability)
+        });
+    match authored {
+        Some(authored) => {
+            let promised = helio::Movability::from(authored);
+            if world.get::<helio::Movability>(entity) != Some(&promised) {
+                world.insert(entity, promised);
+            }
+        }
+        None => {
+            world.remove::<helio::Movability>(entity);
+        }
+    }
+}
+
+/// Object-row flags for `mesh`'s authored movability: a movable mesh draws
+/// into the dynamic shadow atlas, anything else into the cached static one.
+fn object_row_flags(mesh: &StaticMeshComponent) -> u32 {
+    if helio::Movability::from(mesh.movability).can_move() {
+        helio::INSTANCE_FLAG_MOVABLE
+    } else {
+        0
+    }
+}
+
 /// Remove `entity`'s `StaticObjectComponent` row so it stops being drawn.
 /// SceneDB zeroes a component's GPU row when the component is removed (or
 /// its entity despawns), which the object-batch pass's `mesh_generation != 0`
@@ -122,6 +159,7 @@ pub fn sync_static_mesh_rows(
         for entity in stale {
             retire_static_object_row(&mut scene_db.world, entity);
             scene_db.world.remove::<EditorMeshRow>(entity);
+            project_movability(&mut scene_db.world, entity);
         }
     }
     tracing::debug!(
@@ -148,9 +186,13 @@ pub fn sync_static_mesh_rows(
     for entity in entities {
         if scene_db.world.get::<StaticMeshComponent>(entity).is_none() {
             retire_static_object_row(&mut scene_db.world, entity);
-            scene_db.world.remove::<EditorMeshRow>(entity);
+            if scene_db.world.get::<EditorMeshRow>(entity).is_some() {
+                scene_db.world.remove::<EditorMeshRow>(entity);
+                project_movability(&mut scene_db.world, entity);
+            }
             continue;
         }
+        project_movability(&mut scene_db.world, entity);
         tracing::debug!(
             entity = entity.index(),
             "[SceneDB render diagnostics] evaluating StaticMeshComponent"
@@ -170,11 +212,11 @@ pub fn sync_static_mesh_rows(
         // Real, geometry-derived local bounds (see `bounds_local`'s doc) --
         // computed once at hydrate time from the mesh's actual vertex
         // positions, not guessed from the transform's scale.
-        let bounds_local = scene_db
+        let (bounds_local, flags) = scene_db
             .world
             .get::<StaticMeshComponent>(entity)
-            .map(|c| c.bounds_local)
-            .unwrap_or([0.0, 0.0, 0.0, 0.5]);
+            .map(|c| (c.bounds_local, object_row_flags(c)))
+            .unwrap_or(([0.0, 0.0, 0.0, 0.5], 0));
         let Some(vertices) =
             StaticMeshComponent::vertices_gpu_handle(mirror.store(), entity.index())
                 .filter(|r| r.count != 0)
@@ -267,7 +309,7 @@ pub fn sync_static_mesh_rows(
             vertices.offset as i32,
             0,
             0,
-            0,
+            flags,
         );
         // Write only on change. Every `insert` bumps the SceneDB revision, and
         // that revision is what the status bar / hierarchy / properties panels

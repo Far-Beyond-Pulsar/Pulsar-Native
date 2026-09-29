@@ -317,4 +317,34 @@ mod tests {
         );
         assert_eq!(plan.removed, ["B_0"]);
     }
+
+    #[test]
+    fn overrides_under_replaced_ids_move_to_the_new_slot() {
+        let mut def = def(vec![comp("uuid-a", "A", json!({"v": 1}))]);
+        def.slot_aliases.insert("A_0".into(), "uuid-a".into());
+        let mut instance = ClassInstance::default();
+        instance.component_overrides.insert("A_0".into(), json!({"v": 5}));
+        instance.component_overrides.insert("Gone_9".into(), json!({"v": 7}));
+
+        assert!(migrate_slot_keys(&def, &mut instance));
+        assert_eq!(instance.component_overrides["uuid-a"], json!({"v": 5}));
+        assert!(!instance.component_overrides.contains_key("A_0"));
+        // Unknown keys are kept, not dropped.
+        assert_eq!(instance.component_overrides["Gone_9"], json!({"v": 7}));
+        // And the override now applies.
+        assert_eq!(plan_instance(&def, &instance).root[0].data["v"], 5);
+        // Idempotent.
+        assert!(!migrate_slot_keys(&def, &mut instance));
+    }
+
+    #[test]
+    fn an_override_already_under_the_new_id_wins() {
+        let mut def = def(vec![comp("uuid-a", "A", json!({"v": 1}))]);
+        def.slot_aliases.insert("A_0".into(), "uuid-a".into());
+        let mut instance = ClassInstance::default();
+        instance.component_overrides.insert("A_0".into(), json!({"v": 5}));
+        instance.component_overrides.insert("uuid-a".into(), json!({"v": 6}));
+        assert!(!migrate_slot_keys(&def, &mut instance));
+        assert_eq!(instance.component_overrides["uuid-a"], json!({"v": 6}));
+    }
 }

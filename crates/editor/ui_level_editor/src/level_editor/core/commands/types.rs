@@ -185,6 +185,13 @@ pub enum SceneCommand {
     ResetClassOverrides {
         id: String,
     },
+    /// Set the `movability` of every mesh and light component on each of
+    /// `ids` (Pulsar-Native#837: "Mark selection Static"). One undo step;
+    /// objects with neither component are skipped.
+    SetMovability {
+        ids: Vec<String>,
+        movability: helio_component::components::ObjectMovability,
+    },
 }
 
 impl std::fmt::Debug for SceneCommand {
@@ -352,6 +359,11 @@ impl std::fmt::Debug for SceneCommand {
             Self::ResetClassOverrides { id } => f
                 .debug_struct("ResetClassOverrides")
                 .field("id", id)
+                .finish(),
+            Self::SetMovability { ids, movability } => f
+                .debug_struct("SetMovability")
+                .field("ids", ids)
+                .field("movability", movability)
                 .finish(),
             Self::RevertClassSlot { id, slot_id, path } => f
                 .debug_struct("RevertClassSlot")

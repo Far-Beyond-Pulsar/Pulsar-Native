@@ -37,7 +37,9 @@ pub mod world;
 pub use component::ClassInstance;
 pub use id::{ClassId, ClassMeta, CLASS_META_FILE};
 pub use native_script::NativeScriptComponent;
-pub use plan::{plan_instance, InstancePlan, LocalTransform, PlannedChild, PlannedComponent};
+pub use plan::{
+    migrate_slot_keys, plan_instance, InstancePlan, LocalTransform, PlannedChild, PlannedComponent,
+};
 pub use prefab::{
     is_slot_uuid, new_slot_id, BlueprintClassRef, PrefabAsset, PrefabComponent, PREFAB_FILE,
 };

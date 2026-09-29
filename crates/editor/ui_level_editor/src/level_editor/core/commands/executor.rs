@@ -27,6 +27,7 @@ fn command_scope(cmd: &SceneCommand) -> Vec<String> {
         | SceneCommand::RevertClassSlot { id, .. }
         | SceneCommand::ResetClassOverrides { id } => vec![id.clone()],
         SceneCommand::UpdateObject { data } => vec![data.id.clone()],
+        SceneCommand::SetMovability { ids, .. } => ids.clone(),
         SceneCommand::DuplicateObject { source_id, .. } => vec![source_id.clone()],
         SceneCommand::SelectObject { .. } | SceneCommand::InstantiateClass { .. } => Vec::new(),
     }
@@ -59,6 +60,16 @@ fn edit_components(
     } else {
         CommandResult::noop(no_op_reason)
     }
+}
+
+/// The `movability` stored in a mesh's (top-level) or light's
+/// (`general.movability`, `#[sub_props]`-nested) component data.
+pub(crate) fn authored_movability(
+    data: &serde_json::Value,
+) -> Option<helio_component::components::ObjectMovability> {
+    data.get("movability")
+        .or_else(|| data.pointer("/general/movability"))
+        .and_then(|value| serde_json::from_value(value.clone()).ok())
 }
 
 // ── Executor ──────────────────────────────────────────────────────────────────
@@ -594,6 +605,48 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                     CommandResult::ok(vec![id.clone()])
                 } else {
                     CommandResult::noop("Nothing overridden")
+                }
+            }
+
+            SceneCommand::SetMovability { ids, movability } => {
+                use crate::level_editor::scene_edit::components;
+                let mut affected = Vec::new();
+                {
+                    let mut world = state.scene.world_mut();
+                    for id in &ids {
+                        let targets: Vec<(usize, String)> = components::get_components(&world, id)
+                            .into_iter()
+                            .enumerate()
+                            .filter(|(_, c)| {
+                                matches!(c.class_name.as_str(), "StaticMeshComponent" | "LightComponent")
+                                    && authored_movability(&c.data) != Some(movability)
+                            })
+                            .map(|(index, c)| (index, c.class_name))
+                            .collect();
+                        for (index, class_name) in targets {
+                            // Typed setter; `movability` is a flat property
+                            // name on both classes (lights via `#[sub_props]`).
+                            if components::update_live_component_property(
+                                &mut world,
+                                id,
+                                &class_name,
+                                index,
+                                "movability",
+                                Box::new(movability),
+                            )
+                            .is_ok()
+                                && !affected.contains(id)
+                            {
+                                affected.push(id.clone());
+                            }
+                        }
+                    }
+                }
+                if affected.is_empty() {
+                    CommandResult::noop("No mesh or light to change")
+                } else {
+                    state.scene.bump_revision(true);
+                    CommandResult::ok(affected)
                 }
             }
         }
