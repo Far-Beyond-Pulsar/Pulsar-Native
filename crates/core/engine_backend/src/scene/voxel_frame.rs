@@ -4,7 +4,7 @@
 //! bytes remain in component rows and are selected by the consuming backend.
 
 use helio_component::{VoxelComponent, VoxelTerrainComponent, VoxelWorldShape};
-use helio_voxel_data::VoxelBrushEdit;
+use helio_voxel_data::VoxelEditJournal;
 use helio_voxel_data::{
     VoxelBatchRevision, VoxelChunkBatch, VoxelChunkKey, VoxelChunkOp, VoxelChunkPayload,
     VoxelChunkUpdate, VoxelDomain, VoxelGeneratorDescriptor, VoxelPayloadStore, VoxelSourceId,
@@ -46,7 +46,7 @@ pub struct VoxelSceneEntry {
     /// Form and size of a terrain world (scaled with the entity).
     pub world: VoxelWorldForm,
     /// The terrain's ordered brush journal.
-    pub edits: Vec<VoxelBrushEdit>,
+    pub edits: VoxelEditJournal,
 }
 
 /// Authored form of a voxel world: shape and size in metres.
@@ -292,7 +292,7 @@ pub(super) fn object_entry(
                 .map_err(|_| "default_material_slot must fit in one byte")?,
         }),
         world: VoxelWorldForm::default(),
-        edits: Vec::new(),
+        edits: VoxelEditJournal::default(),
     })
 }
 

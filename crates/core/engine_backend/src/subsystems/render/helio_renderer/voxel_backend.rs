@@ -12,7 +12,7 @@ use helio_pass_voxel_planet::{
     engine::{PlanetFrame, PlanetPass, SharedPlanetFrame},
     terrain, Planet, PlanetRecipe, TerrainSource,
 };
-use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape};
+use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape, VoxelEditJournal};
 
 use crate::scene::voxel_frame::{VoxelEntryId, VoxelGeneratorConfig, VoxelSceneEntry};
 use super::renderer::VoxelBrushRequest;
@@ -381,7 +381,7 @@ fn world_recipe(entry: &VoxelSceneEntry, generator: &VoxelGeneratorConfig) -> Pl
 /// Build the world of an entry: its generated terrain with every journal brush.
 fn build_planet(entry: &VoxelSceneEntry, generator: &VoxelGeneratorConfig) -> Result<Planet, String> {
     let mut planet = Planet::new(world_recipe(entry, generator))?;
-    for edit in &entry.edits {
+    for edit in entry.edits.iter() {
         planet.apply(planet_brush(edit))?;
     }
     Ok(planet)
@@ -396,7 +396,7 @@ struct CachedPlanet {
     world: crate::scene::voxel_frame::VoxelWorldForm,
     /// Journal applied to `planet`: a newer journal that only appends
     /// brushes extends a copy of it.
-    edits: Vec<VoxelBrushEdit>,
+    edits: VoxelEditJournal,
     planet: Arc<Planet>,
 }
 
@@ -473,7 +473,7 @@ impl PlanetVoxelBackend {
                     && entry.edits.starts_with(&cached.edits) =>
             {
                 let mut planet = (*cached.planet).clone();
-                for edit in &entry.edits[cached.edits.len()..] {
+                for edit in entry.edits.iter_from(cached.edits.len()) {
                     planet.apply(planet_brush(edit))?;
                 }
                 planet
@@ -817,14 +817,14 @@ mod tests {
         registry.register(Box::new(PlanetVoxelBackend::new())).unwrap();
         let commit = registry.edit_ray(&entries, eye, down, dig(0.5)).unwrap().unwrap();
         assert_eq!(commit.id, entries[0].id);
-        let replay = |edits: &[VoxelBrushEdit]| {
+        let replay = |edits: &VoxelEditJournal| {
             let mut planet = Planet::new(PlanetRecipe::default()).unwrap();
-            for edit in edits {
+            for edit in edits.iter() {
                 planet.apply(planet_brush(edit)).unwrap();
             }
             planet
         };
-        assert_eq!(replay(&[commit.edit]).material(target), 0);
+        assert_eq!(replay(&[commit.edit].into_iter().collect()).material(target), 0);
         // The same canonical cell is addressed from the ground, from orbit
         // and from far beyond the renderer's precision range.
         for distance in [2_000.0, 300_000.0, 1_000_000_000.0] {
@@ -832,7 +832,7 @@ mod tests {
                 .edit_ray(&entries, eye - down * distance, down, dig(0.05))
                 .unwrap()
                 .expect("remote terrain remains editable");
-            assert_eq!(replay(&[remote.edit]).material(target), 0);
+            assert_eq!(replay(&[remote.edit].into_iter().collect()).material(target), 0);
             assert!(remote.distance > distance);
         }
         // Building fills the empty cell in front of the hit.
