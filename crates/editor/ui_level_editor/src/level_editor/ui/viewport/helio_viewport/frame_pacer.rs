@@ -21,6 +21,8 @@ const MIN_TARGET_HZ: f64 = 20.0;
 pub(super) struct FramePacer {
     /// The rate we'd like to hit — the display refresh, unless overridden.
     ceiling_hz: f64,
+    /// `PULSAR_VIEWPORT_FPS` pinned the ceiling; display changes are ignored.
+    ceiling_overridden: bool,
     /// The rate we're currently aiming at, `<= ceiling_hz`.
     pub(super) target_hz: f64,
     /// When the next frame is due.
@@ -49,10 +51,33 @@ impl FramePacer {
             .and_then(|v| v.trim().parse::<f64>().ok())
             .filter(|v| *v >= 0.0);
 
-        Self::with_ceiling(match override_hz {
+        let mut pacer = Self::with_ceiling(match override_hz {
             Some(hz) => hz,
             None => refresh_hz.unwrap_or(FALLBACK_REFRESH_HZ),
-        })
+        });
+        pacer.ceiling_overridden = override_hz.is_some();
+        pacer
+    }
+
+    /// Retarget at a newly reported display refresh rate. On Wayland the window
+    /// isn't associated with an output until the compositor sends
+    /// `wl_surface.enter`, which typically lands after the viewport's first
+    /// render — so the rate is often unknown when the render thread starts.
+    pub(super) fn set_display_refresh(&mut self, refresh_hz: f64) {
+        if self.ceiling_overridden || refresh_hz <= 0.0 || refresh_hz == self.ceiling_hz {
+            return;
+        }
+        tracing::info!(
+            "[VIEWPORT PACER] display refresh {:.0} -> {:.0} Hz",
+            self.ceiling_hz,
+            refresh_hz
+        );
+        self.ceiling_hz = refresh_hz;
+        // Jump straight to the new ceiling; if it's unsustainable the late-frame
+        // logic backs it off as usual.
+        self.target_hz = refresh_hz;
+        self.late_streak = 0;
+        self.on_time_streak = 0;
     }
 
     /// Build a pacer aiming at `ceiling_hz`, ignoring the environment. Split out
@@ -61,6 +86,7 @@ impl FramePacer {
     pub(super) fn with_ceiling(ceiling_hz: f64) -> Self {
         Self {
             ceiling_hz,
+            ceiling_overridden: false,
             target_hz: ceiling_hz,
             next_deadline: Instant::now(),
             late_streak: 0,
@@ -256,6 +282,25 @@ mod pacer_tests {
 
         run_on_time_frames(&mut pacer, 1);
         assert_eq!(pacer.target_hz, 144.0);
+    }
+
+    #[test]
+    fn a_late_display_report_raises_the_fallback_ceiling() {
+        // Wayland: no output at startup, then `wl_surface.enter` reports 165 Hz.
+        let mut pacer = FramePacer::with_ceiling(FALLBACK_REFRESH_HZ);
+        pacer.set_display_refresh(165.0);
+        assert_eq!(pacer.target_hz, 165.0);
+        run_late_frames(&mut pacer, FramePacer::LATE_STREAK_TO_DROP);
+        run_on_time_frames(&mut pacer, FramePacer::ON_TIME_STREAK_TO_RAISE);
+        assert_eq!(pacer.target_hz, 165.0, "recovery should use the new ceiling");
+    }
+
+    #[test]
+    fn an_env_override_ignores_display_reports() {
+        let mut pacer = FramePacer::with_ceiling(30.0);
+        pacer.ceiling_overridden = true;
+        pacer.set_display_refresh(144.0);
+        assert_eq!(pacer.target_hz, 30.0);
     }
 
     #[test]
