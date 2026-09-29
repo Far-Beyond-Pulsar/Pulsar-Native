@@ -153,6 +153,10 @@ impl Render for HelioViewport {
             // a `Window`: it's what the render thread starts its pacing at.
             let refresh_hz = window
                 .display(cx)
+                // Wayland may not have associated the newly-created window
+                // with an output yet. In that case use the compositor's
+                // primary output instead of silently capping at 60 Hz.
+                .or_else(|| cx.primary_display())
                 .and_then(|display| display.refresh_rate_millihertz())
                 .map(|mhz| mhz as f64 / 1000.0)
                 .filter(|hz| *hz > 0.0);
