@@ -4809,6 +4809,7 @@ name = "helio-pass-occlusion-cull"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "helio-bake-types",
  "helio-core",
  "helio-pass-gbuffer",
  "helio-pass-indirect-dispatch",
