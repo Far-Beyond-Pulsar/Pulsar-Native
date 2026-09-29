@@ -294,7 +294,7 @@ impl HierarchyItem for SceneObjectItem {
         )
         .menu_handler_with_icon(
             "Mark Movable (with children)",
-            IconName::Move,
+            IconName::Drag,
             set_movability(ObjectMovability::Movable),
         )
         .separator()

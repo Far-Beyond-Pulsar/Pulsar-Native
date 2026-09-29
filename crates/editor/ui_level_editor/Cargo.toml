@@ -39,6 +39,7 @@ pulsar_events.workspace = true
 # already unconditional deps of this crate above.
 pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
 helio_component.workspace = true
+helio.workspace = true
 helio-voxel-data.workspace = true
 pulsar_physics.workspace = true
 engine_fs.workspace = true
@@ -82,7 +83,6 @@ wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
 winapi = { workspace = true, features = ["winuser", "shellapi"] }
 
 [dev-dependencies]
-helio.workspace = true
 tempfile = { workspace = true }
 
 [lints]
