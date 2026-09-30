@@ -74,11 +74,6 @@ pub trait VoxelRenderBackend: Send {
     fn temporal_quality(&self, _size: [u32; 2]) -> Option<helio_pass_tsr::TsrQuality> {
         None
     }
-    /// This backend renders in camera-local coordinates while retaining the
-    /// precise world-space eye in `VoxelView`.
-    fn camera_relative(&self) -> bool {
-        false
-    }
     /// Outdoor backends may use the sky pass's default atmosphere when the
     /// scene has no explicitly authored sky component.
     fn outdoor_sky(&self) -> bool {
@@ -173,8 +168,8 @@ impl VoxelBackendRegistry {
             .collect()
     }
 
-    pub fn frame_environment(&self, entries: &[VoxelSceneEntry]) -> (bool, bool) {
-        let selected = self.backends.iter().filter(|backend| {
+    pub fn uses_outdoor_sky(&self, entries: &[VoxelSceneEntry]) -> bool {
+        let mut selected = self.backends.iter().filter(|backend| {
             entries.iter().any(|entry| {
                 if entry.renderer_id.is_empty() {
                     backend.supports(entry)
@@ -183,12 +178,7 @@ impl VoxelBackendRegistry {
                 }
             })
         });
-        selected.fold((false, false), |(relative, sky), backend| {
-            (
-                relative || backend.camera_relative(),
-                sky || backend.outdoor_sky(),
-            )
-        })
+        selected.any(|backend| backend.outdoor_sky())
     }
 
     /// Local vertical of the first visible source that defines one.
@@ -533,10 +523,6 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         })
     }
 
-    fn camera_relative(&self) -> bool {
-        true
-    }
-
     fn outdoor_sky(&self) -> bool {
         true
     }
@@ -830,7 +816,7 @@ mod tests {
         let (hidden, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty());
         assert!(!hidden[0].visible);
-        assert_eq!(registry.frame_environment(&hidden), (true, true));
+        assert!(registry.uses_outdoor_sky(&hidden));
         assert!(registry.publish_frame(&hidden, view(eye)).is_empty());
         assert!(frame.lock().unwrap().is_none());
     }

@@ -869,7 +869,7 @@ impl HelioRenderer {
                 });
             (entries, errors, authored_sky, authored_meshes, sun)
         };
-        let (camera_relative, outdoor_sky) = self.voxel_backends.frame_environment(&voxel_entries);
+        let outdoor_sky = self.voxel_backends.uses_outdoor_sky(&voxel_entries);
         self.voxel_altitude = self.voxel_backends.altitude(&voxel_entries, self.cam_pos);
         self.voxel_up = self.voxel_backends.ambient_up(&voxel_entries, self.cam_pos);
         let target = self.voxel_up.map_or(Vec3::Y, |up| up.as_vec3()).normalize_or(Vec3::Y);
@@ -898,20 +898,22 @@ impl HelioRenderer {
             let (fwd, _, _) = basis(self.cam_frame, self.cam_yaw, self.cam_pitch);
             let frame_up = self.cam_frame * Vec3::Y;
             let aspect = width as f32 / height.max(1) as f32;
-            let camera_eye = if camera_relative {
-                Vec3::ZERO
-            } else {
-                self.cam_pos.as_vec3()
-            };
-            let camera = Camera::perspective_look_at(
-                camera_eye,
-                camera_eye + fwd,
+            // Build orientation before translation: adding a unit direction
+            // to a large f32 world position can round away the look direction.
+            // Every scene pass uses this same world-space camera; voxel passes
+            // own their precise camera-relative tracing internally.
+            let mut camera = Camera::perspective_look_at(
+                Vec3::ZERO,
+                fwd,
                 frame_up,
                 std::f32::consts::FRAC_PI_4,
                 aspect,
                 near,
                 far,
             );
+            camera.position = self.cam_pos.as_vec3();
+            camera.view = (camera.view.as_dmat4()
+                * glam::DMat4::from_translation(-self.cam_pos)).as_mat4();
 
             // Debug geometry is transient GPU execution state. World content is
             // read by Helio passes directly from the SceneDB GPU mirror.
@@ -939,9 +941,6 @@ impl HelioRenderer {
         }
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
-        inner
-            .renderer
-            .set_world_origin(camera_relative.then_some(self.cam_pos));
         if outdoor_sky {
             inner.renderer.set_ambient([0.7, 0.8, 0.9], 1.0);
         } else {
