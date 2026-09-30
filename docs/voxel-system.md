@@ -191,7 +191,11 @@ and gameplay agree on every block. On generated terrain the older
 - `PULSAR_VOXEL_STATS=1` logs, twice a second to the engine log
   (`%APPDATA%/Pulsar/Pulsar_Engine/data/logs/<time>/engine.log`), the
   camera altitude and speed scale and each backend's `diagnostics` line
-  (resident / pending columns, jobs, levels, residency CPU times).
+  (resident / pending columns, jobs, levels, residency CPU times). `finest`
+  is the finest active level: from high up it is above 0 by design (fine
+  levels switch on only where local terrain can come near). Pending that
+  stays high while the camera is still, or `jobs=63` frames while moving,
+  point at residency starvation.
 - Slow frames log `[HELIO FRAME SPIKE]` with CPU/GPU splits.
 - The Flamegraph profiler (status bar) records scopes including
   `voxel_brush`, `voxel_altitude`, `voxel_project_entries`; stop recordings
@@ -205,7 +209,10 @@ and gameplay agree on every block. On generated terrain the older
   smooth transport over the planet); `ui_level_editor` sculpt stroke tests
   (a stroke is one undo step).
 - Renderer-side performance and correctness are measured in Helio
-  (`voxel_flight`; `HELIO_VOXEL_FLIGHT_TRIP` replays an editor trip).
+  (`voxel_flight`; `HELIO_VOXEL_FLIGHT_TRIP` replays an editor trip,
+  `HELIO_VOXEL_FLIGHT_REPLAY=<engine.log>` replays the altitude timeline of
+  a session logged with `PULSAR_VOXEL_STATS=1`, and
+  `HELIO_VOXEL_FLIGHT_CRUISE=<m>` flies level at the editor's speed).
 
 ## Extending
 
