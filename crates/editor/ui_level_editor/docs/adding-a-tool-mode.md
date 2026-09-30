@@ -1,7 +1,7 @@
 # Adding a Level Editor Tool Mode
 
 The level editor routes pointer events and mode-specific UI through the
-`ToolMode` trait in `src/level_editor/tool_modes/mod.rs`. The built-in
+`ToolMode` trait in `src/tool_modes/mod.rs`. The built-in
 `LevelEditMode` and registered `SplineMode` are current examples.
 
 ## Implement and register a mode
@@ -10,7 +10,8 @@ The level editor routes pointer events and mode-specific UI through the
    `Consumed` from `on_pointer` when the mode handled the event; return
    `PassThrough` to allow normal selection and gizmo behavior.
 2. Override `toolbar_controls`, `status`, `layout`,
-   `contributes_panels`, or `build_panel` only when needed.
+   `build_panels` when the mode contributes dock panels. The editor shell docks
+   the returned views without branching on the mode ID.
 3. Register the mode in `register_tool_modes` in
    `tool_modes/registry.rs`. `EditorDomain::default` calls this after
    constructing the built-in registry.
@@ -32,9 +33,11 @@ write-back hook for interactive toolbar widgets. A new mode that needs
 clickable widgets must add its own routing or extend the trait/dispatcher.
 `SplineMode` uses pointer events for edits and read-only toolbar values.
 
-For a dock panel, return a stable `ModePanelDescriptor` from
-`contributes_panels` and construct the matching `PanelView` in
-`build_panel`. Keep panel construction separate from per-frame updates.
+Keep each mode and its mode-specific panels together in a folder under
+`src/tool_modes/` (for example, `terrain/` or `voxel_sculpt/`). Construct its
+`PanelView`s in `ToolMode::build_panels`; keep panel construction separate from
+per-frame updates.
 
 `brush_cursor` is currently not wired to a renderer overlay. A mode that
 needs an on-screen cursor must connect that output to the viewport renderer.
+
