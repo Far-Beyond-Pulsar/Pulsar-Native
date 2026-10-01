@@ -191,7 +191,8 @@ and gameplay agree on every block. On generated terrain the older
 - **The editor's default Sun points straight down (world -Y),** so the sun
   is overhead at the pole and lower elsewhere. The planetary fallback sky
   receives the f64 world eye, scaled radius and scene Sun from the backend;
-  its atmosphere follows the radial horizon. Authored skies take precedence.
+  its atmosphere follows the radial horizon, with dim diffuse lighting on
+  the night side. Authored skies take precedence.
 
 ## Diagnostics and tests
 
