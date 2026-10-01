@@ -308,6 +308,7 @@ pub struct HelioRenderer {
     /// `PULSAR_VOXEL_STATS`: log voxel streaming diagnostics twice a second.
     voxel_stats_log: bool,
     last_voxel_stats_log: Instant,
+    native_voxel_flight: super::native_voxel_flight::NativeVoxelFlight,
 }
 
 struct HelioInner {
@@ -368,6 +369,7 @@ impl HelioRenderer {
             last_voxel_errors: Vec::new(),
             voxel_stats_log: std::env::var_os("PULSAR_VOXEL_STATS").is_some(),
             last_voxel_stats_log: Instant::now(),
+            native_voxel_flight: super::native_voxel_flight::NativeVoxelFlight::new(),
         }
     }
 
@@ -467,6 +469,7 @@ impl HelioRenderer {
             .lock()
             .ok()
             .and_then(|mut pending| pending.take());
+        let external_camera = pending_camera.is_some();
         if let Some(camera) = pending_camera {
             self.set_editor_camera_state(camera);
             self.reset_taa_next_frame = true;
@@ -706,6 +709,7 @@ impl HelioRenderer {
         let camera_stopped = self.cam_local_velocity.length_squared() <= CAMERA_IDLE_EPSILON
             && !self.had_camera_input;
         let is_idle = camera_stopped
+            && !self.native_voxel_flight.force_frames()
             && !has_pending_scene
             && !has_pending_editor
             && !self.voxel_backends.needs_frame(&inner.renderer)
@@ -871,6 +875,18 @@ impl HelioRenderer {
         };
         let outdoor_sky = self.voxel_backends.uses_outdoor_sky(&voxel_entries);
         self.voxel_altitude = self.voxel_backends.altitude(&voxel_entries, self.cam_pos);
+        let flight_ready = inner.has_rendered_frame
+            && !self.voxel_backends.needs_frame(&inner.renderer)
+            && self.pending_view_direction.is_none()
+            && self.voxel_backends.planetary_sky(&voxel_entries, self.cam_pos, sun).is_some();
+        let flight_interrupted = had_input || (external_camera && self.native_voxel_flight.running());
+        if let Some(pose) = self.native_voxel_flight.advance(now, flight_ready,
+            flight_interrupted, self.cam_pos, self.voxel_altitude,
+            basis(self.cam_frame, self.cam_yaw, self.cam_pitch).0, self.cam_pitch) {
+            self.cam_pos = self.voxel_backends.lift_out_of_ground(pose.eye).unwrap_or(pose.eye);
+            self.cam_pitch = pose.pitch;
+            self.voxel_altitude = self.voxel_backends.altitude(&voxel_entries, self.cam_pos);
+        }
         self.voxel_up = self.voxel_backends.ambient_up(&voxel_entries, self.cam_pos);
         let target = self.voxel_up.map_or(Vec3::Y, |up| up.as_vec3()).normalize_or(Vec3::Y);
         match self.pending_view_direction.take() {
@@ -965,13 +981,14 @@ impl HelioRenderer {
             self.last_voxel_stats_log = Instant::now();
             for line in self.voxel_backends.diagnostics(&inner.renderer) {
                 tracing::info!(
-                    "VOXEL_STATS altitude={:.1} speed_scale={:.1} {line} eye={:?} forward={:?} up={:?} viewport={}x{}",
+                    "VOXEL_STATS altitude={:.1} speed_scale={:.1} {line} eye={:?} forward={:?} up={:?} viewport={}x{} graph_gpu_ms={:?}",
                     self.voxel_altitude.unwrap_or(f64::NAN),
                     self.voxel_altitude.map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6)),
                     self.cam_pos.to_array(),
                     basis(self.cam_frame, self.cam_yaw, self.cam_pitch).0.to_array(),
                     basis(self.cam_frame, self.cam_yaw, self.cam_pitch).2.to_array(),
                     width, height,
+                    inner.renderer.gpu_frame_ms(),
                 );
             }
         }

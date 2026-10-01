@@ -238,6 +238,15 @@ appearance changes do not close those gates.
   Replay is offscreen and does not qualify native editor presentation timing.
   Separate capture runs from quiet timing runs; report whole-frame and stage
   distributions rather than treating a 5-to-6 ms excursion as proof of failure.
+- `PULSAR_VOXEL_NATIVE_FLIGHT=1` runs a 27 s native planetary integration
+  diagnostic after initial residency settles: ascend to 300 km, orbit,
+  descend, travel 18 km at 3 km/s and arrive near the surface. It uses the
+  normal native graph, world camera and collision lift, forces rendering
+  during the route and cancels on camera motion or an external camera reset.
+  It leaves the camera at the destination. Use a copied test project and
+  `PULSAR_VOXEL_STATS=1` for actual camera/streaming logs. The logged
+  `graph_gpu_ms` is a delayed GPU profiler sample, not native presentation
+  latency. Normal sessions do not run this route.
 
 ## Extending
 
