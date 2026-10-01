@@ -942,7 +942,7 @@ impl HelioRenderer {
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
         if outdoor_sky {
-            inner.renderer.set_ambient([0.7, 0.8, 0.9], 1.0);
+            inner.renderer.set_ambient([0.55, 0.68, 0.88], 0.75);
         } else {
             inner.renderer.set_ambient([0.0, 0.0, 0.0], 0.0);
         }
@@ -958,17 +958,25 @@ impl HelioRenderer {
         inner
             .renderer
             .set_fallback_sky_enabled(outdoor_sky && !authored_sky);
+        inner.renderer.set_planetary_sky(
+            (!authored_sky).then(|| self.voxel_backends.planetary_sky(&voxel_entries, self.cam_pos, sun)).flatten(),
+        );
         if self.voxel_stats_log && self.last_voxel_stats_log.elapsed().as_secs_f32() >= 0.5 {
             self.last_voxel_stats_log = Instant::now();
             for line in self.voxel_backends.diagnostics(&inner.renderer) {
                 tracing::info!(
-                    "VOXEL_STATS altitude={:.1} speed_scale={:.1} {line}",
+                    "VOXEL_STATS altitude={:.1} speed_scale={:.1} {line} eye={:?} forward={:?} up={:?} viewport={}x{}",
                     self.voxel_altitude.unwrap_or(f64::NAN),
                     self.voxel_altitude.map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6)),
+                    self.cam_pos.to_array(),
+                    basis(self.cam_frame, self.cam_yaw, self.cam_pitch).0.to_array(),
+                    basis(self.cam_frame, self.cam_yaw, self.cam_pitch).2.to_array(),
+                    width, height,
                 );
             }
         }
         let (forward, right, up) = basis(self.cam_frame, self.cam_yaw, self.cam_pitch);
+        voxel_errors.extend(self.voxel_backends.configure_appearance(&mut inner.renderer, &voxel_entries));
         voxel_errors.extend(self.voxel_backends.publish_frame(
             &voxel_entries,
             VoxelView {

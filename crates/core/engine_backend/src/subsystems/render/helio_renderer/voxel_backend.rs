@@ -69,6 +69,7 @@ pub fn stroke_fill(previous: &VoxelBrushEdit, next: &VoxelBrushEdit, voxel_size:
 }
 
 pub trait VoxelRenderBackend: Send {
+    fn configure_appearance(&self, _renderer: &mut helio::Renderer, _source: &VoxelSceneEntry) -> Result<(), String> { Ok(()) }
     fn renderer_id(&self) -> &'static str;
     /// Choose temporal resolve for this backend at the current viewport size.
     fn temporal_quality(&self, _size: [u32; 2]) -> Option<helio_pass_tsr::TsrQuality> {
@@ -78,6 +79,9 @@ pub trait VoxelRenderBackend: Send {
     /// scene has no explicitly authored sky component.
     fn outdoor_sky(&self) -> bool {
         false
+    }
+    fn planetary_sky(&self, _source: &VoxelSceneEntry, _eye: DVec3, _sun: Option<[f32; 3]>) -> Option<helio_pass_sky::PlanetarySky> {
+        None
     }
     /// Local vertical at `eye` for hemisphere ambient (a planet's radial).
     fn ambient_up(&self, _source: &VoxelSceneEntry, _eye: DVec3) -> Option<DVec3> {
@@ -179,6 +183,28 @@ impl VoxelBackendRegistry {
             })
         });
         selected.any(|backend| backend.outdoor_sky())
+    }
+
+    pub fn configure_appearance(&self, renderer: &mut helio::Renderer, entries: &[VoxelSceneEntry]) -> Vec<String> {
+        let mut errors = Vec::new();
+        for entry in entries.iter().filter(|entry| entry.visible) {
+            for backend in &self.backends {
+                if entry.renderer_id == backend.renderer_id() || (entry.renderer_id.is_empty() && backend.supports(entry)) {
+                    if let Err(error) = backend.configure_appearance(renderer, entry) { errors.push(error); }
+                }
+            }
+        }
+        errors
+    }
+
+    /// Local vertical of the first visible source that defines one.
+    pub fn planetary_sky(&self, entries: &[VoxelSceneEntry], eye: DVec3, sun: Option<[f32; 3]>) -> Option<helio_pass_sky::PlanetarySky> {
+        // Hiding the terrain mesh does not remove its camera environment.
+        entries.iter().find_map(|entry| {
+            self.backends.iter().filter(|backend| {
+                entry.renderer_id == backend.renderer_id() || (entry.renderer_id.is_empty() && backend.supports(entry))
+            }).find_map(|backend| backend.planetary_sky(entry, eye, sun))
+        })
     }
 
     /// Local vertical of the first visible source that defines one.
@@ -510,6 +536,15 @@ impl Default for PlanetVoxelBackend {
 }
 
 impl VoxelRenderBackend for PlanetVoxelBackend {
+    fn configure_appearance(&self, renderer: &mut helio::Renderer, source: &VoxelSceneEntry) -> Result<(), String> {
+        let appearance = if source.appearance_parameters.trim().is_empty() {
+            helio_pass_voxel_planet::engine::TerrainAppearance::default()
+        } else {
+            serde_json::from_str(&source.appearance_parameters).map_err(|e| format!("invalid terrain appearance JSON: {e}"))?
+        };
+        if let Some(pass) = renderer.find_pass_mut::<PlanetPass>() { pass.set_appearance(appearance); }
+        Ok(())
+    }
     fn renderer_id(&self) -> &'static str {
         VOXEL_TERRAIN_RENDERER
     }
@@ -546,6 +581,13 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             VoxelWorldShape::Sphere => eye.try_normalize(),
             VoxelWorldShape::Plane | VoxelWorldShape::InfinitePlane => Some(DVec3::Y),
         }
+    }
+
+    fn planetary_sky(&self, source: &VoxelSceneEntry, eye: DVec3, sun: Option<[f32; 3]>) -> Option<helio_pass_sky::PlanetarySky> {
+        if source.world.shape != VoxelWorldShape::Sphere { return None; }
+        let sun = sun.map(Vec3::from_array).and_then(Vec3::try_normalize)
+            .unwrap_or(Vec3::new(0.35, 0.75, 0.45).normalize());
+        Some(helio_pass_sky::PlanetarySky::earth_like(eye.to_array(), source.world.planet_radius, sun.to_array()))
     }
 
     fn camera_clip_range(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<(f32, f32)> {
@@ -699,6 +741,25 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn planetary_environment_uses_scaled_world_eye_and_scene_sun_even_if_terrain_is_hidden() {
+        let mut scene = World::new();
+        let entity = scene.spawn();
+        scene.insert(entity, planet_terrain());
+        let (mut entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
+        assert!(errors.is_empty());
+        entries[0].visible = false;
+        entries[0].world.planet_radius = 12_742_000.0;
+        let mut registry = VoxelBackendRegistry::new();
+        registry.register(Box::new(PlanetVoxelBackend::new())).unwrap();
+        let eye = DVec3::X * 12_745_000.0;
+        let sky = registry.planetary_sky(&entries, eye, Some([2.0, 0.0, 0.0])).unwrap();
+        assert_eq!(sky.eye_m, eye.to_array());
+        assert_eq!(sky.radius_m, 12_742_000.0);
+        assert_eq!(sky.sun_direction, [1.0, 0.0, 0.0]);
+        entries[0].world.shape = VoxelWorldShape::Plane;
+        assert!(registry.planetary_sky(&entries, eye, None).is_none());
+    }
     use crate::scene::Visibility;
     use helio_component::VoxelTerrainComponent;
     use helio_voxel_data::VoxelStoredPayload;
