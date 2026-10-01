@@ -51,7 +51,7 @@ fn the_inspector_shows_world_generation_and_editing_only() {
     let names: Vec<_> = terrain.get_properties().iter().map(|property| property.name).collect();
     assert_eq!(
         names,
-        ["enabled", "shape", "planet_radius", "plane_size", "voxel_size", "generator", "seed", "editable", "appearance_parameters"]
+        ["enabled", "shape", "planet_radius", "plane_size", "voxel_size", "generator", "seed", "appearance_parameters", "editable"]
     );
     // Chunk layout, LOD and bookkeeping stay serialized but internal.
     let json = serde_json::to_value(&terrain).unwrap();
