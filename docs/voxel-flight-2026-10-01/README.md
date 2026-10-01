@@ -46,7 +46,7 @@ not qualified by this check.
 
 Default arrival appearance after resize:
 
-![Native arrival](native-arrival.png)
+![Native arrival](native-arrival.jpg)
 
 In the live inspector, `{"detail":[0,0,0,0]}` immediately removed patch and
 pigment variation. Clearing the field restored the default variation.
@@ -55,9 +55,9 @@ not move. The backend resets temporal history only when appearance changes,
 so one idle editor frame no longer blends back the old material indefinitely.
 The graph regression also checks one-frame palette edits and restoration.
 
-![Native detail control](native-detail-zero.png)
+![Native detail control](native-detail-zero.jpg)
 
-![Restored defaults](native-default-restored.png)
+![Restored defaults](native-default-restored.jpg)
 
 The editor is left open on this copied project, with the default appearance
 restored. The original project was not edited. These captures verify native
