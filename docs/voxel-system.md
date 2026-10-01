@@ -47,6 +47,13 @@ but hidden. Presets: `VoxelTerrainComponent::planet(radius)`, `::plane(size)`,
 generator. The world is centred on its entity, which must sit at the origin
 without rotation and with a uniform scale (scale multiplies all sizes).
 
+`Terrain appearance (JSON)` changes shading without rebuilding the world:
+`palette` has 16 `[sRGB red, green, blue, roughness]` entries, `grass` has
+three `[sRGB red, green, blue, 0]` entries (dry, meadow, lush), and `detail`
+is `[patch contrast, pigment variation, edge shading, 0]`. Omitted fields
+inherit defaults;
+an empty value restores them. The viewport resets colour history on changes.
+
 **Generator settings** live in a separate component on the same entity, named
 by the generator (`VoxelLandformComponent` for `helio.landform`,
 `VoxelFlatTerrainComponent` for `helio.flat`). The projection serializes it
@@ -182,15 +189,16 @@ and gameplay agree on every block. On generated terrain the older
   world is its recipe plus ordered brushes; that keeps saves small and CPU
   queries exact, and lets the GPU regenerate any column at any level.
 - **The editor's default Sun points straight down (world -Y),** so the sun
-  is overhead at the pole and lower elsewhere. Helio's fallback sky assumes
-  world +Y up; the sky is wrong away from the pole and from orbit until the
-  planetary atmosphere lands.
+  is overhead at the pole and lower elsewhere. The planetary fallback sky
+  receives the f64 world eye, scaled radius and scene Sun from the backend;
+  its atmosphere follows the radial horizon. Authored skies take precedence.
 
 ## Diagnostics and tests
 
 - `PULSAR_VOXEL_STATS=1` logs, twice a second to the engine log
   (`%APPDATA%/Pulsar/Pulsar_Engine/data/logs/<time>/engine.log`), the
-  camera altitude and speed scale and each backend's `diagnostics` line
+  camera altitude, speed scale, eye/forward/up, viewport and each backend's
+  `diagnostics` line
   (resident / pending columns, jobs, levels, residency CPU times). `finest`
   is the finest active level: from high up it is above 0 by design (fine
   levels switch on only where local terrain can come near). Pending that
@@ -210,9 +218,14 @@ and gameplay agree on every block. On generated terrain the older
   (a stroke is one undo step).
 - Renderer-side performance and correctness are measured in Helio
   (`voxel_flight`; `HELIO_VOXEL_FLIGHT_TRIP` replays an editor trip,
-  `HELIO_VOXEL_FLIGHT_REPLAY=<engine.log>` replays the altitude timeline of
+  `HELIO_VOXEL_FLIGHT_REPLAY=<engine.log>` replays the logged camera pose of
   a session logged with `PULSAR_VOXEL_STATS=1`, and
   `HELIO_VOXEL_FLIGHT_CRUISE=<m>` flies level at the editor's speed).
+
+- `PULSAR_VOXEL_NATIVE_FLIGHT=1` runs a 27 s native ascent/orbit/descent/cruise
+  diagnostic after residency settles and cancels on camera input. Use a copied
+  project with `PULSAR_VOXEL_STATS=1`; delayed `graph_gpu_ms` samples measure
+  graph GPU work, not presentation latency.
 
 ## Extending
 
