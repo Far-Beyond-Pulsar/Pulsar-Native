@@ -1,5 +1,9 @@
 # Native voxel flight — draft evidence, 2026-10-01
 
+This is historical evidence for the earlier renderer pin. The subsequent
+release rebuild, shading correction and new native route are recorded in
+[the performance correction report](../voxel-performance-2026-10-01.md).
+
 Companion: [Helio #314](https://github.com/Far-Beyond-Pulsar/Helio/pull/314).
 Windows, RTX 3060, copied `voxel_project`, 0.1 m authored voxels.
 
