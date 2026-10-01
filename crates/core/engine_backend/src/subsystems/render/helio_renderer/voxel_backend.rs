@@ -542,7 +542,15 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         } else {
             serde_json::from_str(&source.appearance_parameters).map_err(|e| format!("invalid terrain appearance JSON: {e}"))?
         };
-        if let Some(pass) = renderer.find_pass_mut::<PlanetPass>() { pass.set_appearance(appearance); }
+        let changed = renderer.find_pass_mut::<PlanetPass>()
+            .is_some_and(|pass| pass.set_appearance(appearance));
+        if changed {
+            // The editor can go idle immediately after this frame. Old colour
+            // history must not hide an inspector edit until the camera moves.
+            if let Some(pass) = renderer.find_pass_mut::<helio_pass_tsr::TsrPass>() {
+                pass.reset_history();
+            }
+        }
         Ok(())
     }
     fn renderer_id(&self) -> &'static str {

@@ -955,6 +955,9 @@ impl HelioRenderer {
         };
 
         if self.reset_taa_next_frame {
+            if let Some(pass) = inner.renderer.find_pass_mut::<helio_pass_tsr::TsrPass>() {
+                pass.reset_history();
+            }
             self.reset_taa_next_frame = false;
         }
 
