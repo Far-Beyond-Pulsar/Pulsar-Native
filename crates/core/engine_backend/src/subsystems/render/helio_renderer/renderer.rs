@@ -942,7 +942,7 @@ impl HelioRenderer {
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
         if outdoor_sky {
-            inner.renderer.set_ambient([0.55, 0.68, 0.88], 0.75);
+            inner.renderer.set_ambient([0.55, 0.68, 0.88], 1.25);
         } else {
             inner.renderer.set_ambient([0.0, 0.0, 0.0], 0.0);
         }
