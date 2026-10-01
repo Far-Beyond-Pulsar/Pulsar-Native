@@ -182,36 +182,15 @@ and gameplay agree on every block. On generated terrain the older
   world is its recipe plus ordered brushes; that keeps saves small and CPU
   queries exact, and lets the GPU regenerate any column at any level.
 - **The editor's default Sun points straight down (world -Y),** so the sun
-  is overhead at the pole and lower elsewhere. The procedural planetary sky
-  now receives the world-space eye, scaled planet radius and scene Sun from
-  the voxel backend, including after viewport resize. Authored skies retain
-  precedence. Hiding terrain geometry retains its camera environment; plane
-  worlds retain the outdoor fallback.
-
-## Terrain appearance
-
-`Terrain appearance (JSON)` on the terrain component updates shading without
-rebuilding the terrain or changing its edit journal. An empty value uses
-Helio's natural defaults. Partial objects inherit omitted defaults, for example
-`{"detail":[0.6,0.12,0.04,0.0]}`. `detail` controls grass patch contrast,
-pigment variation and voxel edge shading; the last value is reserved.
-`palette` contains 16 `[sRGB red, green, blue, roughness]` entries, and `grass`
-contains three `[sRGB red, green, blue, 0]` entries (dry, meadow, lush).
-Channels are in 0..1. Invalid JSON logs an error and keeps the previous style.
-
-Planetary fallback lighting includes aerial perspective. These controls are
-a foundation for art direction; they do not provide vegetation, weather or
-production art assets. The current renderer still uses a coarse geometric
-field at distance. Visible geometry transitions, loss of small distant edits
-and extreme-flight arrival latency remain open fidelity/performance gates;
-appearance changes do not close those gates.
+  is overhead at the pole and lower elsewhere. Helio's fallback sky assumes
+  world +Y up; the sky is wrong away from the pole and from orbit until the
+  planetary atmosphere lands.
 
 ## Diagnostics and tests
 
 - `PULSAR_VOXEL_STATS=1` logs, twice a second to the engine log
   (`%APPDATA%/Pulsar/Pulsar_Engine/data/logs/<time>/engine.log`), the
-  camera altitude, speed scale, world eye, forward/up vectors, viewport size
-  and each backend's `diagnostics` line
+  camera altitude and speed scale and each backend's `diagnostics` line
   (resident / pending columns, jobs, levels, residency CPU times). `finest`
   is the finest active level: from high up it is above 0 by design (fine
   levels switch on only where local terrain can come near). Pending that
@@ -231,22 +210,9 @@ appearance changes do not close those gates.
   (a stroke is one undo step).
 - Renderer-side performance and correctness are measured in Helio
   (`voxel_flight`; `HELIO_VOXEL_FLIGHT_TRIP` replays an editor trip,
-  `HELIO_VOXEL_FLIGHT_REPLAY=<engine.log>` replays the complete logged camera
-  pose (old logs fall back to the altitude timeline) of
+  `HELIO_VOXEL_FLIGHT_REPLAY=<engine.log>` replays the altitude timeline of
   a session logged with `PULSAR_VOXEL_STATS=1`, and
   `HELIO_VOXEL_FLIGHT_CRUISE=<m>` flies level at the editor's speed).
-  Replay is offscreen and does not qualify native editor presentation timing.
-  Separate capture runs from quiet timing runs; report whole-frame and stage
-  distributions rather than treating a 5-to-6 ms excursion as proof of failure.
-- `PULSAR_VOXEL_NATIVE_FLIGHT=1` runs a 27 s native planetary integration
-  diagnostic after initial residency settles: ascend to 300 km, orbit,
-  descend, travel 18 km at 3 km/s and arrive near the surface. It uses the
-  normal native graph, world camera and collision lift, forces rendering
-  during the route and cancels on camera motion or an external camera reset.
-  It leaves the camera at the destination. Use a copied test project and
-  `PULSAR_VOXEL_STATS=1` for actual camera/streaming logs. The logged
-  `graph_gpu_ms` is a delayed GPU profiler sample, not native presentation
-  latency. Normal sessions do not run this route.
 
 ## Extending
 
