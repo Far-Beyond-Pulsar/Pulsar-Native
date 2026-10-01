@@ -457,11 +457,3 @@ pulsar_reflection_codegen = { path = "crates/third-party/pulsar-reflection/pulsa
 # merge commit once that branch lands.
 pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "0801d2638a66b81692df6a03130c3dcf1b3f1dbf" }
 pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "0801d2638a66b81692df6a03130c3dcf1b3f1dbf" }
-
-# Helio's vendored wgpu 30.0.1, patched with reusable command buffers
-# (Helio#311). The patch is additive, so everything else in the workspace sees
-# stock wgpu plus a few new methods. See crates/renderer/helio/vendor/README.md.
-[patch.crates-io]
-wgpu = { path = "crates/renderer/helio/vendor/wgpu" }
-wgpu-core = { path = "crates/renderer/helio/vendor/wgpu-core" }
-wgpu-hal = { path = "crates/renderer/helio/vendor/wgpu-hal" }
