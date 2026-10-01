@@ -96,6 +96,21 @@ fn route(t: f64, start: f64, pitch: f32) -> (f64, f64, f32, &'static str) {
 mod tests {
     use super::*;
     #[test]
+    fn diagnostic_waits_for_residency_and_cancels_without_rearming() {
+        let now = Instant::now();
+        let mut driver = NativeVoxelFlight {
+            armed: true, armed_at: now, flight: None, last_report: now,
+        };
+        let eye = DVec3::Y * 6_371_730.0;
+        assert!(driver.advance(now, false, false, eye, Some(30.0), -Vec3::Z, -0.15).is_none());
+        let pose = driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15).unwrap();
+        assert!(pose.eye.distance(eye) < 1.0e-8);
+        assert!(driver.advance(now, true, true, eye, Some(30.0), -Vec3::Z, -0.15).is_none());
+        assert!(!driver.force_frames());
+        assert!(driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15).is_none());
+    }
+
+    #[test]
     fn route_is_continuous_and_returns_to_starting_clearance() {
         for t in [6.0, 9.0, 15.0, 21.0] {
             let a = route(t - 1.0e-8, 30.0, -0.15);
