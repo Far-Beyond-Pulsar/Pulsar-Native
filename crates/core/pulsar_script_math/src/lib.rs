@@ -38,13 +38,13 @@ fn numbers<const N: usize>(text: &str) -> Result<[f64; N], String> {
 fn f32s<const N: usize>(text: &str) -> Result<[f32; N], String> {
     Ok(numbers::<N>(text)?.map(|v| v as f32))
 }
+script_value_type!(Vec2, "Vec2", decode = |t| Ok(Vec2::from_array(f32s::<2>(t)?)), encode = |v| literal::vec2(*v));
+script_value_type!(Vec3, "Vec3", decode = |t| Ok(Vec3::from_array(f32s::<3>(t)?)), encode = |v| literal::vec3(*v));
+script_value_type!(Vec4, "Vec4", decode = |t| Ok(Vec4::from_array(f32s::<4>(t)?)), encode = |v| literal::vec4(*v));
+script_value_type!(DVec3, "DVec3", decode = |t| Ok(DVec3::from_array(numbers::<3>(t)?)), encode = |v| literal::dvec3(*v));
+script_value_type!(Quat, "Quat", decode = |t| Ok(Quat::from_array(f32s::<4>(t)?)), encode = |v| literal::quat(*v));
+script_value_type!(Mat4, "Mat4", decode = |t| Ok(Mat4::from_cols_array(&f32s::<16>(t)?)), encode = |v| literal::mat4(*v));
 
-script_value_type!(Vec2, "Vec2", decode = |t| Ok(Vec2::from_array(f32s::<2>(t)?)));
-script_value_type!(Vec3, "Vec3", decode = |t| Ok(Vec3::from_array(f32s::<3>(t)?)));
-script_value_type!(Vec4, "Vec4", decode = |t| Ok(Vec4::from_array(f32s::<4>(t)?)));
-script_value_type!(DVec3, "DVec3", decode = |t| Ok(DVec3::from_array(numbers::<3>(t)?)));
-script_value_type!(Quat, "Quat", decode = |t| Ok(Quat::from_array(f32s::<4>(t)?)));
-script_value_type!(Mat4, "Mat4", decode = |t| Ok(Mat4::from_cols_array(&f32s::<16>(t)?)));
 
 /// The literal text of each math value, for compilers emitting constants.
 pub mod literal {

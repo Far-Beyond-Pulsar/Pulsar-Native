@@ -283,6 +283,7 @@ mod script_runtime_bindings {
                 name: pulsar_class::slot_variable_name(slot),
                 ty: Type::Component("LightComponent".into()),
                 default: None,
+                id: None,
             });
         }
         let mut runtime = scripting::new_runtime();

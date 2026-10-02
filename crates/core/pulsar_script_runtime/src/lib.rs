@@ -40,7 +40,11 @@
 //! [`call_function`](ScriptRuntime::call_function) to run a handler.
 //!
 //! Hot reload: [`ScriptRuntime::reload_class`] swaps a class's code and
-//! keeps each instance's variables whose name and type are unchanged;
+//! carries each instance's variables over by stable id (name for data from
+//! before ids), runs the class's optional `migrate` hook when its version
+//! rises, reports every change, and is all-or-nothing (see
+//! [`pulsar_script_vm::migrate`]). [`SavedState`] saves and restores an
+//! instance through the same migration;
 //! loading, reloading or unloading a native library relinks every class
 //! (see [`RelinkReport`]).
 
@@ -49,10 +53,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use pulsar_scenedb::{Entity, World};
+use pulsar_script_vm::migrate::{self, MigrationSource, VariableFate};
+
+mod state;
+pub use state::{value_to_json, RestoreReport, SavedState, SavedVariable};
 use pulsar_script_vm::{
     Budget, CapabilityPolicy, Completion, Continuation, ErrorSite, EventCatalog, EventDecl, EventSink, FuncId, Host,
     Instance, LibraryError, LibraryId, LinkError, LinkedSubscription, Module, NativeFn,
-    NativeLibraries, NativeRegistry, Program, ScriptError, SourceLoc, Type, Value, Vm,
+    NativeLibraries, NativeRegistry, Program, ScriptError, SourceLoc, Type, TypeRegistry, Value, Variable, Vm,
 };
 
 /// The engine's event hub, as the runtime sees it: a sink for the event
@@ -159,6 +167,10 @@ pub enum RuntimeError {
     Parse { path: PathBuf, source: pulsar_script_vm::ModuleDecodeError },
     #[error("script class `{class}` declares event `{event}`: {reason}")]
     EventDeclaration { class: String, event: String, reason: String },
+    #[error("migrating `{object_id}` of `{class}` failed, so the reload was refused: {source}")]
+    Migration { class: String, object_id: String, source: ScriptError },
+    #[error("restoring saved state of `{object_id}`: {reason}")]
+    State { object_id: String, reason: String },
 }
 
 struct Entries {
@@ -221,6 +233,67 @@ pub struct ReloadReport {
     pub kept: usize,
     /// Waiting calls dropped because their code changed shape.
     pub dropped: Vec<DroppedCall>,
+    /// Variables, across all instances, whose value carried over unchanged.
+    pub variables_kept: usize,
+    /// Everything else that happened to variables: renames, resets,
+    /// retypes, removals and `migrate` runs, one entry per instance.
+    pub variables: Vec<VariableChange>,
+}
+
+/// One notable change to one instance's variable during a reload.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VariableChange {
+    pub object_id: String,
+    /// The variable (for `Removed`, the old name).
+    pub variable: String,
+    pub kind: ChangeKind,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ChangeKind {
+    /// The value carried over under a new name (matched by id).
+    Renamed { from: String },
+    /// New in this version: starts at its default.
+    Defaulted,
+    /// The type changed: the value was not carried over and the variable
+    /// starts at its default (unless `migrate` set it).
+    Incompatible { from: Type, to: Type },
+    /// Gone from this version: its value was discarded.
+    Removed,
+    /// The class's `migrate` function ran for this instance.
+    MigrateRan { from_version: u32 },
+}
+
+/// The old instance's values, by variable name, for `migrate`.
+struct OldState(HashMap<String, Value>);
+
+impl MigrationSource for OldState {
+    fn old_value(&self, name: &str) -> Option<&Value> {
+        self.0.get(name)
+    }
+}
+
+/// The `migrate` function to run for a reload from `old` to `new`, if any:
+/// the new module raised its class version and exports one.
+fn migration_hook(old_version: u32, new: &Class) -> Result<Option<FuncId>, RuntimeError> {
+    let module = new.program.module();
+    if module.class_version <= old_version {
+        return Ok(None);
+    }
+    match module.function(migrate::MIGRATE_FUNCTION) {
+        Some((index, f)) if f.exported => {
+            if f.params == [Type::Int] && f.ret == Type::Unit {
+                Ok(Some(FuncId(index)))
+            } else {
+                Err(RuntimeError::BadEntryPoint {
+                    class: module.name.clone(),
+                    name: migrate::MIGRATE_FUNCTION,
+                    expected: "fn migrate(from_version: int)",
+                })
+            }
+        }
+        _ => Ok(None),
+    }
 }
 
 /// A waiting call a reload could not keep.
@@ -480,48 +553,76 @@ impl ScriptRuntime {
     }
 
     /// Swap a loaded class's code. Instances keep their identity, binding
-    /// and every variable whose name and type are unchanged; new or
-    /// retyped variables start at their defaults. Waiting calls continue
-    /// in the new code when their functions' layout is unchanged (see
-    /// `Continuation::rebase`), and are dropped otherwise, listed in the
-    /// report. On error nothing changes.
+    /// and every variable [`migrate::plan`] matches (by stable id, else by
+    /// name) to a variable of the same type; new, retyped and unmatched
+    /// variables are reported in [`ReloadReport::variables`]. When the new
+    /// module raises [`Module::class_version`] and exports `migrate`, it
+    /// runs once per instance on the new state (see
+    /// [`pulsar_script_vm::migrate`]).
+    ///
+    /// Waiting calls continue in the new code when their functions' layout
+    /// is unchanged (see `Continuation::rebase`), and are dropped otherwise,
+    /// listed in the report.
+    ///
+    /// The reload is all-or-nothing: every instance's new state is built
+    /// first, and the code, event declarations and state are committed
+    /// together only if all of that succeeds. On error the old class keeps
+    /// running untouched.
     pub fn reload_class(&mut self, module: Module) -> Result<ReloadReport, RuntimeError> {
         let name = module.name.clone();
         if !self.classes.contains_key(&name) {
             return Err(RuntimeError::UnknownClass(name));
         }
+        // Events are declared before linking: the class's own handlers link
+        // against the host's catalog. The host cannot retract a declaration,
+        // so a reload that fails after this leaves any newly declared events
+        // registered (harmless; changed re-declarations are refused anyway);
+        // class state, code and waiting calls are all-or-nothing.
         self.declare_events(&module)?;
         let new = Class::link(Arc::new(module), &self.natives, self.catalog(), &self.capabilities)?;
         let old = &self.classes[&name];
-
         let old_module = Arc::clone(old.program.module());
-        let mut migrated = 0;
-        let mut kept = 0;
-        let mut report = ReloadReport::default();
-        for (object_id, instance) in self.instances.iter_mut().filter(|(_, i)| i.class == name) {
-            let mut state = new.program.instantiate();
-            for (index, var) in new.program.module().variables.iter().enumerate() {
-                let Some(old_index) = old_module.variables.iter().position(|v| v.name == var.name && v.ty == var.ty)
-                else {
-                    continue;
-                };
-                if let Some(value) = old.program.var(&instance.state, old_index) {
-                    // Same name and type: always fits.
-                    let _ = new.program.set_var(&mut state, index, value.clone());
-                }
-            }
-            instance.state = state;
+        let new_module = Arc::clone(new.program.module());
+
+        // Stage every instance; nothing is touched until all of them work.
+        let mut scratch = World::new();
+        let mut staged = Vec::new();
+        for (object_id, instance) in self.instances.iter().filter(|(_, i)| i.class == name) {
+            let old_values: Vec<Option<Value>> =
+                (0..old_module.variables.len()).map(|i| old.program.var(&instance.state, i).cloned()).collect();
+            let carried = carry_state(
+                &new,
+                object_id,
+                &old_module.variables,
+                old_module.class_version,
+                &old_values,
+                &mut scratch,
+            )?;
             // Suspended calls ran the old code: they continue in the new
             // code where its layout is compatible (#862), see
             // `Continuation::rebase`; the others are dropped.
-            for (wake, continuation) in std::mem::take(&mut instance.waiting) {
-                match continuation.rebase(new.program.module()) {
-                    Ok(rebased) => {
-                        instance.waiting.push((wake, rebased));
-                        kept += 1;
+            let waiting = instance
+                .waiting
+                .iter()
+                .map(|(wake, continuation)| (*wake, continuation.rebase(new.program.module())))
+                .collect::<Vec<_>>();
+            staged.push((object_id.clone(), carried, waiting));
+        }
+
+        let mut report = ReloadReport::default();
+        let mut migrated = 0;
+        for (object_id, Carried { state, changes, kept }, waiting) in staged {
+            let instance = self.instances.get_mut(&object_id).expect("staged instances exist");
+            let previous = std::mem::take(&mut instance.waiting);
+            instance.state = state;
+            for ((wake, rebased), (_, original)) in waiting.into_iter().zip(previous) {
+                match rebased {
+                    Ok(continuation) => {
+                        instance.waiting.push((wake, continuation));
+                        report.kept += 1;
                     }
                     Err(reason) => {
-                        let function = continuation.functions().last().map(|f| f.to_string()).unwrap_or_default();
+                        let function = original.functions().last().map(|f| f.to_string()).unwrap_or_default();
                         tracing::warn!(
                             class = %name,
                             function = %function,
@@ -531,10 +632,11 @@ impl ScriptRuntime {
                     }
                 }
             }
+            report.variables_kept += kept;
+            report.variables.extend(changes);
             migrated += 1;
         }
-        tracing::info!(class = %name, instances = migrated, kept_waiting = kept, "reloaded script class");
-        report.kept = kept;
+        tracing::info!(class = %name, instances = migrated, kept_waiting = report.kept, "reloaded script class");
         self.classes.insert(name, new);
         Ok(report)
     }
@@ -558,9 +660,9 @@ impl ScriptRuntime {
         let program = &self.classes.get(class).ok_or_else(|| RuntimeError::UnknownClass(class.to_owned()))?.program;
         let mut state = program.instantiate();
         for (name, value) in overrides {
-            let index = program.variable(name).ok_or_else(|| RuntimeError::BadVariable {
-                name: name.clone(),
-                reason: format!("`{class}` has no such variable"),
+            // A key is a stable variable id or a name (data from before ids).
+            let index = migrate::resolve_key(&program.module().variables, name).map_err(|reason| {
+                RuntimeError::BadVariable { name: name.clone(), reason: format!("`{class}`: {reason}") }
             })?;
             program
                 .set_var(&mut state, index, value.clone())
@@ -590,9 +692,17 @@ impl ScriptRuntime {
         for (name, json) in overrides {
             // Level files outlive graph edits: a variable that no longer
             // exists is skipped, not fatal.
-            let Some(var) = program.variable(name).map(|i| &program.module().variables[i]) else {
-                tracing::warn!("`{class}` has no variable `{name}`; ignoring its override");
-                continue;
+            let variables = &program.module().variables;
+            let var = match migrate::resolve_key(variables, name) {
+                Ok(index) => &variables[index],
+                Err(reason) if variables.iter().any(|v| v.id.as_deref() == Some(name) || &v.name == name) => {
+                    // Known but ambiguous: refuse instead of guessing.
+                    return Err(RuntimeError::BadVariable { name: name.clone(), reason });
+                }
+                Err(_) => {
+                    tracing::warn!("`{class}` has no variable `{name}`; ignoring its override");
+                    continue;
+                }
             };
             let value = value_from_json(json, &var.ty)
                 .map_err(|reason| RuntimeError::BadVariable { name: name.clone(), reason })?;
@@ -884,6 +994,89 @@ pub fn value_from_json(json: &serde_json::Value, ty: &Type) -> Result<Value, Str
         (Type::Int, J::Number(n)) => n.as_i64().map(Value::Int).ok_or_else(|| format!("{n} is not an integer")),
         (Type::Float, J::Number(n)) => n.as_f64().map(Value::Float).ok_or_else(|| format!("{n} is not a number")),
         (Type::Str, J::String(s)) => Ok(Value::Str(s.as_str().into())),
+        // Value types use their registered literal form (see `Constant::Value`).
+        (Type::Object(name), json) => TypeRegistry::global().decode_value(name, &json.to_string()),
         (ty, json) => Err(format!("cannot use {json} as {ty}")),
     }
+}
+
+/// A new instance's state, carried over from an old version's values.
+struct Carried {
+    state: Instance,
+    changes: Vec<VariableChange>,
+    /// Variables whose value carried over unchanged.
+    kept: usize,
+}
+
+/// Build the state of a `new` instance from `old_values` (parallel to
+/// `old_vars`): match variables with [`migrate::plan`], carry matches, then
+/// run the class's `migrate` function if `old_version` is older. Shared by
+/// hot reload and restoring saved state, so both migrate the same way.
+fn carry_state(
+    new: &Class,
+    object_id: &str,
+    old_vars: &[Variable],
+    old_version: u32,
+    old_values: &[Option<Value>],
+    scratch: &mut World,
+) -> Result<Carried, RuntimeError> {
+    let module = new.program.module();
+    let plan = migrate::plan(old_vars, &module.variables);
+    let mut state = new.program.instantiate();
+    let mut changes = Vec::new();
+    let mut kept = 0;
+    for (index, fate) in plan.fates.iter().enumerate() {
+        let variable = &module.variables[index];
+        let change = |kind| VariableChange { object_id: object_id.to_owned(), variable: variable.name.clone(), kind };
+        match *fate {
+            VariableFate::Kept { old, renamed } => {
+                let value = old_values.get(old).cloned().flatten();
+                match value.map(|v| new.program.set_var(&mut state, index, v)) {
+                    Some(Ok(())) if renamed => {
+                        changes.push(change(ChangeKind::Renamed { from: old_vars[old].name.clone() }))
+                    }
+                    Some(Ok(())) => kept += 1,
+                    _ => changes.push(change(ChangeKind::Defaulted)),
+                }
+            }
+            VariableFate::Retyped { old } => changes.push(change(ChangeKind::Incompatible {
+                from: old_vars[old].ty.clone(),
+                to: variable.ty.clone(),
+            })),
+            VariableFate::Added => changes.push(change(ChangeKind::Defaulted)),
+        }
+    }
+    for &removed in &plan.removed {
+        changes.push(VariableChange {
+            object_id: object_id.to_owned(),
+            variable: old_vars[removed].name.clone(),
+            kind: ChangeKind::Removed,
+        });
+    }
+    if let Some(hook) = migration_hook(old_version, new)? {
+        let source = OldState(
+            old_vars.iter().zip(old_values).filter_map(|(v, value)| Some((v.name.clone(), value.clone()?))).collect(),
+        );
+        let mut host = Host::new(scratch, Entity::DANGLING).with_migration(Some(&source));
+        Vm::new()
+            .call(
+                &new.program,
+                &mut state,
+                hook,
+                &[Value::Int(i64::from(old_version))],
+                &mut host,
+                &mut Budget::new(migrate::MIGRATE_BUDGET),
+            )
+            .map_err(|source| RuntimeError::Migration {
+                class: module.name.clone(),
+                object_id: object_id.to_owned(),
+                source,
+            })?;
+        changes.push(VariableChange {
+            object_id: object_id.to_owned(),
+            variable: migrate::MIGRATE_FUNCTION.to_owned(),
+            kind: ChangeKind::MigrateRan { from_version: old_version },
+        });
+    }
+    Ok(Carried { state, changes, kept })
 }

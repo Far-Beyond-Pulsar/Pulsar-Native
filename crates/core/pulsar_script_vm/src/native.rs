@@ -34,15 +34,23 @@ pub struct Host<'w> {
     /// Where the `event::*` natives publish. `None` in hosts without an
     /// event hub: those natives then fail the call.
     pub events: Option<&'w dyn EventSink>,
+    /// Old state a class's `migrate` function reads; `None` otherwise.
+    pub migration: Option<&'w dyn crate::migrate::MigrationSource>,
 }
 
 impl<'w> Host<'w> {
     pub fn new(world: &'w mut World, entity: Entity) -> Self {
-        Self { world, entity, time: 0.0, events: None }
+        Self { world, entity, time: 0.0, events: None, migration: None }
     }
 
     pub fn at_time(world: &'w mut World, entity: Entity, time: f64) -> Self {
-        Self { world, entity, time, events: None }
+        Self { world, entity, time, events: None, migration: None }
+    }
+
+    /// Make `source`'s values readable through the `migration::old_*` natives.
+    pub fn with_migration(mut self, source: Option<&'w dyn crate::migrate::MigrationSource>) -> Self {
+        self.migration = source;
+        self
     }
 
     /// Attach an event sink.

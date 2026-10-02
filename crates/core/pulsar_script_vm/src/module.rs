@@ -41,7 +41,8 @@ use serde::{Deserialize, Serialize};
 use crate::types::Type;
 
 /// Bumped on any incompatible change to the format. Version 3 added
-/// [`Constant::Value`]; version 2 added
+/// [`Constant::Value`], [`Variable::id`] and [`Module::class_version`];
+/// version 2 added
 /// [`Module::events`] and [`Module::subscriptions`].
 pub const FORMAT_VERSION: u32 = 3;
 
@@ -95,6 +96,15 @@ pub struct Module {
     /// Event handlers, subscribed per instance.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subscriptions: Vec<Subscription>,
+    /// The class's schema version, independent of [`FORMAT_VERSION`]: bumped
+    /// by the language frontend when the class's state layout changes in a
+    /// way a `migrate` function should handle. See [`crate::migrate`].
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub class_version: u32,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }
 
 impl Module {
@@ -108,6 +118,7 @@ impl Module {
             functions: Vec::new(),
             events: Vec::new(),
             subscriptions: Vec::new(),
+            class_version: 0,
         }
     }
 
@@ -414,6 +425,11 @@ pub struct Variable {
     /// Initial value; `None` means the type's default.
     #[serde(default)]
     pub default: Option<Constant>,
+    /// Stable identity, kept by the frontend across renames. State carries
+    /// over a reload by id when both versions have one, by name otherwise
+    /// (see [`crate::migrate`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Encode, Decode)]

@@ -33,9 +33,22 @@ pub fn verify(module: &Module) -> Result<(), VerifyError> {
         }
     }
     let mut vars = HashSet::new();
+    let mut ids = HashSet::new();
     for var in &module.variables {
         if !vars.insert(var.name.as_str()) {
             return Err(VerifyError::module(format!("variable `{}` declared twice", var.name)));
+        }
+        // Identity must be unambiguous: state is matched by it on reload.
+        if let Some(id) = &var.id {
+            if id.is_empty() {
+                return Err(VerifyError::module(format!("variable `{}` has an empty id", var.name)));
+            }
+            if !ids.insert(id.as_str()) {
+                return Err(VerifyError::module(format!(
+                    "variable id `{id}` is used by more than one variable (second: `{}`)",
+                    var.name
+                )));
+            }
         }
         if let Some(default) = &var.default {
             if default.ty() != var.ty {

@@ -26,10 +26,10 @@ fn function(name: &str, params: Vec<Type>, extra: Vec<Type>, code: Vec<Instr>) -
 fn counter(name: &str) -> Module {
     let mut m = Module::new(name);
     m.variables = vec![
-        Variable { name: "elapsed".into(), ty: Type::Float, default: None },
-        Variable { name: "ticks".into(), ty: Type::Int, default: None },
-        Variable { name: "started".into(), ty: Type::Bool, default: None },
-        Variable { name: "step".into(), ty: Type::Int, default: Some(Constant::Int(1)) },
+        Variable { name: "elapsed".into(), ty: Type::Float, default: None, id: None },
+        Variable { name: "ticks".into(), ty: Type::Int, default: None, id: None },
+        Variable { name: "started".into(), ty: Type::Bool, default: None, id: None },
+        Variable { name: "step".into(), ty: Type::Int, default: Some(Constant::Int(1)), id: None },
     ];
     m.constants = vec![Constant::Bool(true), Constant::Bool(false)];
     m.functions = vec![
@@ -146,7 +146,7 @@ fn reload_keeps_matching_variables() {
     // New version: `ticks` retyped to float, `elapsed` kept, a new variable.
     let mut v2 = counter("Counter");
     v2.variables[1].ty = Type::Float;
-    v2.variables.push(Variable { name: "fresh".into(), ty: Type::Str, default: Some(Constant::Str("new".into())) });
+    v2.variables.push(Variable { name: "fresh".into(), ty: Type::Str, default: Some(Constant::Str("new".into())), id: None });
     v2.functions[1].code = vec![Return { value: None }];
     v2.functions[3].registers[1] = Type::Float;
     v2.functions[3].code = vec![Return { value: None }];
@@ -181,7 +181,7 @@ fn unbound_instances_cannot_reach_components() {
         name: "entity::is_alive".into(),
         sig: Signature::new([Param::new(Type::Entity)], Type::Bool),
     }];
-    m.variables = vec![Variable { name: "alive".into(), ty: Type::Bool, default: None }];
+    m.variables = vec![Variable { name: "alive".into(), ty: Type::Bool, default: None, id: None }];
     m.functions = vec![function("begin_play", vec![], vec![Type::Entity, Type::Bool], vec![
         SelfEntity { dst: 0 },
         CallNative { import: 0, args: vec![0], dst: Some(1) },
@@ -203,7 +203,7 @@ fn new_natives_relink_classes() {
     let mut world = World::new();
     let mut m = Module::new("UsesLater");
     m.imports = vec![Import { name: "game::answer".into(), sig: Signature::new([], Type::Int) }];
-    m.variables = vec![Variable { name: "v".into(), ty: Type::Int, default: None }];
+    m.variables = vec![Variable { name: "v".into(), ty: Type::Int, default: None, id: None }];
     m.functions = vec![function("begin_play", vec![], vec![Type::Int], vec![
         CallNative { import: 0, args: vec![], dst: Some(0) },
         StoreVar { var: 0, src: 0 },
@@ -241,7 +241,7 @@ fn waiting_events_resume_after_game_time_passes() {
     let mut rt = runtime();
     let mut world = World::new();
     let mut m = Module::new("Latent");
-    m.variables = vec![Variable { name: "log".into(), ty: Type::Str, default: None }];
+    m.variables = vec![Variable { name: "log".into(), ty: Type::Str, default: None, id: None }];
     m.constants = vec![Constant::Str("a".into()), Constant::Str("b".into()), Constant::Float(1.0)];
     // begin_play: log += "a"; wait 1s; log += "b"
     m.functions = vec![function("begin_play", vec![], vec![Type::Str, Type::Str, Type::Float], vec![
@@ -406,7 +406,7 @@ mod events {
     /// that adds `n` to `total`, and emits `Ping(5)` from `send`.
     fn pinger(name: &str, other_event: Option<&str>) -> Module {
         let mut m = Module::new(name);
-        m.variables = vec![Variable { name: "total".into(), ty: Type::Int, default: None }];
+        m.variables = vec![Variable { name: "total".into(), ty: Type::Int, default: None, id: None }];
         m.constants = vec![Constant::Str("Ping".into()), Constant::Int(5)];
         m.imports = vec![Import {
             name: "event::emit".into(),
@@ -527,7 +527,7 @@ fn checked_arithmetic_follows_the_limits() {
     let mut rt = runtime();
     let mut world = World::new();
     let mut m = Module::new("Overflow");
-    m.variables = vec![Variable { name: "v".into(), ty: Type::Int, default: Some(Constant::Int(i64::MAX)) }];
+    m.variables = vec![Variable { name: "v".into(), ty: Type::Int, default: Some(Constant::Int(i64::MAX)), id: None }];
     m.constants = vec![Constant::Int(1)];
     m.functions = vec![function("begin_play", vec![], vec![Type::Int, Type::Int], vec![
         LoadVar { dst: 0, var: 0 },

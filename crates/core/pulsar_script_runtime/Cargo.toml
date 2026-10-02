@@ -9,7 +9,12 @@ pulsar_script_vm = { workspace = true }
 pulsar_scenedb   = { workspace = true }
 serde_json       = { workspace = true }
 thiserror        = { workspace = true }
+serde            = { workspace = true, features = ["derive"] }
 tracing          = { workspace = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+pulsar_script_math = { workspace = true }
+glam = { workspace = true }

@@ -30,6 +30,7 @@ pub mod error;
 pub mod events;
 pub mod interp;
 pub mod library;
+pub mod migrate;
 pub mod link;
 pub mod module;
 pub mod native;

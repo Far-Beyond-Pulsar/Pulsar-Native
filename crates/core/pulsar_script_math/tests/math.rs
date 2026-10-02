@@ -145,6 +145,7 @@ fn a_variable_default_is_a_fresh_copy_per_instance() {
         name: "dir".into(),
         ty: obj("Vec3"),
         default: Some(constant("Vec3", "[0, 1, 0]")),
+        id: None,
     });
     let with_x = module.imports.len() as u32;
     module.imports.push(Import {

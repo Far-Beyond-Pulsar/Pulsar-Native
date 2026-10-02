@@ -340,6 +340,8 @@ pub struct ValueTypeRegistration {
     /// Parses the type's literal text form (see [`Constant::Value`](crate::Constant)).
     /// `None` for types that cannot appear as constants.
     pub decode: Option<fn(&str) -> Result<Object, String>>,
+    /// The inverse of `decode`, for saving values; `None` if unsupported.
+    pub encode: Option<fn(&Object) -> Result<String, String>>,
 }
 
 inventory::collect!(ValueTypeRegistration);
@@ -383,6 +385,32 @@ macro_rules! script_value_type {
                 default: || $crate::value::Object::new($name, <$ty as ::std::default::Default>::default()),
                 binding: || $crate::types::TypeBinding::object::<$ty>($name),
                 decode: None,
+                encode: None,
+            }
+        }
+    };
+    // Decoder and encoder: the type can be a constant and be saved.
+    ($ty:ty, $name:expr, decode = $decode:expr, encode = $encode:expr) => {
+        $crate::__private::inventory::submit! {
+            $crate::types::ValueTypeRegistration {
+                name: $name,
+                ty: $crate::__private::TypeRef {
+                    id: ::std::any::TypeId::of::<$ty>,
+                    name: ::std::any::type_name::<$ty>,
+                },
+                default: || $crate::value::Object::new($name, <$ty as ::std::default::Default>::default()),
+                binding: || $crate::types::TypeBinding::object::<$ty>($name),
+                decode: Some(|text| {
+                    let decode: fn(&str) -> ::std::result::Result<$ty, String> = $decode;
+                    decode(text).map(|value| $crate::value::Object::new($name, value))
+                }),
+                encode: Some(|object| {
+                    let encode: fn(&$ty) -> String = $encode;
+                    object
+                        .downcast_ref::<$ty>()
+                        .map(encode)
+                        .ok_or_else(|| format!("expected a {}", $name))
+                }),
             }
         }
     };
@@ -402,6 +430,7 @@ macro_rules! script_value_type {
                     let decode: fn(&str) -> ::std::result::Result<$ty, String> = $decode;
                     decode(text).map(|value| $crate::value::Object::new($name, value))
                 }),
+                encode: None,
             }
         }
     };
@@ -570,6 +599,15 @@ impl TypeRegistry {
         let registration = self.objects.get(ty).ok_or_else(|| format!("unknown value type `{ty}`"))?;
         let decode = registration.decode.ok_or_else(|| format!("value type `{ty}` has no literal form"))?;
         decode(json).map(Value::Object)
+    }
+
+    /// The literal text of a value-type object (the inverse of
+    /// [`decode_value`](Self::decode_value)).
+    pub fn encode_value(&self, object: &Object) -> Result<String, String> {
+        let name = object.type_name();
+        let registration = self.objects.get(name).ok_or_else(|| format!("unknown value type `{name}`"))?;
+        let encode = registration.encode.ok_or_else(|| format!("value type `{name}` cannot be saved"))?;
+        encode(object)
     }
 
     /// Whether `ty` names something that exists.

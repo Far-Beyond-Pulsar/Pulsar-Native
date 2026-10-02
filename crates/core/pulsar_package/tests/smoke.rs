@@ -51,8 +51,8 @@ fn import(name: &str, params: Vec<Type>, ret: Type) -> Import {
 fn spawner() -> Module {
     let mut m = Module::new("Spawner");
     m.variables = vec![
-        Variable { name: "minion".into(), ty: Type::Entity, default: None },
-        Variable { name: "pings".into(), ty: Type::Int, default: Some(Constant::Int(0)) },
+        Variable { name: "minion".into(), ty: Type::Entity, default: None, id: None },
+        Variable { name: "pings".into(), ty: Type::Int, default: Some(Constant::Int(0)), id: None },
     ];
     m.constants = vec![
         Constant::Str("Minion".into()),
@@ -94,7 +94,7 @@ fn spawner() -> Module {
 /// `begin_play`: `alive = true`.
 fn minion() -> Module {
     let mut m = Module::new("Minion");
-    m.variables = vec![Variable { name: "alive".into(), ty: Type::Bool, default: None }];
+    m.variables = vec![Variable { name: "alive".into(), ty: Type::Bool, default: None, id: None }];
     m.constants = vec![Constant::Bool(true)];
     m.functions = vec![function("begin_play", true, vec![], vec![Type::Bool], vec![
         Instr::Const { dst: 0, index: 0 },
@@ -107,7 +107,7 @@ fn minion() -> Module {
 /// Global script. `tick`: `ticks += 1`.
 fn game_rules() -> Module {
     let mut m = Module::new("GameRules");
-    m.variables = vec![Variable { name: "ticks".into(), ty: Type::Int, default: None }];
+    m.variables = vec![Variable { name: "ticks".into(), ty: Type::Int, default: None, id: None }];
     m.constants = vec![Constant::Int(1)];
     m.functions = vec![function("tick", true, vec![Type::Float], vec![Type::Int, Type::Int], vec![
         Instr::LoadVar { dst: 1, var: 0 },
