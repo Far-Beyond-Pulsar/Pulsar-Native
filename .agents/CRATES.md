@@ -44,6 +44,11 @@ The heart of the engine. 26 crates with no UI dependencies.
 | `pulsar_reflection` | Runtime type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass`, `Subsystems` |
 | `pulsar_reflection_derive` | `#[derive(Reflectable)]` proc macro |
 | `pulsar_settings` | Settings store (wraps `pulsar-config`) |
+| `pulsar_script_vm` | Language-neutral script bytecode: module format, verifier, linker, VM, natives, shared `exec` semantics, `compiled` code contract, `migrate` planner |
+| `pulsar_script_runtime` | Runs script classes on entities: lifecycle, events, transactional hot reload with state migration, saved state |
+| `pulsar_script_math` | glam math types (Vec2/3/4, DVec3, Quat, Mat4) as script value types with natives |
+| `pulsar_script_codegen` | Rust export: generates compiled step functions (and the `Actor` wrapper) from a script module |
+| `pulsar_script_conformance` | Runs modules interpreted and as generated Rust and compares everything observable (`just conformance`) |
 | `pulsar_std` | Blueprint standard library |
 | `pulsar_std_bundle` | Bundled std definitions |
 | `pulsar-multiplayer-core` | Multiplayer protocol and state |
@@ -117,7 +122,7 @@ not workspace members (Cargo nested workspace limitation).
 
 | Submodule | Path dep? | Notes |
 |---|---|---|
-| `pbgc/` | Yes | Pulsar Blueprint Graph Compiler |
+| `pbgc/` | Yes | pulsar_std node catalogue as Graphy metadata (the old graph compiler, bytecode VM and graph-to-Rust backend were removed) |
 | `graphy/` | Yes | Graph data model and compiler types |
 | `pulsar-config/` | Yes | Configuration management |
 | `toolbelt/` | No | Tool registry + macros (has its own workspace) |
