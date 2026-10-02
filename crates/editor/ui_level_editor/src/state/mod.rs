@@ -94,6 +94,20 @@ impl LevelEditorState {
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Clone only the state required by read-only tool UI queries. In
+    /// particular, do not duplicate voxel undo/redo snapshots just to build a
+    /// few toolbar controls.
+    pub(crate) fn clone_for_tool_query(&self) -> Self {
+        Self {
+            scene: self.scene.clone_for_tool_query(),
+            editor: self.editor.clone_for_tool_query(),
+            overlays: self.overlays.clone(),
+            hierarchy: self.hierarchy.clone(),
+            build: self.build.clone(),
+            play: self.play.clone(),
+        }
+    }
 }
 
 /// Requests that the viewport capture its framebuffer to `<project>/.pulsar/thumbnail.png`

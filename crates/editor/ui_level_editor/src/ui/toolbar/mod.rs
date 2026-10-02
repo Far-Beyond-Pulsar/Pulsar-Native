@@ -69,9 +69,12 @@ impl ToolbarPanel {
     where
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
+        let _scope = gpui::render_stats::scope("toolbar: panel render");
         let theme = cx.theme();
 
+        let _mode_scope = gpui::render_stats::scope("toolbar: mode controls");
         let mode_controls = active_mode_widgets(state, &gpu_engine);
+        drop(_mode_scope);
         let has_mode_controls = !mode_controls.is_empty();
 
         h_flex()
@@ -84,7 +87,10 @@ impl ToolbarPanel {
             .border_b_1()
             .border_color(theme.border.opacity(0.8))
             .shadow_sm()
-            .child(ToolModeDropdown::render(state, state_arc.clone(), cx))
+            .child({
+                let _scope = gpui::render_stats::scope("toolbar: tool mode dropdown");
+                ToolModeDropdown::render(state, state_arc.clone(), cx)
+            })
             .child(self.render_separator(cx))
             .when(has_mode_controls, |el| {
                 el.child(render_mode_widgets(
@@ -95,26 +101,45 @@ impl ToolbarPanel {
                 ))
                 .child(self.render_separator(cx))
             })
-            .child(PlaybackControls::render(state, state_arc.clone(), cx))
+            .child({
+                let _scope = gpui::render_stats::scope("toolbar: playback controls");
+                PlaybackControls::render(state, state_arc.clone(), cx)
+            })
             .child(self.render_separator(cx))
-            .child(TimeScaleDropdown::render(state, state_arc.clone(), cx))
+            .child({
+                let _scope = gpui::render_stats::scope("toolbar: time scale dropdown");
+                TimeScaleDropdown::render(state, state_arc.clone(), cx)
+            })
             .child(self.render_separator(cx))
-            .child(MultiplayerDropdown::render(state, state_arc.clone(), cx))
+            .child({
+                let _scope = gpui::render_stats::scope("toolbar: multiplayer dropdown");
+                MultiplayerDropdown::render(state, state_arc.clone(), cx)
+            })
             .child(self.render_separator(cx))
-            .child(BuildDropdowns::render(state, state_arc.clone(), cx))
+            .child({
+                let _scope = gpui::render_stats::scope("toolbar: build dropdowns");
+                BuildDropdowns::render(state, state_arc.clone(), cx)
+            })
             .child(self.render_separator(cx))
-            .child(FeatureToggles::render(
-                state,
-                state_arc.clone(),
-                gpu_engine.clone(),
-                cx,
-            ))
+            .child({
+                let _scope = gpui::render_stats::scope("toolbar: feature toggles");
+                FeatureToggles::render(state, state_arc.clone(), gpu_engine.clone(), cx)
+            })
             .child(div().flex_1())
-            .child(ModeIndicator::render(state, cx))
+            .child({
+                let _scope = gpui::render_stats::scope("toolbar: mode indicator");
+                ModeIndicator::render(state, cx)
+            })
             .child(self.render_separator(cx))
-            .child(BuildCoreButton::render(state, state_arc.clone(), cx))
+            .child({
+                let _scope = gpui::render_stats::scope("toolbar: build core");
+                BuildCoreButton::render(state, state_arc.clone(), cx)
+            })
             .child(self.render_separator(cx))
-            .child(self.render_save_button(state_arc.clone(), gpu_engine.clone()))
+            .child({
+                let _scope = gpui::render_stats::scope("toolbar: save button");
+                self.render_save_button(state_arc.clone(), gpu_engine.clone())
+            })
             .when(Self::is_source_build(), |el| {
                 el.child(self.render_separator(cx)).child(
                     self.render_save_as_default_button(state_arc.clone(), gpu_engine.clone()),

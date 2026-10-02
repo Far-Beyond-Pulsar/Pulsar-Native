@@ -47,7 +47,7 @@ impl LevelEditorPanel {
 
             // NOTE: Panels are self-invalidating — each owns a frame pump
             // that watches the state it renders (`frame_pump`, signatures in
-            // `workspace::panels` / `toolbar::view` / `status_bar_view`).
+            // `workspace::panels` / `toolbar::view`).
             // There is deliberately no observe/notify wiring between panels
             // or from this panel to them; forwarding notifications here used
             // to turn every scene edit into a whole-tree invalidation.

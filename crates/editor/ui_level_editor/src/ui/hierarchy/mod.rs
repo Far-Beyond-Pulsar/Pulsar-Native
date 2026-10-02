@@ -47,7 +47,7 @@ enum ClassRole {
 
 #[derive(Clone)]
 struct SceneObjectItem {
-    object: Rc<SceneObjectData>,
+    object: Rc<crate::scene_edit::objects::HierarchyObjectProjection>,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     is_selected: bool,
     is_folder: bool,
@@ -91,14 +91,7 @@ impl HierarchyItem for SceneObjectItem {
         if self.class_role == ClassRole::Root {
             return IconName::Code;
         }
-        if self
-            .object
-            .props
-            .get("icon_asset")
-            .and_then(|v| v.as_str())
-            .map(|s| !s.trim().is_empty())
-            .unwrap_or(false)
-        {
+        if self.object.icon_asset.is_some() {
             return IconName::Image;
         }
         HierarchyPanel::get_icon_for_object_type(self.object.object_type)
@@ -113,14 +106,7 @@ impl HierarchyItem for SceneObjectItem {
             ClassRole::Owned => return cx.theme().muted_foreground,
             ClassRole::None => {}
         }
-        if self
-            .object
-            .props
-            .get("icon_asset")
-            .and_then(|v| v.as_str())
-            .map(|s| !s.trim().is_empty())
-            .unwrap_or(false)
-        {
+        if self.object.icon_asset.is_some() {
             return tree_colors::DOC_TEAL;
         }
         HierarchyPanel::get_icon_color_for_type(self.object.object_type, cx)
@@ -358,6 +344,7 @@ impl HierarchyPanel {
         state: &LevelEditorState,
         state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
     ) {
+        let _scope = gpui::render_stats::scope("hierarchy: refresh cache");
         let selected = state.scene.selected_object();
         let key = (state.scene.world_revision(), selected.clone());
         if self.cache_key.as_ref() == Some(&key) {
@@ -365,8 +352,10 @@ impl HierarchyPanel {
         }
 
         let world = state.scene.world();
+        let _snapshot_scope = gpui::render_stats::scope("hierarchy: ECS snapshot");
         let (all_objects, root_ids) =
-            crate::scene_edit::objects::get_hierarchy_snapshot(&world);
+            crate::scene_edit::objects::get_hierarchy_projection(&world);
+        drop(_snapshot_scope);
         self.cached_items = all_objects
             .into_iter()
             .map(|obj| {

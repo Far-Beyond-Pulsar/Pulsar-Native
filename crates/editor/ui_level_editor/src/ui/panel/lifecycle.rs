@@ -387,15 +387,12 @@ impl LevelEditorPanel {
         let toolbar = cx.new(|_| {
             ToolbarView::new(shared_state.clone(), gpu_engine.clone(), helio_mailbox.clone())
         });
-        let status_bar = cx.new(|_| StatusBarView::new(shared_state.clone(), gpu_engine.clone()));
-
         let class_updates =
             crate::core::asset_updates::subscribe_class_updates(shared_state.clone());
 
         Self {
             focus_handle: cx.focus_handle(),
             toolbar,
-            status_bar,
             viewport,
             gpu_engine: gpu_engine.clone(),
             helio_mailbox,

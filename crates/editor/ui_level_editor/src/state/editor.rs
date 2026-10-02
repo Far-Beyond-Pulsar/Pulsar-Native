@@ -185,6 +185,28 @@ impl Default for EditorDomain {
 }
 
 impl EditorDomain {
+    /// Copy the editor inputs needed by read-only tool UI queries without
+    /// copying the in-progress voxel stroke (which owns history snapshots).
+    pub(crate) fn clone_for_tool_query(&self) -> Self {
+        Self {
+            current_tool: self.current_tool,
+            camera_mode: self.camera_mode,
+            camera_move_speed: self.camera_move_speed,
+            show_wireframe: self.show_wireframe,
+            show_lighting: self.show_lighting,
+            show_grid: self.show_grid,
+            feature_lighting_enabled: self.feature_lighting_enabled,
+            feature_shadows_enabled: self.feature_shadows_enabled,
+            feature_bloom_enabled: self.feature_bloom_enabled,
+            feature_materials_enabled: self.feature_materials_enabled,
+            tool_mode_registry: self.tool_mode_registry.clone(),
+            terrain: self.terrain.clone(),
+            spline: self.spline.clone(),
+            voxel: self.voxel,
+            voxel_stroke: None,
+        }
+    }
+
     pub fn set_tool(&mut self, tool: TransformTool) {
         self.current_tool = tool;
     }

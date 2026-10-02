@@ -63,6 +63,10 @@ dhat = { version = "0.3", optional = true }
 
 [features]
 dhat-heap = ["dep:dhat"]
+# Live shader editing is on by default through helio; this forwards the feature
+# for builds that disable helio's defaults. See engine_backend's feature of the
+# same name.
+shader-hot-reload = ["engine_backend/shader-hot-reload"]
 # Tracy CPU profiling. Also switches gpui-ce (wgpui) to Tracy via feature
 # unification on the shared crates.io `profiling` package, so the render
 # path's `wgpui: ...` zones appear in the same capture.

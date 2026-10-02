@@ -140,10 +140,13 @@ impl PropertiesPanelWrapper {
     ///
     /// Returns `true` when anything changed and the view needs invalidating.
     fn sync_sections(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let _scope = gpui::render_stats::scope("properties: sync sections");
+        let _read_scope = gpui::render_stats::scope("properties: sync signature read");
         let (store_revision, selected_object_id) = {
             let state = self.state.read();
             (state.scene.world_revision(), state.scene.selected_object())
         };
+        drop(_read_scope);
 
         let revision_changed = store_revision != self.last_store_revision;
         let selection_changed = selected_object_id != self.current_object_id
@@ -168,6 +171,7 @@ impl PropertiesPanelWrapper {
         self.last_store_revision = store_revision;
 
         if selection_changed {
+            let _scope = gpui::render_stats::scope("properties: rebuild selected sections");
             if let Some(ref object_id) = selected_object_id {
                 let scene_db = {
                     let state = self.state.read();
@@ -210,6 +214,7 @@ impl PropertiesPanelWrapper {
                 self.current_object_id = None;
             }
         } else if revision_changed {
+            let _scope = gpui::render_stats::scope("properties: refresh existing sections");
             // Scene changed under an unchanged selection — undo/redo, a gizmo
             // drag, an AI tool edit. Push values into the cached editors
             // rather than rebuilding them. Header/transform refreshes are
@@ -219,9 +224,11 @@ impl PropertiesPanelWrapper {
             // edits to other objects must not rebuild it, or panel complexity
             // would set the editor's framerate.
             if let Some(section) = self.object_header_section.clone() {
+                let _scope = gpui::render_stats::scope("properties: refresh header");
                 section.update(cx, |section, cx| section.refresh(window, cx));
             }
             if let Some(section) = self.transform_section.clone() {
+                let _scope = gpui::render_stats::scope("properties: refresh transform");
                 section.update(cx, |section, cx| section.refresh(window, cx));
             }
             let components_touched = match &self.current_object_id {
@@ -236,6 +243,7 @@ impl PropertiesPanelWrapper {
             // told to render again.
             if components_touched {
                 if let Some(section) = self.object_type_fields_section.clone() {
+                    let _scope = gpui::render_stats::scope("properties: notify component fields");
                     section.update(cx, |_, cx| cx.notify());
                 }
             }
@@ -321,11 +329,15 @@ impl Render for PropertiesPanelWrapper {
         // sections up to date. Render only lays out what exists.
         self.start_pump(window, cx);
 
+        let _state_scope = gpui::render_stats::scope("properties: render state read");
+        let state = self.state.read();
+        drop(_state_scope);
+        let _element_scope = gpui::render_stats::scope("properties: element build");
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
             .child(self.properties.render(
-                &self.state.read(),
+                &state,
                 self.state.clone(),
                 &self.editing_property,
                 &self.property_input,

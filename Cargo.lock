@@ -4536,7 +4536,9 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.5",
+ "log",
  "naga",
+ "notify 8.2.0",
  "profiling 0.1.0",
  "pulsar_scenedb",
  "thiserror 2.0.20",

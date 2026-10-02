@@ -10,12 +10,14 @@
 use crate::scene_edit::{
     self, ObjectId, SceneHistoryDelta, SceneHistorySnapshot, SceneObjectData,
 };
+use crate::scene_edit::history::VoxelEditJournal;
 use engine_backend::scene::SharedScene;
+use engine_backend::scene::SceneWorldExt;
 use parking_lot::{
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
 use pulsar_scenedb::{Entity, World};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -24,7 +26,9 @@ use std::sync::Arc;
 /// O(scene size) -- see that method's doc), so this bounds memory rather
 /// than letting an unbounded session-long history grow forever. Not tuned
 /// against a real project yet; a reasonable starting point for a v1.
-const MAX_UNDO_HISTORY: usize = 100;
+/// Hard cap on retained undo/redo checkpoints. These contain scene snapshots,
+/// so this is a memory and worst-case restore-cost limit, not just a UI limit.
+const MAX_UNDO_HISTORY: usize = 32;
 
 // ── Editor mode ────────────────────────────────────────────────────────────
 
@@ -84,11 +88,13 @@ pub struct SceneDomain {
     /// Undo history (Pulsar-Native#554) — one entry per mutating
     /// `SceneCommand` (`commands.rs::execute_command` pushes onto this),
     /// oldest first. Bounded at [`MAX_UNDO_HISTORY`].
-    undo_stack: Vec<SceneHistoryDelta>,
+    undo_stack: VecDeque<SceneHistoryDelta>,
     /// Redo history — populated by [`Self::undo`], cleared by every new
     /// mutating command (standard undo/redo semantics: once you make a new
     /// change, the old "future" you undid past is gone).
-    redo_stack: Vec<SceneHistoryDelta>,
+    redo_stack: VecDeque<SceneHistoryDelta>,
+    voxel_undo: VecDeque<VoxelEditJournal>,
+    voxel_redo: VecDeque<VoxelEditJournal>,
 }
 
 impl Default for SceneDomain {
@@ -104,13 +110,39 @@ impl Default for SceneDomain {
             has_unsaved_changes: false,
             revision: 0,
             pending_renderer_resync: false,
-            undo_stack: Vec::new(),
-            redo_stack: Vec::new(),
+            undo_stack: VecDeque::with_capacity(MAX_UNDO_HISTORY),
+            redo_stack: VecDeque::with_capacity(MAX_UNDO_HISTORY),
+            voxel_undo: VecDeque::new(),
+            voxel_redo: VecDeque::new(),
         }
     }
 }
 
 impl SceneDomain {
+    /// Make the lightweight scene copy used by read-only tool UI queries.
+    ///
+    /// Tool-mode toolbar/status generation needs the editor fields and a
+    /// shared scene handle, but never needs undo snapshots. Cloning those
+    /// here made toolbar refresh cost grow with voxel history size.
+    pub(crate) fn clone_for_tool_query(&self) -> Self {
+        Self {
+            scene: Arc::clone(&self.scene),
+            rebuild_epoch: self.rebuild_epoch,
+            snapshot: None,
+            play_entities: None,
+            editor_mode: self.editor_mode,
+            class_updates: self.class_updates,
+            current_scene: self.current_scene.clone(),
+            has_unsaved_changes: self.has_unsaved_changes,
+            revision: self.revision,
+            pending_renderer_resync: self.pending_renderer_resync,
+            undo_stack: VecDeque::new(),
+            redo_stack: VecDeque::new(),
+            voxel_undo: VecDeque::new(),
+            voxel_redo: VecDeque::new(),
+        }
+    }
+
     // ── The world ─────────────────────────────────────────────────────────
 
     /// Read access to the scene's `World`. Holds the scene lock for as long as
@@ -218,22 +250,29 @@ impl SceneDomain {
         pre_state: SceneHistorySnapshot,
         post_state: SceneHistorySnapshot,
     ) {
-        self.undo_stack.push(SceneHistoryDelta {
+        self.undo_stack.push_back(SceneHistoryDelta {
             before: pre_state,
             after: post_state,
         });
         if self.undo_stack.len() > MAX_UNDO_HISTORY {
-            self.undo_stack.remove(0);
+            self.undo_stack.pop_front();
         }
         self.redo_stack.clear();
     }
 
+    /// Commit a voxel append-range without capturing the terrain component.
+    pub fn commit_voxel_journal(&mut self, journal: VoxelEditJournal) {
+        self.voxel_undo.push_back(journal);
+        if self.voxel_undo.len() > MAX_UNDO_HISTORY { self.voxel_undo.pop_front(); }
+        self.voxel_redo.clear();
+    }
+
     pub fn can_undo(&self) -> bool {
-        !self.undo_stack.is_empty()
+        !self.undo_stack.is_empty() || !self.voxel_undo.is_empty()
     }
 
     pub fn can_redo(&self) -> bool {
-        !self.redo_stack.is_empty()
+        !self.redo_stack.is_empty() || !self.voxel_redo.is_empty()
     }
 
     /// Undo the last mutating command. Returns `true` if something was
@@ -242,38 +281,78 @@ impl SceneDomain {
     /// method deliberately leaves to the caller since it has no `cx` to
     /// notify with here).
     pub fn undo(&mut self) -> bool {
-        let Some(delta) = self.undo_stack.pop() else {
+        if let Some(journal) = self.voxel_undo.pop_back() {
+            if !self.apply_voxel_journal(&journal, false) {
+                self.voxel_undo.push_back(journal);
+                return false;
+            }
+            self.voxel_redo.push_back(journal);
+            return true;
+        }
+        let Some(delta) = self.undo_stack.pop_back() else {
             return false;
         };
         let ids = delta.ids();
         let current = scene_edit::history::capture_history_subset(&self.world(), &ids);
         if !self.restore_delta(&delta.before, &ids) {
-            self.undo_stack.push(delta);
+            self.undo_stack.push_back(delta);
             return false;
         }
-        self.redo_stack.push(SceneHistoryDelta {
+        self.redo_stack.push_back(SceneHistoryDelta {
             before: current,
             after: delta.after,
         });
+        if self.redo_stack.len() > MAX_UNDO_HISTORY {
+            self.redo_stack.pop_front();
+        }
         true
     }
 
     /// Redo the last undone command. See [`Self::undo`]'s doc for the
     /// caller's responsibilities on success.
     pub fn redo(&mut self) -> bool {
-        let Some(delta) = self.redo_stack.pop() else {
+        if let Some(journal) = self.voxel_redo.pop_back() {
+            if !self.apply_voxel_journal(&journal, true) {
+                self.voxel_redo.push_back(journal);
+                return false;
+            }
+            self.voxel_undo.push_back(journal);
+            return true;
+        }
+        let Some(delta) = self.redo_stack.pop_back() else {
             return false;
         };
         let ids = delta.ids();
         let current = scene_edit::history::capture_history_subset(&self.world(), &ids);
         if !self.restore_delta(&delta.after, &ids) {
-            self.redo_stack.push(delta);
+            self.redo_stack.push_back(delta);
             return false;
         }
-        self.undo_stack.push(SceneHistoryDelta {
+        self.undo_stack.push_back(SceneHistoryDelta {
             before: delta.before,
             after: current,
         });
+        if self.undo_stack.len() > MAX_UNDO_HISTORY {
+            self.undo_stack.pop_front();
+        }
+        true
+    }
+
+    fn apply_voxel_journal(&mut self, journal: &VoxelEditJournal, redo: bool) -> bool {
+        let mut world = self.world_mut();
+        for entry in &journal.entries {
+            let Some(entity) = world.entity_for(&entry.id) else { return false; };
+            let Some(mut terrain) = world.get_mut::<helio_component::VoxelTerrainComponent>(entity) else { return false; };
+            if redo {
+                if terrain.edits.len() != entry.before_len { return false; }
+                terrain.edits.extend(entry.edits.iter().cloned());
+                terrain.source_revision = entry.after_revision;
+            } else {
+                if terrain.edits.len() < entry.before_len + entry.edits.len() { return false; }
+                while terrain.edits.len() > entry.before_len { terrain.edits.pop(); }
+                terrain.source_revision = entry.before_revision;
+            }
+        }
         true
     }
 

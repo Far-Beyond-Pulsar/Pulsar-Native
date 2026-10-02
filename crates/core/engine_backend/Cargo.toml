@@ -117,6 +117,12 @@ pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "
 networking = ["dep:reqwest", "dep:async-tungstenite", "dep:futures"]
 vcs        = ["dep:git2", "dep:sha2", "dep:walkdir"]
 physics    = ["dep:rapier3d"]
+# Hot-reload `.wgsl` edits into the running renderer (Helio's
+# `shader-hot-reload`). Helio enables it by default, so this only matters when
+# helio is built with `default-features = false`. Set
+# `HELIO_SHADER_HOT_RELOAD=0` to turn it off at runtime. The `?` keeps it from
+# pulling in `helio` by itself.
+shader-hot-reload = ["helio?/shader-hot-reload"]
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = ["Win32_Foundation"] }
