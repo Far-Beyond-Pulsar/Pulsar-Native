@@ -75,13 +75,13 @@ fn observe(module: Module, steps: &[Step]) -> Vec<String> {
         let waits: Vec<f64> = waiting.iter().map(|(wake, _)| *wake).collect();
         seen.push(format!("{what} | log={log:?} | waiting={waits:?}"));
     };
-    let mut settle = |result: Result<Completion, pulsar_script_vm::ScriptError>, now: f64, waiting: &mut Vec<(f64, Continuation)>| match result {
+    let settle = |result: Result<Completion, pulsar_script_vm::ScriptError>, now: f64, waiting: &mut Vec<(f64, Continuation)>| match result {
         Ok(Completion::Returned(_)) => "returned".to_owned(),
         Ok(Completion::Waiting { seconds, continuation }) => {
             waiting.push((now + seconds, continuation));
             format!("waiting {seconds}s")
         }
-        Err(error) => format!("error {}", error.kind.to_string()),
+        Err(error) => format!("error {}", error.kind),
     };
 
     for step in steps {

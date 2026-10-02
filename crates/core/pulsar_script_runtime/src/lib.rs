@@ -48,6 +48,9 @@
 //! loading, reloading or unloading a native library relinks every class
 //! (see [`RelinkReport`]).
 
+// `RuntimeError` carries the VM's rich error site by value; these are cold paths.
+#![allow(clippy::result_large_err)]
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -582,7 +585,6 @@ impl ScriptRuntime {
         let new = Class::link(Arc::new(module), &self.natives, self.catalog(), &self.capabilities)?;
         let old = &self.classes[&name];
         let old_module = Arc::clone(old.program.module());
-        let new_module = Arc::clone(new.program.module());
 
         // Stage every instance; nothing is touched until all of them work.
         let mut scratch = World::new();

@@ -15,6 +15,7 @@ use pulsar_script_math as _;
 pub mod fixtures;
 
 /// The generated Rust for every fixture module.
+#[allow(unused_imports)]
 pub mod generated {
     include!(concat!(env!("OUT_DIR"), "/generated.rs"));
 }

@@ -54,7 +54,7 @@ pub fn compile_class(src: &ClassSource<'_>, natives: &NativeRegistry) -> Compile
     let mut cx = Cx::new(src, natives, lines);
 
     for error in parsed.diagnostics.errors() {
-        let offset = error.labels.first().map_or(0, |l| l.offset() as u32);
+        let offset = error.labels.first().map_or(0, |l| l.offset());
         let (line, column) = cx.lines.position(src.source, offset);
         cx.diagnostics.push(Diagnostic::error(error.message.to_string(), line, column));
     }
