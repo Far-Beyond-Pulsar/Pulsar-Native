@@ -11,6 +11,12 @@ use super::{Transform, Visibility};
 /// its draw data without touching independently authored pass components.
 struct EditorLightRows;
 
+// Identity-only marker: the origin-compatible camera gate must distinguish
+// it from an unreviewed world-space renderer component without exposing it.
+pub(crate) fn is_editor_light_row_marker(id: pulsar_scenedb::ComponentId) -> bool {
+    id == pulsar_scenedb::component_id::<EditorLightRows>()
+}
+
 pub fn sync_editor_light_rows(
     world: &mut pulsar_scenedb::World,
     editor_mode: bool,
