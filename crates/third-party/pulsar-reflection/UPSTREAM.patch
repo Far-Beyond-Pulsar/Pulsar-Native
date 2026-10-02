@@ -1,0 +1,1317 @@
+# Vendored crates vs Pulsar-Reflection 091eae569b4dce9de7def958e8a77ff620b07047 (scripts/reflection-drift.sh update)
+diff --git upstream/pulsar_reflection/Cargo.toml vendored/pulsar_reflection/Cargo.toml
+--- upstream/pulsar_reflection/Cargo.toml
++++ vendored/pulsar_reflection/Cargo.toml
+@@ -12,14 +12,14 @@ prims-glam = ["prims-core", "dep:glam"]
+ prims-gpui = ["dep:gpui-ce", "dep:ui"]
+ 
+ [dependencies]
+-inventory = { workspace = true }
+-once_cell = { workspace = true }
+-serde = { workspace = true }
+-serde_json = { workspace = true }
+-tracing = { workspace = true }
+-pulsar_reflection_derive = { workspace = true }
+-uuid = { workspace = true }
+-dashmap = { workspace = true }
+-glam = { workspace = true, optional = true }
++inventory = "0.3"
++once_cell = "1"
++serde = { version = "1", features = ["derive"] }
++serde_json = "1"
++tracing = "0.1"
++pulsar_reflection_derive = { path = "../pulsar_reflection_derive" }
++uuid = { version = "1", features = ["serde", "v4"] }
++dashmap = "6"
++glam = { version = "0.29", optional = true }
+ gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "98e8438c931e04eff640ecad4d2ca81a64a95bac", optional = true }
+ ui = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "49ba61231b490ab3a4edbb62728300e27440a70b", optional = true }
+diff --git upstream/pulsar_reflection/src/dyn_registry.rs vendored/pulsar_reflection/src/dyn_registry.rs
+--- upstream/pulsar_reflection/src/dyn_registry.rs
++++ vendored/pulsar_reflection/src/dyn_registry.rs
+@@ -24,7 +24,7 @@ use std::collections::HashMap;
+ 
+ use once_cell::sync::Lazy;
+ 
+-use crate::{MethodParameter, MethodReturnType, MethodType};
++use crate::{MethodFlags, MethodParameter, MethodReturnType};
+ 
+ /// Boxed method args, reusing the same shape as [`crate::MethodArgs`]
+ /// (kept as its own type here rather than a re-export so this module has
+@@ -48,14 +48,14 @@ pub struct DynMethodMetadata {
+     pub category: Option<&'static str>,
+     pub params: Vec<MethodParameter>,
+     pub return_type: Option<MethodReturnType>,
+-    pub method_type: MethodType,
++    pub flags: MethodFlags,
+     pub caller: DynMethodCaller,
+ }
+ 
+ /// Registration entry for a named receiver's dynamically-dispatchable
+ /// methods, submitted via `inventory::submit!` (by hand today; a
+ /// `#[dyn_methods]`-style derive can generate this later the same way
+-/// `#[component_methods]` generates [`crate::ComponentMethodRegistration`]).
++/// hand-written `ComponentMethodRegistration` entries).
+ pub struct DynMethodRegistration {
+     /// Registry key — e.g. a subsystem's name. Not tied to any Rust type
+     /// name; multiple registrations may target the same receiver type
+@@ -182,7 +182,7 @@ mod tests {
+             category: None,
+             params: Vec::new(),
+             return_type: None,
+-            method_type: MethodType::Fn,
++            flags: MethodFlags::NONE,
+             caller: Box::new(|target: &mut dyn Any, _args: DynMethodArgs| {
+                 let widget = target.downcast_mut::<Widget>().expect("downcast");
+                 widget.count += 1;
+diff --git upstream/pulsar_reflection/src/lib.rs vendored/pulsar_reflection/src/lib.rs
+--- upstream/pulsar_reflection/src/lib.rs
++++ vendored/pulsar_reflection/src/lib.rs
+@@ -222,6 +222,26 @@ pub struct UiPropertyEditorHint {
+ 
+ inventory::collect!(UiPropertyEditorHint);
+ 
++/// Per-variant doc comments of a unit enum, in declaration order.
++///
++/// Emitted by `#[derive(Reflectable)]` when at least one variant has a
++/// `///` doc comment; the enum dropdown shows the selected variant's text
++/// as its tooltip. A variant without docs has an empty string.
++pub struct EnumVariantDocs {
++    pub type_id: std::any::TypeId,
++    pub docs: &'static [&'static str],
++}
++
++inventory::collect!(EnumVariantDocs);
++
++/// The variant docs registered for `type_id`, if any.
++pub fn enum_variant_docs(type_id: std::any::TypeId) -> Option<&'static [&'static str]> {
++    inventory::iter::<EnumVariantDocs>
++        .into_iter()
++        .find(|entry| entry.type_id == type_id)
++        .map(|entry| entry.docs)
++}
++
+ /// Erase a [`PropertyEditorFactory`] to the opaque `fn()` stored in
+ /// [`UiPropertyEditorHint::fn_ptr`].
+ ///
+@@ -674,13 +694,6 @@ impl fmt::Debug for PropertyMetadata {
+     }
+ }
+ 
+-/// Classification for blueprint-callable method behavior.
+-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+-pub enum MethodType {
+-    Pure,
+-    Fn,
+-    ControlFlow,
+-}
+ 
+ /// Metadata for a single method parameter.
+ #[derive(Debug, Clone)]
+@@ -707,7 +720,7 @@ pub struct MethodMetadata {
+     pub category: Option<&'static str>,
+     pub params: Vec<MethodParameter>,
+     pub return_type: Option<MethodReturnType>,
+-    pub method_type: MethodType,
++    pub flags: MethodFlags,
+     pub caller: MethodCaller,
+ }
+ 
+@@ -719,7 +732,7 @@ impl fmt::Debug for MethodMetadata {
+             .field("category", &self.category)
+             .field("params", &self.params)
+             .field("return_type", &self.return_type)
+-            .field("method_type", &self.method_type)
++            .field("flags", &self.flags)
+             .finish()
+     }
+ }
+diff --git upstream/pulsar_reflection/src/prims/core/enum_dropdown.rs vendored/pulsar_reflection/src/prims/core/enum_dropdown.rs
+--- upstream/pulsar_reflection/src/prims/core/enum_dropdown.rs
++++ vendored/pulsar_reflection/src/prims/core/enum_dropdown.rs
+@@ -21,6 +21,9 @@ pub struct EnumDropdownEditor {
+     id: gpui::SharedString,
+     value: u64,
+     variants: Option<&'static [&'static str]>,
++    /// Per-variant docs ([`crate::EnumVariantDocs`]); the selected one is
++    /// the dropdown's tooltip.
++    variant_docs: Option<&'static [&'static str]>,
+     write_back: crate::PropertyWriteBack,
+     type_info: &'static crate::RuntimeTypeInfo,
+ }
+@@ -50,10 +53,18 @@ impl gpui::Render for EnumDropdownEditor {
+         let label = variants.get(selected_ix).copied().unwrap_or("Select");
+         let write_back = self.write_back.clone();
+         let type_info: &'static crate::RuntimeTypeInfo = self.type_info;
++        let tooltip = self
++            .variant_docs
++            .and_then(|docs| docs.get(selected_ix).copied())
++            .filter(|doc| !doc.is_empty());
+ 
++        let mut button = Button::new(self.id.clone());
++        if let Some(tooltip) = tooltip {
++            button = button.tooltip(tooltip);
++        }
+         crate::prims::editor_row(
+             &self.label,
+-            Button::new(self.id.clone())
++            button
+                 .label(label)
+                 .xsmall()
+                 .outline()
+@@ -102,6 +113,7 @@ pub fn enum_dropdown_editor(
+ 
+     let type_info: &'static crate::RuntimeTypeInfo = args.type_info;
+     let variants = type_info.enum_variants();
++    let variant_docs = crate::enum_variant_docs(type_info.type_id);
+     let label = args.display_name.to_string();
+     let id: gpui::SharedString = format!(
+         "enum-{}-{}-{}",
+@@ -120,6 +132,7 @@ pub fn enum_dropdown_editor(
+         id,
+         value,
+         variants,
++        variant_docs,
+         write_back,
+         type_info,
+     });
+diff --git upstream/pulsar_reflection/src/prims/core/mat4x3.rs vendored/pulsar_reflection/src/prims/core/mat4x3.rs
+deleted file mode 100644
+--- upstream/pulsar_reflection/src/prims/core/mat4x3.rs
++++ /dev/null
+@@ -1,81 +0,0 @@
+-//! `[[f32; 4]; 3]` primitive type implementation: three padded `vec4`
+-//! columns (`[f32; 4]` each, last lane typically unused padding), the
+-//! layout `StaticObjectComponent::normal_mat` and similar packed-3x3
+-//! GPU fields use.
+-
+-use crate::pulsar_type;
+-
+-#[pulsar_type(
+-    serialize_json_with = serialize_mat4x3_json,
+-    deserialize_json_with = deserialize_mat4x3_json
+-)]
+-type RegisteredMat4x3 = [[f32; 4]; 3];
+-
+-fn serialize_mat4x3_json(value: &[[f32; 4]; 3]) -> crate::ReflectResult<serde_json::Value> {
+-    Ok(serde_json::json!(
+-        value.iter().map(|col| col.to_vec()).collect::<Vec<_>>()
+-    ))
+-}
+-
+-fn deserialize_mat4x3_json(value: serde_json::Value) -> crate::ReflectResult<[[f32; 4]; 3]> {
+-    let cols = value
+-        .as_array()
+-        .ok_or_else(|| crate::ReflectError::TypeMismatch {
+-            expected: "[[f32; 4]; 3]",
+-            found: format!("{:?}", value),
+-        })?;
+-
+-    if cols.len() != 3 {
+-        return Err(crate::ReflectError::TypeMismatch {
+-            expected: "[[f32; 4]; 3]",
+-            found: format!("array of length {}", cols.len()),
+-        });
+-    }
+-
+-    let mut out = [[0.0f32; 4]; 3];
+-    for (i, col) in cols.iter().enumerate() {
+-        let arr = col
+-            .as_array()
+-            .ok_or_else(|| crate::ReflectError::TypeMismatch {
+-                expected: "[f32; 4]",
+-                found: format!("{:?}", col),
+-            })?;
+-        if arr.len() != 4 {
+-            return Err(crate::ReflectError::TypeMismatch {
+-                expected: "[f32; 4]",
+-                found: format!("array of length {}", arr.len()),
+-            });
+-        }
+-        for (j, v) in arr.iter().enumerate() {
+-            out[i][j] = v.as_f64().unwrap_or(0.0) as f32;
+-        }
+-    }
+-
+-    Ok(out)
+-}
+-
+-#[cfg(test)]
+-mod tests {
+-    use crate::{JsonDeserializer, JsonSerializer, RUNTIME_TYPE_REGISTRY, Reflectable};
+-
+-    #[test]
+-    fn test_mat4x3_registered() {
+-        let info = RUNTIME_TYPE_REGISTRY.get::<[[f32; 4]; 3]>().unwrap();
+-        assert_eq!(info.size, 48);
+-        assert_eq!(info.align, 4);
+-    }
+-
+-    #[test]
+-    fn test_mat4x3_round_trip() {
+-        let value: [[f32; 4]; 3] = [
+-            [1.0, 2.0, 3.0, 0.0],
+-            [4.0, 5.0, 6.0, 0.0],
+-            [7.0, 8.0, 9.0, 0.0],
+-        ];
+-        let mut serializer = JsonSerializer::new();
+-        value.serialize(&mut serializer).unwrap();
+-        let mut deserializer = JsonDeserializer::new(serializer.into_json());
+-        let round_tripped = <[[f32; 4]; 3]>::deserialize(&mut deserializer).unwrap();
+-        assert_eq!(round_tripped, value);
+-    }
+-}
+diff --git upstream/pulsar_reflection/src/prims/core/mat4x4.rs vendored/pulsar_reflection/src/prims/core/mat4x4.rs
+deleted file mode 100644
+--- upstream/pulsar_reflection/src/prims/core/mat4x4.rs
++++ /dev/null
+@@ -1,83 +0,0 @@
+-//! `[[f32; 4]; 4]` primitive type implementation: a bare column-major 4x4
+-//! matrix stored as a raw nested array, distinct from any `glam::Mat4`
+-//! registration (see `prims/glam`). GPU component fields typically store
+-//! transforms this way (e.g. `StaticObjectComponent::transform`) rather
+-//! than as a glam type, since the array is what gets uploaded byte-for-byte.
+-
+-use crate::pulsar_type;
+-
+-#[pulsar_type(
+-    serialize_json_with = serialize_mat4x4_json,
+-    deserialize_json_with = deserialize_mat4x4_json
+-)]
+-type RegisteredMat4x4 = [[f32; 4]; 4];
+-
+-fn serialize_mat4x4_json(value: &[[f32; 4]; 4]) -> crate::ReflectResult<serde_json::Value> {
+-    Ok(serde_json::json!(
+-        value.iter().map(|col| col.to_vec()).collect::<Vec<_>>()
+-    ))
+-}
+-
+-fn deserialize_mat4x4_json(value: serde_json::Value) -> crate::ReflectResult<[[f32; 4]; 4]> {
+-    let cols = value
+-        .as_array()
+-        .ok_or_else(|| crate::ReflectError::TypeMismatch {
+-            expected: "[[f32; 4]; 4]",
+-            found: format!("{:?}", value),
+-        })?;
+-
+-    if cols.len() != 4 {
+-        return Err(crate::ReflectError::TypeMismatch {
+-            expected: "[[f32; 4]; 4]",
+-            found: format!("array of length {}", cols.len()),
+-        });
+-    }
+-
+-    let mut out = [[0.0f32; 4]; 4];
+-    for (i, col) in cols.iter().enumerate() {
+-        let arr = col
+-            .as_array()
+-            .ok_or_else(|| crate::ReflectError::TypeMismatch {
+-                expected: "[f32; 4]",
+-                found: format!("{:?}", col),
+-            })?;
+-        if arr.len() != 4 {
+-            return Err(crate::ReflectError::TypeMismatch {
+-                expected: "[f32; 4]",
+-                found: format!("array of length {}", arr.len()),
+-            });
+-        }
+-        for (j, v) in arr.iter().enumerate() {
+-            out[i][j] = v.as_f64().unwrap_or(0.0) as f32;
+-        }
+-    }
+-
+-    Ok(out)
+-}
+-
+-#[cfg(test)]
+-mod tests {
+-    use crate::{JsonDeserializer, JsonSerializer, RUNTIME_TYPE_REGISTRY, Reflectable};
+-
+-    #[test]
+-    fn test_mat4x4_registered() {
+-        let info = RUNTIME_TYPE_REGISTRY.get::<[[f32; 4]; 4]>().unwrap();
+-        assert_eq!(info.size, 64);
+-        assert_eq!(info.align, 4);
+-    }
+-
+-    #[test]
+-    fn test_mat4x4_round_trip() {
+-        let value: [[f32; 4]; 4] = [
+-            [1.0, 2.0, 3.0, 4.0],
+-            [5.0, 6.0, 7.0, 8.0],
+-            [9.0, 10.0, 11.0, 12.0],
+-            [13.0, 14.0, 15.0, 16.0],
+-        ];
+-        let mut serializer = JsonSerializer::new();
+-        value.serialize(&mut serializer).unwrap();
+-        let mut deserializer = JsonDeserializer::new(serializer.into_json());
+-        let round_tripped = <[[f32; 4]; 4]>::deserialize(&mut deserializer).unwrap();
+-        assert_eq!(round_tripped, value);
+-    }
+-}
+diff --git upstream/pulsar_reflection/src/prims/core/matrices.rs vendored/pulsar_reflection/src/prims/core/matrices.rs
+deleted file mode 100644
+--- upstream/pulsar_reflection/src/prims/core/matrices.rs
++++ /dev/null
+@@ -1,104 +0,0 @@
+-//! Flat fixed-size arrays used by renderer component reflection. The
+-//! nested `[[f32; 4]; N]` matrices are registered in `mat4x3.rs` and
+-//! `mat4x4.rs`.
+-
+-use crate::pulsar_type;
+-
+-#[pulsar_type(
+-    serialize_json_with = serialize_f32x16_json,
+-    deserialize_json_with = deserialize_f32x16_json
+-)]
+-type RegisteredF32x16 = [f32; 16];
+-
+-#[pulsar_type(
+-    serialize_json_with = serialize_f32x12_json,
+-    deserialize_json_with = deserialize_f32x12_json
+-)]
+-type RegisteredF32x12 = [f32; 12];
+-
+-#[pulsar_type(serialize_json_with = serialize_f32x2_json, deserialize_json_with = deserialize_f32x2_json)]
+-type RegisteredF32x2 = [f32; 2];
+-
+-#[pulsar_type(
+-    serialize_json_with = serialize_u32x3_json,
+-    deserialize_json_with = deserialize_u32x3_json
+-)]
+-type RegisteredU32x3 = [u32; 3];
+-
+-#[pulsar_type(
+-    serialize_json_with = serialize_u32x116_json,
+-    deserialize_json_with = deserialize_u32x116_json
+-)]
+-type RegisteredU32x116 = [u32; 116];
+-
+-fn serialize_u32x116_json(value: &[u32; 116]) -> crate::ReflectResult<serde_json::Value> {
+-    Ok(serde_json::Value::Array(
+-        value.iter().copied().map(serde_json::Value::from).collect(),
+-    ))
+-}
+-
+-fn deserialize_u32x116_json(value: serde_json::Value) -> crate::ReflectResult<[u32; 116]> {
+-    let values = value.as_array().ok_or_else(|| crate::ReflectError::TypeMismatch {
+-        expected: "[u32; 116]",
+-        found: value.to_string(),
+-    })?;
+-    if values.len() != 116 {
+-        return Err(crate::ReflectError::TypeMismatch {
+-            expected: "[u32; 116]",
+-            found: format!("array length {}", values.len()),
+-        });
+-    }
+-
+-    let mut result = [0u32; 116];
+-    for (index, item) in values.iter().enumerate() {
+-        result[index] = item.as_u64().and_then(|number| u32::try_from(number).ok()).ok_or_else(|| {
+-            crate::ReflectError::TypeMismatch {
+-                expected: "u32",
+-                found: item.to_string(),
+-            }
+-        })?;
+-    }
+-    Ok(result)
+-}
+-fn serialize_f32x16_json(value: &[f32; 16]) -> crate::ReflectResult<serde_json::Value> {
+-    Ok(serde_json::json!(value))
+-}
+-
+-fn serialize_f32x12_json(value: &[f32; 12]) -> crate::ReflectResult<serde_json::Value> {
+-    Ok(serde_json::json!(value))
+-}
+-
+-fn deserialize_f32x16_json(value: serde_json::Value) -> crate::ReflectResult<[f32; 16]> {
+-    serde_json::from_value(value).map_err(|error| crate::ReflectError::TypeMismatch {
+-        expected: "[f32; 16]",
+-        found: error.to_string(),
+-    })
+-}
+-
+-fn deserialize_f32x12_json(value: serde_json::Value) -> crate::ReflectResult<[f32; 12]> {
+-    serde_json::from_value(value).map_err(|error| crate::ReflectError::TypeMismatch {
+-        expected: "[f32; 12]",
+-        found: error.to_string(),
+-    })
+-}
+-fn serialize_f32x2_json(value: &[f32; 2]) -> crate::ReflectResult<serde_json::Value> {
+-    Ok(serde_json::json!(value))
+-}
+-
+-fn deserialize_f32x2_json(value: serde_json::Value) -> crate::ReflectResult<[f32; 2]> {
+-    serde_json::from_value(value).map_err(|error| crate::ReflectError::TypeMismatch {
+-        expected: "[f32; 2]",
+-        found: error.to_string(),
+-    })
+-}
+-
+-fn serialize_u32x3_json(value: &[u32; 3]) -> crate::ReflectResult<serde_json::Value> {
+-    Ok(serde_json::json!(value))
+-}
+-
+-fn deserialize_u32x3_json(value: serde_json::Value) -> crate::ReflectResult<[u32; 3]> {
+-    serde_json::from_value(value).map_err(|error| crate::ReflectError::TypeMismatch {
+-        expected: "[u32; 3]",
+-        found: error.to_string(),
+-    })
+-}
+\ No newline at end of file
+diff --git upstream/pulsar_reflection/src/prims/core/mod.rs vendored/pulsar_reflection/src/prims/core/mod.rs
+--- upstream/pulsar_reflection/src/prims/core/mod.rs
++++ vendored/pulsar_reflection/src/prims/core/mod.rs
+@@ -6,40 +6,10 @@ mod f32;
+ mod f64;
+ mod i32;
+ mod i64;
+-mod mat4x3;
+-mod mat4x4;
+-// Flat arrays used by renderer components ([f32; 16], [u32; 116], ..).
+-// The nested [[f32; 4]; N] matrices live in mat4x3.rs / mat4x4.rs.
+-mod matrices;
+-mod u32;
+ mod u64;
+-// `[f32; 4]` is already registered by `color.rs` (Reflectable is a global,
+-// type-identity-keyed registration -- there is no per-field/per-semantic
+-// registration, so any `[f32; 4]` field decodes as RGBA-shaped `[f,f,f,f]`
+-// JSON regardless of whether it's actually a color).
+ mod vec3;
+ 
+ /// Public so consumers can reuse the RGBA↔HSLA conversion the colour editor
+ /// uses — several panels colour-code pin badges with the same maths.
+ pub mod color;
+-
+-/// Force-link the built-in implementations into downstream binaries so their
+-/// inventory registrations are not discarded by the linker.
+-pub(crate) fn ensure_registered() {
+-    let _ = <bool as crate::Reflectable>::type_info();
+-    let _ = <f32 as crate::Reflectable>::type_info();
+-    let _ = <f64 as crate::Reflectable>::type_info();
+-    let _ = <i32 as crate::Reflectable>::type_info();
+-    let _ = <i64 as crate::Reflectable>::type_info();
+-    let _ = <u32 as crate::Reflectable>::type_info();
+-    let _ = <u64 as crate::Reflectable>::type_info();
+-    let _ = <[f32; 2] as crate::Reflectable>::type_info();
+-    let _ = <[f32; 3] as crate::Reflectable>::type_info();
+-    let _ = <[u32; 3] as crate::Reflectable>::type_info();
+-    let _ = <[u32; 116] as crate::Reflectable>::type_info();
+-    let _ = <[f32; 4] as crate::Reflectable>::type_info();
+-    let _ = <[[f32; 4]; 3] as crate::Reflectable>::type_info();
+-    let _ = <[[f32; 4]; 4] as crate::Reflectable>::type_info();
+-    let _ = <[f32; 12] as crate::Reflectable>::type_info();
+-    let _ = <[f32; 16] as crate::Reflectable>::type_info();
+-}
+\ No newline at end of file
++mod u32;
+diff --git upstream/pulsar_reflection/src/prims/core/u32.rs vendored/pulsar_reflection/src/prims/core/u32.rs
+--- upstream/pulsar_reflection/src/prims/core/u32.rs
++++ vendored/pulsar_reflection/src/prims/core/u32.rs
+@@ -2,10 +2,22 @@
+ 
+ use crate::pulsar_type;
+ 
+-#[pulsar_type(
+-    serialize_json_with = serialize_u32_json,
+-    deserialize_json_with = deserialize_u32_json
++#[cfg_attr(
++    feature = "prims-gpui",
++    pulsar_type(
++        serialize_json_with = serialize_u32_json,
++        deserialize_json_with = deserialize_u32_json,
++        editor = u32_editor
++    )
+ )]
++#[cfg_attr(
++    not(feature = "prims-gpui"),
++    pulsar_type(
++        serialize_json_with = serialize_u32_json,
++        deserialize_json_with = deserialize_u32_json
++    )
++)]
++#[allow(dead_code)]
+ type RegisteredU32 = u32;
+ 
+ fn serialize_u32_json(value: &u32) -> crate::ReflectResult<serde_json::Value> {
+@@ -15,13 +27,114 @@ fn serialize_u32_json(value: &u32) -> crate::ReflectResult<serde_json::Value> {
+ fn deserialize_u32_json(value: serde_json::Value) -> crate::ReflectResult<u32> {
+     value
+         .as_u64()
+-        .and_then(|v| u32::try_from(v).ok())
++        .map(|value| value as u32)
+         .ok_or_else(|| crate::ReflectError::TypeMismatch {
+             expected: "u32",
+             found: format!("{:?}", value),
+         })
+ }
+ 
++// ── Editor ────────────────────────────────────────────────────────────────────
++
++/// Property editor for `u32`.
++///
++/// Renders a variant dropdown when the registered type info describes an enum
++/// (enums are stored as their discriminant), and a read-only number otherwise.
++/// Needs no child entities — both forms are plain elements.
++#[cfg(feature = "prims-gpui")]
++pub struct U32Editor {
++    label: String,
++    id: gpui::SharedString,
++    value: u32,
++    variants: Option<&'static [&'static str]>,
++    write_back: crate::PropertyWriteBack,
++}
++
++#[cfg(feature = "prims-gpui")]
++impl gpui::Render for U32Editor {
++    fn render(
++        &mut self,
++        _window: &mut gpui::Window,
++        cx: &mut gpui::Context<Self>,
++    ) -> impl gpui::IntoElement {
++        use gpui::prelude::*;
++        use ui::{ActiveTheme, Sizable, button::Button, menu::PopupMenuItem};
++
++        let Some(variants) = self.variants else {
++            return crate::prims::editor_row(
++                &self.label,
++                gpui::div()
++                    .text_sm()
++                    .text_color(cx.theme().foreground)
++                    .child(self.value.to_string()),
++                cx,
++            );
++        };
++
++        let selected_ix = (self.value as usize).min(variants.len().saturating_sub(1));
++        let label = variants.get(selected_ix).copied().unwrap_or("Select");
++        let write_back = self.write_back.clone();
++
++        crate::prims::editor_row(
++            &self.label,
++            Button::new(self.id.clone())
++                .label(label)
++                .xsmall()
++                .outline()
++                .dropdown_caret(true)
++                .dropdown_menu_with_anchor(gpui::Corner::BottomRight, move |menu, _window, _cx| {
++                    let mut menu = menu;
++                    for (ix, option) in variants.iter().enumerate() {
++                        let write_back = write_back.clone();
++                        menu = menu.item(
++                            PopupMenuItem::new(option.to_string())
++                                .checked(ix == selected_ix)
++                                .on_click(move |_event, window, cx| {
++                                    (write_back)(Box::new(ix as u32), window, cx);
++                                }),
++                        );
++                    }
++                    menu
++                }),
++            cx,
++        )
++    }
++}
++
++#[cfg(feature = "prims-gpui")]
++fn u32_editor(
++    args: &crate::PropertyEditorArgs<'_>,
++    _window: &mut gpui::Window,
++    cx: &mut gpui::App,
++) -> crate::BoundPropertyEditor {
++    use gpui::AppContext as _;
++
++    let label = args.display_name.to_string();
++    let id: gpui::SharedString = format!(
++        "u32-{}-{}-{}",
++        args.id_prefix, args.class_name, args.prop_name
++    )
++    .into();
++    let value = args.current_value.downcast_ref::<u32>().copied().unwrap_or(0);
++    let variants = args.type_info.enum_variants();
++    let write_back = args.write_back.clone();
++
++    let entity = cx.new(|_| U32Editor {
++        label,
++        id,
++        value,
++        variants,
++        write_back,
++    });
++
++    crate::BoundPropertyEditor::new(entity, |editor: &mut U32Editor, value: &u32, _window, cx| {
++        if editor.value != *value {
++            editor.value = *value;
++            cx.notify();
++        }
++    })
++}
++
+ #[cfg(test)]
+ mod tests {
+     use crate::{JsonDeserializer, JsonSerializer, RUNTIME_TYPE_REGISTRY, Reflectable};
+@@ -30,23 +143,33 @@ mod tests {
+     fn test_u32_registered() {
+         let info = RUNTIME_TYPE_REGISTRY.get::<u32>().unwrap();
+         assert_eq!(info.type_name, "u32");
+-        assert_eq!(info.size, 4);
+-        assert_eq!(info.align, 4);
++        assert_eq!(info.size, std::mem::size_of::<u32>());
++        assert_eq!(info.align, std::mem::align_of::<u32>());
+     }
+ 
+     #[test]
+     fn test_u32_serialization() {
+-        let value: u32 = 4294967295;
++        let value: u32 = u32::MAX;
+         let mut serializer = JsonSerializer::new();
+         value.serialize(&mut serializer).unwrap();
+-        assert_eq!(serializer.as_json().as_u64().unwrap(), value as u64);
++
++        let json = serializer.as_json();
++        assert_eq!(json.as_u64(), Some(u64::from(value)));
+     }
+ 
+     #[test]
+     fn test_u32_deserialization() {
+-        let json = serde_json::json!(42u32);
++        let json = serde_json::json!(999999);
+         let mut deserializer = JsonDeserializer::new(json);
+         let value = u32::deserialize(&mut deserializer).unwrap();
+-        assert_eq!(value, 42);
++        assert_eq!(value, 999999);
++    }
++
++    #[test]
++    fn test_u32_clone_any() {
++        let value: u32 = 12345678;
++        let boxed = value.clone_any();
++        assert_eq!(*boxed.downcast::<u32>().unwrap(), 12345678);
+     }
+ }
++
+diff --git upstream/pulsar_reflection/src/prims/helio/movability.rs vendored/pulsar_reflection/src/prims/helio/movability.rs
+--- upstream/pulsar_reflection/src/prims/helio/movability.rs
++++ vendored/pulsar_reflection/src/prims/helio/movability.rs
+@@ -12,7 +12,7 @@ static MOVABILITY_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
+     size: std::mem::size_of::<Movability>(),
+     align: std::mem::align_of::<Movability>(),
+     structure: TypeStructure::Enum {
+-        variants: &["Static", "Stationary", "Movable"],
++        variants: &["Static", "Stationary", "Movable", "Dynamic"],
+     },
+     color: None,
+ };
+@@ -30,6 +30,7 @@ impl Reflectable for Movability {
+             Movability::Static => ("Static", 0),
+             Movability::Stationary => ("Stationary", 1),
+             Movability::Movable => ("Movable", 2),
++            Movability::Dynamic => ("Dynamic", 3),
+         };
+         serializer.serialize_enum(name, index)
+     }
+@@ -38,11 +39,12 @@ impl Reflectable for Movability {
+     where
+         Self: Sized,
+     {
+-        let idx = deserializer.deserialize_enum(&["Static", "Stationary", "Movable"])?;
++        let idx = deserializer.deserialize_enum(&["Static", "Stationary", "Movable", "Dynamic"])?;
+         match idx {
+             0 => Ok(Movability::Static),
+             1 => Ok(Movability::Stationary),
+             2 => Ok(Movability::Movable),
++            3 => Ok(Movability::Dynamic),
+             _ => Err(ReflectError::InvalidVariant {
+                 enum_name: "helio::Movability",
+                 variant: format!("index {}", idx),
+@@ -68,6 +70,7 @@ fn serialize_movability_json(value: &dyn Any) -> ReflectResult<serde_json::Value
+         Movability::Static => "Static",
+         Movability::Stationary => "Stationary",
+         Movability::Movable => "Movable",
++        Movability::Dynamic => "Dynamic",
+     };
+ 
+     Ok(serde_json::json!(as_str))
+@@ -79,6 +82,7 @@ fn deserialize_movability_json(value: serde_json::Value) -> ReflectResult<Box<dy
+             "Static" => Movability::Static,
+             "Stationary" => Movability::Stationary,
+             "Movable" => Movability::Movable,
++            "Dynamic" => Movability::Dynamic,
+             _ => {
+                 return Err(ReflectError::InvalidVariant {
+                     enum_name: "helio::Movability",
+@@ -94,6 +98,7 @@ fn deserialize_movability_json(value: serde_json::Value) -> ReflectResult<Box<dy
+             0 => Movability::Static,
+             1 => Movability::Stationary,
+             2 => Movability::Movable,
++            3 => Movability::Dynamic,
+             _ => {
+                 return Err(ReflectError::InvalidVariant {
+                     enum_name: "helio::Movability",
+@@ -112,7 +117,7 @@ fn deserialize_movability_json(value: serde_json::Value) -> ReflectResult<Box<dy
+ 
+ crate::inventory::submit! {
+     RuntimeTypeRegistration {
+-        type_info: &MOVABILITY_TYPE_INFO,
++        type_info: || &MOVABILITY_TYPE_INFO,
+         serialize_json: serialize_movability_json,
+         deserialize_json: deserialize_movability_json,
+     }
+diff --git upstream/pulsar_reflection/src/prims/std/mod.rs vendored/pulsar_reflection/src/prims/std/mod.rs
+--- upstream/pulsar_reflection/src/prims/std/mod.rs
++++ vendored/pulsar_reflection/src/prims/std/mod.rs
+@@ -2,7 +2,3 @@
+ 
+ mod string;
+ mod wrappers;
+-
+-pub(crate) fn ensure_registered() {
+-    let _ = <String as crate::Reflectable>::type_info();
+-}
+\ No newline at end of file
+diff --git upstream/pulsar_reflection/src/prims/std/wrappers.rs vendored/pulsar_reflection/src/prims/std/wrappers.rs
+--- upstream/pulsar_reflection/src/prims/std/wrappers.rs
++++ vendored/pulsar_reflection/src/prims/std/wrappers.rs
+@@ -81,6 +81,35 @@ where
+     }
+ }
+ 
++macro_rules! impl_array {
++    ($ty:ty, $n:expr) => {
++        impl Reflectable for [$ty; $n] {
++            fn type_info() -> &'static RuntimeTypeInfo where Self: Sized { get_or_insert_wrapper_type_info::<Self, $ty>(WrapperType::Array) }
++            fn serialize(&self, serializer: &mut dyn TypeSerializer) -> ReflectResult<()> {
++                let values: Vec<&dyn Any> = self.iter().map(|value| value as &dyn Any).collect();
++                serializer.serialize_array(&values, <$ty as Reflectable>::type_info())
++            }
++            fn deserialize(deserializer: &mut dyn TypeDeserializer) -> ReflectResult<Self> where Self: Sized {
++                let values = deserializer.deserialize_array(<$ty as Reflectable>::type_info())?;
++                let mut out = Vec::with_capacity($n);
++                for value in values { out.push(value.downcast::<$ty>().map(|v| *v).map_err(|_| ReflectError::TypeMismatch { expected: std::any::type_name::<Self>(), found: "array element type mismatch".into() })?); }
++                out.try_into().map_err(|_| ReflectError::TypeMismatch { expected: std::any::type_name::<Self>(), found: "array length mismatch".into() })
++            }
++            fn clone_any(&self) -> Box<dyn Any> { Box::new(*self) }
++        }
++    };
++}
++impl_array!(f32, 2);
++impl_array!(i32, 2);
++impl_array!(u32, 1);
++impl_array!(u32, 2);
++impl_array!(u32, 3);
++impl_array!(u32, 4);
++impl_array!(f32, 12);
++impl_array!(f32, 16);
++impl_array!(u32, 116);
++impl_array!([f32; 4], 3);
++impl_array!([f32; 4], 4);
+ impl<T> Reflectable for Option<T>
+ where
+     T: Reflectable + Clone + Send + Sync + 'static,
+@@ -194,3 +223,8 @@ mod tests {
+         }
+     }
+ }
++
++
++
++
++
+diff --git upstream/pulsar_reflection/src/registry.rs vendored/pulsar_reflection/src/registry.rs
+--- upstream/pulsar_reflection/src/registry.rs
++++ vendored/pulsar_reflection/src/registry.rs
+@@ -28,7 +28,7 @@ inventory::collect!(EngineClassRegistration);
+ 
+ /// Registration entry for component methods
+ ///
+-/// Automatically submitted by the `#[component_methods]` macro via `inventory::submit!`
++/// Automatically submitted by the derive and by-hand registrations via `inventory::submit!`
+ pub struct ComponentMethodRegistration {
+     pub class_name: &'static str,
+     pub methods: fn() -> Vec<MethodMetadata>,
+diff --git upstream/pulsar_reflection/src/runtime_registry.rs vendored/pulsar_reflection/src/runtime_registry.rs
+--- upstream/pulsar_reflection/src/runtime_registry.rs
++++ vendored/pulsar_reflection/src/runtime_registry.rs
+@@ -13,23 +13,10 @@ use std::collections::HashMap;
+ 
+ /// Registration entry for auto-discovery via inventory
+ ///
+-/// Automatically submitted by the `#[derive(Reflectable)]` macro.
+-///
+-/// `type_info` is a plain zero-argument function pointer, not an eagerly-
+-/// resolved `&'static RuntimeTypeInfo` -- `inventory::submit!` embeds its
+-/// payload inside a `static` (see that macro's own expansion), which
+-/// requires every field to be const-constructible. A function ITEM (no
+-/// parens -- `SomeType::type_info`, not `SomeType::type_info()`) always is,
+-/// regardless of what the function's BODY does when it actually runs; a
+-/// resolved `&'static RuntimeTypeInfo` value is only const-constructible
+-/// when producing it involves nothing but other const operations, which
+-/// stops being true the moment a struct's own `Reflectable::type_info()`
+-/// needs to call `Reflectable::type_info()` on one of its fields (an
+-/// ordinary, non-`const` trait method) -- exactly the case a struct with
+-/// any field at all hits. Deferring the call to registry-build time (inside
+-/// `RuntimeTypeRegistry::new`, itself already lazily run on first access --
+-/// see `RUNTIME_TYPE_REGISTRY`) sidesteps the const requirement entirely.
++/// Automatically submitted by the `#[derive(Reflectable)]` macro
+ pub struct RuntimeTypeRegistration {
++    /// A function pointer (not a resolved reference): `inventory::submit!` needs a
++    /// const-constructible payload, and a function item always is.
+     pub type_info: fn() -> &'static RuntimeTypeInfo,
+     pub serialize_json: fn(&dyn Any) -> ReflectResult<Value>,
+     pub deserialize_json: fn(Value) -> ReflectResult<Box<dyn Any>>,
+@@ -59,20 +46,11 @@ pub struct RuntimeTypeRegistry {
+ impl RuntimeTypeRegistry {
+     /// Create a new registry from inventory
+     fn new() -> Self {
+-        #[cfg(feature = "prims-core")]
+-        crate::prims::core::ensure_registered();
+-        #[cfg(feature = "prims-std")]
+-        crate::prims::std::ensure_registered();
+-
+         let mut types = HashMap::new();
+         let mut by_name = HashMap::new();
+ 
+         // Auto-discover all RuntimeTypeRegistration entries via inventory
+         for registration in inventory::iter::<RuntimeTypeRegistration> {
+-            // Runtime call -- `RuntimeTypeRegistry::new` only ever runs
+-            // inside `RUNTIME_TYPE_REGISTRY`'s own `Lazy`, never at const-
+-            // eval time, so calling straight through the fn pointer here is
+-            // exactly as sound as any other ordinary function call.
+             let type_info = (registration.type_info)();
+ 
+             types.insert(
+diff --git upstream/pulsar_reflection/src/runtime_types.rs vendored/pulsar_reflection/src/runtime_types.rs
+--- upstream/pulsar_reflection/src/runtime_types.rs
++++ vendored/pulsar_reflection/src/runtime_types.rs
+@@ -240,6 +240,8 @@ pub enum TypeStructure {
+ /// Types of wrapper containers
+ #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+ pub enum WrapperType {
++    /// Fixed-size array `[T; N]`.
++    Array,
+     /// Vec<T>
+     Vec,
+ 
+diff --git upstream/pulsar_reflection/tests/derive_reflectable.rs vendored/pulsar_reflection/tests/derive_reflectable.rs
+deleted file mode 100644
+--- upstream/pulsar_reflection/tests/derive_reflectable.rs
++++ /dev/null
+@@ -1,74 +0,0 @@
+-//! Proves `#[derive(Reflectable)]` works on an ordinary struct with fields --
+-//! the exact shape this crate's own README documents as the basic usage
+-//! example (`PhysicsConfig { gravity: f32, friction: f32 }`).
+-//!
+-//! Before the `RuntimeTypeRegistration::type_info`/lazy-`type_info()` fix,
+-//! this failed to even COMPILE: `struct_impl.rs`'s generated code built
+-//! each type's `RuntimeTypeInfo` as a plain `static ... = RuntimeTypeInfo {
+-//! .. };`, and `FieldInfo`'s own construction (`field_info.rs`) embeds
+-//! `<FieldTy as Reflectable>::type_info()` -- an ordinary, non-`const`
+-//! trait method call -- directly inside that literal. Rust rejects any
+-//! non-const call inside a `static` initializer, for ANY field type,
+-//! including a bare `f32` (`Reflectable::type_info` isn't `const fn`
+-//! either). This is exactly the derive usage this test exercises.
+-
+-use pulsar_reflection::Reflectable;
+-
+-#[derive(Clone, Debug, Default, PartialEq, Reflectable)]
+-pub struct DeriveReflectableTestConfig {
+-    pub gravity: f32,
+-    pub friction: f32,
+-}
+-
+-#[test]
+-fn deriving_reflectable_on_a_struct_with_plain_fields_compiles_and_reports_both_fields() {
+-    let type_info = DeriveReflectableTestConfig::type_info();
+-    assert_eq!(type_info.type_name, "DeriveReflectableTestConfig");
+-
+-    let fields = type_info.fields().expect("a named-field struct must report Some(fields)");
+-    let names: Vec<&str> = fields.iter().map(|f| f.name).collect();
+-    assert_eq!(names, vec!["gravity", "friction"]);
+-
+-    // Each field's own nested type_info is real, resolved f32 info -- proof
+-    // the deferred (OnceLock) construction actually ran the recursive
+-    // `<f32 as Reflectable>::type_info()` call, not a stub/placeholder.
+-    for field in fields {
+-        assert_eq!(field.type_info.type_name, "f32");
+-    }
+-}
+-
+-#[test]
+-fn type_info_is_cached_not_recomputed_on_every_call() {
+-    // Same pointer every time -- OnceLock's whole point (and, incidentally,
+-    // proof this isn't secretly leaking a fresh Box on every call).
+-    let a = DeriveReflectableTestConfig::type_info() as *const _;
+-    let b = DeriveReflectableTestConfig::type_info() as *const _;
+-    assert_eq!(a, b);
+-}
+-
+-#[test]
+-fn serialize_then_deserialize_round_trips_through_the_derived_impl() {
+-    let value = DeriveReflectableTestConfig { gravity: -9.8, friction: 0.4 };
+-
+-    let mut serializer = pulsar_reflection::JsonSerializer::new();
+-    value.serialize(&mut serializer).expect("serialize");
+-    let json = serializer.into_json();
+-
+-    let mut deserializer = pulsar_reflection::JsonDeserializer::new(json);
+-    let round_tripped =
+-        DeriveReflectableTestConfig::deserialize(&mut deserializer).expect("deserialize");
+-
+-    assert_eq!(round_tripped, value);
+-}
+-
+-#[test]
+-fn the_type_registers_itself_in_the_global_runtime_registry_via_inventory() {
+-    // Proves the OTHER half of the fix: RuntimeTypeRegistration::type_info
+-    // is now a fn pointer (const-constructible for inventory::submit!'s own
+-    // static, unlike the old `&'static RuntimeTypeInfo` it replaced), and
+-    // RuntimeTypeRegistry::new correctly calls through it while building
+-    // the registry.
+-    let registered = pulsar_reflection::RUNTIME_TYPE_REGISTRY.get::<DeriveReflectableTestConfig>();
+-    assert!(registered.is_some(), "derive must auto-register via inventory, same as every other Reflectable type");
+-    assert_eq!(registered.unwrap().type_name, "DeriveReflectableTestConfig");
+-}
+diff --git upstream/pulsar_reflection/tests/reflectable_naming.rs vendored/pulsar_reflection/tests/reflectable_naming.rs
+new file mode 100644
+--- /dev/null
++++ vendored/pulsar_reflection/tests/reflectable_naming.rs
+@@ -0,0 +1,34 @@
++#![deny(non_upper_case_globals)]
++
++use pulsar_reflection::Reflectable;
++
++// These names intentionally exercise the existing case-preserving generated
++// identifiers.  The derive must suppress the global-name lint locally rather
++// than uppercasing names and making `Foo`/`FOO` collide.
++#[derive(Clone, Reflectable)]
++struct Foo {
++    value: i32,
++}
++
++#[derive(Clone, Reflectable)]
++#[allow(non_camel_case_types, dead_code)]
++struct FOO {
++    value: i32,
++}
++
++#[derive(Clone, Reflectable)]
++#[allow(dead_code)]
++enum HealthState {
++    Good,
++    Bad,
++}
++
++#[test]
++fn derived_type_info_is_available_with_global_lints_denied() {
++    assert_eq!(<Foo as Reflectable>::type_info().type_name, "Foo");
++    assert_eq!(<FOO as Reflectable>::type_info().type_name, "FOO");
++    assert_eq!(
++        <HealthState as Reflectable>::type_info().type_name,
++        "HealthState"
++    );
++}
+diff --git upstream/pulsar_reflection_codegen/Cargo.toml vendored/pulsar_reflection_codegen/Cargo.toml
+--- upstream/pulsar_reflection_codegen/Cargo.toml
++++ vendored/pulsar_reflection_codegen/Cargo.toml
+@@ -5,6 +5,6 @@ edition = "2021"
+ description = "Shared code generation for reflected-method attribute macros"
+ 
+ [dependencies]
+-syn = { workspace = true, features = ["full", "extra-traits"] }
+-quote = { workspace = true }
+-proc-macro2 = { workspace = true, features = ["proc-macro"] }
++syn = { version = "2", features = ["full", "extra-traits"] }
++quote = "1"
++proc-macro2 = { version = "1", features = ["proc-macro"] }
+diff --git upstream/pulsar_reflection_derive/Cargo.toml vendored/pulsar_reflection_derive/Cargo.toml
+--- upstream/pulsar_reflection_derive/Cargo.toml
++++ vendored/pulsar_reflection_derive/Cargo.toml
+@@ -7,8 +7,8 @@ edition = "2021"
+ proc-macro = true
+ 
+ [dependencies]
+-syn = { workspace = true, features = ["full", "extra-traits"] }
+-quote = { workspace = true }
+-proc-macro2 = { workspace = true, features = ["proc-macro"] }
+-owo-colors = { workspace = true }
+-pulsar_reflection_codegen = { workspace = true }
++syn = { version = "2", features = ["full", "extra-traits"] }
++quote = "1"
++proc-macro2 = { version = "1", features = ["proc-macro"] }
++owo-colors = "4"
++pulsar_reflection_codegen = { path = "../pulsar_reflection_codegen" }
+diff --git upstream/pulsar_reflection_derive/src/enum_impl.rs vendored/pulsar_reflection_derive/src/enum_impl.rs
+--- upstream/pulsar_reflection_derive/src/enum_impl.rs
++++ vendored/pulsar_reflection_derive/src/enum_impl.rs
+@@ -17,6 +17,42 @@ pub fn generate_enum_impl(
+ 
+     let variant_name_literals: Vec<_> = variant_names.iter().map(|s| quote! { #s }).collect();
+ 
++    // `///` docs per variant, lines joined with spaces.
++    let variant_docs: Vec<String> = data_enum
++        .variants
++        .iter()
++        .map(|v| {
++            v.attrs
++                .iter()
++                .filter(|attr| attr.path().is_ident("doc"))
++                .filter_map(|attr| match &attr.meta {
++                    syn::Meta::NameValue(nv) => match &nv.value {
++                        syn::Expr::Lit(syn::ExprLit {
++                            lit: syn::Lit::Str(s),
++                            ..
++                        }) => Some(s.value().trim().to_string()),
++                        _ => None,
++                    },
++                    _ => None,
++                })
++                .filter(|line| !line.is_empty())
++                .collect::<Vec<_>>()
++                .join(" ")
++        })
++        .collect();
++    let variant_docs_submit = if variant_docs.iter().any(|d| !d.is_empty()) {
++        quote! {
++            ::pulsar_reflection::inventory::submit! {
++                ::pulsar_reflection::EnumVariantDocs {
++                    type_id: std::any::TypeId::of::<#name #ty_generics>(),
++                    docs: &[#(#variant_docs),*],
++                }
++            }
++        }
++    } else {
++        quote! {}
++    };
++
+     let serialize_match_arms = data_enum.variants.iter().enumerate().map(|(idx, variant)| {
+         let variant_ident = &variant.ident;
+         let variant_name = variant_ident.to_string();
+@@ -63,7 +99,8 @@ pub fn generate_enum_impl(
+     let type_info_name = quote::format_ident!("{}_TYPE_INFO", name);
+ 
+     quote! {
+-        static #type_info_name: ::pulsar_reflection::RuntimeTypeInfo = ::pulsar_reflection::RuntimeTypeInfo {
++        #[allow(non_upper_case_globals)]
++        static #type_info_name: ::std::sync::LazyLock<::pulsar_reflection::RuntimeTypeInfo> = ::std::sync::LazyLock::new(|| ::pulsar_reflection::RuntimeTypeInfo {
+             type_id: std::any::TypeId::of::<#name #ty_generics>(),
+             type_name: stringify!(#name),
+             size: std::mem::size_of::<#name #ty_generics>(),
+@@ -72,11 +109,11 @@ pub fn generate_enum_impl(
+                 variants: &[#(#variant_name_literals),*],
+             },
+             color: #color_expr,
+-        };
++        });
+ 
+         impl #impl_generics ::pulsar_reflection::Reflectable for #name #ty_generics #where_clause {
+             fn type_info() -> &'static ::pulsar_reflection::RuntimeTypeInfo {
+-                &#type_info_name
++                &*#type_info_name
+             }
+ 
+             fn serialize(&self, serializer: &mut dyn ::pulsar_reflection::TypeSerializer) -> ::pulsar_reflection::ReflectResult<()> {
+@@ -112,7 +149,7 @@ pub fn generate_enum_impl(
+ 
+         ::pulsar_reflection::inventory::submit! {
+             ::pulsar_reflection::RuntimeTypeRegistration {
+-                type_info: <#name #ty_generics as ::pulsar_reflection::Reflectable>::type_info,
++                type_info: || &*#type_info_name,
+                 serialize_json: |value: &dyn ::std::any::Any| {
+                     let typed = value.downcast_ref::<#name #ty_generics>().ok_or_else(|| {
+                         ::pulsar_reflection::ReflectError::TypeMismatch {
+@@ -132,6 +169,8 @@ pub fn generate_enum_impl(
+             }
+         }
+ 
++        #variant_docs_submit
++
+         // Auto-register a generic enum dropdown editor for all unit enums.
+         // The UiPropertyEditorHint / enum_dropdown_editor / gpui types are
+         // behind `#[cfg(feature = "prims-gpui")]` in pulsar_reflection, so
+@@ -150,3 +189,7 @@ pub fn generate_enum_impl(
+         }
+     }
+ }
++
++
++
++
+diff --git upstream/pulsar_reflection_derive/src/pulsar_type.rs vendored/pulsar_reflection_derive/src/pulsar_type.rs
+--- upstream/pulsar_reflection_derive/src/pulsar_type.rs
++++ vendored/pulsar_reflection_derive/src/pulsar_type.rs
+@@ -108,10 +108,10 @@ pub fn expand_primitive_alias(
+     let deserialize_json_with = override_deserialize_json_with.clone().unwrap();
+ 
+     let json_serialize_value = quote! {
+-        (#serialize_json_with as fn(&#target_ty) -> ::pulsar_reflection::ReflectResult<::pulsar_reflection::serde_json::Value>)(typed)
++        (#serialize_json_with as fn(&#target_ty) -> ::pulsar_reflection::ReflectResult<::serde_json::Value>)(typed)
+     };
+     let json_deserialize_value = quote! {
+-        (#deserialize_json_with as fn(::pulsar_reflection::serde_json::Value) -> ::pulsar_reflection::ReflectResult<#target_ty>)(value)
++        (#deserialize_json_with as fn(::serde_json::Value) -> ::pulsar_reflection::ReflectResult<#target_ty>)(value)
+     };
+     let clone_impl = quote! { typed.clone() };
+ 
+@@ -149,18 +149,18 @@ pub fn expand_primitive_alias(
+         #item_type
+ 
+         #[allow(non_upper_case_globals)]
+-        static #type_info_name: ::pulsar_reflection::RuntimeTypeInfo = ::pulsar_reflection::RuntimeTypeInfo {
++        static #type_info_name: ::std::sync::LazyLock<::pulsar_reflection::RuntimeTypeInfo> = ::std::sync::LazyLock::new(|| ::pulsar_reflection::RuntimeTypeInfo {
+             type_id: ::std::any::TypeId::of::<#target_ty>(),
+             type_name: stringify!(#target_ty),
+             size: ::std::mem::size_of::<#target_ty>(),
+             align: ::std::mem::align_of::<#target_ty>(),
+             structure: ::pulsar_reflection::TypeStructure::Primitive,
+             color: #color_expr,
+-        };
++        });
+ 
+         impl ::pulsar_reflection::Reflectable for #target_ty {
+             fn type_info() -> &'static ::pulsar_reflection::RuntimeTypeInfo {
+-                &#type_info_name
++                &*#type_info_name
+             }
+ 
+             fn serialize(&self, serializer: &mut dyn ::pulsar_reflection::TypeSerializer) -> ::pulsar_reflection::ReflectResult<()> {
+@@ -186,7 +186,7 @@ pub fn expand_primitive_alias(
+ 
+         ::pulsar_reflection::inventory::submit! {
+             ::pulsar_reflection::RuntimeTypeRegistration {
+-                type_info: <#target_ty as ::pulsar_reflection::Reflectable>::type_info,
++                type_info: || &*#type_info_name,
+                 serialize_json: |value: &dyn ::std::any::Any| {
+                     let typed = value.downcast_ref::<#target_ty>().ok_or_else(|| {
+                         ::pulsar_reflection::ReflectError::TypeMismatch {
+@@ -196,7 +196,7 @@ pub fn expand_primitive_alias(
+                     })?;
+                     #json_serialize_value
+                 },
+-                deserialize_json: |value: ::pulsar_reflection::serde_json::Value| {
++                deserialize_json: |value: ::serde_json::Value| {
+                     let typed: #target_ty = #json_deserialize_value?;
+                     Ok(::std::boxed::Box::new(#clone_impl) as ::std::boxed::Box<dyn ::std::any::Any>)
+                 },
+@@ -206,3 +206,6 @@ pub fn expand_primitive_alias(
+         #editor_submit
+     })
+ }
++
++
++
+diff --git upstream/pulsar_reflection_derive/src/struct_impl.rs vendored/pulsar_reflection_derive/src/struct_impl.rs
+--- upstream/pulsar_reflection_derive/src/struct_impl.rs
++++ vendored/pulsar_reflection_derive/src/struct_impl.rs
+@@ -61,7 +61,7 @@ fn generate_named_fields_impl(
+                         struct_name: stringify!(#name),
+                         field_name: #field_name_str,
+                     })?;
+-                value.downcast_ref::<#field_type>().cloned()
++                *value.downcast_ref::<#field_type>()
+                     .ok_or_else(|| ::pulsar_reflection::ReflectError::TypeMismatch {
+                         expected: stringify!(#field_type),
+                         found: format!("{:?}", value.type_id()),
+@@ -70,38 +70,24 @@ fn generate_named_fields_impl(
+         }
+     });
+ 
++    let type_info_name = quote::format_ident!("{}_TYPE_INFO", name);
++
+     quote! {
++        #[allow(non_upper_case_globals)]
++        static #type_info_name: ::std::sync::LazyLock<::pulsar_reflection::RuntimeTypeInfo> = ::std::sync::LazyLock::new(|| ::pulsar_reflection::RuntimeTypeInfo {
++            type_id: std::any::TypeId::of::<#name #ty_generics>(),
++            type_name: stringify!(#name),
++            size: std::mem::size_of::<#name #ty_generics>(),
++            align: std::mem::align_of::<#name #ty_generics>(),
++            structure: ::pulsar_reflection::TypeStructure::Struct {
++                fields: ::std::boxed::Box::leak(::std::boxed::Box::new(#field_infos)),
++            },
++            color: #color_expr,
++        });
++
+         impl #impl_generics ::pulsar_reflection::Reflectable for #name #ty_generics #where_clause {
+             fn type_info() -> &'static ::pulsar_reflection::RuntimeTypeInfo {
+-                // Lazily built, not a plain `static ... = RuntimeTypeInfo {
+-                // .. }` literal: each field's own `FieldInfo` embeds
+-                // `<FieldTy as Reflectable>::type_info()` -- an ordinary,
+-                // non-`const` trait method call, which a `static`
+-                // initializer can never contain (breaks for ANY field,
+-                // including a bare `f32` -- primitives' own `type_info()`
+-                // isn't `const` either). `OnceLock` defers the whole
+-                // construction to first call, which is an entirely normal
+-                // runtime context -- consistent with how `Vec<T>`/`Option
+-                // <T>`'s own `Reflectable` impls already have to do this
+-                // (`prims/std/wrappers.rs`'s `get_or_insert_wrapper_type_
+-                // info`, generic types having no choice but to compute
+-                // their info at runtime in the first place). The leaked
+-                // `FieldInfo` slice is the same "lives forever, one-time
+-                // cost" trade that pattern already makes.
+-                static CELL: ::std::sync::OnceLock<::pulsar_reflection::RuntimeTypeInfo> =
+-                    ::std::sync::OnceLock::new();
+-                CELL.get_or_init(|| {
+-                    let fields: &'static [::pulsar_reflection::FieldInfo] =
+-                        ::std::boxed::Box::leak(::std::boxed::Box::new(#field_infos));
+-                    ::pulsar_reflection::RuntimeTypeInfo {
+-                        type_id: std::any::TypeId::of::<#name #ty_generics>(),
+-                        type_name: stringify!(#name),
+-                        size: std::mem::size_of::<#name #ty_generics>(),
+-                        align: std::mem::align_of::<#name #ty_generics>(),
+-                        structure: ::pulsar_reflection::TypeStructure::Struct { fields },
+-                        color: #color_expr,
+-                    }
+-                })
++                &*#type_info_name
+             }
+ 
+             fn serialize(&self, serializer: &mut dyn ::pulsar_reflection::TypeSerializer) -> ::pulsar_reflection::ReflectResult<()> {
+@@ -132,7 +118,7 @@ fn generate_named_fields_impl(
+ 
+         ::pulsar_reflection::inventory::submit! {
+             ::pulsar_reflection::RuntimeTypeRegistration {
+-                type_info: <#name #ty_generics as ::pulsar_reflection::Reflectable>::type_info,
++                type_info: || &*#type_info_name,
+                 serialize_json: |value: &dyn ::std::any::Any| {
+                     let typed = value.downcast_ref::<#name #ty_generics>().ok_or_else(|| {
+                         ::pulsar_reflection::ReflectError::TypeMismatch {
+@@ -164,7 +150,8 @@ fn generate_unit_struct_impl(
+     let type_info_name = quote::format_ident!("{}_TYPE_INFO", name);
+ 
+     quote! {
+-        static #type_info_name: ::pulsar_reflection::RuntimeTypeInfo = ::pulsar_reflection::RuntimeTypeInfo {
++        #[allow(non_upper_case_globals)]
++        static #type_info_name: ::std::sync::LazyLock<::pulsar_reflection::RuntimeTypeInfo> = ::std::sync::LazyLock::new(|| ::pulsar_reflection::RuntimeTypeInfo {
+             type_id: std::any::TypeId::of::<#name #ty_generics>(),
+             type_name: stringify!(#name),
+             size: std::mem::size_of::<#name #ty_generics>(),
+@@ -173,11 +160,11 @@ fn generate_unit_struct_impl(
+                 fields: &[],
+             },
+             color: #color_expr,
+-        };
++        });
+ 
+         impl #impl_generics ::pulsar_reflection::Reflectable for #name #ty_generics #where_clause {
+             fn type_info() -> &'static ::pulsar_reflection::RuntimeTypeInfo {
+-                &#type_info_name
++                &*#type_info_name
+             }
+ 
+             fn serialize(&self, serializer: &mut dyn ::pulsar_reflection::TypeSerializer) -> ::pulsar_reflection::ReflectResult<()> {
+@@ -195,7 +182,7 @@ fn generate_unit_struct_impl(
+ 
+         ::pulsar_reflection::inventory::submit! {
+             ::pulsar_reflection::RuntimeTypeRegistration {
+-                type_info: <#name #ty_generics as ::pulsar_reflection::Reflectable>::type_info,
++                type_info: || &*#type_info_name,
+                 serialize_json: |value: &dyn ::std::any::Any| {
+                     let typed = value.downcast_ref::<#name #ty_generics>().ok_or_else(|| {
+                         ::pulsar_reflection::ReflectError::TypeMismatch {
+@@ -216,3 +203,7 @@ fn generate_unit_struct_impl(
+         }
+     }
+ }
++
++
++
++

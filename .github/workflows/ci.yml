@@ -345,3 +345,15 @@ jobs:
 
       - name: Check plugin pins
         run: scripts/plugin-pins.sh check
+
+  # Pulsar-Reflection is vendored; its delta from the pinned upstream rev is
+  # committed as UPSTREAM.patch so drift is explicit (#844). Fix with
+  # `just reflection-drift-update`.
+  reflection-drift:
+    name: vendored Pulsar-Reflection matches UPSTREAM.patch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Check reflection drift
+        run: scripts/reflection-drift.sh check
