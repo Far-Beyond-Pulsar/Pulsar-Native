@@ -123,3 +123,7 @@ inspect: build
 # The editor without the Blueprint plugin (a plugin like any other)
 check-no-blueprint:
     cargo check -p pulsar_engine --no-default-features
+
+# Run tsc over the generated TypeScript declarations and sample classes (needs Node)
+check-typescript-declarations:
+    cargo test -p pulsar_script_ts --test tsc -- --ignored

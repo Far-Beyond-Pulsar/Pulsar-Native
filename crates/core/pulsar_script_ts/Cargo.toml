@@ -19,6 +19,7 @@ uuid = { workspace = true, features = ["v4"] }
 pulsar_script_math = { workspace = true }
 pulsar_script_conformance = { path = "../pulsar_script_conformance" }
 pulsar_scenedb = { workspace = true }
+tempfile = { workspace = true }
 pulsar_script_runtime = { workspace = true }
 
 [lints]

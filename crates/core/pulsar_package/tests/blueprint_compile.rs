@@ -24,7 +24,7 @@ fn blueprint_classes_compile_headlessly() {
     std::fs::write(classes.join("Door/graph_save.json"), EMPTY_GRAPH).unwrap();
 
     let output = pulsar_package::build_scripts(project.path(), BuildProfile::Dev).expect("Door compiles");
-    assert_eq!(output.languages, ["blueprint"]);
+    assert!(output.languages.iter().any(|l| l == "blueprint"), "{:?}", output.languages);
     let module = std::fs::read(classes.join("Door/events/.build/module.json")).expect("module written");
     assert_eq!(pulsar_script_vm::Module::decode(&module).unwrap().name, "Door");
 

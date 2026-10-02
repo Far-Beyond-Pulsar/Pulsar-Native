@@ -21,6 +21,8 @@ const RESERVED: &[&str] = &[
     "export", "extends", "false", "finally", "for", "function", "if", "import", "in", "instanceof", "new", "null",
     "return", "super", "switch", "this", "throw", "true", "try", "typeof", "var", "void", "while", "with", "yield",
     "let", "static", "implements", "interface", "package", "private", "protected", "public", "await", "async",
+    // Predefined type names: TypeScript refuses them as namespace names.
+    "any", "unknown", "never", "number", "string", "boolean", "symbol", "bigint", "object", "undefined",
 ];
 
 /// A TypeScript identifier for `name`.
@@ -138,6 +140,9 @@ type int = number;
 interface Entity {
     readonly __pulsar_type: \"Entity\";
 }
+
+/** Keep a field's identity across a rename: `@renamedFrom(\"oldName\") newName = 0;` */
+declare function renamedFrom(oldName: string): (value: undefined, context: ClassFieldDecoratorContext) => void;
 
 /** Suspend the calling method for `seconds` of game time. Use as `await wait(1.5)` in an `async` method. */
 declare function wait(seconds: number): Promise<void>;

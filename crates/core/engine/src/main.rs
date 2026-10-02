@@ -47,6 +47,8 @@ use ui_log_viewer::TrackingAllocator;
 // what includes it in the build (feature `blueprint`).
 #[cfg(feature = "blueprint")]
 use blueprint_editor_plugin as _;
+#[cfg(feature = "typescript")]
+use plugin_typescript as _;
 
 #[cfg(not(feature = "dhat-heap"))]
 #[global_allocator]

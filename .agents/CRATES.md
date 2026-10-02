@@ -49,6 +49,7 @@ The heart of the engine. 26 crates with no UI dependencies.
 | `pulsar_script_math` | glam math types (Vec2/3/4, DVec3, Quat, Mat4) as script value types with natives |
 | `pulsar_script_codegen` | Rust export: generates compiled step functions (and the `Actor` wrapper) from a script module |
 | `pulsar_script_conformance` | Runs modules interpreted and as generated Rust and compares everything observable (`just conformance`) |
+| `pulsar_script_ts` | TypeScript subset compiled to script modules (oxc parser, type checking against the native registry, `.d.ts` generation, field identity) |
 | `pulsar_std` | Blueprint standard library |
 | `pulsar_std_bundle` | Bundled std definitions |
 | `pulsar-multiplayer-core` | Multiplayer protocol and state |
@@ -78,6 +79,7 @@ provides a piece of the GPUI-based editor UI shell.
 | `ui_log_viewer` | Log output |
 | `ui_multiplayer` | Multiplayer session UI |
 | `ui_multiuser_status` | Presence indicators |
+| `plugin_typescript` | TypeScript scripting-language plugin (registers at link time; compiles `class.ts`) |
 | `ui_plugin_manager` | Plugin browser |
 | `ui_problems` | Errors / warnings panel |
 | `ui_settings` | Settings editor |

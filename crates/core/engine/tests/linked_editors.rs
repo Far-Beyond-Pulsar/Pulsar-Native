@@ -1,37 +1,52 @@
-//! The Blueprint editor is part of a build exactly when its crate is linked
-//! (`blueprint` feature), through the plugin API alone: the editor shell
-//! (`ui_core`) does not depend on it (#882).
+//! Scripting-language plugins are part of a build exactly when their crates
+//! are linked (features `blueprint`, `typescript`), through the plugin API
+//! alone: the editor shell (`ui_core`) depends on none of them (#882), and
+//! editor and headless tools discover the same languages.
 
-// Linking the crate is what includes it, as `main.rs` does.
+// Linking the crates is what includes them, as `main.rs` does.
 #[cfg(feature = "blueprint")]
 use blueprint_editor_plugin as _;
+#[cfg(feature = "typescript")]
+use plugin_typescript as _;
 
+use plugin_editor_api::linked_script_languages;
 use plugin_manager::BuiltinEditorRegistry;
 
 const BLUEPRINT: &str = "com.pulsar.blueprint-editor";
 
-#[test]
-fn the_blueprint_editor_is_present_exactly_when_the_feature_is_on() {
+fn registry() -> BuiltinEditorRegistry {
     let mut registry = BuiltinEditorRegistry::new();
     registry.register_linked();
-    assert_eq!(registry.provider_by_id(BLUEPRINT).is_some(), cfg!(feature = "blueprint"));
+    registry
 }
 
 #[test]
-fn its_scripting_language_comes_with_it_and_only_with_it() {
-    let mut registry = BuiltinEditorRegistry::new();
-    registry.register_linked();
-    let languages = registry.get_all_script_languages();
-    assert_eq!(!languages.is_empty(), cfg!(feature = "blueprint"), "{} languages", languages.len());
+fn the_blueprint_editor_is_present_exactly_when_the_feature_is_on() {
+    assert_eq!(registry().provider_by_id(BLUEPRINT).is_some(), cfg!(feature = "blueprint"));
+}
+
+#[test]
+fn each_language_comes_with_its_crate_and_only_with_it() {
+    let ids: Vec<String> = registry().get_all_script_languages().iter().map(|l| l.id().to_owned()).collect();
+    assert_eq!(ids.iter().any(|i| i == "blueprint"), cfg!(feature = "blueprint"), "{ids:?}");
+    assert_eq!(ids.iter().any(|i| i == "typescript"), cfg!(feature = "typescript"), "{ids:?}");
+}
+
+#[test]
+fn the_editor_and_headless_tools_find_the_same_languages() {
+    let mut editor: Vec<String> = registry().get_all_script_languages().iter().map(|l| l.id().to_owned()).collect();
+    let mut headless: Vec<String> = linked_script_languages().iter().map(|l| l.id().to_owned()).collect();
+    editor.sort();
+    headless.sort();
+    assert_eq!(editor, headless);
 }
 
 #[cfg(feature = "blueprint")]
 #[test]
-fn it_offers_its_file_type_and_editor_through_the_ordinary_registry_path() {
+fn the_blueprint_editor_offers_its_file_type_and_editor_through_the_ordinary_registry_path() {
     use plugin_manager::{EditorRegistry, FileTypeRegistry};
 
-    let mut registry = BuiltinEditorRegistry::new();
-    registry.register_linked();
+    let registry = registry();
     let (mut file_types, mut editors) = (FileTypeRegistry::new(), EditorRegistry::new());
     registry.register_all(&mut file_types, &mut editors);
     let provider = registry.provider_by_id(BLUEPRINT).unwrap();

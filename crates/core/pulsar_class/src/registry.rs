@@ -275,7 +275,7 @@ pub fn project_root_of_class_dir(class_dir: &Path) -> Option<PathBuf> {
 pub fn is_class_dir(dir: &Path) -> bool {
     let module = dir.join("events").join(".build").join("module.json");
     dir.is_dir()
-        && ([CLASS_META_FILE, PREFAB_FILE, "graph_save.json"]
+        && ([CLASS_META_FILE, PREFAB_FILE, "graph_save.json", "class.ts"]
             .iter()
             .any(|f| dir.join(f).is_file())
             || module.is_file())

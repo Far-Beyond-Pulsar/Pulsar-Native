@@ -8410,6 +8410,7 @@ version = "0.1.0"
 dependencies = [
  "engine_subsystems",
  "gpui-ce",
+ "inventory",
  "pulsar_events",
  "pulsar_reflection",
  "pulsar_script_vm",
@@ -8472,6 +8473,22 @@ dependencies = [
  "ui",
  "uuid",
  "wgpu",
+]
+
+[[package]]
+name = "plugin_typescript"
+version = "0.1.0"
+dependencies = [
+ "gpui-ce",
+ "plugin_editor_api",
+ "plugin_manager",
+ "pulsar_script_math",
+ "pulsar_script_ts",
+ "pulsar_script_vm",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "ui",
 ]
 
 [[package]]
@@ -9065,7 +9082,9 @@ dependencies = [
  "file-association-manager",
  "futures",
  "gpui-ce",
+ "plugin_editor_api",
  "plugin_manager",
+ "plugin_typescript",
  "profiling 0.1.0",
  "profiling 1.0.18",
  "pulsar_auth",
@@ -9194,6 +9213,7 @@ dependencies = [
  "clap",
  "engine_state",
  "plugin_editor_api",
+ "plugin_typescript",
  "pulsar_class",
  "pulsar_content",
  "pulsar_events",
@@ -9394,6 +9414,7 @@ dependencies = [
  "pulsar_script_vm",
  "serde",
  "serde_json",
+ "tempfile",
  "uuid",
 ]
 
