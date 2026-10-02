@@ -20,6 +20,40 @@ type GizmoMode = GizmoType;
 /// Camera velocity squared below this threshold is considered stopped.
 const CAMERA_IDLE_EPSILON: f32 = 0.001;
 
+/// Finish temporal reconstruction after activity stops, then return to idle.
+const TEMPORAL_SETTLING_FRAMES: u8 = 32;
+
+#[derive(Default)]
+struct TemporalSettling {
+    remaining: u8,
+}
+
+impl TemporalSettling {
+    fn observe_activity(&mut self, temporal_enabled: bool, active: bool) {
+        if !temporal_enabled {
+            self.remaining = 0;
+        } else if active {
+            self.remaining = TEMPORAL_SETTLING_FRAMES;
+        }
+    }
+
+    fn needs_frame(&self) -> bool {
+        self.remaining > 0
+    }
+
+    fn complete_frame(&mut self, temporal_enabled: bool, active: bool, rendered: bool) {
+        if !rendered {
+            return;
+        }
+        // Graph installation can enable TSR after the idle check this frame.
+        self.observe_activity(temporal_enabled, active);
+        // Activity frames rearm the budget; failures and idle calls consume none.
+        if !active {
+            self.remaining = self.remaining.saturating_sub(1);
+        }
+    }
+}
+
 /// Append a backend's brush edit to the terrain's journal and advance the
 /// source revision. SceneDB persists the journal with the level.
 pub(super) fn apply_voxel_brush_commit(
@@ -288,6 +322,7 @@ pub struct HelioRenderer {
     /// going idle the instant the user releases a key while velocity is
     /// still smoothing toward zero.
     had_camera_input: bool,
+    temporal_settling: TemporalSettling,
     /// Tracks whether the editor selection or gizmo mode changed since
     /// the last rendered frame.  When false the gizmo geometry is not
     /// rebuilt.
@@ -360,6 +395,7 @@ impl HelioRenderer {
             last_spike_warning: None,
             last_reported_gpu_frame: None,
             had_camera_input: false,
+            temporal_settling: TemporalSettling::default(),
             gizmo_dirty: true,
             profiler_frame_counter: 0,
             render_row_subscriptions_armed: false,
@@ -708,14 +744,20 @@ impl HelioRenderer {
             || self.pending_force_full_resync.load(Ordering::Acquire);
         let camera_stopped = self.cam_local_velocity.length_squared() <= CAMERA_IDLE_EPSILON
             && !self.had_camera_input;
-        let is_idle = camera_stopped
-            && !self.native_voxel_flight.force_frames()
-            && !has_pending_scene
-            && !has_pending_editor
-            && !self.voxel_backends.needs_frame(&inner.renderer)
-            && !self.gizmo_dirty
-            && !viewport_resized
-            && !self.reset_taa_next_frame;
+        // The settling budget itself is not activity: it must eventually drain.
+        let temporal_activity = !camera_stopped
+            || self.native_voxel_flight.force_frames()
+            || has_pending_scene
+            || has_pending_editor
+            || self.voxel_backends.needs_frame(&inner.renderer)
+            || self.gizmo_dirty
+            || viewport_resized
+            || self.reset_taa_next_frame;
+        self.temporal_settling.observe_activity(
+            inner.renderer.find_pass::<helio_pass_tsr::TsrPass>().is_some(),
+            temporal_activity,
+        );
+        let is_idle = !temporal_activity && !self.temporal_settling.needs_frame();
 
         // Clear the sticky input flag when camera actually stopped.
         if camera_stopped {
@@ -986,13 +1028,14 @@ impl HelioRenderer {
             self.last_voxel_stats_log = Instant::now();
             for line in self.voxel_backends.diagnostics(&inner.renderer) {
                 tracing::info!(
-                    "VOXEL_STATS altitude={:.1} speed_scale={:.1} {line} eye={:?} forward={:?} up={:?} viewport={}x{} graph_gpu_ms={:?}",
+                    "VOXEL_STATS altitude={:.1} speed_scale={:.1} {line} eye={:?} forward={:?} up={:?} viewport={}x{} configured_render_scale={:.2} graph_gpu_ms={:?}",
                     self.voxel_altitude.unwrap_or(f64::NAN),
                     self.voxel_altitude.map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6)),
                     self.cam_pos.to_array(),
                     basis(self.cam_frame, self.cam_yaw, self.cam_pitch).0.to_array(),
                     basis(self.cam_frame, self.cam_yaw, self.cam_pitch).2.to_array(),
                     width, height,
+                    inner.renderer.render_scale(),
                     inner.renderer.gpu_frame_ms(),
                 );
             }
@@ -1023,6 +1066,7 @@ impl HelioRenderer {
             self.last_voxel_errors = voxel_errors;
         }
         let t_render = Instant::now();
+        let mut render_succeeded = false;
         let submission_index = {
             #[cfg(feature = "editor-ui")]
             gpui::flamegraph_span!("pulsar: HelioRenderer::render_submit");
@@ -1056,8 +1100,9 @@ impl HelioRenderer {
             }
             {
                 profiling::profile_scope!("helio_renderer_render");
-                if let Err(e) = inner.renderer.render(&camera, &view) {
-                    tracing::error!("Helio render error: {:?}", e);
+                match inner.renderer.render(&camera, &view) {
+                    Ok(()) => render_succeeded = true,
+                    Err(e) => tracing::error!("Helio render error: {:?}", e),
                 }
             }
             // The graph's own submission carries the frame. Only when Helio
@@ -1171,6 +1216,11 @@ impl HelioRenderer {
             }
         }
 
+        self.temporal_settling.complete_frame(
+            inner.renderer.find_pass::<helio_pass_tsr::TsrPass>().is_some(),
+            temporal_activity,
+            render_succeeded && submission_index.is_some(),
+        );
         submission_index
     }
 
@@ -1623,5 +1673,78 @@ mod camera_frame_tests {
             assert!(forward.angle_between(previous) <= 0.1f32.to_radians() * 1.01, "step {step}");
             previous = forward;
         }
+    }
+}
+
+#[cfg(test)]
+mod temporal_settling_tests {
+    use super::{TemporalSettling, TEMPORAL_SETTLING_FRAMES};
+
+    #[test]
+    fn stopped_camera_renders_exactly_one_bounded_history_budget() {
+        let mut settling = TemporalSettling::default();
+        assert!(!settling.needs_frame());
+        settling.observe_activity(true, true);
+        settling.complete_frame(true, true, true);
+        for frame in 0..TEMPORAL_SETTLING_FRAMES {
+            // Quiet renders must not rearm themselves merely because they run.
+            settling.observe_activity(true, false);
+            assert!(settling.needs_frame(), "stopped frame {frame}");
+            settling.complete_frame(true, false, true);
+        }
+        for _ in 0..100 {
+            settling.observe_activity(true, false);
+            assert!(!settling.needs_frame());
+            settling.complete_frame(true, false, false);
+        }
+    }
+
+    #[test]
+    fn skipped_or_failed_renders_do_not_consume_history_and_new_activity_rearms() {
+        let mut settling = TemporalSettling::default();
+        settling.observe_activity(true, true);
+        for _ in 0..12 {
+            settling.complete_frame(true, false, true);
+        }
+        for _ in 0..100 {
+            settling.observe_activity(true, false);
+            settling.complete_frame(true, false, false);
+        }
+        assert_eq!(settling.remaining, TEMPORAL_SETTLING_FRAMES - 12);
+        // Scene edits, loading and camera activity all use the same explicit arm.
+        settling.observe_activity(true, true);
+        assert_eq!(settling.remaining, TEMPORAL_SETTLING_FRAMES);
+        settling.complete_frame(true, true, true);
+        assert_eq!(settling.remaining, TEMPORAL_SETTLING_FRAMES);
+    }
+
+    #[test]
+    fn installing_temporal_graph_on_activity_frame_arms_history_after_render() {
+        let mut settling = TemporalSettling::default();
+        // The idle check sees the old graph before a scene edit installs TSR.
+        settling.observe_activity(false, true);
+        assert!(!settling.needs_frame());
+        settling.complete_frame(true, true, true);
+        assert_eq!(settling.remaining, TEMPORAL_SETTLING_FRAMES);
+        for _ in 0..TEMPORAL_SETTLING_FRAMES {
+            settling.observe_activity(true, false);
+            assert!(settling.needs_frame());
+            settling.complete_frame(true, false, true);
+        }
+        assert!(!settling.needs_frame());
+        // The inverse graph change must leave no unnecessary settling frames.
+        settling.observe_activity(true, true);
+        settling.complete_frame(false, true, true);
+        assert!(!settling.needs_frame());
+    }
+
+    #[test]
+    fn non_temporal_graph_returns_immediately_to_idle() {
+        let mut settling = TemporalSettling::default();
+        settling.observe_activity(true, true);
+        settling.observe_activity(false, true);
+        assert!(!settling.needs_frame());
+        settling.observe_activity(false, false);
+        assert!(!settling.needs_frame());
     }
 }
