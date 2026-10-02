@@ -312,8 +312,9 @@ fn type_errors_name_the_types_and_suggest_the_fix() {
     let found = errors("export default class Test { f(): void { math.sqrt(1, 2); } }");
     assert!(found[0].contains("takes 1 argument(s), got 2"), "{found:?}");
 
-    let found = errors("export default class Test { f(v: Vec3, w: Vec3): boolean { return v == w; } }");
-    assert!(found[0].contains("does not apply to `Vec3`") && found[0].contains("a.eq(b)"), "{found:?}");
+    // Value types compare with `==` (they register equality); ordering and arithmetic are methods.
+    let found = errors("export default class Test { f(v: Vec3, w: Vec3): boolean { return v < w; } }");
+    assert!(found[0].contains("does not apply to `Vec3`") && found[0].contains("a.add(b)"), "{found:?}");
 }
 
 #[test]
@@ -433,4 +434,11 @@ fn every_declared_native_is_callable_from_the_compiler() {
     // What the declarations promise, the compiler accepts.
     let call = "export default class Test { f(): number { return math.sqrt(4.0); } g(v: Vec3): Vec3 { return v.add(Vec3.new_(1, 2, 3)); } }";
     module(call);
+}
+
+#[test]
+fn value_types_and_components_compare_with_equality_operators() {
+    // Vec3 registers equality; the equality instruction is verified and links.
+    let m = module("export default class Test { same(v: Vec3, w: Vec3): boolean { return v == w; } differ(v: Vec3, w: Vec3): boolean { return v != w; } }");
+    assert!(m.function("same").is_some() && m.function("differ").is_some());
 }
