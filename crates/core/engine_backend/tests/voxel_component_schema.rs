@@ -20,6 +20,7 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
     assert!(older_voxel.renderer_id.is_empty());
 
     let terrain = VoxelTerrainComponent::default();
+    assert!(terrain.appearance_parameters.is_empty());
     assert_eq!(terrain.domain_mode, 1);
     // New terrain rows start as a 4 km plane of Helio's terrain generator.
     assert_eq!(terrain.generator.id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
@@ -38,8 +39,10 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
         .as_object_mut()
         .unwrap()
         .remove("generator_version");
+    older_json.as_object_mut().unwrap().remove("appearance_parameters");
     let older: VoxelTerrainComponent = serde_json::from_value(older_json).unwrap();
     assert_eq!(older.generator.version, 1);
+    assert!(older.appearance_parameters.is_empty());
 }
 
 #[test]
@@ -48,7 +51,7 @@ fn the_inspector_shows_world_generation_and_editing_only() {
     let names: Vec<_> = terrain.get_properties().iter().map(|property| property.name).collect();
     assert_eq!(
         names,
-        ["enabled", "shape", "planet_radius", "plane_size", "voxel_size", "generator", "seed", "editable"]
+        ["enabled", "shape", "planet_radius", "plane_size", "voxel_size", "generator", "seed", "appearance_parameters", "editable"]
     );
     // Chunk layout, LOD and bookkeeping stay serialized but internal.
     let json = serde_json::to_value(&terrain).unwrap();
@@ -118,6 +121,7 @@ fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
     let mut terrain = VoxelTerrainComponent::default();
     terrain.generator.id = "test.generator".into();
     terrain.seed = 1234;
+    terrain.appearance_parameters = r#"{"detail":[0.6,0.12,0.04,0.0]}"#.into();
     let terrain_json = serde_json::to_value(&terrain).unwrap();
     assert!(pulsar_world_registry::hydrate_world_component_for_class(
         "VoxelTerrainComponent",
@@ -131,6 +135,7 @@ fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
         .expect("typed SceneDB component");
     assert_eq!(hydrated.generator.id, "test.generator");
     assert_eq!(hydrated.seed, 1234);
+    assert_eq!(hydrated.appearance_parameters, terrain.appearance_parameters);
 
     let voxel = VoxelComponent::default();
     let voxel_json = serde_json::to_value(&voxel).unwrap();

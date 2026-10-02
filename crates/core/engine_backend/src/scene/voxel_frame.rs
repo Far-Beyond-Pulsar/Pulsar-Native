@@ -24,6 +24,7 @@ pub struct VoxelEntryId {
 /// CPU description of one live SceneDB voxel source, independent of a renderer.
 #[derive(Clone)]
 pub struct VoxelSceneEntry {
+    pub appearance_parameters: String,
     pub id: VoxelEntryId,
     /// Editor visibility is independent of whether this source owns the
     /// camera environment (for example a planet's atmosphere).
@@ -292,6 +293,7 @@ pub(super) fn object_entry(
                 .map_err(|_| "default_material_slot must fit in one byte")?,
         }),
         world: VoxelWorldForm::default(),
+        appearance_parameters: String::new(),
         edits: VoxelEditJournal::default(),
     })
 }
@@ -381,6 +383,7 @@ pub(super) fn terrain_entry(
             planet_radius: component.planet_radius * scale,
             plane_size: component.plane_size * scale,
         },
+        appearance_parameters: component.appearance_parameters.clone(),
         edits: component.edits.clone(),
     })
 }
