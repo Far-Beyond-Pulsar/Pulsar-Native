@@ -829,6 +829,39 @@ mod tests {
         assert!(world.get::<TestComponent>(entity).is_none());
     }
 
+    /// #841: the write is reported when the guard drops, after the edit, and a
+    /// guard that was only read through reports nothing.
+    #[test]
+    fn the_write_guard_reports_after_the_edit_and_only_when_written() {
+        use pulsar_scenedb::ComponentChangeKind;
+
+        let mut world = World::new();
+        let entity = world.spawn();
+        hydrate_world_component_for_class(
+            "TestComponent",
+            &mut world,
+            entity,
+            &serde_json::json!({"value": 1}),
+        )
+        .unwrap();
+        world.subscribe::<TestComponent>(entity).unwrap();
+        world.take_component_change_events();
+
+        {
+            let guard = get_world_component_as_engine_class_mut("TestComponent", &mut world, entity).unwrap();
+            let _ = guard.to_json();
+        }
+        assert!(world.take_component_change_events().is_empty(), "a read is not a mutation");
+
+        let mut guard = get_world_component_as_engine_class_mut("TestComponent", &mut world, entity).unwrap();
+        guard.as_any_mut().downcast_mut::<TestComponent>().unwrap().value = 7;
+        drop(guard);
+        let events = world.take_component_change_events();
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events[0].kind, ComponentChangeKind::Mutated);
+        assert_eq!(world.get::<TestComponent>(entity), Some(&TestComponent { value: 7 }));
+    }
+
     #[test]
     fn live_get_mut_edits_the_one_real_world_value_directly() {
         let mut world = World::new();
@@ -852,7 +885,7 @@ mod tests {
         // same storage `world.get::<TestComponent>` sees afterward, not a
         // copy: no serialize/deserialize anywhere in this path.
         {
-            let instance =
+            let mut instance =
                 get_world_component_as_engine_class_mut("TestComponent", &mut world, entity)
                     .expect("hydrated component should be live-accessible");
             let concrete = instance
