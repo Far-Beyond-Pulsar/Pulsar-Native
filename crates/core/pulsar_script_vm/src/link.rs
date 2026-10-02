@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use crate::capability::CapabilityPolicy;
+use crate::compiled::CompiledCode;
 use crate::error::LinkError;
 use crate::events::{check_handler, EventCatalog, EventSignature};
 use crate::module::{Constant, EventRef, Module, SubscriptionScope};
@@ -23,6 +24,9 @@ pub struct Program {
     variables: Vec<Value>,
     subscriptions: Vec<LinkedSubscription>,
     generation: u64,
+    /// Generated code that runs the functions instead of the interpreter's
+    /// instruction loop (see [`crate::compiled`]).
+    pub(crate) compiled: Option<Arc<dyn CompiledCode>>,
 }
 
 /// A module subscription after linking: the handler checked against the
@@ -86,42 +90,38 @@ impl Program {
         policy: &CapabilityPolicy,
     ) -> Result<Self, LinkError> {
         verify(&module)?;
+        Self::link_inner(module, registry, events, policy, None)
+    }
+
+    /// Link a module whose functions are run by generated `code` instead of
+    /// the interpreter (see [`crate::compiled`]). `module` carries everything
+    /// but the instruction streams, which may be empty: the generator
+    /// verified the full module when it produced `code`, so this does not
+    /// verify it again. Imports, constants, variables and subscriptions are
+    /// linked exactly as [`link_with_policy`](Self::link_with_policy) does.
+    pub fn link_compiled(
+        module: Arc<Module>,
+        code: Arc<dyn CompiledCode>,
+        registry: &NativeRegistry,
+        events: Option<&dyn EventCatalog>,
+        policy: &CapabilityPolicy,
+    ) -> Result<Self, LinkError> {
+        Self::link_inner(module, registry, events, policy, Some(code))
+    }
+
+    fn link_inner(
+        module: Arc<Module>,
+        registry: &NativeRegistry,
+        events: Option<&dyn EventCatalog>,
+        policy: &CapabilityPolicy,
+        compiled: Option<Arc<dyn CompiledCode>>,
+    ) -> Result<Self, LinkError> {
         let types = TypeRegistry::global();
         let default = |ty: &Type| {
             types.default_value(ty).ok_or_else(|| LinkError::UnknownType { name: ty.to_string() })
         };
 
-        let mut natives = Vec::with_capacity(module.imports.len());
-        for import in &module.imports {
-            for param in &import.sig.params {
-                default(&param.ty)?;
-            }
-            default(&import.sig.ret)?;
-            let native = match registry.get(&import.name) {
-                Some(native) => Arc::clone(native),
-                None => match registry.poly(crate::native::poly_base_name(&import.name)) {
-                    Some(poly) => Arc::new(
-                        poly.instantiate(&import.sig)
-                            .map_err(|message| LinkError::PolyNative { name: import.name.clone(), message })?,
-                    ),
-                    None => return Err(LinkError::MissingNative { name: import.name.clone() }),
-                },
-            };
-            if !policy.allows(native.capability()) {
-                return Err(LinkError::CapabilityDenied {
-                    name: import.name.clone(),
-                    capability: native.capability().unwrap_or_default().to_owned(),
-                });
-            }
-            if native.sig != import.sig {
-                return Err(LinkError::SignatureMismatch {
-                    name: import.name.clone(),
-                    expected: Box::new(import.sig.clone()),
-                    found: Box::new(native.sig.clone()),
-                });
-            }
-            natives.push(native);
-        }
+        let natives = resolve_imports(&module, registry, policy)?;
 
         let registers = module
             .functions
@@ -142,7 +142,16 @@ impl Program {
         let constants = module.constants.iter().map(constant_value).collect::<Result<Vec<_>, _>>()?;
         let subscriptions = link_subscriptions(&module, events)?;
 
-        Ok(Self { module, natives, constants, registers, variables, subscriptions, generation: registry.generation() })
+        Ok(Self {
+            module,
+            natives,
+            constants,
+            registers,
+            variables,
+            subscriptions,
+            generation: registry.generation(),
+            compiled,
+        })
     }
 
     /// The module's event subscriptions, checked.
@@ -256,4 +265,51 @@ fn constant_value(constant: &Constant) -> Result<Value, LinkError> {
             .decode_value(ty, json)
             .map_err(|message| LinkError::BadConstant { ty: ty.clone(), json: json.clone(), message })?,
     })
+}
+
+/// Bind each of `module`'s imports to the native registered under its name,
+/// checking its signature and the link policy. Shared by [`Program::link`]
+/// and by code generated from a module, so both resolve and refuse imports
+/// identically.
+pub fn resolve_imports(
+    module: &Module,
+    registry: &NativeRegistry,
+    policy: &CapabilityPolicy,
+) -> Result<Vec<Arc<NativeFn>>, LinkError> {
+    let types = TypeRegistry::global();
+    let known = |ty: &Type| {
+        types.default_value(ty).map(drop).ok_or_else(|| LinkError::UnknownType { name: ty.to_string() })
+    };
+    let mut natives = Vec::with_capacity(module.imports.len());
+    for import in &module.imports {
+        for param in &import.sig.params {
+            known(&param.ty)?;
+        }
+        known(&import.sig.ret)?;
+        let native = match registry.get(&import.name) {
+            Some(native) => Arc::clone(native),
+            None => match registry.poly(crate::native::poly_base_name(&import.name)) {
+                Some(poly) => Arc::new(
+                    poly.instantiate(&import.sig)
+                        .map_err(|message| LinkError::PolyNative { name: import.name.clone(), message })?,
+                ),
+                None => return Err(LinkError::MissingNative { name: import.name.clone() }),
+            },
+        };
+        if !policy.allows(native.capability()) {
+            return Err(LinkError::CapabilityDenied {
+                name: import.name.clone(),
+                capability: native.capability().unwrap_or_default().to_owned(),
+            });
+        }
+        if native.sig != import.sig {
+            return Err(LinkError::SignatureMismatch {
+                name: import.name.clone(),
+                expected: Box::new(import.sig.clone()),
+                found: Box::new(native.sig.clone()),
+            });
+        }
+        natives.push(native);
+    }
+    Ok(natives)
 }

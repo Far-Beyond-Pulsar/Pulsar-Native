@@ -303,6 +303,7 @@ proc-macro2 = { version = "1.0", features = ["span-locations"] }
 regex = "1"
 pulsar_script_vm = { path = "crates/core/pulsar_script_vm" }
 pulsar_script_math = { path = "crates/core/pulsar_script_math" }
+pulsar_script_codegen = { path = "crates/core/pulsar_script_codegen" }
 pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 bytemuck = { version = "1", features = ["derive"] }
 similar = "3"

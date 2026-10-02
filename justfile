@@ -32,6 +32,12 @@ run:
 test:
     cargo test --workspace
 
+# Interpreted vs generated Rust: both profiles, since overflow and wrapping
+# behaviour is where a debug and a release build could disagree
+conformance:
+    cargo test -p pulsar_script_conformance
+    cargo test -p pulsar_script_conformance --release
+
 # Test a specific crate: just test-crate <name>
 test-crate name:
     cargo test -p {{name}}

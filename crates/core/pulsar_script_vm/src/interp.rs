@@ -8,8 +8,10 @@
 use std::sync::Arc;
 
 use crate::error::{ScriptError, ScriptErrorKind};
+use crate::compiled::{CompiledCode as _, Cx, Exit};
+use crate::exec::{self, binary, unary};
 use crate::link::{FuncId, Instance, Program};
-use crate::module::{BinOp, Instr, Reg, UnOp};
+use crate::module::{Instr, Reg};
 use crate::native::Host;
 use crate::value::Value;
 
@@ -256,6 +258,41 @@ impl Vm {
         self.frames.push(Frame { func, pc: 0, base, ret_dst });
     }
 
+    /// Park the call that started at `frame_base` as a continuation. The
+    /// innermost frame's `pc` is already past the `Wait`. Seconds that are
+    /// NaN or negative must already be clamped to zero.
+    fn suspend(&mut self, program: &Program, frame_base: usize, seconds: f64) -> Completion {
+        let stack_base = self.frames[frame_base].base;
+        let frames = self
+            .frames
+            .drain(frame_base..)
+            .map(|mut f| {
+                f.base -= stack_base;
+                f
+            })
+            .collect();
+        let regs = self.regs.split_off(stack_base);
+        let continuation = Continuation { module: Arc::clone(program.module()), frames, regs };
+        Completion::Waiting { seconds, continuation }
+    }
+
+    /// Pop the returning frame. `Some` when it was the call's outermost
+    /// frame (the call is done); otherwise hand `value` to the caller and
+    /// move it past its `Call`.
+    fn finish_frame(&mut self, value: Value, frame_base: usize) -> Option<Completion> {
+        let frame = self.frames.pop().expect("active");
+        self.regs.truncate(frame.base);
+        if self.frames.len() == frame_base {
+            return Some(Completion::Returned(value));
+        }
+        let caller = self.frames.last_mut().expect("caller");
+        caller.pc += 1;
+        if let Some(dst) = frame.ret_dst {
+            self.regs[caller.base + usize::from(dst)] = value;
+        }
+        None
+    }
+
     fn fail(&self, program: &Program, frame_base: usize, kind: ScriptErrorKind) -> ScriptError {
         let module = program.module();
         let frames = self.frames[frame_base..].iter().rev();
@@ -274,6 +311,42 @@ impl Vm {
     ) -> Result<Completion, ScriptError> {
         let module = Arc::clone(program.module());
         loop {
+            if let Some(code) = &program.compiled {
+                // Generated code runs the function until it must call,
+                // return, wait or fail; calls, returns and waits are handled
+                // here, as for interpreted code. It charges the budget
+                // itself, per instruction.
+                let frame = self.frames.last_mut().expect("a frame is active");
+                let func = frame.func;
+                let registers = program.registers[func as usize].len();
+                let mut cx = Cx {
+                    host: &mut *host,
+                    vars: &mut instance.vars,
+                    budget: &mut *budget,
+                    natives: &program.natives,
+                    constants: &program.constants,
+                    checked: self.checked_arithmetic,
+                    scratch: &mut self.args,
+                };
+                let regs = &mut self.regs[frame.base..frame.base + registers];
+                let exit = code.step(func, &mut frame.pc, regs, &mut cx);
+                match exit {
+                    Err(kind) => return Err(self.fail(program, frame_base, kind)),
+                    Ok(Exit::Call { func: callee, args, dst }) => {
+                        if self.frames.len() - frame_base >= self.max_depth {
+                            return Err(self.fail(program, frame_base, ScriptErrorKind::StackOverflow));
+                        }
+                        self.push_frame(program, callee, args.into_iter(), dst);
+                    }
+                    Ok(Exit::Return(value)) => {
+                        if let Some(done) = self.finish_frame(value, frame_base) {
+                            return Ok(done);
+                        }
+                    }
+                    Ok(Exit::Wait(seconds)) => return Ok(self.suspend(program, frame_base, seconds)),
+                }
+                continue;
+            }
             if budget.remaining == 0 {
                 return Err(self.fail(program, frame_base, ScriptErrorKind::BudgetExceeded));
             }
@@ -322,28 +395,11 @@ impl Vm {
                     let mut values = std::mem::take(&mut self.args);
                     values.clear();
                     values.extend(args.iter().map(|a| self.regs[r(*a)].clone()));
-                    // A panicking native fails the call instead of unwinding
-                    // through the VM into the game loop.
-                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        native.call(host, &mut values)
-                    }))
-                    .unwrap_or_else(|panic| Err(ScriptError::native(panic_message(&*panic))));
+                    let result = exec::call_native(native, host, &mut values);
                     let result = match result {
-                        Ok(value) if value.fits(&native.sig.ret) => value,
-                        Ok(value) => {
+                        Ok(value) => value,
+                        Err(kind) => {
                             self.args = values;
-                            let message = format!("returned {}, declared {}", value.kind(), native.sig.ret);
-                            let kind = ScriptErrorKind::Native { name: native.name.clone(), message };
-                            return Err(self.fail(program, frame_base, kind));
-                        }
-                        Err(err) => {
-                            self.args = values;
-                            let kind = match err.kind {
-                                ScriptErrorKind::Native { message, .. } => {
-                                    ScriptErrorKind::Native { name: native.name.clone(), message }
-                                }
-                                other => other,
-                            };
                             return Err(self.fail(program, frame_base, kind));
                         }
                     };
@@ -374,30 +430,12 @@ impl Vm {
                     // NaN and negative waits resume on the next opportunity.
                     let seconds = if seconds > 0.0 { seconds } else { 0.0 };
                     self.frames.last_mut().expect("active").pc = next;
-                    let stack_base = self.frames[frame_base].base;
-                    let frames = self
-                        .frames
-                        .drain(frame_base..)
-                        .map(|mut f| {
-                            f.base -= stack_base;
-                            f
-                        })
-                        .collect();
-                    let regs = self.regs.split_off(stack_base);
-                    let continuation = Continuation { module: Arc::clone(&module), frames, regs };
-                    return Ok(Completion::Waiting { seconds, continuation });
+                    return Ok(self.suspend(program, frame_base, seconds));
                 }
                 Instr::Return { value } => {
                     let value = value.map_or(Value::Unit, |v| self.regs[r(v)].clone());
-                    let frame = self.frames.pop().expect("active");
-                    self.regs.truncate(frame.base);
-                    if self.frames.len() == frame_base {
-                        return Ok(Completion::Returned(value));
-                    }
-                    let caller = self.frames.last_mut().expect("caller");
-                    caller.pc += 1;
-                    if let Some(dst) = frame.ret_dst {
-                        self.regs[caller.base + usize::from(dst)] = value;
+                    if let Some(done) = self.finish_frame(value, frame_base) {
+                        return Ok(done);
                     }
                     continue;
                 }
@@ -407,101 +445,3 @@ impl Vm {
     }
 }
 
-fn panic_message(panic: &(dyn std::any::Any + Send)) -> String {
-    let message = panic
-        .downcast_ref::<&str>()
-        .map(|s| s.to_string())
-        .or_else(|| panic.downcast_ref::<String>().cloned())
-        .unwrap_or_else(|| "unknown panic".into());
-    format!("panicked: {message}")
-}
-
-fn overflow(op: &str) -> ScriptErrorKind {
-    ScriptErrorKind::Overflow { op: op.to_owned() }
-}
-
-fn unary(op: UnOp, value: &Value, checked: bool) -> Result<Value, ScriptErrorKind> {
-    Ok(match (op, value) {
-        (UnOp::Neg, Value::Int(i)) if checked => Value::Int(i.checked_neg().ok_or_else(|| overflow("Neg"))?),
-        (UnOp::Neg, Value::Int(i)) => Value::Int(i.wrapping_neg()),
-        (UnOp::Neg, Value::Float(f)) => Value::Float(-f),
-        (UnOp::Not, Value::Bool(b)) => Value::Bool(!b),
-        (UnOp::IntToFloat, Value::Int(i)) => Value::Float(*i as f64),
-        // `i64::MAX as f64` rounds up to 2^63, which is already out of range.
-        (UnOp::FloatToInt, Value::Float(f)) if checked && !(f.is_finite() && *f >= -(2f64.powi(63)) && *f < 2f64.powi(63)) => {
-            return Err(overflow("FloatToInt"));
-        }
-        // `as` saturates and maps NaN to 0.
-        (UnOp::FloatToInt, Value::Float(f)) => Value::Int(*f as i64),
-        (UnOp::ToStr, v) => Value::Str(display(v).into()),
-        // The verifier rules out every other combination.
-        _ => unreachable!("unverified unary operand"),
-    })
-}
-
-fn display(value: &Value) -> String {
-    match value {
-        Value::Unit => "()".into(),
-        Value::Bool(b) => b.to_string(),
-        Value::Int(i) => i.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::Str(s) => s.to_string(),
-        Value::Entity(e) => e.to_string(),
-        Value::Component(c) => format!("{}({})", pulsar_scenedb::component::type_name(c.component), c.entity),
-        Value::Object(o) => o.type_name().to_owned(),
-    }
-}
-
-fn binary(op: BinOp, a: &Value, b: &Value, checked: bool) -> Result<Value, ScriptErrorKind> {
-    use Value::{Bool, Float, Int, Str};
-    if checked {
-        if let (Int(x), Int(y)) = (a, b) {
-            let result = match op {
-                BinOp::Add => Some(x.checked_add(*y)),
-                BinOp::Sub => Some(x.checked_sub(*y)),
-                BinOp::Mul => Some(x.checked_mul(*y)),
-                BinOp::Div | BinOp::Rem if *y == 0 => return Err(ScriptErrorKind::DivideByZero),
-                BinOp::Div => Some(x.checked_div(*y)),
-                BinOp::Rem => Some(x.checked_rem(*y)),
-                _ => None,
-            };
-            if let Some(result) = result {
-                return result.map(Int).ok_or_else(|| overflow(&format!("{op:?}")));
-            }
-        }
-    }
-    Ok(match (op, a, b) {
-        (BinOp::Add, Int(a), Int(b)) => Int(a.wrapping_add(*b)),
-        (BinOp::Sub, Int(a), Int(b)) => Int(a.wrapping_sub(*b)),
-        (BinOp::Mul, Int(a), Int(b)) => Int(a.wrapping_mul(*b)),
-        (BinOp::Div | BinOp::Rem, Int(_), Int(0)) => return Err(ScriptErrorKind::DivideByZero),
-        (BinOp::Div, Int(a), Int(b)) => Int(a.wrapping_div(*b)),
-        (BinOp::Rem, Int(a), Int(b)) => Int(a.wrapping_rem(*b)),
-        (BinOp::Add, Float(a), Float(b)) => Float(a + b),
-        (BinOp::Sub, Float(a), Float(b)) => Float(a - b),
-        (BinOp::Mul, Float(a), Float(b)) => Float(a * b),
-        (BinOp::Div, Float(a), Float(b)) => Float(a / b),
-        (BinOp::Rem, Float(a), Float(b)) => Float(a % b),
-        (BinOp::Add, Str(a), Str(b)) => Str(format!("{a}{b}").into()),
-        (BinOp::Eq, a, b) => Bool(a == b),
-        (BinOp::Ne, a, b) => Bool(a != b),
-        (BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge, a, b) => {
-            let ordering = match (a, b) {
-                (Int(a), Int(b)) => a.partial_cmp(b),
-                (Float(a), Float(b)) => a.partial_cmp(b),
-                (Str(a), Str(b)) => a.partial_cmp(b),
-                _ => unreachable!("unverified comparison operands"),
-            };
-            // NaN compares false, like IEEE.
-            Bool(ordering.is_some_and(|o| match op {
-                BinOp::Lt => o.is_lt(),
-                BinOp::Le => o.is_le(),
-                BinOp::Gt => o.is_gt(),
-                _ => o.is_ge(),
-            }))
-        }
-        (BinOp::And, Bool(a), Bool(b)) => Bool(*a && *b),
-        (BinOp::Or, Bool(a), Bool(b)) => Bool(*a || *b),
-        _ => unreachable!("unverified binary operands"),
-    })
-}

@@ -1,0 +1,23 @@
+[package]
+name = "pulsar_script_conformance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+build = "build.rs"
+description = "Runs script modules interpreted and as generated Rust (pulsar_script_codegen) and compares everything observable: results, errors and traces, variables, native calls, waiting. Run it in debug and release."
+
+[dependencies]
+pulsar_script_vm = { workspace = true }
+pulsar_scenedb = { workspace = true }
+# Linked so the math value types and their natives are registered.
+pulsar_script_math = { workspace = true }
+glam = { workspace = true }
+serde_json = { workspace = true }
+
+[build-dependencies]
+pulsar_script_vm = { workspace = true }
+pulsar_script_codegen = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

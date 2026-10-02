@@ -1,0 +1,469 @@
+{
+  "format_version": 3,
+  "name": "bp_pick",
+  "constants": [
+    {
+      "Int": 0
+    },
+    {
+      "Str": "x"
+    },
+    {
+      "Int": 1
+    },
+    {
+      "Str": "y"
+    },
+    {
+      "Int": 2
+    },
+    {
+      "Str": "z"
+    }
+  ],
+  "imports": [
+    {
+      "name": "std::pick",
+      "sig": {
+        "params": [
+          {
+            "ty": {
+              "kind": "int"
+            },
+            "inout": false
+          },
+          {
+            "ty": {
+              "kind": "int"
+            },
+            "inout": true
+          }
+        ],
+        "ret": {
+          "kind": "int"
+        }
+      }
+    },
+    {
+      "name": "std::append",
+      "sig": {
+        "params": [
+          {
+            "ty": {
+              "kind": "str"
+            },
+            "inout": false
+          },
+          {
+            "ty": {
+              "kind": "str"
+            },
+            "inout": false
+          }
+        ],
+        "ret": {
+          "kind": "str"
+        }
+      }
+    }
+  ],
+  "variables": [
+    {
+      "name": "log",
+      "ty": {
+        "kind": "str"
+      },
+      "default": null,
+      "id": "var-log"
+    },
+    {
+      "name": "count",
+      "ty": {
+        "kind": "int"
+      },
+      "default": {
+        "Int": 0
+      },
+      "id": "var-count"
+    }
+  ],
+  "functions": [
+    {
+      "name": "on_pick",
+      "exported": true,
+      "params": [
+        {
+          "kind": "int"
+        }
+      ],
+      "ret": {
+        "kind": "unit"
+      },
+      "registers": [
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        }
+      ],
+      "code": [
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              0,
+              1
+            ],
+            "dst": 2
+          }
+        },
+        {
+          "Const": {
+            "dst": 3,
+            "index": 0
+          }
+        },
+        {
+          "Binary": {
+            "op": "Eq",
+            "dst": 4,
+            "a": 2,
+            "b": 3
+          }
+        },
+        {
+          "Branch": {
+            "cond": 4,
+            "then": 4,
+            "otherwise": 9
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 5,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 6,
+            "index": 1
+          }
+        },
+        {
+          "CallNative": {
+            "import": 1,
+            "args": [
+              5,
+              6
+            ],
+            "dst": 7
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 7
+          }
+        },
+        {
+          "Jump": {
+            "target": 26
+          }
+        },
+        {
+          "Const": {
+            "dst": 8,
+            "index": 2
+          }
+        },
+        {
+          "Binary": {
+            "op": "Eq",
+            "dst": 9,
+            "a": 2,
+            "b": 8
+          }
+        },
+        {
+          "Branch": {
+            "cond": 9,
+            "then": 12,
+            "otherwise": 17
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 10,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 11,
+            "index": 3
+          }
+        },
+        {
+          "CallNative": {
+            "import": 1,
+            "args": [
+              10,
+              11
+            ],
+            "dst": 12
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 12
+          }
+        },
+        {
+          "Jump": {
+            "target": 26
+          }
+        },
+        {
+          "Const": {
+            "dst": 13,
+            "index": 4
+          }
+        },
+        {
+          "Binary": {
+            "op": "Eq",
+            "dst": 14,
+            "a": 2,
+            "b": 13
+          }
+        },
+        {
+          "Branch": {
+            "cond": 14,
+            "then": 20,
+            "otherwise": 26
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 15,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 16,
+            "index": 5
+          }
+        },
+        {
+          "CallNative": {
+            "import": 1,
+            "args": [
+              15,
+              16
+            ],
+            "dst": 17
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 17
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 1,
+            "src": 1
+          }
+        },
+        {
+          "Jump": {
+            "target": 26
+          }
+        },
+        {
+          "Return": {
+            "value": null
+          }
+        }
+      ],
+      "debug": {
+        "ranges": [
+          {
+            "start": 0,
+            "end": 4,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "pick"
+            }
+          },
+          {
+            "start": 4,
+            "end": 5,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "x_get"
+            }
+          },
+          {
+            "start": 5,
+            "end": 7,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "x_append"
+            }
+          },
+          {
+            "start": 7,
+            "end": 8,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "x"
+            }
+          },
+          {
+            "start": 8,
+            "end": 12,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "pick"
+            }
+          },
+          {
+            "start": 12,
+            "end": 13,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "y_get"
+            }
+          },
+          {
+            "start": 13,
+            "end": 15,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "y_append"
+            }
+          },
+          {
+            "start": 15,
+            "end": 16,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "y"
+            }
+          },
+          {
+            "start": 16,
+            "end": 20,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "pick"
+            }
+          },
+          {
+            "start": 20,
+            "end": 21,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "z_get"
+            }
+          },
+          {
+            "start": 21,
+            "end": 23,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "z_append"
+            }
+          },
+          {
+            "start": 23,
+            "end": 24,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "z"
+            }
+          },
+          {
+            "start": 24,
+            "end": 25,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "setc"
+            }
+          },
+          {
+            "start": 25,
+            "end": 26,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "pick"
+            }
+          },
+          {
+            "start": 26,
+            "end": 27,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "ev"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

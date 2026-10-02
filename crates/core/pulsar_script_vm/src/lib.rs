@@ -26,7 +26,9 @@
 
 pub(crate) mod adapters;
 pub mod capability;
+pub mod compiled;
 pub mod error;
+pub mod exec;
 pub mod events;
 pub mod interp;
 pub mod library;
@@ -46,7 +48,7 @@ pub use library::{
     ForwardingAllocator, HostAllocator, LibraryError, LibraryId, LibraryRegistrar, NativeLibraries,
 };
 pub use events::{EventCatalog, EventSignature, EventSink, EventTarget};
-pub use link::{FuncId, Instance, LinkedSubscription, Program};
+pub use link::{resolve_imports, FuncId, Instance, LinkedSubscription, Program};
 pub use module::{
     BinOp, Constant, DebugInfo, DebugRange, ErrorSite, EventDecl, EventField, EventRef, Function,
     Import, Instr, Module, ModuleDecodeError, Param, Reg, Signature, SourceLoc, Subscription,
