@@ -9005,6 +9005,8 @@ dependencies = [
 name = "pulsar_scene_model"
 version = "0.1.0"
 dependencies = [
+ "glam 0.33.5",
+ "inventory",
  "pulsar_reflection",
  "pulsar_scenedb",
  "serde",
@@ -9130,8 +9132,10 @@ dependencies = [
 name = "pulsar_world_registry"
 version = "0.1.0"
 dependencies = [
+ "glam 0.33.5",
  "inventory",
  "pulsar_reflection",
+ "pulsar_scene_model",
  "pulsar_scenedb",
  "pulsar_script_math",
  "pulsar_script_vm",

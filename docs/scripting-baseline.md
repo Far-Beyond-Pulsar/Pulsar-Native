@@ -176,3 +176,15 @@ Property timing and allocation results (Windows 11, local developer machine):
 | Direct typed SceneDB read | 4.8 | 0 | `cargo test -p pulsar_world_registry --test component_dispatch --release baseline_property_reads -- --ignored --nocapture` (passed, 300,000 reads) |
 | Boxed reflected read | 121.8 | 4 | same command |
 | JSON reflected read | 193.7 | 6 | same command |
+
+After phase 6 (cached property descriptors, same machine and command):
+
+| Path | Release ns/access | Allocation calls/access |
+|---|---:|---:|
+| Direct typed SceneDB read | 4.9 | 0 |
+| Boxed reflected read | 67.7 | 1 |
+| JSON reflected read | 144.9 | 3 |
+
+The boxed and JSON paths no longer build an `EngineClass` per access
+(`property_access_builds_descriptors_once` asserts it). The remaining allocation
+is the boxed result itself; the JSON path also allocates for its conversion.

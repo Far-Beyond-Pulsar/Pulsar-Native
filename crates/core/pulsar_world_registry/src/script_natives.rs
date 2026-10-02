@@ -26,6 +26,11 @@ use pulsar_script_vm::{
 
 use crate::WorldComponentRegistration;
 
+// Scene-vocabulary components are not reflected `EngineClass`es, so the
+// world registry does not list them; their script surface is the
+// `#[component_methods]` block next to the component.
+pulsar_script_vm::script_component!(pulsar_scene_model::Transform, "Transform");
+
 inventory::submit! {
     ComponentProvider { components: world_components }
 }

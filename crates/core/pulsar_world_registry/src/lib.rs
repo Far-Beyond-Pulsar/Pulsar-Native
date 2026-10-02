@@ -88,7 +88,7 @@ mod script_natives;
 // graph nodes) uses to touch live World components. No bespoke dispatch
 // downstream.
 pub use dispatch::{
-    get_component_property, get_component_property_boxed, invoke_component_method,
+    get_component_property, get_component_property_boxed, invoke_component_method, property_descriptor,
     set_component_property, set_component_property_boxed,
 };
 // The one script-facing error taxonomy (#641/#643). Canonical home is this

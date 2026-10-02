@@ -50,6 +50,12 @@ use pulsar_world_registry::{
     set_component_property, set_component_property_boxed, ScriptRefError,
 };
 
+thread_local! {
+    /// How many times this thread built a property table (the work a
+    /// throwaway `EngineClass` instance exists for).
+    static PROPERTY_TABLE_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 // ── one hand-registered test class exercising the full pipeline ────────────
 
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -63,6 +69,7 @@ impl EngineClass for DispatchGizmo {
     }
 
     fn get_properties(&self) -> Vec<PropertyMetadata> {
+        PROPERTY_TABLE_BUILDS.with(|n| n.set(n.get() + 1));
         let info: &'static RuntimeTypeInfo = RUNTIME_TYPE_REGISTRY
             .get::<i32>()
             .expect("i32 prim registered");
@@ -553,8 +560,9 @@ fn dangling_entity_is_not_live_not_a_panic() {
 ///
 /// This intentionally has no pass/fail latency threshold. It records local
 /// before-change numbers for the direct typed field read, boxed reflected
-/// dispatch, and JSON reflected dispatch. The latter two currently resolve
-/// metadata by constructing a default EngineClass on every access.
+/// dispatch, and JSON reflected dispatch. The latter two resolve
+/// metadata through the shared descriptor cache (no EngineClass is
+/// constructed per access; see `property_access_builds_descriptors_once`).
 #[test]
 #[ignore = "manual release-mode property access baseline"]
 fn baseline_property_reads() {
@@ -602,4 +610,28 @@ fn baseline_property_reads() {
                 .unwrap() as i32
         }),
     );
+}
+
+/// #886: reading and writing a property any number of times builds the
+/// class's property table at most once, not once per access.
+#[test]
+fn property_access_builds_descriptors_once() {
+    let (mut world, entity) = hydrated_world(1);
+    // The first access may build the (process-wide, cached) table.
+    let _ = get_component_property_boxed(&world, entity, "DispatchGizmo", 0, "charges").unwrap();
+    let before = PROPERTY_TABLE_BUILDS.with(|n| n.get());
+    for i in 0..100 {
+        get_component_property_boxed(&world, entity, "DispatchGizmo", 0, "charges").unwrap();
+        get_component_property(&world, entity, "DispatchGizmo", 0, "charges").unwrap();
+        set_component_property_boxed(&mut world, entity, "DispatchGizmo", 0, "charges", Box::new(i as i32)).unwrap();
+        set_component_property(&mut world, entity, "DispatchGizmo", 0, "charges", serde_json::json!(i)).unwrap();
+    }
+    assert_eq!(PROPERTY_TABLE_BUILDS.with(|n| n.get()), before, "a throwaway instance was built per access");
+    assert_eq!(world.get::<DispatchGizmo>(entity).unwrap().charges, 99);
+
+    // Unknown names still fail with the typed error, and are not cached as hits.
+    assert!(matches!(
+        get_component_property_boxed(&world, entity, "DispatchGizmo", 0, "nope"),
+        Err(ScriptRefError::UnknownProperty { .. })
+    ));
 }
