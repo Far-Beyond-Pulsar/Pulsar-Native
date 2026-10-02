@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use crate::error::{ScriptError, ScriptErrorKind};
-use crate::compiled::{CompiledCode as _, Cx, Exit};
+use crate::compiled::{Cx, Exit};
 use crate::exec::{self, binary, unary};
 use crate::link::{FuncId, Instance, Program};
 use crate::module::{Instr, Reg};
