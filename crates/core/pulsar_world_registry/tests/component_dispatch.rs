@@ -161,12 +161,10 @@ fn gizmo_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
         .map(|c| c as &dyn EngineClass)
 }
 
-fn gizmo_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
-    // Same `Mut`-guard unwrap as the generated shims: writes through here
-    // count as real mutations for subscriptions/GPU mirrors.
-    world
-        .get_mut::<DispatchGizmo>(entity)
-        .map(|c| c.into_inner() as &mut dyn EngineClass)
+fn gizmo_get_mut(world: &mut World, entity: Entity) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
+    // Same guard as the generated shims: writes through it are reported to
+    // subscriptions/GPU mirrors when it drops.
+    pulsar_world_registry::EngineClassMut::of::<DispatchGizmo>(world, entity)
 }
 
 fn gizmo_methods() -> Vec<MethodMetadata> {

@@ -81,7 +81,7 @@ pub fn invoke_component_method(
     validate_args(class_name, &meta, &args)?;
 
     let _ = component_index; // methods are class-level behavior; see module doc
-    let instance = crate::get_world_component_as_engine_class_mut(class_name, world, entity)
+    let mut instance = crate::get_world_component_as_engine_class_mut(class_name, world, entity)
         .ok_or_else(|| ScriptRefError::ComponentMissing {
             entity,
             class_name: class_name.to_string(),
@@ -226,7 +226,7 @@ fn set_typed(
     meta: &PropertyMetadata,
     typed: Box<dyn Any>,
 ) -> Result<(), ScriptRefError> {
-    let instance = live_instance_mut(world, entity, class_name, component_index)?;
+    let mut instance = live_instance_mut(world, entity, class_name, component_index)?;
     (meta.setter)(&mut *instance, typed);
     Ok(())
 }
@@ -291,7 +291,7 @@ fn live_instance_mut<'w>(
     entity: Entity,
     class_name: &str,
     component_index: u32,
-) -> Result<&'w mut dyn pulsar_reflection::EngineClass, ScriptRefError> {
+) -> Result<crate::EngineClassMut<'w>, ScriptRefError> {
     if component_index != 0 {
         return Err(ScriptRefError::InstanceMissing {
             entity,

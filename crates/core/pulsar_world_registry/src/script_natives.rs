@@ -1,25 +1,4 @@
-            let result = {
-                let mut instance = (registration.get_as_engine_class_mut)(world, entity)
-                    .ok_or_else(|| missing(entity, class))?;
-                caller(&mut *instance, boxed)
-            };
-            // As for property setters: the method may have written.            {
-                let mut instance = (registration.get_as_engine_class_mut)(world, entity)
-                    .ok_or_else(|| missing(entity, class))?;
-                (property.setter)(&mut *instance, value);
-                // The guard reports the write to SceneDB as it drops, here.
-            }
-            // A companion GPU mirror is a derived component, not a field; the
-            // guard does not rebuild it, so re-sync it after, as the panel does.
-            (registration.refresh_gpu_mirror)(world, entity);{
-                let mut instance = (registration.get_as_engine_class_mut)(world, entity)
-                    .ok_or_else(|| missing(entity, class))?;
-                (property.setter)(&mut *instance, value);
-                // The guard reports the write to SceneDB as it drops, here.
-            }
-            // Companion GPU mirrors are derived components, not fields; the
-            // guard does not rebuild them, so re-sync after, like the panel.
-            (registration.refresh_gpu_mirror)(world, entity);//! Every registered world component, visible to scripts.
+//! Every registered world component, visible to scripts.
 //!
 //! Registers each [`WorldComponentRegistration`](crate::WorldComponentRegistration)
 //! with the script VM under its class name (so `Class&` references,
@@ -143,12 +122,14 @@ fn property_natives(
             let entity = entity_of(&args[0])?;
             let value = binding.from_value(&args[1]).map_err(ScriptError::native)?;
             let world = host.world_mut()?;
-            let instance = (registration.get_as_engine_class_mut)(world, entity)
-                .ok_or_else(|| missing(entity, class))?;
-            (property.setter)(instance, value);
-            // The `&mut dyn EngineClass` bridge reports the write when it is
-            // borrowed, before the setter runs; re-sync GPU mirrors after,
-            // as the properties panel does.
+            {
+                let mut instance = (registration.get_as_engine_class_mut)(world, entity)
+                    .ok_or_else(|| missing(entity, class))?;
+                (property.setter)(&mut *instance, value);
+                // The guard reports the write to SceneDB as it drops, here.
+            }
+            // A companion GPU mirror is a derived component, not a field; the
+            // guard does not rebuild it, so re-sync it after, as the panel does.
             (registration.refresh_gpu_mirror)(world, entity);
             Ok(Value::Unit)
         }),
@@ -211,9 +192,11 @@ fn method_native(
                 .map(|(b, v)| b.from_value(v).map_err(ScriptError::native))
                 .collect::<Result<_, _>>()?;
             let world = host.world_mut()?;
-            let instance = (registration.get_as_engine_class_mut)(world, entity)
-                .ok_or_else(|| missing(entity, class))?;
-            let result = caller(instance, boxed);
+            let result = {
+                let mut instance = (registration.get_as_engine_class_mut)(world, entity)
+                    .ok_or_else(|| missing(entity, class))?;
+                caller(&mut *instance, boxed)
+            };
             // As for property setters: the method may have written.
             (registration.refresh_gpu_mirror)(world, entity);
             match (ret_binding, result) {

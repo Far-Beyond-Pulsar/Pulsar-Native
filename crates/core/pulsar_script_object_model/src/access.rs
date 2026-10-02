@@ -104,7 +104,7 @@ impl ComponentRef {
                 // Scoped so the `&mut World` borrow ends before the record
                 // persist-back below re-indexes the store.
                 let persisted_json = {
-                    let instance = self.live_instance_mut(world)?;
+                    let mut instance = self.live_instance_mut(world)?;
                     (meta.setter)(&mut *instance, typed);
                     instance.to_json().ok()
                 };
@@ -120,7 +120,7 @@ impl ComponentRef {
                     let mut scratch =
                         crate::routing::ScratchInstance::hydrate(&self.class_name, &record.data)?;
                     {
-                        let instance = scratch.instance_mut()?;
+                        let mut instance = scratch.instance_mut()?;
                         (meta.setter)(&mut *instance, typed);
                     }
                     scratch.persist()?
@@ -187,7 +187,7 @@ impl ComponentRef {
     fn live_instance_mut<'w>(
         &self,
         world: &'w mut World,
-    ) -> Result<&'w mut dyn pulsar_reflection::EngineClass, ScriptRefError> {
+    ) -> Result<pulsar_world_registry::EngineClassMut<'w>, ScriptRefError> {
         pulsar_world_registry::get_world_component_as_engine_class_mut(
             &self.class_name,
             world,

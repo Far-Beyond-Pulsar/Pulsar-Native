@@ -116,7 +116,7 @@ impl ScratchInstance {
 
     pub fn instance_mut(
         &mut self,
-    ) -> Result<&mut dyn pulsar_reflection::EngineClass, ScriptRefError> {
+    ) -> Result<pulsar_world_registry::EngineClassMut<'_>, ScriptRefError> {
         get_world_component_as_engine_class_mut(&self.class_name, &mut self.world, self.entity)
             .ok_or_else(|| ScriptRefError::ClassNotBridged(self.class_name.clone()))
     }
