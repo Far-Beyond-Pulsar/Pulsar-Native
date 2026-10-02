@@ -49,15 +49,19 @@ impl PropertiesPanel {
         window: &mut Window,
         cx: &mut Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {
+        let _scope = gpui::render_stats::scope("properties: inner render");
+        let _header_scope = gpui::render_stats::scope("properties: header");
+        let has_selection = state.scene.selected_object().is_some();
+        drop(_header_scope);
         v_flex()
             .size_full()
             .bg(cx.theme().background)
             // Professional header
-            .child(self.render_header(state, cx))
+            .child(self.render_header(has_selection, cx))
             // Main content area
             .child(div().flex_1().overflow_hidden().w_full().child(
                 div().size_full().scrollable(ScrollbarAxis::Vertical).child(
-                    if let Some(_selected) = state.scene.get_selected_object() {
+                    if has_selection {
                         let mut flex = v_flex().w_full().p_3().gap_4().min_w_full();
 
                         // Render new ObjectHeaderSection if available (new binding system)
@@ -85,11 +89,9 @@ impl PropertiesPanel {
 
     fn render_header(
         &self,
-        state: &LevelEditorState,
+        has_selection: bool,
         cx: &Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {
-        let has_selection = state.scene.get_selected_object().is_some();
-
         properties_inspector::render_header(
             t!("LevelEditor.Properties.Title").to_string(),
             has_selection,
