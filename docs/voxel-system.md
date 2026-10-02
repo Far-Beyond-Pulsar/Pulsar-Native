@@ -204,7 +204,8 @@ and gameplay agree on every block. On generated terrain the older
   (`%APPDATA%/Pulsar/Pulsar_Engine/data/logs/<time>/engine.log`), the
   camera altitude, speed scale, eye/forward/up, viewport and each backend's
   `diagnostics` line
-  (resident / pending columns, jobs, levels, residency CPU times). `finest`
+  (resident / pending columns, jobs, levels, residency CPU times, visible
+  requests and current queued storage). `finest`
   is the finest active level: from high up it is above 0 by design (fine
   levels switch on only where local terrain can come near). Pending that
   stays high while the camera is still, or `jobs=63` frames while moving,
