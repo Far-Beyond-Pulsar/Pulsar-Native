@@ -104,11 +104,35 @@ pub struct ScriptStats {
     pub script_errors: u64,
     /// Class modules that did not load or link.
     pub load_errors: u64,
+    /// Scene-lock time of the script phase, in microseconds: the write
+    /// lock (what blocks the renderer) and the shared read stage. `last_*`
+    /// is the latest frame, `max_*` the worst since the loop was created.
+    pub write_lock_hold_last_us: u64,
+    pub write_lock_hold_max_us: u64,
+    pub write_lock_wait_max_us: u64,
+    pub read_stage_last_us: u64,
+    pub read_stage_max_us: u64,
+    /// Instances the latest frame ran under the shared lock / the write lock.
+    pub read_instances_last: u64,
+    pub write_instances_last: u64,
+    /// Threads the latest read stage used.
+    pub read_threads_last: u64,
 }
 
 impl ScriptStats {
     fn absorb(&mut self, report: &crate::scripting::DriverReport) {
         self.frames += 1;
+        if let Some(locks) = &report.locks {
+            let us = |d: std::time::Duration| d.as_micros().min(u128::from(u64::MAX)) as u64;
+            self.write_lock_hold_last_us = us(locks.write_hold);
+            self.write_lock_hold_max_us = self.write_lock_hold_max_us.max(us(locks.write_hold));
+            self.write_lock_wait_max_us = self.write_lock_wait_max_us.max(us(locks.write_wait));
+            self.read_stage_last_us = us(locks.read_hold);
+            self.read_stage_max_us = self.read_stage_max_us.max(us(locks.read_hold));
+            self.read_instances_last = locks.phase.read_instances as u64;
+            self.write_instances_last = locks.phase.write_instances as u64;
+            self.read_threads_last = locks.phase.read_threads as u64;
+        }
         self.started += report.started.len() as u64;
         self.stopped += report.stopped.len() as u64;
         self.spawned += report.spawned.len() as u64;
@@ -360,10 +384,9 @@ impl TickLoop {
         // window is ready. Errors are per instance and logged.
         if let Some(driver) = &self.scripts {
             let mut driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            let report = {
-                let mut store = self.scene_store.write();
-                driver.run_frame(&mut store.world, time.delta.as_secs_f64())
-            };
+            // Locks the scene itself, in short exclusive stretches around a
+            // shared one (see `ScriptDriver::run_frame_shared`).
+            let report = driver.run_frame_shared(&self.scene_store, time.delta.as_secs_f64());
             self.script_stats.absorb(&report);
             if self.collect_problems && report.has_problems() {
                 for mut problem in driver.problems(&report) {
