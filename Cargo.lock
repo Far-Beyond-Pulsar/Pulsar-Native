@@ -9041,6 +9041,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_script_math"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.5",
+ "pulsar_scenedb",
+ "pulsar_script_vm",
+ "serde_json",
+]
+
+[[package]]
 name = "pulsar_script_object_model"
 version = "0.1.0"
 dependencies = [
@@ -9120,6 +9130,7 @@ dependencies = [
  "inventory",
  "pulsar_reflection",
  "pulsar_scenedb",
+ "pulsar_script_math",
  "pulsar_script_vm",
  "serde",
  "serde_json",

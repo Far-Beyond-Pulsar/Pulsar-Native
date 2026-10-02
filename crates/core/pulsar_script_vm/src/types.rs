@@ -337,6 +337,9 @@ pub struct ValueTypeRegistration {
     pub ty: TypeRef,
     pub default: fn() -> Object,
     pub binding: fn() -> TypeBinding,
+    /// Parses the type's literal text form (see [`Constant::Value`](crate::Constant)).
+    /// `None` for types that cannot appear as constants.
+    pub decode: Option<fn(&str) -> Result<Object, String>>,
 }
 
 inventory::collect!(ValueTypeRegistration);
@@ -379,6 +382,26 @@ macro_rules! script_value_type {
                 },
                 default: || $crate::value::Object::new($name, <$ty as ::std::default::Default>::default()),
                 binding: || $crate::types::TypeBinding::object::<$ty>($name),
+                decode: None,
+            }
+        }
+    };
+    // As above, with a literal decoder (`fn(&str) -> Result<$ty, String>`)
+    // so the type can appear as a `Constant::Value`.
+    ($ty:ty, $name:expr, decode = $decode:expr) => {
+        $crate::__private::inventory::submit! {
+            $crate::types::ValueTypeRegistration {
+                name: $name,
+                ty: $crate::__private::TypeRef {
+                    id: ::std::any::TypeId::of::<$ty>,
+                    name: ::std::any::type_name::<$ty>,
+                },
+                default: || $crate::value::Object::new($name, <$ty as ::std::default::Default>::default()),
+                binding: || $crate::types::TypeBinding::object::<$ty>($name),
+                decode: Some(|text| {
+                    let decode: fn(&str) -> ::std::result::Result<$ty, String> = $decode;
+                    decode(text).map(|value| $crate::value::Object::new($name, value))
+                }),
             }
         }
     };
@@ -540,6 +563,13 @@ impl TypeRegistry {
 
     pub fn value_type_registrations(&self) -> impl Iterator<Item = &'static ValueTypeRegistration> + '_ {
         self.objects.values().copied()
+    }
+
+    /// Decode the literal `json` of value type `ty` (a [`Constant::Value`](crate::Constant)).
+    pub fn decode_value(&self, ty: &str, json: &str) -> Result<Value, String> {
+        let registration = self.objects.get(ty).ok_or_else(|| format!("unknown value type `{ty}`"))?;
+        let decode = registration.decode.ok_or_else(|| format!("value type `{ty}` has no literal form"))?;
+        decode(json).map(Value::Object)
     }
 
     /// Whether `ty` names something that exists.

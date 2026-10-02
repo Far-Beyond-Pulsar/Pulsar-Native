@@ -78,6 +78,9 @@ pub mod dispatch;
 pub mod errors;
 pub mod marshal;
 pub mod type_shims;
+// Linked so the math value types and natives are in every host that builds
+// the script registry; nothing references them by name.
+use pulsar_script_math as _;
 mod script_natives;
 
 // The unified reflection dispatcher (#643) and its property accessors --

@@ -135,11 +135,11 @@ impl Program {
             .variables
             .iter()
             .map(|v| match &v.default {
-                Some(constant) => Ok(constant_value(constant)),
+                Some(constant) => constant_value(constant),
                 None => default(&v.ty),
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let constants = module.constants.iter().map(constant_value).collect();
+        let constants = module.constants.iter().map(constant_value).collect::<Result<Vec<_>, _>>()?;
         let subscriptions = link_subscriptions(&module, events)?;
 
         Ok(Self { module, natives, constants, registers, variables, subscriptions, generation: registry.generation() })
@@ -244,11 +244,16 @@ fn link_subscriptions(module: &Module, events: Option<&dyn EventCatalog>) -> Res
     Ok(linked)
 }
 
-fn constant_value(constant: &Constant) -> Value {
-    match constant {
+/// The runtime value of a constant. Value-type literals are decoded here,
+/// once per link; instances clone the result.
+fn constant_value(constant: &Constant) -> Result<Value, LinkError> {
+    Ok(match constant {
         Constant::Bool(b) => Value::Bool(*b),
         Constant::Int(i) => Value::Int(*i),
         Constant::Float(f) => Value::Float(*f),
         Constant::Str(s) => Value::Str(s.as_str().into()),
-    }
+        Constant::Value { ty, json } => TypeRegistry::global()
+            .decode_value(ty, json)
+            .map_err(|message| LinkError::BadConstant { ty: ty.clone(), json: json.clone(), message })?,
+    })
 }

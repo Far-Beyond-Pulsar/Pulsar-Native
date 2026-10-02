@@ -40,9 +40,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::Type;
 
-/// Bumped on any incompatible change to the format. Version 2 added
+/// Bumped on any incompatible change to the format. Version 3 added
+/// [`Constant::Value`]; version 2 added
 /// [`Module::events`] and [`Module::subscriptions`].
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 
 /// The oldest format version this VM still reads. Version 1 modules have
 /// no events or subscriptions (both default to empty).
@@ -214,6 +215,22 @@ impl Module {
                 let function = self.functions.get(subscription.handler as usize)?;
                 at_function(&function.name, None)
             }
+            LinkError::BadConstant { ty, json, .. } => {
+                let index = self.constants.iter().position(
+                    |c| matches!(c, Constant::Value { ty: t, json: j } if t == ty && j == json),
+                )? as u32;
+                self.functions.iter().find_map(|function| {
+                    let pc = function
+                        .code
+                        .iter()
+                        .position(|instr| matches!(instr, Instr::Const { index: i, .. } if *i == index))?;
+                    Some(ErrorSite {
+                        function: function.name.clone(),
+                        pc: Some(pc),
+                        location: function.location(pc).cloned(),
+                    })
+                })
+            }
             LinkError::UnknownType { .. } => None,
         }
     }
@@ -315,6 +332,11 @@ pub enum Constant {
     Int(i64),
     Float(f64),
     Str(String),
+    /// A literal of a registered value type (e.g. a `Vec3` default). `json`
+    /// is the type's registered text form; it is decoded once, at link time,
+    /// and every use clones the decoded value, so no instance can mutate the
+    /// pool or another instance.
+    Value { ty: String, json: String },
 }
 
 impl Constant {
@@ -324,6 +346,7 @@ impl Constant {
             Self::Int(_) => Type::Int,
             Self::Float(_) => Type::Float,
             Self::Str(_) => Type::Str,
+            Self::Value { ty, .. } => Type::Object(ty.clone()),
         }
     }
 }

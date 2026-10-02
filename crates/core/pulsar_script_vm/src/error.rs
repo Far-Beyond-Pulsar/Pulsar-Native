@@ -38,6 +38,8 @@ pub enum LinkError {
     SignatureMismatch { name: String, expected: Box<Signature>, found: Box<Signature> },
     #[error("unknown type `{name}`")]
     UnknownType { name: String },
+    #[error("invalid `{ty}` constant `{json}`: {message}")]
+    BadConstant { ty: String, json: String, message: String },
     #[error("no event `{event}` is declared by the module or registered with the engine")]
     UnknownEvent { event: String },
     #[error("`{handler}` cannot handle event `{event}`: {message}")]
