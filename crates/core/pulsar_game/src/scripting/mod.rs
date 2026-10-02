@@ -27,6 +27,7 @@ use pulsar_scenedb::Entity;
 pub mod commands;
 pub mod driver;
 pub mod events;
+pub mod export;
 #[cfg(test)]
 mod tests;
 

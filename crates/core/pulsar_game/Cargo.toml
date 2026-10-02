@@ -73,13 +73,18 @@ helio_component = { workspace = true }
 workspace = true
 
 [dev-dependencies]
-# Drift guard (#652): the reference actor mirrors PBGC's emitted shape and
+# Drift guard (#652): the reference actor mirrors the exporter's emitted shape and
 # must keep compiling against the pinned crates; tempfile serves the
 # end-to-end generated-project cargo check (tests/generated_project_compiles).
 engine_class_derive = { workspace = true }
 tempfile = { workspace = true }
-# The Rust-export drift guards (blueprint_*_codegen, live dispatch) run PBGC.
-pbgc = { workspace = true }
 # Loads pulsar_events' separately compiled test plugin (script events from
 # a plugin library, #924).
 libloading = { workspace = true }
+# The end-to-end generated-project check exports a class through the real generator.
+pulsar_script_codegen = { workspace = true }
+
+[build-dependencies]
+# `build.rs` generates the export probe actor (src/export_probe.rs).
+pulsar_script_codegen = { workspace = true }
+pulsar_script_vm = { workspace = true }

@@ -368,6 +368,7 @@ engine_backend    = { path = "crates/core/engine_backend" }
 engine_state      = { path = "crates/core/engine_state" }
 ui_types_common   = { path = "crates/editor/ui_types_common" }
 pulsar_script_vm  = { path = "crates/core/pulsar_script_vm" }
+pulsar_script_codegen = { path = "crates/core/pulsar_script_codegen" }
 engine_fs         = { path = "crates/core/engine_fs" }
 plugin_manager    = { path = "crates/core/plugin_manager" }
 pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }

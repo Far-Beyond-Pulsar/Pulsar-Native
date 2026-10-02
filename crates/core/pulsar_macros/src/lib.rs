@@ -115,6 +115,12 @@ pub fn generate_icon_enum(input: TokenStream) -> TokenStream {
 /// - `type`: Node type - `NodeTypes::pure`, `NodeTypes::fn_`, `NodeTypes::control_flow`, or `NodeTypes::event`
 /// - `color`: Optional hex color for the node in the UI (e.g., `"#ff0000"`)
 /// - `category`: Optional category for grouping nodes (e.g., `"Math"`)
+/// - `intrinsic`: `true` for a node the Blueprint compiler implements itself,
+///   such as one whose state must belong to each script instance (`do_once`,
+///   `delay`). Its body only declares the node: the `exec_output!` markers give
+///   the exec pins, and nothing is registered as a script native or run (the
+///   emitted function panics). A body with real state would be shared by every
+///   instance in the process, and a blocking one would stall the game thread.
 ///
 /// # Examples
 ///
@@ -417,16 +423,25 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         })
         .collect();
 
+    // An intrinsic is implemented by the Blueprint compiler, never run: no
+    // script native is registered for it (see the `intrinsic` attribute).
+    // `args_str` is a pretty-printed token stream whose spacing and line breaks
+    // vary, so compare it without whitespace.
+    let intrinsic = args_str.split_whitespace().collect::<String>().contains("intrinsic:true");
     let capability = native_capability(&args_str, &category_str);
-    let script_native = script_native_registration(
-        &input,
-        &fn_name_str,
-        node_type_str,
-        &category_str,
-        &docs.join("\n"),
-        args_str.contains("wasm_safe : false") || args_str.contains("wasm_safe:false"),
-        capability.as_deref(),
-    );
+    let script_native = if intrinsic {
+        quote! {}
+    } else {
+        script_native_registration(
+            &input,
+            &fn_name_str,
+            node_type_str,
+            &category_str,
+            &docs.join("\n"),
+            args_str.contains("wasm_safe : false") || args_str.contains("wasm_safe:false"),
+            capability.as_deref(),
+        )
+    };
 
     // Create a clean function without macro attributes for source code display
     let mut clean_input = input.clone();
@@ -489,14 +504,24 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     let node_type_ident = syn::Ident::new(node_type_str, fn_name.span());
 
     // native_only nodes are wrapped so they compile out in non-native (cdylib) builds
+    // An intrinsic's authored body only declares the node (its `exec_output!`
+    // markers became the exec pins above); what is emitted cannot run.
+    let emitted = if intrinsic {
+        let mut stub = input.clone();
+        let message = format!("`{fn_name_str}` is a Blueprint compiler intrinsic and has no executable body");
+        stub.block = Box::new(syn::parse_quote!({ unreachable!(#message) }));
+        stub
+    } else {
+        input.clone()
+    };
     let fn_definition = if native_only {
         quote! {
             #[cfg(not(target_arch = "wasm32"))]
-            #[allow(dead_code)]
-            #input
+            #[allow(dead_code, unused_variables)]
+            #emitted
         }
     } else {
-        quote! { #[allow(dead_code)] #input }
+        quote! { #[allow(dead_code, unused_variables)] #emitted }
     };
 
     // Registry registration requires linkme (native feature only)

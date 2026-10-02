@@ -380,7 +380,7 @@ pub fn sequence() {
 /// - `Then`: Executes only if the gate is open
 ///
 /// # Behavior
-/// The gate is controlled by static state. When opened, execution passes through; when closed, execution is blocked.
+/// The gate's state belongs to each script instance. When opened, execution passes through; when closed, execution is blocked.
 /// Multiple open/close signals can be sent; the last signal determines the state.
 ///
 /// # Example
@@ -391,22 +391,12 @@ pub fn sequence() {
 /// # Gate
 /// Controls execution flow with an open/close gate.
 /// Execution only passes through when the gate is open.
-#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
+#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0", intrinsic: true)]
 pub fn gate(open: bool, close: bool) {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    static GATE_OPEN: AtomicBool = AtomicBool::new(false);
-
-    if open {
-        GATE_OPEN.store(true, Ordering::Relaxed);
-    }
-
-    if close {
-        GATE_OPEN.store(false, Ordering::Relaxed);
-    }
-
-    if GATE_OPEN.load(Ordering::Relaxed) {
-        exec_output!("Then");
-    }
+    // Declaration only: the Blueprint compiler lowers this node to a hidden
+    // per-instance `gate_open` variable. `open` sets it, `close` clears it, and
+    // `Then` runs while it is set.
+    exec_output!("Then");
 }
 
 /// A node that cycles through multiple outputs in sequence (like Unreal's MultiGate).
@@ -432,32 +422,19 @@ pub fn gate(open: bool, close: bool) {
 /// If connected to four print nodes, the output will cycle through printing "0", "1", "2", "3" on consecutive triggers, then repeat.
 ///
 /// # Notes
-/// Uses a static atomic integer for thread-safe state tracking. The number of outputs is fixed to 4 for simplicity.
+/// The index belongs to each script instance. The number of outputs is fixed to 4 for simplicity.
 /// Extend the implementation for more outputs as needed.
 /// # Multi Gate
 /// Cycles through multiple outputs in sequence.
 /// Each trigger advances to the next output, wrapping around after the last.
-#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
+#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0", intrinsic: true)]
 pub fn multi_gate(reset: bool) {
-    use std::sync::atomic::{AtomicI32, Ordering};
-    static CURRENT_INDEX: AtomicI32 = AtomicI32::new(0);
-
-    if reset {
-        CURRENT_INDEX.store(0, Ordering::Relaxed);
-        return;
-    }
-
-    let index = CURRENT_INDEX.fetch_add(1, Ordering::Relaxed);
-    let num_outputs = 4; // Fixed to 4 outputs for simplicity
-    let current = index % num_outputs;
-
-    match current {
-        0 => exec_output!("Output0"),
-        1 => exec_output!("Output1"),
-        2 => exec_output!("Output2"),
-        3 => exec_output!("Output3"),
-        _ => {}
-    }
+    // Declaration only: lowered to a hidden per-instance index, advanced on
+    // every trigger and wrapped at four outputs. `reset` zeroes it instead.
+    exec_output!("Output0");
+    exec_output!("Output1");
+    exec_output!("Output2");
+    exec_output!("Output3");
 }
 
 /// A node that alternates between two outputs each time it is triggered (like Unreal's FlipFlop).
@@ -478,23 +455,16 @@ pub fn multi_gate(reset: bool) {
 /// If connected to two print nodes, the output will alternate between printing "A" and "B" each time this node is triggered.
 ///
 /// # Notes
-/// Uses a static atomic boolean for thread-safe state tracking. The state persists for the lifetime of the process.
+/// The state belongs to each script instance.
 /// # Flip Flop
 /// Alternates between two outputs each time it's triggered.
 /// Useful for toggling behavior or alternating actions.
-#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
+#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0", intrinsic: true)]
 pub fn flip_flop() {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    static FLIP_STATE: AtomicBool = AtomicBool::new(false);
-
-    let current_state = FLIP_STATE.load(Ordering::Relaxed);
-    FLIP_STATE.store(!current_state, Ordering::Relaxed);
-
-    if current_state {
-        exec_output!("A");
-    } else {
-        exec_output!("B");
-    }
+    // Declaration only: lowered to a hidden per-instance flag that flips on
+    // every trigger (first trigger: `B`).
+    exec_output!("A");
+    exec_output!("B");
 }
 
 // =============================================================================
@@ -513,7 +483,7 @@ pub fn flip_flop() {
 /// - `Then`: Executes only the first time, or after a reset
 ///
 /// # Behavior
-/// Uses a static atomic flag to track execution state. When reset, the flag is cleared and the node can execute again.
+/// The flag belongs to each script instance. When reset, the flag is cleared and the node can execute again.
 ///
 /// # Example
 /// If triggered repeatedly, the output will only execute once until reset.
@@ -523,20 +493,11 @@ pub fn flip_flop() {
 /// # Do Once
 /// Executes only once until reset.
 /// Useful for one-time initialization or events that should not repeat.
-#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
+#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0", intrinsic: true)]
 pub fn do_once(reset: bool) {
-    use std::sync::atomic::{AtomicBool, Ordering};
-    static EXECUTED: AtomicBool = AtomicBool::new(false);
-
-    if reset {
-        EXECUTED.store(false, Ordering::Relaxed);
-        return;
-    }
-
-    if !EXECUTED.load(Ordering::Relaxed) {
-        EXECUTED.store(true, Ordering::Relaxed);
-        exec_output!("Then");
-    }
+    // Declaration only: lowered to a hidden per-instance "done" flag. `reset`
+    // clears it; otherwise `Then` runs the first time only.
+    exec_output!("Then");
 }
 
 /// A node that executes a connected branch N times, then stops until reset.
@@ -552,7 +513,7 @@ pub fn do_once(reset: bool) {
 /// - `Then`: Executes up to N times
 ///
 /// # Behavior
-/// Maintains an internal counter using a static atomic variable.
+/// Maintains a counter that belongs to each script instance.
 /// When triggered, increments the counter and executes the branch if the count is less than N.
 /// If `reset` is true, resets the counter and does not execute the branch.
 ///
@@ -564,52 +525,42 @@ pub fn do_once(reset: bool) {
 /// # Do N
 /// Executes N times then stops until reset.
 /// Useful for limiting the number of times an action can occur.
-#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
+#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0", intrinsic: true)]
 pub fn do_n(n: i64, reset: bool) {
-    use std::sync::atomic::{AtomicI32, Ordering};
-    static COUNTER: AtomicI32 = AtomicI32::new(0);
-
-    let max_count = n as i32;
-
-    if reset {
-        COUNTER.store(0, Ordering::Relaxed);
-        return;
-    }
-
-    let current = COUNTER.load(Ordering::Relaxed);
-    if current < max_count {
-        COUNTER.fetch_add(1, Ordering::Relaxed);
-        exec_output!("Then");
-    }
+    // Declaration only: lowered to a hidden per-instance counter. `reset`
+    // zeroes it; otherwise `Then` runs while it is below `n`.
+    exec_output!("Then");
 }
 
 // =============================================================================
 // Timing Operations
 // =============================================================================
 
-/// A node that introduces a delay/sleep for a specified duration.
+/// A node that waits for a specified duration of game time.
 ///
-/// This node pauses execution for the specified number of milliseconds. It is useful for timing control,
+/// This node pauses this script call for the specified number of milliseconds. It is useful for timing control,
 /// animations, throttling, or waiting for asynchronous events.
 ///
 /// # Inputs
-/// - `milliseconds`: The duration to sleep, in milliseconds (u64)
+/// - `milliseconds`: The duration to wait, in milliseconds
 ///
 /// # Behavior
-/// The node blocks the current thread for at least the specified duration. Actual sleep time may be longer
-/// due to system scheduling.
+/// The call suspends; the game keeps running and the rest of the graph continues after the duration, in game time.
+/// Firing the node again while it is counting down is ignored.
 ///
 /// # Example
-/// If `milliseconds` is 1000, the node will sleep for approximately 1 second.
+/// If `milliseconds` is 1000, `Completed` runs one second of game time later.
 ///
 /// # Notes
-/// Use with caution in performance-critical code, as sleeping blocks the thread and may affect responsiveness.
+/// The wait is per script instance, so several instances of one class wait independently.
 /// # Delay
-/// Pauses execution for a specified duration in milliseconds.
-/// WARNING: Blocks the current thread during the delay.
-#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0", wasm_safe: false)]
+/// Waits for a specified duration in milliseconds of game time.
+/// Never blocks the game thread.
+#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0", intrinsic: true)]
 pub fn delay(milliseconds: i64) {
-    std::thread::sleep(std::time::Duration::from_millis(milliseconds as u64));
+    // Declaration only: lowered to a wait in game time. The call suspends and
+    // `Completed` runs after `milliseconds`; the game thread never blocks, and
+    // firing the node again while it counts down is ignored.
     exec_output!("Completed");
 }
 
@@ -637,31 +588,10 @@ pub fn delay(milliseconds: i64) {
 /// # Retriggerable Delay
 /// Delay that resets if triggered again before completion.
 /// Useful for debouncing or waiting for a period of inactivity.
-#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0", wasm_safe: false)]
+#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0", intrinsic: true)]
 pub fn retriggerable_delay(delay_ms: i64) {
-    use std::sync::Mutex;
-    use std::time::{Duration, Instant};
-
-    static DELAY_STATE: Mutex<Option<Instant>> = Mutex::new(None);
-
-    let delay_duration = Duration::from_millis(delay_ms as u64);
-
-    // Set/reset the delay start time
-    {
-        let mut state = DELAY_STATE.lock().unwrap();
-        *state = Some(Instant::now());
-    }
-
-    // Sleep for the delay duration
-    std::thread::sleep(delay_duration);
-
-    // Check if we weren't retriggered during the delay
-    {
-        let state = DELAY_STATE.lock().unwrap();
-        if let Some(start_time) = *state {
-            if start_time.elapsed() >= delay_duration {
-                exec_output!("Completed");
-            }
-        }
-    }
+    // Declaration only: lowered to a wait in game time with a per-instance
+    // deadline. Firing the node again restarts the countdown; `Completed` runs
+    // only once a full `delay_ms` passes with no retrigger.
+    exec_output!("Completed");
 }

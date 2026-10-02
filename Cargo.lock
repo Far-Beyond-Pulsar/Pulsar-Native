@@ -1131,6 +1131,7 @@ dependencies = [
  "pbgc",
  "plugin_editor_api",
  "pulsar_reflection",
+ "pulsar_script_codegen",
  "pulsar_script_vm",
  "schemars",
  "serde",
@@ -7784,7 +7785,6 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -8844,7 +8844,6 @@ dependencies = [
  "inventory",
  "libloading 0.9.0",
  "parking_lot",
- "pbgc",
  "pollster 1.0.1",
  "profiling 0.1.0",
  "pulsar_class",
@@ -8855,6 +8854,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scene",
  "pulsar_scenedb",
+ "pulsar_script_codegen",
  "pulsar_script_object_model",
  "pulsar_script_runtime",
  "pulsar_script_vm",
