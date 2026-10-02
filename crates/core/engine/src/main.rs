@@ -43,6 +43,11 @@ static GLOBAL_ALLOCATOR: dhat::Alloc = dhat::Alloc;
 #[cfg(not(feature = "dhat-heap"))]
 use ui_log_viewer::TrackingAllocator;
 
+// The Blueprint editor registers itself at link time; linking the crate is
+// what includes it in the build (feature `blueprint`).
+#[cfg(feature = "blueprint")]
+use blueprint_editor_plugin as _;
+
 #[cfg(not(feature = "dhat-heap"))]
 #[global_allocator]
 static GLOBAL_ALLOCATOR: TrackingAllocator = TrackingAllocator::new();

@@ -81,6 +81,22 @@ pub trait BuiltinEditorProvider: Send + Sync {
     }
 }
 
+/// A built-in editor provider that registers itself at link time.
+///
+/// A crate that implements [`BuiltinEditorProvider`] submits one of these
+/// (`plugin_manager::inventory::submit! { LinkedEditorProvider { create } }`)
+/// and the host registers it with [`BuiltinEditorRegistry::register_linked`]
+/// without naming the crate. Whether an editor is part of a build is then a
+/// matter of whether its crate is linked, not of a dependency in the editor
+/// shell: building without it leaves everything else working, and a plugin
+/// such as the Blueprint editor stands on the same footing as one loaded from
+/// a library.
+pub struct LinkedEditorProvider {
+    pub create: fn() -> Arc<dyn BuiltinEditorProvider>,
+}
+
+inventory::collect!(LinkedEditorProvider);
+
 /// Registry for all built-in editors.
 pub struct BuiltinEditorRegistry {
     providers: Vec<Arc<dyn BuiltinEditorProvider>>,
@@ -97,6 +113,23 @@ impl BuiltinEditorRegistry {
     /// Register a built-in editor provider.
     pub fn register_provider(&mut self, provider: Arc<dyn BuiltinEditorProvider>) {
         self.providers.push(provider);
+    }
+
+    /// Register every linked provider ([`LinkedEditorProvider`]) that is not
+    /// already registered under the same id. Order among linked providers is
+    /// by provider id, so it does not depend on link order.
+    pub fn register_linked(&mut self) {
+        let mut linked: Vec<Arc<dyn BuiltinEditorProvider>> =
+            inventory::iter::<LinkedEditorProvider>.into_iter().map(|l| (l.create)()).collect();
+        linked.sort_by(|a, b| a.provider_id().cmp(b.provider_id()));
+        for provider in linked {
+            if self.provider_by_id(provider.provider_id()).is_some() {
+                tracing::warn!("built-in provider `{}` is already registered; skipping the linked one", provider.provider_id());
+                continue;
+            }
+            tracing::info!("Registering linked built-in provider: {}", provider.provider_id());
+            self.register_provider(provider);
+        }
     }
 
     /// Get all registered built-in providers.
@@ -180,5 +213,58 @@ impl BuiltinEditorRegistry {
 impl Default for BuiltinEditorRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Probe;
+
+    impl BuiltinEditorProvider for Probe {
+        fn provider_id(&self) -> &str {
+            "test.linked-probe"
+        }
+        fn file_types(&self) -> Vec<FileTypeDefinition> {
+            Vec::new()
+        }
+        fn editors(&self) -> Vec<EditorMetadata> {
+            Vec::new()
+        }
+        fn can_handle(&self, _: &EditorId) -> bool {
+            false
+        }
+        fn create_editor(
+            &self,
+            _: PathBuf,
+            _: &EditorContext,
+            _: &mut Window,
+            _: &mut App,
+        ) -> Result<Arc<dyn PanelView>, PluginError> {
+            Err(PluginError::Other { message: "probe".into() })
+        }
+    }
+
+    inventory::submit! {
+        LinkedEditorProvider { create: || Arc::new(Probe) }
+    }
+
+    #[test]
+    fn linked_providers_register_once_without_being_named() {
+        let mut registry = BuiltinEditorRegistry::new();
+        registry.register_linked();
+        assert!(registry.provider_by_id("test.linked-probe").is_some());
+        let count = registry.providers().len();
+        registry.register_linked();
+        assert_eq!(registry.providers().len(), count, "registering again must not duplicate a provider");
+    }
+
+    #[test]
+    fn an_explicitly_registered_provider_wins_over_a_linked_one_with_the_same_id() {
+        let mut registry = BuiltinEditorRegistry::new();
+        registry.register_provider(Arc::new(Probe));
+        registry.register_linked();
+        assert_eq!(registry.providers().iter().filter(|p| p.provider_id() == "test.linked-probe").count(), 1);
     }
 }
