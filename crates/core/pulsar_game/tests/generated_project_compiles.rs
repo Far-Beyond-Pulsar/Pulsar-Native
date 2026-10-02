@@ -132,7 +132,7 @@ fn exported_class_variables_are_per_actor_in_debug_and_release() {
     // keyed by the normalized URL, so offline Cargo otherwise asks for a Git
     // revision that is not cached. Patch that temporary-project source to the
     // same Pulsar-Reflection rev the workspace pins.
-    let rev = "7ffd1932970310681e82d204c8f7a59eb7d67247";
+    let rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae";
     let generated_manifest = project.path().join("Cargo.toml");
     let mut manifest = std::fs::read_to_string(&generated_manifest).expect("generated project manifest");
     manifest.push_str(&format!(

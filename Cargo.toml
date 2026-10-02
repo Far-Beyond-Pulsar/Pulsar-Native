@@ -135,7 +135,7 @@ pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
 pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "e74df984b95ffe5235a67653a5b95a07e579df47", features = ["gpu"] }
 pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "e74df984b95ffe5235a67653a5b95a07e579df47" }
-pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "7ffd1932970310681e82d204c8f7a59eb7d67247" }
+pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 # Gamma v2 (Pulsar-Native#923): the event bus under `pulsar_events`' engine
 # hub. Pinned to the merged v0.2.0 on Gamma `main`.
@@ -266,7 +266,7 @@ git2 = "0.21"
 walkdir = "2.4"
 rfd = "0.17"
 thiserror = "2.0"
-pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "7ffd1932970310681e82d204c8f7a59eb7d67247" }
+pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
 dashmap = "6.1.0"
 inventory = "0.3"
 flume = "0.12"
@@ -362,8 +362,8 @@ gpui-ce = { path = "crates/ui/wgpui" }
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
 # The plugins pin Pulsar-Native by git rev, and those revs carry their own
 # `pulsar_reflection`; resolve them to the one Pulsar-Reflection rev (#844).
-pulsar_reflection = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "7ffd1932970310681e82d204c8f7a59eb7d67247" }
-pulsar_reflection_derive = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "7ffd1932970310681e82d204c8f7a59eb7d67247" }
+pulsar_reflection = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
+pulsar_reflection_derive = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
 gpui-ce          = { path = "crates/ui/wgpui" }
 ui               = { path = "crates/ui/wgpui-component/crates/ui" }
 ui-macros        = { path = "crates/ui/wgpui-component/crates/ui-macros" }
@@ -418,9 +418,9 @@ wgsl_std = { path = "crates/third-party/psgc/crates/wgsl_std" }
 # together. The `//` URL spelling is what lets a patch point at a different rev
 # of the "same" source.
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection"]
-pulsar_reflection = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "7ffd1932970310681e82d204c8f7a59eb7d67247" }
-pulsar_reflection_derive = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "7ffd1932970310681e82d204c8f7a59eb7d67247" }
-pulsar_reflection_codegen = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "7ffd1932970310681e82d204c8f7a59eb7d67247" }
+pulsar_reflection = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
+pulsar_reflection_derive = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
+pulsar_reflection_codegen = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
 
 # SceneDB's World-level subscription system (SceneDB#47, merged at c761890)
 # is what the properties panel's cache-until-signaled rework
