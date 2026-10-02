@@ -672,7 +672,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         let pass = renderer.find_pass::<PlanetPass>()?;
         let s = pass.stats()?;
         Some(format!(
-            "planet ready={} resident={} pending={} jobs={} budget={} us_per_job={:.3} failed={} overflow={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={}",
+            "planet ready={} resident={} pending={} jobs={} budget={} us_per_job={:.3} failed={} overflow={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={} free_pages={} free_units={} job_status={:?}",
             s.ready,
             s.resident_columns,
             s.pending_columns,
@@ -688,6 +688,9 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             s.encode_cpu_ms,
             s.window_rebuild_ms,
             pass.needs_frame(),
+            s.free_pages,
+            s.free_pool_units,
+            s.jobs_by_status,
         ))
     }
 
