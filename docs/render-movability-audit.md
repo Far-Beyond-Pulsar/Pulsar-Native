@@ -75,7 +75,7 @@ Plan:
 
 ## How to verify (needs a GPU)
 
-- `cargo run -p helio-examples --example move_benchmark --release` before and
+- `cargo run -p examples --example move_benchmark --release` before and
   after, with and without ray queries, recording into
   `move_benchmark_baseline.md`.
 - The HLFS RT tests (`passes/3d/helio-pass-hlfs/tests/gpu_hlfs_rt.rs`, including
