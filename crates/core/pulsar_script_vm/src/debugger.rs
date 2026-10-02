@@ -46,6 +46,18 @@ pub struct FrameSnapshot {
     pub pc: usize,
     pub location: Option<SourceLoc>,
     pub registers: Vec<RegisterSnapshot>,
+    /// Values corresponding to source output pins, if the frontend supplied
+    /// a register-to-pin map in the function's debug info.
+    pub output_values: Vec<OutputValueSnapshot>,
+}
+
+/// One currently visible graph output value.
+#[derive(Clone, Debug)]
+pub struct OutputValueSnapshot {
+    pub node: String,
+    pub pin: String,
+    pub register: usize,
+    pub value: Value,
 }
 
 /// State at a stopped instruction, suitable for an editor or future DAP adapter.

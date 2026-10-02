@@ -183,6 +183,7 @@ fn arith() -> Module {
                 loc: loc("return-node"),
             },
         ],
+        ..DebugInfo::default()
     });
     m.functions.push(located);
     m

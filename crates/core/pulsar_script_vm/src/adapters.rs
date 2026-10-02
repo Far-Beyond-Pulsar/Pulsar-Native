@@ -224,14 +224,14 @@ fn component_method(
         return None;
     };
     sig_params.insert(0, Param::new(ty.clone()));
-    let native = builder(owner, info, Some(ty)).build_raw(
+    let native = builder(owner, info, Some(ty)).attr("access", "write").build_raw(
         Signature::new(sig_params, ret_ty),
         Box::new(move |host, args| {
             let entity = component_entity(&args[0])?;
             let rest = &mut args[1..];
             let mut boxed = box_args(&bindings, rest)?;
             let result = host
-                .world
+                .world_mut()?
                 .invoke_component_method(entity, cid, method, &mut boxed)
                 .map_err(|e| ScriptError::native(e.to_string()))?;
             write_back(method.info(), &bindings, &boxed, rest);
@@ -283,7 +283,7 @@ fn accessors(component: &ComponentBinding, ty: &Type, natives: &mut Vec<NativeFn
                 sig(vec![Param::new(ty.clone())], Type::Bool),
                 Box::new(move |host, args| {
                     let entity = component_entity(&args[0])?;
-                    Ok(Value::Bool(host.world.has_component(entity, cid)))
+                    Ok(Value::Bool(host.world().has_component(entity, cid)))
                 }),
             ),
     );
@@ -351,7 +351,7 @@ fn component_field(
             Box::new(move |host, args| {
                 let entity = component_entity(&args[0])?;
                 let value = host
-                    .world
+                    .world()
                     .get_dyn(entity, cid)
                     .ok_or_else(|| missing(entity, &get_name))?;
                 let base = (value as *const dyn Any).cast::<u8>();
@@ -371,7 +371,7 @@ fn component_field(
             Box::new(move |host, args| {
                 let entity = component_entity(&args[0])?;
                 let mut guard = host
-                    .world
+                    .world_mut()?
                     .get_dyn_mut(entity, cid)
                     .ok_or_else(|| missing(entity, &set_name))?;
                 let base = (&mut *guard as *mut dyn Any).cast::<u8>();

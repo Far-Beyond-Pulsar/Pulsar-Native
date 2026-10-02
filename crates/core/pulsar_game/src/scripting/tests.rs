@@ -176,7 +176,7 @@ fn install_log(driver: &mut ScriptDriver) -> Log {
         .runtime_mut()
         .register_native(NativeFn::builder("test::event").params(["name"]).build(
             move |host: &mut Host<'_>, name: String| {
-                let who = host.world.stable_id_of(host.entity).unwrap_or_default().to_owned();
+                let who = host.world().stable_id_of(host.entity).unwrap_or_default().to_owned();
                 sink.lock().unwrap().push((name, who));
             },
         ))

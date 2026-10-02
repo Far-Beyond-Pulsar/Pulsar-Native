@@ -7,6 +7,7 @@ use std::sync::Arc;
 use pulsar_reflection::MethodFlags;
 use pulsar_scenedb::Entity;
 
+use crate::error::ScriptError;
 use crate::native::{Host, NativeFn, NativeRegistry};
 
 pub(crate) fn register(registry: &mut NativeRegistry) {
@@ -127,17 +128,19 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         .flags(reads_world)
         .attr("category", "Entity")
         .params(["entity"])
-        .build(|host: &mut Host<'_>, e: Entity| host.world.is_alive(e)));
+        .build(|host: &mut Host<'_>, e: Entity| host.world().is_alive(e)));
     add(pure("entity::none", "Entity").build(|| Entity::DANGLING));
     add(NativeFn::builder("entity::spawn")
         .attr("category", "Entity")
-        .build(|host: &mut Host<'_>| host.world.spawn()));
+        .build(|host: &mut Host<'_>| -> Result<Entity, ScriptError> { Ok(host.world_mut()?.spawn()) }));
     add(NativeFn::builder("entity::despawn")
         .attr("category", "Entity")
         .params(["entity"])
-        .build(|host: &mut Host<'_>, e: Entity| {
-            if host.world.is_alive(e) {
-                host.world.despawn(e);
+        .build(|host: &mut Host<'_>, e: Entity| -> Result<(), ScriptError> {
+            let world = host.world_mut()?;
+            if world.is_alive(e) {
+                world.despawn(e);
             }
+            Ok(())
         }));
 }

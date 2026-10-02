@@ -59,6 +59,7 @@ use pulsar_scenedb::{Entity, World};
 use pulsar_script_vm::migrate::{self, MigrationSource, VariableFate};
 
 mod latent;
+mod phase;
 mod state;
 use pulsar_script_vm::{
     Budget, CapabilityPolicy, Completion, Continuation, DebugCommand, DebugSnapshot, Debugger,
@@ -67,6 +68,7 @@ use pulsar_script_vm::{
     ScriptError, SourceLoc, Type, TypeRegistry, Value, Variable, Vm,
     Latent, Wake,
 };
+pub use phase::{PhaseStats, DEFAULT_PARALLEL_THRESHOLD};
 pub use state::{value_to_json, RestoreReport, SavedState, SavedVariable};
 
 /// The engine's event hub, as the runtime sees it: a sink for the event
@@ -388,6 +390,10 @@ pub struct ScriptRuntime {
     /// Errors from calls resumed outside a tick (by an event), reported by
     /// the next `tick_all`.
     deferred_errors: Vec<RuntimeError>,
+    /// What the last tick's read and write stages did.
+    phase_stats: PhaseStats,
+    /// Read-only instances needed before the read stage uses threads.
+    parallel_threshold: usize,
 }
 
 /// A snapshot of execution counters for one live script instance.
@@ -428,6 +434,8 @@ impl ScriptRuntime {
             events: None,
             debug_events: Vec::new(),
             deferred_errors: Vec::new(),
+            phase_stats: PhaseStats::default(),
+            parallel_threshold: DEFAULT_PARALLEL_THRESHOLD,
         }
     }
 
@@ -1066,28 +1074,9 @@ impl ScriptRuntime {
     /// due, then run `tick(delta_time)` on every instance that has begun,
     /// in spawn order. A failing instance does not stop the others.
     pub fn tick_all(&mut self, world: &mut World, delta_time: f64) -> Vec<RuntimeError> {
-        self.time += delta_time;
-        let ids: Vec<String> = self
-            .order
-            .iter()
-            .filter(|id| !self.pending_begin_play.contains(id))
-            .cloned()
-            .collect();
-        let mut errors: Vec<RuntimeError> = std::mem::take(&mut self.deferred_errors);
-        errors.extend(ids.iter().flat_map(|id| self.fire_timers(id, delta_time, world)));
-        errors.extend(ids.iter().flat_map(|id| self.resume_due(id, world)));
-        errors.extend(ids.iter().filter_map(|id| {
-            let func = self
-                .instances
-                .get(id)
-                .and_then(|i| self.classes.get(&i.class))
-                .and_then(|c| c.entries.tick)?;
-            self.call(id, func, &[Value::Float(delta_time)], world)
-                .err()
-        }));
-        for err in &errors {
-            tracing::warn!("{err}");
-        }
+        self.begin_tick(delta_time);
+        let mut errors = self.run_read_stage(world, delta_time);
+        errors.extend(self.run_write_stage(world, delta_time));
         errors
     }
 

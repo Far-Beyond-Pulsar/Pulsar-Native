@@ -44,7 +44,7 @@ use crate::types::Type;
 /// [`Constant::Value`], [`Variable::id`] and [`Module::class_version`];
 /// version 2 added
 /// [`Module::events`] and [`Module::subscriptions`].
-pub const FORMAT_VERSION: u32 = 3;
+pub const FORMAT_VERSION: u32 = 4;
 
 /// The oldest format version this VM still reads. Version 1 modules have
 /// no events or subscriptions (both default to empty).
@@ -541,6 +541,19 @@ impl std::fmt::Display for SourceLoc {
 pub struct DebugInfo {
     #[serde(default)]
     pub ranges: Vec<DebugRange>,
+    /// Register values produced for output pins, when the frontend has pin
+    /// metadata (Blueprints). Other languages may leave this empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub register_sources: Vec<RegisterSource>,
+}
+
+/// Source pin represented by a bytecode register. Opaque to the VM so each
+/// language can define its own node and pin identifiers.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
+pub struct RegisterSource {
+    pub register: Reg,
+    pub node: String,
+    pub pin: String,
 }
 
 /// Instructions `start..end` came from `loc`.

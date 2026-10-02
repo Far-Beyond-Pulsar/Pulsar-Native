@@ -282,6 +282,20 @@ fn read_module_bytes(path: &Path) -> Option<std::io::Result<Vec<u8>>> {
     Some(engine_fs::virtual_fs::read_file(path).map_err(|e| std::io::Error::other(e.to_string())))
 }
 
+/// What a frame cost in scene-lock time. The write lock is what blocks the
+/// renderer's snapshot and readback; the read lock shares with it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LockTimes {
+    /// Time spent waiting to take the write lock (both acquisitions).
+    pub write_wait: std::time::Duration,
+    /// Time the write lock was held (both acquisitions).
+    pub write_hold: std::time::Duration,
+    pub read_wait: std::time::Duration,
+    pub read_hold: std::time::Duration,
+    /// What the script runtime's stages did.
+    pub phase: pulsar_script_runtime::PhaseStats,
+}
+
 /// What one reconcile or frame did.
 #[derive(Debug, Default)]
 pub struct DriverReport {
@@ -302,6 +316,9 @@ pub struct DriverReport {
     pub dropped_calls: Vec<(String, pulsar_script_runtime::DroppedCall)>,
     /// Instances or commands that could not be applied, as messages.
     pub failures: Vec<String>,
+    /// How long the scene lock was waited for and held, when the frame ran
+    /// through [`run_frame_shared`](ScriptDriver::run_frame_shared).
+    pub locks: Option<LockTimes>,
 }
 
 impl DriverReport {
@@ -636,12 +653,77 @@ impl ScriptDriver {
     /// Run one script phase against `world`. See the module doc.
     pub fn run_frame(&mut self, world: &mut World, delta_time: f64) -> DriverReport {
         let mut report = DriverReport::default();
+        let scope = self.frame_start(world, &mut report);
+        report
+            .script_errors
+            .extend(self.runtime.tick_all(world, delta_time));
+        self.frame_finish(world, scope, &mut report);
+        report
+    }
+
+    /// Run one script phase against a shared scene, holding its lock as
+    /// briefly and as shared as the phase allows. Same result as
+    /// [`run_frame`](Self::run_frame) except for the order the runtime
+    /// ticks instances in (see `pulsar_script_runtime::phase`), and
+    /// `report.locks` says how long each lock was waited for and held:
+    ///
+    /// 1. **Write lock**: reconcile instances with the world, `begin_play`,
+    ///    queued event handlers.
+    /// 2. **Read lock**: the read stage. Instances of read-only classes run
+    ///    concurrently; the renderer's own readers are not blocked.
+    /// 3. **Write lock**: every other instance, then the commands scripts
+    ///    queued (spawns, destroys).
+    pub fn run_frame_shared(&mut self, scene: &engine_backend::scene::SharedScene, delta_time: f64) -> DriverReport {
+        use std::time::Instant;
+        let mut report = DriverReport::default();
+        let mut locks = LockTimes::default();
+
+        let asked = Instant::now();
+        let mut store = scene.write();
+        let held = Instant::now();
+        locks.write_wait += held - asked;
+        let scope = self.frame_start(&mut store.world, &mut report);
+        self.runtime.begin_tick(delta_time);
+        locks.write_hold += held.elapsed();
+        drop(store);
+
+        let asked = Instant::now();
+        let store = scene.read();
+        let held = Instant::now();
+        locks.read_wait = held - asked;
+        report
+            .script_errors
+            .extend(self.runtime.run_read_stage(&store.world, delta_time));
+        locks.read_hold = held.elapsed();
+        drop(store);
+
+        let asked = Instant::now();
+        let mut store = scene.write();
+        let held = Instant::now();
+        locks.write_wait += held - asked;
+        report
+            .script_errors
+            .extend(self.runtime.run_write_stage(&mut store.world, delta_time));
+        self.frame_finish(&mut store.world, scope, &mut report);
+        locks.write_hold += held.elapsed();
+        drop(store);
+
+        locks.phase = self.runtime.phase_stats();
+        report.locks = Some(locks);
+        report
+    }
+
+    /// The first part of a frame, with exclusive access: reload native
+    /// libraries, reconcile instances with the world, run `begin_play`
+    /// and queued event handlers. Returns the scope that collects the
+    /// commands scripts queue for [`frame_finish`](Self::frame_finish).
+    fn frame_start(&mut self, world: &mut World, report: &mut DriverReport) -> CommandScope {
         self.reload_changed_native_libraries();
-        let mut scope = CommandScope::begin();
+        let scope = CommandScope::begin();
         if let Some(events) = &self.events {
             events.bridge().set_time(self.runtime.time());
         }
-        self.reconcile_into(world, &mut report);
+        self.reconcile_into(world, report);
         if !report.started.is_empty() {
             tracing::info!(
                 instances = report.started.len(),
@@ -667,9 +749,12 @@ impl ScriptDriver {
                 .script_errors
                 .extend(events.run_calls(&mut self.runtime, world));
         }
-        report
-            .script_errors
-            .extend(self.runtime.tick_all(world, delta_time));
+        scope
+    }
+
+    /// The last part of a frame, with exclusive access: fire hub timers and
+    /// apply the commands scripts queued.
+    fn frame_finish(&mut self, world: &mut World, mut scope: CommandScope, report: &mut DriverReport) {
         if let Some(events) = &self.events {
             events.bridge().fire_timers(self.runtime.time());
         }
@@ -678,7 +763,7 @@ impl ScriptDriver {
             if commands.is_empty() {
                 break;
             }
-            self.apply_commands(world, commands, &mut report);
+            self.apply_commands(world, commands, report);
         }
         let left = scope.finish();
         if !left.is_empty() {
@@ -688,7 +773,6 @@ impl ScriptDriver {
             );
             discard_commands(world, left);
         }
-        report
     }
 
     /// Load the project's built cdylibs from `native/<crate>/target/{debug,release}`.

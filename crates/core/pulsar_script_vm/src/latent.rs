@@ -246,6 +246,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     add(NativeFn::builder("wait::frames")
         .doc("Suspend this call for `count` ticks (at least one).")
         .attr("category", "Flow")
+        .attr("access", "read")
         .params(["count"])
         .build(|host: &mut Host<'_>, count: i64| -> Result<(), ScriptError> {
             let frames = u32::try_from(count.clamp(1, i64::from(u32::MAX))).unwrap_or(1);
@@ -255,6 +256,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     add(NativeFn::builder("wait::next_tick")
         .doc("Suspend this call until the next tick.")
         .attr("category", "Flow")
+        .attr("access", "read")
         .build(|host: &mut Host<'_>| -> Result<(), ScriptError> {
             latent(host, "wait::next_tick")?.request(Wake::Frames(1));
             Ok(())
@@ -265,6 +267,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
              returns true. It is tested once per tick, before `tick` runs, and should have no side effects.",
         )
         .attr("category", "Flow")
+        .attr("access", "read")
         .params(["predicate"])
         .build(|host: &mut Host<'_>, predicate: String| -> Result<(), ScriptError> {
             latent(host, "wait::until")?.request(Wake::Until { predicate });
@@ -273,6 +276,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     add(NativeFn::builder("wait::event")
         .doc("Suspend this call until an event with this name is delivered to this instance.")
         .attr("category", "Flow")
+        .attr("access", "read")
         .params(["name"])
         .build(|host: &mut Host<'_>, name: String| -> Result<(), ScriptError> {
             latent(host, "wait::event")?.request(Wake::Event { name });
@@ -282,6 +286,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     add(NativeFn::builder("schedule::call")
         .doc("Call the exported function `function` once after `seconds`. Returns a handle for `schedule::clear`.")
         .attr("category", "Schedule")
+        .attr("access", "read")
         .params(["function", "seconds"])
         .build(|host: &mut Host<'_>, function: String, seconds: f64| -> Result<i64, ScriptError> {
             latent(host, "schedule::call")?.set(&function, seconds, None)
@@ -289,6 +294,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     add(NativeFn::builder("schedule::repeat")
         .doc("Call the exported function `function` every `interval` seconds, the first time after `interval`.")
         .attr("category", "Schedule")
+        .attr("access", "read")
         .params(["function", "interval"])
         .build(|host: &mut Host<'_>, function: String, interval: f64| -> Result<i64, ScriptError> {
             latent(host, "schedule::repeat")?.set(&function, interval, Some(interval))
@@ -299,6 +305,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
              Calling it again before then restarts the countdown instead of adding a timer.",
         )
         .attr("category", "Schedule")
+        .attr("access", "read")
         .params(["key", "function", "seconds"])
         .build(|host: &mut Host<'_>, key: String, function: String, seconds: f64| -> Result<i64, ScriptError> {
             latent(host, "schedule::restart")?.restart(&key, &function, seconds)
@@ -306,6 +313,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     add(NativeFn::builder("schedule::clear")
         .doc("Cancel a timer by handle. False if it had already fired or been cleared.")
         .attr("category", "Schedule")
+        .attr("access", "read")
         .params(["handle"])
         .build(|host: &mut Host<'_>, handle: i64| -> Result<bool, ScriptError> {
             Ok(latent(host, "schedule::clear")?.clear(handle))
@@ -313,6 +321,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     add(NativeFn::builder("schedule::clear_key")
         .doc("Cancel the retriggerable timer with this key. False if there is none.")
         .attr("category", "Schedule")
+        .attr("access", "read")
         .params(["key"])
         .build(|host: &mut Host<'_>, key: String| -> Result<bool, ScriptError> {
             Ok(latent(host, "schedule::clear_key")?.clear_key(&key))
@@ -320,6 +329,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     add(NativeFn::builder("schedule::pending")
         .doc("Whether the timer is still waiting to fire.")
         .attr("category", "Schedule")
+        .attr("access", "read")
         .params(["handle"])
         .build(|host: &mut Host<'_>, handle: i64| -> Result<bool, ScriptError> {
             Ok(latent(host, "schedule::pending")?.is_pending(handle))
@@ -327,6 +337,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     add(NativeFn::builder("schedule::remaining")
         .doc("Seconds until the timer fires; -1 if it is not pending.")
         .attr("category", "Schedule")
+        .attr("access", "read")
         .params(["handle"])
         .build(|host: &mut Host<'_>, handle: i64| -> Result<f64, ScriptError> {
             Ok(latent(host, "schedule::remaining")?.remaining(handle).unwrap_or(-1.0))

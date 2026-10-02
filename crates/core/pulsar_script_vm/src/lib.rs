@@ -45,7 +45,8 @@ pub mod verify;
 
 pub use capability::{CAPABILITY_ATTR, CapabilityPolicy};
 pub use debugger::{
-    Breakpoint, DebugCommand, DebugSnapshot, Debugger, FrameSnapshot, RegisterSnapshot, StopReason,
+    Breakpoint, DebugCommand, DebugSnapshot, Debugger, FrameSnapshot, OutputValueSnapshot,
+    RegisterSnapshot, StopReason,
 };
 pub use error::{LinkError, ScriptError, ScriptErrorKind, VerifyError};
 pub use events::{EventCatalog, EventSignature, EventSink, EventTarget};
@@ -57,12 +58,12 @@ pub use library::{
 pub use link::{FuncId, Instance, LinkedSubscription, Program, resolve_imports};
 pub use module::{
     BINARY_MAGIC, BinOp, CollOp, Constant, DebugInfo, DebugRange, ErrorSite, EventDecl, EventField,
-    EventRef, FORMAT_VERSION, Function, Import, Instr, MIN_FORMAT_VERSION, Module,
+    EventRef, FORMAT_VERSION, Function, Import, Instr, MIN_FORMAT_VERSION, Module, RegisterSource,
     ModuleDecodeError, Param, Reg, Signature, SourceLoc, Subscription, SubscriptionScope, UnOp,
     Variable,
 };
 pub use native::{
-    GenericNative, GenericProvider, Host, NativeBuilder, NativeFn, NativeProvider,
+    Access, GenericNative, GenericProvider, Host, NativeBuilder, NativeFn, NativeProvider,
     NativeRegistration, NativeRegistry, Origin, PolyNative,
 };
 pub use types::{

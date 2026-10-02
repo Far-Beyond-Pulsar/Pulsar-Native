@@ -24,10 +24,31 @@ use crate::module::{Param, Signature};
 use crate::types::{ScriptValue, Type};
 use crate::value::Value;
 
+/// How a [`Host`] reaches the world.
+enum WorldAccess<'w> {
+    Write(&'w mut World),
+    Read(&'w World),
+}
+
+/// What a native does to the world, for deciding which scripts can run under
+/// a shared lock.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Access {
+    /// At most reads the world (or does not touch it): safe in a read-only host.
+    Read,
+    /// May change the world.
+    Write,
+}
+
 /// What a native can reach: the world, the entity the calling script
 /// instance is bound to, and the engine's event hub.
+///
+/// The world is reached through [`world`](Host::world) (always) and
+/// [`world_mut`](Host::world_mut) (only in a host built with write access):
+/// a script phase that runs read-only classes concurrently under a shared
+/// lock hands them hosts that cannot write.
 pub struct Host<'w> {
-    pub world: &'w mut World,
+    access: WorldAccess<'w>,
     pub entity: Entity,
     /// Game time in seconds, read by the `Now` instruction.
     pub time: f64,
@@ -44,7 +65,7 @@ pub struct Host<'w> {
 impl<'w> Host<'w> {
     pub fn new(world: &'w mut World, entity: Entity) -> Self {
         Self {
-            world,
+            access: WorldAccess::Write(world),
             entity,
             time: 0.0,
             events: None,
@@ -55,13 +76,51 @@ impl<'w> Host<'w> {
 
     pub fn at_time(world: &'w mut World, entity: Entity, time: f64) -> Self {
         Self {
-            world,
+            access: WorldAccess::Write(world),
             entity,
             time,
             events: None,
             migration: None,
             latent: None,
         }
+    }
+
+
+    /// A host that can read the world but not change it. Natives that need
+    /// [`world_mut`](Self::world_mut) fail the call; classes whose imports
+    /// are all read-access ([`NativeFn::access`]) never reach one.
+    pub fn read_only(world: &'w World, entity: Entity, time: f64) -> Self {
+        Self {
+            access: WorldAccess::Read(world),
+            entity,
+            time,
+            events: None,
+            migration: None,
+            latent: None,
+        }
+    }
+
+    /// The world, for reading.
+    pub fn world(&self) -> &World {
+        match &self.access {
+            WorldAccess::Write(world) => world,
+            WorldAccess::Read(world) => world,
+        }
+    }
+
+    /// The world, for writing. An error in a read-only host.
+    pub fn world_mut(&mut self) -> Result<&mut World, ScriptError> {
+        match &mut self.access {
+            WorldAccess::Write(world) => Ok(world),
+            WorldAccess::Read(_) => Err(ScriptError::native(
+                "this native changes the world, but the script is running in the read-only phase",
+            )),
+        }
+    }
+
+    /// Whether [`world_mut`](Self::world_mut) fails.
+    pub fn is_read_only(&self) -> bool {
+        matches!(self.access, WorldAccess::Read(_))
     }
 
     /// Attach the instance's latent state (see [`crate::latent`]).
@@ -147,6 +206,18 @@ impl NativeFn {
             .iter()
             .find(|(k, _)| k == key)
             .map(|(_, v)| v.as_str())
+    }
+
+    /// What this native does to the world. A native states it with the
+    /// `access` attribute (`read` or `write`); otherwise a side-effect-free
+    /// native is [`Access::Read`] and any other is [`Access::Write`].
+    pub fn access(&self) -> Access {
+        match self.attr("access") {
+            Some("read") => Access::Read,
+            Some("write") => Access::Write,
+            _ if self.flags.side_effect_free => Access::Read,
+            _ => Access::Write,
+        }
     }
 
     /// The capability a module needs to import this native (#869): its

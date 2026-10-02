@@ -166,6 +166,18 @@ impl Program {
         })
     }
 
+    /// What running this program can do to the world: [`Access::Read`] if
+    /// every native it imports at most reads (or never touches) the world.
+    /// Such a program can run in a read-only host, concurrently with
+    /// others, under a shared lock; any other needs exclusive access.
+    pub fn access(&self) -> crate::native::Access {
+        if self.natives.iter().all(|native| native.access() == crate::native::Access::Read) {
+            crate::native::Access::Read
+        } else {
+            crate::native::Access::Write
+        }
+    }
+
     /// The module's event subscriptions, checked.
     pub fn subscriptions(&self) -> &[LinkedSubscription] {
         &self.subscriptions

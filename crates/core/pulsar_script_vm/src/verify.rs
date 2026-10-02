@@ -215,6 +215,16 @@ impl FunctionVerifier<'_> {
                 }
                 previous_end = range.end;
             }
+            if let Some(source) = debug
+                .register_sources
+                .iter()
+                .find(|source| usize::from(source.register) >= f.registers.len())
+            {
+                return Err(self.err(
+                    None,
+                    format!("debug register {} is outside the register file", source.register),
+                ));
+            }
         }
         Ok(())
     }

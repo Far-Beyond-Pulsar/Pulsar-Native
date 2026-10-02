@@ -110,7 +110,7 @@ fn property_natives(
         Signature::new([Param::new(ty.clone())], value_ty.clone()),
         Box::new(move |host, args| {
             let entity = entity_of(&args[0])?;
-            let instance = (registration.get_as_engine_class)(host.world, entity)
+            let instance = (registration.get_as_engine_class)(host.world(), entity)
                 .ok_or_else(|| missing(entity, class))?;
             let value = (getter.getter)(instance);
             Ok(binding.to_value(&*value))
@@ -121,13 +121,14 @@ fn property_natives(
         Box::new(move |host, args| {
             let entity = entity_of(&args[0])?;
             let value = binding.from_value(&args[1]).map_err(ScriptError::native)?;
-            let instance = (registration.get_as_engine_class_mut)(host.world, entity)
+            let world = host.world_mut()?;
+            let instance = (registration.get_as_engine_class_mut)(world, entity)
                 .ok_or_else(|| missing(entity, class))?;
             (property.setter)(instance, value);
             // The `&mut dyn EngineClass` bridge reports the write when it is
             // borrowed, before the setter runs; re-sync GPU mirrors after,
             // as the properties panel does.
-            (registration.refresh_gpu_mirror)(host.world, entity);
+            (registration.refresh_gpu_mirror)(world, entity);
             Ok(Value::Unit)
         }),
     );
@@ -167,7 +168,8 @@ fn method_native(
     let mut builder = NativeFn::builder(format!("{class}::{}", method.name))
         .doc(method.display_name.clone())
         .method_of(ty.clone())
-        .params(names);
+        .params(names)
+        .attr("access", "write");
     if method.flags.side_effect_free {
         builder = builder.side_effect_free();
     }
@@ -187,11 +189,12 @@ fn method_native(
                 .zip(&args[1..])
                 .map(|(b, v)| b.from_value(v).map_err(ScriptError::native))
                 .collect::<Result<_, _>>()?;
-            let instance = (registration.get_as_engine_class_mut)(host.world, entity)
+            let world = host.world_mut()?;
+            let instance = (registration.get_as_engine_class_mut)(world, entity)
                 .ok_or_else(|| missing(entity, class))?;
             let result = caller(instance, boxed);
             // As for property setters: the method may have written.
-            (registration.refresh_gpu_mirror)(host.world, entity);
+            (registration.refresh_gpu_mirror)(world, entity);
             match (ret_binding, result) {
                 (Some(binding), Some(value)) => Ok(binding.to_value(&*value)),
                 (Some(_), None) => Err(ScriptError::native(format!("{class}::{name} returned nothing"))),

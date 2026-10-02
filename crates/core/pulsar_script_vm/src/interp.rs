@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use crate::compiled::{Cx, Exit};
-use crate::debugger::{DebugSnapshot, Debugger, FrameSnapshot, RegisterSnapshot, StopReason};
+use crate::debugger::{DebugSnapshot, Debugger, FrameSnapshot, OutputValueSnapshot, RegisterSnapshot, StopReason};
 use crate::error::{ScriptError, ScriptErrorKind};
 use crate::exec::{self, binary, unary};
 use crate::link::{FuncId, Instance, Program};
@@ -628,6 +628,18 @@ impl Vm {
                             index,
                             ty: ty.to_string(),
                             value: self.regs[frame.base + index].clone(),
+                        })
+                        .collect(),
+                    output_values: function.debug.as_ref().into_iter()
+                        .flat_map(|debug| debug.register_sources.iter())
+                        .filter_map(|source| {
+                            let register = usize::from(source.register);
+                            Some(OutputValueSnapshot {
+                                node: source.node.clone(),
+                                pin: source.pin.clone(),
+                                register,
+                                value: self.regs.get(frame.base + register)?.clone(),
+                            })
                         })
                         .collect(),
                 }
