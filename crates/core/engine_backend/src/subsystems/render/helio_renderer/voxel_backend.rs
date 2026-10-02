@@ -3,7 +3,7 @@
 //! Source rows carry opaque renderer IDs and recipes. Each backend owns its
 //! pass and translates only the rows it understands into a frame snapshot.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use glam::{DVec3, Vec3};
 use helio_default_graphs::VoxelPassFactory;
@@ -671,7 +671,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
     fn diagnostics(&self, renderer: &helio::Renderer) -> Option<String> {
         let pass = renderer.find_pass::<PlanetPass>()?;
         let s = pass.stats()?;
-        Some(format!(
+        let mut line = format!(
             "planet ready={} resident={} pending={} jobs={} budget={} us_per_job={:.3} failed={} overflow={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={} free_pages={} free_units={} job_status={:?} visible_blocks={} visible_attempts={} visible_overflow={} queued_bytes={} queued_ops={} wanted_capacity={}",
             s.ready,
             s.resident_columns,
@@ -697,7 +697,37 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             s.queued_delta_bytes,
             s.queued_delta_ops,
             s.wanted_key_capacity,
-        ))
+        );
+        static GPU_STAGES: OnceLock<bool> = OnceLock::new();
+        if *GPU_STAGES.get_or_init(|| std::env::var_os("PULSAR_VOXEL_GPU_STAGES").is_some()) {
+            if let Some(active) = pass.renderer() {
+                use std::fmt::Write;
+                // Encode already consumes deferred timestamps for budgeting.
+                // Read that cache; these stages belong to gpu_frame, not this eye.
+                let profiler = active.profiler();
+                let gpu_frame = profiler.and_then(|p| p.last_completed_frame());
+                let encoded_frame = active.frame_number();
+                let lag = gpu_frame.and_then(|frame| encoded_frame.checked_sub(frame));
+                let stage_ms = |name: &str| {
+                    profiler
+                        .and_then(|p| p.get_last_timings().iter().find(|t| t.name == name))
+                        .map(|t| t.duration_ns as f64 / 1.0e6)
+                };
+                let _ = write!(line,
+                    " planet_gpu_frame={gpu_frame:?} planet_encoded_frame={encoded_frame} planet_gpu_lag={lag:?} planet_primary_ms={:?} planet_shade_ms={:?} planet_sunlight_ms={:?} planet_horizon_ms={:?} planet_residency_ms={:?} planet_gbuffer_ms={:?} planet_timestamps_supported={} planet_timestamp_drops={:?} planet_query_overflows={:?}",
+                    stage_ms("planet_primary"),
+                    stage_ms("planet_shade"),
+                    stage_ms("planet_sunlight"),
+                    stage_ms("planet_horizon"),
+                    stage_ms("planet_residency"),
+                    stage_ms("planet_gbuffer"),
+                    profiler.is_some_and(|p| p.supported()),
+                    profiler.map(|p| p.dropped_readbacks()),
+                    profiler.map(|p| p.query_overflows()),
+                );
+            }
+        }
+        Some(line)
     }
 
     fn publish_frame(
