@@ -259,6 +259,7 @@ fn accessors(component: &ComponentBinding, ty: &Type, natives: &mut Vec<NativeFn
                 "Reference to the entity's {name}. Resolves only while it has one."
             ))
             .pure()
+            .attr("display_name", format!("Cast To {name}"))
             .params(["entity"])
             .build_raw(
                 sig(vec![Param::new(Type::Entity)], ty.clone()),
@@ -291,6 +292,7 @@ fn accessors(component: &ComponentBinding, ty: &Type, natives: &mut Vec<NativeFn
         NativeFn::builder(format!("{name}::entity"))
             .doc("The entity this reference points at.")
             .pure()
+            .attr("display_name", "To Entity")
             .method_of(ty.clone())
             .params(["self"])
             .build_raw(
