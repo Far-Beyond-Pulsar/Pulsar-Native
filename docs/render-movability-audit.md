@@ -40,9 +40,12 @@ benchmark.
 5. **Virtual geometry.** Skip re-clustering unless `can_deform()`: the pass needs
    a per-mesh revision key like HLFS's BLAS revision above (`Movability` absent
    means "hash the content", present and non-deforming means "never").
-6. **Validation.** Warn (once per entity) when a `Static`/`Stationary` entity's
-   transform changes in play mode; stay silent in the editor. The scripting side
-   already errors instead of warning.
+6. **Validation — done.** `helio_component::StaticMoveWatch` reads `Transform`
+   changes from SceneDB's change journal (its own cursor) and warns once per
+   entity when a `Static`/`Stationary` object is written. The play-mode loop owns
+   one and calls `poll(&world)` each frame; the editor loop does not (it may move
+   anything). The scripting side already errors instead of warning. **Not yet
+   wired into the play loop** (it has no Helio dependency today).
 
 "Each pass documents what it does per movability" is best done as a table in each
 pass crate's module doc, filled in as each item lands.
