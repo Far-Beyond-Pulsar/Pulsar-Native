@@ -7,7 +7,6 @@ use crate::ui::{
 use gpui::*;
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 use ui::{
     ActiveTheme,
     dock::{Panel, PanelEvent},
@@ -38,12 +37,6 @@ pub struct PropertiesPanelWrapper {
     property_input: Entity<InputState>,
     /// Tracks which sections are collapsed (by section name)
     collapsed_sections: HashSet<String>,
-    /// Store revision the section editors were last synced against.
-    last_store_revision: u64,
-    /// When the section editors last re-read scene data. Data-only refreshes
-    /// (no selection change) are rate-limited by `DATA_REFRESH_INTERVAL`.
-    last_data_refresh: Option<Instant>,
-    pump_started: bool,
 }
 
 /// Scene data shown by the panel (transform, header, component values) only
@@ -51,8 +44,6 @@ pub struct PropertiesPanelWrapper {
 /// not affected: selection is handled immediately, and scrolling invalidates the
 /// view through its own path. Gizmo drags bump the store revision at input rate,
 /// which without this limit re-read and re-rendered the whole panel every frame.
-const DATA_REFRESH_INTERVAL: Duration = Duration::from_millis(250);
-
 impl PropertiesPanelWrapper {
     pub fn new(
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -74,7 +65,7 @@ impl PropertiesPanelWrapper {
         collapsed_sections.insert("Rendering".to_string());
         collapsed_sections.insert("Physics".to_string());
 
-        Self {
+        let mut panel = Self {
             properties: PropertiesPanel::new(),
             state,
             focus_handle: cx.focus_handle(),
@@ -85,10 +76,11 @@ impl PropertiesPanelWrapper {
             editing_property: None,
             property_input,
             collapsed_sections,
-            last_store_revision: 0,
-            last_data_refresh: None,
-            pump_started: false,
-        }
+        };
+        // Build the initial selection once. Subsequent updates are explicit
+        // editor events; this panel never polls SceneDB/world revisions.
+        panel.sync_sections(window, cx);
+        panel
     }
 
     pub fn toggle_section(&mut self, section: String, cx: &mut Context<Self>) {
@@ -102,23 +94,6 @@ impl PropertiesPanelWrapper {
 
     pub fn is_section_collapsed(&self, section: &str) -> bool {
         self.collapsed_sections.contains(section)
-    }
-
-    fn start_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.pump_started {
-            return;
-        }
-        self.pump_started = true;
-
-        crate::ui::frame_pump::spawn_frame_pump(
-            &cx.entity(),
-            window,
-            |this, window, cx| {
-                if this.sync_sections(window, cx) {
-                    cx.notify();
-                }
-            },
-        );
     }
 
     /// Bring the section entities in line with the current scene state.
@@ -142,35 +117,20 @@ impl PropertiesPanelWrapper {
     fn sync_sections(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let _scope = gpui::render_stats::scope("properties: sync sections");
         let _read_scope = gpui::render_stats::scope("properties: sync signature read");
-        let (store_revision, selected_object_id) = {
+        let selected_object_id = {
             let state = self.state.read();
-            (state.scene.world_revision(), state.scene.selected_object())
+            state.scene.selected_object()
         };
         drop(_read_scope);
 
-        let revision_changed = store_revision != self.last_store_revision;
         let selection_changed = selected_object_id != self.current_object_id
             || (selected_object_id.is_some() && self.object_type_fields_section.is_none());
 
-        if !revision_changed && !selection_changed {
+        if !selection_changed {
             return false;
         }
 
-        // A pure data change is throttled. `last_store_revision` is left stale
-        // on purpose so the change is picked up (trailing refresh) by the first
-        // poll after the interval, rather than being dropped.
-        if !selection_changed {
-            if self
-                .last_data_refresh
-                .is_some_and(|at| at.elapsed() < DATA_REFRESH_INTERVAL)
-            {
-                return false;
-            }
-            self.last_data_refresh = Some(Instant::now());
-        }
-        self.last_store_revision = store_revision;
-
-        if selection_changed {
+        {
             let _scope = gpui::render_stats::scope("properties: rebuild selected sections");
             if let Some(ref object_id) = selected_object_id {
                 let scene_db = {
@@ -212,40 +172,6 @@ impl PropertiesPanelWrapper {
                 self.transform_section = None;
                 self.object_type_fields_section = None;
                 self.current_object_id = None;
-            }
-        } else if revision_changed {
-            let _scope = gpui::render_stats::scope("properties: refresh existing sections");
-            // Scene changed under an unchanged selection — undo/redo, a gizmo
-            // drag, an AI tool edit. Push values into the cached editors
-            // rather than rebuilding them. Header/transform refreshes are
-            // targeted component reads (cheap at bump rate); the component
-            // card list is only re-rendered when a change actually touched
-            // this object's components — transform edits, gizmo drags and
-            // edits to other objects must not rebuild it, or panel complexity
-            // would set the editor's framerate.
-            if let Some(section) = self.object_header_section.clone() {
-                let _scope = gpui::render_stats::scope("properties: refresh header");
-                section.update(cx, |section, cx| section.refresh(window, cx));
-            }
-            if let Some(section) = self.transform_section.clone() {
-                let _scope = gpui::render_stats::scope("properties: refresh transform");
-                section.update(cx, |section, cx| section.refresh(window, cx));
-            }
-            let components_touched = match &self.current_object_id {
-                Some(id) => {
-                    let state = self.state.read();
-                    crate::scene_edit::changes::has_property_changes_for(id)
-                }
-                None => false,
-            };
-            // `render_property_row_runtime` pushes the current value into each
-            // cached editor as it renders, so this section only needs to be
-            // told to render again.
-            if components_touched {
-                if let Some(section) = self.object_type_fields_section.clone() {
-                    let _scope = gpui::render_stats::scope("properties: notify component fields");
-                    section.update(cx, |_, cx| cx.notify());
-                }
             }
         }
         true
@@ -323,12 +249,11 @@ impl Render for PropertiesPanelWrapper {
         gpui::render_stats::count("properties panel: render");
         let _t = gpui::render_stats::scope("properties panel: render");
 
-        // Section lifecycle (create on selection change, refresh on scene
-        // edit) lives in the frame pump via `sync_sections`, never here:
-        // by the time a dirty render runs, the pump has already brought the
-        // sections up to date. Render only lays out what exists.
-        self.start_pump(window, cx);
-
+        // Selection is an explicit invalidation, unlike scene revisions. Read
+        // only the selected ID here so a selection notification can replace
+        // the three section entities. No polling, timer, or data refresh is
+        // allowed through this path.
+        self.sync_sections(window, cx);
         let _state_scope = gpui::render_stats::scope("properties: render state read");
         let state = self.state.read();
         drop(_state_scope);
