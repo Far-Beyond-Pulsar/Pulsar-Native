@@ -109,14 +109,8 @@ fn test_gizmo_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
         .map(|c| c as &dyn EngineClass)
 }
 
-fn test_gizmo_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
-    // `World::get_mut` hands back SceneDB's dirty-tracking `Mut` guard;
-    // `.into_inner()` extracts the raw reference exactly like the generated
-    // shims do (a write-through here counts as a real mutation for
-    // subscriptions/GPU mirrors).
-    world
-        .get_mut::<TestGizmo>(entity)
-        .map(|c| c.into_inner() as &mut dyn EngineClass)
+fn test_gizmo_get_mut(world: &mut World, entity: Entity) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
+    pulsar_world_registry::EngineClassMut::of::<TestGizmo>(world, entity)
 }
 
 fn test_gizmo_hydrate(world: &mut World, entity: Entity, data: &Value) -> Result<(), String> {

@@ -1,4 +1,25 @@
-//! Every registered world component, visible to scripts.
+            let result = {
+                let mut instance = (registration.get_as_engine_class_mut)(world, entity)
+                    .ok_or_else(|| missing(entity, class))?;
+                caller(&mut *instance, boxed)
+            };
+            // As for property setters: the method may have written.            {
+                let mut instance = (registration.get_as_engine_class_mut)(world, entity)
+                    .ok_or_else(|| missing(entity, class))?;
+                (property.setter)(&mut *instance, value);
+                // The guard reports the write to SceneDB as it drops, here.
+            }
+            // A companion GPU mirror is a derived component, not a field; the
+            // guard does not rebuild it, so re-sync it after, as the panel does.
+            (registration.refresh_gpu_mirror)(world, entity);{
+                let mut instance = (registration.get_as_engine_class_mut)(world, entity)
+                    .ok_or_else(|| missing(entity, class))?;
+                (property.setter)(&mut *instance, value);
+                // The guard reports the write to SceneDB as it drops, here.
+            }
+            // Companion GPU mirrors are derived components, not fields; the
+            // guard does not rebuild them, so re-sync after, like the panel.
+            (registration.refresh_gpu_mirror)(world, entity);//! Every registered world component, visible to scripts.
 //!
 //! Registers each [`WorldComponentRegistration`](crate::WorldComponentRegistration)
 //! with the script VM under its class name (so `Class&` references,

@@ -100,10 +100,8 @@ fn vm_probe_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
     world.get::<VmProbe>(entity).map(|c| c as &dyn EngineClass)
 }
 
-fn vm_probe_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
-    world
-        .get_mut::<VmProbe>(entity)
-        .map(|c| c.into_inner() as &mut dyn EngineClass)
+fn vm_probe_get_mut(world: &mut World, entity: Entity) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
+    pulsar_world_registry::EngineClassMut::of::<VmProbe>(world, entity)
 }
 
 fn vm_probe_hydrate(world: &mut World, entity: Entity, data: &JsonValue) -> Result<(), String> {

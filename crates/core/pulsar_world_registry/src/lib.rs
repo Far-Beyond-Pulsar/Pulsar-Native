@@ -75,6 +75,7 @@ pub use inventory;
 
 pub mod audit;
 pub mod dispatch;
+mod engine_class_mut;
 pub mod errors;
 pub mod marshal;
 pub mod type_shims;
@@ -94,6 +95,7 @@ pub use dispatch::{
 // The one script-facing error taxonomy (#641/#643). Canonical home is this
 // crate (next to the dispatcher whose failures these are);
 // `pulsar_script_object_model::errors` re-exports it unchanged.
+pub use engine_class_mut::EngineClassMut;
 pub use errors::ScriptRefError;
 // Marshalling (#644): JSON ⇄ Box<dyn Any>.
 pub use marshal::{any_to_json, json_to_any};
@@ -151,10 +153,11 @@ pub struct WorldComponentRegistration {
     /// instance: this is the one real, live value.
     pub get_as_engine_class: fn(&World, Entity) -> Option<&dyn EngineClass>,
     /// Borrow the typed value already in `World` as `&mut dyn EngineClass`
-    /// -- the properties panel's *write* path. Apply a `PropertyMetadata`
-    /// setter closure straight to this reference to mutate the one real
-    /// value in place; there is no second copy to keep in sync afterward.
-    pub get_as_engine_class_mut: fn(&mut World, Entity) -> Option<&mut dyn EngineClass>,
+    /// -- the properties panel's *write* path, as an [`EngineClassMut`] guard.
+    /// Apply a `PropertyMetadata` setter to `&mut *guard`; SceneDB's write
+    /// hooks (GPU mirror, change tracker, subscriptions, journals) fire when
+    /// the guard drops, after the edit (#841).
+    pub get_as_engine_class_mut: for<'w> fn(&'w mut World, Entity) -> Option<EngineClassMut<'w>>,
     /// Called when this class's component is going away -- removed from a
     /// still-alive object, disabled, or the object itself despawned -- so
     /// whatever external (non-`World`) state the component's own
@@ -413,7 +416,7 @@ pub fn get_world_component_as_engine_class_mut<'w>(
     class_name: &str,
     world: &'w mut World,
     entity: Entity,
-) -> Option<&'w mut dyn EngineClass> {
+) -> Option<EngineClassMut<'w>> {
     (find(class_name)?.get_as_engine_class_mut)(world, entity)
 }
 
@@ -700,15 +703,8 @@ mod tests {
             .map(|c| c as &dyn EngineClass)
     }
 
-    fn test_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
-        // `World::get_mut` returns `Mut<'_, T>` (SceneDB's GPU dirty-mark
-        // guard) as of the pulsar_scenedb rev this workspace pins post-
-        // 2026-08-15 -- `.into_inner()` extracts the raw reference, same
-        // fix as `engine_class_derive`'s generated `get_as_engine_class_mut`
-        // shim (this hand-written fn mirrors what that macro emits).
-        world
-            .get_mut::<TestComponent>(entity)
-            .map(|c| c.into_inner() as &mut dyn EngineClass)
+    fn test_get_mut(world: &mut World, entity: Entity) -> Option<EngineClassMut<'_>> {
+        EngineClassMut::of::<TestComponent>(world, entity)
     }
 
     fn test_hydrate(world: &mut World, entity: Entity, data: &Value) -> Result<(), String> {
