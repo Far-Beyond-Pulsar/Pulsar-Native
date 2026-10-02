@@ -91,22 +91,28 @@ impl VoxelSculptDomain {
 /// a moment after the pointer is released, once the last samples landed.
 #[derive(Clone)]
 pub struct VoxelStroke {
-    ids: Vec<crate::scene_edit::ObjectId>,
-    before: crate::scene_edit::history::SceneHistorySnapshot,
+    before: Vec<VoxelStrokeTerrain>,
     revision: u64,
     ended_at: Option<std::time::Instant>,
+}
+
+#[derive(Clone)]
+struct VoxelStrokeTerrain {
+    id: crate::scene_edit::ObjectId,
+    before_len: usize,
+    before_revision: u64,
 }
 
 /// Grace period after release before a stroke becomes an undo step.
 const STROKE_SETTLE: std::time::Duration = std::time::Duration::from_millis(150);
 
 /// Every voxel terrain object and the sum of their source revisions.
-fn terrains(world: &pulsar_scenedb::World) -> (Vec<crate::scene_edit::ObjectId>, u64) {
+fn terrains(world: &pulsar_scenedb::World) -> (Vec<VoxelStrokeTerrain>, u64) {
     let mut ids = Vec::new();
     let mut revision = 0u64;
     for (entity, terrain) in world.query::<&helio_component::VoxelTerrainComponent>() {
         if let Some(id) = world.stable_id_of(entity) {
-            ids.push(id.to_string());
+            ids.push(VoxelStrokeTerrain { id: id.to_string(), before_len: terrain.edits.len(), before_revision: terrain.source_revision });
             revision = revision.wrapping_add(terrain.source_revision);
         }
     }
@@ -119,9 +125,8 @@ impl VoxelStroke {
         Self::finish(state, true);
         let world = state.scene.world();
         let (ids, revision) = terrains(&world);
-        let before = crate::scene_edit::history::capture_history_subset(&world, &ids);
         drop(world);
-        state.editor.voxel_stroke = Some(Self { ids, before, revision, ended_at: None });
+        state.editor.voxel_stroke = Some(Self { before: ids, revision, ended_at: None });
     }
 
     /// Mark the stroke released.
@@ -146,9 +151,21 @@ impl VoxelStroke {
         if revision == stroke.revision {
             return false;
         }
-        let after = crate::scene_edit::history::capture_history_subset(&world, &stroke.ids);
+        let mut entries = Vec::new();
+        for terrain_before in stroke.before {
+            let Some(entity) = world.entity_for(&terrain_before.id) else { continue; };
+            let terrain = world.get::<helio_component::VoxelTerrainComponent>(entity).unwrap();
+            entries.push(crate::scene_edit::history::VoxelEditJournalEntry {
+                id: terrain_before.id,
+                before_len: terrain_before.before_len,
+                before_revision: terrain_before.before_revision,
+                edits: terrain.edits.iter_from(terrain_before.before_len).copied().collect(),
+                after_revision: terrain.source_revision,
+            });
+        }
         drop(world);
-        state.scene.commit_undo_checkpoint(stroke.before, after);
+        if entries.is_empty() { return false; }
+        state.scene.commit_voxel_journal(crate::scene_edit::history::VoxelEditJournal { entries });
         true
     }
 }

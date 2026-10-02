@@ -10,7 +10,9 @@
 use crate::scene_edit::{
     self, ObjectId, SceneHistoryDelta, SceneHistorySnapshot, SceneObjectData,
 };
+use crate::scene_edit::history::VoxelEditJournal;
 use engine_backend::scene::SharedScene;
+use engine_backend::scene::SceneWorldExt;
 use parking_lot::{
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
@@ -91,6 +93,8 @@ pub struct SceneDomain {
     /// mutating command (standard undo/redo semantics: once you make a new
     /// change, the old "future" you undid past is gone).
     redo_stack: VecDeque<SceneHistoryDelta>,
+    voxel_undo: VecDeque<VoxelEditJournal>,
+    voxel_redo: VecDeque<VoxelEditJournal>,
 }
 
 impl Default for SceneDomain {
@@ -108,6 +112,8 @@ impl Default for SceneDomain {
             pending_renderer_resync: false,
             undo_stack: VecDeque::with_capacity(MAX_UNDO_HISTORY),
             redo_stack: VecDeque::with_capacity(MAX_UNDO_HISTORY),
+            voxel_undo: VecDeque::new(),
+            voxel_redo: VecDeque::new(),
         }
     }
 }
@@ -132,6 +138,8 @@ impl SceneDomain {
             pending_renderer_resync: self.pending_renderer_resync,
             undo_stack: VecDeque::new(),
             redo_stack: VecDeque::new(),
+            voxel_undo: VecDeque::new(),
+            voxel_redo: VecDeque::new(),
         }
     }
 
@@ -252,12 +260,19 @@ impl SceneDomain {
         self.redo_stack.clear();
     }
 
+    /// Commit a voxel append-range without capturing the terrain component.
+    pub fn commit_voxel_journal(&mut self, journal: VoxelEditJournal) {
+        self.voxel_undo.push_back(journal);
+        if self.voxel_undo.len() > MAX_UNDO_HISTORY { self.voxel_undo.pop_front(); }
+        self.voxel_redo.clear();
+    }
+
     pub fn can_undo(&self) -> bool {
-        !self.undo_stack.is_empty()
+        !self.undo_stack.is_empty() || !self.voxel_undo.is_empty()
     }
 
     pub fn can_redo(&self) -> bool {
-        !self.redo_stack.is_empty()
+        !self.redo_stack.is_empty() || !self.voxel_redo.is_empty()
     }
 
     /// Undo the last mutating command. Returns `true` if something was
@@ -266,6 +281,14 @@ impl SceneDomain {
     /// method deliberately leaves to the caller since it has no `cx` to
     /// notify with here).
     pub fn undo(&mut self) -> bool {
+        if let Some(journal) = self.voxel_undo.pop_back() {
+            if !self.apply_voxel_journal(&journal, false) {
+                self.voxel_undo.push_back(journal);
+                return false;
+            }
+            self.voxel_redo.push_back(journal);
+            return true;
+        }
         let Some(delta) = self.undo_stack.pop_back() else {
             return false;
         };
@@ -288,6 +311,14 @@ impl SceneDomain {
     /// Redo the last undone command. See [`Self::undo`]'s doc for the
     /// caller's responsibilities on success.
     pub fn redo(&mut self) -> bool {
+        if let Some(journal) = self.voxel_redo.pop_back() {
+            if !self.apply_voxel_journal(&journal, true) {
+                self.voxel_redo.push_back(journal);
+                return false;
+            }
+            self.voxel_undo.push_back(journal);
+            return true;
+        }
         let Some(delta) = self.redo_stack.pop_back() else {
             return false;
         };
@@ -303,6 +334,24 @@ impl SceneDomain {
         });
         if self.undo_stack.len() > MAX_UNDO_HISTORY {
             self.undo_stack.pop_front();
+        }
+        true
+    }
+
+    fn apply_voxel_journal(&mut self, journal: &VoxelEditJournal, redo: bool) -> bool {
+        let mut world = self.world_mut();
+        for entry in &journal.entries {
+            let Some(entity) = world.entity_for(&entry.id) else { return false; };
+            let Some(mut terrain) = world.get_mut::<helio_component::VoxelTerrainComponent>(entity) else { return false; };
+            if redo {
+                if terrain.edits.len() != entry.before_len { return false; }
+                terrain.edits.extend(entry.edits.iter().cloned());
+                terrain.source_revision = entry.after_revision;
+            } else {
+                if terrain.edits.len() < entry.before_len + entry.edits.len() { return false; }
+                while terrain.edits.len() > entry.before_len { terrain.edits.pop(); }
+                terrain.source_revision = entry.before_revision;
+            }
         }
         true
     }

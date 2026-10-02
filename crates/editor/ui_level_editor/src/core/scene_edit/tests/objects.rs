@@ -43,7 +43,7 @@ fn hierarchy_snapshot_has_one_consistent_object_and_root_projection() {
     let parent = objects::add_folder(world, "parent", None);
     let child = objects::add_folder(world, "child", Some(parent.clone()));
 
-    let (all, roots) = objects::get_hierarchy_snapshot(world);
+    let (all, roots) = objects::get_hierarchy_projection(world);
     let ids: HashSet<_> = all.iter().map(|object| object.id.as_str()).collect();
 
     assert_eq!(all.len(), 2);

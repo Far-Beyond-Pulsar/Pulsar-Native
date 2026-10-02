@@ -113,18 +113,57 @@ pub fn get_root_objects(world: &World) -> Vec<SceneObjectData> {
         .collect()
 }
 
-/// The hierarchy projection from one read: every object in DFS order plus the
-/// root ids. Keeping them together prevents the UI from observing two different
-/// revisions during a background mutation.
-pub fn get_hierarchy_snapshot(world: &World) -> (Vec<SceneObjectData>, Vec<ObjectId>) {
-    profiling::profile_scope!("scene_edit::get_hierarchy_snapshot");
-    let objects = get_all_objects(world);
+/// Minimal hierarchy projection: component-backed object rows plus root ids.
+/// This is intentionally not a history snapshot and does not merge expensive
+/// component metadata; hierarchy editing reads those details on demand.
+pub fn get_hierarchy_projection(
+    world: &World,
+) -> (Vec<HierarchyObjectProjection>, Vec<ObjectId>) {
+    profiling::profile_scope!("scene_edit::get_hierarchy_projection");
+    let mut objects = Vec::new();
+    fn collect(world: &World, parent: Option<Entity>, out: &mut Vec<HierarchyObjectProjection>) {
+        for entity in world.children_of(parent) {
+            out.push(entity_to_hierarchy_projection(world, entity));
+            collect(world, Some(entity), out);
+        }
+    }
+    collect(world, None, &mut objects);
     let root_ids = world
         .children_of(None)
         .into_iter()
         .filter_map(|entity| world.stable_id_of(entity).map(str::to_string))
         .collect();
     (objects, root_ids)
+}
+
+/// Minimal data needed to paint one hierarchy row.
+#[derive(Clone, Debug)]
+pub struct HierarchyObjectProjection {
+    pub id: ObjectId,
+    pub name: String,
+    pub object_type: ObjectType,
+    pub visible: bool,
+    pub children: Vec<ObjectId>,
+    pub icon_asset: Option<String>,
+}
+
+pub fn entity_to_hierarchy_projection(world: &World, entity: Entity) -> HierarchyObjectProjection {
+    let visibility = world.get::<WorldVisibility>(entity).copied().unwrap_or_default();
+    let icon_asset = world
+        .get::<RenderProps>(entity)
+        .and_then(|props| props.props.get("icon_asset"))
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_owned);
+    let id_of = |e: Entity| world.stable_id_of(e).map(str::to_string);
+    HierarchyObjectProjection {
+        id: id_of(entity).unwrap_or_default(),
+        name: name_of(world, entity),
+        object_type: world.get::<ObjectType>(entity).copied().unwrap_or(ObjectType::Empty),
+        visible: visibility.visible,
+        children: world.children_of(Some(entity)).into_iter().filter_map(id_of).collect(),
+        icon_asset,
+    }
 }
 
 /// Number of root-level objects, without building their data.

@@ -1072,12 +1072,31 @@ impl EventEmitter<ui::dock::PanelEvent> for SplinePanel {}
 ui_common::panel_boilerplate!(SplinePanel);
 impl Render for SplinePanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _scope = gpui::render_stats::scope("spline panel: render");
         self.start_pump(window, cx);
         let (rows, selected, settings, undo, redo) = {
+            let _scope = gpui::render_stats::scope("spline panel: state snapshot");
             let state = self.state.read();
+            // The manage tab is the only consumer of the complete curve list.
+            // Avoid deserializing/cloning every curve while editing a selected
+            // curve in the other tabs. Conversely, derive the selected row from
+            // that one snapshot so the manage tab does not materialize it twice.
+            let rows = if self.tab == Tab::Manage {
+                let _scope = gpui::render_stats::scope("spline panel: all curves");
+                splines::all(&state)
+            } else {
+                Vec::new()
+            };
+            let selected = if self.tab == Tab::Manage {
+                let selected_id = state.scene.selected_object();
+                selected_id.and_then(|id| rows.iter().find(|(object, _)| object.id == id).cloned())
+            } else {
+                let _scope = gpui::render_stats::scope("spline panel: selected curve");
+                splines::selected(&state)
+            };
             (
-                splines::all(&state),
-                splines::selected(&state),
+                rows,
+                selected,
                 state.editor.spline.clone(),
                 state.scene.can_undo(),
                 state.scene.can_redo(),

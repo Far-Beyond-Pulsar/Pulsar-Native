@@ -87,8 +87,10 @@ impl Render for HierarchyPanelWrapper {
         // click) has already picked up.
         self.last_signature = self.signature();
 
+        let _state_scope = gpui::render_stats::scope("hierarchy panel: state read");
         let state = self.state.read();
         let state_clone = self.state.clone();
+        drop(_state_scope);
 
         let add_button = Button::new("add_object")
             .icon(IconName::Plus)
@@ -131,13 +133,16 @@ impl Render for HierarchyPanelWrapper {
             .size_full()
             .bg(cx.theme().sidebar)
             .p_1()
-            .child(self.hierarchy.render(
-                &state,
-                self.state.clone(),
-                wrapper_entity,
-                add_button,
-                cx,
-            ))
+            .child({
+                let _scope = gpui::render_stats::scope("hierarchy panel: element build");
+                self.hierarchy.render(
+                    &state,
+                    self.state.clone(),
+                    wrapper_entity,
+                    add_button,
+                    cx,
+                )
+            })
     }
 }
 

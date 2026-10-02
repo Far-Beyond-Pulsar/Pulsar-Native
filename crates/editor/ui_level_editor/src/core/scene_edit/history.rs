@@ -32,6 +32,29 @@ pub struct SceneHistoryDelta {
     pub(crate) after: SceneHistorySnapshot,
 }
 
+/// Compact journal for voxel authoring. A sculpt stroke appends to the terrain
+/// edit log; retaining only that appended range avoids cloning the terrain's
+/// complete component (and its accumulated edit history) on every stroke.
+#[derive(Clone, Debug)]
+pub struct VoxelEditJournal {
+    pub(crate) entries: Vec<VoxelEditJournalEntry>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct VoxelEditJournalEntry {
+    pub(crate) id: ObjectId,
+    pub(crate) before_len: usize,
+    pub(crate) before_revision: u64,
+    pub(crate) edits: Vec<helio_voxel_data::VoxelBrushEdit>,
+    pub(crate) after_revision: u64,
+}
+
+impl VoxelEditJournal {
+    pub(crate) fn ids(&self) -> Vec<ObjectId> {
+        self.entries.iter().map(|entry| entry.id.clone()).collect()
+    }
+}
+
 impl SceneHistoryDelta {
     pub(crate) fn ids(&self) -> Vec<ObjectId> {
         self.before

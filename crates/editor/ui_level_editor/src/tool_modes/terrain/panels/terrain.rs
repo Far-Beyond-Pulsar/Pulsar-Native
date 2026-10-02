@@ -304,7 +304,6 @@ impl TerrainPanel {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let state = self.state.clone();
-        let state = self.state.clone();
         let create = Button::new("terrain_create_voxel_source")
             .icon(IconName::Plus)
             .label(t!("LevelEditor.Terrain.CreateFlatWorld"))
