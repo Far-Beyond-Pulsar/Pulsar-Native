@@ -30,7 +30,7 @@ use ui::settings::EngineSettings;
 use ui::{ContextModal as _, notification::Notification};
 
 use super::actions::*;
-use super::{StatusBarView, ToolbarView, ViewportPanel};
+use super::{ToolbarView, ViewportPanel};
 use crate::ai_sessions;
 use crate::scene_edit::LevelEditorCameraState;
 use crate::{LevelEditorState, TransformTool};
@@ -49,12 +49,8 @@ use plugin_manager;
 pub struct LevelEditorPanel {
     focus_handle: FocusHandle,
 
-    // UI Components. Both are separate entities rendered with `AnyView::cached`
-    // so they survive the per-frame invalidation the viewport propagates up the
-    // ancestor chain; each owns a frame pump that notifies it only when the
-    // state it actually reads changes. See `toolbar::view` / `status_bar_view`.
+    // UI components are separate entities rendered with `AnyView::cached`.
     toolbar: Entity<ToolbarView>,
-    status_bar: Entity<StatusBarView>,
 
     // Helio viewport rendered via WgpuSurfaceHandle
     viewport: Entity<HelioViewport>,
@@ -389,11 +385,6 @@ impl Render for LevelEditorPanel {
                 } else {
                     div().child("Loading workspace...").into_any_element()
                 },
-            )
-            .child(
-                // Status bar at the bottom. Cached for the same reason as the
-                // toolbar above.
-                AnyView::from(self.status_bar.clone()).cached(StatusBarView::cache_style()),
             )
     }
 }
