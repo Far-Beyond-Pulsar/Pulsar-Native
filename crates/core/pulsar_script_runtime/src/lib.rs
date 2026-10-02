@@ -1205,7 +1205,9 @@ impl ScriptRuntime {
                 class: instance.class.clone(),
                 name: name.to_owned(),
             })?;
-        self.call(object_id, func, args, world)
+        let result = self.call(object_id, func, args, world)?;
+        self.wake_event(object_id, name, world);
+        Ok(result)
     }
 
     /// Run function `func` (any function of the instance's class, exported
@@ -1218,7 +1220,12 @@ impl ScriptRuntime {
         args: &[Value],
         world: &mut World,
     ) -> Result<Value, RuntimeError> {
-        self.call(object_id, func, args, world)
+        let result = self.call(object_id, func, args, world)?;
+        // Calls waiting for the event this function handles resume now.
+        for name in self.event_names_handled_by(object_id, func) {
+            self.wake_event(object_id, &name, world);
+        }
+        Ok(result)
     }
 
     /// Whether `object_id` has run `begin_play` (or has none pending).

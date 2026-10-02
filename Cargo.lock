@@ -1102,6 +1102,7 @@ dependencies = [
 name = "blueprint_compiler"
 version = "0.1.0"
 dependencies = [
+ "blueprint_graph",
  "graphy",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -1116,9 +1117,11 @@ dependencies = [
  "anyhow",
  "arboard",
  "blueprint_compiler",
+ "blueprint_graph",
  "bytemuck",
  "chrono",
  "engine_backend",
+ "engine_fs",
  "fontdue",
  "futures",
  "gpui-ce",
@@ -1127,7 +1130,9 @@ dependencies = [
  "parking_lot",
  "pbgc",
  "plugin_editor_api",
+ "plugin_manager",
  "pulsar_reflection",
+ "pulsar_script_codegen",
  "pulsar_script_vm",
  "schemars",
  "serde",

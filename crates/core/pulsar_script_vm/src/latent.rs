@@ -12,10 +12,14 @@
 //! host that attaches no `Latent` (the exported-Rust actors, tests) makes
 //! these natives fail the call with a clear error instead.
 //!
-//! Timers are per instance and live here, as plain data the runtime
+//! Scheduled calls ("timers") are per instance and live here, as plain data the runtime
 //! advances ([`Latent::advance`]); a timer that fires names an exported
 //! function of its class and the runtime calls it, so a timer callback can
 //! itself wait, set timers, and so on.
+//!
+//! They are distinct from the event hub's `timer::set` (see `pulsar_game`),
+//! which publishes a `TimerFired` event to subscribers: `schedule::call`
+//! names the function to run and needs no handler or subscription.
 
 use crate::error::ScriptError;
 use crate::native::{Host, NativeFn, NativeRegistry};
@@ -275,56 +279,56 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             Ok(())
         }));
 
-    add(NativeFn::builder("timer::set")
-        .doc("Call the exported function `function` once after `seconds`. Returns a handle for `timer::clear`.")
-        .attr("category", "Timer")
+    add(NativeFn::builder("schedule::call")
+        .doc("Call the exported function `function` once after `seconds`. Returns a handle for `schedule::clear`.")
+        .attr("category", "Schedule")
         .params(["function", "seconds"])
         .build(|host: &mut Host<'_>, function: String, seconds: f64| -> Result<i64, ScriptError> {
-            latent(host, "timer::set")?.set(&function, seconds, None)
+            latent(host, "schedule::call")?.set(&function, seconds, None)
         }));
-    add(NativeFn::builder("timer::repeat")
+    add(NativeFn::builder("schedule::repeat")
         .doc("Call the exported function `function` every `interval` seconds, the first time after `interval`.")
-        .attr("category", "Timer")
+        .attr("category", "Schedule")
         .params(["function", "interval"])
         .build(|host: &mut Host<'_>, function: String, interval: f64| -> Result<i64, ScriptError> {
-            latent(host, "timer::repeat")?.set(&function, interval, Some(interval))
+            latent(host, "schedule::repeat")?.set(&function, interval, Some(interval))
         }));
-    add(NativeFn::builder("timer::restart")
+    add(NativeFn::builder("schedule::restart")
         .doc(
             "A retriggerable delay: call `function` `seconds` after the *last* call with this key. \
              Calling it again before then restarts the countdown instead of adding a timer.",
         )
-        .attr("category", "Timer")
+        .attr("category", "Schedule")
         .params(["key", "function", "seconds"])
         .build(|host: &mut Host<'_>, key: String, function: String, seconds: f64| -> Result<i64, ScriptError> {
-            latent(host, "timer::restart")?.restart(&key, &function, seconds)
+            latent(host, "schedule::restart")?.restart(&key, &function, seconds)
         }));
-    add(NativeFn::builder("timer::clear")
+    add(NativeFn::builder("schedule::clear")
         .doc("Cancel a timer by handle. False if it had already fired or been cleared.")
-        .attr("category", "Timer")
+        .attr("category", "Schedule")
         .params(["handle"])
         .build(|host: &mut Host<'_>, handle: i64| -> Result<bool, ScriptError> {
-            Ok(latent(host, "timer::clear")?.clear(handle))
+            Ok(latent(host, "schedule::clear")?.clear(handle))
         }));
-    add(NativeFn::builder("timer::clear_key")
+    add(NativeFn::builder("schedule::clear_key")
         .doc("Cancel the retriggerable timer with this key. False if there is none.")
-        .attr("category", "Timer")
+        .attr("category", "Schedule")
         .params(["key"])
         .build(|host: &mut Host<'_>, key: String| -> Result<bool, ScriptError> {
-            Ok(latent(host, "timer::clear_key")?.clear_key(&key))
+            Ok(latent(host, "schedule::clear_key")?.clear_key(&key))
         }));
-    add(NativeFn::builder("timer::pending")
+    add(NativeFn::builder("schedule::pending")
         .doc("Whether the timer is still waiting to fire.")
-        .attr("category", "Timer")
+        .attr("category", "Schedule")
         .params(["handle"])
         .build(|host: &mut Host<'_>, handle: i64| -> Result<bool, ScriptError> {
-            Ok(latent(host, "timer::pending")?.is_pending(handle))
+            Ok(latent(host, "schedule::pending")?.is_pending(handle))
         }));
-    add(NativeFn::builder("timer::remaining")
+    add(NativeFn::builder("schedule::remaining")
         .doc("Seconds until the timer fires; -1 if it is not pending.")
-        .attr("category", "Timer")
+        .attr("category", "Schedule")
         .params(["handle"])
         .build(|host: &mut Host<'_>, handle: i64| -> Result<f64, ScriptError> {
-            Ok(latent(host, "timer::remaining")?.remaining(handle).unwrap_or(-1.0))
+            Ok(latent(host, "schedule::remaining")?.remaining(handle).unwrap_or(-1.0))
         }));
 }

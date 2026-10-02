@@ -10,7 +10,7 @@
 //! - **events** (`wait::event`): resumed right after the instance handles
 //!   an event of that name (a subscribed hub event or a custom event sent
 //!   with [`send_event`](ScriptRuntime::send_event));
-//! - **timers** (`timer::*`): fired once per tick, each calling an exported
+//! - **scheduled calls** (`schedule::*`): fired once per tick, each calling an exported
 //!   function of the class.
 //!
 //! Order within a tick: timers, then calls whose wait is over (time,

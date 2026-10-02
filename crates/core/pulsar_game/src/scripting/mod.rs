@@ -20,7 +20,8 @@
 
 use std::path::{Path, PathBuf};
 
-pub use pulsar_script_runtime::{RuntimeError, ScriptRuntime};
+pub use pulsar_script_runtime::{InstanceRuntimeStats, RuntimeError, ScriptRuntime};
+pub use pulsar_script_vm::{DebugCommand, DebugSnapshot};
 
 use pulsar_scenedb::Entity;
 

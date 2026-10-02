@@ -90,6 +90,32 @@ impl PieSession {
     /// pending).
     pub fn tick(&mut self) {
         self.tick_loop.tick_once();
+        // Script stop locations use the same problems bus as VM errors, so
+        // the Blueprint editor's existing node selection/highlight path can
+        // follow a live debugger stop across the PIE dylib boundary.
+        if let Some(driver) = &self.tick_loop.scripts {
+            let mut driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            for (instance, snapshot) in driver.take_debug_events() {
+                let Some(frame) = snapshot.call_stack.last() else { continue };
+                let class = driver.runtime().class_of(&instance).map(str::to_owned);
+                let stop = match snapshot.reason {
+                    pulsar_script_vm::StopReason::Breakpoint => "breakpoint",
+                    pulsar_script_vm::StopReason::Step => "step",
+                };
+                self.problems.push(pulsar_events::ScriptProblem {
+                    severity: pulsar_events::ProblemSeverity::Warning,
+                    class,
+                    instance: Some(instance),
+                    function: Some(frame.function.clone()),
+                    node: frame.location.as_ref().and_then(|location| {
+                        (!location.node.is_empty()).then(|| location.node.clone())
+                    }),
+                    line: frame.location.as_ref().and_then(|location| location.line),
+                    message: format!("Paused at {stop}"),
+                    ..Default::default()
+                });
+            }
+        }
         let problems = self.tick_loop.take_script_problems();
         if !problems.is_empty() {
             self.problems.extend(problems);
