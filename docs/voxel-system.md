@@ -185,6 +185,10 @@ and gameplay agree on every block. On generated terrain the older
 - **Altitude, not clearance, for speed.** `air_clearance` is a conservative
   bound (0 anywhere below the highest possible mountain), right for near
   planes but it made the camera crawl at 10 m/s kilometres above lowland.
+- **Distant appearance follows pixel size.** Near geometry and world queries
+  use the authored grid. Helio filters sub-pixel terrain relief and lighting
+  without changing the recipe or edit journal; tiny orbital edits become
+  visible as the camera approaches.
 - **Edits are a journal, not voxel data.** The terrain is procedural, so a
   world is its recipe plus ordered brushes; that keeps saves small and CPU
   queries exact, and lets the GPU regenerate any column at any level.
