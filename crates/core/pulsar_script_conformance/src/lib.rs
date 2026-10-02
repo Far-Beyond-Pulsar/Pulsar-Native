@@ -284,6 +284,10 @@ pub mod harness {
                 instances.waiting.push((instance, now + seconds, instances.sequence, continuation));
                 format!("waiting {seconds}s in {names}")
             }
+            Ok(Completion::Paused { snapshot, .. }) => {
+                let frame = snapshot.call_stack.last().map(|frame| format!("{}@{}", frame.function, frame.pc)).unwrap_or_default();
+                format!("paused at {frame}")
+            }
             Err(error) => format!("error {}", show_error(&error)),
         }
     }

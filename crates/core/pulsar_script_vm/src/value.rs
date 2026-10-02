@@ -97,11 +97,12 @@ impl Value {
     pub fn fits(&self, ty: &Type) -> bool {
         match (self, ty) {
             (Self::List(items), Type::List(element)) => items.iter().all(|item| item.fits(element)),
-            (Self::Map(entries), Type::Map(key, value)) => {
-                entries.iter().all(|(k, v)| k.to_value().fits(key) && v.fits(value))
-            }
+            (Self::Map(entries), Type::Map(key, value)) => entries
+                .iter()
+                .all(|(k, v)| k.to_value().fits(key) && v.fits(value)),
             (Self::Tuple(items), Type::Tuple(types)) => {
-                items.len() == types.len() && items.iter().zip(types).all(|(item, ty)| item.fits(ty))
+                items.len() == types.len()
+                    && items.iter().zip(types).all(|(item, ty)| item.fits(ty))
             }
             _ => matches!(
                 (self, ty),
@@ -208,7 +209,10 @@ impl fmt::Debug for Value {
             Self::Component(v) => write!(f, "{v:?}"),
             Self::Object(v) => write!(f, "{}(..)", v.type_name()),
             Self::List(items) => f.debug_list().entries(items.iter()).finish(),
-            Self::Map(entries) => f.debug_map().entries(entries.iter().map(|(k, v)| (k, v))).finish(),
+            Self::Map(entries) => f
+                .debug_map()
+                .entries(entries.iter().map(|(k, v)| (k, v)))
+                .finish(),
             Self::Tuple(items) => {
                 let mut tuple = f.debug_tuple("");
                 for item in items.iter() {
@@ -235,6 +239,9 @@ impl PartialEq for Value {
             (Self::List(a), Self::List(b)) => a == b,
             (Self::Map(a), Self::Map(b)) => a == b,
             (Self::Tuple(a), Self::Tuple(b)) => a == b,
+            (Self::Object(a), Self::Object(b)) => {
+                crate::types::TypeRegistry::global().objects_equal(a, b)
+            }
             _ => false,
         }
     }
@@ -252,9 +259,18 @@ impl Object {
         fn clone<T: Clone + Send + Sync + 'static>(
             value: &(dyn Any + Send + Sync),
         ) -> Box<dyn Any + Send + Sync> {
-            Box::new(value.downcast_ref::<T>().expect("object holds its own type").clone())
+            Box::new(
+                value
+                    .downcast_ref::<T>()
+                    .expect("object holds its own type")
+                    .clone(),
+            )
         }
-        Self { name, value: Box::new(value), clone: clone::<T> }
+        Self {
+            name,
+            value: Box::new(value),
+            clone: clone::<T>,
+        }
     }
 
     /// The script type name.
@@ -281,6 +297,10 @@ impl Object {
 
 impl Clone for Object {
     fn clone(&self) -> Self {
-        Self { name: self.name, value: (self.clone)(&*self.value), clone: self.clone }
+        Self {
+            name: self.name,
+            value: (self.clone)(&*self.value),
+            clone: self.clone,
+        }
     }
 }

@@ -20,7 +20,11 @@ use crate::value::{MapKey, Value};
 /// have the declared type, and an error raised by the native is attributed
 /// to it by name. `inout` parameters are modified in `args`; writing them
 /// back to the caller's registers is the caller's job.
-pub fn call_native(native: &NativeFn, host: &mut Host<'_>, args: &mut [Value]) -> Result<Value, ScriptErrorKind> {
+pub fn call_native(
+    native: &NativeFn,
+    host: &mut Host<'_>,
+    args: &mut [Value],
+) -> Result<Value, ScriptErrorKind> {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| native.call(host, args)))
         .unwrap_or_else(|panic| Err(ScriptError::native(panic_message(&*panic))));
     match result {
@@ -30,7 +34,10 @@ pub fn call_native(native: &NativeFn, host: &mut Host<'_>, args: &mut [Value]) -
             message: format!("returned {}, declared {}", value.kind(), native.sig.ret),
         }),
         Err(err) => Err(match err.kind {
-            ScriptErrorKind::Native { message, .. } => ScriptErrorKind::Native { name: native.name.clone(), message },
+            ScriptErrorKind::Native { message, .. } => ScriptErrorKind::Native {
+                name: native.name.clone(),
+                message,
+            },
             other => other,
         }),
     }
@@ -51,13 +58,17 @@ fn overflow(op: &str) -> ScriptErrorKind {
 
 pub fn unary(op: UnOp, value: &Value, checked: bool) -> Result<Value, ScriptErrorKind> {
     Ok(match (op, value) {
-        (UnOp::Neg, Value::Int(i)) if checked => Value::Int(i.checked_neg().ok_or_else(|| overflow("Neg"))?),
+        (UnOp::Neg, Value::Int(i)) if checked => {
+            Value::Int(i.checked_neg().ok_or_else(|| overflow("Neg"))?)
+        }
         (UnOp::Neg, Value::Int(i)) => Value::Int(i.wrapping_neg()),
         (UnOp::Neg, Value::Float(f)) => Value::Float(-f),
         (UnOp::Not, Value::Bool(b)) => Value::Bool(!b),
         (UnOp::IntToFloat, Value::Int(i)) => Value::Float(*i as f64),
         // `i64::MAX as f64` rounds up to 2^63, which is already out of range.
-        (UnOp::FloatToInt, Value::Float(f)) if checked && !(f.is_finite() && *f >= -(2f64.powi(63)) && *f < 2f64.powi(63)) => {
+        (UnOp::FloatToInt, Value::Float(f))
+            if checked && !(f.is_finite() && *f >= -(2f64.powi(63)) && *f < 2f64.powi(63)) =>
+        {
             return Err(overflow("FloatToInt"));
         }
         // `as` saturates and maps NaN to 0.
@@ -76,14 +87,28 @@ pub fn display(value: &Value) -> String {
         Value::Float(f) => f.to_string(),
         Value::Str(s) => s.to_string(),
         Value::Entity(e) => e.to_string(),
-        Value::Component(c) => format!("{}({})", pulsar_scenedb::component::type_name(c.component), c.entity),
-        Value::Object(o) => o.type_name().to_owned(),
-        Value::List(items) => format!("[{}]", items.iter().map(display).collect::<Vec<_>>().join(", ")),
+        Value::Component(c) => format!(
+            "{}@{}",
+            pulsar_scenedb::component::type_name(c.component),
+            c.entity
+        ),
+        Value::Object(o) => crate::types::TypeRegistry::global().display_object(o),
+        Value::List(items) => format!(
+            "[{}]",
+            items.iter().map(display).collect::<Vec<_>>().join(", ")
+        ),
         Value::Map(entries) => format!(
             "{{{}}}",
-            entries.iter().map(|(k, v)| format!("{}: {}", display(&k.to_value()), display(v))).collect::<Vec<_>>().join(", ")
+            entries
+                .iter()
+                .map(|(k, v)| format!("{}: {}", display(&k.to_value()), display(v)))
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
-        Value::Tuple(items) => format!("({})", items.iter().map(display).collect::<Vec<_>>().join(", ")),
+        Value::Tuple(items) => format!(
+            "({})",
+            items.iter().map(display).collect::<Vec<_>>().join(", ")
+        ),
     }
 }
 
@@ -169,7 +194,12 @@ pub fn collection(op: CollOp, args: &mut [Value]) -> Result<Value, ScriptErrorKi
     }
     let out_of_bounds = |index: i64, len: usize| ScriptErrorKind::IndexOutOfBounds { index, len };
     // `index` as a position in `0..len`.
-    let position = |at: i64, len: usize| usize::try_from(at).ok().filter(|p| *p < len).ok_or_else(|| out_of_bounds(at, len));
+    let position = |at: i64, len: usize| {
+        usize::try_from(at)
+            .ok()
+            .filter(|p| *p < len)
+            .ok_or_else(|| out_of_bounds(at, len))
+    };
 
     Ok(match op {
         CollOp::MakeList => Value::list(args.iter_mut().map(take).collect()),
@@ -195,7 +225,10 @@ pub fn collection(op: CollOp, args: &mut [Value]) -> Result<Value, ScriptErrorKi
         CollOp::ListInsert => {
             let mut items = list(&mut args[0]);
             let at = index(&args[1]);
-            let at = usize::try_from(at).ok().filter(|p| *p <= items.len()).ok_or_else(|| out_of_bounds(at, items.len()))?;
+            let at = usize::try_from(at)
+                .ok()
+                .filter(|p| *p <= items.len())
+                .ok_or_else(|| out_of_bounds(at, items.len()))?;
             Arc::make_mut(&mut items).insert(at, take(&mut args[2]));
             Value::List(items)
         }
@@ -218,7 +251,11 @@ pub fn collection(op: CollOp, args: &mut [Value]) -> Result<Value, ScriptErrorKi
             let key = key(&args[1]);
             match entries.get(&key) {
                 Some(value) => value.clone(),
-                None => return Err(ScriptErrorKind::KeyNotFound { key: display(&key.to_value()) }),
+                None => {
+                    return Err(ScriptErrorKind::KeyNotFound {
+                        key: display(&key.to_value()),
+                    });
+                }
             }
         }
         CollOp::MapHas => Value::Bool(map(&mut args[0]).contains_key(&key(&args[1]))),
@@ -242,4 +279,11 @@ pub fn collection(op: CollOp, args: &mut [Value]) -> Result<Value, ScriptErrorKi
             _ => unreachable!("unverified tuple operand"),
         },
     })
+}
+
+/// Whether the native that just ran asked for the call to suspend (a
+/// latent native: see [`crate::latent`]). Generated code checks this after
+/// every native call, as the interpreter does.
+pub fn latent_requested(host: &Host<'_>) -> bool {
+    host.latent.as_deref().is_some_and(crate::latent::Latent::suspend_requested)
 }

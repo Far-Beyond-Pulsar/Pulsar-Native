@@ -297,3 +297,40 @@ fn to_string_and_matrix_failures_are_reported() {
         .expect_err("singular matrix");
     assert!(err.to_string().contains("not invertible"), "{err}");
 }
+
+#[test]
+fn value_types_compare_and_print() {
+    use pulsar_script_vm::{BinOp, UnOp};
+    let mut module = Module::new("ops");
+    module.constants = vec![constant("Vec3", "[1.0,2.0,3.0]"), constant("Vec3", "[1.0,2.0,3.0]"), constant("Vec3", "[0.0,0.0,0.0]")];
+    let vec3 = || obj("Vec3");
+    let compare = |name: &str, op: BinOp, other: u32| {
+        function(
+            name,
+            Type::Bool,
+            vec![vec3(), vec3(), Type::Bool],
+            vec![
+                Instr::Const { dst: 0, index: 0 },
+                Instr::Const { dst: 1, index: other },
+                Instr::Binary { op, dst: 2, a: 0, b: 1 },
+                Instr::Return { value: Some(2) },
+            ],
+        )
+    };
+    module.functions = vec![
+        compare("same", BinOp::Eq, 1),
+        compare("different", BinOp::Eq, 2),
+        compare("not_same", BinOp::Ne, 2),
+        function(
+            "text",
+            Type::Str,
+            vec![vec3(), Type::Str],
+            vec![Instr::Const { dst: 0, index: 0 }, Instr::Unary { op: UnOp::ToStr, dst: 1, src: 0 }, Instr::Return { value: Some(1) }],
+        ),
+    ];
+    let program = link(module).expect("links: Vec3 has equality and display");
+    assert_eq!(run(&program, "same"), Value::Bool(true));
+    assert_eq!(run(&program, "different"), Value::Bool(false));
+    assert_eq!(run(&program, "not_same"), Value::Bool(true));
+    assert_eq!(run(&program, "text"), Value::from("[1, 2, 3]"));
+}

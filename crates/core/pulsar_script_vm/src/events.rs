@@ -89,7 +89,10 @@ pub trait EventSink: Send + Sync {
 
 /// Whether `ty` can be an event field (and so a handler parameter).
 pub fn is_event_field_type(ty: &Type) -> bool {
-    matches!(ty, Type::Bool | Type::Int | Type::Float | Type::Str | Type::Entity)
+    matches!(
+        ty,
+        Type::Bool | Type::Int | Type::Float | Type::Str | Type::Entity
+    )
 }
 
 /// Check `handler_params` against an event's field types: they must be a
@@ -104,7 +107,9 @@ pub fn check_handler(handler_params: &[Type], fields: &[Type]) -> Result<(), Str
     }
     for (i, (param, field)) in handler_params.iter().zip(fields).enumerate() {
         if param != field {
-            return Err(format!("parameter {i} is {param}, the event's field {i} is {field}"));
+            return Err(format!(
+                "parameter {i} is {param}, the event's field {i} is {field}"
+            ));
         }
     }
     Ok(())
@@ -114,7 +119,11 @@ impl From<&EventDecl> for EventSignature {
     /// A declared event's signature. Its `id` is 0: the engine assigns ids
     /// when it registers the event.
     fn from(decl: &EventDecl) -> Self {
-        Self { id: 0, name: decl.name.clone(), fields: decl.fields.clone() }
+        Self {
+            id: 0,
+            name: decl.name.clone(),
+            fields: decl.fields.clone(),
+        }
     }
 }
 
@@ -138,8 +147,15 @@ fn str_arg(args: &[Value], index: usize) -> Result<String, ScriptError> {
         .ok_or_else(|| ScriptError::native(format!("argument {index}: expected a string")))
 }
 
-fn emit(host: &Host<'_>, target: EventTarget, name: &str, fields: &[Value]) -> Result<Value, ScriptError> {
-    sink(host)?.emit(target, name, fields).map_err(ScriptError::native)?;
+fn emit(
+    host: &Host<'_>,
+    target: EventTarget,
+    name: &str,
+    fields: &[Value],
+) -> Result<Value, ScriptError> {
+    sink(host)?
+        .emit(target, name, fields)
+        .map_err(ScriptError::native)?;
     Ok(Value::Unit)
 }
 

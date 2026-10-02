@@ -70,12 +70,18 @@ pub fn plan(old: &[Variable], new: &[Variable]) -> MigrationPlan {
     let fates = new
         .iter()
         .map(|variable| {
-            let found = old.iter().enumerate().find(|(i, candidate)| !taken[*i] && same_variable(candidate, variable));
+            let found = old
+                .iter()
+                .enumerate()
+                .find(|(i, candidate)| !taken[*i] && same_variable(candidate, variable));
             match found {
                 Some((i, candidate)) => {
                     taken[i] = true;
                     if candidate.ty == variable.ty {
-                        VariableFate::Kept { old: i, renamed: candidate.name != variable.name }
+                        VariableFate::Kept {
+                            old: i,
+                            renamed: candidate.name != variable.name,
+                        }
                     } else {
                         VariableFate::Retyped { old: i }
                     }
@@ -102,7 +108,10 @@ pub fn resolve_key(variables: &[Variable], key: &str) -> Result<usize, String> {
     let by_id = variables.iter().position(|v| v.id.as_deref() == Some(key));
     let by_name = variables.iter().position(|v| v.name == key);
     match (by_id, by_name) {
-        (Some(a), Some(b)) if a != b => Err(format!("`{key}` is both the id of `{}` and the name of `{}`", variables[a].name, variables[b].name)),
+        (Some(a), Some(b)) if a != b => Err(format!(
+            "`{key}` is both the id of `{}` and the name of `{}`",
+            variables[a].name, variables[b].name
+        )),
         (Some(i), _) | (None, Some(i)) => Ok(i),
         (None, None) => Err(format!("no variable `{key}`")),
     }
@@ -125,17 +134,22 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
                 .pure()
                 .attr("category", "Migration")
                 .params(["name"])
-                .build(|host: &mut Host<'_>, name: std::sync::Arc<str>| -> Result<$ty, ScriptError> {
-                    let source = host
-                        .migration
-                        .ok_or_else(|| ScriptError::native("old values are only readable inside `migrate`"))?;
-                    let value = source
-                        .old_value(&name)
-                        .ok_or_else(|| ScriptError::native(format!("the old class had no variable `{name}`")))?;
-                    value.$pick().map(Into::into).ok_or_else(|| {
-                        ScriptError::native(format!("old `{name}` is a {}, not the requested type", value.kind()))
-                    })
-                }));
+                .build(
+                    |host: &mut Host<'_>, name: std::sync::Arc<str>| -> Result<$ty, ScriptError> {
+                        let source = host.migration.ok_or_else(|| {
+                            ScriptError::native("old values are only readable inside `migrate`")
+                        })?;
+                        let value = source.old_value(&name).ok_or_else(|| {
+                            ScriptError::native(format!("the old class had no variable `{name}`"))
+                        })?;
+                        value.$pick().map(Into::into).ok_or_else(|| {
+                            ScriptError::native(format!(
+                                "old `{name}` is a {}, not the requested type",
+                                value.kind()
+                            ))
+                        })
+                    },
+                ));
         };
     }
     reader!("migration::old_bool", bool, as_bool);

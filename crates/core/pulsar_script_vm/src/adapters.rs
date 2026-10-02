@@ -17,9 +17,9 @@
 use std::any::{Any, TypeId};
 
 use pulsar_reflection::methods::{
-    methods_of, MethodInfo, PassMode, Receiver, ReceiverKind, ReflectedMethod,
+    MethodInfo, PassMode, Receiver, ReceiverKind, ReflectedMethod, methods_of,
 };
-use pulsar_reflection::{FieldInfo, TypeStructure, RUNTIME_TYPE_REGISTRY};
+use pulsar_reflection::{FieldInfo, RUNTIME_TYPE_REGISTRY, TypeStructure};
 use pulsar_scenedb::component_methods::component_methods_of_type;
 use pulsar_scenedb::{ComponentId, ComponentMethod, ComponentRef, Entity};
 
@@ -69,7 +69,10 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
 }
 
 fn struct_fields(ty: TypeId) -> &'static [FieldInfo] {
-    match RUNTIME_TYPE_REGISTRY.get_by_id(ty).map(|info| &info.structure) {
+    match RUNTIME_TYPE_REGISTRY
+        .get_by_id(ty)
+        .map(|info| &info.structure)
+    {
         Some(TypeStructure::Struct { fields }) => fields,
         _ => &[],
     }
@@ -84,7 +87,11 @@ fn params(info: &MethodInfo) -> Option<(Vec<Param>, Vec<&'static TypeBinding>)> 
     for p in info.params {
         let binding = types.binding(p.ty.type_id())?;
         let ty = binding.script_type();
-        params.push(if p.mode == PassMode::Mut { Param::inout(ty) } else { Param::new(ty) });
+        params.push(if p.mode == PassMode::Mut {
+            Param::inout(ty)
+        } else {
+            Param::new(ty)
+        });
         bindings.push(binding);
     }
     Some((params, bindings))
@@ -107,7 +114,11 @@ fn skip(owner: &str, info: &MethodInfo) {
     );
 }
 
-fn builder(owner: &str, info: &MethodInfo, receiver: Option<&Type>) -> crate::native::NativeBuilder {
+fn builder(
+    owner: &str,
+    info: &MethodInfo,
+    receiver: Option<&Type>,
+) -> crate::native::NativeBuilder {
     let mut names: Vec<&str> = Vec::new();
     if receiver.is_some() {
         names.push("self");
@@ -136,7 +147,12 @@ fn box_args(bindings: &[&TypeBinding], args: &[Value]) -> Result<Vec<Box<dyn Any
 }
 
 /// Copy `&mut` parameters back to their script arguments.
-fn write_back(info: &MethodInfo, bindings: &[&TypeBinding], boxed: &[Box<dyn Any>], args: &mut [Value]) {
+fn write_back(
+    info: &MethodInfo,
+    bindings: &[&TypeBinding],
+    boxed: &[Box<dyn Any>],
+    args: &mut [Value],
+) {
     for (i, p) in info.params.iter().enumerate() {
         if p.mode == PassMode::Mut {
             args[i] = bindings[i].to_value(&*boxed[i]);
@@ -153,7 +169,11 @@ fn to_ret(binding: Option<&TypeBinding>, value: Option<Box<dyn Any>>) -> Value {
 
 /// A reflected method or associated fn of `owner`. `receiver` is the
 /// value type for methods (`None` for associated fns).
-fn reflected(owner: &str, receiver: Option<Type>, method: &'static ReflectedMethod) -> Option<NativeFn> {
+fn reflected(
+    owner: &str,
+    receiver: Option<Type>,
+    method: &'static ReflectedMethod,
+) -> Option<NativeFn> {
     let info = &method.info;
     let (Some((mut sig_params, bindings)), Some((ret_ty, ret_binding))) = (params(info), ret(info))
     else {
@@ -162,7 +182,11 @@ fn reflected(owner: &str, receiver: Option<Type>, method: &'static ReflectedMeth
     };
     let kind = method.receiver;
     if let Some(ty) = &receiver {
-        let param = if kind == ReceiverKind::Mut { Param::inout(ty.clone()) } else { Param::new(ty.clone()) };
+        let param = if kind == ReceiverKind::Mut {
+            Param::inout(ty.clone())
+        } else {
+            Param::new(ty.clone())
+        };
         sig_params.insert(0, param);
     }
     let offset = usize::from(receiver.is_some());
@@ -231,7 +255,9 @@ fn accessors(component: &ComponentBinding, ty: &Type, natives: &mut Vec<NativeFn
 
     natives.push(
         NativeFn::builder(format!("{name}::of"))
-            .doc(format!("Reference to the entity's {name}. Resolves only while it has one."))
+            .doc(format!(
+                "Reference to the entity's {name}. Resolves only while it has one."
+            ))
             .pure()
             .params(["entity"])
             .build_raw(
@@ -244,8 +270,13 @@ fn accessors(component: &ComponentBinding, ty: &Type, natives: &mut Vec<NativeFn
     );
     natives.push(
         NativeFn::builder(format!("{name}::exists"))
-            .doc(format!("Whether the referenced entity is alive and has a {name}."))
-            .flags(pulsar_reflection::MethodFlags { side_effect_free: true, deterministic: false })
+            .doc(format!(
+                "Whether the referenced entity is alive and has a {name}."
+            ))
+            .flags(pulsar_reflection::MethodFlags {
+                side_effect_free: true,
+                deterministic: false,
+            })
             .method_of(ty.clone())
             .params(["self"])
             .build_raw(
@@ -285,20 +316,33 @@ fn object_of(value: &Value, ty: TypeId) -> Result<&crate::value::Object, ScriptE
 fn field_binding(owner: &str, field: &FieldInfo) -> Option<&'static TypeBinding> {
     let binding = TypeRegistry::global().binding(field.type_info.type_id);
     if binding.is_none() {
-        tracing::debug!("script natives: skipping field {owner}.{}: type not script-visible", field.name);
+        tracing::debug!(
+            "script natives: skipping field {owner}.{}: type not script-visible",
+            field.name
+        );
     }
     binding
 }
 
-fn component_field(owner: &str, ty: &Type, cid: ComponentId, field: &'static FieldInfo) -> Vec<NativeFn> {
-    let Some(binding) = field_binding(owner, field) else { return Vec::new() };
+fn component_field(
+    owner: &str,
+    ty: &Type,
+    cid: ComponentId,
+    field: &'static FieldInfo,
+) -> Vec<NativeFn> {
+    let Some(binding) = field_binding(owner, field) else {
+        return Vec::new();
+    };
     let field_ty = binding.script_type();
     let offset = field.offset;
     let (get_name, set_name) = (owner.to_owned(), owner.to_owned());
 
     let get = NativeFn::builder(format!("{owner}::get_{}", field.name))
         .doc(format!("The {owner}'s `{}`.", field.name))
-        .flags(pulsar_reflection::MethodFlags { side_effect_free: true, deterministic: false })
+        .flags(pulsar_reflection::MethodFlags {
+            side_effect_free: true,
+            deterministic: false,
+        })
         .method_of(ty.clone())
         .params(["self"])
         .attr("property", field.name)
@@ -306,8 +350,10 @@ fn component_field(owner: &str, ty: &Type, cid: ComponentId, field: &'static Fie
             Signature::new([Param::new(ty.clone())], field_ty.clone()),
             Box::new(move |host, args| {
                 let entity = component_entity(&args[0])?;
-                let value =
-                    host.world.get_dyn(entity, cid).ok_or_else(|| missing(entity, &get_name))?;
+                let value = host
+                    .world
+                    .get_dyn(entity, cid)
+                    .ok_or_else(|| missing(entity, &get_name))?;
                 let base = (value as *const dyn Any).cast::<u8>();
                 // SAFETY: `value` is a live component of the reflected type,
                 // and `offset`/`binding` come from its reflected field
@@ -324,20 +370,30 @@ fn component_field(owner: &str, ty: &Type, cid: ComponentId, field: &'static Fie
             Signature::new([Param::new(ty.clone()), Param::new(field_ty)], Type::Unit),
             Box::new(move |host, args| {
                 let entity = component_entity(&args[0])?;
-                let mut guard =
-                    host.world.get_dyn_mut(entity, cid).ok_or_else(|| missing(entity, &set_name))?;
+                let mut guard = host
+                    .world
+                    .get_dyn_mut(entity, cid)
+                    .ok_or_else(|| missing(entity, &set_name))?;
                 let base = (&mut *guard as *mut dyn Any).cast::<u8>();
                 // SAFETY: as for the getter; the guard holds the unique
                 // borrow and reports the write when dropped.
-                unsafe { binding.store(base.add(offset), &args[1]) }.map_err(ScriptError::native)?;
+                unsafe { binding.store(base.add(offset), &args[1]) }
+                    .map_err(ScriptError::native)?;
                 Ok(Value::Unit)
             }),
         );
     vec![get, set]
 }
 
-fn value_field(owner: &str, owner_ty: TypeId, ty: &Type, field: &'static FieldInfo) -> Vec<NativeFn> {
-    let Some(binding) = field_binding(owner, field) else { return Vec::new() };
+fn value_field(
+    owner: &str,
+    owner_ty: TypeId,
+    ty: &Type,
+    field: &'static FieldInfo,
+) -> Vec<NativeFn> {
+    let Some(binding) = field_binding(owner, field) else {
+        return Vec::new();
+    };
     let field_ty = binding.script_type();
     let offset = field.offset;
 
@@ -368,10 +424,13 @@ fn value_field(owner: &str, owner_ty: TypeId, ty: &Type, field: &'static FieldIn
             Box::new(move |_host, args| {
                 let (target, value) = args.split_at_mut(1);
                 object_of(&target[0], owner_ty)?;
-                let Value::Object(obj) = &mut target[0] else { unreachable!("checked above") };
+                let Value::Object(obj) = &mut target[0] else {
+                    unreachable!("checked above")
+                };
                 let base = (obj.as_any_mut() as *mut dyn Any).cast::<u8>();
                 // SAFETY: as for the getter; `obj` is uniquely borrowed.
-                unsafe { binding.store(base.add(offset), &value[0]) }.map_err(ScriptError::native)?;
+                unsafe { binding.store(base.add(offset), &value[0]) }
+                    .map_err(ScriptError::native)?;
                 Ok(Value::Unit)
             }),
         );

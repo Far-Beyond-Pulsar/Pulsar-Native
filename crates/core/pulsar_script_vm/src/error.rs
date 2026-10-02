@@ -15,7 +15,11 @@ pub struct VerifyError {
 
 impl VerifyError {
     pub(crate) fn module(message: impl Into<String>) -> Self {
-        Self { function: None, pc: None, message: message.into() }
+        Self {
+            function: None,
+            pc: None,
+            message: message.into(),
+        }
     }
 
     fn render(&self) -> String {
@@ -35,28 +39,47 @@ pub enum LinkError {
     #[error("no native function `{name}` is registered")]
     MissingNative { name: String },
     #[error("native `{name}` has signature {found}, the module expects {expected}")]
-    SignatureMismatch { name: String, expected: Box<Signature>, found: Box<Signature> },
+    SignatureMismatch {
+        name: String,
+        expected: Box<Signature>,
+        found: Box<Signature>,
+    },
     #[error("unknown type `{name}`")]
     UnknownType { name: String },
     #[error("invalid `{ty}` constant `{json}`: {message}")]
-    BadConstant { ty: String, json: String, message: String },
+    BadConstant {
+        ty: String,
+        json: String,
+        message: String,
+    },
     #[error("no event `{event}` is declared by the module or registered with the engine")]
     UnknownEvent { event: String },
     #[error("`{handler}` cannot handle event `{event}`: {message}")]
-    HandlerMismatch { event: String, handler: String, message: String },
+    HandlerMismatch {
+        event: String,
+        handler: String,
+        message: String,
+    },
     #[error("`{name}`: {message}")]
     PolyNative { name: String, message: String },
     /// The module imports a native gated behind a capability the link
     /// policy does not allow (#869).
     #[error("native `{name}` needs capability `{capability}`, which this project does not allow")]
     CapabilityDenied { name: String, capability: String },
+    /// The module compares or prints a value type that has no equality or
+    /// display registered (`script_value_ops!`).
+    #[error("`{function}`: {message}")]
+    UnsupportedOperation { function: String, pc: usize, message: String },
 }
 
 /// What went wrong while running.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ScriptErrorKind {
     /// A native returned an error (bad argument, missing component, ..).
-    Native { name: String, message: String },
+    Native {
+        name: String,
+        message: String,
+    },
     DivideByZero,
     /// The step budget ran out (e.g. an infinite loop).
     BudgetExceeded,
@@ -64,16 +87,23 @@ pub enum ScriptErrorKind {
     StackOverflow,
     /// Integer overflow in `op` with checked arithmetic on
     /// ([`Vm::checked_arithmetic`](crate::Vm::checked_arithmetic)).
-    Overflow { op: String },
+    Overflow {
+        op: String,
+    },
     /// A call from the host passed the wrong arguments.
     BadEntryCall(String),
     /// The function waited (`Wait`) under [`Vm::call`](crate::Vm::call),
     /// which cannot suspend; use `Vm::start`.
     Suspended,
     /// A list index outside `0..len` (`len` itself is allowed only to insert).
-    IndexOutOfBounds { index: i64, len: usize },
+    IndexOutOfBounds {
+        index: i64,
+        len: usize,
+    },
     /// A map lookup of a key the map does not have.
-    KeyNotFound { key: String },
+    KeyNotFound {
+        key: String,
+    },
 }
 
 impl fmt::Display for ScriptErrorKind {
@@ -86,7 +116,9 @@ impl fmt::Display for ScriptErrorKind {
             Self::Overflow { op } => write!(f, "integer overflow in {op} (checked arithmetic)"),
             Self::BadEntryCall(message) => write!(f, "bad call: {message}"),
             Self::Suspended => f.write_str("the function waited; run it with Vm::start"),
-            Self::IndexOutOfBounds { index, len } => write!(f, "index {index} is out of bounds for a list of {len}"),
+            Self::IndexOutOfBounds { index, len } => {
+                write!(f, "index {index} is out of bounds for a list of {len}")
+            }
             Self::KeyNotFound { key } => write!(f, "the map has no key {key}"),
         }
     }
@@ -106,12 +138,19 @@ pub struct ScriptError {
 
 impl ScriptError {
     pub fn new(kind: ScriptErrorKind) -> Self {
-        Self { kind, trace: Vec::new(), locations: Vec::new() }
+        Self {
+            kind,
+            trace: Vec::new(),
+            locations: Vec::new(),
+        }
     }
 
     /// For natives: a failure with a message (the VM fills in the name).
     pub fn native(message: impl Into<String>) -> Self {
-        Self::new(ScriptErrorKind::Native { name: String::new(), message: message.into() })
+        Self::new(ScriptErrorKind::Native {
+            name: String::new(),
+            message: message.into(),
+        })
     }
 
     /// The innermost frame, as `(function, pc)`.

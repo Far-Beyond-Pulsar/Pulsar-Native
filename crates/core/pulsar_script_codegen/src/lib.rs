@@ -295,6 +295,11 @@ fn emit(out: &mut String, module: &Module, instr: &Instr, pc: usize) {
                 let _ = writeln!(out, "                {} = result;", reg(*dst));
             }
             advance(out);
+            // A latent native asked for the call to suspend; `*pc` is already past it.
+            out.push_str("                if exec::latent_requested(&*cx.host) {
+                    return Ok(Exit::Wait(0.0));
+                }
+");
         }
         Instr::LoadVar { dst, var } => {
             let _ = writeln!(out, "                {} = cx.vars[{var}].clone();", reg(*dst));

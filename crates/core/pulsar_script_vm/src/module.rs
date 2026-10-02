@@ -152,7 +152,10 @@ impl Module {
         }
         let found = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
         if found != FORMAT_VERSION {
-            return Err(ModuleDecodeError::UnsupportedVersion { found, expected: FORMAT_VERSION });
+            return Err(ModuleDecodeError::UnsupportedVersion {
+                found,
+                expected: FORMAT_VERSION,
+            });
         }
         let (module, read): (Self, usize) =
             bincode::decode_from_slice(&bytes[BINARY_HEADER_LEN..], bincode_config())
@@ -200,7 +203,11 @@ impl Module {
                 Some(pc) => function.location(pc),
                 None => function.first_location(),
             };
-            Some(ErrorSite { function: function.name.clone(), pc, location: location.cloned() })
+            Some(ErrorSite {
+                function: function.name.clone(),
+                pc,
+                location: location.cloned(),
+            })
         };
         match error {
             LinkError::Verify(verify) => at_function(verify.function.as_deref()?, verify.pc),
@@ -220,9 +227,13 @@ impl Module {
                     })
                 })
             }
+            LinkError::UnsupportedOperation { function, pc, .. } => at_function(function, Some(*pc)),
             LinkError::HandlerMismatch { handler, .. } => at_function(handler, None),
             LinkError::UnknownEvent { event } => {
-                let subscription = self.subscriptions.iter().find(|s| s.event.to_string() == *event)?;
+                let subscription = self
+                    .subscriptions
+                    .iter()
+                    .find(|s| s.event.to_string() == *event)?;
                 let function = self.functions.get(subscription.handler as usize)?;
                 at_function(&function.name, None)
             }
@@ -231,10 +242,9 @@ impl Module {
                     |c| matches!(c, Constant::Value { ty: t, json: j } if t == ty && j == json),
                 )? as u32;
                 self.functions.iter().find_map(|function| {
-                    let pc = function
-                        .code
-                        .iter()
-                        .position(|instr| matches!(instr, Instr::Const { index: i, .. } if *i == index))?;
+                    let pc = function.code.iter().position(
+                        |instr| matches!(instr, Instr::Const { index: i, .. } if *i == index),
+                    )?;
                     Some(ErrorSite {
                         function: function.name.clone(),
                         pc: Some(pc),
@@ -289,7 +299,10 @@ pub struct EventField {
 
 impl EventField {
     pub fn new(name: impl Into<String>, ty: Type) -> Self {
-        Self { name: name.into(), ty }
+        Self {
+            name: name.into(),
+            ty,
+        }
     }
 }
 
@@ -312,7 +325,9 @@ impl std::fmt::Display for EventRef {
 }
 
 /// The channel a subscription listens on, relative to the instance.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode,
+)]
 pub enum SubscriptionScope {
     /// The entity channel of the entity the instance is bound to: events
     /// about or sent to this object only. Not subscribed for an unbound
@@ -347,7 +362,10 @@ pub enum Constant {
     /// is the type's registered text form; it is decoded once, at link time,
     /// and every use clones the decoded value, so no instance can mutate the
     /// pool or another instance.
-    Value { ty: String, json: String },
+    Value {
+        ty: String,
+        json: String,
+    },
 }
 
 impl Constant {
@@ -378,7 +396,10 @@ pub struct Signature {
 
 impl Signature {
     pub fn new(params: impl IntoIterator<Item = Param>, ret: Type) -> Self {
-        Self { params: params.into_iter().collect(), ret }
+        Self {
+            params: params.into_iter().collect(),
+            ret,
+        }
     }
 }
 
@@ -485,7 +506,12 @@ pub struct SourceLoc {
 impl SourceLoc {
     /// A location naming graph node `node` in `file`.
     pub fn node(file: impl Into<String>, node: impl Into<String>) -> Self {
-        Self { file: file.into(), node: node.into(), line: None, column: None }
+        Self {
+            file: file.into(),
+            node: node.into(),
+            line: None,
+            column: None,
+        }
     }
 }
 
@@ -531,7 +557,10 @@ impl DebugInfo {
     pub fn location(&self, pc: usize) -> Option<&SourceLoc> {
         let pc = u32::try_from(pc).ok()?;
         let index = self.ranges.partition_point(|r| r.end <= pc);
-        self.ranges.get(index).filter(|r| r.start <= pc).map(|r| &r.loc)
+        self.ranges
+            .get(index)
+            .filter(|r| r.start <= pc)
+            .map(|r| &r.loc)
     }
 
     /// Record that instruction `pc` came from `loc`. Pcs must be recorded
@@ -547,10 +576,13 @@ impl DebugInfo {
                 return;
             }
         }
-        self.ranges.push(DebugRange { start: pc, end: pc + 1, loc: loc.clone() });
+        self.ranges.push(DebugRange {
+            start: pc,
+            end: pc + 1,
+            loc: loc.clone(),
+        });
     }
 }
-
 
 /// What a [`Instr::Collection`] does. Types are checked by the verifier;
 /// index and key failures are runtime errors.
@@ -630,38 +662,88 @@ pub enum BinOp {
 
 impl BinOp {
     pub fn is_comparison(self) -> bool {
-        matches!(self, Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge)
+        matches!(
+            self,
+            Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge
+        )
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Encode, Decode)]
 pub enum Instr {
     /// `dst = constants[index]`.
-    Const { dst: Reg, index: u32 },
-    Move { dst: Reg, src: Reg },
-    Unary { op: UnOp, dst: Reg, src: Reg },
-    Binary { op: BinOp, dst: Reg, a: Reg, b: Reg },
-    Jump { target: u32 },
-    Branch { cond: Reg, then: u32, otherwise: u32 },
+    Const {
+        dst: Reg,
+        index: u32,
+    },
+    Move {
+        dst: Reg,
+        src: Reg,
+    },
+    Unary {
+        op: UnOp,
+        dst: Reg,
+        src: Reg,
+    },
+    Binary {
+        op: BinOp,
+        dst: Reg,
+        a: Reg,
+        b: Reg,
+    },
+    Jump {
+        target: u32,
+    },
+    Branch {
+        cond: Reg,
+        then: u32,
+        otherwise: u32,
+    },
     /// Call module function `func`; `dst` receives the result.
-    Call { func: u32, args: Vec<Reg>, dst: Option<Reg> },
+    Call {
+        func: u32,
+        args: Vec<Reg>,
+        dst: Option<Reg>,
+    },
     /// Call `imports[import]`. `inout` arguments are written back.
-    CallNative { import: u32, args: Vec<Reg>, dst: Option<Reg> },
-    LoadVar { dst: Reg, var: u32 },
-    StoreVar { var: u32, src: Reg },
+    CallNative {
+        import: u32,
+        args: Vec<Reg>,
+        dst: Option<Reg>,
+    },
+    LoadVar {
+        dst: Reg,
+        var: u32,
+    },
+    StoreVar {
+        var: u32,
+        src: Reg,
+    },
     /// The entity this instance is bound to.
-    SelfEntity { dst: Reg },
+    SelfEntity {
+        dst: Reg,
+    },
     /// Game time in seconds (`float`), as the host reports it.
-    Now { dst: Reg },
+    Now {
+        dst: Reg,
+    },
     /// Suspend this call for `seconds` (`float`) of game time. The host
     /// resumes it later with [`Vm::resume`](crate::Vm::resume); execution
     /// continues at the next instruction with every frame and register as
     /// it was.
-    Wait { seconds: Reg },
-    Return { value: Option<Reg> },
+    Wait {
+        seconds: Reg,
+    },
+    Return {
+        value: Option<Reg>,
+    },
     /// A collection operation: `dst = op(args)`. Collections have value
     /// semantics, so an operation that changes one returns the changed
     /// collection; storage is shared until a copy is written to, and a
     /// result written back over its own first argument edits in place.
-    Collection { op: CollOp, dst: Reg, args: Vec<Reg> },
+    Collection {
+        op: CollOp,
+        dst: Reg,
+        args: Vec<Reg>,
+    },
 }

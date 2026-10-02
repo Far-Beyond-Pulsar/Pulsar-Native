@@ -22,7 +22,7 @@
 mod natives;
 
 use glam::{DVec3, Mat4, Quat, Vec2, Vec3, Vec4};
-use pulsar_script_vm::script_value_type;
+use pulsar_script_vm::{script_value_ops, script_value_type};
 
 /// Parse `text` as exactly `N` finite numbers.
 fn numbers<const N: usize>(text: &str) -> Result<[f64; N], String> {
@@ -73,3 +73,12 @@ pub mod literal {
         json(&m.to_cols_array().map(f64::from))
     }
 }
+
+// `==` and string conversion in scripts. Floating-point equality is exact,
+// as for `float`; use the types' `approx_eq` natives for tolerance.
+script_value_ops!(Vec2, "Vec2", eq = |a, b| a == b, display = |v| v.to_string());
+script_value_ops!(Vec3, "Vec3", eq = |a, b| a == b, display = |v| v.to_string());
+script_value_ops!(Vec4, "Vec4", eq = |a, b| a == b, display = |v| v.to_string());
+script_value_ops!(DVec3, "DVec3", eq = |a, b| a == b, display = |v| v.to_string());
+script_value_ops!(Quat, "Quat", eq = |a, b| a == b, display = |v| v.to_string());
+script_value_ops!(Mat4, "Mat4", eq = |a, b| a == b, display = |v| v.to_string());

@@ -18,7 +18,7 @@ use pulsar_reflection::methods::MethodFlags;
 use pulsar_scenedb::{Entity, World};
 
 use crate::error::ScriptError;
-use crate::events::{is_event_field_type, EventSink};
+use crate::events::{EventSink, is_event_field_type};
 use crate::library::{LibraryId, ShadowLibrary};
 use crate::module::{Param, Signature};
 use crate::types::{ScriptValue, Type};
@@ -36,19 +36,45 @@ pub struct Host<'w> {
     pub events: Option<&'w dyn EventSink>,
     /// Old state a class's `migrate` function reads; `None` otherwise.
     pub migration: Option<&'w dyn crate::migrate::MigrationSource>,
+    /// The instance's latent state (timers, wait requests); `None` in hosts
+    /// that cannot suspend a call for anything but a duration.
+    pub latent: Option<&'w mut crate::latent::Latent>,
 }
 
 impl<'w> Host<'w> {
     pub fn new(world: &'w mut World, entity: Entity) -> Self {
-        Self { world, entity, time: 0.0, events: None, migration: None }
+        Self {
+            world,
+            entity,
+            time: 0.0,
+            events: None,
+            migration: None,
+            latent: None,
+        }
     }
 
     pub fn at_time(world: &'w mut World, entity: Entity, time: f64) -> Self {
-        Self { world, entity, time, events: None, migration: None }
+        Self {
+            world,
+            entity,
+            time,
+            events: None,
+            migration: None,
+            latent: None,
+        }
+    }
+
+    /// Attach the instance's latent state (see [`crate::latent`]).
+    pub fn with_latent(mut self, latent: Option<&'w mut crate::latent::Latent>) -> Self {
+        self.latent = latent;
+        self
     }
 
     /// Make `source`'s values readable through the `migration::old_*` natives.
-    pub fn with_migration(mut self, source: Option<&'w dyn crate::migrate::MigrationSource>) -> Self {
+    pub fn with_migration(
+        mut self,
+        source: Option<&'w dyn crate::migrate::MigrationSource>,
+    ) -> Self {
         self.migration = source;
         self
     }
@@ -117,14 +143,18 @@ impl NativeFn {
     }
 
     pub fn attr(&self, key: &str) -> Option<&str> {
-        self.attrs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+        self.attrs
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
     }
 
     /// The capability a module needs to import this native (#869): its
     /// [`CAPABILITY_ATTR`](crate::capability::CAPABILITY_ATTR) attribute.
     /// `None`: every module may import it.
     pub fn capability(&self) -> Option<&str> {
-        self.attr(crate::capability::CAPABILITY_ATTR).filter(|c| !c.is_empty())
+        self.attr(crate::capability::CAPABILITY_ATTR)
+            .filter(|c| !c.is_empty())
     }
 
     pub(crate) fn attach_library(&mut self, id: LibraryId, library: Arc<ShadowLibrary>) {
@@ -248,7 +278,8 @@ impl<T: ScriptValue, E: fmt::Display> NativeReturn for Result<T, E> {
         T::script_type()
     }
     fn into_result(self) -> Result<Value, ScriptError> {
-        self.map(T::into_value).map_err(|e| ScriptError::native(e.to_string()))
+        self.map(T::into_value)
+            .map_err(|e| ScriptError::native(e.to_string()))
     }
 }
 
@@ -396,18 +427,31 @@ impl PolyNative {
         let fixed = self.fixed.len();
         if sig.params.len() < fixed || sig.params[..fixed] != self.fixed[..] {
             let expected = Signature::new(self.fixed.iter().cloned(), self.ret.clone());
-            return Err(format!("takes {expected} followed by event fields, the module imports it as {sig}"));
+            return Err(format!(
+                "takes {expected} followed by event fields, the module imports it as {sig}"
+            ));
         }
         if sig.ret != self.ret {
-            return Err(format!("returns {}, the module expects {}", self.ret, sig.ret));
+            return Err(format!(
+                "returns {}, the module expects {}",
+                self.ret, sig.ret
+            ));
         }
-        if let Some(bad) = sig.params[fixed..].iter().find(|p| p.inout || !is_event_field_type(&p.ty)) {
-            return Err(format!("trailing argument type {} is not an event field type", bad.ty));
+        if let Some(bad) = sig.params[fixed..]
+            .iter()
+            .find(|p| p.inout || !is_event_field_type(&p.ty))
+        {
+            return Err(format!(
+                "trailing argument type {} is not an event field type",
+                bad.ty
+            ));
         }
         let mut names = self.fixed_names.clone();
         names.extend((0..sig.params.len() - fixed).map(|i| format!("field{i}")));
         let call = Arc::clone(&self.call);
-        let mut builder = NativeFn::builder(self.name.clone()).doc(self.doc.clone()).params(names);
+        let mut builder = NativeFn::builder(self.name.clone())
+            .doc(self.doc.clone())
+            .params(names);
         for (k, v) in &self.attrs {
             builder = builder.attr(k.clone(), v.clone());
         }
@@ -422,7 +466,12 @@ pub fn poly_base_name(import: &str) -> &str {
 
 impl fmt::Debug for PolyNative {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}...", self.name, Signature::new(self.fixed.iter().cloned(), self.ret.clone()))
+        write!(
+            f,
+            "{}{}...",
+            self.name,
+            Signature::new(self.fixed.iter().cloned(), self.ret.clone())
+        )
     }
 }
 
@@ -443,14 +492,18 @@ pub struct GenericNative {
 
 /// A generic native's body: the element type it was instantiated at, the
 /// host, and the arguments.
-pub type GenericImpl = dyn Fn(&Type, &mut Host<'_>, &mut [Value]) -> Result<Value, ScriptError> + Send + Sync;
+pub type GenericImpl =
+    dyn Fn(&Type, &mut Host<'_>, &mut [Value]) -> Result<Value, ScriptError> + Send + Sync;
 
 impl GenericNative {
     pub fn new(
         name: impl Into<String>,
         param_names: &[&str],
         template: fn(&Type) -> Signature,
-        call: impl Fn(&Type, &mut Host<'_>, &mut [Value]) -> Result<Value, ScriptError> + Send + Sync + 'static,
+        call: impl Fn(&Type, &mut Host<'_>, &mut [Value]) -> Result<Value, ScriptError>
+        + Send
+        + Sync
+        + 'static,
     ) -> Self {
         Self {
             name: name.into(),
@@ -495,7 +548,11 @@ impl GenericNative {
         let element = candidates
             .into_iter()
             .find(|candidate| (self.template)(candidate) == *sig)
-            .ok_or_else(|| format!("is generic; the module imports it as {sig}, which is not an instance of it"))?;
+            .ok_or_else(|| {
+                format!(
+                    "is generic; the module imports it as {sig}, which is not an instance of it"
+                )
+            })?;
         let call = Arc::clone(&self.call);
         let mut builder = NativeFn::builder(self.name.clone())
             .doc(self.doc.clone())
@@ -504,7 +561,10 @@ impl GenericNative {
         for (k, v) in &self.attrs {
             builder = builder.attr(k.clone(), v.clone());
         }
-        Ok(builder.build_raw(sig.clone(), Box::new(move |host, args| call(&element, host, args))))
+        Ok(builder.build_raw(
+            sig.clone(),
+            Box::new(move |host, args| call(&element, host, args)),
+        ))
     }
 }
 
@@ -603,7 +663,10 @@ impl NativeRegistry {
 
     /// Register a native generic over one type. Its name must not be taken.
     pub fn register_generic(&mut self, native: GenericNative) -> Result<(), DuplicateNative> {
-        if self.natives.contains_key(&native.name) || self.poly.contains_key(&native.name) || self.generic.contains_key(&native.name) {
+        if self.natives.contains_key(&native.name)
+            || self.poly.contains_key(&native.name)
+            || self.generic.contains_key(&native.name)
+        {
             return Err(DuplicateNative(native.name));
         }
         self.generic.insert(native.name.clone(), Arc::new(native));
@@ -660,7 +723,9 @@ impl NativeRegistry {
     /// Natives callable on a value or reference of type `ty` (its methods,
     /// accessors and properties).
     pub fn methods_for<'a>(&'a self, ty: &'a Type) -> impl Iterator<Item = &'a Arc<NativeFn>> {
-        self.natives.values().filter(move |n| n.receiver.as_ref() == Some(ty))
+        self.natives
+            .values()
+            .filter(move |n| n.receiver.as_ref() == Some(ty))
     }
 
     pub fn generation(&self) -> u64 {

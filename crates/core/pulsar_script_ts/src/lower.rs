@@ -1274,7 +1274,12 @@ impl<'a> Cx<'a> {
             BinOp::Add if matches!(ty, Type::Int | Type::Float | Type::Str) => ty.clone(),
             BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem if ty.is_numeric() => ty.clone(),
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge if matches!(ty, Type::Int | Type::Float | Type::Str) => Type::Bool,
-            BinOp::Eq | BinOp::Ne if matches!(ty, Type::Int | Type::Float | Type::Str | Type::Bool | Type::Entity) => Type::Bool,
+            BinOp::Eq | BinOp::Ne
+                if matches!(ty, Type::Int | Type::Float | Type::Str | Type::Bool | Type::Entity | Type::Component(_))
+                    || pulsar_script_vm::TypeRegistry::global().supports_eq(&ty) =>
+            {
+                Type::Bool
+            }
             _ => {
                 self.err(span, format!("this operator does not apply to `{}`{}", crate::declarations::ts_type(&ty), if matches!(ty, Type::Object(_)) { ": use the type's methods (`a.add(b)`, `a.eq(b)`)" } else { "" }));
                 return None;

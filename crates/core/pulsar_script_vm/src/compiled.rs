@@ -36,7 +36,11 @@ use crate::value::Value;
 #[derive(Debug)]
 pub enum Exit {
     /// Call module function `func`; its result goes to `dst`.
-    Call { func: u32, args: Vec<Value>, dst: Option<Reg> },
+    Call {
+        func: u32,
+        args: Vec<Value>,
+        dst: Option<Reg>,
+    },
     Return(Value),
     /// Suspend for this many seconds of game time.
     Wait(f64),

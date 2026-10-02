@@ -58,6 +58,7 @@ pub struct ExportedScript {
     instance: Instance,
     vm: Vm,
     waiting: Vec<(f64, Continuation)>,
+    paused: Vec<(pulsar_script_vm::DebugSnapshot, Continuation)>,
     clock: Arc<dyn ScriptClock>,
     last_tick: Option<f64>,
 }
@@ -70,12 +71,17 @@ impl ExportedScript {
     }
 
     pub fn with_clock(class: &'static str, program: &Program, clock: Arc<dyn ScriptClock>) -> Self {
-        Self { class, instance: program.instantiate(), vm: Vm::new(), waiting: Vec::new(), clock, last_tick: None }
+        Self { class, instance: program.instantiate(), vm: Vm::new(), waiting: Vec::new(), paused: Vec::new(), clock, last_tick: None }
     }
 
     /// Number of suspended calls.
     pub fn waiting_calls(&self) -> usize {
         self.waiting.len()
+    }
+
+    /// Debugger-stopped calls retained until the host issues a debugger command.
+    pub fn paused_calls(&self) -> &[(pulsar_script_vm::DebugSnapshot, Continuation)] {
+        &self.paused
     }
 
     /// The value of variable `name`.
@@ -140,6 +146,7 @@ impl ExportedScript {
         match result {
             Ok(Completion::Returned(_)) => {}
             Ok(Completion::Waiting { seconds, continuation }) => self.waiting.push((now + seconds, continuation)),
+            Ok(Completion::Paused { snapshot, continuation }) => self.paused.push((snapshot, continuation)),
             Err(error) => tracing::error!(class = self.class, "script error: {error}"),
         }
     }

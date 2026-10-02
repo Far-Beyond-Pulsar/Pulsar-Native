@@ -12,12 +12,14 @@ use crate::native::{Host, NativeFn, NativeRegistry};
 pub(crate) fn register(registry: &mut NativeRegistry) {
     crate::events::register(registry);
     crate::migrate::register(registry);
+    crate::latent::register(registry);
     let mut add = |native: NativeFn| {
         if let Err(err) = registry.register(native) {
             tracing::error!("script stdlib: {err}");
         }
     };
-    let pure = |name: &str, category: &str| NativeFn::builder(name).pure().attr("category", category);
+    let pure =
+        |name: &str, category: &str| NativeFn::builder(name).pure().attr("category", category);
 
     // Float math.
     macro_rules! unary {
@@ -43,10 +45,18 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         "math::to_radians" => |x: f64| x.to_radians(),
         "math::to_degrees" => |x: f64| x.to_degrees(),
     );
-    add(pure("math::atan2", "Math").params(["y", "x"]).build(|y: f64, x: f64| y.atan2(x)));
-    add(pure("math::pow", "Math").params(["base", "exp"]).build(|b: f64, e: f64| b.powf(e)));
-    add(pure("math::min", "Math").params(["a", "b"]).build(|a: f64, b: f64| a.min(b)));
-    add(pure("math::max", "Math").params(["a", "b"]).build(|a: f64, b: f64| a.max(b)));
+    add(pure("math::atan2", "Math")
+        .params(["y", "x"])
+        .build(|y: f64, x: f64| y.atan2(x)));
+    add(pure("math::pow", "Math")
+        .params(["base", "exp"])
+        .build(|b: f64, e: f64| b.powf(e)));
+    add(pure("math::min", "Math")
+        .params(["a", "b"])
+        .build(|a: f64, b: f64| a.min(b)));
+    add(pure("math::max", "Math")
+        .params(["a", "b"])
+        .build(|a: f64, b: f64| a.max(b)));
     add(pure("math::clamp", "Math")
         .params(["x", "min", "max"])
         .build(|x: f64, lo: f64, hi: f64| x.max(lo).min(hi)));
@@ -56,21 +66,35 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     add(pure("math::pi", "Math").build(|| std::f64::consts::PI));
 
     // Integer math.
-    add(pure("int::abs", "Math").params(["x"]).build(|x: i64| x.wrapping_abs()));
-    add(pure("int::min", "Math").params(["a", "b"]).build(|a: i64, b: i64| a.min(b)));
-    add(pure("int::max", "Math").params(["a", "b"]).build(|a: i64, b: i64| a.max(b)));
+    add(pure("int::abs", "Math")
+        .params(["x"])
+        .build(|x: i64| x.wrapping_abs()));
+    add(pure("int::min", "Math")
+        .params(["a", "b"])
+        .build(|a: i64, b: i64| a.min(b)));
+    add(pure("int::max", "Math")
+        .params(["a", "b"])
+        .build(|a: i64, b: i64| a.max(b)));
     add(pure("int::clamp", "Math")
         .params(["x", "min", "max"])
         .build(|x: i64, lo: i64, hi: i64| x.max(lo).min(hi)));
 
     // Strings.
-    add(pure("string::len", "String").params(["s"]).build(|s: Arc<str>| s.chars().count() as i64));
+    add(pure("string::len", "String")
+        .params(["s"])
+        .build(|s: Arc<str>| s.chars().count() as i64));
     add(pure("string::contains", "String")
         .params(["s", "pattern"])
         .build(|s: Arc<str>, p: Arc<str>| s.contains(&*p)));
-    add(pure("string::to_upper", "String").params(["s"]).build(|s: Arc<str>| s.to_uppercase()));
-    add(pure("string::to_lower", "String").params(["s"]).build(|s: Arc<str>| s.to_lowercase()));
-    add(pure("string::trim", "String").params(["s"]).build(|s: Arc<str>| s.trim().to_owned()));
+    add(pure("string::to_upper", "String")
+        .params(["s"])
+        .build(|s: Arc<str>| s.to_uppercase()));
+    add(pure("string::to_lower", "String")
+        .params(["s"])
+        .build(|s: Arc<str>| s.to_lowercase()));
+    add(pure("string::trim", "String")
+        .params(["s"])
+        .build(|s: Arc<str>| s.trim().to_owned()));
     add(pure("string::parse_int", "String")
         .params(["s"])
         .build(|s: Arc<str>| s.trim().parse::<i64>().map_err(|e| e.to_string())));
@@ -79,7 +103,11 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
         .build(|s: Arc<str>| s.trim().parse::<f64>().map_err(|e| e.to_string())));
 
     // Logging. Side effects, so not pure.
-    let log = |name: &str| NativeFn::builder(name).attr("category", "Debug").params(["message"]);
+    let log = |name: &str| {
+        NativeFn::builder(name)
+            .attr("category", "Debug")
+            .params(["message"])
+    };
     add(log("log::info").build(|host: &mut Host<'_>, m: Arc<str>| {
         tracing::info!(target: "script", entity = ?host.entity, "{m}");
     }));
@@ -91,7 +119,10 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     }));
 
     // Entities.
-    let reads_world = MethodFlags { side_effect_free: true, deterministic: false };
+    let reads_world = MethodFlags {
+        side_effect_free: true,
+        deterministic: false,
+    };
     add(NativeFn::builder("entity::is_alive")
         .flags(reads_world)
         .attr("category", "Entity")

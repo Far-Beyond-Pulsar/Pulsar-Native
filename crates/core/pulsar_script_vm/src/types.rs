@@ -29,7 +29,9 @@ use serde::{Deserialize, Serialize};
 use crate::value::{MapKey, Object, Value};
 
 /// The type of a register, variable, parameter or return value.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(
+    Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, bincode::Encode, bincode::Decode,
+)]
 #[serde(tag = "kind", content = "name", rename_all = "snake_case")]
 pub enum Type {
     Unit,
@@ -186,7 +188,9 @@ impl TypeBinding {
             script: T::script_type,
             to_value: |any| {
                 // Only called with a `T` (the binding is keyed by T's TypeId).
-                let value = any.downcast_ref::<T>().expect("binding called with its own type");
+                let value = any
+                    .downcast_ref::<T>()
+                    .expect("binding called with its own type");
                 value.clone().into_value()
             },
             from_value: |value| {
@@ -197,8 +201,9 @@ impl TypeBinding {
             // SAFETY (both): upheld by the callers of `TypeBinding::load`/`store`.
             load: |ptr| unsafe { (*ptr.cast::<T>()).clone().into_value() },
             store: |ptr, value| {
-                let value = T::from_value(value)
-                    .ok_or_else(|| format!("expected {}, got {}", T::script_type(), value.kind()))?;
+                let value = T::from_value(value).ok_or_else(|| {
+                    format!("expected {}, got {}", T::script_type(), value.kind())
+                })?;
                 unsafe { *ptr.cast::<T>() = value };
                 Ok(())
             },
@@ -262,7 +267,9 @@ macro_rules! int_value {
         }
     )*};
 }
-int_value!(i8, i16, i32, i64, isize, i128, u8, u16, u32, u64, usize, u128);
+int_value!(
+    i8, i16, i32, i64, isize, i128, u8, u16, u32, u64, usize, u128
+);
 
 impl ScriptValue for f64 {
     fn script_type() -> Type {
@@ -361,9 +368,12 @@ impl<T: ScriptValue, const N: usize> ScriptValue for [T; N] {
     }
     fn from_value(value: &Value) -> Option<Self> {
         match value {
-            Value::List(items) if items.len() == N => {
-                items.iter().map(T::from_value).collect::<Option<Vec<_>>>()?.try_into().ok()
-            }
+            Value::List(items) if items.len() == N => items
+                .iter()
+                .map(T::from_value)
+                .collect::<Option<Vec<_>>>()?
+                .try_into()
+                .ok(),
             _ => None,
         }
     }
@@ -454,7 +464,9 @@ impl ScriptKey for Arc<str> {}
 macro_rules! int_key {
     ($($ty:ty),*) => {$(impl ScriptKey for $ty {})*};
 }
-int_key!(i8, i16, i32, i64, isize, i128, u8, u16, u32, u64, usize, u128);
+int_key!(
+    i8, i16, i32, i64, isize, i128, u8, u16, u32, u64, usize, u128
+);
 
 macro_rules! map_value {
     ($map:ident $(, $bound:path)*) => {
@@ -527,7 +539,10 @@ impl<T: Clone + Send + Sync + 'static> ScriptValue for Obj<T> {
         }
     }
     fn into_value(self) -> Value {
-        match TypeRegistry::global().objects_by_rust.get(&TypeId::of::<T>()) {
+        match TypeRegistry::global()
+            .objects_by_rust
+            .get(&TypeId::of::<T>())
+        {
             Some(name) => Value::Object(Object::new(name, self.0)),
             None => Value::Object(Object::new(std::any::type_name::<T>(), self.0)),
         }
@@ -669,13 +684,18 @@ impl TypeBinding {
     /// Binding for a registered value type. Used by `script_value_type!`.
     pub fn object<T: Clone + Send + Sync + 'static>(name: &'static str) -> Self {
         fn script<T: 'static>() -> Type {
-            match TypeRegistry::global().objects_by_rust.get(&TypeId::of::<T>()) {
+            match TypeRegistry::global()
+                .objects_by_rust
+                .get(&TypeId::of::<T>())
+            {
                 Some(name) => Type::Object((*name).to_owned()),
                 None => Type::Object(std::any::type_name::<T>().to_owned()),
             }
         }
         fn to_value<T: Clone + Send + Sync + 'static>(any: &dyn Any) -> Value {
-            let value = any.downcast_ref::<T>().expect("binding called with its own type");
+            let value = any
+                .downcast_ref::<T>()
+                .expect("binding called with its own type");
             let name = TypeRegistry::global()
                 .objects_by_rust
                 .get(&TypeId::of::<T>())
@@ -690,8 +710,18 @@ impl TypeBinding {
                 Value::Object(obj) => obj
                     .downcast_ref::<T>()
                     .map(|v| Box::new(v.clone()) as Box<dyn Any>)
-                    .ok_or_else(|| format!("expected {}, got {}", std::any::type_name::<T>(), obj.type_name())),
-                other => Err(format!("expected {}, got {}", std::any::type_name::<T>(), other.kind())),
+                    .ok_or_else(|| {
+                        format!(
+                            "expected {}, got {}",
+                            std::any::type_name::<T>(),
+                            obj.type_name()
+                        )
+                    }),
+                other => Err(format!(
+                    "expected {}, got {}",
+                    std::any::type_name::<T>(),
+                    other.kind()
+                )),
             }
         }
         let _ = name;
@@ -704,7 +734,9 @@ impl TypeBinding {
             load: |ptr| to_value::<T>(unsafe { &*ptr.cast::<T>() }),
             store: |ptr, value| {
                 let boxed = from_value::<T>(value)?;
-                let value = *boxed.downcast::<T>().expect("from_value returns its own type");
+                let value = *boxed
+                    .downcast::<T>()
+                    .expect("from_value returns its own type");
                 unsafe { *ptr.cast::<T>() = value };
                 Ok(())
             },
@@ -734,6 +766,7 @@ pub struct TypeRegistry {
     components_by_rust: HashMap<TypeId, &'static str>,
     objects: HashMap<&'static str, &'static ValueTypeRegistration>,
     objects_by_rust: HashMap<TypeId, &'static str>,
+    ops: HashMap<&'static str, &'static ValueOpsRegistration>,
 }
 
 static GLOBAL: LazyLock<TypeRegistry> = LazyLock::new(TypeRegistry::collect);
@@ -750,20 +783,45 @@ impl TypeRegistry {
             components_by_rust: HashMap::new(),
             objects: HashMap::new(),
             objects_by_rust: HashMap::new(),
+            ops: HashMap::new(),
         };
         macro_rules! builtin {
             ($($ty:ty),*) => {$(
                 registry.by_rust.insert(TypeId::of::<$ty>(), TypeBinding::builtin::<$ty>());
             )*};
         }
-        builtin!((), bool, i8, i16, i32, i64, isize, u8, u16, u32, u64, usize, f32, f64, String, Arc<str>, Entity);
+        builtin!(
+            (),
+            bool,
+            i8,
+            i16,
+            i32,
+            i64,
+            isize,
+            u8,
+            u16,
+            u32,
+            u64,
+            usize,
+            f32,
+            f64,
+            String,
+            Arc<str>,
+            Entity
+        );
 
         for reg in inventory::iter::<ComponentRegistration> {
-            let binding = ComponentBinding { name: reg.name, type_id: reg.ty.type_id(), id: reg.id };
+            let binding = ComponentBinding {
+                name: reg.name,
+                type_id: reg.ty.type_id(),
+                id: reg.id,
+            };
             if registry.components.insert(reg.name, binding).is_some() {
                 tracing::error!("script component name `{}` registered twice", reg.name);
             }
-            registry.components_by_rust.insert(binding.type_id, reg.name);
+            registry
+                .components_by_rust
+                .insert(binding.type_id, reg.name);
         }
         // Bulk providers fill in whatever explicit registrations did not.
         for provider in inventory::iter::<ComponentProvider> {
@@ -774,7 +832,11 @@ impl TypeRegistry {
                 {
                     continue;
                 }
-                let binding = ComponentBinding { name: provided.name, type_id, id: provided.id };
+                let binding = ComponentBinding {
+                    name: provided.name,
+                    type_id,
+                    id: provided.id,
+                };
                 registry.components.insert(provided.name, binding);
                 registry.components_by_rust.insert(type_id, provided.name);
             }
@@ -785,6 +847,14 @@ impl TypeRegistry {
             }
             registry.objects_by_rust.insert(reg.ty.type_id(), reg.name);
             registry.by_rust.insert(reg.ty.type_id(), (reg.binding)());
+        }
+        for ops in inventory::iter::<ValueOpsRegistration> {
+            if registry.ops.insert(ops.name, ops).is_some() {
+                tracing::error!(
+                    "script value type `{}` has two sets of equality and display hooks",
+                    ops.name
+                );
+            }
         }
         registry
     }
@@ -819,14 +889,21 @@ impl TypeRegistry {
         self.objects.keys().copied()
     }
 
-    pub fn value_type_registrations(&self) -> impl Iterator<Item = &'static ValueTypeRegistration> + '_ {
+    pub fn value_type_registrations(
+        &self,
+    ) -> impl Iterator<Item = &'static ValueTypeRegistration> + '_ {
         self.objects.values().copied()
     }
 
     /// Decode the literal `json` of value type `ty` (a [`Constant::Value`](crate::Constant)).
     pub fn decode_value(&self, ty: &str, json: &str) -> Result<Value, String> {
-        let registration = self.objects.get(ty).ok_or_else(|| format!("unknown value type `{ty}`"))?;
-        let decode = registration.decode.ok_or_else(|| format!("value type `{ty}` has no literal form"))?;
+        let registration = self
+            .objects
+            .get(ty)
+            .ok_or_else(|| format!("unknown value type `{ty}`"))?;
+        let decode = registration
+            .decode
+            .ok_or_else(|| format!("value type `{ty}` has no literal form"))?;
         decode(json).map(Value::Object)
     }
 
@@ -834,8 +911,13 @@ impl TypeRegistry {
     /// [`decode_value`](Self::decode_value)).
     pub fn encode_value(&self, object: &Object) -> Result<String, String> {
         let name = object.type_name();
-        let registration = self.objects.get(name).ok_or_else(|| format!("unknown value type `{name}`"))?;
-        let encode = registration.encode.ok_or_else(|| format!("value type `{name}` cannot be saved"))?;
+        let registration = self
+            .objects
+            .get(name)
+            .ok_or_else(|| format!("unknown value type `{name}`"))?;
+        let encode = registration
+            .encode
+            .ok_or_else(|| format!("value type `{name}` cannot be saved"))?;
         encode(object)
     }
 
@@ -876,9 +958,110 @@ impl TypeRegistry {
                 self.default_value(value)?;
                 Value::Map(Arc::new(Default::default()))
             }
-            Type::Tuple(items) => {
-                Value::Tuple(items.iter().map(|item| self.default_value(item)).collect::<Option<Vec<_>>>()?.into())
+            Type::Tuple(items) => Value::Tuple(
+                items
+                    .iter()
+                    .map(|item| self.default_value(item))
+                    .collect::<Option<Vec<_>>>()?
+                    .into(),
+            ),
+        })
+    }
+}
+
+/// Equality and printing for a registered value type, so scripts can use
+/// `==`, `!=` and string conversion on it. Without these a value type does
+/// neither (comparing it is refused at link time, and a value that is
+/// compared anyway is never equal). Submitted by
+/// [`script_value_ops!`](crate::script_value_ops).
+pub struct ValueOpsRegistration {
+    /// The type's script name, as given to `script_value_type!`.
+    pub name: &'static str,
+    pub eq: Option<fn(&Object, &Object) -> bool>,
+    pub display: Option<fn(&Object) -> String>,
+}
+
+inventory::collect!(ValueOpsRegistration);
+
+/// Give value type `$ty` (already registered with `script_value_type!`)
+/// script equality and/or printing:
+/// `script_value_ops!(Vec3, "Vec3", eq = |a, b| a == b, display = |v| v.to_string())`.
+#[macro_export]
+macro_rules! script_value_ops {
+    ($ty:ty, $name:expr $(, eq = $eq:expr)? $(, display = $display:expr)? $(,)?) => {
+        $crate::__private::inventory::submit! {
+            $crate::types::ValueOpsRegistration {
+                name: $name,
+                eq: $crate::script_value_ops!(@eq $ty $(, $eq)?),
+                display: $crate::script_value_ops!(@display $ty $(, $display)?),
+            }
+        }
+    };
+    (@eq $ty:ty) => { None };
+    (@eq $ty:ty, $eq:expr) => {
+        Some(|a, b| {
+            let eq: fn(&$ty, &$ty) -> bool = $eq;
+            match (a.downcast_ref::<$ty>(), b.downcast_ref::<$ty>()) {
+                (Some(a), Some(b)) => eq(a, b),
+                _ => false,
             }
         })
+    };
+    (@display $ty:ty) => { None };
+    (@display $ty:ty, $display:expr) => {
+        Some(|v| {
+            let display: fn(&$ty) -> String = $display;
+            v.downcast_ref::<$ty>().map(display).unwrap_or_default()
+        })
+    };
+}
+
+impl TypeRegistry {
+    /// Whether `==` is defined for values of `ty`: every part of it, down
+    /// to value types, has equality.
+    pub fn supports_eq(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Object(name) => self
+                .ops
+                .get(name.as_str())
+                .is_some_and(|ops| ops.eq.is_some()),
+            Type::List(element) => self.supports_eq(element),
+            Type::Map(key, value) => self.supports_eq(key) && self.supports_eq(value),
+            Type::Tuple(items) => items.iter().all(|item| self.supports_eq(item)),
+            _ => true,
+        }
+    }
+
+    /// Whether string conversion is defined for `ty`, as for
+    /// [`supports_eq`](Self::supports_eq).
+    pub fn supports_display(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Object(name) => self
+                .ops
+                .get(name.as_str())
+                .is_some_and(|ops| ops.display.is_some()),
+            Type::List(element) => self.supports_display(element),
+            Type::Map(key, value) => self.supports_display(key) && self.supports_display(value),
+            Type::Tuple(items) => items.iter().all(|item| self.supports_display(item)),
+            _ => true,
+        }
+    }
+
+    /// `a == b` for two objects: `false` when the type has no equality.
+    pub fn objects_equal(&self, a: &Object, b: &Object) -> bool {
+        a.type_name() == b.type_name()
+            && self
+                .ops
+                .get(a.type_name())
+                .and_then(|ops| ops.eq)
+                .is_some_and(|eq| eq(a, b))
+    }
+
+    /// An object's text: its registered display, or just the type's name.
+    pub fn display_object(&self, object: &Object) -> String {
+        match self.ops.get(object.type_name()).and_then(|ops| ops.display) {
+            Some(display) => display(object),
+            None => object.type_name().to_owned(),
+        }
     }
 }

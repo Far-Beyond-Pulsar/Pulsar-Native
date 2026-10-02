@@ -1,10 +1,11 @@
 use crate::{
-    FlamegraphPanel, FlamegraphView, InstrumentationCollector, StatisticsPanel, TraceData,
+    FlamegraphPanel, FlamegraphView, InstrumentationCollector, ScriptsPanel, StatisticsPanel,
+    TraceData,
 };
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use rust_i18n::t;
 use profiling::remote::{TargetConnection, TargetInfo};
+use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
     button::Button,
@@ -27,6 +28,7 @@ pub struct FlamegraphWindow {
     db_connection: Option<rusqlite::Connection>,
     flamegraph_panel: Option<Entity<FlamegraphPanel>>,
     statistics_panel: Option<Entity<StatisticsPanel>>,
+    scripts_panel: Option<Entity<ScriptsPanel>>,
     resizable_state: Entity<ResizableState>,
     /// "Uncap frame rate while recording": lifts the engine's frame-rate target and
     /// vsync for the duration of the next recording.
@@ -76,13 +78,22 @@ impl FlamegraphWindow {
             let resizable_state = ResizableState::new(cx);
             let refresh = cx.spawn(async move |this, cx| loop {
                 cx.background_executor().timer(TARGET_REFRESH).await;
-                let listing = cx.background_executor().spawn(async { start_screen::scan() }).await;
-                if this.update(cx, |window: &mut FlamegraphWindow, cx| window.apply_scan(listing, cx)).is_err() {
+                let listing = cx
+                    .background_executor()
+                    .spawn(async { start_screen::scan() })
+                    .await;
+                if this
+                    .update(cx, |window: &mut FlamegraphWindow, cx| {
+                        window.apply_scan(listing, cx)
+                    })
+                    .is_err()
+                {
                     break;
                 }
             });
             let search = cx.new(|cx| {
-                ui::input::InputState::new(window, cx).placeholder(t!("Flamegraph.SearchTargets").to_string())
+                ui::input::InputState::new(window, cx)
+                    .placeholder(t!("Flamegraph.SearchTargets").to_string())
             });
             cx.observe(&search, |_, _, cx| cx.notify()).detach();
             let (targets, recent_sessions) = start_screen::scan();
@@ -96,6 +107,7 @@ impl FlamegraphWindow {
                 db_connection: None,
                 flamegraph_panel: None,
                 statistics_panel: None,
+                scripts_panel: None,
                 resizable_state,
                 uncap_frame_rate: false,
                 targets,
@@ -125,7 +137,11 @@ impl FlamegraphWindow {
         gpui::render_stats::set_uncapped_presentation(uncapped);
     }
 
-    fn apply_scan(&mut self, (targets, sessions): (Vec<TargetInfo>, Vec<SessionFile>), cx: &mut Context<Self>) {
+    fn apply_scan(
+        &mut self,
+        (targets, sessions): (Vec<TargetInfo>, Vec<SessionFile>),
+        cx: &mut Context<Self>,
+    ) {
         self.recent_sessions = sessions;
         self.last_refresh = std::time::Instant::now();
         self.set_targets(targets, cx);
@@ -183,7 +199,8 @@ impl FlamegraphWindow {
                     self.uncap_frame_rate,
                 ),
                 Err(error) => {
-                    self.start_error = Some(t!("Flamegraph.StartFailed", error => error.to_string()).to_string());
+                    self.start_error =
+                        Some(t!("Flamegraph.StartFailed", error => error.to_string()).to_string());
                     _cx.notify();
                     return;
                 }
@@ -227,7 +244,9 @@ impl FlamegraphWindow {
         if let Some(secs) = self.auto_stop_secs {
             let session = self.recording_session;
             _cx.spawn(async move |this, cx| {
-                cx.background_executor().timer(std::time::Duration::from_secs(secs)).await;
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs(secs))
+                    .await;
                 let _ = this.update(cx, |window: &mut FlamegraphWindow, cx| {
                     if window.is_profiling && window.recording_session == session {
                         window.stop_profiling(cx);
@@ -491,6 +510,7 @@ impl Render for FlamegraphWindow {
             self.flamegraph_panel = Some(cx.new(|cx| FlamegraphPanel::new(self.view.clone(), cx)));
             self.statistics_panel =
                 Some(cx.new(|cx| StatisticsPanel::new(self.trace_data.clone(), cx)));
+            self.scripts_panel = Some(cx.new(|cx| ScriptsPanel::new(self.trace_data.clone(), cx)));
         }
 
         let theme = cx.theme();
@@ -661,6 +681,13 @@ impl Render for FlamegraphWindow {
                                     resizable_panel()
                                         .when_some(self.statistics_panel.clone(), |panel, stats| {
                                             panel.child(stats)
+                                        })
+                                        .size(px(400.0)),
+                                )
+                                .child(
+                                    resizable_panel()
+                                        .when_some(self.scripts_panel.clone(), |panel, scripts| {
+                                            panel.child(scripts)
                                         })
                                         .size(px(400.0)),
                                 ),

@@ -71,8 +71,8 @@ use std::sync::{Arc, Mutex};
 use engine_backend::scene::{ObjectType, SceneWorldExt, SpawnObject, Transform};
 use pulsar_class::{ClassEntry, ClassId, ClassInstance, ClassRegistry, LocalTransform};
 use pulsar_scenedb::{ChangeCursor, ChangeRead, ComponentChange, Entity, World};
-use pulsar_script_runtime::{RuntimeError, ScriptRuntime};
-use pulsar_script_vm::LibraryId;
+use pulsar_script_runtime::{InstanceRuntimeStats, RuntimeError, ScriptRuntime};
+use pulsar_script_vm::{DebugCommand, DebugSnapshot, LibraryId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -208,7 +208,11 @@ fn project_native_library_artifacts(root: &Path) -> Vec<PathBuf> {
     // Debug and release outputs register identical native names. Load only
     // the profile matching the running game; use the other when that crate
     // has not yet produced the preferred profile.
-    let preferred = if cfg!(debug_assertions) { "debug" } else { "release" };
+    let preferred = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
     candidates.sort_by(|(left_profile, left_path), (right_profile, right_path)| {
         let left_preferred = left_profile == preferred;
         let right_preferred = right_profile == preferred;
@@ -531,6 +535,64 @@ impl ScriptDriver {
         &mut self.runtime
     }
 
+    /// Per-instance lifetime instruction counters for the live script runtime.
+    pub fn runtime_stats(&self) -> Vec<InstanceRuntimeStats> {
+        self.runtime.instance_stats()
+    }
+
+    /// Set a bytecode breakpoint on one live script instance.
+    pub fn set_breakpoint(
+        &mut self,
+        instance: &str,
+        function: impl Into<String>,
+        pc: usize,
+    ) -> Result<(), RuntimeError> {
+        self.runtime.set_breakpoint(instance, function, pc)
+    }
+
+    /// Set breakpoints on all instructions emitted from a graph node.
+    pub fn set_node_breakpoint(
+        &mut self,
+        instance: &str,
+        function: &str,
+        file: &str,
+        node: &str,
+    ) -> Result<usize, RuntimeError> {
+        self.runtime
+            .set_node_breakpoint(instance, function, file, node)
+    }
+
+    /// Remove one bytecode breakpoint from a live script instance.
+    pub fn remove_breakpoint(
+        &mut self,
+        instance: &str,
+        function: &str,
+        pc: usize,
+    ) -> Result<bool, RuntimeError> {
+        self.runtime.remove_breakpoint(instance, function, pc)
+    }
+
+    /// Snapshot paused script calls, by instance id and in arrival order.
+    pub fn take_debug_events(&mut self) -> Vec<(String, DebugSnapshot)> {
+        self.runtime.take_debug_events()
+    }
+
+    /// The stop snapshot for one paused call on `instance`.
+    pub fn debug_snapshot(&self, instance: &str, index: usize) -> Option<&DebugSnapshot> {
+        self.runtime.debug_snapshot(instance, index)
+    }
+
+    /// Resume one paused call with a debugger command.
+    pub fn resume_paused(
+        &mut self,
+        instance: &str,
+        index: usize,
+        command: DebugCommand,
+        world: &mut World,
+    ) -> Result<(), RuntimeError> {
+        self.runtime.resume_paused(instance, index, command, world)
+    }
+
     pub fn registry(&self) -> &ClassRegistry {
         &self.registry
     }
@@ -642,8 +704,7 @@ impl ScriptDriver {
             match self.runtime.load_library(&path) {
                 Ok((id, report)) => {
                     log_relink_report(report);
-                    self.native_libraries
-                        .insert(key, (id, path, modified));
+                    self.native_libraries.insert(key, (id, path, modified));
                 }
                 Err(error) => {
                     tracing::warn!(path = %path.display(), "could not load project native library: {error}")
@@ -669,12 +730,12 @@ impl ScriptDriver {
             };
             let key = native_library_key(&native_root, &path);
             seen.insert(key.clone());
-            let Some((id, previous_path, previous)) = self.native_libraries.get(&key).cloned() else {
+            let Some((id, previous_path, previous)) = self.native_libraries.get(&key).cloned()
+            else {
                 match self.runtime.load_library(&path) {
                     Ok((id, report)) => {
                         log_relink_report(report);
-                        self.native_libraries
-                            .insert(key, (id, path, modified));
+                        self.native_libraries.insert(key, (id, path, modified));
                     }
                     Err(error) => {
                         tracing::warn!(path = %path.display(), "could not load project native library: {error}")
@@ -689,14 +750,18 @@ impl ScriptDriver {
                 self.native_libraries.remove(&key);
                 match self.runtime.unload_library(id) {
                     Ok(report) => log_relink_report(report),
-                    Err(error) => tracing::warn!(path = %previous_path.display(), "could not unload previous native library profile: {error}"),
+                    Err(error) => {
+                        tracing::warn!(path = %previous_path.display(), "could not unload previous native library profile: {error}")
+                    }
                 }
                 match self.runtime.load_library(&path) {
                     Ok((id, report)) => {
                         log_relink_report(report);
                         self.native_libraries.insert(key, (id, path, modified));
                     }
-                    Err(error) => tracing::warn!(path = %path.display(), "could not load preferred native library profile: {error}"),
+                    Err(error) => {
+                        tracing::warn!(path = %path.display(), "could not load preferred native library profile: {error}")
+                    }
                 }
                 continue;
             }
@@ -706,8 +771,7 @@ impl ScriptDriver {
             match self.runtime.reload_library(id) {
                 Ok(report) => {
                     log_relink_report(report);
-                    self.native_libraries
-                        .insert(key, (id, path, modified));
+                    self.native_libraries.insert(key, (id, path, modified));
                 }
                 Err(error) => {
                     tracing::warn!(path = %path.display(), "could not reload project native library: {error}")
@@ -724,7 +788,9 @@ impl ScriptDriver {
             self.native_libraries.remove(&key);
             match self.runtime.unload_library(id) {
                 Ok(report) => log_relink_report(report),
-                Err(error) => tracing::warn!(path = %path.display(), "could not unload removed project native library: {error}"),
+                Err(error) => {
+                    tracing::warn!(path = %path.display(), "could not unload removed project native library: {error}")
+                }
             }
         }
     }
