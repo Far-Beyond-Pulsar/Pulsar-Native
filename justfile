@@ -137,12 +137,3 @@ bump-plugin-pins rev="HEAD":
 check-plugin-pins:
     bash scripts/plugin-pins.sh check
 
-# ── Pulsar-Reflection drift (#844) ────────────────────────────────────────────
-# The vendored copy's delta from the pinned upstream rev is committed as
-# crates/third-party/pulsar-reflection/UPSTREAM.patch; see the script header
-# for how to bump upstream.
-reflection-drift-check:
-    bash scripts/reflection-drift.sh check
-
-reflection-drift-update:
-    bash scripts/reflection-drift.sh update

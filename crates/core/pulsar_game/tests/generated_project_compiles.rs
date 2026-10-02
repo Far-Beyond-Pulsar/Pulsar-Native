@@ -131,13 +131,12 @@ fn exported_class_variables_are_per_actor_in_debug_and_release() {
     // Reflection dependency. The generated project's ordinary patch table is
     // keyed by the normalized URL, so offline Cargo otherwise asks for a Git
     // revision that is not cached. Patch that temporary-project source to the
-    // exact workspace crates already used to build this test.
-    let reflection = local_path("../../../crates/third-party/pulsar-reflection/pulsar_reflection");
-    let reflection_derive = local_path("../../../crates/third-party/pulsar-reflection/pulsar_reflection_derive");
+    // same Pulsar-Reflection rev the workspace pins.
+    let rev = "7ffd1932970310681e82d204c8f7a59eb7d67247";
     let generated_manifest = project.path().join("Cargo.toml");
     let mut manifest = std::fs::read_to_string(&generated_manifest).expect("generated project manifest");
     manifest.push_str(&format!(
-        "\n[patch.\"https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection\"]\npulsar_reflection = {{ path = \"{reflection}\" }}\npulsar_reflection_derive = {{ path = \"{reflection_derive}\" }}\n"
+        "\n[patch.\"https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection\"]\npulsar_reflection = {{ git = \"https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection\", rev = \"{rev}\" }}\npulsar_reflection_derive = {{ git = \"https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection\", rev = \"{rev}\" }}\n"
     ));
     std::fs::write(&generated_manifest, manifest).expect("patch temporary manifest");
 
@@ -219,15 +218,6 @@ fn cargo_run_generated_probe(project_dir: &Path, profile: &str) -> std::io::Resu
         cmd.arg("--release");
     }
     cmd.current_dir(project_dir).env("CARGO_TARGET_DIR", target_dir).output()
-}
-
-fn local_path(relative_to_game_crate: &str) -> String {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(relative_to_game_crate)
-        .canonicalize()
-        .expect("workspace dependency path")
-        .to_string_lossy()
-        .replace('\\', "/")
 }
 
 fn cargo_exe() -> std::path::PathBuf {
