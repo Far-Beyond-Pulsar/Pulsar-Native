@@ -429,6 +429,9 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     // vary, so compare it without whitespace.
     let intrinsic = args_str.split_whitespace().collect::<String>().contains("intrinsic:true");
     let capability = native_capability(&args_str, &category_str);
+    let explicit_outputs: Vec<String> = extract_string_value(&args_str, "outputs")
+        .map(|list| list.split(',').filter_map(|pair| Some(pair.split(':').next()?.trim().to_owned()).filter(|n| !n.is_empty())).collect())
+        .unwrap_or_default();
     let script_native = if intrinsic {
         quote! {}
     } else {
@@ -440,6 +443,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
             &docs.join("\n"),
             args_str.contains("wasm_safe : false") || args_str.contains("wasm_safe:false"),
             capability.as_deref(),
+            &explicit_outputs,
         )
     };
 
@@ -566,18 +570,87 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
 /// Types a `#[blueprint]` function may use (by value) to also become a
 /// script VM native. Anything else keeps the node Blueprint-only.
 const SCRIPT_NATIVE_TYPES: &[&str] = &[
-    "bool", "i8", "i16", "i32", "i64", "isize", "u8", "u16", "u32", "u64", "usize", "f32", "f64",
+    "bool", "i8", "i16", "i32", "i64", "isize", "i128", "u8", "u16", "u32", "u64", "usize", "u128", "f32", "f64",
     "String",
 ];
 
+/// Types usable as a map key in a script native.
+const SCRIPT_KEY_TYPES: &[&str] = &[
+    "bool", "i8", "i16", "i32", "i64", "isize", "i128", "u8", "u16", "u32", "u64", "usize", "u128", "String",
+];
+
+fn is_ident_in(ty: &syn::Type, names: &[&str]) -> bool {
+    matches!(ty, syn::Type::Path(path) if path.path.get_ident().is_some_and(|i| names.contains(&i.to_string().as_str())))
+}
+
+/// The generic arguments of `Name<..>`, when `ty` is that path.
+fn generic_args<'t>(ty: &'t syn::Type, name: &str) -> Option<Vec<&'t syn::Type>> {
+    let syn::Type::Path(path) = ty else { return None };
+    let segment = path.path.segments.last()?;
+    if path.qself.is_some() || segment.ident != name {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else { return None };
+    args.args
+        .iter()
+        .map(|arg| match arg {
+            syn::GenericArgument::Type(ty) => Some(ty),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Whether a value of `ty` is a script value: a scalar, `String`, `()`, an `Option`, a
+/// `Vec`, fixed array, non-empty tuple (up to six) or `HashMap`/`BTreeMap`
+/// (keyed by a scalar or `String`) of script values.
 fn is_script_native_type(ty: &syn::Type) -> bool {
     match ty {
-        syn::Type::Path(path) => path
-            .path
-            .get_ident()
-            .is_some_and(|ident| SCRIPT_NATIVE_TYPES.contains(&ident.to_string().as_str())),
-        syn::Type::Tuple(tuple) => tuple.elems.is_empty(),
+        syn::Type::Path(_) if is_ident_in(ty, SCRIPT_NATIVE_TYPES) => true,
+        syn::Type::Path(_) => {
+            if let Some([element]) = generic_args(ty, "Vec").as_deref() {
+                return is_script_native_type(element);
+            }
+            if let Some([item]) = generic_args(ty, "Option").as_deref() {
+                return is_script_native_type(item);
+            }
+            for set in ["HashSet", "BTreeSet"] {
+                if let Some([key]) = generic_args(ty, set).as_deref() {
+                    return is_ident_in(key, SCRIPT_KEY_TYPES);
+                }
+            }
+            for map in ["HashMap", "BTreeMap"] {
+                if let Some([key, value]) = generic_args(ty, map).as_deref() {
+                    return is_ident_in(key, SCRIPT_KEY_TYPES) && is_script_native_type(value);
+                }
+            }
+            false
+        }
+        syn::Type::Array(array) => is_script_native_type(&array.elem),
+        syn::Type::Tuple(tuple) => tuple.elems.len() <= 6 && tuple.elems.iter().all(is_script_native_type),
+        syn::Type::Paren(paren) => is_script_native_type(&paren.elem),
         _ => false,
+    }
+}
+
+/// How a parameter of `ty` is received: the owned script type the native
+/// slot holds, and whether the function borrows it (`&str`, `&[T]`,
+/// `&Vec<T>`, `&[T; N]`, `&HashMap<..>`). `None`: not representable.
+fn native_slot(ty: &syn::Type) -> Option<(syn::Type, bool)> {
+    if is_script_native_type(ty) {
+        return Some((ty.clone(), false));
+    }
+    let syn::Type::Reference(reference) = ty else { return None };
+    if reference.mutability.is_some() {
+        return None;
+    }
+    match &*reference.elem {
+        syn::Type::Path(path) if path.path.is_ident("str") => Some((syn::parse_quote!(::std::string::String), true)),
+        syn::Type::Slice(slice) if is_script_native_type(&slice.elem) => {
+            let element = &slice.elem;
+            Some((syn::parse_quote!(::std::vec::Vec<#element>), true))
+        }
+        owned if is_script_native_type(owned) => Some((owned.clone(), true)),
+        _ => None,
     }
 }
 
@@ -675,13 +748,8 @@ fn control_flow_selector(
         let FnArg::Typed(typed) = arg else { return quote! {} };
         let Pat::Ident(ident) = &*typed.pat else { return quote! {} };
         let pat = &ident.ident;
-        let (slot_ty, pass): (syn::Type, proc_macro2::TokenStream) = if is_str_ref(&typed.ty) {
-            (syn::parse_quote!(::std::string::String), quote! { &__bp_arg })
-        } else if is_script_native_type(&typed.ty) {
-            ((*typed.ty).clone(), quote! { __bp_arg })
-        } else {
-            return quote! {};
-        };
+        let Some((slot_ty, borrowed)) = native_slot(&typed.ty) else { return quote! {} };
+        let pass = if borrowed { quote! { &__bp_arg } } else { quote! { __bp_arg } };
         let ty = &typed.ty;
         fn_params.push(quote! { #pat: #ty });
         sig_params.push(quote! {
@@ -764,16 +832,13 @@ fn control_flow_selector(
     }
 }
 
-fn is_str_ref(ty: &syn::Type) -> bool {
-    matches!(ty, syn::Type::Reference(r) if r.mutability.is_none()
-        && matches!(&*r.elem, syn::Type::Path(p) if p.path.is_ident("str")))
-}
-
 /// Register a pure or plain function node as the script VM native
 /// `std::<name>` (feature `script-natives`), when its signature is
-/// representable: non-generic, at most six parameters, every parameter a
-/// scalar, `String` or `&str`, and the return type a scalar or `String`. Control-flow and event nodes are
-/// compiler intrinsics, not natives.
+/// representable: non-generic, at most six parameters, every parameter and
+/// the result a script value (scalars, `String`, `Vec`, arrays, tuples,
+/// maps and `Option` of those, `Result<_, String>` as a result; `&str`,
+/// `&[T]` and other borrows as parameters). Control-flow and event nodes
+/// are compiler intrinsics, not natives.
 fn script_native_registration(
     input: &ItemFn,
     name: &str,
@@ -782,6 +847,7 @@ fn script_native_registration(
     doc: &str,
     native_only: bool,
     capability: Option<&str>,
+    explicit_outputs: &[String],
 ) -> proc_macro2::TokenStream {
     if node_type == "control_flow" && input.sig.generics.params.is_empty() {
         return control_flow_selector(input, name, category, doc, native_only, capability);
@@ -799,27 +865,48 @@ fn script_native_registration(
         let FnArg::Typed(typed) = arg else { return quote! {} };
         let Pat::Ident(ident) = &*typed.pat else { return quote! {} };
         let arg_ident = quote::format_ident!("a{index}");
-        if is_str_ref(&typed.ty) {
-            closure_params.push(quote! { #arg_ident: ::std::string::String });
-            call_args.push(quote! { &#arg_ident });
-        } else if is_script_native_type(&typed.ty) {
-            let ty = &typed.ty;
-            closure_params.push(quote! { #arg_ident: #ty });
-            call_args.push(quote! { #arg_ident });
-        } else {
-            return quote! {};
-        }
+        let Some((slot_ty, borrowed)) = native_slot(&typed.ty) else { return quote! {} };
+        closure_params.push(quote! { #arg_ident: #slot_ty });
+        call_args.push(if borrowed { quote! { &#arg_ident } } else { quote! { #arg_ident } });
         params.push(ident.ident.to_string().trim_start_matches('_').to_string());
     }
     if params.len() > 6 {
         return quote! {};
     }
+    // A `Result<T, String>` result is kept as a value (`Outcome`); every
+    // other result is a script value as it stands.
+    let mut wrap_outcome = false;
+    let mut output_names: Vec<String> = Vec::new();
     if let ReturnType::Type(_, ty) = &input.sig.output {
-        if !is_script_native_type(ty) {
+        let arity = match &**ty {
+            syn::Type::Tuple(tuple) => tuple.elems.len(),
+            _ => 0,
+        };
+        if let Some([ok, err]) = generic_args(ty, "Result").as_deref() {
+            if !is_script_native_type(ok) || !is_ident_in(err, &["String"]) {
+                return quote! {};
+            }
+            wrap_outcome = true;
+            output_names = ["ok", "value", "error"].map(String::from).to_vec();
+        } else if !is_script_native_type(ty) {
             return quote! {};
+        } else if generic_args(ty, "Option").is_some() {
+            output_names = ["present", "value"].map(String::from).to_vec();
+        }
+        // Named output pins, when they match a tuple result element for element.
+        if arity > 0 && explicit_outputs.len() == arity {
+            output_names = explicit_outputs.to_vec();
         }
     }
+    let outputs_attr = if output_names.is_empty() {
+        quote! {}
+    } else {
+        let joined = output_names.join(",");
+        quote! { .attr("outputs", #joined) }
+    };
     let fn_ident = &input.sig.ident;
+    let call = quote! { #fn_ident(#(#call_args),*) };
+    let call = if wrap_outcome { quote! { ::pulsar_script_vm::Outcome(#call) } } else { call };
     let native_name = format!("std::{name}");
     let pure = if node_type == "pure" { quote! { .side_effect_free() } } else { quote! {} };
     let cfg = if native_only {
@@ -837,7 +924,8 @@ fn script_native_registration(
                     #capability
                     .params::<&str>([#(#params),*])
                     #pure
-                    .build(|#(#closure_params),*| #fn_ident(#(#call_args),*)),
+                    #outputs_attr
+                    .build(|#(#closure_params),*| #call),
             }
         }
     }

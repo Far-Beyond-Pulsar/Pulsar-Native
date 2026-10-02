@@ -206,6 +206,14 @@ impl<'a> Cx<'a> {
             TSType::TSStringKeyword(_) => Some(Type::Str),
             TSType::TSVoidKeyword(_) => Some(Type::Unit),
             TSType::TSParenthesizedType(p) => self.resolve_type(&p.type_annotation),
+            TSType::TSArrayType(array) => Some(Type::list(self.resolve_type(&array.element_type)?)),
+            TSType::TSTupleType(tuple) => {
+                let mut items = Vec::new();
+                for element in &tuple.element_types {
+                    items.push(self.resolve_type(element.to_ts_type())?);
+                }
+                Some(Type::Tuple(items))
+            }
             TSType::TSTypeReference(reference) => {
                 let TSTypeName::IdentifierReference(name) = &reference.type_name else {
                     self.err(span, "qualified type names are not supported");
@@ -217,6 +225,19 @@ impl<'a> Cx<'a> {
                     "int" => Some(Type::Int),
                     "float" => Some(Type::Float),
                     "Entity" => Some(Type::Entity),
+                    "Map" => {
+                        let args: Vec<_> = reference.type_arguments.iter().flat_map(|a| a.params.iter()).collect();
+                        let [key, value] = args[..] else {
+                            self.err(span, "`Map` takes a key and a value type: `Map<string, int>`");
+                            return None;
+                        };
+                        let key = self.resolve_type(key)?;
+                        if !key.is_key() {
+                            self.err(span, "a map key must be boolean, int or string");
+                            return None;
+                        }
+                        Some(Type::map(key, self.resolve_type(value)?))
+                    }
                     _ if types.component(name).is_some() => Some(Type::Component(name.to_owned())),
                     _ if types.value_types().any(|v| v == name) => Some(Type::Object(name.to_owned())),
                     _ => {

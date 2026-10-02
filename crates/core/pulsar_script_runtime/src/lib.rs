@@ -998,6 +998,24 @@ pub fn value_from_json(json: &serde_json::Value, ty: &Type) -> Result<Value, Str
         (Type::Str, J::String(s)) => Ok(Value::Str(s.as_str().into())),
         // Value types use their registered literal form (see `Constant::Value`).
         (Type::Object(name), json) => TypeRegistry::global().decode_value(name, &json.to_string()),
+        (Type::List(element), J::Array(items)) => {
+            items.iter().map(|item| value_from_json(item, element)).collect::<Result<_, _>>().map(Value::list)
+        }
+        (Type::Tuple(types), J::Array(items)) if items.len() == types.len() => {
+            items.iter().zip(types).map(|(item, ty)| value_from_json(item, ty)).collect::<Result<_, _>>().map(Value::tuple)
+        }
+        (Type::Map(key, value), J::Array(entries)) => {
+            let mut map = std::collections::BTreeMap::new();
+            for entry in entries {
+                let [k, v] = &entry.as_array().map(Vec::as_slice).unwrap_or_default()[..] else {
+                    return Err(format!("a map entry is `[key, value]`, got {entry}"));
+                };
+                let k = value_from_json(k, key)?;
+                let k = pulsar_script_vm::MapKey::from_value(&k).ok_or_else(|| format!("{k:?} cannot be a map key"))?;
+                map.insert(k, value_from_json(v, value)?);
+            }
+            Ok(Value::Map(std::sync::Arc::new(map)))
+        }
         (ty, json) => Err(format!("cannot use {json} as {ty}")),
     }
 }

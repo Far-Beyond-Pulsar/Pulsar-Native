@@ -47,6 +47,9 @@ pub fn ts_type(ty: &Type) -> String {
         Type::Str => "string".into(),
         Type::Entity => "Entity".into(),
         Type::Component(name) | Type::Object(name) => ts_name(name),
+        Type::List(element) => format!("{}[]", ts_type(element)),
+        Type::Map(key, value) => format!("Map<{}, {}>", ts_type(key), ts_type(value)),
+        Type::Tuple(items) => format!("[{}]", items.iter().map(ts_type).collect::<Vec<_>>().join(", ")),
     }
 }
 

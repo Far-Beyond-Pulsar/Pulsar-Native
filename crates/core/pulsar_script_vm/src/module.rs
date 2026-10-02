@@ -551,6 +551,44 @@ impl DebugInfo {
     }
 }
 
+
+/// What a [`Instr::Collection`] does. Types are checked by the verifier;
+/// index and key failures are runtime errors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
+pub enum CollOp {
+    /// `(item..) -> list<T>`; `dst`'s type gives `T`.
+    MakeList,
+    /// `list<T> -> int`.
+    ListLen,
+    /// `(list<T>, int) -> T`.
+    ListGet,
+    /// `(list<T>, int, T) -> list<T>`: replace an element.
+    ListSet,
+    /// `(list<T>, T) -> list<T>`.
+    ListPush,
+    /// `(list<T>, int, T) -> list<T>`: insert before an index (`len` appends).
+    ListInsert,
+    /// `(list<T>, int) -> list<T>`.
+    ListRemove,
+    /// `(key, value, key, value..) -> map<K, V>`.
+    MakeMap,
+    /// `map<K, V> -> int`.
+    MapLen,
+    /// `(map<K, V>, K) -> V`.
+    MapGet,
+    /// `(map<K, V>, K) -> bool`.
+    MapHas,
+    /// `(map<K, V>, K, V) -> map<K, V>`.
+    MapSet,
+    /// `(map<K, V>, K) -> map<K, V>`: removing an absent key changes nothing.
+    MapRemove,
+    /// `map<K, V> -> list<K>`, in key order.
+    MapKeys,
+    /// `(item..) -> (T0, T1..)`.
+    MakeTuple,
+    /// `(T0, T1..) -> Ti`.
+    TupleGet(u32),
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
 pub enum UnOp {
     /// `int -> int`, `float -> float`.
@@ -621,4 +659,9 @@ pub enum Instr {
     /// it was.
     Wait { seconds: Reg },
     Return { value: Option<Reg> },
+    /// A collection operation: `dst = op(args)`. Collections have value
+    /// semantics, so an operation that changes one returns the changed
+    /// collection; storage is shared until a copy is written to, and a
+    /// result written back over its own first argument edits in place.
+    Collection { op: CollOp, dst: Reg, args: Vec<Reg> },
 }

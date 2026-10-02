@@ -63,12 +63,26 @@ pub fn value_to_json(value: &Value) -> Result<serde_json::Value, String> {
             let text = TypeRegistry::global().encode_value(object)?;
             serde_json::from_str(&text).map_err(|e| e.to_string())
         }
+        Value::List(items) => items.iter().map(value_to_json).collect::<Result<_, _>>().map(J::Array),
+        Value::Tuple(items) => items.iter().map(value_to_json).collect::<Result<_, _>>().map(J::Array),
+        // Entries as `[key, value]` pairs, in key order: keys need not be strings.
+        Value::Map(entries) => entries
+            .iter()
+            .map(|(key, value)| Ok(J::Array(vec![value_to_json(&key.to_value())?, value_to_json(value)?])))
+            .collect::<Result<_, String>>()
+            .map(J::Array),
         other => Err(format!("a {} cannot be saved", other.kind())),
     }
 }
 
 fn is_persistable(ty: &Type) -> bool {
-    !matches!(ty, Type::Unit | Type::Entity | Type::Component(_))
+    match ty {
+        Type::Unit | Type::Entity | Type::Component(_) => false,
+        Type::List(element) => is_persistable(element),
+        Type::Map(key, value) => is_persistable(key) && is_persistable(value),
+        Type::Tuple(items) => items.iter().all(is_persistable),
+        _ => true,
+    }
 }
 
 impl ScriptRuntime {

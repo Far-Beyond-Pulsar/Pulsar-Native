@@ -70,6 +70,10 @@ pub enum ScriptErrorKind {
     /// The function waited (`Wait`) under [`Vm::call`](crate::Vm::call),
     /// which cannot suspend; use `Vm::start`.
     Suspended,
+    /// A list index outside `0..len` (`len` itself is allowed only to insert).
+    IndexOutOfBounds { index: i64, len: usize },
+    /// A map lookup of a key the map does not have.
+    KeyNotFound { key: String },
 }
 
 impl fmt::Display for ScriptErrorKind {
@@ -82,6 +86,8 @@ impl fmt::Display for ScriptErrorKind {
             Self::Overflow { op } => write!(f, "integer overflow in {op} (checked arithmetic)"),
             Self::BadEntryCall(message) => write!(f, "bad call: {message}"),
             Self::Suspended => f.write_str("the function waited; run it with Vm::start"),
+            Self::IndexOutOfBounds { index, len } => write!(f, "index {index} is out of bounds for a list of {len}"),
+            Self::KeyNotFound { key } => write!(f, "the map has no key {key}"),
         }
     }
 }

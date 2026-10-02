@@ -26,7 +26,7 @@ use pulsar_reflection::methods::TypeRef;
 use pulsar_scenedb::{ComponentId, ComponentRef, Entity};
 use serde::{Deserialize, Serialize};
 
-use crate::value::{Object, Value};
+use crate::value::{MapKey, Object, Value};
 
 /// The type of a register, variable, parameter or return value.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, bincode::Encode, bincode::Decode)]
@@ -42,9 +42,57 @@ pub enum Type {
     Component(String),
     /// A value of a registered value type (e.g. `Vec3`).
     Object(String),
+    /// A growable list. Values have value semantics: copying one never
+    /// aliases (the storage is shared copy-on-write).
+    List(Box<Type>),
+    /// A map with a `bool`, `int` or `string` key, ordered by key.
+    Map(Box<Type>, Box<Type>),
+    /// A fixed group of values of possibly different types; what a native
+    /// with several results returns.
+    Tuple(Vec<Type>),
 }
 
 impl Type {
+    pub fn list(element: Type) -> Self {
+        Self::List(Box::new(element))
+    }
+
+    pub fn map(key: Type, value: Type) -> Self {
+        Self::Map(Box::new(key), Box::new(value))
+    }
+
+    /// Whether values of this type can be map keys.
+    pub fn is_key(&self) -> bool {
+        matches!(self, Self::Bool | Self::Int | Self::Str)
+    }
+
+    /// Whether a value of this type holds a registered value type anywhere
+    /// (such values neither compare nor print).
+    pub fn contains_object(&self) -> bool {
+        match self {
+            Self::Object(_) => true,
+            Self::List(element) => element.contains_object(),
+            Self::Map(key, value) => key.contains_object() || value.contains_object(),
+            Self::Tuple(items) => items.iter().any(Self::contains_object),
+            _ => false,
+        }
+    }
+
+    /// Structural validity: a map's key type must be [`is_key`](Self::is_key).
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::List(element) => element.validate(),
+            Self::Map(key, value) => {
+                if !key.is_key() {
+                    return Err(format!("{self}: a map key must be bool, int or string"));
+                }
+                value.validate()
+            }
+            Self::Tuple(items) => items.iter().try_for_each(Self::validate),
+            _ => Ok(()),
+        }
+    }
+
     pub fn component(name: impl Into<String>) -> Self {
         Self::Component(name.into())
     }
@@ -69,6 +117,18 @@ impl fmt::Display for Type {
             Self::Entity => f.write_str("entity"),
             Self::Component(name) => write!(f, "{name}&"),
             Self::Object(name) => f.write_str(name),
+            Self::List(element) => write!(f, "list<{element}>"),
+            Self::Map(key, value) => write!(f, "map<{key}, {value}>"),
+            Self::Tuple(items) => {
+                f.write_str("(")?;
+                for (index, item) in items.iter().enumerate() {
+                    if index > 0 {
+                        f.write_str(", ")?;
+                    }
+                    write!(f, "{item}")?;
+                }
+                f.write_str(")")
+            }
         }
     }
 }
@@ -202,7 +262,7 @@ macro_rules! int_value {
         }
     )*};
 }
-int_value!(i8, i16, i32, i64, isize, u8, u16, u32, u64, usize);
+int_value!(i8, i16, i32, i64, isize, i128, u8, u16, u32, u64, usize, u128);
 
 impl ScriptValue for f64 {
     fn script_type() -> Type {
@@ -278,6 +338,175 @@ impl ScriptValue for Entity {
         Value::Entity(self)
     }
 }
+
+impl<T: ScriptValue> ScriptValue for Vec<T> {
+    fn script_type() -> Type {
+        Type::list(T::script_type())
+    }
+    fn from_value(value: &Value) -> Option<Self> {
+        match value {
+            Value::List(items) => items.iter().map(T::from_value).collect(),
+            _ => None,
+        }
+    }
+    fn into_value(self) -> Value {
+        Value::List(Arc::new(self.into_iter().map(T::into_value).collect()))
+    }
+}
+
+/// A fixed-size array is a list whose length the native checks.
+impl<T: ScriptValue, const N: usize> ScriptValue for [T; N] {
+    fn script_type() -> Type {
+        Type::list(T::script_type())
+    }
+    fn from_value(value: &Value) -> Option<Self> {
+        match value {
+            Value::List(items) if items.len() == N => {
+                items.iter().map(T::from_value).collect::<Option<Vec<_>>>()?.try_into().ok()
+            }
+            _ => None,
+        }
+    }
+    fn into_value(self) -> Value {
+        Value::List(Arc::new(self.into_iter().map(T::into_value).collect()))
+    }
+}
+
+macro_rules! tuple_value {
+    ($(($($name:ident $index:tt),+))*) => {$(
+        impl<$($name: ScriptValue),+> ScriptValue for ($($name,)+) {
+            fn script_type() -> Type {
+                Type::Tuple(vec![$($name::script_type()),+])
+            }
+            fn from_value(value: &Value) -> Option<Self> {
+                match value {
+                    Value::Tuple(items) => Some(($($name::from_value(items.get($index)?)?,)+)),
+                    _ => None,
+                }
+            }
+            fn into_value(self) -> Value {
+                Value::Tuple(vec![$(self.$index.into_value()),+].into())
+            }
+        }
+    )*};
+}
+tuple_value! {
+    (A 0, B 1)
+    (A 0, B 1, C 2)
+    (A 0, B 1, C 2, D 3)
+    (A 0, B 1, C 2, D 3, E 4)
+    (A 0, B 1, C 2, D 3, E 4, F 5)
+}
+
+/// `Option<T>` is `(present: bool, value: T)`; the value is `T`'s default
+/// when absent.
+impl<T: ScriptValue + Default> ScriptValue for Option<T> {
+    fn script_type() -> Type {
+        Type::Tuple(vec![Type::Bool, T::script_type()])
+    }
+    fn from_value(value: &Value) -> Option<Self> {
+        match <(bool, T)>::from_value(value)? {
+            (true, item) => Some(Some(item)),
+            (false, _) => Some(None),
+        }
+    }
+    fn into_value(self) -> Value {
+        match self {
+            Some(item) => (true, item),
+            None => (false, T::default()),
+        }
+        .into_value()
+    }
+}
+
+/// A fallible native result kept as a value: `(ok: bool, value: T, error:
+/// string)`. `value` is `T`'s default on an error and `error` is empty on
+/// success. (A native that should fail the script call returns a plain
+/// `Result` instead.)
+#[derive(Clone, Debug, PartialEq)]
+pub struct Outcome<T>(pub Result<T, String>);
+
+impl<T: ScriptValue + Default> ScriptValue for Outcome<T> {
+    fn script_type() -> Type {
+        Type::Tuple(vec![Type::Bool, T::script_type(), Type::Str])
+    }
+    fn from_value(value: &Value) -> Option<Self> {
+        match <(bool, T, String)>::from_value(value)? {
+            (true, item, _) => Some(Self(Ok(item))),
+            (false, _, message) => Some(Self(Err(message))),
+        }
+    }
+    fn into_value(self) -> Value {
+        match self.0 {
+            Ok(item) => (true, item, String::new()),
+            Err(message) => (false, T::default(), message),
+        }
+        .into_value()
+    }
+}
+
+/// A Rust type usable as a script map key: `bool`, the integer types and
+/// strings.
+pub trait ScriptKey: ScriptValue + Ord {}
+impl ScriptKey for bool {}
+impl ScriptKey for String {}
+impl ScriptKey for Arc<str> {}
+macro_rules! int_key {
+    ($($ty:ty),*) => {$(impl ScriptKey for $ty {})*};
+}
+int_key!(i8, i16, i32, i64, isize, i128, u8, u16, u32, u64, usize, u128);
+
+macro_rules! map_value {
+    ($map:ident $(, $bound:path)*) => {
+        impl<K: ScriptKey $(+ $bound)*, V: ScriptValue> ScriptValue for std::collections::$map<K, V> {
+            fn script_type() -> Type {
+                Type::map(K::script_type(), V::script_type())
+            }
+            fn from_value(value: &Value) -> Option<Self> {
+                match value {
+                    Value::Map(entries) => entries
+                        .iter()
+                        .map(|(key, value)| Some((K::from_value(&key.to_value())?, V::from_value(value)?)))
+                        .collect(),
+                    _ => None,
+                }
+            }
+            fn into_value(self) -> Value {
+                Value::Map(Arc::new(
+                    self.into_iter()
+                        .filter_map(|(key, value)| Some((MapKey::from_value(&key.into_value())?, value.into_value())))
+                        .collect(),
+                ))
+            }
+        }
+    };
+}
+map_value!(BTreeMap);
+map_value!(HashMap, std::hash::Hash);
+
+macro_rules! set_value {
+    ($set:ident $(, $bound:path)*) => {
+        /// A set is a list of its members: unique, in order.
+        impl<K: ScriptKey $(+ $bound)*> ScriptValue for std::collections::$set<K> {
+            fn script_type() -> Type {
+                Type::list(K::script_type())
+            }
+            fn from_value(value: &Value) -> Option<Self> {
+                match value {
+                    Value::List(items) => items.iter().map(K::from_value).collect(),
+                    _ => None,
+                }
+            }
+            fn into_value(self) -> Value {
+                let mut keys: Vec<MapKey> = self.into_iter().filter_map(|key| MapKey::from_value(&key.into_value())).collect();
+                keys.sort();
+                Value::list(keys.iter().map(MapKey::to_value).collect())
+            }
+        }
+    };
+}
+set_value!(BTreeSet);
+set_value!(HashSet, std::hash::Hash);
 
 /// A value of a type registered with [`script_value_type!`](crate::script_value_type),
 /// for typed natives: `|v: Obj<Vec3>| v.0.length()`.
@@ -615,6 +844,9 @@ impl TypeRegistry {
         match ty {
             Type::Component(name) => self.components.contains_key(name.as_str()),
             Type::Object(name) => self.objects.contains_key(name.as_str()),
+            Type::List(element) => self.is_known(element),
+            Type::Map(key, value) => self.is_known(key) && self.is_known(value),
+            Type::Tuple(items) => items.iter().all(|item| self.is_known(item)),
             _ => true,
         }
     }
@@ -635,6 +867,18 @@ impl TypeRegistry {
                 Value::Component(ComponentRef::new(Entity::DANGLING, binding.component_id()))
             }
             Type::Object(name) => Value::Object((self.objects.get(name.as_str())?.default)()),
+            Type::List(element) => {
+                self.default_value(element)?;
+                Value::List(Arc::new(Vec::new()))
+            }
+            Type::Map(key, value) => {
+                self.default_value(key)?;
+                self.default_value(value)?;
+                Value::Map(Arc::new(Default::default()))
+            }
+            Type::Tuple(items) => {
+                Value::Tuple(items.iter().map(|item| self.default_value(item)).collect::<Option<Vec<_>>>()?.into())
+            }
         })
     }
 }

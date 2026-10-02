@@ -75,6 +75,9 @@ pub enum NodeTypes {
 // Modular Node Organization
 // =============================================================================
 
+#[cfg(feature = "script-natives")]
+pub mod script_generics;
+
 pub mod engine;
 pub use engine::*;
 

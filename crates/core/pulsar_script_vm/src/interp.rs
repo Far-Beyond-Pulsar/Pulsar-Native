@@ -432,6 +432,24 @@ impl Vm {
                     self.frames.last_mut().expect("active").pc = next;
                     return Ok(self.suspend(program, frame_base, seconds));
                 }
+                Instr::Collection { op, dst, args } => {
+                    let mut values = std::mem::take(&mut self.args);
+                    values.clear();
+                    for (position, arg) in args.iter().enumerate() {
+                        // A result written back over its own first argument
+                        // is moved, not cloned, so the edit is in place.
+                        let moved = position == 0 && arg == dst && !args[1..].contains(arg);
+                        values.push(if moved {
+                            std::mem::replace(&mut self.regs[r(*arg)], Value::Unit)
+                        } else {
+                            self.regs[r(*arg)].clone()
+                        });
+                    }
+                    let result = exec::collection(*op, &mut values);
+                    values.clear();
+                    self.args = values;
+                    self.regs[r(*dst)] = result.map_err(|kind| self.fail(program, frame_base, kind))?;
+                }
                 Instr::Return { value } => {
                     let value = value.map_or(Value::Unit, |v| self.regs[r(v)].clone());
                     if let Some(done) = self.finish_frame(value, frame_base) {

@@ -7,10 +7,13 @@
 //! become errors, results must match the declared type) and the error kinds
 //! cannot drift between them.
 
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
 use crate::error::{ScriptError, ScriptErrorKind};
-use crate::module::{BinOp, UnOp};
+use crate::module::{BinOp, CollOp, UnOp};
 use crate::native::{Host, NativeFn};
-use crate::value::Value;
+use crate::value::{MapKey, Value};
 
 /// Call `native` with `args` under the engine's contract: a panicking native
 /// fails the call instead of unwinding into the game loop, the result must
@@ -75,6 +78,12 @@ pub fn display(value: &Value) -> String {
         Value::Entity(e) => e.to_string(),
         Value::Component(c) => format!("{}({})", pulsar_scenedb::component::type_name(c.component), c.entity),
         Value::Object(o) => o.type_name().to_owned(),
+        Value::List(items) => format!("[{}]", items.iter().map(display).collect::<Vec<_>>().join(", ")),
+        Value::Map(entries) => format!(
+            "{{{}}}",
+            entries.iter().map(|(k, v)| format!("{}: {}", display(&k.to_value()), display(v))).collect::<Vec<_>>().join(", ")
+        ),
+        Value::Tuple(items) => format!("({})", items.iter().map(display).collect::<Vec<_>>().join(", ")),
     }
 }
 
@@ -129,5 +138,108 @@ pub fn binary(op: BinOp, a: &Value, b: &Value, checked: bool) -> Result<Value, S
         (BinOp::And, Bool(a), Bool(b)) => Bool(*a && *b),
         (BinOp::Or, Bool(a), Bool(b)) => Bool(*a || *b),
         _ => unreachable!("unverified binary operands"),
+    })
+}
+
+/// Run a collection operation over `args` (verified for `op`). The
+/// arguments are the caller's copies; the first is consumed, so a
+/// collection that the caller moved in (rather than cloned) is edited in
+/// place, and a shared one is copied once, on this write.
+pub fn collection(op: CollOp, args: &mut [Value]) -> Result<Value, ScriptErrorKind> {
+    fn take(value: &mut Value) -> Value {
+        std::mem::replace(value, Value::Unit)
+    }
+    fn list(value: &mut Value) -> Arc<Vec<Value>> {
+        match take(value) {
+            Value::List(items) => items,
+            _ => unreachable!("unverified list operand"),
+        }
+    }
+    fn map(value: &mut Value) -> Arc<BTreeMap<MapKey, Value>> {
+        match take(value) {
+            Value::Map(entries) => entries,
+            _ => unreachable!("unverified map operand"),
+        }
+    }
+    fn key(value: &Value) -> MapKey {
+        MapKey::from_value(value).expect("unverified map key")
+    }
+    fn index(value: &Value) -> i64 {
+        value.as_int().expect("unverified index")
+    }
+    let out_of_bounds = |index: i64, len: usize| ScriptErrorKind::IndexOutOfBounds { index, len };
+    // `index` as a position in `0..len`.
+    let position = |at: i64, len: usize| usize::try_from(at).ok().filter(|p| *p < len).ok_or_else(|| out_of_bounds(at, len));
+
+    Ok(match op {
+        CollOp::MakeList => Value::list(args.iter_mut().map(take).collect()),
+        CollOp::ListLen => match &args[0] {
+            Value::List(items) => Value::Int(items.len() as i64),
+            _ => unreachable!("unverified list operand"),
+        },
+        CollOp::ListGet => {
+            let items = list(&mut args[0]);
+            items[position(index(&args[1]), items.len())?].clone()
+        }
+        CollOp::ListSet => {
+            let mut items = list(&mut args[0]);
+            let at = position(index(&args[1]), items.len())?;
+            Arc::make_mut(&mut items)[at] = take(&mut args[2]);
+            Value::List(items)
+        }
+        CollOp::ListPush => {
+            let mut items = list(&mut args[0]);
+            Arc::make_mut(&mut items).push(take(&mut args[1]));
+            Value::List(items)
+        }
+        CollOp::ListInsert => {
+            let mut items = list(&mut args[0]);
+            let at = index(&args[1]);
+            let at = usize::try_from(at).ok().filter(|p| *p <= items.len()).ok_or_else(|| out_of_bounds(at, items.len()))?;
+            Arc::make_mut(&mut items).insert(at, take(&mut args[2]));
+            Value::List(items)
+        }
+        CollOp::ListRemove => {
+            let mut items = list(&mut args[0]);
+            let at = position(index(&args[1]), items.len())?;
+            Arc::make_mut(&mut items).remove(at);
+            Value::List(items)
+        }
+        CollOp::MakeMap => {
+            let mut entries = BTreeMap::new();
+            for pair in args.chunks_mut(2) {
+                entries.insert(key(&pair[0]), take(&mut pair[1]));
+            }
+            Value::Map(Arc::new(entries))
+        }
+        CollOp::MapLen => Value::Int(map(&mut args[0]).len() as i64),
+        CollOp::MapGet => {
+            let entries = map(&mut args[0]);
+            let key = key(&args[1]);
+            match entries.get(&key) {
+                Some(value) => value.clone(),
+                None => return Err(ScriptErrorKind::KeyNotFound { key: display(&key.to_value()) }),
+            }
+        }
+        CollOp::MapHas => Value::Bool(map(&mut args[0]).contains_key(&key(&args[1]))),
+        CollOp::MapSet => {
+            let mut entries = map(&mut args[0]);
+            Arc::make_mut(&mut entries).insert(key(&args[1]), take(&mut args[2]));
+            Value::Map(entries)
+        }
+        CollOp::MapRemove => {
+            let mut entries = map(&mut args[0]);
+            let key = key(&args[1]);
+            if entries.contains_key(&key) {
+                Arc::make_mut(&mut entries).remove(&key);
+            }
+            Value::Map(entries)
+        }
+        CollOp::MapKeys => Value::list(map(&mut args[0]).keys().map(MapKey::to_value).collect()),
+        CollOp::MakeTuple => Value::tuple(args.iter_mut().map(take).collect()),
+        CollOp::TupleGet(at) => match &args[0] {
+            Value::Tuple(items) => items[at as usize].clone(),
+            _ => unreachable!("unverified tuple operand"),
+        },
     })
 }

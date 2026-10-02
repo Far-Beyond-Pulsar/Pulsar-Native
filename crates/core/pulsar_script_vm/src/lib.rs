@@ -50,16 +50,16 @@ pub use library::{
 pub use events::{EventCatalog, EventSignature, EventSink, EventTarget};
 pub use link::{resolve_imports, FuncId, Instance, LinkedSubscription, Program};
 pub use module::{
-    BinOp, Constant, DebugInfo, DebugRange, ErrorSite, EventDecl, EventField, EventRef, Function,
+    BinOp, CollOp, Constant, DebugInfo, DebugRange, ErrorSite, EventDecl, EventField, EventRef, Function,
     Import, Instr, Module, ModuleDecodeError, Param, Reg, Signature, SourceLoc, Subscription,
     SubscriptionScope, UnOp, Variable, BINARY_MAGIC, FORMAT_VERSION, MIN_FORMAT_VERSION,
 };
 pub use native::{
-    Host, NativeBuilder, NativeFn, NativeProvider, NativeRegistration, NativeRegistry, Origin,
+    GenericNative, GenericProvider, Host, NativeBuilder, NativeFn, NativeProvider, NativeRegistration, NativeRegistry, Origin,
     PolyNative,
 };
-pub use types::{ComponentProvider, Obj, ProvidedComponent, ScriptValue, Type, TypeRegistry};
-pub use value::{Object, Value};
+pub use types::{ComponentProvider, Obj, Outcome, ProvidedComponent, ScriptKey, ScriptValue, Type, TypeRegistry};
+pub use value::{MapKey, Object, Value};
 pub use verify::verify;
 
 /// Used by this crate's macros. Not a stable API.

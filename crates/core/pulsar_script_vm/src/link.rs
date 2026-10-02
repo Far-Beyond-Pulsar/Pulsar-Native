@@ -293,7 +293,14 @@ pub fn resolve_imports(
                     poly.instantiate(&import.sig)
                         .map_err(|message| LinkError::PolyNative { name: import.name.clone(), message })?,
                 ),
-                None => return Err(LinkError::MissingNative { name: import.name.clone() }),
+                None => match registry.generic(crate::native::poly_base_name(&import.name)) {
+                    Some(generic) => Arc::new(
+                        generic
+                            .instantiate(&import.sig)
+                            .map_err(|message| LinkError::PolyNative { name: import.name.clone(), message })?,
+                    ),
+                    None => return Err(LinkError::MissingNative { name: import.name.clone() }),
+                },
             },
         };
         if !policy.allows(native.capability()) {

@@ -1,6 +1,7 @@
 //! Runtime values held in registers and instance variables.
 
 use std::any::Any;
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
@@ -22,9 +23,58 @@ pub enum Value {
     /// Liveness-checked reference to a component; see [`ComponentRef`].
     Component(ComponentRef),
     Object(Object),
+    /// Shared copy-on-write storage: cloning is cheap and a write never
+    /// shows through another copy.
+    List(Arc<Vec<Value>>),
+    Map(Arc<BTreeMap<MapKey, Value>>),
+    Tuple(Arc<[Value]>),
+}
+
+/// A map key: the script types a map can be keyed by, ordered.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum MapKey {
+    Bool(bool),
+    Int(i64),
+    Str(Arc<str>),
+}
+
+impl MapKey {
+    /// The key a value is, if it is `bool`, `int` or `string`.
+    pub fn from_value(value: &Value) -> Option<Self> {
+        match value {
+            Value::Bool(b) => Some(Self::Bool(*b)),
+            Value::Int(i) => Some(Self::Int(*i)),
+            Value::Str(s) => Some(Self::Str(s.clone())),
+            _ => None,
+        }
+    }
+
+    pub fn to_value(&self) -> Value {
+        match self {
+            Self::Bool(b) => Value::Bool(*b),
+            Self::Int(i) => Value::Int(*i),
+            Self::Str(s) => Value::Str(s.clone()),
+        }
+    }
 }
 
 impl Value {
+    /// A list value.
+    pub fn list(items: Vec<Value>) -> Self {
+        Self::List(Arc::new(items))
+    }
+
+    pub fn tuple(items: Vec<Value>) -> Self {
+        Self::Tuple(items.into())
+    }
+
+    pub fn as_list(&self) -> Option<&[Value]> {
+        match self {
+            Self::List(items) => Some(items),
+            _ => None,
+        }
+    }
+
     /// Short description of the variant, for error messages.
     pub fn kind(&self) -> &'static str {
         match self {
@@ -36,23 +86,35 @@ impl Value {
             Self::Entity(_) => "entity",
             Self::Component(_) => "component",
             Self::Object(obj) => obj.type_name(),
+            Self::List(_) => "list",
+            Self::Map(_) => "map",
+            Self::Tuple(_) => "tuple",
         }
     }
 
     /// Whether this value can live in a register of type `ty`. Component
     /// and object names are checked by the verifier, not here.
     pub fn fits(&self, ty: &Type) -> bool {
-        matches!(
-            (self, ty),
-            (Self::Unit, Type::Unit)
-                | (Self::Bool(_), Type::Bool)
-                | (Self::Int(_), Type::Int)
-                | (Self::Float(_), Type::Float)
-                | (Self::Str(_), Type::Str)
-                | (Self::Entity(_), Type::Entity)
-                | (Self::Component(_), Type::Component(_))
-                | (Self::Object(_), Type::Object(_))
-        )
+        match (self, ty) {
+            (Self::List(items), Type::List(element)) => items.iter().all(|item| item.fits(element)),
+            (Self::Map(entries), Type::Map(key, value)) => {
+                entries.iter().all(|(k, v)| k.to_value().fits(key) && v.fits(value))
+            }
+            (Self::Tuple(items), Type::Tuple(types)) => {
+                items.len() == types.len() && items.iter().zip(types).all(|(item, ty)| item.fits(ty))
+            }
+            _ => matches!(
+                (self, ty),
+                (Self::Unit, Type::Unit)
+                    | (Self::Bool(_), Type::Bool)
+                    | (Self::Int(_), Type::Int)
+                    | (Self::Float(_), Type::Float)
+                    | (Self::Str(_), Type::Str)
+                    | (Self::Entity(_), Type::Entity)
+                    | (Self::Component(_), Type::Component(_))
+                    | (Self::Object(_), Type::Object(_))
+            ),
+        }
     }
 
     pub fn as_bool(&self) -> Option<bool> {
@@ -145,6 +207,15 @@ impl fmt::Debug for Value {
             Self::Entity(v) => write!(f, "{v:?}"),
             Self::Component(v) => write!(f, "{v:?}"),
             Self::Object(v) => write!(f, "{}(..)", v.type_name()),
+            Self::List(items) => f.debug_list().entries(items.iter()).finish(),
+            Self::Map(entries) => f.debug_map().entries(entries.iter().map(|(k, v)| (k, v))).finish(),
+            Self::Tuple(items) => {
+                let mut tuple = f.debug_tuple("");
+                for item in items.iter() {
+                    tuple.field(item);
+                }
+                tuple.finish()
+            }
         }
     }
 }
@@ -161,6 +232,9 @@ impl PartialEq for Value {
             (Self::Str(a), Self::Str(b)) => a == b,
             (Self::Entity(a), Self::Entity(b)) => a == b,
             (Self::Component(a), Self::Component(b)) => a == b,
+            (Self::List(a), Self::List(b)) => a == b,
+            (Self::Map(a), Self::Map(b)) => a == b,
+            (Self::Tuple(a), Self::Tuple(b)) => a == b,
             _ => false,
         }
     }

@@ -111,3 +111,123 @@ fn sensitive_natives_carry_a_capability() {
     }
     assert!(gated > 0, "no capability-gated std natives");
 }
+
+fn run_import(name: &str, params: Vec<Type>, ret: Type, args: Vec<Value>) -> Result<Value, pulsar_script_vm::ScriptError> {
+    let registry = NativeRegistry::with_engine_natives();
+    let mut module = Module::new("uses_std");
+    module.imports = vec![Import { name: name.into(), sig: Signature::new(params.iter().cloned().map(Param::new), ret.clone()) }];
+    let registers: Vec<Type> = params.iter().cloned().chain([ret.clone()]).collect();
+    let arg_regs: Vec<u16> = (0..params.len() as u16).collect();
+    let result = params.len() as u16;
+    module.functions = vec![Function {
+        name: "call".into(),
+        exported: true,
+        params,
+        ret,
+        registers,
+        code: vec![
+            Instr::CallNative { import: 0, args: arg_regs, dst: Some(result) },
+            Instr::Return { value: Some(result) },
+        ],
+        debug: None,
+    }];
+    let program = Program::link(Arc::new(module), &registry).expect("links");
+    let mut world = World::new();
+    let entity = world.spawn();
+    let mut vm = Vm::new();
+    let mut instance = program.instantiate();
+    let func = program.entry("call").unwrap();
+    let mut host = Host::new(&mut world, entity);
+    vm.call(&program, &mut instance, func, &args, &mut host, &mut Budget::new(100))
+}
+
+#[test]
+fn collection_signatures_become_natives() {
+    // A `Vec<String>` argument and result, and a `&str`-style borrow.
+    let words = Value::list(vec![Value::from("a"), Value::from("b")]);
+    let joined = run_import(
+        "std::string_join",
+        vec![Type::list(Type::Str), Type::Str],
+        Type::Str,
+        vec![words.clone(), Value::from("-")],
+    )
+    .unwrap();
+    assert_eq!(joined, Value::from("a-b"));
+    let split = run_import("std::string_split", vec![Type::Str, Type::Str], Type::list(Type::Str), vec![Value::from("a,b"), Value::from(",")]).unwrap();
+    assert_eq!(split, words);
+
+    // A tuple argument and result: vector3 add.
+    let v3 = Type::Tuple(vec![Type::Float; 3]);
+    let sum = run_import(
+        "std::vector3_add",
+        vec![v3.clone(), v3.clone()],
+        v3,
+        vec![
+            Value::tuple(vec![Value::Float(1.0), Value::Float(2.0), Value::Float(3.0)]),
+            Value::tuple(vec![Value::Float(1.0), Value::Float(1.0), Value::Float(1.0)]),
+        ],
+    )
+    .unwrap();
+    assert_eq!(sum, Value::tuple(vec![Value::Float(2.0), Value::Float(3.0), Value::Float(4.0)]));
+
+    // A map in and a list out.
+    let registry = NativeRegistry::with_engine_natives();
+    assert_eq!(
+        registry.get("std::hashmap_keys").expect("native").sig,
+        Signature::new([Param::new(Type::map(Type::Str, Type::Str))], Type::list(Type::Str))
+    );
+}
+
+#[test]
+fn fallible_and_optional_results_are_values() {
+    let outcome = Type::Tuple(vec![Type::Bool, Type::Int, Type::Str]);
+    let parsed = run_import("std::string_to_int", vec![Type::Str], outcome.clone(), vec![Value::from("42")]).unwrap();
+    assert_eq!(parsed, Value::tuple(vec![Value::Bool(true), Value::Int(42), Value::from("")]));
+    let Value::Tuple(failed) = run_import("std::string_to_int", vec![Type::Str], outcome, vec![Value::from("x")]).unwrap() else {
+        panic!("a tuple")
+    };
+    assert_eq!((&failed[0], &failed[1]), (&Value::Bool(false), &Value::Int(0)));
+    assert!(matches!(&failed[2], Value::Str(message) if !message.is_empty()), "the error text is kept: {failed:?}");
+
+    // The pins of a multi-output native are named.
+    let registry = NativeRegistry::with_engine_natives();
+    assert_eq!(registry.get("std::string_to_int").unwrap().attr("outputs"), Some("ok,value,error"));
+}
+
+#[test]
+fn generic_array_natives_are_instantiated_per_element_type() {
+    let ints = Type::list(Type::Int);
+    let pushed = run_import(
+        "std::array_push@int",
+        vec![ints.clone(), Type::Int],
+        ints.clone(),
+        vec![Value::list(vec![Value::Int(1)]), Value::Int(2)],
+    )
+    .unwrap();
+    assert_eq!(pushed, Value::list(vec![Value::Int(1), Value::Int(2)]));
+
+    // Another element type, from the same template.
+    let strings = Type::list(Type::Str);
+    let found = run_import(
+        "std::array_contains@string",
+        vec![strings.clone(), Type::Str],
+        Type::Bool,
+        vec![Value::list(vec![Value::from("a")]), Value::from("a")],
+    )
+    .unwrap();
+    assert_eq!(found, Value::Bool(true));
+
+    // An out-of-range `array_get` is absent, with the element's default.
+    let option = Type::Tuple(vec![Type::Bool, Type::Int]);
+    let missing = run_import("std::array_get@int", vec![ints, Type::Int], option, vec![Value::list(vec![]), Value::Int(3)]).unwrap();
+    assert_eq!(missing, Value::tuple(vec![Value::Bool(false), Value::Int(0)]));
+
+    // A signature that is not an instance of the template is refused at link time.
+    let registry = NativeRegistry::with_engine_natives();
+    let mut module = Module::new("bad");
+    module.imports = vec![Import {
+        name: "std::array_push@int".into(),
+        sig: Signature::new([Param::new(Type::list(Type::Int)), Param::new(Type::Str)], Type::list(Type::Int)),
+    }];
+    assert!(matches!(Program::link(Arc::new(module), &registry), Err(pulsar_script_vm::LinkError::PolyNative { .. })));
+}

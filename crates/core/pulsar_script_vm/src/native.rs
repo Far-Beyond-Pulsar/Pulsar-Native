@@ -332,6 +332,13 @@ pub struct NativeProvider {
 
 inventory::collect!(NativeProvider);
 
+/// Generic natives registered at link time (see [`GenericNative`]).
+pub struct GenericProvider {
+    pub natives: fn() -> Vec<GenericNative>,
+}
+
+inventory::collect!(GenericProvider);
+
 /// A *polymorphic* native: a fixed parameter list followed by any number
 /// of trailing arguments of event field types (`bool`, `int`, `float`,
 /// `string`, `entity`). Each module import names its own full signature;
@@ -419,6 +426,108 @@ impl fmt::Debug for PolyNative {
     }
 }
 
+/// A native generic over one type, instantiated by the module that imports
+/// it: `array_push<T>(list<T>, T) -> list<T>`. The registry holds the
+/// template; a module imports `name@<tag>` with the concrete signature
+/// (the tag only keeps the instantiations' import names distinct), and
+/// linking checks that signature is the template at some type `T`.
+pub struct GenericNative {
+    pub name: String,
+    pub doc: String,
+    pub param_names: Vec<String>,
+    pub attrs: Vec<(String, String)>,
+    pub flags: MethodFlags,
+    template: fn(&Type) -> Signature,
+    call: Arc<GenericImpl>,
+}
+
+/// A generic native's body: the element type it was instantiated at, the
+/// host, and the arguments.
+pub type GenericImpl = dyn Fn(&Type, &mut Host<'_>, &mut [Value]) -> Result<Value, ScriptError> + Send + Sync;
+
+impl GenericNative {
+    pub fn new(
+        name: impl Into<String>,
+        param_names: &[&str],
+        template: fn(&Type) -> Signature,
+        call: impl Fn(&Type, &mut Host<'_>, &mut [Value]) -> Result<Value, ScriptError> + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            doc: String::new(),
+            param_names: param_names.iter().map(|n| (*n).to_owned()).collect(),
+            attrs: Vec::new(),
+            flags: MethodFlags::NONE,
+            template,
+            call: Arc::new(call),
+        }
+    }
+
+    pub fn doc(mut self, doc: impl Into<String>) -> Self {
+        self.doc = doc.into();
+        self
+    }
+
+    pub fn attr(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.attrs.push((key.into(), value.into()));
+        self
+    }
+
+    /// Mark the native free of side effects (a pure node).
+    pub fn side_effect_free(mut self) -> Self {
+        self.flags.side_effect_free = true;
+        self
+    }
+
+    /// The signature at element type `element`.
+    pub fn signature(&self, element: &Type) -> Signature {
+        (self.template)(element)
+    }
+
+    /// The native for import signature `sig`, if it is this template at
+    /// some type: tried at every type `sig` mentions, and inside its lists,
+    /// maps and tuples.
+    pub fn instantiate(&self, sig: &Signature) -> Result<NativeFn, String> {
+        let mut candidates = Vec::new();
+        for ty in sig.params.iter().map(|p| &p.ty).chain([&sig.ret]) {
+            collect_types(ty, &mut candidates);
+        }
+        let element = candidates
+            .into_iter()
+            .find(|candidate| (self.template)(candidate) == *sig)
+            .ok_or_else(|| format!("is generic; the module imports it as {sig}, which is not an instance of it"))?;
+        let call = Arc::clone(&self.call);
+        let mut builder = NativeFn::builder(self.name.clone())
+            .doc(self.doc.clone())
+            .params(self.param_names.clone())
+            .flags(self.flags);
+        for (k, v) in &self.attrs {
+            builder = builder.attr(k.clone(), v.clone());
+        }
+        Ok(builder.build_raw(sig.clone(), Box::new(move |host, args| call(&element, host, args))))
+    }
+}
+
+/// `ty` and every type nested in it.
+fn collect_types(ty: &Type, out: &mut Vec<Type>) {
+    out.push(ty.clone());
+    match ty {
+        Type::List(element) => collect_types(element, out),
+        Type::Map(key, value) => {
+            collect_types(key, out);
+            collect_types(value, out);
+        }
+        Type::Tuple(items) => items.iter().for_each(|item| collect_types(item, out)),
+        _ => {}
+    }
+}
+
+impl fmt::Debug for GenericNative {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}<T>", self.name)
+    }
+}
+
 /// A native with this name is already registered.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 #[error("native `{0}` is already registered")]
@@ -434,6 +543,7 @@ pub struct DuplicateNative(pub String);
 pub struct NativeRegistry {
     natives: HashMap<String, Arc<NativeFn>>,
     poly: HashMap<String, Arc<PolyNative>>,
+    generic: HashMap<String, Arc<GenericNative>>,
     generation: u64,
 }
 
@@ -461,6 +571,13 @@ impl NativeRegistry {
                 }
             }
         }
+        for provider in inventory::iter::<GenericProvider> {
+            for native in (provider.natives)() {
+                if let Err(err) = registry.register_generic(native) {
+                    tracing::debug!("script natives: skipping provided {err}");
+                }
+            }
+        }
         registry
     }
 
@@ -482,6 +599,26 @@ impl NativeRegistry {
         self.poly.insert(native.name.clone(), Arc::new(native));
         self.generation += 1;
         Ok(())
+    }
+
+    /// Register a native generic over one type. Its name must not be taken.
+    pub fn register_generic(&mut self, native: GenericNative) -> Result<(), DuplicateNative> {
+        if self.natives.contains_key(&native.name) || self.poly.contains_key(&native.name) || self.generic.contains_key(&native.name) {
+            return Err(DuplicateNative(native.name));
+        }
+        self.generic.insert(native.name.clone(), Arc::new(native));
+        self.generation += 1;
+        Ok(())
+    }
+
+    /// The generic native `name`.
+    pub fn generic(&self, name: &str) -> Option<&Arc<GenericNative>> {
+        self.generic.get(name)
+    }
+
+    /// Every generic native, in no particular order.
+    pub fn generic_functions(&self) -> impl Iterator<Item = &Arc<GenericNative>> {
+        self.generic.values()
     }
 
     /// The polymorphic native `name`.

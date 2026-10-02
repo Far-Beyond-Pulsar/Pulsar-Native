@@ -27,7 +27,7 @@ pub mod actor;
 
 use std::fmt::Write as _;
 
-use pulsar_script_vm::{verify, BinOp, Instr, Module, Reg, Type, UnOp, VerifyError};
+use pulsar_script_vm::{verify, BinOp, CollOp, Instr, Module, Reg, Type, UnOp, VerifyError};
 
 /// Why a module could not be turned into Rust.
 #[derive(Debug)]
@@ -125,7 +125,7 @@ use std::sync::Arc;
 use {vm}::compiled::{{CompiledCode, Cx, Exit}};
 use {vm}::exec;
 use {vm}::{{
-    BinOp, CapabilityPolicy, EventCatalog, LinkError, Module, NativeRegistry, Program, ScriptErrorKind, Type, UnOp, Value,
+    BinOp, CapabilityPolicy, CollOp, EventCatalog, LinkError, Module, NativeRegistry, Program, ScriptErrorKind, Type, UnOp, Value,
 }};
 
 "
@@ -207,6 +207,9 @@ fn type_expr(ty: &Type) -> String {
         Type::Entity => "Type::Entity".into(),
         Type::Component(name) => format!("Type::Component({name:?}.to_owned())"),
         Type::Object(name) => format!("Type::Object({name:?}.to_owned())"),
+        Type::List(element) => format!("Type::List(Box::new({}))", type_expr(element)),
+        Type::Map(key, value) => format!("Type::Map(Box::new({}), Box::new({}))", type_expr(key), type_expr(value)),
+        Type::Tuple(items) => format!("Type::Tuple(vec![{}])", items.iter().map(type_expr).collect::<Vec<_>>().join(", ")),
     }
 }
 
@@ -315,6 +318,24 @@ fn emit(out: &mut String, module: &Module, instr: &Instr, pc: usize) {
             out.push_str("                let seconds = if seconds > 0.0 { seconds } else { 0.0 };\n");
             advance(out);
             out.push_str("                return Ok(Exit::Wait(seconds));\n");
+        }
+        Instr::Collection { op, dst, args } => {
+            // As in the interpreter: a result written over its own first
+            // argument moves it, so the edit happens in place.
+            let operands = args
+                .iter()
+                .enumerate()
+                .map(|(position, a)| {
+                    if position == 0 && a == dst && !args[1..].contains(a) {
+                        format!("std::mem::replace(&mut {}, Value::Unit)", reg(*a))
+                    } else {
+                        format!("{}.clone()", reg(*a))
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            let _ = writeln!(out, "                {} = exec::collection(CollOp::{op:?}, &mut [{operands}])?;", reg(*dst));
+            advance(out);
         }
         Instr::Return { value } => {
             let value = value.map_or("Value::Unit".to_owned(), |v| format!("{}.clone()", reg(v)));
