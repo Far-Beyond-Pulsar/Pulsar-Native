@@ -58,7 +58,7 @@ impl Run {
     fn call(&mut self, name: &str, args: &[Value]) -> Value {
         match self.start(name, args).unwrap_or_else(|e| panic!("{name} failed: {e}")) {
             Completion::Returned(value) => value,
-            Completion::Waiting { .. } => panic!("{name} waited"),
+            Completion::Waiting { .. } | Completion::Paused { .. } => panic!("{name} waited"),
         }
     }
 
