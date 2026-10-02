@@ -1291,3 +1291,22 @@ mod pie_session {
         }
     }
 }
+
+/// A frame through the shared-scene path runs the same script phase and
+/// says how long it held each lock; both locks are free afterwards.
+#[test]
+fn a_shared_frame_reports_its_lock_times_and_releases_the_scene() {
+    let project = project();
+    let registry = ClassRegistry::scan(project.path());
+    let mut driver = ScriptDriver::with_parts(super::new_runtime(), project.path(), registry, Default::default());
+    let log = install_log(&mut driver);
+    let scene: engine_backend::scene::SharedScene =
+        std::sync::Arc::new(parking_lot::RwLock::new(engine_backend::scene::new_scene()));
+
+    let report = driver.run_frame_shared(&scene, 0.016);
+    assert!(report.script_errors.is_empty(), "{:?}", report.script_errors);
+    let locks = report.locks.expect("a shared frame is timed");
+    assert!(locks.write_hold > std::time::Duration::ZERO && locks.read_hold > std::time::Duration::ZERO, "{locks:?}");
+    assert!(scene.try_write().is_some(), "the write lock is released");
+    assert!(scene.try_read().is_some(), "and the read lock");
+}

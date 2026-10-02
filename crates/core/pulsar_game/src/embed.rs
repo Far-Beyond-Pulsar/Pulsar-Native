@@ -112,6 +112,15 @@ impl PieSession {
                     }),
                     line: frame.location.as_ref().and_then(|location| location.line),
                     message: format!("Paused at {stop}"),
+                    output_values: frame
+                        .output_values
+                        .iter()
+                        .map(|output| pulsar_events::ScriptOutputValue {
+                            node: output.node.clone(),
+                            pin: output.pin.clone(),
+                            value: format!("{:?}", output.value),
+                        })
+                        .collect(),
                     ..Default::default()
                 });
             }
