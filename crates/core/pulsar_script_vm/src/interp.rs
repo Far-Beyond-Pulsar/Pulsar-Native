@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::compiled::{Cx, Exit};
 use crate::debugger::{DebugSnapshot, Debugger, FrameSnapshot, OutputValueSnapshot, RegisterSnapshot, StopReason};
 use crate::error::{ScriptError, ScriptErrorKind};
-use crate::exec::{self, binary, unary};
+use crate::exec::{self, binary, binary_scalar, unary};
 use crate::link::{FuncId, Instance, Program};
 use crate::module::{Instr, Reg};
 use crate::native::Host;
@@ -327,6 +327,24 @@ impl Vm {
         });
     }
 
+    /// [`push_frame`](Self::push_frame) for a call from the running frame:
+    /// the arguments are copied register to register, with no intermediate
+    /// allocation.
+    fn push_frame_from(&mut self, program: &Program, func: u32, caller_base: usize, args: &[Reg], ret_dst: Option<Reg>) {
+        let base = self.regs.len();
+        self.regs
+            .extend(program.registers[func as usize].iter().cloned());
+        for (slot, arg) in args.iter().enumerate() {
+            self.regs[base + slot] = self.regs[caller_base + usize::from(*arg)].clone();
+        }
+        self.frames.push(Frame {
+            func,
+            pc: 0,
+            base,
+            ret_dst,
+        });
+    }
+
     /// Park the call that started at `frame_base` as a continuation. The
     /// innermost frame's `pc` is already past the `Wait`. Seconds that are
     /// NaN or negative must already be clamped to zero.
@@ -452,13 +470,14 @@ impl Vm {
             let frame = self.frames.last().expect("a frame is active");
             let (func, pc, base) = (frame.func, frame.pc, frame.base);
             let function = &module.functions[func as usize];
-            let location = function.location(pc).cloned();
+            // Source locations are only looked up for the debugger; without
+            // one the interpreter pays nothing for them (#853).
             if let Some(reason) = self.debugger.as_mut().and_then(|debugger| {
                 debugger.should_stop(
                     &function.name,
                     pc,
                     self.frames.len() - frame_base,
-                    location.as_ref(),
+                    function.location(pc),
                 )
             }) {
                 let snapshot = self.snapshot(program, instance, frame_base, reason);
@@ -489,13 +508,12 @@ impl Vm {
                     self.regs[r(*dst)] = value;
                 }
                 Instr::Binary { op, dst, a, b } => {
-                    let value = binary(
-                        *op,
-                        &self.regs[r(*a)],
-                        &self.regs[r(*b)],
-                        self.checked_arithmetic,
-                    )
-                    .map_err(|kind| self.fail(program, frame_base, kind))?;
+                    let (x, y) = (&self.regs[r(*a)], &self.regs[r(*b)]);
+                    let value = match binary_scalar(*op, x, y, self.checked_arithmetic) {
+                        Some(value) => value,
+                        None => binary(*op, x, y, self.checked_arithmetic)
+                            .map_err(|kind| self.fail(program, frame_base, kind))?,
+                    };
                     self.regs[r(*dst)] = value;
                 }
                 Instr::Jump { target } => next = *target as usize,
@@ -517,9 +535,7 @@ impl Vm {
                     }
                     // The caller stays at the call site (for traces) and
                     // advances when the callee returns.
-                    let values: Vec<Value> =
-                        args.iter().map(|a| self.regs[r(*a)].clone()).collect();
-                    self.push_frame(program, *callee, values.into_iter(), *dst);
+                    self.push_frame_from(program, *callee, base, args, *dst);
                     continue;
                 }
                 Instr::CallNative { import, args, dst } => {

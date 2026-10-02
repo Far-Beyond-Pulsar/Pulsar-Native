@@ -112,6 +112,41 @@ pub fn display(value: &Value) -> String {
     }
 }
 
+/// The hot scalar cases of [`binary`], small enough to inline into the
+/// interpreter loop: the loop-counter and float arithmetic and the numeric
+/// comparisons scripts spend most instructions on. `None` means "take the
+/// general path" (checked integer arithmetic, division, strings, ..); a
+/// `Some` is exactly what `binary` would return.
+#[inline(always)]
+pub fn binary_scalar(op: BinOp, a: &Value, b: &Value, checked: bool) -> Option<Value> {
+    use Value::{Bool, Float, Int};
+    Some(match (a, b) {
+        (Int(a), Int(b)) => match op {
+            BinOp::Add if !checked => Int(a.wrapping_add(*b)),
+            BinOp::Sub if !checked => Int(a.wrapping_sub(*b)),
+            BinOp::Mul if !checked => Int(a.wrapping_mul(*b)),
+            BinOp::Eq => Bool(a == b),
+            BinOp::Ne => Bool(a != b),
+            BinOp::Lt => Bool(a < b),
+            BinOp::Le => Bool(a <= b),
+            BinOp::Gt => Bool(a > b),
+            BinOp::Ge => Bool(a >= b),
+            _ => return None,
+        },
+        (Float(a), Float(b)) => match op {
+            BinOp::Add => Float(a + b),
+            BinOp::Sub => Float(a - b),
+            BinOp::Mul => Float(a * b),
+            BinOp::Lt => Bool(a < b),
+            BinOp::Le => Bool(a <= b),
+            BinOp::Gt => Bool(a > b),
+            BinOp::Ge => Bool(a >= b),
+            _ => return None,
+        },
+        _ => return None,
+    })
+}
+
 pub fn binary(op: BinOp, a: &Value, b: &Value, checked: bool) -> Result<Value, ScriptErrorKind> {
     use Value::{Bool, Float, Int, Str};
     if checked {

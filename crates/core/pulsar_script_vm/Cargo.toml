@@ -20,3 +20,7 @@ pulsar_script_vm_test_library = { path = "tests/fixtures/test_library" }
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "vm"
+harness = false
