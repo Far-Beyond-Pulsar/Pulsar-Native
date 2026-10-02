@@ -22,3 +22,7 @@ serde = { workspace = true, features = ["derive"] }
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "script_tick"
+harness = false
