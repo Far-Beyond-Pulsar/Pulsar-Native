@@ -3,7 +3,7 @@
 //! only `pulsar_script_vm`.
 
 use pulsar_script_vm::{
-    BinOp, Constant, DebugInfo, DebugRange, EventDecl, EventField, EventRef, Function, Import, Instr, Module, Param,
+    BinOp, CollOp, Constant, DebugInfo, DebugRange, EventDecl, EventField, EventRef, Function, Import, Instr, Module, Param,
     Signature, SourceLoc, Subscription, SubscriptionScope, Type, UnOp, Variable,
 };
 
@@ -26,7 +26,7 @@ fn import(name: &str, params: Vec<Param>, ret: Type) -> Import {
 /// Every module that is written by hand. JSON fixtures (compiled from
 /// Blueprint graphs) are added by the caller.
 pub fn hand_written() -> Vec<Module> {
-    vec![arith(), flow(), waits(), natives(), events_decl()]
+    vec![arith(), flow(), waits(), natives(), events_decl(), collections()]
 }
 
 /// Binary and unary operators on every type they accept.
@@ -444,5 +444,225 @@ fn events_decl() -> Module {
         handler: 0,
         scope: SubscriptionScope::Global,
     }];
+    m
+}
+
+fn coll(op: CollOp, dst: u16, args: &[u16]) -> Instr {
+    Collection { op, dst, args: args.to_vec() }
+}
+
+/// Lists, maps and tuples held in variables and registers.
+fn collections() -> Module {
+    let mut m = Module::new("collections");
+    let ints = || Type::list(Type::Int);
+    let names = || Type::map(Type::Str, Type::Int);
+    m.variables = vec![var("log", ints(), None), var("names", names(), None)];
+    m.constants = vec![Constant::Int(0), Constant::Int(1), Constant::Int(10)];
+
+    // log.push(x); log.len()
+    m.functions.push(func(
+        "push",
+        vec![Type::Int],
+        Type::Int,
+        vec![ints(), Type::Int],
+        vec![
+            LoadVar { dst: 1, var: 0 },
+            coll(CollOp::ListPush, 1, &[1, 0]),
+            StoreVar { var: 0, src: 1 },
+            coll(CollOp::ListLen, 2, &[1]),
+            Return { value: Some(2) },
+        ],
+    ));
+    m.functions.push(func(
+        "at",
+        vec![Type::Int],
+        Type::Int,
+        vec![ints(), Type::Int],
+        vec![
+            LoadVar { dst: 1, var: 0 },
+            coll(CollOp::ListGet, 2, &[1, 0]),
+            Return { value: Some(2) },
+        ],
+    ));
+    m.functions.push(func(
+        "set_at",
+        vec![Type::Int, Type::Int],
+        Type::Unit,
+        vec![ints()],
+        vec![
+            LoadVar { dst: 2, var: 0 },
+            coll(CollOp::ListSet, 2, &[2, 0, 1]),
+            StoreVar { var: 0, src: 2 },
+            Return { value: None },
+        ],
+    ));
+    m.functions.push(func(
+        "insert_at",
+        vec![Type::Int, Type::Int],
+        Type::Unit,
+        vec![ints()],
+        vec![
+            LoadVar { dst: 2, var: 0 },
+            coll(CollOp::ListInsert, 2, &[2, 0, 1]),
+            StoreVar { var: 0, src: 2 },
+            Return { value: None },
+        ],
+    ));
+    m.functions.push(func(
+        "remove_at",
+        vec![Type::Int],
+        Type::Unit,
+        vec![ints()],
+        vec![
+            LoadVar { dst: 1, var: 0 },
+            coll(CollOp::ListRemove, 1, &[1, 0]),
+            StoreVar { var: 0, src: 1 },
+            Return { value: None },
+        ],
+    ));
+    // sum of the log, by index
+    m.functions.push(func(
+        "sum",
+        vec![],
+        Type::Int,
+        // r0 log, r1 total, r2 i, r3 len, r4 cond, r5 item, r6 one
+        vec![ints(), Type::Int, Type::Int, Type::Int, Type::Bool, Type::Int, Type::Int],
+        vec![
+            LoadVar { dst: 0, var: 0 },
+            Const { dst: 1, index: 0 },
+            Const { dst: 2, index: 0 },
+            Const { dst: 6, index: 1 },
+            coll(CollOp::ListLen, 3, &[0]),
+            /* 5 */ Binary { op: BinOp::Lt, dst: 4, a: 2, b: 3 },
+            Branch { cond: 4, then: 7, otherwise: 11 },
+            /* 7 */ coll(CollOp::ListGet, 5, &[0, 2]),
+            Binary { op: BinOp::Add, dst: 1, a: 1, b: 5 },
+            Binary { op: BinOp::Add, dst: 2, a: 2, b: 6 },
+            Jump { target: 5 },
+            /* 11 */ Return { value: Some(1) },
+        ],
+    ));
+    // b = log; b[0] = 10; log[0] * 100 + b[0]: the copy does not alias.
+    m.functions.push(func(
+        "copy_is_independent",
+        vec![],
+        Type::Int,
+        vec![ints(), ints(), Type::Int, Type::Int, Type::Int, Type::Int, Type::Int],
+        vec![
+            LoadVar { dst: 0, var: 0 },
+            Move { dst: 1, src: 0 },
+            Const { dst: 2, index: 0 },
+            Const { dst: 3, index: 2 },
+            coll(CollOp::ListSet, 1, &[1, 2, 3]),
+            coll(CollOp::ListGet, 4, &[0, 2]),
+            coll(CollOp::ListGet, 5, &[1, 2]),
+            Const { dst: 6, index: 2 },
+            Binary { op: BinOp::Mul, dst: 4, a: 4, b: 6 },
+            Binary { op: BinOp::Mul, dst: 4, a: 4, b: 6 },
+            Binary { op: BinOp::Add, dst: 4, a: 4, b: 5 },
+            Return { value: Some(4) },
+        ],
+    ));
+    m.functions.push(func(
+        "bind",
+        vec![Type::Str, Type::Int],
+        Type::Int,
+        vec![names(), Type::Int],
+        vec![
+            LoadVar { dst: 2, var: 1 },
+            coll(CollOp::MapSet, 2, &[2, 0, 1]),
+            StoreVar { var: 1, src: 2 },
+            coll(CollOp::MapLen, 3, &[2]),
+            Return { value: Some(3) },
+        ],
+    ));
+    m.functions.push(func(
+        "unbind",
+        vec![Type::Str],
+        Type::Unit,
+        vec![names()],
+        vec![
+            LoadVar { dst: 1, var: 1 },
+            coll(CollOp::MapRemove, 1, &[1, 0]),
+            StoreVar { var: 1, src: 1 },
+            Return { value: None },
+        ],
+    ));
+    m.functions.push(func(
+        "lookup",
+        vec![Type::Str],
+        Type::Int,
+        vec![names(), Type::Int],
+        vec![
+            LoadVar { dst: 1, var: 1 },
+            coll(CollOp::MapGet, 2, &[1, 0]),
+            Return { value: Some(2) },
+        ],
+    ));
+    m.functions.push(func(
+        "has",
+        vec![Type::Str],
+        Type::Bool,
+        vec![names(), Type::Bool],
+        vec![
+            LoadVar { dst: 1, var: 1 },
+            coll(CollOp::MapHas, 2, &[1, 0]),
+            Return { value: Some(2) },
+        ],
+    ));
+    // the key at position `i`, in key order
+    m.functions.push(func(
+        "key_at",
+        vec![Type::Int],
+        Type::Str,
+        vec![names(), Type::list(Type::Str), Type::Str],
+        vec![
+            LoadVar { dst: 1, var: 1 },
+            coll(CollOp::MapKeys, 2, &[1]),
+            coll(CollOp::ListGet, 3, &[2, 0]),
+            Return { value: Some(3) },
+        ],
+    ));
+    let pair = || Type::Tuple(vec![Type::Int, Type::Str]);
+    m.functions.push(func(
+        "pair",
+        vec![Type::Int, Type::Str],
+        pair(),
+        vec![pair()],
+        vec![coll(CollOp::MakeTuple, 2, &[0, 1]), Return { value: Some(2) }],
+    ));
+    m.functions.push(func(
+        "swap",
+        vec![Type::Int, Type::Str],
+        Type::Tuple(vec![Type::Str, Type::Int]),
+        vec![pair(), Type::Str, Type::Int, Type::Tuple(vec![Type::Str, Type::Int])],
+        vec![
+            coll(CollOp::MakeTuple, 2, &[0, 1]),
+            coll(CollOp::TupleGet(1), 3, &[2]),
+            coll(CollOp::TupleGet(0), 4, &[2]),
+            coll(CollOp::MakeTuple, 5, &[3, 4]),
+            Return { value: Some(5) },
+        ],
+    ));
+    // a list literal and equality / display of collections
+    m.functions.push(func(
+        "literal_equals_log",
+        vec![Type::Int, Type::Int],
+        Type::Bool,
+        vec![ints(), ints(), Type::Bool],
+        vec![
+            coll(CollOp::MakeList, 2, &[0, 1]),
+            LoadVar { dst: 3, var: 0 },
+            Binary { op: BinOp::Eq, dst: 4, a: 2, b: 3 },
+            Return { value: Some(4) },
+        ],
+    ));
+    m.functions.push(func(
+        "log_text",
+        vec![],
+        Type::Str,
+        vec![ints(), Type::Str],
+        vec![LoadVar { dst: 0, var: 0 }, Unary { op: UnOp::ToStr, dst: 1, src: 0 }, Return { value: Some(1) }],
+    ));
     m
 }

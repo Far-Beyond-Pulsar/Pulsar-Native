@@ -398,3 +398,67 @@ fn blueprint_modules_run_under_tight_limits_identically() {
         same(Scenario::new(blueprint("bp_loops"), vec![call("begin_play", vec![]), call("on_count", vec![]), Step::Advance(0.0)]).limits(limits));
     }
 }
+
+// ---- collections ------------------------------------------------------------------
+
+#[test]
+fn lists_maps_and_tuples_match_including_their_errors() {
+    for limits in CHECKED {
+        let trace = same(
+            Scenario::new(
+                fixture("collections"),
+                vec![
+                    call("push", vec![int(5)]),
+                    call("push", vec![int(7)]),
+                    call("insert_at", vec![int(1), int(6)]),
+                    call("set_at", vec![int(0), int(4)]),
+                    call("sum", vec![]),
+                    call("at", vec![int(2)]),
+                    call("copy_is_independent", vec![]),
+                    call("remove_at", vec![int(0)]),
+                    call("log_text", vec![]),
+                    call("literal_equals_log", vec![int(6), int(7)]),
+                    // Errors: the same kind, trace and state after.
+                    call("at", vec![int(2)]),
+                    call("at", vec![int(-1)]),
+                    call("set_at", vec![int(9), int(1)]),
+                    call("insert_at", vec![int(9), int(1)]),
+                    call("remove_at", vec![int(9)]),
+                    call("sum", vec![]),
+                    call("bind", vec![text("b"), int(2)]),
+                    call("bind", vec![text("a"), int(1)]),
+                    call("lookup", vec![text("b")]),
+                    call("lookup", vec![text("zz")]),
+                    call("has", vec![text("a")]),
+                    call("unbind", vec![text("a")]),
+                    call("unbind", vec![text("never")]),
+                    call("has", vec![text("a")]),
+                    call("key_at", vec![int(0)]),
+                    call("key_at", vec![int(3)]),
+                    call("pair", vec![int(1), text("x")]),
+                    call("swap", vec![int(1), text("x")]),
+                ],
+            )
+            .limits(limits),
+        );
+        assert!(contains(&trace, "sum() -> returned 17"), "{trace:#?}");
+        assert!(contains(&trace, "copy_is_independent() -> returned 410"), "the copy does not alias: {trace:#?}");
+        assert!(contains(&trace, "IndexOutOfBounds { index: 2, len: 2 }"), "{trace:#?}");
+        assert!(contains(&trace, "IndexOutOfBounds { index: -1, len: 2 }"), "{trace:#?}");
+        assert!(contains(&trace, "KeyNotFound { key: \"zz\" }"), "{trace:#?}");
+        assert!(contains(&trace, "swap(1, \"x\") -> returned (\"x\", 1)"), "{trace:#?}");
+    }
+}
+
+#[test]
+fn collections_survive_waits_and_stay_per_instance() {
+    let trace = same(
+        Scenario::new(
+            fixture("collections"),
+            vec![call_on(0, "push", vec![int(1)]), call_on(1, "push", vec![int(10)]), call_on(0, "push", vec![int(2)]), call_on(1, "sum", vec![]), call_on(0, "sum", vec![])],
+        )
+        .instances(2),
+    );
+    assert!(trace.iter().any(|l| l.starts_with("vars #0:") && l.contains("[1, 2]")), "{trace:#?}");
+    assert!(trace.iter().any(|l| l.starts_with("vars #1:") && l.contains("[10]")), "{trace:#?}");
+}

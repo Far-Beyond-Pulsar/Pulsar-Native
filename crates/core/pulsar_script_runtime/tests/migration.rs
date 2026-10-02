@@ -333,3 +333,47 @@ fn conflicting_saved_identities_and_unreadable_values_are_reported() {
     assert_eq!(report.unreadable.len(), 1);
     assert_eq!(report.unreadable[0].0, "position");
 }
+
+#[test]
+fn collections_save_and_restore_and_carry_over_a_reload() {
+    let variables = || {
+        vec![
+            var(Some("v-items"), "items", Type::list(Type::Int)),
+            var(Some("v-scores"), "scores", Type::map(Type::Str, Type::list(Type::Float))),
+            var(Some("v-pair"), "pair", Type::Tuple(vec![Type::Int, Type::Str])),
+            var(Some("v-flags"), "flags", Type::map(Type::Int, Type::Bool)),
+        ]
+    };
+    let mut rt = runtime();
+    rt.load_class(class("Bag", 0, variables(), vec![])).unwrap();
+    rt.spawn("a", "Bag", None, &[]).unwrap();
+    let scores = std::collections::BTreeMap::from([
+        ("ann".to_owned(), vec![1.5f64, 2.0]),
+        ("bo".to_owned(), vec![]),
+    ]);
+    let flags = std::collections::BTreeMap::from([(3i64, true), (-1, false)]);
+    for (name, value) in [
+        ("items", pulsar_script_vm::ScriptValue::into_value(vec![3i64, 1, 2])),
+        ("scores", pulsar_script_vm::ScriptValue::into_value(scores)),
+        ("pair", pulsar_script_vm::ScriptValue::into_value((7i64, "seven".to_owned()))),
+        ("flags", pulsar_script_vm::ScriptValue::into_value(flags)),
+    ] {
+        rt.set_variable("a", name, value).unwrap();
+    }
+
+    // Through JSON text and into another instance.
+    let saved: SavedState = serde_json::from_str(&serde_json::to_string(&rt.save_state("a").unwrap()).unwrap()).unwrap();
+    rt.spawn("b", "Bag", None, &[]).unwrap();
+    let report = rt.restore_state("b", &saved).unwrap();
+    assert_eq!(report.variables_kept, 4, "{report:?}");
+    assert!(report.unreadable.is_empty(), "{report:?}");
+    for name in ["items", "scores", "pair", "flags"] {
+        assert_eq!(rt.variable("b", name), rt.variable("a", name), "{name}");
+    }
+
+    // A reload that renames one carries the collection over by id.
+    let mut renamed = variables();
+    renamed[0].name = "entries".into();
+    reload(&mut rt, class("Bag", 0, renamed, vec![]));
+    assert_eq!(rt.variable("a", "entries"), Some(&Value::list(vec![Value::Int(3), Value::Int(1), Value::Int(2)])));
+}
