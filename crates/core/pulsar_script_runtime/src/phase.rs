@@ -215,7 +215,7 @@ fn run_instance(
 ) -> Vec<RuntimeError> {
     let Some(class) = context.classes.get(&instance.class) else { return Vec::new() };
     let mut errors = Vec::new();
-    let mut run = |instance: &mut ScriptInstance, outcome: Result<Completion, pulsar_script_vm::ScriptError>, spent: u64| {
+    let run = |instance: &mut ScriptInstance, outcome: Result<Completion, pulsar_script_vm::ScriptError>, spent: u64| {
         instance.instructions_executed = instance.instructions_executed.saturating_add(spent);
         match outcome {
             Ok(Completion::Returned(_)) => None,

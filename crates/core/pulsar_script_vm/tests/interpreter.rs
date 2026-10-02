@@ -471,7 +471,7 @@ fn continuations_rebase_onto_compatible_modules() {
     let mut host = Host::new(&mut h.world, h.entity);
     match h.vm.resume(&program2, &mut instance2, rebased, &mut host, &mut Budget::new(1000)).unwrap() {
         Completion::Returned(value) => assert_eq!(value, int(8), "finished in the new code"),
-        Completion::Waiting { .. } => panic!("finished"),
+        Completion::Waiting { .. } | Completion::Paused { .. } => panic!("finished"),
     }
 
     // v3: `inner` gained an instruction: refused.

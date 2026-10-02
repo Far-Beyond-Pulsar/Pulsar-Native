@@ -27,7 +27,7 @@ pub mod actor;
 
 use std::fmt::Write as _;
 
-use pulsar_script_vm::{verify, BinOp, CollOp, Instr, Module, Reg, Type, UnOp, VerifyError};
+use pulsar_script_vm::{verify, BinOp, Instr, Module, Reg, Type, UnOp, VerifyError};
 
 /// Why a module could not be turned into Rust.
 #[derive(Debug)]

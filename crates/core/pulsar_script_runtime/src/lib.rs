@@ -1550,7 +1550,7 @@ pub fn value_from_json(json: &serde_json::Value, ty: &Type) -> Result<Value, Str
         (Type::Map(key, value), J::Array(entries)) => {
             let mut map = std::collections::BTreeMap::new();
             for entry in entries {
-                let [k, v] = &entry.as_array().map(Vec::as_slice).unwrap_or_default()[..] else {
+                let [k, v] = entry.as_array().map(Vec::as_slice).unwrap_or_default() else {
                     return Err(format!("a map entry is `[key, value]`, got {entry}"));
                 };
                 let k = value_from_json(k, key)?;
