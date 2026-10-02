@@ -132,8 +132,12 @@ impl ToolbarView {
         self.pump_started = true;
 
         spawn_frame_pump(&cx.entity(), window, |this, _window, cx| {
+            let _scope = gpui::render_stats::scope("toolbar: frame pump");
+            let _lock_scope = gpui::render_stats::scope("toolbar: signature state read");
             let signature = ToolbarSignature::of(&this.state.read());
+            drop(_lock_scope);
             if signature != this.last_signature {
+                gpui::render_stats::count("toolbar: signature changed");
                 this.last_signature = signature;
                 cx.notify();
             }
@@ -153,15 +157,22 @@ impl Render for ToolbarView {
         // Record what we are about to paint so the pump doesn't immediately
         // notify again for a change we have already picked up (e.g. a render
         // triggered by an action handler rather than by the pump).
+        let _signature_scope = gpui::render_stats::scope("toolbar: render signature");
         self.last_signature = ToolbarSignature::of(&self.state.read());
+        drop(_signature_scope);
 
+        let _state_scope = gpui::render_stats::scope("toolbar: render state read");
         let state = self.state.read();
+        drop(_state_scope);
         // The toolbar renders on every change to its state (see the pump), so
         // this keeps the viewport's Bloom in step with the toggle, including
         // its initial value.
+        let _mailbox_scope = gpui::render_stats::scope("toolbar: mailbox update");
         if let Some(mailbox) = &self.helio_mailbox {
             mailbox.set_viewport_bloom(state.editor.feature_bloom_enabled);
         }
+        drop(_mailbox_scope);
+        let _panel_scope = gpui::render_stats::scope("toolbar: panel element build");
         self.toolbar
             .render(&state, self.state.clone(), self.gpu_engine.clone(), cx)
     }

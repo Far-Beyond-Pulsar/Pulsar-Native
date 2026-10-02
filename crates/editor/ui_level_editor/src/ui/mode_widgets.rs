@@ -21,7 +21,8 @@ pub fn active_mode_widgets(
     state: &LevelEditorState,
     gpu_engine: &Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
 ) -> Vec<ToolWidget> {
-    let mut state_clone = state.clone();
+    let _scope = gpui::render_stats::scope("toolbar: active mode widgets");
+    let mut state_clone = state.clone_for_tool_query();
     let ctx = ToolModeContext {
         state: &mut state_clone,
         gpu_engine,
@@ -48,6 +49,7 @@ pub fn render_mode_widgets<V>(
 where
     V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
 {
+    let _scope = gpui::render_stats::scope("toolbar: mode widget elements");
     if controls.is_empty() {
         return div().into_any_element();
     }
