@@ -1102,7 +1102,6 @@ dependencies = [
 name = "blueprint_compiler"
 version = "0.1.0"
 dependencies = [
- "blueprint_graph",
  "graphy",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -1117,11 +1116,9 @@ dependencies = [
  "anyhow",
  "arboard",
  "blueprint_compiler",
- "blueprint_graph",
  "bytemuck",
  "chrono",
  "engine_backend",
- "engine_fs",
  "fontdue",
  "futures",
  "gpui-ce",
@@ -1130,9 +1127,7 @@ dependencies = [
  "parking_lot",
  "pbgc",
  "plugin_editor_api",
- "plugin_manager",
  "pulsar_reflection",
- "pulsar_script_codegen",
  "pulsar_script_vm",
  "schemars",
  "serde",
@@ -9317,7 +9312,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=0801d2638a66b81692df6a03130c3dcf1b3f1dbf#0801d2638a66b81692df6a03130c3dcf1b3f1dbf"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=e74df984b95ffe5235a67653a5b95a07e579df47#e74df984b95ffe5235a67653a5b95a07e579df47"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9333,7 +9328,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=0801d2638a66b81692df6a03130c3dcf1b3f1dbf#0801d2638a66b81692df6a03130c3dcf1b3f1dbf"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=e74df984b95ffe5235a67653a5b95a07e579df47#e74df984b95ffe5235a67653a5b95a07e579df47"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection_codegen",
