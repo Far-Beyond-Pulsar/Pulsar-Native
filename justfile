@@ -127,3 +127,12 @@ check-no-blueprint:
 # Run tsc over the generated TypeScript declarations and sample classes (needs Node)
 check-typescript-declarations:
     cargo test -p pulsar_script_ts --test tsc -- --ignored
+
+# ── Plugin pins (#847) ────────────────────────────────────────────────────────
+# Rewrite every Pulsar-Native `rev = ...` in plugins/vendor to REV (default
+# HEAD) and refresh the plugins' lockfiles; `check` is what CI runs.
+bump-plugin-pins rev="HEAD":
+    bash scripts/plugin-pins.sh bump {{rev}}
+
+check-plugin-pins:
+    bash scripts/plugin-pins.sh check

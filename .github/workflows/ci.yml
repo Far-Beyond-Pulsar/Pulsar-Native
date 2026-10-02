@@ -330,3 +330,18 @@ jobs:
       - name: Generated project compiles
         if: ${{ matrix.run_on == 'ubuntu-latest' }}
         run: cargo test -p pulsar_game --test generated_project_compiles -- --ignored
+
+  # The plugins pin Pulsar-Native crates by git rev (#847): every pin must be a
+  # commit this repository already contains, so standalone plugin builds can
+  # fetch it. Fix with `just bump-plugin-pins`.
+  plugin-pins:
+    name: plugin pins are ancestors of HEAD
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Check plugin pins
+        run: scripts/plugin-pins.sh check
