@@ -694,13 +694,6 @@ impl fmt::Debug for PropertyMetadata {
     }
 }
 
-/// Classification for blueprint-callable method behavior.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MethodType {
-    Pure,
-    Fn,
-    ControlFlow,
-}
 
 /// Metadata for a single method parameter.
 #[derive(Debug, Clone)]
@@ -727,7 +720,7 @@ pub struct MethodMetadata {
     pub category: Option<&'static str>,
     pub params: Vec<MethodParameter>,
     pub return_type: Option<MethodReturnType>,
-    pub method_type: MethodType,
+    pub flags: MethodFlags,
     pub caller: MethodCaller,
 }
 
@@ -739,7 +732,7 @@ impl fmt::Debug for MethodMetadata {
             .field("category", &self.category)
             .field("params", &self.params)
             .field("return_type", &self.return_type)
-            .field("method_type", &self.method_type)
+            .field("flags", &self.flags)
             .finish()
     }
 }

@@ -14,7 +14,7 @@
 //! errors use the typed accessor API instead of raw dyn dispatch.
 
 use pulsar_reflection::{
-    DynMethodArgs, DynMethodMetadata, DynMethodRegistration, MethodReturnType, MethodType,
+    DynMethodArgs, DynMethodMetadata, DynMethodRegistration, MethodFlags, MethodReturnType,
 };
 use pulsar_scenedb::World;
 
@@ -39,7 +39,7 @@ fn methods() -> Vec<DynMethodMetadata> {
                 type_info: component_ref_type_info(),
             }),
             // Pure: same world state in, same reference out; no mutation.
-            method_type: MethodType::Pure,
+            flags: MethodFlags::PURE,
             caller: Box::new(|receiver: &mut dyn std::any::Any, args: DynMethodArgs| {
                 let world = receiver.downcast_mut::<World>()?;
                 let target = args.into_iter().next()?.downcast::<ComponentRef>().ok()?;
@@ -65,7 +65,7 @@ fn methods() -> Vec<DynMethodMetadata> {
             return_type: Some(MethodReturnType {
                 type_info: actor_ref_type_info(),
             }),
-            method_type: MethodType::Pure,
+            flags: MethodFlags::PURE,
             caller: Box::new(|receiver: &mut dyn std::any::Any, args: DynMethodArgs| {
                 let world = receiver.downcast_mut::<World>()?;
                 let target = args.into_iter().next()?.downcast::<ComponentRef>().ok()?;

@@ -73,6 +73,7 @@ fn generate_named_fields_impl(
     let type_info_name = quote::format_ident!("{}_TYPE_INFO", name);
 
     quote! {
+        #[allow(non_upper_case_globals)]
         static #type_info_name: ::std::sync::LazyLock<::pulsar_reflection::RuntimeTypeInfo> = ::std::sync::LazyLock::new(|| ::pulsar_reflection::RuntimeTypeInfo {
             type_id: std::any::TypeId::of::<#name #ty_generics>(),
             type_name: stringify!(#name),
@@ -149,6 +150,7 @@ fn generate_unit_struct_impl(
     let type_info_name = quote::format_ident!("{}_TYPE_INFO", name);
 
     quote! {
+        #[allow(non_upper_case_globals)]
         static #type_info_name: ::std::sync::LazyLock<::pulsar_reflection::RuntimeTypeInfo> = ::std::sync::LazyLock::new(|| ::pulsar_reflection::RuntimeTypeInfo {
             type_id: std::any::TypeId::of::<#name #ty_generics>(),
             type_name: stringify!(#name),

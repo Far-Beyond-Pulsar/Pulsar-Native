@@ -28,7 +28,7 @@ inventory::collect!(EngineClassRegistration);
 
 /// Registration entry for component methods
 ///
-/// Automatically submitted by the `#[component_methods]` macro via `inventory::submit!`
+/// Automatically submitted by the derive and by-hand registrations via `inventory::submit!`
 pub struct ComponentMethodRegistration {
     pub class_name: &'static str,
     pub methods: fn() -> Vec<MethodMetadata>,

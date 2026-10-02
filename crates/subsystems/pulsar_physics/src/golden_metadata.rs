@@ -4,7 +4,7 @@
 //! The reflected surface of every class this crate registers
 //! (`RigidbodyComponent`, `PhysicsComponent`) is diffed against a checked-in
 //! file, so metadata regressions -- renamed parameters, flipped
-//! `method_type` purity tags, lost categories or display names -- fail CI
+//! purity `flags`, lost categories or display names -- fail CI
 //! instead of silently degrading Blueprint discovery.
 //!
 //! ## Why a `cfg(test)` module and not `tests/`

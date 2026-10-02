@@ -24,7 +24,7 @@ use std::collections::HashMap;
 
 use once_cell::sync::Lazy;
 
-use crate::{MethodParameter, MethodReturnType, MethodType};
+use crate::{MethodFlags, MethodParameter, MethodReturnType};
 
 /// Boxed method args, reusing the same shape as [`crate::MethodArgs`]
 /// (kept as its own type here rather than a re-export so this module has
@@ -48,14 +48,14 @@ pub struct DynMethodMetadata {
     pub category: Option<&'static str>,
     pub params: Vec<MethodParameter>,
     pub return_type: Option<MethodReturnType>,
-    pub method_type: MethodType,
+    pub flags: MethodFlags,
     pub caller: DynMethodCaller,
 }
 
 /// Registration entry for a named receiver's dynamically-dispatchable
 /// methods, submitted via `inventory::submit!` (by hand today; a
 /// `#[dyn_methods]`-style derive can generate this later the same way
-/// `#[component_methods]` generates [`crate::ComponentMethodRegistration`]).
+/// hand-written `ComponentMethodRegistration` entries).
 pub struct DynMethodRegistration {
     /// Registry key — e.g. a subsystem's name. Not tied to any Rust type
     /// name; multiple registrations may target the same receiver type
@@ -182,7 +182,7 @@ mod tests {
             category: None,
             params: Vec::new(),
             return_type: None,
-            method_type: MethodType::Fn,
+            flags: MethodFlags::NONE,
             caller: Box::new(|target: &mut dyn Any, _args: DynMethodArgs| {
                 let widget = target.downcast_mut::<Widget>().expect("downcast");
                 widget.count += 1;

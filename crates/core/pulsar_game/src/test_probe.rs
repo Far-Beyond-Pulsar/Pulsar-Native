@@ -4,7 +4,7 @@
 
 use pulsar_reflection::{
     ComponentMethodRegistration, EngineClass, EngineClassRegistration, MethodMetadata,
-    MethodParameter, MethodReturnType, MethodType, PropertyMetadata, RuntimeTypeInfo,
+    MethodParameter, MethodFlags, MethodReturnType, PropertyMetadata, RuntimeTypeInfo,
     RUNTIME_TYPE_REGISTRY,
 };
 use pulsar_scenedb::{component_id, Entity, World};
@@ -60,7 +60,7 @@ impl EngineClass for VmProbe {
             return_type: Some(MethodReturnType {
                 type_info: i32_info,
             }),
-            method_type: MethodType::Fn,
+            flags: MethodFlags::NONE,
             caller: Box::new(
                 |c: &mut dyn EngineClass, args: Vec<Box<dyn std::any::Any>>| {
                     let amount = args

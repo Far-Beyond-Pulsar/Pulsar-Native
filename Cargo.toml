@@ -5,6 +5,7 @@ members = [
     # itself is excluded below; its compiler is a member so its tests run
     # against this workspace's script VM.
     "plugins/vendor/blueprint_editor/compiler",
+    "plugins/vendor/blueprint_editor/graph",
     "crates/core/*",
     "crates/editor/*",
     "crates/subsystems/*",
@@ -365,6 +366,8 @@ engine_backend    = { path = "crates/core/engine_backend" }
 engine_state      = { path = "crates/core/engine_state" }
 ui_types_common   = { path = "crates/editor/ui_types_common" }
 pulsar_script_vm  = { path = "crates/core/pulsar_script_vm" }
+engine_fs         = { path = "crates/core/engine_fs" }
+plugin_manager    = { path = "crates/core/plugin_manager" }
 pulsar_script_runtime = { path = "crates/core/pulsar_script_runtime" }
 pulsar_reflection = { path = "crates/third-party/pulsar-reflection/pulsar_reflection" }
 pulsar_reflection_derive = { path = "crates/third-party/pulsar-reflection/pulsar_reflection_derive" }

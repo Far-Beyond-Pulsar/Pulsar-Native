@@ -74,9 +74,9 @@ name = "agent_chat_tools"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "engine_fs 0.1.0",
+ "engine_fs",
  "engine_state",
- "plugin_manager 0.1.0",
+ "plugin_manager",
  "serde_json",
  "tool_registry",
  "tool_registry_builtin",
@@ -1121,7 +1121,7 @@ dependencies = [
  "bytemuck",
  "chrono",
  "engine_backend",
- "engine_fs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=6868a0378f85b846a809490617d17404a7b4082c)",
+ "engine_fs",
  "fontdue",
  "futures",
  "gpui-ce",
@@ -2913,9 +2913,9 @@ dependencies = [
  "bytemuck",
  "crossbeam-channel",
  "dashmap",
- "engine_fs 0.1.0",
+ "engine_fs",
  "engine_state",
- "engine_subsystems 0.1.0",
+ "engine_subsystems",
  "flume",
  "futures",
  "git2 0.21.0",
@@ -2941,7 +2941,7 @@ dependencies = [
  "pollster 0.4.0",
  "profiling 0.1.0",
  "pulsar_class",
- "pulsar_events 0.1.0",
+ "pulsar_events",
  "pulsar_lsp",
  "pulsar_pie_abi",
  "pulsar_reflection",
@@ -3003,9 +3003,9 @@ dependencies = [
  "notify 8.2.0",
  "parking_lot",
  "plugin_editor_api",
- "plugin_manager 0.1.0",
+ "plugin_manager",
  "profiling 0.1.0",
- "pulsar-multiplayer-core 0.1.0",
+ "pulsar-multiplayer-core",
  "pulsar_reflection",
  "serde",
  "serde_json",
@@ -3023,49 +3023,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine_fs"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=6868a0378f85b846a809490617d17404a7b4082c#6868a0378f85b846a809490617d17404a7b4082c"
-dependencies = [
- "anyhow",
- "base64 0.23.1",
- "dashmap",
- "futures",
- "image",
- "notify 8.2.0",
- "parking_lot",
- "plugin_editor_api",
- "plugin_manager 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=6868a0378f85b846a809490617d17404a7b4082c)",
- "profiling 0.1.0",
- "pulsar-multiplayer-core 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=6868a0378f85b846a809490617d17404a7b4082c)",
- "pulsar_reflection",
- "serde",
- "serde_json",
- "tokio",
- "tool_registry",
- "tool_registry_macros",
- "tracing",
- "ui_types_common",
- "ureq",
- "urlencoding",
- "uuid",
- "walkdir",
-]
-
-[[package]]
 name = "engine_state"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "dashmap",
  "directories 6.0.0",
- "engine_fs 0.1.0",
+ "engine_fs",
  "event-listener 5.4.2",
  "futures",
  "gpui-ce",
  "parking_lot",
  "pulsar-config",
- "pulsar-multiplayer-core 0.1.0",
+ "pulsar-multiplayer-core",
  "pulsar_auth",
  "pulsar_settings",
  "rust-discord-activity",
@@ -3080,16 +3050,6 @@ dependencies = [
 [[package]]
 name = "engine_subsystems"
 version = "0.1.0"
-dependencies = [
- "profiling 0.1.0",
- "thiserror 2.0.20",
- "tracing",
-]
-
-[[package]]
-name = "engine_subsystems"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=6868a0378f85b846a809490617d17404a7b4082c#6868a0378f85b846a809490617d17404a7b4082c"
 dependencies = [
  "profiling 0.1.0",
  "thiserror 2.0.20",
@@ -5128,9 +5088,9 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "engine_class_derive",
- "engine_fs 0.1.0",
+ "engine_fs",
  "engine_state",
- "engine_subsystems 0.1.0",
+ "engine_subsystems",
  "glam 0.33.5",
  "gpui-ce",
  "helio",
@@ -8172,9 +8132,9 @@ dependencies = [
 name = "plugin_editor_api"
 version = "0.1.0"
 dependencies = [
- "engine_subsystems 0.1.0",
+ "engine_subsystems",
  "gpui-ce",
- "pulsar_events 0.1.0",
+ "pulsar_events",
  "pulsar_reflection",
  "pulsar_script_vm",
  "schemars",
@@ -8197,7 +8157,7 @@ dependencies = [
 name = "plugin_manager"
 version = "0.1.0"
 dependencies = [
- "engine_subsystems 0.1.0",
+ "engine_subsystems",
  "env_logger",
  "gpui-ce",
  "libloading 0.9.0",
@@ -8205,26 +8165,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "plugin_loader_fixture",
- "pulsar_events 0.1.0",
- "serde_json",
- "sha2 0.11.0",
- "tracing",
- "ui",
- "walkdir",
-]
-
-[[package]]
-name = "plugin_manager"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=6868a0378f85b846a809490617d17404a7b4082c#6868a0378f85b846a809490617d17404a7b4082c"
-dependencies = [
- "engine_subsystems 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=6868a0378f85b846a809490617d17404a7b4082c)",
- "gpui-ce",
- "libloading 0.9.0",
- "once_cell",
- "parking_lot",
- "plugin_editor_api",
- "pulsar_events 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=6868a0378f85b846a809490617d17404a7b4082c)",
+ "pulsar_events",
  "serde_json",
  "sha2 0.11.0",
  "tracing",
@@ -8711,20 +8652,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pulsar-multiplayer-core"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=6868a0378f85b846a809490617d17404a7b4082c#6868a0378f85b846a809490617d17404a7b4082c"
-dependencies = [
- "async-trait",
- "chrono",
- "futures",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
 name = "pulsar-relay"
 version = "0.1.0"
 dependencies = [
@@ -8753,7 +8680,7 @@ dependencies = [
  "prometheus",
  "proptest",
  "prost-build",
- "pulsar-multiplayer-core 0.1.0",
+ "pulsar-multiplayer-core",
  "quinn",
  "rand 0.10.2",
  "rcgen",
@@ -8792,7 +8719,7 @@ name = "pulsar_class"
 version = "0.1.0"
 dependencies = [
  "engine_class_derive",
- "engine_fs 0.1.0",
+ "engine_fs",
  "glam 0.33.5",
  "inventory",
  "pulsar_reflection",
@@ -8811,7 +8738,7 @@ name = "pulsar_content"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "engine_fs 0.1.0",
+ "engine_fs",
  "parking_lot",
  "serde",
  "serde_json",
@@ -8903,25 +8830,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "pulsar_events"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=6868a0378f85b846a809490617d17404a7b4082c#6868a0378f85b846a809490617d17404a7b4082c"
-dependencies = [
- "gamma",
- "profiling 0.1.0",
- "serde",
- "serde_json",
- "tracing",
- "ui_types_common",
-]
-
-[[package]]
 name = "pulsar_game"
 version = "0.1.0"
 dependencies = [
  "engine_backend",
  "engine_class_derive",
- "engine_fs 0.1.0",
+ "engine_fs",
  "engine_state",
  "glam 0.33.5",
  "helio",
@@ -8936,7 +8850,7 @@ dependencies = [
  "pulsar_class",
  "pulsar_content",
  "pulsar_core",
- "pulsar_events 0.1.0",
+ "pulsar_events",
  "pulsar_pie_abi",
  "pulsar_reflection",
  "pulsar_scene",
@@ -9003,7 +8917,7 @@ dependencies = [
  "plugin_editor_api",
  "pulsar_class",
  "pulsar_content",
- "pulsar_events 0.1.0",
+ "pulsar_events",
  "pulsar_game",
  "pulsar_script_runtime",
  "pulsar_script_vm",
@@ -9076,7 +8990,7 @@ dependencies = [
 name = "pulsar_scene"
 version = "0.1.0"
 dependencies = [
- "engine_fs 0.1.0",
+ "engine_fs",
  "glam 0.33.5",
  "helio",
  "helio-asset-compat",
@@ -9186,7 +9100,7 @@ dependencies = [
 name = "pulsar_std"
 version = "0.1.0"
 dependencies = [
- "engine_fs 0.1.0",
+ "engine_fs",
  "linkme",
  "pulsar_macros",
  "pulsar_reflection",
@@ -13057,7 +12971,7 @@ name = "ui_common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "engine_fs 0.1.0",
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "image",
@@ -13106,10 +13020,10 @@ dependencies = [
  "futures",
  "gpui-ce",
  "plugin_editor_api",
- "plugin_manager 0.1.0",
+ "plugin_manager",
  "plugin_matter",
  "profiling 0.1.0",
- "pulsar_events 0.1.0",
+ "pulsar_events",
  "pulsar_physics",
  "pulsar_reflection",
  "pulsar_settings",
@@ -13187,7 +13101,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
- "engine_fs 0.1.0",
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "helio_component",
@@ -13266,7 +13180,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "directories 6.0.0",
- "engine_fs 0.1.0",
+ "engine_fs",
  "engine_state",
  "git2 0.21.0",
  "gpui-ce",
@@ -13297,7 +13211,7 @@ dependencies = [
  "core-graphics2 0.6.1",
  "device_query 4.0.1",
  "engine_backend",
- "engine_fs 0.1.0",
+ "engine_fs",
  "engine_state",
  "glam 0.33.5",
  "gpui-ce",
@@ -13311,10 +13225,10 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "plugin_editor_api",
- "plugin_manager 0.1.0",
+ "plugin_manager",
  "profiling 0.1.0",
  "pulsar_class",
- "pulsar_events 0.1.0",
+ "pulsar_events",
  "pulsar_physics",
  "pulsar_pie_abi",
  "pulsar_reflection",
@@ -13350,7 +13264,7 @@ dependencies = [
  "chrono",
  "directories 6.0.0",
  "engine_backend",
- "engine_fs 0.1.0",
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "image",
@@ -13403,7 +13317,7 @@ name = "ui_multiplayer"
 version = "0.1.0"
 dependencies = [
  "engine_backend",
- "engine_fs 0.1.0",
+ "engine_fs",
  "engine_state",
  "futures",
  "gpui-ce",
@@ -13436,7 +13350,7 @@ dependencies = [
  "gpui-ce",
  "inventory",
  "plugin_editor_api",
- "plugin_manager 0.1.0",
+ "plugin_manager",
  "tracing",
  "ui",
  "ui_common",
@@ -13473,7 +13387,7 @@ dependencies = [
 name = "ui_type_debugger"
 version = "0.1.0"
 dependencies = [
- "engine_fs 0.1.0",
+ "engine_fs",
  "gpui-ce",
  "plugin_editor_api",
  "rust-i18n",

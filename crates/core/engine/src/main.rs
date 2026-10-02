@@ -50,7 +50,6 @@ static GLOBAL_ALLOCATOR: TrackingAllocator = TrackingAllocator::new();
 // Re-export render from backend where it actually lives
 pub use engine_backend::subsystems::render;
 // Re-export graph from ui crate (canonical location)
-pub use ui::graph;
 // Re-export themes from ui crate (where it belongs)
 pub use ui::themes;
 // Re-export engine state

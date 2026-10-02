@@ -17,7 +17,7 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use pulsar_reflection::{MethodFlags, MethodType, PropertyMetadata, REGISTRY};
+use pulsar_reflection::{MethodFlags, PropertyMetadata, REGISTRY};
 use pulsar_scenedb::Entity;
 use pulsar_script_vm::{
     ComponentProvider, NativeFn, NativeProvider, Param, ProvidedComponent, ScriptError,
@@ -163,7 +163,7 @@ fn method_native(
         .doc(method.display_name.clone())
         .method_of(ty.clone())
         .params(names);
-    if method.method_type == MethodType::Pure {
+    if method.flags.side_effect_free {
         builder = builder.side_effect_free();
     }
     if let Some(category) = method.category {

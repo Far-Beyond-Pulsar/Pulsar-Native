@@ -9,7 +9,7 @@
 #![allow(dead_code)]
 
 use pulsar_reflection::{
-    ComponentMethodRegistration, EngineClass, MethodMetadata, MethodReturnType, MethodType,
+    ComponentMethodRegistration, EngineClass, MethodMetadata, MethodFlags, MethodReturnType,
     PropertyMetadata, RuntimeTypeInfo, RUNTIME_TYPE_REGISTRY,
 };
 use pulsar_scenedb::{Entity, World};
@@ -67,7 +67,7 @@ impl EngineClass for TestGizmo {
             return_type: Some(MethodReturnType {
                 type_info: i32_info,
             }),
-            method_type: MethodType::Fn,
+            flags: MethodFlags::NONE,
             caller: Box::new(
                 |c: &mut dyn EngineClass, args: Vec<Box<dyn std::any::Any>>| {
                     let amount = args
