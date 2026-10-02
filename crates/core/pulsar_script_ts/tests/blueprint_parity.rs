@@ -81,6 +81,7 @@ fn observe(module: Module, steps: &[Step]) -> Vec<String> {
             waiting.push((now + seconds, continuation));
             format!("waiting {seconds}s")
         }
+        Ok(Completion::Paused { .. }) => "paused".to_owned(),
         Err(error) => format!("error {}", error.kind),
     };
 

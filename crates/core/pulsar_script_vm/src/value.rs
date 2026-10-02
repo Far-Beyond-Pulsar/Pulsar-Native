@@ -211,7 +211,7 @@ impl fmt::Debug for Value {
             Self::List(items) => f.debug_list().entries(items.iter()).finish(),
             Self::Map(entries) => f
                 .debug_map()
-                .entries(entries.iter().map(|(k, v)| (k, v)))
+                .entries(entries.iter())
                 .finish(),
             Self::Tuple(items) => {
                 let mut tuple = f.debug_tuple("");
