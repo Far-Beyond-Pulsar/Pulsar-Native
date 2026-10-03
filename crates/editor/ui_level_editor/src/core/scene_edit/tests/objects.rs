@@ -50,7 +50,9 @@ fn hierarchy_snapshot_has_one_consistent_object_and_root_projection() {
     assert_eq!(ids.len(), 2);
     assert_eq!(roots, vec![parent.clone()]);
     assert_eq!(
-        all.iter().find(|object| object.id == child).unwrap().parent,
+        // The hierarchy projection carries `children`, not `parent`; the
+        // parent link is read back from the full object record.
+        objects::get_object(world, &child).unwrap().parent,
         Some(parent)
     );
 }

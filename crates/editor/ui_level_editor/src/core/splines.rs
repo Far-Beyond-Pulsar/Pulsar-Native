@@ -254,6 +254,7 @@ pub fn preset(state: &LevelEditorState, kind: &str) -> SplineData {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use engine_backend::scene::SceneWorldExt as _;
     #[test]
     fn stored_curve_round_trips_with_settings() {
         let mut curve = SplineData::default();
@@ -294,7 +295,8 @@ mod tests {
     #[test]
     fn edits_reach_the_world_component_the_renderer_reads() {
         let mut state = LevelEditorState::new();
-        create(&mut state, preset(&state, "line"));
+        let line = preset(&state, "line");
+        create(&mut state, line);
         edit(&mut state, |d| d.closed = true);
         let object = selected(&state).unwrap().0;
         let world = state.scene.world();
