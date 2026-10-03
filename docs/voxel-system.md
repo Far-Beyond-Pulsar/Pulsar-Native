@@ -228,8 +228,10 @@ and gameplay agree on every block. On generated terrain the older
   a session logged with `PULSAR_VOXEL_STATS=1`, and
   `HELIO_VOXEL_FLIGHT_CRUISE=<m>` flies level at the editor's speed).
 
-- `PULSAR_VOXEL_NATIVE_FLIGHT=1` runs a 27 s native ascent/orbit/descent/cruise
-  diagnostic after residency settles and cancels on camera input. Use a copied
+- `PULSAR_VOXEL_NATIVE_FLIGHT=1` runs a 27 s ascent/orbit/descent/cruise/arrival
+  diagnostic after residency settles and cancels on camera input. Cruise and
+  arrival follow the local surface while moving; the start log names the protocol.
+  Use a copied
   project with `PULSAR_VOXEL_STATS=1`; delayed `graph_gpu_ms` samples measure
   graph GPU work, not presentation latency.
 
