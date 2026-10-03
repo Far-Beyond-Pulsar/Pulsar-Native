@@ -79,13 +79,35 @@ pub fn hsla_to_rgba(hsla: Hsla) -> [f32; 4] {
 /// is holding.
 pub struct PropertyStateManager {
     editors: HashMap<(String, String), BoundPropertyEditor>,
+    /// Wrap every row in an auto-height cached view boundary, so a hover,
+    /// caret blink or edit inside one row rebuilds that row instead of the
+    /// whole panel. See [`PropertyStateManager::with_cached_rows`].
+    cached_rows: bool,
 }
 
 impl PropertyStateManager {
     pub fn new() -> Self {
         Self {
             editors: HashMap::new(),
+            cached_rows: false,
         }
+    }
+
+    /// Make every row this manager renders its own cached view
+    /// ([`AnyView::cached_auto_height`]).
+    ///
+    /// Without it a row is just a child view: any notify inside any row (a
+    /// pointer entering a button, the caret blinking, a value being pushed in)
+    /// re-renders, re-lays-out and re-prepaints every row of the panel, since
+    /// the nearest cached ancestor is the panel itself. With it, only the row
+    /// that changed rebuilds.
+    ///
+    /// Opt-in because a cached row is laid out as `w_full()` with its remembered
+    /// content height: right for rows that fill the panel width (every built-in
+    /// editor), wrong for a custom editor with an intrinsic width.
+    pub fn with_cached_rows(mut self) -> Self {
+        self.cached_rows = true;
+        self
     }
 
     /// Drop every cached editor.
@@ -163,7 +185,14 @@ pub fn render_property_row_runtime<V: 'static>(
     // another panel) reach the editor. Editors no-op when it is unchanged.
     (editor.set_value)(current_value, window, cx);
 
-    editor.view.into_any_element()
+    if state.cached_rows {
+        editor
+            .view
+            .cached_auto_height(StyleRefinement::default().w_full().flex_shrink_0())
+            .into_any_element()
+    } else {
+        editor.view.into_any_element()
+    }
 }
 
 // ============================================================================

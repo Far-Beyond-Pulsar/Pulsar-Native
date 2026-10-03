@@ -179,7 +179,7 @@ impl ObjectTypeFieldsSection {
             selected_component: None,
             component_list,
             state_arc,
-            property_state: PropertyStateManager::new(),
+            property_state: PropertyStateManager::new().with_cached_rows(),
             icon_asset_picker: None,
             collapsed_property_categories: HashSet::new(),
             expanded_property_categories: HashSet::new(),
