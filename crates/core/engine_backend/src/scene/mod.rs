@@ -6,6 +6,8 @@
 //! components on demand. The editor, the renderer and the play-mode runtime
 //! all share one [`SharedScene`].
 
+pub mod audio_scene;
+
 // Resolved per-light GPU frames (Pulsar-Native#636) -- transform-folded
 // light state maintained at change time from World subscriptions, replacing
 // rebuild_light_frame's per-frame CPU combine.
