@@ -659,7 +659,11 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
 
     fn pass_factory(&self) -> VoxelPassFactory {
         let frame = Arc::clone(&self.frame);
-        Arc::new(move |_, _, _, _| Box::new(PlanetPass::new(Arc::clone(&frame))))
+        Arc::new(move |_, _, _, _| {
+            let mut settings = helio_pass_voxel_planet::engine::Settings::default();
+            settings.primary_samples |= std::env::var("PULSAR_VOXEL_PRIMARY_SAMPLES").ok().is_some_and(|value| value == "1");
+            Box::new(PlanetPass::with_settings(Arc::clone(&frame), settings))
+        })
     }
 
     fn needs_frame(&self, renderer: &helio::Renderer) -> bool {
@@ -698,6 +702,22 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             s.queued_delta_ops,
             s.wanted_key_capacity,
         );
+        if s.primary_sampling_enabled {
+            use std::fmt::Write;
+            if let Some(sample) = s.sampled_primary.filter(|sample|
+                sample.captured_at.elapsed() <= std::time::Duration::from_millis(500)) {
+                let _ = write!(line,
+                    " primary_sample=sparse_projected_estimates source_encoded_frame={} source_frame={} age_frames={} age_ms={:.2} sampled_rays={} sampled_terrain={} sampled_coarse_over2px={} sampled_coarse_over4px={} sampled_unresolved={} sample_stride={} sample_view={} sample_viewport={}x{} sample_projection_y={} sample_eye={:?} sample_forward={:?} sample_up={:?}",
+                    sample.encoded_frame, sample.source_frame, sample.age_frames,
+                    sample.captured_at.elapsed().as_secs_f64() * 1000.0,
+                    sample.sampled_rays, sample.terrain_hits, sample.coarse_over_2px,
+                    sample.coarse_over_4px, sample.unresolved, sample.stride, sample.view_id,
+                    sample.viewport[0], sample.viewport[1], sample.projection_y,
+                    sample.eye.to_array(), sample.forward.to_array(), sample.up.to_array());
+            } else {
+                line.push_str(" primary_sample=unavailable");
+            }
+        }
         static GPU_STAGES: OnceLock<bool> = OnceLock::new();
         if *GPU_STAGES.get_or_init(|| std::env::var_os("PULSAR_VOXEL_GPU_STAGES").is_some()) {
             if let Some(active) = pass.renderer() {
