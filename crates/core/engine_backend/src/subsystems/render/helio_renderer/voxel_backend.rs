@@ -699,7 +699,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         let pass = renderer.find_pass::<PlanetPass>()?;
         let s = pass.stats()?;
         let mut line = format!(
-            "planet ready={} resident={} pending={} jobs={} budget={} us_per_job={:.3} failed={} overflow={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={} free_pages={} free_units={} job_status={:?} visible_blocks={} visible_attempts={} visible_overflow={} visible_urgent_blocks={} queued_bytes={} queued_ops={} wanted_capacity={}",
+            "planet ready={} resident={} pending={} jobs={} budget={} us_per_job={:.3} failed={} overflow={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={} free_pages={} free_units={} job_status={:?} visible_blocks={} visible_attempts={} visible_overflow={} queued_bytes={} queued_ops={} wanted_capacity={}",
             s.ready,
             s.resident_columns,
             s.pending_columns,
@@ -721,7 +721,6 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             s.visible_request_blocks,
             s.visible_request_attempts,
             s.visible_request_overflow,
-            s.visible_urgent_blocks,
             s.queued_delta_bytes,
             s.queued_delta_ops,
             s.wanted_key_capacity,
