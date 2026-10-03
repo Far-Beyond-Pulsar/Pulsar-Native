@@ -729,6 +729,14 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             s.admission_publication_deferred,
             s.admission_batched_columns,
         );
+        {
+            use std::fmt::Write;
+            let _ = write!(line,
+                " requested_serial={} applied_serial={} fine_applied_serial={} far_applied_serial={:?} fine_apply_age_ms={:?} far_apply_age_ms={:?} fine_window_lag_m={:?}",
+                s.requested_serial, s.applied_serial, s.fine_applied_serial,
+                s.far_applied_serial, s.fine_apply_age_ms, s.far_apply_age_ms,
+                s.fine_window_lag_m);
+        }
         if s.primary_sampling_enabled {
             use std::fmt::Write;
             if let Some(sample) = s.sampled_primary.filter(|sample|
