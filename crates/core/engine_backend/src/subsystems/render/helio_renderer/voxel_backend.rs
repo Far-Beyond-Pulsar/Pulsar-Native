@@ -736,6 +736,11 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
                 s.requested_serial, s.applied_serial, s.fine_applied_serial,
                 s.far_applied_serial, s.fine_apply_age_ms, s.far_apply_age_ms,
                 s.fine_window_lag_m);
+            let _ = write!(line,
+                " fine_planning_ms={:?} far_planning_ms={:?} plan_edits_ms={} plan_authority_ms={} plan_windows_ms={} plan_near_ms={} plan_visible_ms={} plan_admission_ms={} fine_jobs={} far_jobs={}",
+                s.fine_planning_ms, s.far_planning_ms, s.plan_edits_ms,
+                s.plan_authority_ms, s.plan_windows_ms, s.plan_near_ms,
+                s.plan_visible_ms, s.plan_admission_ms, s.fine_jobs, s.far_jobs);
         }
         if s.primary_sampling_enabled {
             use std::fmt::Write;
