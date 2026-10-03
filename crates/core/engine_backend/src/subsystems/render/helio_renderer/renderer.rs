@@ -1053,7 +1053,8 @@ impl HelioRenderer {
             let flight_interrupted = had_input || (external_camera && self.native_voxel_flight.running());
             if let Some(pose) = self.native_voxel_flight.advance(now, flight_ready,
                 flight_interrupted, self.cam_pos, self.voxel_altitude,
-                basis(self.cam_frame, self.cam_yaw, self.cam_pitch).0, self.cam_pitch) {
+                basis(self.cam_frame, self.cam_yaw, self.cam_pitch).0, self.cam_pitch,
+                |direction, clearance| self.voxel_backends.diagnostic_surface_point(&voxel_entries, direction, clearance)) {
                 self.cam_pos = self.voxel_backends.lift_out_of_ground(pose.eye).unwrap_or(pose.eye);
                 self.cam_pitch = pose.pitch;
                 self.voxel_altitude = self.voxel_backends.altitude(&voxel_entries, self.cam_pos);

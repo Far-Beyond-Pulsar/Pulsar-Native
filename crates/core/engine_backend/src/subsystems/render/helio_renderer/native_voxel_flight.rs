@@ -2,6 +2,8 @@
 use glam::{DVec3, Vec3};
 use std::time::Instant;
 
+const PROTOCOL: &str = "continuous_ground_v2";
+
 pub(super) struct NativeVoxelFlight {
     armed: bool,
     armed_at: Instant,
@@ -35,7 +37,8 @@ impl NativeVoxelFlight {
     pub fn running(&self) -> bool { self.flight.is_some() }
 
     pub fn advance(&mut self, now: Instant, ready: bool, interrupted: bool,
-        eye: DVec3, clearance: Option<f64>, forward: Vec3, pitch: f32) -> Option<Pose> {
+        eye: DVec3, clearance: Option<f64>, forward: Vec3, pitch: f32,
+        mut surface_point: impl FnMut(DVec3, f64) -> Option<DVec3>) -> Option<Pose> {
         if interrupted || now.duration_since(self.armed_at).as_secs_f64() > 90.0 {
             if self.force_frames() { tracing::info!("VOXEL_NATIVE_FLIGHT cancelled"); }
             self.armed = false;
@@ -49,7 +52,7 @@ impl NativeVoxelFlight {
                 let tangent = (f - up * f.dot(up)).try_normalize()?;
                 self.flight = Some(Flight { started: now, eye, clearance: h, tangent, pitch });
                 self.armed = false;
-                tracing::info!("VOXEL_NATIVE_FLIGHT started");
+                tracing::info!("VOXEL_NATIVE_FLIGHT started protocol={PROTOCOL}");
             }
         }
         let flight = self.flight.as_ref()?;
@@ -64,11 +67,21 @@ impl NativeVoxelFlight {
             self.last_report = now;
             tracing::info!("VOXEL_NATIVE_FLIGHT time={t:.3} stage={stage}");
         }
-        Some(Pose {
-            eye: (flight.eye + flight.tangent * distance).normalize()
-                * (flight.eye.length() - flight.clearance + height),
-            pitch: down,
-        })
+        let direction = (flight.eye + flight.tangent * distance).normalize();
+        let eye = if t >= 15.0 {
+            // Follow the canonical surface at the changing direction. A
+            // descent relative to the starting terrain can enter a distant
+            // mountain and stop early at the production ground clamp.
+            let Some(point) = surface_point(direction, height).filter(|point| point.is_finite()) else {
+                self.flight = None;
+                tracing::info!("VOXEL_NATIVE_FLIGHT cancelled protocol={PROTOCOL} reason=surface_unavailable");
+                return None;
+            };
+            point
+        } else {
+            direction * (flight.eye.length() - flight.clearance + height)
+        };
+        Some(Pose { eye, pitch: down })
     }
 }
 
@@ -88,13 +101,17 @@ fn route(t: f64, start: f64, pitch: f32) -> (f64, f64, f32, &'static str) {
     } else if t < 21.0 {
         (cruise, (t - 15.0) * 3_000.0, pitch, "cruise")
     } else {
-        (blend(cruise, start, (t - 21.0) / 6.0), 18_000.0, pitch, "arrival")
+        (blend(cruise, start, (t - 21.0) / 6.0), (t - 15.0) * 3_000.0, pitch, "arrival")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sphere_surface(direction: DVec3, clearance: f64) -> Option<DVec3> {
+        Some(direction.normalize() * (6_371_700.0 + clearance))
+    }
     #[test]
     fn diagnostic_waits_for_residency_and_cancels_without_rearming() {
         let now = Instant::now();
@@ -102,12 +119,12 @@ mod tests {
             armed: true, armed_at: now, flight: None, last_report: now,
         };
         let eye = DVec3::Y * 6_371_730.0;
-        assert!(driver.advance(now, false, false, eye, Some(30.0), -Vec3::Z, -0.15).is_none());
-        let pose = driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15).unwrap();
+        assert!(driver.advance(now, false, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_none());
+        let pose = driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).unwrap();
         assert!(pose.eye.distance(eye) < 1.0e-8);
-        assert!(driver.advance(now, true, true, eye, Some(30.0), -Vec3::Z, -0.15).is_none());
+        assert!(driver.advance(now, true, true, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_none());
         assert!(!driver.force_frames());
-        assert!(driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15).is_none());
+        assert!(driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_none());
     }
 
     #[test]
@@ -119,5 +136,54 @@ mod tests {
             assert!((a.2 - b.2).abs() < 1.0e-5);
         }
         assert!((route(27.0, 30.0, -0.15).0 - 30.0).abs() < 1.0e-9);
+    }
+
+
+    #[test]
+    fn arrival_keeps_moving_with_requested_clearance_over_uneven_ground() {
+        let now = Instant::now();
+        let ground_radius = |direction: DVec3| {
+            6_371_700.0 + 400.0 + 250.0 * (direction.normalize().z * 1000.0).sin()
+        };
+        let surface = |direction: DVec3, clearance: f64| {
+            Some(direction.normalize() * (ground_radius(direction) + clearance))
+        };
+        let eye = DVec3::Y * (ground_radius(DVec3::Y) + 30.0);
+        let mut driver = NativeVoxelFlight {
+            armed: true, armed_at: now, flight: None, last_report: now,
+        };
+        let start = driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15, surface).unwrap();
+        assert!(start.eye.distance(eye) < 1e-8);
+        let mut previous: Option<Pose> = None;
+        for second in 21..=27 {
+            let pose = driver.advance(now + std::time::Duration::from_secs(second),
+                false, false, eye, Some(30.0), -Vec3::Z, -0.15, surface).unwrap();
+            let actual_clearance = pose.eye.length() - ground_radius(pose.eye);
+            let requested_clearance = 1000.0_f64 * (30.0_f64 / 1000.0).powf((second - 21) as f64 / 6.0);
+            assert!((actual_clearance - requested_clearance).abs() < 1e-7,
+                "the new local ground must determine clearance at second{second}");
+            if let Some(previous) = previous {
+                let surface_travel = pose.eye.normalize().distance(previous.eye.normalize()) * 6_371_700.0;
+                assert!(surface_travel > 2990.0 && surface_travel < 3010.0,
+                    "arrival must keep translating rather than ground-clamping: {surface_travel}");
+            }
+            previous = Some(pose);
+        }
+        assert!(driver.advance(now + std::time::Duration::from_millis(27_001),
+            false, false, eye, Some(30.0), -Vec3::Z, -0.15, surface).is_none());
+        assert!(!driver.force_frames());
+    }
+
+    #[test]
+    fn unavailable_canonical_surface_cancels_the_diagnostic() {
+        let now = Instant::now();
+        let eye = DVec3::Y * 6_371_730.0;
+        let mut driver = NativeVoxelFlight {
+            armed: true, armed_at: now, flight: None, last_report: now,
+        };
+        assert!(driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_some());
+        assert!(driver.advance(now + std::time::Duration::from_secs(15),
+            false, false, eye, Some(30.0), -Vec3::Z, -0.15, |_, _| None).is_none());
+        assert!(!driver.force_frames());
     }
 }
