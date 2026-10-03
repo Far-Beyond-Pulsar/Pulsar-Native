@@ -32,6 +32,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tracing = { workspace = true }
+gpui-ce = { workspace = true, features = ["test-support"] }
 [lib]
 crate-type = ["lib", "cdylib"]
 
