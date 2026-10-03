@@ -84,6 +84,9 @@ winapi = { workspace = true, features = ["winuser", "shellapi"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# Headless `TestAppContext` window for the properties-panel layout budget test
+# (`workspace/panels/properties_perf_tests.rs`). Test binaries only.
+gpui-ce = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true
