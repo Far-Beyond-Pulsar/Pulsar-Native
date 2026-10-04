@@ -66,7 +66,7 @@ fn card_title(title: &'static str, theme: &Theme) -> impl IntoElement {
     div()
         .text_xs()
         .font_weight(FontWeight::SEMIBOLD)
-        .text_color(theme.muted_foreground)
+        .text_color(theme.foreground)
         .child(title)
 }
 
@@ -80,7 +80,7 @@ fn stat_line(
     h_flex()
         .gap_2()
         .items_center()
-        .child(div().text_xs().text_color(theme.muted_foreground).child(label))
+        .child(div().text_xs().text_color(theme.foreground).child(label))
         .child(
             div()
                 .text_xs()
@@ -108,7 +108,7 @@ fn ui_fps_color(fps: f64, theme: &Theme) -> Hsla {
     if fps >= 240.0 {
         theme.success
     } else if fps >= 120.0 {
-        theme.accent
+        theme.foreground
     } else if fps >= 60.0 {
         theme.warning
     } else {
@@ -120,7 +120,7 @@ fn render_fps_color(fps: f64, theme: &Theme) -> Hsla {
     if fps >= 144.0 {
         theme.success
     } else if fps >= 60.0 {
-        theme.accent
+        theme.foreground
     } else if fps >= 30.0 {
         theme.warning
     } else {
@@ -132,7 +132,7 @@ fn frame_time_color(ms: f64, theme: &Theme) -> Hsla {
     if ms <= 6.9 {
         theme.success
     } else if ms <= 16.6 {
-        theme.accent
+        theme.foreground
     } else if ms <= 33.3 {
         theme.warning
     } else {
@@ -258,9 +258,9 @@ impl Render for RenderingStats {
         let theme = cx.theme();
         card(theme)
             .child(card_title("Rendering", theme))
-            .child(stat_line("Draw Calls", self.shown[0].clone(), theme.chart_1, theme))
-            .child(stat_line("Vertices", self.shown[1].clone(), theme.chart_2, theme))
-            .child(stat_line("GPU Memory", self.shown[2].clone(), theme.chart_3, theme))
+            .child(stat_line("Draw Calls", self.shown[0].clone(), theme.foreground, theme))
+            .child(stat_line("Vertices", self.shown[1].clone(), theme.foreground, theme))
+            .child(stat_line("GPU Memory", self.shown[2].clone(), theme.foreground, theme))
     }
 }
 
