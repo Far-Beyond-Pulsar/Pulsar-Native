@@ -737,11 +737,11 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
                 s.far_applied_serial, s.fine_apply_age_ms, s.far_apply_age_ms,
                 s.fine_window_lag_m);
             let _ = write!(line,
-                " fine_planning_ms={:?} far_planning_ms={:?} plan_edits_ms={} plan_authority_ms={} plan_windows_ms={} plan_near_ms={} plan_visible_ms={} plan_admission_ms={} fine_jobs={} far_jobs={} camera_candidate_blocks={:?} camera_lease_blocks={:?} camera_jobs={:?}",
+                " fine_planning_ms={:?} far_planning_ms={:?} plan_edits_ms={} plan_authority_ms={} plan_windows_ms={} plan_near_ms={} plan_visible_ms={} plan_admission_ms={} fine_jobs={} far_jobs={} camera_base_level={} camera_candidate_blocks={:?} camera_lease_blocks={:?} camera_jobs={:?}",
                 s.fine_planning_ms, s.far_planning_ms, s.plan_edits_ms,
                 s.plan_authority_ms, s.plan_windows_ms, s.plan_near_ms,
                 s.plan_visible_ms, s.plan_admission_ms, s.fine_jobs, s.far_jobs,
-                s.camera_candidate_blocks, s.camera_lease_blocks, s.camera_jobs);
+                s.camera_base_level, s.camera_candidate_blocks, s.camera_lease_blocks, s.camera_jobs);
         }
         if s.primary_sampling_enabled {
             use std::fmt::Write;
