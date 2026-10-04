@@ -440,9 +440,12 @@ impl SceneInteraction {
                     }
                 }
             }
-            if self.mode == GizmoType::Rotate && active_rotation_axis.is_none() {
+            if self.mode == GizmoType::Rotate {
                 let signs = self.quadrant_signs(pivot, basis);
-                for axis in 0..3 {
+                let axes: Vec<usize> = active_rotation_axis
+                    .map(|axis| vec![axis])
+                    .unwrap_or_else(|| vec![0, 1, 2]);
+                for axis in axes {
                     let color = match axis {
                         0 => [0.8, 0.42, 0.38, 0.45],
                         1 => [0.48, 0.75, 0.4, 0.45],
@@ -495,6 +498,40 @@ impl SceneInteraction {
                         c.to_array(),
                         [base[0] * shade, base[1] * shade, base[2] * shade, base[3]],
                     );
+                }
+            }
+            if let Some(drag) = self.drag.filter(|drag| drag.mode == GizmoType::Rotate) {
+                if let Handle::Axis(axis) = drag.handle {
+                    let snap_step = f32::from_bits(ROTATION_SNAP.load(Ordering::Relaxed))
+                        .to_radians();
+                    let snapped_angle = (drag.angle / snap_step).round() * snap_step;
+                    let shown_angle = snapped_angle.clamp(-std::f32::consts::TAU, std::f32::consts::TAU);
+                    let segments = ((shown_angle.abs() / std::f32::consts::TAU) * 96.0)
+                        .ceil()
+                        .max(1.0) as usize;
+                    let initial_basis = rotation_matrix(drag.initial);
+                    let axis_vector = initial_basis.col(axis);
+                    let u = initial_basis.col((axis + 1) % 3);
+                    let v = initial_basis.col((axis + 2) % 3);
+                    let color = rotation_axis_highlight_color(axis);
+                    let radial = |angle: f32| u * angle.cos() + v * angle.sin();
+                    for segment in 0..segments {
+                        let a = shown_angle * segment as f32 / segments as f32;
+                        let b = shown_angle * (segment + 1) as f32 / segments as f32;
+                        let inner_a = pivot + (radial(a) * 0.81 + axis_vector * 0.008) * length;
+                        let inner_b = pivot + (radial(b) * 0.81 + axis_vector * 0.008) * length;
+                        let outer_a = pivot + (radial(a) * 0.89 + axis_vector * 0.008) * length;
+                        let outer_b = pivot + (radial(b) * 0.89 + axis_vector * 0.008) * length;
+                        batch.tri(inner_a.to_array(), inner_b.to_array(), outer_b.to_array(), color);
+                        batch.tri(inner_a.to_array(), outer_b.to_array(), outer_a.to_array(), color);
+
+                        let inner_a = pivot + (radial(a) * 0.81 - axis_vector * 0.008) * length;
+                        let inner_b = pivot + (radial(b) * 0.81 - axis_vector * 0.008) * length;
+                        let outer_a = pivot + (radial(a) * 0.89 - axis_vector * 0.008) * length;
+                        let outer_b = pivot + (radial(b) * 0.89 - axis_vector * 0.008) * length;
+                        batch.tri(inner_a.to_array(), outer_b.to_array(), inner_b.to_array(), color);
+                        batch.tri(inner_a.to_array(), outer_a.to_array(), outer_b.to_array(), color);
+                    }
                 }
             }
         });
@@ -565,6 +602,13 @@ fn rotation_axis_color(axis: usize) -> [f32; 4] {
         0 => [0.95, 0.12, 0.09, 1.0],
         1 => [0.2, 0.85, 0.12, 1.0],
         _ => [0.12, 0.4, 1.0, 1.0],
+    }
+}
+fn rotation_axis_highlight_color(axis: usize) -> [f32; 4] {
+    match axis {
+        0 => [1.0, 0.62, 0.58, 1.0],
+        1 => [0.62, 1.0, 0.58, 1.0],
+        _ => [0.62, 0.78, 1.0, 1.0],
     }
 }
 fn ray_plane_intersection(o: Vec3, d: Vec3, p: Vec3, n: Vec3) -> Option<Vec3> {
