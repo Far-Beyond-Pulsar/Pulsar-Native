@@ -10,11 +10,12 @@
 //! | Input (latency)                           | 10 Hz |
 //! | Charts (FPS, frame time, latency)         | 4 Hz  |
 //!
-//! Each is mounted as a cached view (`AnyView::cached_auto_height`), so a
-//! viewport frame, which rebuilds the panel around the overlay, replays them
-//! untouched. A section's own timer is the only thing that invalidates it, and a
-//! text section only does so when the text it would show has changed. The
-//! overlay container itself never changes after it is built.
+//! Each is mounted as an isolated cached view (`AnyView::cached_auto_height` +
+//! `isolated`). A section's own timer is the only thing that invalidates it, and
+//! it refreshes in place: its ancestors do not render, lay out or prepaint, so
+//! the rest of the window is untouched. A text section only invalidates when
+//! the text it would show has changed. The overlay container itself never
+//! changes after it is built.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -400,10 +401,13 @@ impl PerformanceOverlay {
         }
     }
 
-    /// A section as its own cached view; see the module docs.
+    /// A section as its own cached, *isolated* view: when its timer fires it
+    /// re-renders in place and nothing above it (the overlay, the viewport panel,
+    /// the dock) renders, lays out or prepaints. See `AnyView::isolated`.
     fn section<V: Render>(entity: &Entity<V>) -> AnyView {
         AnyView::from(entity.clone())
             .cached_auto_height(StyleRefinement::default().w_full().flex_shrink_0())
+            .isolated()
     }
 }
 
