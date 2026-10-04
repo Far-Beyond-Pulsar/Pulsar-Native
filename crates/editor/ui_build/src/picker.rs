@@ -251,15 +251,7 @@ impl Render for BuildPicker {
                                     })
                             })),
                     )
-                    .child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .right_0()
-                            .bottom_0()
-                            .child(Scrollbar::vertical(&self.scroll_state, &self.scroll_handle)),
-                    ),
+                    .child(Scrollbar::vertical(&self.scroll_state, &self.scroll_handle)),
             )
             // Fixed footer, outside the scrolling area
             .child(

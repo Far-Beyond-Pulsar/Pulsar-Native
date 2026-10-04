@@ -496,15 +496,7 @@ impl BuildConfiguratorWindow {
                                     .when(is_active, |el| el.child(active_badge(p)))
                             })),
                     )
-                    .child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .right_0()
-                            .bottom_0()
-                            .child(Scrollbar::vertical(&self.list_scroll_state, &self.list_scroll)),
-                    ),
+                    .child(Scrollbar::vertical(&self.list_scroll_state, &self.list_scroll)),
             )
             .child(
                 div()
@@ -631,15 +623,7 @@ impl BuildConfiguratorWindow {
                             .track_scroll(&self.form_scroll)
                             .child(body),
                     )
-                    .child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .right_0()
-                            .bottom_0()
-                            .child(Scrollbar::vertical(&self.form_scroll_state, &self.form_scroll)),
-                    ),
+                    .child(Scrollbar::vertical(&self.form_scroll_state, &self.form_scroll)),
             )
             .into_any_element()
     }

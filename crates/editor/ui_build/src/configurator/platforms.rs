@@ -176,18 +176,10 @@ impl BuildConfiguratorWindow {
                                 })
                                 .children(groups),
                         )
-                        .child(
-                            div()
-                                .absolute()
-                                .top_0()
-                                .left_0()
-                                .right_0()
-                                .bottom_0()
-                                .child(Scrollbar::vertical(
+                        .child(Scrollbar::vertical(
                                     &self.platform_scroll_state,
                                     &self.platform_scroll,
                                 )),
-                        ),
                 ),
         )
     }
