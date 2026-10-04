@@ -142,13 +142,13 @@ pub struct ChartPoint {
     pub value: f64,
 }
 
-/// `"1"`..`"1000"`, built once. Chart x values are cloned for every point on
+/// `"1"`..`"999"`, then `"1k"`, built once. Chart x values are cloned for every point on
 /// every paint; sharing the strings makes that a pointer copy.
 fn position_label(position: usize) -> SharedString {
     static LABELS: std::sync::OnceLock<Vec<SharedString>> = std::sync::OnceLock::new();
     let labels = LABELS.get_or_init(|| {
         (1..=HISTORY_CAPACITY)
-            .map(|n| SharedString::from(n.to_string()))
+            .map(|n| SharedString::from(if n == HISTORY_CAPACITY { "1k".to_string() } else { n.to_string() }))
             .collect()
     });
     labels
@@ -314,14 +314,14 @@ mod tests {
         assert_eq!(history.len(), HISTORY_CAPACITY);
         let before = history.points(None);
         assert_eq!(before.first().unwrap().position.as_ref(), "1");
-        assert_eq!(before.last().unwrap().position.as_ref(), "1000");
+        assert_eq!(before.last().unwrap().position.as_ref(), "1k");
 
         // One more sample: the oldest falls off, the labels do not move.
         history.push(5000.0);
         let after = history.points(None);
         assert_eq!(after.len(), HISTORY_CAPACITY);
         assert_eq!(after.first().unwrap().position.as_ref(), "1");
-        assert_eq!(after.last().unwrap().position.as_ref(), "1000");
+        assert_eq!(after.last().unwrap().position.as_ref(), "1k");
         assert_eq!(after.last().unwrap().value, 5000.0);
         assert_eq!(after.first().unwrap().value, 1.0, "sample 0 rolled off");
     }

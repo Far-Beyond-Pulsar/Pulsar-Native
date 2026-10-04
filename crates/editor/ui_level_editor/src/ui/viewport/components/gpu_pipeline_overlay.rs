@@ -8,7 +8,7 @@ use ui::{ActiveTheme, StyledExt, h_flex, v_flex};
 
 use crate::state::LevelEditorState;
 use engine_backend::subsystems::render::helio_renderer::{
-    DiagnosticMetric, GpuProfilerAvailability,
+    DiagnosticMetric, GpuProfilerAvailability, GpuProfilerData,
 };
 
 const PASS_COLORS: &[(f32, f32, f32)] = &[
@@ -42,6 +42,7 @@ pub fn render_gpu_pipeline_overlay<V>(
     _state: &LevelEditorState,
     _state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+    last_profile: &std::cell::RefCell<Option<GpuProfilerData>>,
     cx: &mut Context<V>,
 ) -> impl IntoElement
 where
@@ -49,10 +50,16 @@ where
 {
     // Cloning is deliberately conditional on the overlay being visible. The
     // render thread itself updates a reusable cache without allocating.
-    let profiler_data = gpu_engine
+    // When the renderer is busy (or has nothing new) the previous profile stays
+    // on screen, unchanged in size, rather than being replaced.
+    if let Some(fresh) = gpu_engine
         .try_lock()
         .ok()
-        .and_then(|engine| engine.get_gpu_profiler_data());
+        .and_then(|engine| engine.get_gpu_profiler_data())
+    {
+        *last_profile.borrow_mut() = Some(fresh);
+    }
+    let profiler_data = last_profile.borrow().clone();
 
     let (background, border, foreground, muted, success, warning, danger) = {
         let theme = cx.theme();
@@ -71,10 +78,10 @@ where
         .gap_2()
         .p_3()
         .w(px(410.0))
-        .bg(background.opacity(0.95))
+        .bg(background.opacity(0.85))
         .rounded_lg()
         .border_1()
-        .border_color(border)
+        .border_color(border.opacity(0.5))
         .shadow_lg()
         .child(
             h_flex()
