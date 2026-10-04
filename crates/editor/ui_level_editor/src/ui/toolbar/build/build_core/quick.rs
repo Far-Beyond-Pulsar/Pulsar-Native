@@ -9,7 +9,7 @@ use super::*;
 pub(super) fn run_scratch(
     project_root: PathBuf,
     inner_mode: BuildMode, // Build, BuildAndRun, or Check
-    state_arc: Option<Arc<parking_lot::RwLock<LevelEditorState>>>,
+    launch_game: bool,
     entity_id: EntityId,
     window: &mut Window,
     cx: &mut App,
@@ -89,10 +89,9 @@ pub(super) fn run_scratch(
                         );
                     });
                     if matches!(inner_mode, BuildMode::BuildAndRun) {
-                        if let Some(state) = state_arc {
+                        if launch_game {
                             launch_and_monitor(
                                 project_root,
-                                state,
                                 entity_id,
                                 window_handle,
                                 async_app,
@@ -321,7 +320,6 @@ pub(super) fn run_update(project_root: PathBuf, window: &mut Window, cx: &mut Ap
 /// building — otherwise the build silently reuses the previously-locked rev.
 pub(super) fn run_update_build_and_run(
     project_root: PathBuf,
-    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     entity_id: EntityId,
     window: &mut Window,
     cx: &mut App,
@@ -386,7 +384,6 @@ pub(super) fn run_update_build_and_run(
                     });
                     launch_and_monitor(
                         project_root,
-                        state_arc,
                         entity_id,
                         window_handle,
                         async_app,

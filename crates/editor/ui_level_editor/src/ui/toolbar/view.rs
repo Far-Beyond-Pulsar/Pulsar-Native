@@ -29,9 +29,7 @@ use ui::dock::PanelEvent;
 
 use super::ToolbarPanel;
 use crate::LevelEditorState;
-use crate::state::{
-    BuildConfig, BuildMode, EditorMode, MultiplayerMode, TargetPlatform,
-};
+use crate::state::EditorMode;
 use crate::tool_modes::ToolModeId;
 use crate::ui::frame_pump::spawn_frame_pump;
 
@@ -43,21 +41,8 @@ use crate::ui::frame_pump::spawn_frame_pump;
 pub struct ToolbarSignature {
     // tool_mode_dropdown / mode_indicator
     tool_mode: ToolModeId,
-    // playback_controls / mode_indicator
+    // mode_indicator
     editor_mode: EditorMode,
-    // playback_controls: PIE pause / step (#925)
-    pie_active: bool,
-    pie_supports_control: bool,
-    pie_paused: bool,
-    // time_scale_dropdown
-    time_scale: f32,
-    // multiplayer_dropdown
-    multiplayer_mode: MultiplayerMode,
-    // build/ dropdowns + core
-    build_config: BuildConfig,
-    target_platform: TargetPlatform,
-    build_mode: BuildMode,
-    game_running: bool,
     // feature_toggles
     feature_lighting_enabled: bool,
     feature_shadows_enabled: bool,
@@ -72,15 +57,6 @@ impl ToolbarSignature {
         Self {
             tool_mode: state.editor.tool_mode_registry.selected_id(),
             editor_mode: state.scene.editor_mode,
-            pie_active: state.play.pie.active,
-            pie_supports_control: state.play.pie.supports_control,
-            pie_paused: state.play.pie.paused,
-            time_scale: state.play.time_scale,
-            multiplayer_mode: state.play.multiplayer_mode,
-            build_config: state.build.config,
-            target_platform: state.build.target_platform,
-            build_mode: state.build.mode,
-            game_running: state.build.game_running,
             feature_lighting_enabled: state.editor.feature_lighting_enabled,
             feature_shadows_enabled: state.editor.feature_shadows_enabled,
             feature_bloom_enabled: state.editor.feature_bloom_enabled,

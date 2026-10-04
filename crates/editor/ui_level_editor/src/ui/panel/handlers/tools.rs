@@ -59,56 +59,6 @@ impl LevelEditorPanel {
     }
 
     // Toolbar action handlers
-    pub(in crate::ui::panel) fn on_set_time_scale(
-        &mut self,
-        action: &toolbar::SetTimeScale,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.shared_state.write().play.time_scale = action.0;
-        cx.notify();
-    }
-
-    pub(in crate::ui::panel) fn on_set_multiplayer_mode(
-        &mut self,
-        action: &toolbar::SetMultiplayerMode,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.shared_state.write().play.multiplayer_mode = action.0;
-        cx.notify();
-    }
-
-    pub(in crate::ui::panel) fn on_set_build_config(
-        &mut self,
-        action: &toolbar::SetBuildConfig,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.shared_state.write().build.config = action.0;
-        cx.notify();
-    }
-
-    pub(in crate::ui::panel) fn on_set_target_platform(
-        &mut self,
-        action: &toolbar::SetTargetPlatform,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.shared_state.write().build.target_platform = action.0;
-        cx.notify();
-    }
-
-    pub(in crate::ui::panel) fn on_set_build_mode(
-        &mut self,
-        action: &toolbar::SetBuildMode,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.shared_state.write().build.mode = action.0;
-        cx.notify();
-    }
-
     pub(in crate::ui::panel) fn on_set_tool_mode(
         &mut self,
         action: &toolbar::SetToolMode,

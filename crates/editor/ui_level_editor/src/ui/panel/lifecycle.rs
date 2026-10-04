@@ -384,8 +384,6 @@ impl LevelEditorPanel {
             }
         });
 
-        // The engine-global toolbar in the app shell drives this editor.
-        crate::ui::toolbar::set_active_level_editor(shared_state.clone(), cx);
 
         let toolbar = cx.new(|_| {
             ToolbarView::new(shared_state.clone(), gpu_engine.clone(), helio_mailbox.clone())
@@ -404,6 +402,7 @@ impl LevelEditorPanel {
             shared_state,
             workspace: None,
             game_panel: None,
+            host: playback_host::HostState::new(),
             applied_pie_signature: None,
             applied_mode_layout: None,
             _root_input_poller: poller,

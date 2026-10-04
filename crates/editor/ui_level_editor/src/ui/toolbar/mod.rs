@@ -27,8 +27,7 @@ pub use actions::*;
 use feature_toggles::FeatureToggles;
 use mode_indicator::ModeIndicator;
 use tool_mode_dropdown::ToolModeDropdown;
-pub use global_toolbar::{ActiveLevelEditor, GLOBAL_TOOLBAR_HEIGHT, GlobalToolbarView};
-pub(crate) use global_toolbar::set_active_level_editor;
+pub use global_toolbar::{GLOBAL_TOOLBAR_HEIGHT, GlobalToolbarView};
 pub use view::ToolbarView;
 use level_editor_menus::LevelEditorMenus;
 

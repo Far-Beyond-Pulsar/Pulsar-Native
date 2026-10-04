@@ -11,8 +11,8 @@ use super::*;
 pub(super) fn run_build_pipeline(
     project_root: PathBuf,
     mode: BuildMode,
-    // Only Some for BuildAndRun — used to store the game process and update state.
-    state_arc: Option<Arc<parking_lot::RwLock<LevelEditorState>>>,
+    // True for BuildAndRun — launch the built game and track its process.
+    launch_game: bool,
     entity_id: EntityId,
     window: &mut Window,
     cx: &mut App,
@@ -70,10 +70,9 @@ pub(super) fn run_build_pipeline(
                     });
 
                     if mode == BuildMode::BuildAndRun {
-                        if let Some(state) = state_arc {
+                        if launch_game {
                             launch_and_monitor(
                                 project_root,
-                                state,
                                 entity_id,
                                 window_handle,
                                 async_app,
@@ -125,7 +124,6 @@ pub(super) fn run_build_pipeline(
 
 pub(super) async fn launch_and_monitor(
     project_root: PathBuf,
-    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     entity_id: EntityId,
     window_handle: AnyWindowHandle,
     async_app: &mut AsyncApp,
@@ -175,11 +173,9 @@ pub(super) async fn launch_and_monitor(
     });
 
     // Store the handle and mark running.
-    {
-        let mut state = state_arc.write();
-        *state.build.game_process.lock() = Some(child);
-        state.build.game_running = true;
-    }
+    let playback = engine_state::playback::playback();
+    *playback.game_process().lock() = Some(child);
+    playback.update(|s| s.game_running = true);
     let _ = async_app.update_window(window_handle, |_, _, cx| cx.notify(entity_id));
 
     // Poll until the process exits.
@@ -190,8 +186,7 @@ pub(super) async fn launch_and_monitor(
             .await;
 
         let exit_status = {
-            let state = state_arc.read();
-            let mut guard = state.build.game_process.lock();
+            let mut guard = playback.game_process().lock();
             match guard.as_mut() {
                 None => Some(None), // Stop button already killed it — treat as exited.
                 Some(child) => match child.try_wait() {
@@ -204,9 +199,8 @@ pub(super) async fn launch_and_monitor(
 
         if let Some(status) = exit_status {
             // Clean up the handle.
-            let mut state = state_arc.write();
-            state.build.game_process.lock().take();
-            state.build.game_running = false;
+            playback.game_process().lock().take();
+            playback.update(|s| s.game_running = false);
 
             // Surface a notification if the process exited with an error.
             let stderr = stderr_rx.try_recv().unwrap_or_default();

@@ -31,7 +31,8 @@ use ui::{
 };
 
 use super::super::actions::SetBuildMode;
-use crate::state::{BuildMode, EditorMode, LevelEditorState};
+use engine_state::playback::PlaybackState;
+use crate::state::BuildMode;
 
 pub(super) struct BuildCoreNotification;
 
@@ -204,39 +205,36 @@ fn show_build_failure(message: String, title: String, window: &mut Window, cx: &
 
 impl BuildCoreButton {
     pub fn render<V>(
-        state: &LevelEditorState,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        playback_state: &PlaybackState,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
-        let is_playing = state.scene.editor_mode == EditorMode::Play;
-        let game_running = state.build.game_running;
-        let build_mode = state.build.mode;
+        let is_playing = !playback_state.is_stopped();
+        let game_running = playback_state.game_running;
+        let build_mode = playback_state.build_mode;
         let entity_id = cx.entity().entity_id();
 
         let (label, icon, tooltip) = mode_label_icon_tooltip(build_mode);
 
         // ── Primary button ────────────────────────────────────────────────────
-        let state_for_click = state_arc.clone();
         let primary = Button::new("build_core_primary")
             .icon(icon)
             .label(label)
             .tooltip(tooltip)
             .when(is_playing || game_running, |b| b.disabled(true))
             .on_click(move |_, window, cx| {
-                let mode = state_for_click.read().build.mode;
-                trigger_build(mode, state_for_click.clone(), entity_id, window, cx);
+                let mode = engine_state::playback::playback().state().build_mode;
+                trigger_build(mode, entity_id, window, cx);
             });
 
         // ── Dropdown (chevron) ────────────────────────────────────────────────
-        let state_for_menu = state_arc.clone();
         let dropdown = DropdownButton::new("build_core_dropdown")
             .button(primary)
             .when(!is_playing && !game_running, |d| {
                 d.popup_menu(move |menu, _, _| {
-                    let current = state_for_menu.read().build.mode;
+                    let current = engine_state::playback::playback().state().build_mode;
                     menu.label("Build Mode")
                         .separator()
                         .menu_with_check(
@@ -285,18 +283,17 @@ impl BuildCoreButton {
             });
 
         // ── Stop button (only while game is running) ──────────────────────────
-        let state_for_stop = state_arc.clone();
         let stop_btn = Button::new("build_core_stop")
             .icon(IconName::Square)
             .label("Stop")
             .tooltip("Stop the running game")
             .on_click(move |_, _, cx| {
-                let mut state = state_for_stop.write();
-                if let Some(mut child) = state.build.game_process.lock().take() {
+                let playback = engine_state::playback::playback();
+                if let Some(mut child) = playback.game_process().lock().take() {
                     let _ = child.kill();
                     let _ = child.wait();
                 }
-                state.build.game_running = false;
+                playback.update(|s| s.game_running = false);
                 cx.notify(entity_id);
             });
 
@@ -359,7 +356,6 @@ fn project_root() -> Option<PathBuf> {
 
 fn trigger_build(
     mode: BuildMode,
-    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     entity_id: EntityId,
     window: &mut Window,
     cx: &mut App,
@@ -376,22 +372,22 @@ fn trigger_build(
         BuildMode::Check => run_check(root, window, cx),
         BuildMode::Update => run_update(root, window, cx),
         BuildMode::UpdateBuildAndRun => {
-            run_update_build_and_run(root, state_arc, entity_id, window, cx)
+            run_update_build_and_run(root, entity_id, window, cx)
         }
-        BuildMode::Build => run_build_pipeline(root, mode, None, entity_id, window, cx),
+        BuildMode::Build => run_build_pipeline(root, mode, false, entity_id, window, cx),
         BuildMode::BuildAndRun => {
-            run_build_pipeline(root, mode, Some(state_arc), entity_id, window, cx)
+            run_build_pipeline(root, mode, true, entity_id, window, cx)
         }
-        BuildMode::BuildScratch => run_scratch(root, BuildMode::Build, None, entity_id, window, cx),
+        BuildMode::BuildScratch => run_scratch(root, BuildMode::Build, false, entity_id, window, cx),
         BuildMode::BuildAndRunScratch => run_scratch(
             root,
             BuildMode::BuildAndRun,
-            Some(state_arc),
+            true,
             entity_id,
             window,
             cx,
         ),
-        BuildMode::CheckScratch => run_scratch(root, BuildMode::Check, None, entity_id, window, cx),
+        BuildMode::CheckScratch => run_scratch(root, BuildMode::Check, false, entity_id, window, cx),
     }
 }
 

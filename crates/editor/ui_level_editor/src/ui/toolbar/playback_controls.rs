@@ -1,72 +1,43 @@
+use engine_state::playback::{PlayPhase, PlaybackCommand, PlaybackState, playback};
 use gpui::*;
 use rust_i18n::t;
-use std::sync::Arc;
 use ui::{
     IconName, Selectable,
     button::{Button, ButtonVariants as _},
 };
 
-use crate::state::LevelEditorState;
-
-/// Playback controls - Play, Pause, Stop buttons for simulation
+/// Play / Pause / Step / Stop for the engine's play session.
+///
+/// Purely a view of [`PlaybackState`] that sends [`PlaybackCommand`]s; whichever
+/// editor is the playback host does the work.
 pub struct PlaybackControls;
 
 impl PlaybackControls {
-    pub fn render<V>(
-        state: &LevelEditorState,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        _cx: &mut Context<V>,
-    ) -> impl IntoElement
-    where
-        V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
-    {
+    pub fn render(state: &PlaybackState) -> impl IntoElement {
+        let stopped = state.phase == PlayPhase::Stopped;
+        let can_control = state.phase == PlayPhase::Playing && state.supports_control;
+        let paused = state.paused;
+
         ui::h_flex()
             .gap_1p5()
             .items_center()
-            .child({
-                let state_clone = state_arc.clone();
-                if state.scene.is_edit_mode() {
-                    Button::new("play")
-                        .icon(IconName::Play)
-                        .tooltip(t!("LevelEditor.Toolbar.StartSimulation"))
-                        .on_click(move |_, window, cx| {
-                            // Play In Editor: enter play mode AND build+embed the
-                            // game (issue #243). Shared with the `PlayScene` action.
-                            crate::ui::panel::begin_pie(
-                                state_clone.clone(),
-                                window,
-                                cx,
-                            );
-                        })
-                        .into_any_element()
-                } else {
-                    // Native hot reload (#653): while a game runs, Play
-                    // rebuilds it and swaps the dylib WITHOUT stopping the
-                    // world — entities/components survive, actor logic
-                    // updates (the same contract `reload_blueprint` gives VM
-                    // classes). Stop still ends the session.
-                    Button::new("play_active")
-                        .icon(IconName::Play)
-                        .tooltip(t!("LevelEditor.Toolbar.ReloadSimulation"))
-                        .selected(true)
-                        .on_click(move |_, window, cx| {
-                            crate::ui::panel::begin_pie(
-                                state_clone.clone(),
-                                window,
-                                cx,
-                            );
-                        })
-                        .into_any_element()
-                }
+            .child(if stopped {
+                Button::new("play")
+                    .icon(IconName::Play)
+                    .tooltip(t!("LevelEditor.Toolbar.StartSimulation"))
+                    .on_click(|_, _, _| send(PlaybackCommand::Play))
+                    .into_any_element()
+            } else {
+                // Native hot reload (#653): Play while a game runs rebuilds it
+                // and swaps the dylib without stopping the world.
+                Button::new("play_active")
+                    .icon(IconName::Play)
+                    .tooltip(t!("LevelEditor.Toolbar.ReloadSimulation"))
+                    .selected(true)
+                    .on_click(|_, _, _| send(PlaybackCommand::Play))
+                    .into_any_element()
             })
             .child({
-                // Pause / resume the running game's simulation (#925). The
-                // viewport applies it to the game's TickLoop; rendering and
-                // editing go on while paused.
-                let state_clone = state_arc.clone();
-                let pie = &state.play.pie;
-                let enabled = pie.active && pie.supports_control;
-                let paused = pie.paused;
                 let btn = Button::new("pause")
                     .icon(if paused {
                         IconName::Play
@@ -80,55 +51,41 @@ impl PlaybackControls {
                     })
                     .ghost()
                     .selected(paused)
-                    .on_click(move |_, _, _| {
-                        let mut st = state_clone.write();
-                        if st.play.pie.active {
-                            let paused = st.play.pie.paused;
-                            st.play.pie.pause_request = Some(!paused);
-                            st.play.pie.paused = !paused;
-                        }
-                    });
-                if enabled {
+                    .on_click(|_, _, _| send(PlaybackCommand::TogglePause));
+                if can_control {
                     btn.into_any_element()
                 } else {
                     btn.opacity(0.5).into_any_element()
                 }
             })
             .child({
-                // Step one frame while paused.
-                let state_clone = state_arc.clone();
-                let pie = &state.play.pie;
-                let enabled = pie.active && pie.supports_control && pie.paused;
                 let btn = Button::new("step")
                     .icon(IconName::SkipNext)
                     .tooltip(t!("LevelEditor.Toolbar.StepSimulation"))
                     .ghost()
-                    .on_click(move |_, _, _| {
-                        let mut st = state_clone.write();
-                        if st.play.pie.active && st.play.pie.paused {
-                            st.play.pie.step_request = st.play.pie.step_request.saturating_add(1);
-                        }
-                    });
-                if enabled {
+                    .on_click(|_, _, _| send(PlaybackCommand::Step));
+                if can_control && paused {
                     btn.into_any_element()
                 } else {
                     btn.opacity(0.5).into_any_element()
                 }
             })
             .child({
-                let state_clone = state_arc.clone();
-                let disabled = state.scene.is_edit_mode();
                 let btn = Button::new("stop")
                     .icon(IconName::Square)
                     .tooltip(t!("LevelEditor.Toolbar.StopSimulation"))
-                    .on_click(move |_, _, _| {
-                        crate::ui::panel::end_pie(state_clone.clone());
-                    });
-                if disabled {
+                    .on_click(|_, _, _| send(PlaybackCommand::Stop));
+                if stopped {
                     btn.opacity(0.5).into_any_element()
                 } else {
                     btn.into_any_element()
                 }
             })
+    }
+}
+
+fn send(command: PlaybackCommand) {
+    if !playback().send(command) {
+        tracing::warn!(?command, "no playback host open; nothing to act on it");
     }
 }

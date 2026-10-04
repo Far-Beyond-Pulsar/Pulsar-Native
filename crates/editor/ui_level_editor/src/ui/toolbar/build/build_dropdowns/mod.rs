@@ -7,7 +7,7 @@ use ui::{
 };
 
 use super::super::actions::{SetBuildConfig, SetTargetPlatform};
-use crate::state::{BuildConfig, LevelEditorState, TargetPlatform};
+use crate::state::{BuildConfig, TargetPlatform};
 
 /// Build configuration and platform dropdowns - Comprehensive build settings for all 290+ Rust targets
 pub struct BuildDropdowns;

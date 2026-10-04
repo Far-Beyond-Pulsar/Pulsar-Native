@@ -1,5 +1,4 @@
 use gpui::*;
-use std::sync::Arc;
 use ui::{
     IconName, Sizable,
     button::{Button, ButtonVariants as _},
@@ -7,33 +6,32 @@ use ui::{
 };
 
 use super::actions::SetMultiplayerMode;
-use crate::state::{LevelEditorState, MultiplayerMode};
+use crate::state::MultiplayerMode;
 
 /// Multiplayer mode dropdown - Styled appropriately for mode selection
 pub struct MultiplayerDropdown;
 
 impl MultiplayerDropdown {
     pub fn render<V>(
-        state: &LevelEditorState,
-        _state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        state: &engine_state::playback::PlaybackState,
         _cx: &mut Context<V>,
     ) -> impl IntoElement
     where
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
-        let mode_label = match state.play.multiplayer_mode {
+        let mode_label = match state.multiplayer_mode {
             MultiplayerMode::Offline => "Offline",
             MultiplayerMode::Host => "Host",
             MultiplayerMode::Client => "Client",
         };
 
-        let mode_icon = match state.play.multiplayer_mode {
+        let mode_icon = match state.multiplayer_mode {
             MultiplayerMode::Offline => IconName::CircleX,
             MultiplayerMode::Host => IconName::Server,
             MultiplayerMode::Client => IconName::Network,
         };
 
-        let current_mode = state.play.multiplayer_mode;
+        let current_mode = state.multiplayer_mode;
 
         Button::new("multiplayer_dropdown")
             .label(mode_label)
