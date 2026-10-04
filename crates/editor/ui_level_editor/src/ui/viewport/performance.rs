@@ -190,7 +190,57 @@ pub struct EngineFrameSnapshot {
         Option<Arc<Mutex<Vec<engine_backend::subsystems::render::PendingPointerEvent>>>>,
 }
 
+/// How an overlay obtains samples for [`LiveStats`] without help from the
+/// viewport's render: it is called on the overlay's own timer.
+pub type Sampler = std::rc::Rc<dyn Fn(&mut LiveStats)>;
+
+/// How often the overlay samples. Independent of how often the viewport
+/// renders, which is a few times a second at most.
+pub const SAMPLE_REFRESH: Duration = Duration::from_millis(16);
+
 impl EngineFrameSnapshot {
+    /// The renderer's statistics alone, with none of the camera side effects of
+    /// [`Self::gather`] (which consumes the scroll-zoom delta, so only the
+    /// viewport's render may call it). `None` if the renderer is busy.
+    pub fn read_stats(
+        gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+    ) -> Option<Self> {
+        let engine = gpu_engine.try_lock().ok()?;
+        let (memory_mb, draw_calls, vertices, frame_time_ms) = match engine.get_render_metrics() {
+            Some(m) => (
+                m.memory_usage_mb as f64,
+                m.draw_calls as f64,
+                m.vertices_drawn as f64,
+                m.frame_time_ms as f64,
+            ),
+            None => (0.0, 0.0, 0.0, 0.0),
+        };
+        Some(Self {
+            ui_fps: engine.get_fps() as f64,
+            helio_fps: engine.get_helio_fps() as f64,
+            render_fps: engine.get_render_fps() as f64,
+            memory_mb,
+            draw_calls,
+            vertices,
+            frame_time_ms,
+            camera_input: None,
+            pointer_events: None,
+        })
+    }
+
+    /// Record this snapshot into `stats`.
+    pub fn record_into(&self, stats: &mut LiveStats) {
+        // The renderer's metric stands in when the UI-side frame count is not
+        // available yet.
+        let ui_fps = if self.ui_fps > 0.0 { self.ui_fps } else { self.helio_fps };
+        stats.record(Metric::UiFps, ui_fps);
+        stats.record(Metric::RenderFps, self.render_fps);
+        stats.record(Metric::FrameTimeMs, self.frame_time_ms);
+        stats.record(Metric::DrawCalls, self.draw_calls);
+        stats.record(Metric::Vertices, self.vertices);
+        stats.record(Metric::MemoryMb, self.memory_mb);
+    }
+
     /// Gather stats from `GpuRenderer`, pushing the frame-rate-independent
     /// camera-input settings (move speed, scroll zoom) in the same locked
     /// pass. Returns `None` if the renderer mutex was busy; callers skip

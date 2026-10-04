@@ -384,16 +384,24 @@ pub struct PerformanceOverlay {
     rendering: Entity<RenderingStats>,
     input: Entity<InputStats>,
     charts: Entity<ChartSections>,
+    /// Feeds the statistics on this overlay's own timer. The viewport's render
+    /// cannot: it no longer runs every frame, because nothing here dirties it.
+    _sampler: Task<()>,
 }
 
 impl PerformanceOverlay {
     pub fn new(
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
         stats: SharedStats,
+        sampler: Sampler,
         cx: &mut Context<Self>,
     ) -> Self {
+        sampler(&mut stats.lock());
+        let feed = stats.clone();
+        let _sampler = every(SAMPLE_REFRESH, cx, move |_, _| sampler(&mut feed.lock()));
         Self {
             state,
+            _sampler,
             headline: cx.new(|cx| HeadlineStats::new(stats.clone(), cx)),
             rendering: cx.new(|cx| RenderingStats::new(stats.clone(), cx)),
             input: cx.new(|cx| InputStats::new(stats.clone(), cx)),
@@ -468,6 +476,7 @@ pub fn render_performance_overlay<V>(
     state: &LevelEditorState,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     stats: &SharedStats,
+    sampler: Sampler,
     slot: &std::cell::RefCell<Option<Entity<PerformanceOverlay>>>,
     cx: &mut Context<V>,
 ) -> AnyElement
@@ -494,7 +503,7 @@ where
         .borrow_mut()
         .get_or_insert_with(|| {
             let (state_arc, stats) = (state_arc.clone(), stats.clone());
-            cx.new(|cx| PerformanceOverlay::new(state_arc, stats, cx))
+            cx.new(|cx| PerformanceOverlay::new(state_arc, stats, sampler, cx))
         })
         .clone();
 
@@ -505,4 +514,98 @@ where
                 .cached_auto_height(StyleRefinement::default().w_full().flex_shrink_0()),
         )
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PerformanceOverlay, render_performance_overlay};
+    use crate::state::LevelEditorState;
+    use crate::ui::viewport::performance::{LiveStats, Metric, Sampler, SharedStats};
+    use gpui::{
+        AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement as _, Render,
+        Styled as _, TestAppContext, Window, div, px, size,
+    };
+    use std::sync::Arc;
+    use std::time::Duration;
+    use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
+
+    struct FakeViewport {
+        state: Arc<parking_lot::RwLock<LevelEditorState>>,
+        stats: SharedStats,
+        sampler: Sampler,
+        slot: RefCell<Option<Entity<PerformanceOverlay>>>,
+    }
+
+    impl EventEmitter<ui::dock::PanelEvent> for FakeViewport {}
+
+    impl Render for FakeViewport {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let state_arc = self.state.clone();
+            let overlay = {
+                let state = state_arc.read();
+                render_performance_overlay(
+                    &state,
+                    state_arc.clone(),
+                    &self.stats,
+                    self.sampler.clone(),
+                    &self.slot,
+                    cx,
+                )
+            };
+            div()
+                .size_full()
+                .relative()
+                .child(div().absolute().bottom_2().left_2().max_w(px(400.)).child(overlay))
+        }
+    }
+
+    /// The real overlay, in a headless window, ticking: how is it layered, and
+    /// does that change when its sections refresh in place?
+    #[gpui::test]
+    fn the_overlays_layers_survive_in_place_refreshes(cx: &mut TestAppContext) {
+        cx.update(|cx| ui::init(cx));
+        let n = Rc::new(Cell::new(0u32));
+        let counter = n.clone();
+        let sampler: Sampler = Rc::new(move |stats: &mut LiveStats| {
+            let v = counter.get();
+            counter.set(v + 1);
+            stats.record(Metric::UiFps, 100.0 + (v % 90) as f64);
+            stats.record(Metric::RenderFps, 60.0 + (v % 40) as f64);
+            stats.record(Metric::FrameTimeMs, 1.0 + (v % 100) as f64 / 10.0);
+            stats.record(Metric::DrawCalls, 1000.0 + (v % 500) as f64);
+            stats.record(Metric::Vertices, 200_000.0 + (v % 900) as f64 * 100.0);
+            stats.record(Metric::MemoryMb, 512.0 + (v % 100) as f64 / 3.0);
+            stats.record(Metric::InputLatencyMs, 0.01);
+        });
+        let state = Arc::new(parking_lot::RwLock::new(LevelEditorState::new()));
+        state.write().overlays.state.show_performance_overlay = true;
+        let window = cx.open_window(size(px(700.), px(700.)), move |_, _| FakeViewport {
+            state,
+            stats: Default::default(),
+            sampler,
+            slot: RefCell::new(None),
+        });
+        cx.run_until_parked();
+        let report = |cx: &mut TestAppContext, label: &str| {
+            let text = window
+                .update(cx, |_, window, _| window.debug_layer_report())
+                .unwrap();
+            eprintln!("== {label}\n{text}");
+        };
+        let quiet = |cx: &mut TestAppContext| {
+            window.update(cx, |_, w, _| w.refresh_buffers()).unwrap();
+            cx.run_until_parked();
+        };
+        for _ in 0..6 {
+            quiet(cx);
+        }
+        report(cx, "settled");
+        for tick in 1..=6 {
+            cx.executor().advance_clock(Duration::from_millis(110));
+            cx.run_until_parked();
+            quiet(cx);
+            report(cx, &format!("after tick {tick}"));
+        }
+    }
 }

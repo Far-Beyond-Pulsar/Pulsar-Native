@@ -89,6 +89,19 @@ impl ViewportPanel {
             );
         }
 
+        // What the overlay samples, on its own timer: the renderer's statistics
+        // and the input latency.
+        let sampler: Sampler = {
+            let engine = gpu_engine.clone();
+            let input = self.input_state.clone();
+            std::rc::Rc::new(move |stats: &mut LiveStats| {
+                if let Some(snapshot) = EngineFrameSnapshot::read_stats(&engine) {
+                    snapshot.record_into(stats);
+                }
+                stats.record(Metric::InputLatencyMs, input.get_input_latency_us() as f64 / 1000.0);
+            })
+        };
+
         // Bottom-left: Performance overlay. A view with its own refresh timers,
         // not rebuilt here; see `components/performance_overlay`.
         if state.overlays.state.show_performance_overlay {
@@ -97,6 +110,7 @@ impl ViewportPanel {
                     state,
                     state_arc.clone(),
                     &self.stats,
+                    sampler,
                     &self.perf_overlay,
                     cx,
                 ),

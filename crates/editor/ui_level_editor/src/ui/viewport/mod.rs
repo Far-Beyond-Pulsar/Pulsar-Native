@@ -262,52 +262,8 @@ impl ViewportPanel {
             self.input_state.take_zoom_delta(),
         );
 
-        // Update performance metrics
-        self.update_performance_metrics(
-            snapshot.as_ref(),
-            state.overlays.state.show_performance_overlay
-                && !state.overlays.state.performance_overlay_collapsed,
-        );
-
         // Build the viewport UI
         self.build_viewport_ui(state, state_arc, snapshot, gpu_engine, cx)
-    }
-}
-
-impl ViewportPanel {
-    /// Record this frame's samples for the performance overlay.
-    ///
-    /// Only while the overlay is open: with it closed nothing reads them. This
-    /// is all the viewport does for the overlay each frame (a lock and a few
-    /// additions); the sections pull what they show at their own rates.
-    fn update_performance_metrics(
-        &self,
-        snapshot: Option<&EngineFrameSnapshot>,
-        overlay_open: bool,
-    ) {
-        if !overlay_open {
-            return;
-        }
-        let mut stats = self.stats.lock();
-
-        if let Some(snapshot) = snapshot {
-            // The renderer's metric stands in when the UI-side frame count is
-            // not available yet.
-            let ui_fps = if snapshot.ui_fps > 0.0 {
-                snapshot.ui_fps
-            } else {
-                snapshot.helio_fps
-            };
-            stats.record(Metric::UiFps, ui_fps);
-            stats.record(Metric::RenderFps, snapshot.render_fps);
-            stats.record(Metric::FrameTimeMs, snapshot.frame_time_ms);
-            stats.record(Metric::DrawCalls, snapshot.draw_calls);
-            stats.record(Metric::Vertices, snapshot.vertices);
-            stats.record(Metric::MemoryMb, snapshot.memory_mb);
-        }
-
-        let latency_us = self.input_state.get_input_latency_us();
-        stats.record(Metric::InputLatencyMs, latency_us as f64 / 1000.0);
     }
 }
 
