@@ -1,7 +1,6 @@
 //! Application state structure
 
 use gpui::{Entity, FocusHandle, Task};
-use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::dock::{DockArea, PanelView, TabPanel};
