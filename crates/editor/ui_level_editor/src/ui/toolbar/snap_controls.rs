@@ -50,6 +50,7 @@ impl Render for SnapPanel {
         let title = self.kind.title();
         let current = self.kind.current(&self.state.read());
         let values = self.kind.values();
+        let theme = cx.theme();
         let mut choices = v_flex().gap_0p5();
         for value in values {
             let selected = (*value - current).abs() < 0.0001;
@@ -73,7 +74,6 @@ impl Render for SnapPanel {
                     .on_click(move |_, _, cx| panel.update(cx, |this, _| this.choose(value))),
             );
         }
-        let theme = cx.theme();
         v_flex().w(px(160.0)).gap_2().p_2()
             .child(div().text_xs().text_color(theme.muted_foreground).child(format!("{title} Snap")))
             .child(choices)
