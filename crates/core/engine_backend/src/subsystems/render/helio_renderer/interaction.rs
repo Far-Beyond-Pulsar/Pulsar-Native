@@ -249,13 +249,9 @@ impl SceneInteraction {
             self.view.forward
         };
         let plane_start = ray_plane_intersection(o, d, pivot, plane_normal).unwrap_or(pivot);
-        let previous_angle = if let Handle::Axis(i) = handle {
-            if basis.col(i).dot(self.view.forward).abs() > 0.15 {
-                rotation_angle(o, d, pivot, basis, i).unwrap_or(0.0)
-            } else {
-                let radial = start - center;
-                radial.y.atan2(radial.x)
-            }
+        let previous_angle = if matches!(handle, Handle::Axis(_)) {
+            let radial = start - center;
+            radial.y.atan2(radial.x)
         } else {
             0.0
         };
@@ -337,41 +333,21 @@ impl SceneInteraction {
                     return;
                 };
                 let axis = basis.col(i);
-                if axis.dot(drag.view.forward).abs() > 0.15 {
-                    let center = drag.view.project(pivot).unwrap();
-                    if cursor.distance(center) < 8.0 {
-                        return;
-                    }
-                    let Some(angle) = projected_ring_angle(
-                        drag.view,
-                        pivot,
-                        basis,
-                        i,
-                        drag.length,
-                        cursor,
-                        drag.previous_angle,
-                    ) else {
-                        return;
-                    };
-                    let step = (angle - drag.previous_angle + std::f32::consts::PI)
-                        .rem_euclid(std::f32::consts::TAU)
-                        - std::f32::consts::PI;
-                    drag.angle += step;
-                    drag.previous_angle = angle;
-                } else {
-                    // On an edge-on ring the 3D plane intersection is ill-conditioned.
-                    // Track the cursor's polar angle around the projected pivot and
-                    // unwrap each frame, rather than treating pixels as degrees.
-                    let center = drag.view.project(pivot).unwrap();
-                    let radial = cursor - center;
-                    if radial.length_squared() < 64.0 { return; }
-                    let angle = radial.y.atan2(radial.x);
-                    let step = (angle - drag.previous_angle + std::f32::consts::PI)
-                        .rem_euclid(std::f32::consts::TAU)
-                        - std::f32::consts::PI;
-                    drag.angle += step;
-                    drag.previous_angle = angle;
-                }
+                // Axis rotation uses the signed screen-space angle between the
+                // previous and current cursor vectors around the pivot. This is
+                // stable at every camera angle and avoids fitting an angle to
+                // a projected 3D ring ellipse (which becomes ill-conditioned
+                // as that ring turns edge-on).
+                let center = drag.view.project(pivot).unwrap();
+                let radial = cursor - center;
+                if radial.length_squared() < 64.0 { return; }
+                let angle = radial.y.atan2(radial.x);
+                let screen_step = (angle - drag.previous_angle + std::f32::consts::PI)
+                    .rem_euclid(std::f32::consts::TAU)
+                    - std::f32::consts::PI;
+                let axis_sign = if axis.dot(drag.view.forward) >= 0.0 { -1.0 } else { 1.0 };
+                drag.angle += screen_step * axis_sign;
+                drag.previous_angle = angle;
                 let snap_step = f32::from_bits(ROTATION_SNAP.load(Ordering::Relaxed)).to_radians();
                 let snapped_angle = (drag.angle / snap_step).round() * snap_step;
                 let q = Quat::from_axis_angle(axis, snapped_angle) * Quat::from_mat3(&basis);
@@ -424,9 +400,14 @@ impl SceneInteraction {
         // its own start basis to preserve a stable axis for the gesture.
         let basis = rotation_matrix(t);
         let active = self.drag.map(|d| d.handle).or(self.hovered);
+        let active_rotation_axis = self.drag.and_then(|drag| {
+            (drag.mode == GizmoType::Rotate)
+                .then_some(drag.handle)
+                .and_then(|handle| match handle { Handle::Axis(axis) => Some(axis), _ => None })
+        });
         // Submit the complete widget under one lock and upload generation.
         renderer.debug_batch(|batch| {
-            if self.mode == GizmoType::Rotate {
+            if self.mode == GizmoType::Rotate && active_rotation_axis.is_none() {
                 let signs = self.quadrant_signs(pivot, basis);
                 for axis in 0..3 {
                     let color = match axis {
@@ -444,6 +425,12 @@ impl SceneInteraction {
                 }
             }
             for mesh in meshes(self.mode) {
+                // Before a drag the three handles are quarter arcs. Once one
+                // is captured, expose its entire 360-degree ring and remove
+                // the other rings so the active rotation range is unambiguous.
+                if let Some(axis) = active_rotation_axis {
+                    if mesh.handle != Handle::Axis(axis) { continue; }
+                }
                 if !self.handle_visible(mesh.handle, pivot, basis, length) {
                     continue;
                 }
@@ -458,7 +445,9 @@ impl SceneInteraction {
                     }
                 };
                 for tri in &mesh.triangles {
-                    if !self.triangle_visible(mesh.handle, tri, pivot, basis) {
+                    if active_rotation_axis.is_none()
+                        && !self.triangle_visible(mesh.handle, tri, pivot, basis)
+                    {
                         continue;
                     }
                     let [a, b, c] = tri.map(|p| pivot + basis * p * length);
@@ -475,6 +464,7 @@ impl SceneInteraction {
         });
     }
 }
+#[cfg(test)]
 fn projected_ring_angle(
     view: View,
     pivot: Vec3,
@@ -519,17 +509,6 @@ fn segment_distance(p: Vec2, a: Vec2, b: Vec2) -> f32 {
     let ab = b - a;
     let t = ((p - a).dot(ab) / ab.length_squared().max(1e-10)).clamp(0.0, 1.0);
     p.distance(a + ab * t)
-}
-fn rotation_angle(o: Vec3, d: Vec3, p: Vec3, basis: Mat3, i: usize) -> Option<f32> {
-    let point = ray_plane_intersection(o, d, p, basis.col(i))? - p;
-    if point.length_squared() < 1e-10 {
-        return None;
-    }
-    Some(
-        point
-            .dot(basis.col((i + 2) % 3))
-            .atan2(point.dot(basis.col((i + 1) % 3))),
-    )
 }
 fn triangle_distance(p: Vec2, a: Vec2, b: Vec2, c: Vec2) -> f32 {
     let area = (b - a).perp_dot(c - a);
