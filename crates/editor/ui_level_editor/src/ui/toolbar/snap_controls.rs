@@ -55,10 +55,23 @@ impl Render for SnapPanel {
             let selected = (*value - current).abs() < 0.0001;
             let value = *value;
             let panel = cx.entity();
-            choices = choices.child(Button::new(format!("snap-choice-{title}-{value}"))
-                .label(format!("{}{}", compact(value), if selected { "  ✓" } else { "" }))
-                .small().ghost().w_full().justify_start()
-                .on_click(move |_, _, cx| panel.update(cx, |this, _| this.choose(value))));
+            choices = choices.child(
+                h_flex()
+                    .id(format!("snap-choice-{title}-{value}"))
+                    .w_full()
+                    .h_7()
+                    .items_center()
+                    .justify_start()
+                    .gap_2()
+                    .px_2()
+                    .rounded_sm()
+                    .text_sm()
+                    .text_left()
+                    .when(selected, |row| row.bg(theme.input))
+                    .child(div().flex_1().text_left().child(compact(value)))
+                    .when(selected, |row| row.child(div().child("✓")))
+                    .on_click(move |_, _, cx| panel.update(cx, |this, _| this.choose(value))),
+            );
         }
         let theme = cx.theme();
         v_flex().w(px(160.0)).gap_2().p_2()
