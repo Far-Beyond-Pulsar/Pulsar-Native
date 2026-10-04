@@ -79,85 +79,6 @@ impl Default for MultiplayerSettings {
     }
 }
 
-// ── Build Configuration ───────────────────────────────────────────────────
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BuildConfig {
-    Debug,
-    Release,
-    Shipping,
-}
-
-/// Which action the Build button's primary click performs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum BuildMode {
-    #[default]
-    Build,
-    BuildAndRun,
-    Check,
-    Update,
-    UpdateBuildAndRun,
-    BuildScratch,
-    BuildAndRunScratch,
-    CheckScratch,
-}
-
-/// Complete Rust target platform and architecture support (excluding WASM).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TargetPlatform {
-    WindowsX86_64Msvc,
-    WindowsI686Msvc,
-    WindowsAarch64Msvc,
-    WindowsX86_64Gnu,
-    WindowsI686Gnu,
-    LinuxX86_64Gnu,
-    LinuxI686Gnu,
-    LinuxAarch64Gnu,
-    LinuxArmv7Gnueabihf,
-    LinuxArmGnueabi,
-    LinuxArmGnueabihf,
-    LinuxMips64Gnuabi64,
-    LinuxMips64elGnuabi64,
-    LinuxMipsGnu,
-    LinuxMipselGnu,
-    LinuxPowerpc64Gnu,
-    LinuxPowerpc64leGnu,
-    LinuxPowerpcGnu,
-    LinuxRiscv64Gc,
-    LinuxS390xGnu,
-    LinuxSparcv9,
-    LinuxX86_64Musl,
-    LinuxAarch64Musl,
-    LinuxArmv7Musleabihf,
-    LinuxMipselMusl,
-    LinuxMipsMusl,
-    MacOsX86_64,
-    MacOsAarch64,
-    IosAarch64,
-    IosX86_64,
-    IosAarch64Sim,
-    AndroidAarch64,
-    AndroidArmv7,
-    AndroidI686,
-    AndroidX86_64,
-    FreeBsdX86_64,
-    FreeBsdI686,
-    NetBsdX86_64,
-    OpenBsdX86_64,
-    DragonFlyX86_64,
-    SolarisSparcv9,
-    SolarisX86_64,
-    IlumosX86_64,
-    RedoxX86_64,
-    FuchsiaAarch64,
-    FuchsiaX86_64,
-    PlayStationPs4,
-    PlayStationPs5,
-    XboxOne,
-    XboxSeriesXS,
-    NintendoSwitch,
-}
-
 // ── Playback state ─────────────────────────────────────────────────────────
 
 /// Where a play session currently is.
@@ -181,11 +102,10 @@ pub struct PlaybackState {
     /// Target frame rate for the game loop (0 = uncapped).
     pub target_fps: u32,
     pub multiplayer: MultiplayerSettings,
-    pub build_config: BuildConfig,
-    pub target_platform: TargetPlatform,
-    pub build_mode: BuildMode,
     /// A standalone game process launched by Build + Run is alive.
     pub game_running: bool,
+    /// A build is running (see `build_config`); the Build button shows Stop.
+    pub build_running: bool,
     pub phase: PlayPhase,
     pub paused: bool,
     /// The running game supports pause / step.
@@ -198,10 +118,8 @@ impl Default for PlaybackState {
             time_scale: 1.0,
             target_fps: 60,
             multiplayer: MultiplayerSettings::default(),
-            build_config: BuildConfig::Debug,
-            target_platform: TargetPlatform::WindowsX86_64Msvc,
-            build_mode: BuildMode::Build,
             game_running: false,
+            build_running: false,
             phase: PlayPhase::Stopped,
             paused: false,
             supports_control: false,

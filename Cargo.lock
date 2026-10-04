@@ -3080,6 +3080,7 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "tracing",
  "ui_types_common",
+ "uuid",
  "window_manager",
 ]
 
@@ -13343,6 +13344,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui_build"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "engine_state",
+ "gpui-ce",
+ "parking_lot",
+ "profiling 0.1.0",
+ "serde_json",
+ "smol",
+ "tracing",
+ "ui",
+ "ui_common",
+ "window_manager",
+]
+
+[[package]]
 name = "ui_common"
 version = "0.1.0"
 dependencies = [
@@ -13622,6 +13640,7 @@ dependencies = [
  "tool_registry_macros",
  "tracing",
  "ui",
+ "ui_build",
  "ui_common",
  "ui_types_common",
  "wayland-backend",

@@ -125,7 +125,7 @@ pub fn request_thumbnail_capture(shared_state: &Arc<parking_lot::RwLock<LevelEdi
 // Re-export enums at the module level so `use crate::state::{TransformTool, ...}`
 // still works. These were previously in the flat state module.
 pub use editor::{
-    BuildConfig, BuildMode, CameraMode, MultiplayerMode, TargetPlatform, TransformTool,
+    CameraMode, MultiplayerMode, TransformTool,
 };
 pub use hierarchy::{HierarchyDragPayload, HierarchyDragState};
 pub use overlays::OverlayState;

@@ -80,6 +80,7 @@ pub mod context;
 pub mod renderers_typed;
 
 // Generic, type-safe arbitrary state system
+pub mod build_config;
 pub mod keyed_store;
 pub mod playback;
 pub mod resource;

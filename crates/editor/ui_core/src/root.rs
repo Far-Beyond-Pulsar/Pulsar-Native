@@ -46,7 +46,7 @@ impl EditorWindowShell {
         cx: &mut Context<Self>,
     ) -> Self {
         let title_bar = cx.new(|cx| AppTitleBar::new(title, window, cx));
-        let global_toolbar = cx.new(ui_level_editor::GlobalToolbarView::new);
+        let global_toolbar = cx.new(|cx| ui_level_editor::GlobalToolbarView::new(window, cx));
         let friends_popover = cx.new(|cx| ui_friends::FriendsPopover::new(window, cx));
 
         let subscriptions = vec![cx.subscribe_in(

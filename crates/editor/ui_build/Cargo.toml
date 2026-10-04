@@ -1,0 +1,20 @@
+[package]
+name = "ui_build"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpui-ce.workspace = true
+ui = { workspace = true }
+ui_common = { workspace = true }
+window_manager = { workspace = true }
+engine_state = { workspace = true }
+engine_backend = { workspace = true }
+parking_lot = { workspace = true }
+profiling = { workspace = true }
+serde_json = { workspace = true }
+smol = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

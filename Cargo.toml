@@ -179,6 +179,7 @@ ui_file_manager       = { path = "crates/editor/ui_file_manager" }
 ui_common             = { path = "crates/editor/ui_common" }
 ui_loading_screen     = { path = "crates/editor/ui_loading_screen" }
 ui_about              = { path = "crates/editor/ui_about" }
+ui_build              = { path = "crates/editor/ui_build" }
 ui_documentation      = { path = "crates/editor/ui_documentation" }
 ui_types_common       = { path = "crates/editor/ui_types_common" }
 ui_type_debugger      = { path = "crates/editor/ui_type_debugger" }

@@ -12,7 +12,6 @@ use ui::{
 };
 
 mod actions;
-pub(super) mod build;
 mod feature_toggles;
 mod global_toolbar;
 mod level_editor_menus;
