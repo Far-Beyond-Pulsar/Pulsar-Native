@@ -334,6 +334,9 @@ actions!(
         ViewLogs,
         ReleaseNotes,
         // Developer menu (source builds only)
+        ShowTypeDebugger,
+        ShowAgentChat,
+        RevealProjectFolder,
         DevSaveAsDefaultLevel,
         DevReloadAssets,
         DevInspectEngineState,
@@ -390,6 +393,66 @@ fn build_app_menus(title: SharedString) -> Vec<Menu> {
                 MenuItem::action(t!("Menu.File.SaveAll").to_string(), SaveAll),
                 MenuItem::separator(),
                 MenuItem::action(t!("Menu.File.CloseFolder").to_string(), CloseFolder),
+            ],
+        },
+        // View: panels and window-level display
+        Menu {
+            name: t!("Menu.View").into(),
+            items: vec![
+                MenuItem::action("File Explorer", ToggleExplorer),
+                MenuItem::action("Problems", ToggleProblems),
+                MenuItem::action("Agent Chat", ShowAgentChat),
+                MenuItem::separator(),
+                MenuItem::action(t!("Menu.View.CommandPalette").to_string(), CommandPalette),
+                MenuItem::separator(),
+                MenuItem::action("Full Screen", ToggleFullscreen),
+                MenuItem::action("Zoom In", ZoomIn),
+                MenuItem::action("Zoom Out", ZoomOut),
+                MenuItem::action("Reset Zoom", ResetZoom),
+            ],
+        },
+        // Go: movement between files
+        Menu {
+            name: t!("Menu.Go").into(),
+            items: vec![
+                MenuItem::action("Back", GoBack),
+                MenuItem::action("Forward", GoForward),
+                MenuItem::separator(),
+                MenuItem::action("Go to File…", GoToFile),
+            ],
+        },
+        // Search
+        Menu {
+            name: "Search".into(),
+            items: vec![
+                MenuItem::action("Search Everything…", CommandPalette),
+                MenuItem::action("Go to File…", GoToFile),
+                MenuItem::separator(),
+                MenuItem::action("Search Documentation", ShowDocumentation),
+            ],
+        },
+        // Project: the project as a whole
+        Menu {
+            name: t!("Menu.Project").into(),
+            items: vec![
+                MenuItem::action(
+                    t!("Menu.Project.ProjectSettings").to_string(),
+                    ProjectSettings,
+                ),
+                MenuItem::action(t!("Menu.Project.OpenCargoToml").to_string(), OpenCargoToml),
+                MenuItem::separator(),
+                MenuItem::action("Reveal in File Explorer", RevealProjectFolder),
+            ],
+        },
+        // Tools: engine-wide diagnostics and collaboration
+        Menu {
+            name: t!("Menu.Tools").into(),
+            items: vec![
+                MenuItem::action("Profiler", ToggleProfiler),
+                MenuItem::action("Mission Control", ToggleConsole),
+                MenuItem::action("Type Debugger", ShowTypeDebugger),
+                MenuItem::separator(),
+                MenuItem::action("Multiplayer", ToggleNetwork),
             ],
         },
         // Window

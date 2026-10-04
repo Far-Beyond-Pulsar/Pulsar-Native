@@ -452,8 +452,7 @@ impl PulsarApp {
                 // active_type_picker_editor: None, // Migrated to plugins
                 focus_handle: cx.focus_handle(),
                 popped_out_panels: Vec::new(),
-                navigation_history: VecDeque::new(),
-                navigation_history_index: 0,
+                navigation: Default::default(),
                 multiuser_refresh_task: Some(multiuser_refresh_task),
                 git_auto_fetch_task,
                 layout_persist: false,

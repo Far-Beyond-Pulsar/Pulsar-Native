@@ -103,37 +103,19 @@ pub struct AppState {
     pub layout_save_task: Option<Task<()>>,
 
     // Navigation history
-    pub navigation_history: VecDeque<PathBuf>,
-    pub navigation_history_index: usize,
+    pub navigation: super::navigation::NavigationHistory,
 }
 
 impl AppState {
     pub fn push_navigation(&mut self, path: PathBuf) {
-        self.navigation_history
-            .truncate(self.navigation_history_index);
-        self.navigation_history.push_back(path);
-        self.navigation_history_index = self.navigation_history.len();
+        self.navigation.visit(path);
     }
 
     pub fn go_back(&mut self) -> Option<PathBuf> {
-        if self.navigation_history_index > 0 {
-            self.navigation_history_index -= 1;
-            self.navigation_history
-                .get(self.navigation_history_index)
-                .cloned()
-        } else {
-            None
-        }
+        self.navigation.back()
     }
 
     pub fn go_forward(&mut self) -> Option<PathBuf> {
-        if self.navigation_history_index + 1 < self.navigation_history.len() {
-            self.navigation_history_index += 1;
-            self.navigation_history
-                .get(self.navigation_history_index)
-                .cloned()
-        } else {
-            None
-        }
+        self.navigation.forward()
     }
 }

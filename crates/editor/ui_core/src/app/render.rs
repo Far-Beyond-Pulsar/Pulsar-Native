@@ -668,6 +668,7 @@ impl Render for PulsarApp {
         v_flex()
             .size_full()
             .track_focus(&self.state.focus_handle)
+            .map(|el| Self::with_menu_actions(el, cx))
             .on_action(cx.listener(Self::on_toggle_file_manager))
             .on_action(cx.listener(Self::on_toggle_problems))
             .on_action(cx.listener(Self::on_toggle_type_debugger))
