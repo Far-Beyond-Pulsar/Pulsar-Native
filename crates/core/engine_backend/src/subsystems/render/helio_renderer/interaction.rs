@@ -250,7 +250,12 @@ impl SceneInteraction {
         };
         let plane_start = ray_plane_intersection(o, d, pivot, plane_normal).unwrap_or(pivot);
         let previous_angle = if let Handle::Axis(i) = handle {
-            rotation_angle(o, d, pivot, basis, i).unwrap_or(0.0)
+            if basis.col(i).dot(self.view.forward).abs() > 0.15 {
+                rotation_angle(o, d, pivot, basis, i).unwrap_or(0.0)
+            } else {
+                let radial = start - center;
+                radial.y.atan2(radial.x)
+            }
         } else {
             0.0
         };
@@ -354,20 +359,22 @@ impl SceneInteraction {
                     drag.angle += step;
                     drag.previous_angle = angle;
                 } else {
-                    // Edge-on rings have an ill-conditioned ray/plane intersection.
-                    // Use a fixed screen tangent for the duration of the gesture.
-                    let radial = (drag.plane_start - pivot).normalize_or_zero();
-                    let tangent = axis.cross(radial).normalize_or_zero();
+                    // On an edge-on ring the 3D plane intersection is ill-conditioned.
+                    // Track the cursor's polar angle around the projected pivot and
+                    // unwrap each frame, rather than treating pixels as degrees.
                     let center = drag.view.project(pivot).unwrap();
-                    let projected = drag
-                        .view
-                        .project(pivot + tangent * drag.length)
-                        .unwrap_or(center)
-                        - center;
-                    let tangent = projected.try_normalize().unwrap_or(Vec2::X);
-                    drag.angle = delta.dot(tangent) / HANDLE_PIXELS;
+                    let radial = cursor - center;
+                    if radial.length_squared() < 64.0 { return; }
+                    let angle = radial.y.atan2(radial.x);
+                    let step = (angle - drag.previous_angle + std::f32::consts::PI)
+                        .rem_euclid(std::f32::consts::TAU)
+                        - std::f32::consts::PI;
+                    drag.angle += step;
+                    drag.previous_angle = angle;
                 }
-                let q = Quat::from_axis_angle(axis, drag.angle) * Quat::from_mat3(&basis);
+                let snap_step = f32::from_bits(ROTATION_SNAP.load(Ordering::Relaxed)).to_radians();
+                let snapped_angle = (drag.angle / snap_step).round() * snap_step;
+                let q = Quat::from_axis_angle(axis, snapped_angle) * Quat::from_mat3(&basis);
                 let (y, x, z) = q.to_euler(EulerRot::YXZ);
                 next.rotation = [x.to_degrees(), y.to_degrees(), z.to_degrees()];
             }
@@ -378,10 +385,7 @@ impl SceneInteraction {
                 let step = f32::from_bits(LOCATION_SNAP.load(Ordering::Relaxed));
                 for value in &mut next.position { *value = (*value / step).round() * step; }
             }
-            GizmoType::Rotate => {
-                let step = f32::from_bits(ROTATION_SNAP.load(Ordering::Relaxed));
-                for value in &mut next.rotation { *value = (*value / step).round() * step; }
-            }
+            GizmoType::Rotate => {}
             GizmoType::Scale => {
                 let step = f32::from_bits(SCALE_SNAP.load(Ordering::Relaxed));
                 for value in &mut next.scale { *value = ((*value / step).round() * step).max(0.001); }
