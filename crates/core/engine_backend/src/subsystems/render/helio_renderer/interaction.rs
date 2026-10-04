@@ -411,10 +411,15 @@ impl SceneInteraction {
         let Some(length) = self.view.length(pivot) else {
             return;
         };
-        // Render from the live object transform so the rotation gizmo tracks
-        // each snapped transform update throughout the drag. Drag math keeps
-        // its own start basis to preserve a stable axis for the gesture.
-        let basis = rotation_matrix(t);
+        // Keep the active rotation ring, its snap marks, and its reference
+        // grid in the same starting frame used by the drag angle and bright
+        // arc. Drawing those from the live object rotation makes the reference
+        // frame chase each snapped update and appear to jump independently.
+        let basis = self
+            .drag
+            .filter(|drag| drag.mode == GizmoType::Rotate)
+            .map(|drag| rotation_matrix(drag.initial))
+            .unwrap_or_else(|| rotation_matrix(t));
         let active = self.drag.map(|d| d.handle).or(self.hovered);
         let active_rotation_axis = self.drag.and_then(|drag| {
             (drag.mode == GizmoType::Rotate)
@@ -458,6 +463,18 @@ impl SceneInteraction {
             }
             if self.mode == GizmoType::Rotate {
                 let signs = self.quadrant_signs(pivot, basis);
+                let grid_basis = self
+                    .drag
+                    .filter(|drag| drag.mode == GizmoType::Rotate)
+                    .and_then(|drag| {
+                        let Handle::Axis(axis) = drag.handle else { return None };
+                        let snap_step = f32::from_bits(ROTATION_SNAP.load(Ordering::Relaxed))
+                            .to_radians();
+                        let snapped_angle = (drag.angle / snap_step).round() * snap_step;
+                        let local_axis = [Vec3::X, Vec3::Y, Vec3::Z][axis];
+                        Some(basis * Mat3::from_quat(Quat::from_axis_angle(local_axis, snapped_angle)))
+                    })
+                    .unwrap_or(basis);
                 let axes: Vec<usize> = active_rotation_axis
                     .map(|axis| vec![axis])
                     .unwrap_or_else(|| vec![0, 1, 2]);
@@ -469,8 +486,8 @@ impl SceneInteraction {
                     };
                     for [a, b] in rotation_grid(axis, signs) {
                         batch.line(
-                            (pivot + basis * a * length).to_array(),
-                            (pivot + basis * b * length).to_array(),
+                            (pivot + grid_basis * a * length).to_array(),
+                            (pivot + grid_basis * b * length).to_array(),
                             color,
                         );
                     }
