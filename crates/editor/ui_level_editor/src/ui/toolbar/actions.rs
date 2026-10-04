@@ -11,6 +11,10 @@ pub struct SetToolMode(pub ToolModeId);
 #[action(namespace = level_editor_toolbar, no_json)]
 pub struct SetTimeScale(pub f32);
 
+#[derive(Action, Clone, PartialEq)]
+#[action(namespace = level_editor_toolbar, no_json)]
+pub struct SetTransformSnap(pub u8, pub f32);
+
 
 /// Save the current scene as the engine's built-in default level.
 ///

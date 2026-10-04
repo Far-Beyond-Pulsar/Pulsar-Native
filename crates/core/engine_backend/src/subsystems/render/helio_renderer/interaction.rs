@@ -4,6 +4,17 @@ use crate::scene::{GizmoType, ObjectType, SceneWorldExt, StableId, Transform, Vi
 use glam::{EulerRot, Mat3, Mat4, Quat, Vec2, Vec3};
 use helio::Renderer;
 use pulsar_scenedb::{Entity, World};
+use std::sync::atomic::{AtomicU32, Ordering};
+
+static LOCATION_SNAP: AtomicU32 = AtomicU32::new(1.0f32.to_bits());
+static ROTATION_SNAP: AtomicU32 = AtomicU32::new(15.0f32.to_bits());
+static SCALE_SNAP: AtomicU32 = AtomicU32::new(0.1f32.to_bits());
+
+pub(super) fn set_snap_settings(location: f32, rotation: f32, scale: f32) {
+    if location.is_finite() && location > 0.0 { LOCATION_SNAP.store(location.to_bits(), Ordering::Relaxed); }
+    if rotation.is_finite() && rotation > 0.0 { ROTATION_SNAP.store(rotation.to_bits(), Ordering::Relaxed); }
+    if scale.is_finite() && scale > 0.0 { SCALE_SNAP.store(scale.to_bits(), Ordering::Relaxed); }
+}
 const HANDLE_PIXELS: f32 = 112.0;
 const PICK_MARGIN: f32 = 7.0;
 #[derive(Clone, Copy, Debug)]
@@ -361,6 +372,21 @@ impl SceneInteraction {
                 next.rotation = [x.to_degrees(), y.to_degrees(), z.to_degrees()];
             }
             GizmoType::None => return,
+        }
+        match drag.mode {
+            GizmoType::Translate => {
+                let step = f32::from_bits(LOCATION_SNAP.load(Ordering::Relaxed));
+                for value in &mut next.position { *value = (*value / step).round() * step; }
+            }
+            GizmoType::Rotate => {
+                let step = f32::from_bits(ROTATION_SNAP.load(Ordering::Relaxed));
+                for value in &mut next.rotation { *value = (*value / step).round() * step; }
+            }
+            GizmoType::Scale => {
+                let step = f32::from_bits(SCALE_SNAP.load(Ordering::Relaxed));
+                for value in &mut next.scale { *value = ((*value / step).round() * step).max(0.001); }
+            }
+            GizmoType::None => {}
         }
         self.drag = Some(drag);
         self.hovered = Some(drag.handle);

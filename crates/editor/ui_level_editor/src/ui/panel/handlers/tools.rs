@@ -1,6 +1,32 @@
 use super::*;
 
 impl LevelEditorPanel {
+    pub(in crate::ui::panel) fn on_set_transform_snap(
+        &mut self,
+        action: &toolbar::SetTransformSnap,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut state = self.shared_state.write();
+        let target = match action.0 {
+            0 => &mut state.editor.location_snap,
+            1 => &mut state.editor.rotation_snap,
+            _ => &mut state.editor.scale_snap,
+        };
+        if action.1.is_finite() && action.1 > 0.0 {
+            *target = action.1;
+        }
+        if let Some(mailbox) = &self.helio_mailbox {
+            mailbox.set_gizmo_snap_settings(
+                state.editor.location_snap,
+                state.editor.rotation_snap,
+                state.editor.scale_snap,
+            );
+        }
+        drop(state);
+        cx.notify();
+    }
+
     // Action handlers
     pub(in crate::ui::panel) fn on_select_tool(
         &mut self,

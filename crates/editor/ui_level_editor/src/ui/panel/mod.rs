@@ -247,6 +247,7 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_scale_tool))
             // Toolbar actions
             .on_action(cx.listener(Self::on_set_tool_mode))
+            .on_action(cx.listener(Self::on_set_transform_snap))
             // Object operations
             .on_action(cx.listener(Self::on_add_object))
             .on_action(cx.listener(Self::on_add_object_of_type))

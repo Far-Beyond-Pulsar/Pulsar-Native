@@ -162,6 +162,11 @@ impl HelioEditorMailbox {
         }
     }
 
+    /// Update the live transform gizmo snapping increments.
+    pub fn set_gizmo_snap_settings(&self, location: f32, rotation: f32, scale: f32) {
+        super::interaction::set_snap_settings(location, rotation, scale);
+    }
+
     /// Request that the SceneDB selection is cleared next frame.
     pub fn queue_deselect(&self) {
         self.pending_deselect.store(true, Ordering::Relaxed);

@@ -47,6 +47,9 @@ pub struct EditorDomain {
     pub camera_mode: CameraMode,
     /// Camera movement speed (shared between UI and input thread).
     pub camera_move_speed: f32,
+    pub location_snap: f32,
+    pub rotation_snap: f32,
+    pub scale_snap: f32,
 
     // ── Viewport rendering toggles ────────────────────────────────────────
     pub show_wireframe: bool,
@@ -82,6 +85,9 @@ impl Default for EditorDomain {
             current_tool: TransformTool::Move,
             camera_mode: CameraMode::Perspective,
             camera_move_speed: 10.0,
+            location_snap: 1.0,
+            rotation_snap: 15.0,
+            scale_snap: 0.1,
             show_wireframe: false,
             show_lighting: true,
             show_grid: true,
@@ -106,6 +112,9 @@ impl EditorDomain {
             current_tool: self.current_tool,
             camera_mode: self.camera_mode,
             camera_move_speed: self.camera_move_speed,
+            location_snap: self.location_snap,
+            rotation_snap: self.rotation_snap,
+            scale_snap: self.scale_snap,
             show_wireframe: self.show_wireframe,
             show_lighting: self.show_lighting,
             show_grid: self.show_grid,

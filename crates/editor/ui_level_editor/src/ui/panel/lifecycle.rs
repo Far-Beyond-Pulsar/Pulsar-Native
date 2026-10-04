@@ -389,8 +389,8 @@ impl LevelEditorPanel {
 
         let playback_host = Self::bind_playback_host(window, cx);
 
-        let toolbar = cx.new(|_| {
-            ToolbarView::new(shared_state.clone(), gpu_engine.clone(), helio_mailbox.clone())
+        let toolbar = cx.new(|cx| {
+            ToolbarView::new(window, cx, shared_state.clone(), gpu_engine.clone(), helio_mailbox.clone())
         });
         let class_updates =
             crate::core::asset_updates::subscribe_class_updates(shared_state.clone());
