@@ -343,8 +343,28 @@ impl Restorer {
                     cx,
                 ))
             }
-            // Tiles and bare panels are not part of this app's layouts.
-            PanelInfo::Panel(_) | PanelInfo::Tiles { .. } => None,
+            PanelInfo::Tiles { metas } => {
+                // Free-floating tab groups, each with its saved bounds and
+                // stacking order. A group that cannot be rebuilt takes its
+                // bounds with it.
+                let mut items = Vec::new();
+                let mut kept = Vec::new();
+                for (ix, child) in state.children.iter().enumerate() {
+                    let Some(meta) = metas.get(ix).copied() else {
+                        continue;
+                    };
+                    if let Some(item @ DockItem::Tabs { .. }) = self.build_item(child, window, cx) {
+                        items.push(item);
+                        kept.push(meta);
+                    }
+                }
+                if items.is_empty() {
+                    return None;
+                }
+                Some(DockItem::tiles(items, kept, &self.dock_area, window, cx))
+            }
+            // A bare panel outside any tab group is not part of this app's layouts.
+            PanelInfo::Panel(_) => None,
         }
     }
 
@@ -526,6 +546,40 @@ mod tests {
         assert_eq!(read.dock.center, layout.dock.center);
         assert!(!path.with_extension("json.tmp").exists(), "temp file renamed away");
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn tile_bounds_and_stacking_survive_a_write_and_read() {
+        use gpui::{point, px, size, Bounds};
+        use ui::dock::TileMeta;
+
+        let metas = vec![
+            TileMeta {
+                bounds: Bounds { origin: point(px(10.), px(20.)), size: size(px(300.), px(200.)) },
+                z_index: 1,
+            },
+            TileMeta {
+                bounds: Bounds { origin: point(px(50.), px(60.)), size: size(px(400.), px(250.)) },
+                z_index: 0,
+            },
+        ];
+        let tiles = PanelState {
+            panel_name: "Tiles".into(),
+            children: vec![tab_group(&["a.rs"]), tab_group(&["b.rs"])],
+            info: PanelInfo::tiles(metas.clone()),
+        };
+        let dir = std::env::temp_dir().join(format!("pulsar-layout-t-{}", std::process::id()));
+        let path = layout_path(&dir);
+        let layout = SavedLayout {
+            version: LAYOUT_VERSION,
+            dock: DockAreaState { center: tiles, ..Default::default() },
+        };
+
+        write_layout(&path, &layout).unwrap();
+        let read = read_layout(&path).unwrap();
+        assert_eq!(read.dock.center.info, PanelInfo::tiles(metas));
+        assert_eq!(read.dock.center.children.len(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
