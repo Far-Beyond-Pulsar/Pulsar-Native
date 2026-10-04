@@ -101,7 +101,7 @@ impl ToolbarView {
             let state = state.read();
             mailbox.set_gizmo_snap_settings(state.editor.location_snap, state.editor.rotation_snap, state.editor.scale_snap);
         }
-        let custom_snaps: [Entity<InputState>; 3] = ["Custom location", "Custom rotation", "Custom scale"].map(|placeholder| {
+        let custom_snaps: [Entity<InputState>; 3] = ["Custom", "Custom", "Custom"].map(|placeholder| {
             cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
         });
         let mut custom_snap_subscriptions = Vec::with_capacity(3);
