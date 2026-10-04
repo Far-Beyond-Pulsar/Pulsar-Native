@@ -1,4 +1,4 @@
-use gpui::*;
+use gpui::{prelude::FluentBuilder as _, *};
 use std::sync::Arc;
 use ui::{
     ActiveTheme as _, IconName, Selectable as _, Sizable as _,
