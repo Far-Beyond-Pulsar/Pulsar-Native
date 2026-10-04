@@ -418,7 +418,6 @@ impl SceneInteraction {
                     .map(|axis| vec![axis])
                     .unwrap_or_else(|| vec![0, 1, 2]);
                 for axis in axes {
-                    let color = rotation_axis_color(axis);
                     let u = basis.col((axis + 1) % 3);
                     let v = basis.col((axis + 2) % 3);
                     for tick in (0..ticks_per_turn).step_by(stride) {
@@ -434,9 +433,9 @@ impl SceneInteraction {
                         let radial = u * cos + v * sin;
                         let overlay = -self.view.forward * (length * 0.015);
                         batch.line(
-                            (pivot + radial * (0.79 * length) + overlay).to_array(),
-                            (pivot + radial * (0.91 * length) + overlay).to_array(),
-                            [color[0], color[1], color[2], 0.95],
+                            (pivot + radial * (0.825 * length) + overlay).to_array(),
+                            (pivot + radial * (0.875 * length) + overlay).to_array(),
+                            [0.015, 0.015, 0.015, 1.0],
                         );
                     }
                 }
