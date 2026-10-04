@@ -1,0 +1,560 @@
+//! Saving and restoring the dock layout and open tabs, per project.
+//!
+//! **What is saved.** The dock framework's own [`DockAreaState`]: the split
+//! tree with its sizes, every tab group with its active tab, and each side
+//! dock's size / open state. A tab that edits a file records that file (the
+//! `TabPanel` dump does this for any panel with a `panel_file_path`). Paths
+//! inside the project are stored relative to it. The record lives at
+//! `<project>/.pulsar/layout.json`.
+//!
+//! **When.** Any `DockEvent::LayoutChanged` (tab opened / closed / moved /
+//! activated, split or dock resized, dock toggled) arms a 4 second timer; a
+//! further change before it fires re-arms it, so a drag that resizes
+//! continuously is written once, 4 s after the last movement. The layout is
+//! also flushed when the window closes.
+//!
+//! **Restore.** Runs once at startup, after the plugin manager is up. The saved
+//! tree is rebuilt around what already exists rather than replacing it:
+//!
+//! - Live panels the app creates itself (level editor, agent chat, manual tool)
+//!   are reused, found by `panel_name`.
+//! - Panels that edit a file are recreated through the plugin manager, exactly
+//!   as `open_path` does. Files that no longer exist, and groups left empty,
+//!   are dropped; a split left with one side collapses into it.
+//! - The centre `TabPanel` that holds the level editor is kept as that group,
+//!   because several panels and handlers hold that entity.
+//! - A live side-dock panel the saved layout does not mention (for example one
+//!   added by an update) is put back in its dock rather than lost.
+//!
+//! Nothing is written until the restore has finished, so the default layout can
+//! never overwrite a saved one.
+
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::time::Duration;
+
+use gpui::{Context, Entity, EntityId, Pixels, Window};
+use serde::{Deserialize, Serialize};
+use ui::dock::{
+    DockAreaState, DockEvent, DockItem, DockPlacement, DockState, PanelInfo, PanelState,
+    PanelView, TabPanel,
+};
+
+use super::PulsarApp;
+
+/// Bump when the format changes incompatibly; older files are then ignored.
+const LAYOUT_VERSION: u32 = 1;
+const LAYOUT_FILE: &str = "layout.json";
+/// Quiet time after the last layout change before it is written.
+const SAVE_DEBOUNCE: Duration = Duration::from_secs(4);
+
+#[derive(Serialize, Deserialize)]
+struct SavedLayout {
+    version: u32,
+    dock: DockAreaState,
+}
+
+fn layout_path(project_root: &Path) -> PathBuf {
+    project_root.join(".pulsar").join(LAYOUT_FILE)
+}
+
+/// Rewrite recorded file paths inside the project as project-relative.
+fn relativize(state: &mut PanelState, root: &Path) {
+    if let Some(value) = state.file_mut() {
+        if let Some(path) = value.as_str().map(PathBuf::from) {
+            if let Ok(relative) = path.strip_prefix(root) {
+                *value = relative.to_string_lossy().replace('\\', "/").into();
+            }
+        }
+    }
+    for child in &mut state.children {
+        relativize(child, root);
+    }
+}
+
+/// Inverse of [`relativize`]: make recorded paths absolute under `root`.
+fn absolutize(state: &mut PanelState, root: &Path) {
+    if let Some(value) = state.file_mut() {
+        if let Some(path) = value.as_str().map(PathBuf::from) {
+            if path.is_relative() {
+                *value = root.join(path).to_string_lossy().into_owned().into();
+            }
+        }
+    }
+    for child in &mut state.children {
+        absolutize(child, root);
+    }
+}
+
+fn map_dock_panels(dock: &mut Option<DockState>, f: impl Fn(&mut PanelState)) {
+    if let Some(dock) = dock {
+        // `DockState` exposes its tree read-only; round-trip through serde to
+        // rewrite it, which also keeps this independent of its field layout.
+        if let Ok(mut value) = serde_json::to_value(&*dock) {
+            if let Some(panel) = value.get_mut("panel") {
+                if let Ok(mut state) = serde_json::from_value::<PanelState>(panel.take()) {
+                    f(&mut state);
+                    if let Ok(v) = serde_json::to_value(&state) {
+                        *panel = v;
+                    }
+                }
+            }
+            if let Ok(updated) = serde_json::from_value::<DockState>(value) {
+                *dock = updated;
+            }
+        }
+    }
+}
+
+fn transform_layout(layout: &mut SavedLayout, f: impl Fn(&mut PanelState) + Copy) {
+    f(&mut layout.dock.center);
+    map_dock_panels(&mut layout.dock.left_dock, f);
+    map_dock_panels(&mut layout.dock.right_dock, f);
+    map_dock_panels(&mut layout.dock.bottom_dock, f);
+}
+
+fn write_layout(path: &Path, layout: &SavedLayout) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let json = serde_json::to_vec_pretty(layout)?;
+    // Write beside the target and rename, so a crash mid-write cannot leave a
+    // truncated layout behind.
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, json)?;
+    std::fs::rename(&tmp, path)
+}
+
+fn read_layout(path: &Path) -> Option<SavedLayout> {
+    let text = std::fs::read_to_string(path).ok()?;
+    match serde_json::from_str::<SavedLayout>(&text) {
+        Ok(layout) if layout.version == LAYOUT_VERSION => Some(layout),
+        Ok(layout) => {
+            tracing::info!(
+                found = layout.version,
+                expected = LAYOUT_VERSION,
+                "ignoring saved layout of another version"
+            );
+            None
+        }
+        Err(error) => {
+            tracing::warn!("ignoring unreadable saved layout {}: {error}", path.display());
+            None
+        }
+    }
+}
+
+// ── Save ─────────────────────────────────────────────────────────────────────
+
+impl PulsarApp {
+    /// Wire up layout persistence for this window. Only the primary project
+    /// window persists; secondary windows share the project and would race it.
+    pub(super) fn init_layout_persistence(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.state.project_path.is_none() {
+            return;
+        }
+        self.state.layout_persist = true;
+
+        let dock_area = self.state.dock_area.clone();
+        cx.subscribe_in(
+            &dock_area,
+            window,
+            |this, _, event: &DockEvent, _window, cx| {
+                if matches!(event, DockEvent::LayoutChanged) {
+                    this.schedule_layout_save(cx);
+                }
+            },
+        )
+        .detach();
+
+        // Flush a pending change when the window closes.
+        let this = cx.entity().downgrade();
+        window.on_window_should_close(cx, move |_window, cx| {
+            _ = this.update(cx, |app, cx| app.save_layout_now(cx));
+            true
+        });
+
+        // Restore once construction (plugin manager included) has finished.
+        let this = cx.entity();
+        window.defer(cx, move |window, cx| {
+            this.update(cx, |app, cx| {
+                app.restore_layout(window, cx);
+                app.state.layout_ready = true;
+            });
+        });
+    }
+
+    /// (Re)arm the debounce timer. Dropping the previous task cancels it.
+    fn schedule_layout_save(&mut self, cx: &mut Context<Self>) {
+        if !self.state.layout_persist || !self.state.layout_ready {
+            return;
+        }
+        self.state.layout_save_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(SAVE_DEBOUNCE).await;
+            _ = this.update(cx, |app, cx| {
+                app.state.layout_save_task = None;
+                app.save_layout_now(cx);
+            });
+        }));
+    }
+
+    /// Write the current layout now, cancelling any pending timer.
+    fn save_layout_now(&mut self, cx: &mut Context<Self>) {
+        if !self.state.layout_persist || !self.state.layout_ready {
+            return;
+        }
+        self.state.layout_save_task = None;
+        let Some(root) = self.state.project_path.clone() else {
+            return;
+        };
+
+        let mut layout = SavedLayout {
+            version: LAYOUT_VERSION,
+            dock: self.state.dock_area.read(cx).dump(cx),
+        };
+        transform_layout(&mut layout, |state| relativize(state, &root));
+
+        if let Err(error) = write_layout(&layout_path(&root), &layout) {
+            tracing::warn!("could not save the editor layout: {error}");
+        }
+    }
+}
+
+// ── Restore ──────────────────────────────────────────────────────────────────
+
+/// A live panel available for reuse, and where it lives now.
+struct LivePanel {
+    panel: Arc<dyn PanelView>,
+    placement: DockPlacement,
+}
+
+struct Restorer {
+    project_root: PathBuf,
+    live: Vec<LivePanel>,
+    /// Entity ids of the panels now in the anchor tab group.
+    anchor_panels: HashSet<EntityId>,
+    /// The centre tab group to keep. Taken by the first group that holds one of
+    /// its panels.
+    anchor: Option<Entity<TabPanel>>,
+    dock_area: gpui::WeakEntity<ui::dock::DockArea>,
+}
+
+impl Restorer {
+    /// The panel a saved tab stands for, reusing a live one where possible.
+    fn resolve_leaf(
+        &mut self,
+        leaf: &PanelState,
+        window: &mut Window,
+        cx: &mut gpui::App,
+    ) -> Option<Arc<dyn PanelView>> {
+        if let Some(ix) = self
+            .live
+            .iter()
+            .position(|live| live.panel.panel_name(cx) == leaf.panel_name)
+        {
+            return Some(self.live.remove(ix).panel);
+        }
+
+        let path = PathBuf::from(leaf.file()?);
+        if !path.exists() {
+            tracing::info!("layout: skipping {} (no longer exists)", path.display());
+            return None;
+        }
+        let manager = plugin_manager::global()?;
+        let mut manager = manager.write();
+        manager.set_project_root(Some(self.project_root.clone()));
+        match manager.create_editor_for_file(&path, window, cx) {
+            Ok(panel) => Some(panel),
+            Err(error) => {
+                tracing::warn!("layout: could not reopen {}: {error}", path.display());
+                None
+            }
+        }
+    }
+
+    fn build_item(
+        &mut self,
+        state: &PanelState,
+        window: &mut Window,
+        cx: &mut gpui::App,
+    ) -> Option<DockItem> {
+        match &state.info {
+            PanelInfo::Stack { sizes, .. } => {
+                let axis = state.info.axis()?;
+                let mut items = Vec::new();
+                let mut kept_sizes: Vec<Option<Pixels>> = Vec::new();
+                let mut dropped = false;
+                for (ix, child) in state.children.iter().enumerate() {
+                    match self.build_item(child, window, cx) {
+                        Some(item) => {
+                            items.push(item);
+                            kept_sizes.push(sizes.get(ix).copied());
+                        }
+                        None => dropped = true,
+                    }
+                }
+                match items.len() {
+                    0 => None,
+                    1 => items.pop(),
+                    n => {
+                        // Saved sizes no longer add up once a side is gone.
+                        let sizes = if dropped { vec![None; n] } else { kept_sizes };
+                        Some(DockItem::split_with_sizes(
+                            axis,
+                            items,
+                            sizes,
+                            &self.dock_area,
+                            window,
+                            cx,
+                        ))
+                    }
+                }
+            }
+            PanelInfo::Tabs { active_index } => {
+                let mut panels: Vec<Arc<dyn PanelView>> = Vec::new();
+                let mut active = None;
+                for (ix, child) in state.children.iter().enumerate() {
+                    if let Some(panel) = self.resolve_leaf(child, window, cx) {
+                        if ix == *active_index {
+                            active = Some(panels.len());
+                        }
+                        panels.push(panel);
+                    }
+                }
+                if panels.is_empty() {
+                    return None;
+                }
+                let active = active.unwrap_or(0);
+
+                let holds_anchor_panel = panels
+                    .iter()
+                    .any(|p| self.anchor_panels.contains(&p.view().entity_id()));
+                if holds_anchor_panel {
+                    if let Some(anchor) = self.anchor.take() {
+                        return Some(Self::fill_anchor(anchor, &panels, active, window, cx));
+                    }
+                }
+                Some(DockItem::tabs(
+                    panels,
+                    Some(active),
+                    &self.dock_area,
+                    window,
+                    cx,
+                ))
+            }
+            // Tiles and bare panels are not part of this app's layouts.
+            PanelInfo::Panel(_) | PanelInfo::Tiles { .. } => None,
+        }
+    }
+
+    /// Put `panels` into the existing `anchor` tab group in saved order. The
+    /// panels already in it are skipped by `insert_panel_at`, so inserting each
+    /// at its saved index leaves the group in exactly the saved order.
+    fn fill_anchor(
+        anchor: Entity<TabPanel>,
+        panels: &[Arc<dyn PanelView>],
+        active: usize,
+        window: &mut Window,
+        cx: &mut gpui::App,
+    ) -> DockItem {
+        let items = anchor.update(cx, |tabs, cx| {
+            for (ix, panel) in panels.iter().enumerate() {
+                let at = ix.min(tabs.all_panels().len());
+                tabs.insert_panel_at(panel.clone(), at, window, cx);
+            }
+            tabs.set_active_tab(active, window, cx);
+            tabs.all_panels()
+        });
+        let active_ix = anchor
+            .read(cx)
+            .active_tab_index()
+            .unwrap_or(active.min(items.len().saturating_sub(1)));
+        DockItem::Tabs {
+            items,
+            active_ix,
+            view: anchor,
+        }
+    }
+}
+
+impl PulsarApp {
+    fn restore_layout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(root) = self.state.project_path.clone() else {
+            return;
+        };
+        let Some(mut layout) = read_layout(&layout_path(&root)) else {
+            return;
+        };
+        transform_layout(&mut layout, |state| absolutize(state, &root));
+
+        let dock_area = self.state.dock_area.clone();
+        let weak_dock = dock_area.downgrade();
+
+        // Everything the app already created, with where it sits.
+        let live: Vec<LivePanel> = dock_area
+            .read(cx)
+            .tab_panels(cx)
+            .into_iter()
+            .flat_map(|(placement, tabs)| {
+                tabs.read(cx)
+                    .all_panels()
+                    .into_iter()
+                    .map(move |panel| LivePanel { panel, placement })
+            })
+            .collect();
+        let anchor_panels: HashSet<EntityId> = self
+            .state
+            .center_tabs
+            .read(cx)
+            .all_panels()
+            .iter()
+            .map(|p| p.view().entity_id())
+            .collect();
+
+        let mut restorer = Restorer {
+            project_root: root,
+            live,
+            anchor_panels,
+            anchor: Some(self.state.center_tabs.clone()),
+            dock_area: weak_dock,
+        };
+
+        // Centre. If the saved tree never mentions the anchor group's panels
+        // (it always should: the level editor cannot be closed) leave the
+        // centre as it is rather than orphan the entity everything holds.
+        let center = restorer.build_item(&layout.dock.center, window, cx);
+        match center {
+            Some(center) if restorer.anchor.is_none() => {
+                dock_area.update(cx, |area, cx| area.set_center(center, window, cx));
+            }
+            _ => tracing::warn!("layout: saved centre has no editor tab; keeping the default"),
+        }
+
+        // Side docks, only those this app has.
+        let docks = [
+            (DockPlacement::Left, layout.dock.left_dock.as_ref()),
+            (DockPlacement::Right, layout.dock.right_dock.as_ref()),
+            (DockPlacement::Bottom, layout.dock.bottom_dock.as_ref()),
+        ];
+        for (placement, saved) in docks {
+            let Some(saved) = saved else { continue };
+            if !dock_area.read(cx).has_dock(placement) {
+                continue;
+            }
+            let Some(item) = restorer.build_item(saved.panel(), window, cx) else {
+                continue;
+            };
+            let (size, open) = (Some(saved.size()), saved.is_open());
+            dock_area.update(cx, |area, cx| match placement {
+                DockPlacement::Left => area.set_left_dock(item, size, open, window, cx),
+                DockPlacement::Right => area.set_right_dock(item, size, open, window, cx),
+                DockPlacement::Bottom => area.set_bottom_dock(item, size, open, window, cx),
+                DockPlacement::Center => {}
+            });
+        }
+
+        // A side-dock panel the saved layout did not mention goes back where
+        // it was instead of disappearing.
+        for LivePanel { panel, placement } in std::mem::take(&mut restorer.live) {
+            if placement != DockPlacement::Center {
+                dock_area.update(cx, |area, cx| {
+                    area.add_panel(panel, placement, None, window, cx)
+                });
+            }
+        }
+
+        self.refresh_open_editor_snapshot(cx);
+        cx.notify();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tab_group(files: &[&str]) -> PanelState {
+        let mut group = PanelState {
+            panel_name: "TabPanel".into(),
+            info: PanelInfo::tabs(0),
+            ..Default::default()
+        };
+        for file in files {
+            group.add_child(
+                PanelState {
+                    panel_name: "Editor".into(),
+                    ..Default::default()
+                }
+                .with_file(*file),
+            );
+        }
+        group
+    }
+
+    #[test]
+    fn project_paths_round_trip_through_relative_form() {
+        let root = Path::new("/proj");
+        let mut state = tab_group(&["/proj/scripts/a.rs", "/elsewhere/b.rs"]);
+
+        relativize(&mut state, root);
+        assert_eq!(state.children[0].file(), Some("scripts/a.rs"));
+        // Outside the project stays absolute.
+        assert_eq!(state.children[1].file(), Some("/elsewhere/b.rs"));
+
+        absolutize(&mut state, root);
+        assert_eq!(
+            Path::new(state.children[0].file().unwrap()),
+            root.join("scripts/a.rs")
+        );
+        assert_eq!(state.children[1].file(), Some("/elsewhere/b.rs"));
+    }
+
+    #[test]
+    fn layout_survives_a_write_and_read() {
+        let dir = std::env::temp_dir().join(format!("pulsar-layout-{}", std::process::id()));
+        let path = layout_path(&dir);
+        let layout = SavedLayout {
+            version: LAYOUT_VERSION,
+            dock: DockAreaState {
+                center: tab_group(&["a.rs", "b.rs"]),
+                ..Default::default()
+            },
+        };
+
+        write_layout(&path, &layout).unwrap();
+        let read = read_layout(&path).expect("layout reads back");
+        assert_eq!(read.dock.center, layout.dock.center);
+        assert!(!path.with_extension("json.tmp").exists(), "temp file renamed away");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_layout_of_another_version_is_ignored() {
+        let dir = std::env::temp_dir().join(format!("pulsar-layout-v-{}", std::process::id()));
+        let path = layout_path(&dir);
+        let stale = SavedLayout {
+            version: LAYOUT_VERSION + 1,
+            dock: DockAreaState::default(),
+        };
+        write_layout(&path, &stale).unwrap();
+        assert!(read_layout(&path).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rewriting_dock_panels_round_trips_a_side_dock() {
+        // The side docks go through `map_dock_panels`; check it reaches inside.
+        let json = serde_json::json!({
+            "panel": serde_json::to_value(tab_group(&["/proj/x.rs"])).unwrap(),
+            "placement": "left",
+            "size": 420.0,
+            "open": true,
+        });
+        let mut dock = Some(serde_json::from_value::<DockState>(json).unwrap());
+        map_dock_panels(&mut dock, |s| relativize(s, Path::new("/proj")));
+        let dock = dock.unwrap();
+        assert_eq!(dock.panel().children[0].file(), Some("x.rs"));
+        assert!(dock.is_open());
+    }
+}

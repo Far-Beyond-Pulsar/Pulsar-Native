@@ -89,6 +89,14 @@ pub struct AppState {
     // Git auto-fetch listener for the primary project window
     pub git_auto_fetch_task: Option<Task<()>>,
 
+    // Dock layout persistence (see `layout_persistence`)
+    /// This window saves and restores the project layout.
+    pub layout_persist: bool,
+    /// The saved layout has been restored (or there was none); saving is safe.
+    pub layout_ready: bool,
+    /// Pending debounced save; dropping it cancels the save.
+    pub layout_save_task: Option<Task<()>>,
+
     // Navigation history
     pub navigation_history: VecDeque<PathBuf>,
     pub navigation_history_index: usize,

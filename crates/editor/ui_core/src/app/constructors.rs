@@ -456,6 +456,9 @@ impl PulsarApp {
                 navigation_history_index: 0,
                 multiuser_refresh_task: Some(multiuser_refresh_task),
                 git_auto_fetch_task,
+                layout_persist: false,
+                layout_ready: false,
+                layout_save_task: None,
                 radial: super::radial_menu::RadialHost::new(cx),
             },
         };
@@ -690,6 +693,11 @@ impl PulsarApp {
         // during construction (e.g. the default level editor) without waiting for a
         // tab-change or file-open event.
         app.refresh_open_editor_snapshot(cx);
+
+        // Restore the project's saved tab layout and keep saving it.
+        if has_project && create_level_editor {
+            app.init_layout_persistence(window, cx);
+        }
 
         app
     }
