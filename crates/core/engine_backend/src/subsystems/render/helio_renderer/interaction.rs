@@ -250,15 +250,15 @@ impl SceneInteraction {
         };
         let plane_start = ray_plane_intersection(o, d, pivot, plane_normal).unwrap_or(pivot);
         let previous_angle = if let Handle::Axis(i) = handle {
-            if basis.col(i).dot(self.view.forward).abs() > 0.15 {
-                rotation_angle(o, d, pivot, basis, i).unwrap_or_else(|| {
-                    let radial = start - center;
-                    radial.y.atan2(radial.x)
-                })
-            } else {
-                let radial = start - center;
-                radial.y.atan2(radial.x)
-            }
+            projected_ring_initial_angle(
+                self.view,
+                pivot,
+                basis,
+                i,
+                length,
+                start,
+                self.quadrant_signs(pivot, basis),
+            )
         } else {
             0.0
         };
@@ -339,38 +339,34 @@ impl SceneInteraction {
                 let Handle::Axis(i) = drag.handle else {
                     return;
                 };
-                let axis = basis.col(i);
-                let angle = if axis.dot(drag.view.forward).abs() > 0.15 {
-                    // Intersect the pointer ray with the actual rotation plane.
-                    // This recovers the true 3D ring angle for tilted views;
-                    // screen polar angles distort that rotation into different
-                    // amounts as the cursor moves around a projected ellipse.
-                    let Some(angle) = rotation_angle(o, d, pivot, basis, i) else {
-                        return;
-                    };
-                    angle
-                } else {
-                    // When the ring is almost edge-on, its plane is parallel to
-                    // the view ray and the 3D intersection is ill-conditioned.
-                    // Use screen polar angle only for this degenerate view.
-                    let center = drag.view.project(pivot).unwrap();
-                    let radial = cursor - center;
-                    if radial.length_squared() < 64.0 { return; }
-                    radial.y.atan2(radial.x)
+                // Resolve every drag against the same projected ring that is
+                // visible on screen. A ray-plane angle becomes ill-conditioned
+                // as the ring tilts toward edge-on, which is where the old
+                // path caused the actual transform to jump while the ring
+                // indicator kept following the cursor.
+                let Some(angle) = projected_ring_angle(
+                    drag.view,
+                    pivot,
+                    basis,
+                    i,
+                    drag.length,
+                    cursor,
+                    drag.previous_angle,
+                ) else {
+                    return;
                 };
                 let angle_delta = (angle - drag.previous_angle + std::f32::consts::PI)
                     .rem_euclid(std::f32::consts::TAU)
                     - std::f32::consts::PI;
-                let axis_sign = if axis.dot(drag.view.forward) >= 0.0 { -1.0 } else { 1.0 };
-                drag.angle += if axis.dot(drag.view.forward).abs() > 0.15 {
-                    angle_delta
-                } else {
-                    angle_delta * axis_sign
-                };
+                drag.angle += angle_delta;
                 drag.previous_angle = angle;
                 let snap_step = f32::from_bits(ROTATION_SNAP.load(Ordering::Relaxed)).to_radians();
                 let snapped_angle = (drag.angle / snap_step).round() * snap_step;
-                let q = Quat::from_axis_angle(axis, snapped_angle) * Quat::from_mat3(&basis);
+                // The gizmo ring is parameterized in the object's initial
+                // local basis, so compose the delta about that same local axis.
+                let local_axis = [Vec3::X, Vec3::Y, Vec3::Z][i];
+                let initial_rotation = Quat::from_mat3(&basis);
+                let q = initial_rotation * Quat::from_axis_angle(local_axis, snapped_angle);
                 let (y, x, z) = q.to_euler(EulerRot::YXZ);
                 next.rotation = [x.to_degrees(), y.to_degrees(), z.to_degrees()];
             }
@@ -557,7 +553,6 @@ impl SceneInteraction {
         });
     }
 }
-#[cfg(test)]
 fn projected_ring_angle(
     view: View,
     pivot: Vec3,
@@ -603,16 +598,33 @@ fn segment_distance(p: Vec2, a: Vec2, b: Vec2) -> f32 {
     let t = ((p - a).dot(ab) / ab.length_squared().max(1e-10)).clamp(0.0, 1.0);
     p.distance(a + ab * t)
 }
-fn rotation_angle(o: Vec3, d: Vec3, pivot: Vec3, basis: Mat3, axis: usize) -> Option<f32> {
-    let point = ray_plane_intersection(o, d, pivot, basis.col(axis))? - pivot;
-    if point.length_squared() < 1e-10 {
-        return None;
+fn projected_ring_initial_angle(
+    view: View,
+    pivot: Vec3,
+    basis: Mat3,
+    axis: usize,
+    length: f32,
+    cursor: Vec2,
+    signs: Vec3,
+) -> f32 {
+    let center = view.project(pivot).unwrap_or(cursor);
+    let u = (axis + 1) % 3;
+    let v = (axis + 2) % 3;
+    let mut best = (f32::INFINITY, 0.0);
+    for sample in 0..1024 {
+        let angle = sample as f32 * std::f32::consts::TAU / 1024.0;
+        if angle.cos() * signs[u] < -0.0001 || angle.sin() * signs[v] < -0.0001 {
+            continue;
+        }
+        let point = view
+            .project(pivot + length * 0.85 * (basis.col(u) * angle.cos() + basis.col(v) * angle.sin()))
+            .unwrap_or(center);
+        let distance = point.distance_squared(cursor);
+        if distance < best.0 {
+            best = (distance, angle);
+        }
     }
-    Some(
-        point
-            .dot(basis.col((axis + 2) % 3))
-            .atan2(point.dot(basis.col((axis + 1) % 3))),
-    )
+    best.1
 }
 fn triangle_distance(p: Vec2, a: Vec2, b: Vec2, c: Vec2) -> f32 {
     let area = (b - a).perp_dot(c - a);
