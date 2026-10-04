@@ -407,6 +407,40 @@ impl SceneInteraction {
         });
         // Submit the complete widget under one lock and upload generation.
         renderer.debug_batch(|batch| {
+            if self.mode == GizmoType::Rotate {
+                let snap_degrees = f32::from_bits(ROTATION_SNAP.load(Ordering::Relaxed));
+                let ticks_per_turn = (360.0 / snap_degrees).ceil().max(1.0) as usize;
+                // Very fine custom increments should not create an unbounded
+                // amount of debug geometry. Keep at most 720 visible marks.
+                let stride = ticks_per_turn.div_ceil(720).max(1);
+                let signs = self.quadrant_signs(pivot, basis);
+                let axes: Vec<usize> = active_rotation_axis
+                    .map(|axis| vec![axis])
+                    .unwrap_or_else(|| vec![0, 1, 2]);
+                for axis in axes {
+                    let color = rotation_axis_color(axis);
+                    let u = basis.col((axis + 1) % 3);
+                    let v = basis.col((axis + 2) % 3);
+                    for tick in (0..ticks_per_turn).step_by(stride) {
+                        let angle = (tick as f32 * snap_degrees).to_radians();
+                        let cos = angle.cos();
+                        let sin = angle.sin();
+                        if active_rotation_axis.is_none()
+                            && (cos * signs[(axis + 1) % 3] < -0.0001
+                                || sin * signs[(axis + 2) % 3] < -0.0001)
+                        {
+                            continue;
+                        }
+                        let radial = u * cos + v * sin;
+                        let overlay = -self.view.forward * (length * 0.015);
+                        batch.line(
+                            (pivot + radial * (0.79 * length) + overlay).to_array(),
+                            (pivot + radial * (0.91 * length) + overlay).to_array(),
+                            [color[0], color[1], color[2], 0.95],
+                        );
+                    }
+                }
+            }
             if self.mode == GizmoType::Rotate && active_rotation_axis.is_none() {
                 let signs = self.quadrant_signs(pivot, basis);
                 for axis in 0..3 {
@@ -434,7 +468,10 @@ impl SceneInteraction {
                 if !self.handle_visible(mesh.handle, pivot, basis, length) {
                     continue;
                 }
-                let base = if active == Some(mesh.handle) {
+                let base = if self.mode == GizmoType::Rotate {
+                    let Handle::Axis(axis) = mesh.handle else { continue };
+                    rotation_axis_color(axis)
+                } else if active == Some(mesh.handle) {
                     [1.0, 0.8, 0.12, 1.0]
                 } else {
                     match mesh.handle {
@@ -523,6 +560,13 @@ fn triangle_distance(p: Vec2, a: Vec2, b: Vec2, c: Vec2) -> f32 {
     segment_distance(p, a, b)
         .min(segment_distance(p, b, c))
         .min(segment_distance(p, c, a))
+}
+fn rotation_axis_color(axis: usize) -> [f32; 4] {
+    match axis {
+        0 => [0.95, 0.12, 0.09, 1.0],
+        1 => [0.2, 0.85, 0.12, 1.0],
+        _ => [0.12, 0.4, 1.0, 1.0],
+    }
 }
 fn ray_plane_intersection(o: Vec3, d: Vec3, p: Vec3, n: Vec3) -> Option<Vec3> {
     let denominator = d.dot(n);
