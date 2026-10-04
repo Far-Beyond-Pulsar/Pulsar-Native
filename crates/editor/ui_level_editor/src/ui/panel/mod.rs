@@ -7,7 +7,6 @@
 
 mod handlers;
 pub(crate) mod pie;
-pub(super) use pie::{begin_pie, end_pie};
 mod camera;
 mod lifecycle;
 mod playback_host;

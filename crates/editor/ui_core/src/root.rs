@@ -8,7 +8,7 @@ use gpui::{
 use rust_i18n::t;
 use std::path::PathBuf;
 use ui::{
-    notification::Notification, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, Root,
+    notification::Notification, h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, Root,
     StyledExt as _,
 };
 use ui_common::menu::{
@@ -263,8 +263,28 @@ impl Render for EditorWindowShell {
             .child(
                 v_flex()
                     .size_full()
-                    .child(self.title_bar.clone())
-                    .child(self.global_toolbar.clone())
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .flex_shrink_0()
+                            .child(
+                                div()
+                                    .w(px(68.))
+                                    .h(px(68.))
+                                    .flex_shrink_0()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .children(self.title_bar.read(cx).app_menu_view(cx)),
+                            )
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(self.title_bar.clone())
+                                    .child(self.global_toolbar.clone()),
+                            ),
+                    )
                     .child(div().flex_1().overflow_hidden().child(self.content.clone())),
             )
             .when(self.show_multiplayer, |this| {

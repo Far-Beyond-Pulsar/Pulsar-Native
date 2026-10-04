@@ -1,5 +1,4 @@
 use gpui::*;
-use std::sync::Arc;
 use ui::{
     IconName, Sizable,
     button::{Button, ButtonVariants as _},

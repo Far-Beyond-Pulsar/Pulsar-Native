@@ -1692,3 +1692,11 @@ fn new_menu_bar(window: &mut Window, cx: &mut App) -> Entity<AppMenuBar> {
     bar.update(cx, |bar, cx| bar.set_logo(logo, cx));
     bar
 }
+
+impl AppTitleBar {
+    /// The app menu, shown as the Pulsar logo. The bar itself no longer draws
+    /// it; the shell places this beside the (taller) header.
+    pub fn app_menu_view(&self, cx: &App) -> Option<gpui::AnyView> {
+        self.app_menu_bar.read(cx).app_menu_view()
+    }
+}
