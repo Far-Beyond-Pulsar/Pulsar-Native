@@ -8,7 +8,6 @@ impl ViewportPanel {
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        perf_snapshot: PerformanceSnapshot,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -90,11 +89,21 @@ impl ViewportPanel {
             );
         }
 
-        // Bottom-left: Performance overlay
+        // Bottom-left: Performance overlay. A view with its own refresh timers,
+        // not rebuilt here; see `components/performance_overlay`.
         if state.overlays.state.show_performance_overlay {
             overlays = overlays.child(div().absolute().bottom_2().left_2().max_w(px(400.0)).child(
-                render_performance_overlay(state, state_arc.clone(), perf_snapshot, cx),
+                render_performance_overlay(
+                    state,
+                    state_arc.clone(),
+                    &self.stats,
+                    &self.perf_overlay,
+                    cx,
+                ),
             ));
+        } else {
+            // Closed: drop the overlay so its timers stop.
+            self.perf_overlay.borrow_mut().take();
         }
 
         // GPU Pipeline overlay - positions next to performance overlay if both visible
