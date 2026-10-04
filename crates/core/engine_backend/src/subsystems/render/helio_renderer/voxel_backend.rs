@@ -732,6 +732,9 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         {
             use std::fmt::Write;
             let _ = write!(line,
+                " evictions={} reclaimable_pages={} recycled_pages={} free_runs_by_class={:?}",
+                s.evictions, s.reclaimable_pages, s.recycled_pages, s.free_runs_by_class);
+            let _ = write!(line,
                 " requested_serial={} applied_serial={} fine_applied_serial={} far_applied_serial={:?} fine_apply_age_ms={:?} far_apply_age_ms={:?} fine_window_lag_m={:?}",
                 s.requested_serial, s.applied_serial, s.fine_applied_serial,
                 s.far_applied_serial, s.fine_apply_age_ms, s.far_apply_age_ms,
