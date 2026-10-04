@@ -75,28 +75,46 @@ struct SavedWindow {
 }
 
 impl SavedWindow {
-    fn capture(bounds: WindowBounds) -> Self {
+    /// Capture `bounds`. For a maximized or fullscreen window the platform
+    /// reports the screen-sized bounds, so `restore` (the last windowed
+    /// bounds) is saved instead; leaving full screen then returns to the size
+    /// the window had before.
+    fn capture(bounds: WindowBounds, restore: Option<Bounds<Pixels>>) -> Self {
         let (state, bounds) = match bounds {
             WindowBounds::Windowed(b) => (SavedWindowState::Windowed, b),
-            WindowBounds::Maximized(b) => (SavedWindowState::Maximized, b),
-            WindowBounds::Fullscreen(b) => (SavedWindowState::Fullscreen, b),
+            WindowBounds::Maximized(b) => (SavedWindowState::Maximized, restore.unwrap_or(b)),
+            WindowBounds::Fullscreen(b) => (SavedWindowState::Fullscreen, restore.unwrap_or(b)),
         };
         Self { state, bounds }
     }
 
-    /// The bounds to open a window with, or `None` if the saved size is not
-    /// usable (corrupt, or too small to be a real window).
+    /// The bounds to open a window with. A windowed window needs a plausible
+    /// saved size, else `None` (use the default). A maximized or fullscreen
+    /// window does not care about its size, so it is reopened that way even if
+    /// the saved size is unusable; the bounds then only say which display and
+    /// what size to leave it at.
     fn to_window_bounds(self) -> Option<WindowBounds> {
         let size = self.bounds.size;
         let usable = |v: Pixels| f32::from(v).is_finite() && f32::from(v) >= MIN_WINDOW_SIDE;
-        if !(usable(size.width) && usable(size.height)) {
-            return None;
+        let sized = usable(size.width) && usable(size.height);
+        match self.state {
+            SavedWindowState::Windowed => sized.then_some(WindowBounds::Windowed(self.bounds)),
+            SavedWindowState::Maximized => Some(WindowBounds::Maximized(self.restore_bounds(sized))),
+            SavedWindowState::Fullscreen => {
+                Some(WindowBounds::Fullscreen(self.restore_bounds(sized)))
+            }
         }
-        Some(match self.state {
-            SavedWindowState::Windowed => WindowBounds::Windowed(self.bounds),
-            SavedWindowState::Maximized => WindowBounds::Maximized(self.bounds),
-            SavedWindowState::Fullscreen => WindowBounds::Fullscreen(self.bounds),
-        })
+    }
+
+    fn restore_bounds(self, sized: bool) -> Bounds<Pixels> {
+        if sized {
+            self.bounds
+        } else {
+            Bounds {
+                origin: gpui::point(gpui::px(50.), gpui::px(50.)),
+                size: gpui::size(gpui::px(1600.), gpui::px(900.)),
+            }
+        }
     }
 }
 
@@ -215,9 +233,23 @@ impl PulsarApp {
 
         // Track the window's size and position; moving or resizing it saves the
         // layout like any other change (debounced).
-        self.state.window_bounds = Some(window.window_bounds());
+        self.note_window_bounds(window.window_bounds());
+        // A window that opened full screen never shows its windowed size, so
+        // carry the saved one forward until the user leaves full screen.
+        if self.state.window_restore_bounds.is_none() {
+            if let Some(root) = self.state.project_path.as_deref() {
+                self.state.window_restore_bounds = match saved_window_bounds(root) {
+                    Some(
+                        WindowBounds::Windowed(b)
+                        | WindowBounds::Maximized(b)
+                        | WindowBounds::Fullscreen(b),
+                    ) => Some(b),
+                    None => None,
+                };
+            }
+        }
         cx.observe_window_bounds(window, |this, window, cx| {
-            this.state.window_bounds = Some(window.window_bounds());
+            this.note_window_bounds(window.window_bounds());
             this.schedule_layout_save(cx);
         })
         .detach();
@@ -239,7 +271,7 @@ impl PulsarApp {
         window.on_window_should_close(cx, move |window, cx| {
             let bounds = window.window_bounds();
             _ = this.update(cx, |app, cx| {
-                app.state.window_bounds = Some(bounds);
+                app.note_window_bounds(bounds);
                 app.save_layout_now(cx);
             });
             true
@@ -253,6 +285,15 @@ impl PulsarApp {
                 app.state.layout_ready = true;
             });
         });
+    }
+
+    /// Record the window's current geometry, remembering the last windowed
+    /// bounds as the size to return to from maximized / full screen.
+    fn note_window_bounds(&mut self, bounds: WindowBounds) {
+        if let WindowBounds::Windowed(windowed) = bounds {
+            self.state.window_restore_bounds = Some(windowed);
+        }
+        self.state.window_bounds = Some(bounds);
     }
 
     /// (Re)arm the debounce timer. Dropping the previous task cancels it.
@@ -282,7 +323,10 @@ impl PulsarApp {
         let mut layout = SavedLayout {
             version: LAYOUT_VERSION,
             dock: self.state.dock_area.read(cx).dump(cx),
-            window: self.state.window_bounds.map(SavedWindow::capture),
+            window: self
+                .state
+                .window_bounds
+                .map(|b| SavedWindow::capture(b, self.state.window_restore_bounds)),
         };
         transform_layout(&mut layout, |state| relativize(state, &root));
 
@@ -668,7 +712,7 @@ mod tests {
         let layout = SavedLayout {
             version: LAYOUT_VERSION,
             dock: DockAreaState::default(),
-            window: Some(SavedWindow::capture(WindowBounds::Maximized(restore))),
+            window: Some(SavedWindow::capture(WindowBounds::Maximized(restore), None)),
         };
         write_layout(&layout_path(&dir), &layout).unwrap();
 
@@ -681,6 +725,43 @@ mod tests {
     }
 
     #[test]
+    fn fullscreen_reopens_fullscreen_whatever_its_saved_size() {
+        use gpui::{point, px, size};
+
+        // A fullscreen window reports screen-sized bounds; the saved size is
+        // the windowed one to return to, and even garbage there must not stop
+        // it reopening in full screen.
+        let screen = Bounds {
+            origin: point(px(0.), px(0.)),
+            size: size(px(2560.), px(1440.)),
+        };
+        let windowed = Bounds {
+            origin: point(px(200.), px(100.)),
+            size: size(px(1400.), px(800.)),
+        };
+
+        let saved = SavedWindow::capture(WindowBounds::Fullscreen(screen), Some(windowed));
+        assert_eq!(saved.state, SavedWindowState::Fullscreen);
+        assert_eq!(saved.bounds, windowed, "saves the size to return to");
+        assert_eq!(
+            saved.to_window_bounds(),
+            Some(WindowBounds::Fullscreen(windowed))
+        );
+
+        let garbage = SavedWindow {
+            state: SavedWindowState::Fullscreen,
+            bounds: Bounds {
+                origin: point(px(0.), px(0.)),
+                size: size(px(f32::NAN), px(1.)),
+            },
+        };
+        assert!(matches!(
+            garbage.to_window_bounds(),
+            Some(WindowBounds::Fullscreen(_))
+        ));
+    }
+
+    #[test]
     fn an_implausible_window_size_is_not_used() {
         use gpui::{point, px, size};
 
@@ -688,14 +769,14 @@ mod tests {
             origin: point(px(0.), px(0.)),
             size: size(px(10.), px(10.)),
         };
-        assert!(SavedWindow::capture(WindowBounds::Windowed(tiny))
+        assert!(SavedWindow::capture(WindowBounds::Windowed(tiny), None)
             .to_window_bounds()
             .is_none());
         let nan = Bounds {
             origin: point(px(0.), px(0.)),
             size: size(px(f32::NAN), px(900.)),
         };
-        assert!(SavedWindow::capture(WindowBounds::Windowed(nan))
+        assert!(SavedWindow::capture(WindowBounds::Windowed(nan), None)
             .to_window_bounds()
             .is_none());
     }

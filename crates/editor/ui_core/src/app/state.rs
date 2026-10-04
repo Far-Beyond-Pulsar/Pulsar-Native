@@ -94,6 +94,9 @@ pub struct AppState {
     pub layout_persist: bool,
     /// Last known window geometry, saved with the layout.
     pub window_bounds: Option<gpui::WindowBounds>,
+    /// The last windowed (not maximized / fullscreen) bounds: the size to
+    /// return to when leaving those states.
+    pub window_restore_bounds: Option<gpui::Bounds<gpui::Pixels>>,
     /// The saved layout has been restored (or there was none); saving is safe.
     pub layout_ready: bool,
     /// Pending debounced save; dropping it cancels the save.

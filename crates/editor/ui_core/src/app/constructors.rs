@@ -458,6 +458,7 @@ impl PulsarApp {
                 git_auto_fetch_task,
                 layout_persist: false,
                 window_bounds: None,
+                window_restore_bounds: None,
                 layout_ready: false,
                 layout_save_task: None,
                 radial: super::radial_menu::RadialHost::new(cx),
