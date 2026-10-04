@@ -122,7 +122,7 @@ impl ToolbarView {
     /// of what `ToolbarPanel::render` produces: on a cache hit GPUI lays the
     /// view out from this refinement alone, without consulting its content.
     pub fn cache_style() -> StyleRefinement {
-        StyleRefinement::default().w_full().h(px(48.0))
+        StyleRefinement::default().w_full().h(px(36.0))
     }
 
     fn start_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {

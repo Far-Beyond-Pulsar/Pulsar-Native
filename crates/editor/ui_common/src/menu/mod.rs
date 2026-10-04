@@ -1287,7 +1287,7 @@ impl AppTitleBar {
         let title_str = title.into();
         init_app_menus(title_str.clone(), cx);
 
-        let app_menu_bar = AppMenuBar::new(window, cx);
+        let app_menu_bar = new_menu_bar(window, cx);
         let locale_picker = cx.new(|cx| crate::locale_picker::LocalePicker::new(window, cx));
         let font_size_selector = cx.new(|cx| FontSizeSelector::new(window, cx));
         let theme_switcher = cx.new(|cx| ThemeSwitcher::new(cx));
@@ -1428,7 +1428,7 @@ impl Render for AppTitleBar {
 
             // Rebuild menus and app menu bar
             init_app_menus(self.title.clone(), cx);
-            self.app_menu_bar = AppMenuBar::new(window, cx);
+            self.app_menu_bar = new_menu_bar(window, cx);
             self.last_locale = current_locale;
         }
 
@@ -1454,6 +1454,7 @@ impl Render for AppTitleBar {
         let dev_popover = cx.new(DevPopover::new);
 
         TitleBar::new()
+            .unified_background(cx.theme().background)
             .child(
                 div()
                     .flex()
@@ -1672,4 +1673,22 @@ impl Render for FontSizeSelector {
                     .anchor(Corner::TopRight),
             )
     }
+}
+
+static LOGO_PNG: &[u8] = include_bytes!("../../../../../assets/images/logo_sqrkl.png");
+
+/// The Pulsar logo as a GPUI image, shown in place of the "Pulsar Engine"
+/// label on the application menu.
+fn decode_logo() -> Option<Arc<gpui::RenderImage>> {
+    let rgba = image::load_from_memory(LOGO_PNG).ok()?.into_rgba8();
+    let frame = image::Frame::new(rgba);
+    Some(Arc::new(gpui::RenderImage::new(smallvec::smallvec![frame])))
+}
+
+/// Build the in-window menu bar with the logo applied to the app menu.
+fn new_menu_bar(window: &mut Window, cx: &mut App) -> Entity<AppMenuBar> {
+    let bar = AppMenuBar::new(window, cx);
+    let logo = decode_logo();
+    bar.update(cx, |bar, cx| bar.set_logo(logo, cx));
+    bar
 }

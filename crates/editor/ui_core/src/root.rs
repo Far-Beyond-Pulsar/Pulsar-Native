@@ -31,6 +31,7 @@ pub struct PulsarRoot {
 
 struct EditorWindowShell {
     title_bar: Entity<AppTitleBar>,
+    global_toolbar: Entity<ui_level_editor::GlobalToolbarView>,
     content: AnyView,
     show_multiplayer: bool,
     friends_popover: Entity<ui_friends::FriendsPopover>,
@@ -45,6 +46,7 @@ impl EditorWindowShell {
         cx: &mut Context<Self>,
     ) -> Self {
         let title_bar = cx.new(|cx| AppTitleBar::new(title, window, cx));
+        let global_toolbar = cx.new(ui_level_editor::GlobalToolbarView::new);
         let friends_popover = cx.new(|cx| ui_friends::FriendsPopover::new(window, cx));
 
         let subscriptions = vec![cx.subscribe_in(
@@ -63,6 +65,7 @@ impl EditorWindowShell {
 
         Self {
             title_bar,
+            global_toolbar,
             content,
             show_multiplayer: false,
             friends_popover,
@@ -256,10 +259,12 @@ impl Render for EditorWindowShell {
 
         div()
             .size_full()
+            .bg(cx.theme().background)
             .child(
                 v_flex()
                     .size_full()
                     .child(self.title_bar.clone())
+                    .child(self.global_toolbar.clone())
                     .child(div().flex_1().overflow_hidden().child(self.content.clone())),
             )
             .when(self.show_multiplayer, |this| {

@@ -35,7 +35,7 @@ pub use tool_modes::{
     ToolPointerResult, ToolWidget, ViewportFrame, register_tool_modes,
 };
 pub use workspace::panels::*;
-pub use ui::LevelEditorPanel;
+pub use ui::{ActiveLevelEditor, GLOBAL_TOOLBAR_HEIGHT, GlobalToolbarView, LevelEditorPanel};
 
 /// Get current locale
 pub fn locale() -> String {
