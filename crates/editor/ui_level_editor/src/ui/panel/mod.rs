@@ -71,8 +71,8 @@ pub struct LevelEditorPanel {
     // and removed on stop. `game_panel` is the live tab entity, if open.
     game_panel: Option<Entity<crate::ui::viewport::game_viewport::GameViewport>>,
 
-    /// Registers this editor as an engine playback host; see `playback_host`.
-    host: playback_host::HostState,
+    /// Subscribes this editor to playback commands; see `playback_host`.
+    playback_host: playback_host::PlaybackHostBinding,
 
     /// Last `(building, active, pending_start, has_error)` tuple that
     /// [`Self::sync_game_tab`] acted on. Render runs several times per second
@@ -188,7 +188,6 @@ impl Render for LevelEditorPanel {
 
         // Initialize workspace on first render
         self.initialize_workspace(window, cx);
-        self.start_playback_host(window, cx);
 
         // Play requested without a window (the AI tools).
         if self.shared_state.read().play.pie.play_requested {

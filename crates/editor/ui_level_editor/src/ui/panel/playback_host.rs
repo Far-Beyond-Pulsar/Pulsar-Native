@@ -1,65 +1,59 @@
-//! The level editor as an engine playback host.
+//! The level editor as a playback host.
 //!
-//! The global toolbar (`engine_state::playback`) only sends commands and shows
-//! state. While a level editor exists it is registered as a host: each frame
-//! it services queued commands and mirrors its Play-In-Editor status back into
-//! the global store.
+//! The global toolbar shows the `PlaybackState` resource and publishes
+//! `PlaybackCommand`s on the host bus. This editor subscribes while it exists,
+//! runs the commands on the UI thread, and reports its Play-In-Editor status
+//! back into the resource. Bus delivery happens on the publisher's thread, so
+//! the subscription only queues; an async task drains the queue in the window.
 
-use engine_state::playback::{PlayPhase, PlaybackCommand, PlaybackHost, playback};
+use engine_state::playback::{PlayPhase, update_playback_if_changed};
+use pulsar_events::{PlaybackCommand, PlaybackSubscription, subscribe_playback_commands};
 
 use super::*;
 
-/// Host registration plus the once-only pump flag.
-pub(super) struct HostState {
-    _registration: PlaybackHost,
-    pump_started: bool,
+/// Keeps the editor subscribed to playback commands and, when it goes away,
+/// leaves the shared state as "stopped" since nothing is hosting a session.
+pub(super) struct PlaybackHostBinding {
+    _subscription: PlaybackSubscription,
+    _commands: Task<()>,
 }
 
-impl HostState {
-    pub(super) fn new() -> Self {
-        Self {
-            _registration: playback().register_host(),
-            pump_started: false,
-        }
+impl Drop for PlaybackHostBinding {
+    fn drop(&mut self) {
+        update_playback_if_changed(|s| {
+            s.phase = PlayPhase::Stopped;
+            s.paused = false;
+            s.supports_control = false;
+        });
     }
 }
 
 impl LevelEditorPanel {
-    pub(super) fn start_playback_host(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.host.pump_started {
-            return;
-        }
-        self.host.pump_started = true;
-        crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, window, cx| {
-            this.mirror_playback_state();
-            for command in playback().drain_commands() {
-                this.run_playback_command(command, window, cx);
+    pub(super) fn bind_playback_host(
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> PlaybackHostBinding {
+        let (tx, rx) = smol::channel::unbounded();
+        let subscription = subscribe_playback_commands(move |command| {
+            let _ = tx.try_send(command);
+        });
+        let commands = cx.spawn_in(window, async move |this, cx| {
+            while let Ok(command) = rx.recv().await {
+                let handled = this.update_in(cx, |panel, window, cx| {
+                    // Every open level editor hears the command; only the one
+                    // in the window the user is working in acts on it.
+                    if window.is_window_active() {
+                        panel.run_playback_command(command, window, cx);
+                    }
+                });
+                if handled.is_err() {
+                    break;
+                }
             }
         });
-    }
-
-    /// Publish the editor's play status; writes only on change.
-    fn mirror_playback_state(&self) {
-        let (phase, paused, supports_control) = {
-            let st = self.shared_state.read();
-            let pie = &st.play.pie;
-            let phase = if pie.active {
-                PlayPhase::Playing
-            } else if pie.building || pie.pending_start.is_some() || !st.scene.is_edit_mode() {
-                PlayPhase::Building
-            } else {
-                PlayPhase::Stopped
-            };
-            (phase, pie.paused, pie.supports_control)
-        };
-        let pb = playback();
-        let now = pb.state();
-        if now.phase != phase || now.paused != paused || now.supports_control != supports_control {
-            pb.update(|s| {
-                s.phase = phase;
-                s.paused = paused;
-                s.supports_control = supports_control;
-            });
+        PlaybackHostBinding {
+            _subscription: subscription,
+            _commands: commands,
         }
     }
 
@@ -88,4 +82,22 @@ impl LevelEditorPanel {
             }
         }
     }
+}
+
+/// Publish the editor's play status to the shared resource. Called from the
+/// panel's existing poll loop; only a real change wakes watchers.
+pub(super) fn publish_playback_status(state: &LevelEditorState) {
+    let pie = &state.play.pie;
+    let phase = if pie.active {
+        PlayPhase::Playing
+    } else if pie.building || pie.pending_start.is_some() || !state.scene.is_edit_mode() {
+        PlayPhase::Building
+    } else {
+        PlayPhase::Stopped
+    };
+    update_playback_if_changed(|s| {
+        s.phase = phase;
+        s.paused = pie.paused;
+        s.supports_control = pie.supports_control;
+    });
 }

@@ -1,31 +1,32 @@
 use super::*;
 
 impl BuildDropdowns {
-    pub(super) fn config_button(config_label: &'static str) -> impl IntoElement {
-        Button::new("build_config_dropdown")
-            .label(config_label)
-            .icon(IconName::Settings)
-            .small()
-            .ghost()
-            .tooltip("Select build configuration")
-            .popup_menu(move |menu, _, _| {
-                menu.label("Build Configuration")
-                    .separator()
-                    .menu_with_icon(
-                        "Debug",
-                        IconName::Bug,
-                        Box::new(SetBuildConfig(BuildConfig::Debug)),
-                    )
-                    .menu_with_icon(
-                        "Release",
-                        IconName::Flash,
-                        Box::new(SetBuildConfig(BuildConfig::Release)),
-                    )
-                    .menu_with_icon(
-                        "Shipping",
-                        IconName::Package,
-                        Box::new(SetBuildConfig(BuildConfig::Shipping)),
-                    )
-            })
+    /// Append the build-configuration choices to `menu`.
+    pub(crate) fn config_menu_items(menu: PopupMenu, current: BuildConfig) -> PopupMenu {
+        menu
+            .menu_with_check(
+                "Debug",
+                current == BuildConfig::Debug,
+                Box::new(SetBuildConfig(BuildConfig::Debug)),
+            )
+            .menu_with_check(
+                "Release",
+                current == BuildConfig::Release,
+                Box::new(SetBuildConfig(BuildConfig::Release)),
+            )
+            .menu_with_check(
+                "Shipping",
+                current == BuildConfig::Shipping,
+                Box::new(SetBuildConfig(BuildConfig::Shipping)),
+            )
+    }
+
+    /// Short label for a configuration, for tooltips.
+    pub(crate) fn config_label(config: BuildConfig) -> &'static str {
+        match config {
+            BuildConfig::Debug => "Debug",
+            BuildConfig::Release => "Release",
+            BuildConfig::Shipping => "Shipping",
+        }
     }
 }

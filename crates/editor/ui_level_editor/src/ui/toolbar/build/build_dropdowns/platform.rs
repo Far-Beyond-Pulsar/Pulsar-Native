@@ -1,7 +1,7 @@
 use super::*;
 
 impl BuildDropdowns {
-    pub(super) fn get_platform_label(platform: TargetPlatform) -> &'static str {
+    pub(crate) fn get_platform_label(platform: TargetPlatform) -> &'static str {
         match platform {
             // Windows
             TargetPlatform::WindowsX86_64Msvc => "Win x64",
@@ -26,7 +26,7 @@ impl BuildDropdowns {
         }
     }
 
-    pub(super) fn get_platform_icon(platform: TargetPlatform) -> IconName {
+    pub(crate) fn get_platform_icon(platform: TargetPlatform) -> IconName {
         match platform {
             TargetPlatform::WindowsX86_64Msvc
             | TargetPlatform::WindowsI686Msvc

@@ -1,31 +1,82 @@
 //! Engine-global playback and build state.
 //!
-//! Play / pause / step / stop, simulation speed, multiplayer mode and the build
-//! configuration are properties of the *engine*, not of any one editor. They
-//! live here, in one process-wide store, so the app shell's toolbar can show
-//! and drive them without knowing which editors exist.
+//! Simulation speed, multiplayer mode, build configuration and the state of
+//! the current play session are properties of the *engine*, not of any one
+//! editor. They live in the engine's [`StateStore`](crate::StateStore) as
+//! [`PlaybackState`], so the app shell's toolbar can show them without knowing
+//! which editors exist; watch it with [`ResourceHandle::changed`].
 //!
-//! Editors take part as **playback hosts**: a host calls
-//! [`Playback::register_host`], services the [`PlaybackCommand`]s the toolbar
-//! sends ([`Playback::drain_commands`]) and mirrors what it is doing back into
-//! [`PlaybackState`] ([`Playback::update`]). The toolbar never touches an
-//! editor; with no host registered, [`Playback::send`] reports that nothing
-//! will act on the command.
+//! Intent flows the other way, as events: the toolbar publishes
+//! `pulsar_events::PlaybackCommand`s on the host bus and the editor that hosts
+//! play sessions acts on them and reports back by updating this resource.
 
-use std::collections::VecDeque;
 use std::process::Child;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::OnceLock;
 
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 
-// ── Multiplayer Mode ──────────────────────────────────────────────────────
+use crate::{EngineContext, ResourceHandle};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// ── Multiplayer ───────────────────────────────────────────────────────────
+
+/// How a play session participates in the network.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum MultiplayerMode {
-    Offline,
-    Host,
+    /// Single player, no networking.
+    #[default]
+    Standalone,
+    /// One player hosts and plays; the others connect to them.
+    ListenServer,
+    /// A headless authoritative server; every player is a client.
+    DedicatedServer,
+    /// Join an already-running server.
     Client,
+}
+
+impl MultiplayerMode {
+    pub const ALL: [Self; 4] = [
+        Self::Standalone,
+        Self::ListenServer,
+        Self::DedicatedServer,
+        Self::Client,
+    ];
+
+    /// Whether the player count is meaningful in this mode.
+    pub fn has_player_count(self) -> bool {
+        matches!(self, Self::ListenServer | Self::DedicatedServer)
+    }
+}
+
+/// Largest player count the quick-config offers.
+pub const MAX_PLAYERS: u8 = 16;
+
+/// Quick multiplayer configuration for Play-In-Editor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MultiplayerSettings {
+    pub mode: MultiplayerMode,
+    /// Players in the session (1..=[`MAX_PLAYERS`]): host included for a listen
+    /// server, all clients for a dedicated server.
+    pub players: u8,
+    /// Server simulation rate in Hz.
+    pub tick_rate_hz: u16,
+    /// Run each player in its own window instead of sharing the editor.
+    pub separate_windows: bool,
+    /// Artificial one-way latency applied to network traffic, in ms.
+    pub latency_ms: u16,
+    /// Artificial packet loss, in percent.
+    pub packet_loss_pct: u8,
+}
+
+impl Default for MultiplayerSettings {
+    fn default() -> Self {
+        Self {
+            mode: MultiplayerMode::Standalone,
+            players: 2,
+            tick_rate_hz: 60,
+            separate_windows: false,
+            latency_ms: 0,
+            packet_loss_pct: 0,
+        }
+    }
 }
 
 // ── Build Configuration ───────────────────────────────────────────────────
@@ -129,7 +180,7 @@ pub struct PlaybackState {
     pub time_scale: f32,
     /// Target frame rate for the game loop (0 = uncapped).
     pub target_fps: u32,
-    pub multiplayer_mode: MultiplayerMode,
+    pub multiplayer: MultiplayerSettings,
     pub build_config: BuildConfig,
     pub target_platform: TargetPlatform,
     pub build_mode: BuildMode,
@@ -146,7 +197,7 @@ impl Default for PlaybackState {
         Self {
             time_scale: 1.0,
             target_fps: 60,
-            multiplayer_mode: MultiplayerMode::Offline,
+            multiplayer: MultiplayerSettings::default(),
             build_config: BuildConfig::Debug,
             target_platform: TargetPlatform::WindowsX86_64Msvc,
             build_mode: BuildMode::Build,
@@ -164,101 +215,40 @@ impl PlaybackState {
     }
 }
 
-/// A request from the toolbar (or anything else) to the playback host.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PlaybackCommand {
-    /// Start playing, or hot-reload if already playing.
-    Play,
-    Stop,
-    /// Pause if running, resume if paused.
-    TogglePause,
-    /// Advance one frame while paused.
-    Step,
+/// The standalone game process started by Build + Run.
+///
+/// A resource of its own because [`Child`] is neither `Clone` nor `PartialEq`;
+/// whether it is alive is mirrored in [`PlaybackState::game_running`].
+#[derive(Default)]
+pub struct GameProcess(pub Mutex<Option<Child>>);
+
+/// The engine's playback state resource.
+///
+/// # Panics
+/// If the engine context is not initialised (it is, before any UI exists).
+pub fn playback() -> ResourceHandle<PlaybackState> {
+    EngineContext::global()
+        .expect("engine initialized")
+        .store
+        .get_or_init::<PlaybackState>()
 }
 
-/// The process-wide playback store. Get it with [`playback`].
-pub struct Playback {
-    state: RwLock<PlaybackState>,
-    commands: Mutex<VecDeque<PlaybackCommand>>,
-    hosts: AtomicUsize,
-    game_process: Mutex<Option<Child>>,
+/// The launched game's process handle resource.
+pub fn game_process() -> ResourceHandle<GameProcess> {
+    EngineContext::global()
+        .expect("engine initialized")
+        .store
+        .get_or_init::<GameProcess>()
 }
 
-static PLAYBACK: OnceLock<Playback> = OnceLock::new();
-
-/// The engine's playback store.
-pub fn playback() -> &'static Playback {
-    PLAYBACK.get_or_init(|| Playback {
-        state: RwLock::new(PlaybackState::default()),
-        commands: Mutex::new(VecDeque::new()),
-        hosts: AtomicUsize::new(0),
-        game_process: Mutex::new(None),
-    })
-}
-
-impl Playback {
-    pub fn state(&self) -> PlaybackState {
-        *self.state.read()
-    }
-
-    /// Mutate the state. Hosts should prefer writing only on change, so
-    /// watchers comparing snapshots stay quiet.
-    pub fn update<R>(&self, f: impl FnOnce(&mut PlaybackState) -> R) -> R {
-        f(&mut self.state.write())
-    }
-
-    /// The standalone game process started by Build + Run.
-    pub fn game_process(&self) -> &Mutex<Option<Child>> {
-        &self.game_process
-    }
-
-    /// Queue `command` for a host. Returns `false` (and queues nothing) when
-    /// no host is registered to act on it.
-    pub fn send(&self, command: PlaybackCommand) -> bool {
-        if self.hosts.load(Ordering::Acquire) == 0 {
-            return false;
-        }
-        self.commands.lock().push_back(command);
-        true
-    }
-
-    /// Take every queued command. Called by hosts.
-    pub fn drain_commands(&self) -> Vec<PlaybackCommand> {
-        let mut queue = self.commands.lock();
-        if queue.is_empty() {
-            return Vec::new();
-        }
-        queue.drain(..).collect()
-    }
-
-    /// Whether any host is currently registered.
-    pub fn has_host(&self) -> bool {
-        self.hosts.load(Ordering::Acquire) > 0
-    }
-
-    /// Register as a playback host for as long as the guard lives.
-    pub fn register_host(&'static self) -> PlaybackHost {
-        self.hosts.fetch_add(1, Ordering::AcqRel);
-        PlaybackHost { playback: self }
-    }
-}
-
-/// Keeps a host registered; unregisters on drop.
-pub struct PlaybackHost {
-    playback: &'static Playback,
-}
-
-impl Drop for PlaybackHost {
-    fn drop(&mut self) {
-        if self.playback.hosts.fetch_sub(1, Ordering::AcqRel) == 1 {
-            // Last host gone: nobody will service what is queued, and a stale
-            // command must not fire when the next host appears.
-            self.playback.commands.lock().clear();
-            self.playback.update(|s| {
-                s.phase = PlayPhase::Stopped;
-                s.paused = false;
-                s.supports_control = false;
-            });
-        }
+/// Set `f` on the playback state, but only publish a change (version bump and
+/// listener wake-up) if it actually changed anything, so hosts can report
+/// status every tick without waking every watcher.
+pub fn update_playback_if_changed(f: impl FnOnce(&mut PlaybackState)) {
+    let handle = playback();
+    let mut next = handle.get();
+    f(&mut next);
+    if next != handle.get() {
+        handle.set(next);
     }
 }

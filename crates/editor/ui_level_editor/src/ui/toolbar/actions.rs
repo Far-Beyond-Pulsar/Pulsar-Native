@@ -1,4 +1,4 @@
-use crate::state::{BuildConfig, BuildMode, MultiplayerMode, TargetPlatform};
+use crate::state::{BuildConfig, BuildMode, TargetPlatform};
 use crate::tool_modes::ToolModeId;
 use gpui::*;
 
@@ -11,10 +11,6 @@ pub struct SetToolMode(pub ToolModeId);
 #[derive(Action, Clone, PartialEq)]
 #[action(namespace = level_editor_toolbar, no_json)]
 pub struct SetTimeScale(pub f32);
-
-#[derive(Action, Clone, PartialEq)]
-#[action(namespace = level_editor_toolbar, no_json)]
-pub struct SetMultiplayerMode(pub MultiplayerMode);
 
 #[derive(Action, Clone, PartialEq)]
 #[action(namespace = level_editor_toolbar, no_json)]

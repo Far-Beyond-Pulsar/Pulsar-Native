@@ -1,21 +1,14 @@
 use super::*;
 
 impl BuildDropdowns {
-    pub(super) fn platform_button(
-        platform_label: &'static str,
-        platform_icon: IconName,
+    /// Append the target-platform submenus to `menu`.
+    pub(crate) fn platform_menu_items(
+        menu: PopupMenu,
         current_platform: TargetPlatform,
-    ) -> impl IntoElement {
-        Button::new("platform_dropdown")
-            .label(platform_label)
-            .icon(platform_icon)
-            .small()
-            .ghost()
-            .tooltip("Select target platform and architecture")
-            .popup_menu(move |menu, window, cx| {
-                menu.label("Target Platform")
-                    .separator()
-                    // Windows submenu
+        window: &mut Window,
+        cx: &mut Context<PopupMenu>,
+    ) -> PopupMenu {
+                menu
                     .submenu_with_icon(
                         Some(ui::Icon::new(IconName::Globe)),
                         "Windows",
@@ -396,6 +389,5 @@ impl BuildDropdowns {
                         IconName::Gamepad,
                         Box::new(SetTargetPlatform(TargetPlatform::NintendoSwitch)),
                     )
-            })
     }
 }

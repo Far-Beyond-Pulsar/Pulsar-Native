@@ -148,6 +148,8 @@ impl PulsarApp {
                 panic!("Invalid dock configuration: center must be Tabs type");
             }
         };
+        // The editor keeps its tab strip with a single tab, and the last tab stays open.
+        center_tabs.update(cx, |tabs, cx| tabs.set_persistent_tabs(true, cx));
 
         // ── Left-dock side panels ──────────────────────────────────────────────
         let t = std::time::Instant::now();

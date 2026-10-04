@@ -1,4 +1,5 @@
-use engine_state::playback::{PlayPhase, PlaybackCommand, PlaybackState, playback};
+use engine_state::playback::{PlayPhase, PlaybackState};
+use pulsar_events::{PlaybackCommand, publish_playback_command};
 use gpui::*;
 use rust_i18n::t;
 use ui::{
@@ -85,7 +86,5 @@ impl PlaybackControls {
 }
 
 fn send(command: PlaybackCommand) {
-    if !playback().send(command) {
-        tracing::warn!(?command, "no playback host open; nothing to act on it");
-    }
+    publish_playback_command(command);
 }

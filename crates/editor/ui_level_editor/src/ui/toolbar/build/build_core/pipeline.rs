@@ -174,7 +174,8 @@ pub(super) async fn launch_and_monitor(
 
     // Store the handle and mark running.
     let playback = engine_state::playback::playback();
-    *playback.game_process().lock() = Some(child);
+    let game = engine_state::playback::game_process();
+    *game.read().0.lock() = Some(child);
     playback.update(|s| s.game_running = true);
     let _ = async_app.update_window(window_handle, |_, _, cx| cx.notify(entity_id));
 
@@ -186,7 +187,8 @@ pub(super) async fn launch_and_monitor(
             .await;
 
         let exit_status = {
-            let mut guard = playback.game_process().lock();
+            let process = game.read();
+            let mut guard = process.0.lock();
             match guard.as_mut() {
                 None => Some(None), // Stop button already killed it — treat as exited.
                 Some(child) => match child.try_wait() {
@@ -199,7 +201,7 @@ pub(super) async fn launch_and_monitor(
 
         if let Some(status) = exit_status {
             // Clean up the handle.
-            playback.game_process().lock().take();
+            game.read().0.lock().take();
             playback.update(|s| s.game_running = false);
 
             // Surface a notification if the process exited with an error.

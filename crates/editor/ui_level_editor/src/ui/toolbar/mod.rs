@@ -17,7 +17,7 @@ mod feature_toggles;
 mod global_toolbar;
 mod level_editor_menus;
 mod mode_indicator;
-mod multiplayer_dropdown;
+mod multiplayer_panel;
 mod playback_controls;
 mod time_scale_dropdown;
 mod tool_mode_dropdown;

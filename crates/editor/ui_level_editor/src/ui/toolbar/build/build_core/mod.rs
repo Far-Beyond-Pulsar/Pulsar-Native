@@ -31,6 +31,7 @@ use ui::{
 };
 
 use super::super::actions::SetBuildMode;
+use super::build_dropdowns::BuildDropdowns;
 use engine_state::playback::PlaybackState;
 use crate::state::BuildMode;
 
@@ -222,10 +223,15 @@ impl BuildCoreButton {
         let primary = Button::new("build_core_primary")
             .icon(icon)
             .label(label)
-            .tooltip(tooltip)
+            .tooltip(format!(
+                "{tooltip}
+{} · {}",
+                BuildDropdowns::config_label(playback_state.build_config),
+                BuildDropdowns::get_platform_label(playback_state.target_platform),
+            ))
             .when(is_playing || game_running, |b| b.disabled(true))
             .on_click(move |_, window, cx| {
-                let mode = engine_state::playback::playback().state().build_mode;
+                let mode = engine_state::playback::playback().get().build_mode;
                 trigger_build(mode, entity_id, window, cx);
             });
 
@@ -233,9 +239,11 @@ impl BuildCoreButton {
         let dropdown = DropdownButton::new("build_core_dropdown")
             .button(primary)
             .when(!is_playing && !game_running, |d| {
-                d.popup_menu(move |menu, _, _| {
-                    let current = engine_state::playback::playback().state().build_mode;
-                    menu.label("Build Mode")
+                d.popup_menu(move |menu, window, cx| {
+                    let pb = engine_state::playback::playback().get();
+                    let current = pb.build_mode;
+                    let menu = menu
+                        .label("Build Mode")
                         .separator()
                         .menu_with_check(
                             "Build",
@@ -278,6 +286,24 @@ impl BuildCoreButton {
                             "Check (Scratch)",
                             current == BuildMode::CheckScratch,
                             Box::new(SetBuildMode(BuildMode::CheckScratch)),
+                        );
+                    let (config, platform) = (pb.build_config, pb.target_platform);
+                    menu.separator()
+                        .submenu_with_icon(
+                            Some(ui::Icon::new(IconName::Settings)),
+                            format!("Configuration: {}", BuildDropdowns::config_label(config)),
+                            window,
+                            cx,
+                            move |sub, _, _| BuildDropdowns::config_menu_items(sub, config),
+                        )
+                        .submenu_with_icon(
+                            Some(ui::Icon::new(IconName::Cpu)),
+                            format!("Platform: {}", BuildDropdowns::get_platform_label(platform)),
+                            window,
+                            cx,
+                            move |sub, window, cx| {
+                                BuildDropdowns::platform_menu_items(sub, platform, window, cx)
+                            },
                         )
                 })
             });
@@ -289,7 +315,8 @@ impl BuildCoreButton {
             .tooltip("Stop the running game")
             .on_click(move |_, _, cx| {
                 let playback = engine_state::playback::playback();
-                if let Some(mut child) = playback.game_process().lock().take() {
+                let game = engine_state::playback::game_process();
+                if let Some(mut child) = game.read().0.lock().take() {
                     let _ = child.kill();
                     let _ = child.wait();
                 }
