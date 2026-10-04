@@ -415,12 +415,10 @@ impl SceneInteraction {
         let Some(length) = self.view.length(pivot) else {
             return;
         };
-        let basis = rotation_matrix(
-            self.drag
-                .filter(|d| d.mode == GizmoType::Rotate)
-                .map(|d| d.initial)
-                .unwrap_or(t),
-        );
+        // Render from the live object transform so the rotation gizmo tracks
+        // each snapped transform update throughout the drag. Drag math keeps
+        // its own start basis to preserve a stable axis for the gesture.
+        let basis = rotation_matrix(t);
         let active = self.drag.map(|d| d.handle).or(self.hovered);
         // Submit the complete widget under one lock and upload generation.
         renderer.debug_batch(|batch| {
