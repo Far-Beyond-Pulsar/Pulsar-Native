@@ -92,6 +92,8 @@ pub struct AppState {
     // Dock layout persistence (see `layout_persistence`)
     /// This window saves and restores the project layout.
     pub layout_persist: bool,
+    /// Last known window geometry, saved with the layout.
+    pub window_bounds: Option<gpui::WindowBounds>,
     /// The saved layout has been restored (or there was none); saving is safe.
     pub layout_ready: bool,
     /// Pending debounced save; dropping it cancels the save.

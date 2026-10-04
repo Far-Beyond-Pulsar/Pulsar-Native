@@ -34,7 +34,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use gpui::{Context, Entity, EntityId, Pixels, Window};
+use gpui::{Bounds, Context, Entity, EntityId, Pixels, Window, WindowBounds};
 use serde::{Deserialize, Serialize};
 use ui::dock::{
     DockAreaState, DockEvent, DockItem, DockPlacement, DockState, PanelInfo, PanelState,
@@ -53,6 +53,63 @@ const SAVE_DEBOUNCE: Duration = Duration::from_secs(4);
 struct SavedLayout {
     version: u32,
     dock: DockAreaState,
+    /// Window size, position and maximized / fullscreen state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    window: Option<SavedWindow>,
+}
+
+/// How the window was shown. The bounds saved alongside are the *restore*
+/// bounds, so a maximized window comes back maximized and un-maximizes to its
+/// previous size.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+enum SavedWindowState {
+    Windowed,
+    Maximized,
+    Fullscreen,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+struct SavedWindow {
+    state: SavedWindowState,
+    bounds: Bounds<Pixels>,
+}
+
+impl SavedWindow {
+    fn capture(bounds: WindowBounds) -> Self {
+        let (state, bounds) = match bounds {
+            WindowBounds::Windowed(b) => (SavedWindowState::Windowed, b),
+            WindowBounds::Maximized(b) => (SavedWindowState::Maximized, b),
+            WindowBounds::Fullscreen(b) => (SavedWindowState::Fullscreen, b),
+        };
+        Self { state, bounds }
+    }
+
+    /// The bounds to open a window with, or `None` if the saved size is not
+    /// usable (corrupt, or too small to be a real window).
+    fn to_window_bounds(self) -> Option<WindowBounds> {
+        let size = self.bounds.size;
+        let usable = |v: Pixels| f32::from(v).is_finite() && f32::from(v) >= MIN_WINDOW_SIDE;
+        if !(usable(size.width) && usable(size.height)) {
+            return None;
+        }
+        Some(match self.state {
+            SavedWindowState::Windowed => WindowBounds::Windowed(self.bounds),
+            SavedWindowState::Maximized => WindowBounds::Maximized(self.bounds),
+            SavedWindowState::Fullscreen => WindowBounds::Fullscreen(self.bounds),
+        })
+    }
+}
+
+/// Smallest saved window side we trust, in logical pixels.
+const MIN_WINDOW_SIDE: f32 = 320.0;
+
+/// The window geometry saved for `project_root`, to open its window with.
+/// Whether it is still on a connected display is checked when the window is
+/// opened.
+pub(crate) fn saved_window_bounds(project_root: &Path) -> Option<WindowBounds> {
+    read_layout(&layout_path(project_root))?
+        .window?
+        .to_window_bounds()
 }
 
 fn layout_path(project_root: &Path) -> PathBuf {
@@ -156,6 +213,15 @@ impl PulsarApp {
         }
         self.state.layout_persist = true;
 
+        // Track the window's size and position; moving or resizing it saves the
+        // layout like any other change (debounced).
+        self.state.window_bounds = Some(window.window_bounds());
+        cx.observe_window_bounds(window, |this, window, cx| {
+            this.state.window_bounds = Some(window.window_bounds());
+            this.schedule_layout_save(cx);
+        })
+        .detach();
+
         let dock_area = self.state.dock_area.clone();
         cx.subscribe_in(
             &dock_area,
@@ -170,8 +236,12 @@ impl PulsarApp {
 
         // Flush a pending change when the window closes.
         let this = cx.entity().downgrade();
-        window.on_window_should_close(cx, move |_window, cx| {
-            _ = this.update(cx, |app, cx| app.save_layout_now(cx));
+        window.on_window_should_close(cx, move |window, cx| {
+            let bounds = window.window_bounds();
+            _ = this.update(cx, |app, cx| {
+                app.state.window_bounds = Some(bounds);
+                app.save_layout_now(cx);
+            });
             true
         });
 
@@ -212,6 +282,7 @@ impl PulsarApp {
         let mut layout = SavedLayout {
             version: LAYOUT_VERSION,
             dock: self.state.dock_area.read(cx).dump(cx),
+            window: self.state.window_bounds.map(SavedWindow::capture),
         };
         transform_layout(&mut layout, |state| relativize(state, &root));
 
@@ -535,6 +606,7 @@ mod tests {
         let path = layout_path(&dir);
         let layout = SavedLayout {
             version: LAYOUT_VERSION,
+            window: None,
             dock: DockAreaState {
                 center: tab_group(&["a.rs", "b.rs"]),
                 ..Default::default()
@@ -573,6 +645,7 @@ mod tests {
         let path = layout_path(&dir);
         let layout = SavedLayout {
             version: LAYOUT_VERSION,
+            window: None,
             dock: DockAreaState { center: tiles, ..Default::default() },
         };
 
@@ -584,11 +657,56 @@ mod tests {
     }
 
     #[test]
+    fn window_geometry_round_trips_with_its_state() {
+        use gpui::{point, px, size};
+
+        let restore = Bounds {
+            origin: point(px(120.), px(80.)),
+            size: size(px(1500.), px(900.)),
+        };
+        let dir = std::env::temp_dir().join(format!("pulsar-layout-w-{}", std::process::id()));
+        let layout = SavedLayout {
+            version: LAYOUT_VERSION,
+            dock: DockAreaState::default(),
+            window: Some(SavedWindow::capture(WindowBounds::Maximized(restore))),
+        };
+        write_layout(&layout_path(&dir), &layout).unwrap();
+
+        // Maximized stays maximized and keeps its restore size.
+        assert_eq!(
+            saved_window_bounds(&dir),
+            Some(WindowBounds::Maximized(restore))
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_implausible_window_size_is_not_used() {
+        use gpui::{point, px, size};
+
+        let tiny = Bounds {
+            origin: point(px(0.), px(0.)),
+            size: size(px(10.), px(10.)),
+        };
+        assert!(SavedWindow::capture(WindowBounds::Windowed(tiny))
+            .to_window_bounds()
+            .is_none());
+        let nan = Bounds {
+            origin: point(px(0.), px(0.)),
+            size: size(px(f32::NAN), px(900.)),
+        };
+        assert!(SavedWindow::capture(WindowBounds::Windowed(nan))
+            .to_window_bounds()
+            .is_none());
+    }
+
+    #[test]
     fn a_layout_of_another_version_is_ignored() {
         let dir = std::env::temp_dir().join(format!("pulsar-layout-v-{}", std::process::id()));
         let path = layout_path(&dir);
         let stale = SavedLayout {
             version: LAYOUT_VERSION + 1,
+            window: None,
             dock: DockAreaState::default(),
         };
         write_layout(&path, &stale).unwrap();

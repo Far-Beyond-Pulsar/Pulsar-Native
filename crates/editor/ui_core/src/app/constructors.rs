@@ -457,6 +457,7 @@ impl PulsarApp {
                 multiuser_refresh_task: Some(multiuser_refresh_task),
                 git_auto_fetch_task,
                 layout_persist: false,
+                window_bounds: None,
                 layout_ready: false,
                 layout_save_task: None,
                 radial: super::radial_menu::RadialHost::new(cx),

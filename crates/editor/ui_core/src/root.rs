@@ -327,12 +327,20 @@ impl PulsarWindow for PulsarRoot {
         "PulsarEditorWindow"
     }
 
-    fn window_options(_path: &PathBuf) -> gpui::WindowOptions {
-        WindowConfig::editor()
+    fn window_options(path: &PathBuf) -> gpui::WindowOptions {
+        let mut options = WindowConfig::editor();
+        if let Some(bounds) = crate::app::saved_window_bounds(path) {
+            options.window_bounds = Some(bounds);
+        }
+        options
     }
 
-    fn window_profile(_path: &PathBuf) -> Option<window_manager::WindowProfile> {
-        Some(WindowConfig::editor_profile())
+    fn window_profile(path: &PathBuf) -> Option<window_manager::WindowProfile> {
+        // Reopen the window as the project last had it.
+        Some(
+            WindowConfig::editor_profile()
+                .with_window_bounds(crate::app::saved_window_bounds(path)),
+        )
     }
 
     fn window_request(path: &PathBuf) -> WindowRequest {
