@@ -10,9 +10,10 @@ use engine_state::playback::{
 };
 use gpui::*;
 use ui::{
-    ActiveTheme as _, IconName, Selectable as _, Sizable as _,
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _,
     button::{Button, ButtonVariants as _},
     h_flex,
+    scroll::{Scrollbar, ScrollbarState},
     slider::{Slider, SliderEvent, SliderState},
     switch::Switch,
     v_flex,
@@ -27,6 +28,8 @@ pub struct MultiplayerPanel {
     players: Entity<SliderState>,
     latency: Entity<SliderState>,
     packet_loss: Entity<SliderState>,
+    scroll: ScrollHandle,
+    scroll_state: ScrollbarState,
     _subscriptions: Vec<Subscription>,
     _watch: Task<()>,
 }
@@ -100,6 +103,8 @@ impl MultiplayerPanel {
             players,
             latency,
             packet_loss,
+            scroll: ScrollHandle::new(),
+            scroll_state: ScrollbarState::default(),
             _subscriptions: subscriptions,
             _watch: watch,
         }
@@ -152,84 +157,369 @@ pub fn trigger_icon(state: &PlaybackState) -> IconName {
     mode_icon(state.multiplayer.mode)
 }
 
-fn row(label: &'static str, value: String, muted: Hsla) -> impl IntoElement {
+/// Network-condition presets: label, one-way latency in ms, packet loss in %.
+const NETWORK_PRESETS: [(&str, u16, u8); 4] = [
+    ("None", 0, 0),
+    ("Good", 30, 0),
+    ("Typical", 80, 1),
+    ("Poor", 200, 5),
+];
+
+/// One line saying what the session will be, shown at the foot of the panel.
+pub fn describe(m: &MultiplayerSettings) -> String {
+    let conditions = match (m.latency_ms, m.packet_loss_pct) {
+        (0, 0) => "ideal network".to_string(),
+        (ms, 0) => format!("{ms} ms"),
+        (ms, loss) => format!("{ms} ms, {loss}% loss"),
+    };
+    match m.mode {
+        MultiplayerMode::Standalone => "Standalone: single player, no networking".to_string(),
+        MultiplayerMode::Client => format!("Client · {} Hz · {conditions}", m.tick_rate_hz),
+        MultiplayerMode::ListenServer | MultiplayerMode::DedicatedServer => format!(
+            "{} · {} player{} · {} Hz · {conditions}",
+            mode_label(m.mode),
+            m.players,
+            if m.players == 1 { "" } else { "s" },
+            m.tick_rate_hz,
+        ),
+    }
+}
+
+/// Colours the sections share, copied out of the theme.
+#[derive(Clone, Copy)]
+struct Palette {
+    card: Hsla,
+    border: Hsla,
+    fg: Hsla,
+    muted: Hsla,
+    primary: Hsla,
+    hover: Hsla,
+}
+
+impl Palette {
+    fn of(cx: &App) -> Self {
+        let t = cx.theme();
+        Self {
+            card: t.sidebar.opacity(0.45),
+            border: t.border,
+            fg: t.foreground,
+            muted: t.muted_foreground,
+            primary: t.primary,
+            hover: t.secondary,
+        }
+    }
+}
+
+/// A titled card. When `enabled` is false it is dimmed and `why` replaces `note`.
+fn section(
+    title: &'static str,
+    note: &'static str,
+    enabled: bool,
+    why: &'static str,
+    p: Palette,
+    content: impl IntoElement,
+) -> impl IntoElement {
+    v_flex()
+        .gap_2()
+        .p_3()
+        .rounded_lg()
+        .border_1()
+        .border_color(p.border)
+        .bg(p.card)
+        .child(
+            h_flex()
+                .justify_between()
+                .items_baseline()
+                .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child(title))
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(p.muted)
+                        .child(if enabled { note } else { why }),
+                ),
+        )
+        .child(div().opacity(if enabled { 1.0 } else { 0.45 }).child(content))
+}
+
+/// Label on the left, current value on the right.
+fn value_row(label: &'static str, value: String, p: Palette) -> impl IntoElement {
     h_flex()
         .w_full()
         .justify_between()
         .text_xs()
-        .child(label)
-        .child(div().text_color(muted).child(value))
+        .child(div().text_color(p.muted).child(label))
+        .child(div().text_color(p.fg).font_weight(FontWeight::SEMIBOLD).child(value))
+}
+
+/// A selectable card: the control the configurator uses for the Rust build mode.
+fn choice(id: SharedString, selected: bool, p: Palette) -> Stateful<Div> {
+    div()
+        .id(id)
+        .flex_1()
+        .min_w_0()
+        .p_2()
+        .rounded_md()
+        .border_1()
+        .border_color(if selected { p.primary } else { p.border })
+        .bg(if selected { p.primary.opacity(0.09) } else { p.card.opacity(0.0) })
+        .cursor_pointer()
+        .hover(|s| s.bg(p.hover))
+}
+
+impl MultiplayerPanel {
+    /// Move each slider to its setting when something else changed the setting
+    /// (a preset, Reset). Dragging already agrees, so it is left alone.
+    fn sync_sliders(&self, m: &MultiplayerSettings, window: &mut Window, cx: &mut Context<Self>) {
+        let targets = [
+            (&self.players, (m.players.max(1) - 1) as f32),
+            (&self.latency, m.latency_ms as f32),
+            (&self.packet_loss, m.packet_loss_pct as f32),
+        ];
+        for (slider, want) in targets {
+            if (slider.read(cx).value().end() - want).abs() > 0.5 {
+                slider.update(cx, |s, cx| s.set_value(want, window, cx));
+            }
+        }
+    }
 }
 
 impl Render for MultiplayerPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let m = playback().get().multiplayer;
-        let muted = cx.theme().muted_foreground;
-        let border = cx.theme().border;
+        self.sync_sliders(&m, window, cx);
+        let p = Palette::of(cx);
         let count_applies = m.mode.has_player_count();
         let networked = m.mode != MultiplayerMode::Standalone;
 
-        v_flex()
-            .track_focus(&self.focus_handle)
-            .w(px(300.))
-            .p_3()
+        // Net mode: a 2 x 2 grid of cards.
+        let mode_card = |mode: MultiplayerMode| {
+            choice(SharedString::from(format!("net-mode-{mode:?}")), m.mode == mode, p)
+                .on_click(move |_, _, _| edit(|m| m.mode = mode))
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(Icon::new(mode_icon(mode)).size(px(14.)).text_color(p.muted))
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(mode_label(mode)),
+                        ),
+                )
+                .child(div().pt_1().text_xs().text_color(p.muted).child(mode_blurb(mode)))
+        };
+        let [standalone, listen, dedicated, client] = MultiplayerMode::ALL;
+        let modes = v_flex()
+            .gap_2()
+            .child(
+                h_flex()
+                    .gap_2()
+                    .items_stretch()
+                    .child(mode_card(standalone))
+                    .child(mode_card(listen)),
+            )
+            .child(
+                h_flex()
+                    .gap_2()
+                    .items_stretch()
+                    .child(mode_card(dedicated))
+                    .child(mode_card(client)),
+            );
+
+        // Session: how many players, and where they run.
+        let session = v_flex()
             .gap_3()
-            .child(div().text_xs().text_color(muted).child("NET MODE"))
-            .child(v_flex().gap_0p5().children(MultiplayerMode::ALL.map(|mode| {
-                Button::new(SharedString::from(format!("net-mode-{mode:?}")))
-                    .w_full()
-                    .ghost()
-                    .small()
-                    .icon(mode_icon(mode))
-                    .label(mode_label(mode))
-                    .tooltip(mode_blurb(mode))
-                    .selected(m.mode == mode)
-                    .on_click(move |_, _, _| edit(|m| m.mode = mode))
-            })))
-            .child(div().h_px().w_full().bg(border))
             .child(
                 v_flex()
                     .gap_1()
-                    .opacity(if count_applies { 1.0 } else { 0.5 })
-                    .child(row("Players", m.players.to_string(), muted))
+                    .opacity(if count_applies { 1.0 } else { 0.45 })
+                    .child(value_row("Players", m.players.to_string(), p))
                     .child(Slider::new(&self.players).disabled(!count_applies)),
             )
             .child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        v_flex()
+                            .child(div().text_sm().child("Separate windows"))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(p.muted)
+                                    .child("Give each player its own window"),
+                            ),
+                    )
+                    .child(
+                        Switch::new("net-separate-windows")
+                            .checked(m.separate_windows)
+                            .on_click(|checked, _, _| edit(|m| m.separate_windows = *checked)),
+                    ),
+            );
+
+        // Simulated network: presets, then the two sliders they set.
+        let presets = h_flex().gap_1().children(NETWORK_PRESETS.map(|(label, ms, loss)| {
+            Button::new(SharedString::from(format!("net-preset-{label}")))
+                .small()
+                .label(label)
+                .selected((m.latency_ms, m.packet_loss_pct) == (ms, loss))
+                .on_click(move |_, _, _| {
+                    edit(|m| {
+                        m.latency_ms = ms;
+                        m.packet_loss_pct = loss;
+                    })
+                })
+        }));
+        let conditions = v_flex()
+            .gap_3()
+            .child(presets)
+            .child(
                 v_flex()
                     .gap_1()
-                    .opacity(if networked { 1.0 } else { 0.5 })
-                    .child(row(
-                        "Simulated latency",
-                        format!("{} ms", m.latency_ms),
-                        muted,
-                    ))
-                    .child(Slider::new(&self.latency).disabled(!networked))
-                    .child(row(
-                        "Packet loss",
-                        format!("{}%", m.packet_loss_pct),
-                        muted,
-                    ))
-                    .child(Slider::new(&self.packet_loss).disabled(!networked)),
+                    .child(value_row("Latency", format!("{} ms", m.latency_ms), p))
+                    .child(Slider::new(&self.latency).disabled(!networked)),
             )
             .child(
                 v_flex()
                     .gap_1()
-                    .opacity(if networked { 1.0 } else { 0.5 })
-                    .child(div().text_xs().child("Server tick rate"))
-                    .child(h_flex().gap_1().children(TICK_RATES.map(|hz| {
-                        Button::new(SharedString::from(format!("tick-{hz}")))
+                    .child(value_row("Packet loss", format!("{}%", m.packet_loss_pct), p))
+                    .child(Slider::new(&self.packet_loss).disabled(!networked)),
+            );
+
+        // Server tick rate.
+        let tick = h_flex().gap_2().children(TICK_RATES.map(|hz| {
+            choice(SharedString::from(format!("tick-{hz}")), m.tick_rate_hz == hz, p)
+                .on_click(move |_, _, _| edit(|m| m.tick_rate_hz = hz))
+                .child(
+                    div()
+                        .flex()
+                        .justify_center()
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(format!("{hz} Hz")),
+                )
+        }));
+
+        let sections = v_flex()
+            .gap_3()
+            .p_3()
+            .child(section("Net mode", "How this session joins the network", true, "", p, modes))
+            .child(section(
+                "Session",
+                "Players and windows",
+                networked,
+                "Not used in Standalone",
+                p,
+                session,
+            ))
+            .child(section(
+                "Network conditions",
+                "Simulated on every connection",
+                networked,
+                "Not used in Standalone",
+                p,
+                conditions,
+            ))
+            .child(section(
+                "Server tick rate",
+                "Simulation steps per second",
+                networked,
+                "Not used in Standalone",
+                p,
+                tick,
+            ));
+
+        v_flex()
+            .track_focus(&self.focus_handle)
+            .w(px(400.))
+            // Scrolls when the window is short; the summary below does not.
+            .child(
+                div()
+                    .id("net-panel")
+                    .relative()
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .id("net-panel-scroll")
+                            .max_h(px(560.))
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scroll)
+                            .child(sections),
+                    )
+                    .child(Scrollbar::vertical(&self.scroll_state, &self.scroll)),
+            )
+            .child(
+                h_flex()
+                    .px_3()
+                    .py_2()
+                    .gap_3()
+                    .items_center()
+                    .justify_between()
+                    .border_t_1()
+                    .border_color(p.border)
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_xs()
+                            .text_color(p.muted)
+                            .child(describe(&m)),
+                    )
+                    .child(
+                        Button::new("net-reset")
                             .small()
                             .ghost()
-                            .label(format!("{hz} Hz"))
-                            .selected(m.tick_rate_hz == hz)
-                            .on_click(move |_, _, _| edit(|m| m.tick_rate_hz = hz))
-                    }))),
+                            .label("Reset")
+                            .tooltip("Back to Standalone with the default settings")
+                            .on_click(|_, _, _| {
+                                playback().update(|s| s.multiplayer = MultiplayerSettings::default())
+                            }),
+                    ),
             )
-            .child(
-                Switch::new("net-separate-windows")
-                    .label("Run each player in a separate window")
-                    .checked(m.separate_windows)
-                    .on_click(|checked, _, _| edit(|m| m.separate_windows = *checked)),
-            )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn settings(mode: MultiplayerMode, players: u8, ms: u16, loss: u8) -> MultiplayerSettings {
+        MultiplayerSettings {
+            mode,
+            players,
+            tick_rate_hz: 60,
+            separate_windows: false,
+            latency_ms: ms,
+            packet_loss_pct: loss,
+        }
+    }
+
+    #[::core::prelude::v1::test]
+    fn the_summary_reads_naturally_for_each_mode() {
+        use MultiplayerMode::*;
+        assert_eq!(
+            describe(&settings(Standalone, 4, 80, 2)),
+            "Standalone: single player, no networking"
+        );
+        assert_eq!(
+            describe(&settings(ListenServer, 3, 0, 0)),
+            "Listen Server · 3 players · 60 Hz · ideal network"
+        );
+        assert_eq!(
+            describe(&settings(DedicatedServer, 1, 80, 0)),
+            "Dedicated Server · 1 player · 60 Hz · 80 ms"
+        );
+        assert_eq!(
+            describe(&settings(Client, 2, 200, 5)),
+            "Client · 60 Hz · 200 ms, 5% loss"
+        );
+    }
+
+    #[::core::prelude::v1::test]
+    fn every_preset_is_within_the_slider_ranges() {
+        for (_, ms, loss) in NETWORK_PRESETS {
+            assert!(ms <= 500 && loss <= 30);
+        }
     }
 }

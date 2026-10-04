@@ -13,7 +13,7 @@ use gpui::{
 };
 use ui::button::{Button, ButtonVariants as _};
 use ui::popover::Popover;
-use ui::{Disableable as _, IconName, Sizable as _, h_flex};
+use ui::{Disableable as _, IconName, h_flex};
 
 use crate::picker::{BuildPicker, config_icon};
 use crate::runner::{cancel_build, run_configuration};
@@ -41,7 +41,6 @@ pub fn build_button(
         return h_flex()
             .child(
                 Button::new("build-cancel")
-                    .small()
                     .icon(IconName::Square)
                     .label("Cancel Build")
                     .tooltip("Stop the build")
@@ -59,7 +58,6 @@ pub fn build_button(
     };
 
     let run = Button::new("build-run")
-        .small()
         .icon(icon)
         .label(label)
         .tooltip(tooltip)
@@ -76,7 +74,6 @@ pub fn build_button(
         .anchor(Corner::TopRight)
         .trigger(
             Button::new("build-choose")
-                .small()
                 .ghost()
                 .icon(IconName::ChevronDown)
                 .tooltip("Choose build configuration")
@@ -91,7 +88,6 @@ pub fn build_button(
         .when(state.game_running, |el| {
             el.child(
                 Button::new("build-stop-game")
-                    .small()
                     .icon(IconName::Square)
                     .label("Stop")
                     .tooltip("Stop the running game")
