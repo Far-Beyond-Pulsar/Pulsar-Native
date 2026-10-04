@@ -117,8 +117,10 @@ impl ViewportPanel {
             };
 
             overlays = overlays.child(overlay_div.max_w(px(400.0)).child(
-                render_gpu_pipeline_overlay(state, state_arc.clone(), gpu_engine, &self.gpu_profile, cx),
+                render_gpu_pipeline_overlay(gpu_engine, &self.gpu_overlay, cx),
             ));
+        } else {
+            self.gpu_overlay.borrow_mut().take();
         }
 
         overlays

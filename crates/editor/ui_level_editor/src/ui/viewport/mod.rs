@@ -162,9 +162,8 @@ pub struct ViewportPanel {
     /// timers run only then).
     perf_overlay: RefCell<Option<Entity<PerformanceOverlay>>>,
 
-    /// The last render-pipeline profile the renderer handed over. Kept so the
-    /// overlay keeps showing it while the renderer is busy.
-    gpu_profile: RefCell<Option<engine_backend::subsystems::render::GpuProfilerData>>,
+    /// The render pipeline overlay, alive only while it is shown.
+    gpu_overlay: RefCell<Option<Entity<components::gpu_pipeline_overlay::GpuPipelineOverlay>>>,
 
     /// Lock-free input state
     input_state: Arc<InputState>,
@@ -223,7 +222,7 @@ impl ViewportPanel {
             element_bounds: Rc::new(RefCell::new(None)),
             stats: SharedStats::default(),
             perf_overlay: RefCell::new(None),
-            gpu_profile: RefCell::new(None),
+            gpu_overlay: RefCell::new(None),
             input_state,
             input_thread_spawned: Arc::new(AtomicBool::new(false)),
             input_thread_stop: Arc::new(AtomicBool::new(false)),
