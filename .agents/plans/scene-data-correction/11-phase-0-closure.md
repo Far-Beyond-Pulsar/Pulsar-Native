@@ -105,7 +105,7 @@ Hosted CI runners have no GPU adapter, and four `helio_component` test binaries 
 
 | Command | Needs GPU | Run in this PR |
 |---|---|---|
-| `cargo test -p scene_inventory` | no | yes; sites, buffers, passes and declared components pass; class/schema rows were added after that run and still need a rerun |
+| `cargo test -p scene_inventory` | no | yes; all 7 ledger checks pass |
 | `cargo test -p ui_level_editor --test phase0_render_baseline -- --nocapture` | yes (skips without one) | yes, RTX 3060, Vulkan, Windows; passed |
 | `cargo test -p helio_component` | yes for four binaries | built; not run |
 | `cargo nextest run --profile ci --all` | no | not run locally (nextest not installed) |
@@ -134,7 +134,6 @@ Broken stage demonstrated: the draw row. It depends on render subscriptions and 
 ## Open items carried into Phase 1
 
 - A positive pixel control for the headless harness, plus object-batch draw-count readback, so the final stage can be judged. Not attempted: capturing the real GUI editor.
-- Rerun `cargo test -p scene_inventory` after the class/schema rows and the `registered` fact were added.
 - Plugin components loaded from DLLs are not linked into the inventory.
 - Pass-dependency boundary manifest ledger (audit section 4) is not machine-checked.
 - D1/D2 `REVIEW:` answers need maintainer approval.

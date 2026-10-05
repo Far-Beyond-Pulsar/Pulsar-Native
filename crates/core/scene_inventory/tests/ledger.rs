@@ -40,7 +40,7 @@ fn every_declared_world_component_is_linked() {
 fn every_linked_gpu_schema_has_a_row() {
     let root = repo_root();
     let graph = source::buffer_graph(&root);
-    let registered = source::registered_gpu_schemas(&root);
+    let registered = source::registered_gpu_schemas(&root, &source::editor_packages(&root));
     report(
         "schemas",
         ledger::check_schemas(&load(), &linked::collect(), &graph, &registered),

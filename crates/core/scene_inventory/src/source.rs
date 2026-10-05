@@ -375,15 +375,75 @@ pub fn buffer_graph(root: &Path) -> BufferGraph {
     graph
 }
 
-/// Types whose GPU columns production code registers with a `SceneGpuStore`
-/// (`T::register_gpu_columns*(…)`). Writes to an unregistered column are
-/// dropped by SceneDB, so a schema missing here never reaches the GPU.
-/// Each entry is the path as written at the call site, e.g.
-/// `helio_pass_gbuffer::StaticObjectComponent` or `StaticMeshComponent`.
-pub fn registered_gpu_schemas(root: &Path) -> BTreeSet<String> {
+/// The editor binary.
+pub const EDITOR_PACKAGE: &str = "pulsar_engine";
+
+/// Packages the editor binary links (its normal-dependency closure), from
+/// `cargo metadata`. Helio also builds standalone apps (web, Android,
+/// examples) that register their own buffers; those do not count.
+pub fn editor_packages(root: &Path) -> BTreeSet<String> {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let output = std::process::Command::new(cargo)
+        .args(["metadata", "--format-version", "1", "--locked", "--offline"])
+        .current_dir(root)
+        .output()
+        .expect("cargo metadata runs");
+    assert!(
+        output.status.success(),
+        "cargo metadata failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let metadata: serde_json::Value = serde_json::from_slice(&output.stdout).expect("metadata JSON");
+    let names: HashMap<&str, &str> = metadata["packages"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|p| Some((p["id"].as_str()?, p["name"].as_str()?)))
+        .collect();
+    let nodes: HashMap<&str, Vec<&str>> = metadata["resolve"]["nodes"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|node| {
+            let deps = node["deps"]
+                .as_array()?
+                .iter()
+                .filter(|dep| {
+                    dep["dep_kinds"]
+                        .as_array()
+                        .is_some_and(|kinds| kinds.iter().any(|k| k["kind"].is_null()))
+                })
+                .filter_map(|dep| dep["pkg"].as_str())
+                .collect();
+            Some((node["id"].as_str()?, deps))
+        })
+        .collect();
+    let start = names
+        .iter()
+        .find(|(_, name)| **name == EDITOR_PACKAGE)
+        .map(|(id, _)| *id)
+        .expect("editor package in metadata");
+    let mut seen = BTreeSet::new();
+    let mut stack = vec![start];
+    while let Some(id) = stack.pop() {
+        if let Some(name) = names.get(id) {
+            if seen.insert(name.to_string()) {
+                stack.extend(nodes.get(id).into_iter().flatten().copied());
+            }
+        }
+    }
+    seen
+}
+
+/// Types whose GPU columns the editor registers with a `SceneGpuStore`
+/// (`T::register_gpu_columns*(…)` in a package of `linked`). Writes to an
+/// unregistered column are dropped by SceneDB, so a schema missing here
+/// never reaches the GPU. Each entry is the path as written at the call
+/// site, e.g. `helio_pass_gbuffer::StaticObjectComponent`.
+pub fn registered_gpu_schemas(root: &Path, linked: &BTreeSet<String>) -> BTreeSet<String> {
     let call = Regex::new(r"([A-Za-z_][\w:]*)::register_gpu_columns\w*\s*\(").unwrap();
     let mut out = BTreeSet::new();
-    for file in production_files(root) {
+    for file in production_files(root).iter().filter(|f| linked.contains(&f.package)) {
         for (_, line) in file.lines.iter().filter(|(_, l)| l.contains("register_gpu_columns")) {
             for caps in call.captures_iter(line) {
                 out.insert(caps[1].to_string());
