@@ -58,7 +58,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use pulsar_events::gamma::{
     Channel, DynEvent, DynValue, EventDescriptor, FieldType, SubscribeOptions, SyncSubscription,
 };
-use pulsar_events::{EventCategory, EventHub, class_channel, entity_channel};
+use pulsar_events::{class_channel, entity_channel, EventCategory, EventHub};
 use pulsar_scenedb::Entity;
 use pulsar_script_runtime::{EventHost, RuntimeError, ScriptRuntime};
 use pulsar_script_vm::{
@@ -88,6 +88,9 @@ pub fn field_type_of(ty: &Type) -> Option<FieldType> {
         Type::Float => FieldType::F64,
         Type::Str => FieldType::Str,
         Type::Entity => FieldType::U64,
+        // Gamma exposes opaque bytes only. The script's stable value type is
+        // retained in EventSignature and decoded after delivery on this host.
+        Type::Object(_) => FieldType::Bytes,
         _ => return None,
     })
 }
@@ -100,7 +103,11 @@ pub fn signature_of(descriptor: &EventDescriptor) -> Option<EventSignature> {
         .iter()
         .map(|(name, ty)| Some(EventField::new(name.clone(), script_type_of(*ty)?)))
         .collect::<Option<Vec<_>>>()?;
-    Some(EventSignature { id: descriptor.id, name: descriptor.name.clone(), fields })
+    Some(EventSignature {
+        id: descriptor.id,
+        name: descriptor.name.clone(),
+        fields,
+    })
 }
 
 /// The descriptor a script declaration registers.
@@ -111,7 +118,12 @@ pub fn descriptor_of(decl: &EventDecl) -> Result<EventDescriptor, String> {
         .map(|f| {
             field_type_of(&f.ty)
                 .map(|t| (f.name.clone(), t))
-                .ok_or_else(|| format!("field `{}` is {}, which cannot be an event field", f.name, f.ty))
+                .ok_or_else(|| {
+                    format!(
+                        "field `{}` is {}, which cannot be an event field",
+                        f.name, f.ty
+                    )
+                })
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(EventDescriptor::dynamic(decl.name.clone(), fields))
@@ -124,18 +136,39 @@ fn to_dyn_value(index: usize, value: &Value) -> Result<DynValue, String> {
         Value::Float(f) => DynValue::F64(*f),
         Value::Str(s) => DynValue::Str(s.to_string()),
         Value::Entity(e) => DynValue::U64(e.bits()),
-        other => return Err(format!("argument {index}: a {} cannot be an event field", other.kind())),
+        Value::Object(object) => DynValue::Bytes(
+            pulsar_script_vm::TypeRegistry::global()
+                .encode_event_value(object)
+                .map_err(|error| format!("argument {index}: {error}"))?,
+        ),
+        other => {
+            return Err(format!(
+                "argument {index}: a {} cannot be an event field",
+                other.kind()
+            ))
+        }
     })
 }
 
-fn to_value(value: &DynValue) -> Option<Value> {
-    Some(match value {
+fn to_value(value: &DynValue, expected: Option<&Type>) -> Result<Value, String> {
+    Ok(match value {
         DynValue::Bool(b) => Value::Bool(*b),
         DynValue::I64(i) => Value::Int(*i),
         DynValue::F64(f) => Value::Float(*f),
         DynValue::Str(s) => Value::Str(s.as_str().into()),
         DynValue::U64(bits) => Value::Entity(Entity::from_bits(*bits)),
-        DynValue::Bytes(_) => return None,
+        DynValue::Bytes(bytes) => {
+            let Some(Type::Object(name)) = expected else {
+                return Err(
+                    "received opaque event bytes without a registered object field type".into(),
+                );
+            };
+            Value::Object(
+                pulsar_script_vm::TypeRegistry::global()
+                    .decode_event_value(name, bytes)
+                    .map_err(|error| format!("event payload `{name}`: {error}"))?,
+            )
+        }
     })
 }
 
@@ -164,12 +197,20 @@ pub struct ScriptEventBridge {
     hub: EventHub,
     /// Class name or GUID → class GUID, for `event::emit_to_class`.
     classes: RwLock<HashMap<String, String>>,
+    /// Gamma deliberately sees object fields only as `Bytes`; keep their
+    /// local script types beside the registered descriptor.
+    signatures: RwLock<HashMap<u64, EventSignature>>,
     timers: Mutex<Timers>,
 }
 
 impl ScriptEventBridge {
     pub fn new(hub: EventHub) -> Self {
-        Self { hub, classes: RwLock::new(HashMap::new()), timers: Mutex::new(Timers::default()) }
+        Self {
+            hub,
+            classes: RwLock::new(HashMap::new()),
+            signatures: RwLock::new(HashMap::new()),
+            timers: Mutex::new(Timers::default()),
+        }
     }
 
     pub fn hub(&self) -> &EventHub {
@@ -184,11 +225,49 @@ impl ScriptEventBridge {
     }
 
     fn class_guid(&self, class: &str) -> Option<String> {
-        self.classes.read().unwrap_or_else(|p| p.into_inner()).get(class).cloned()
+        self.classes
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(class)
+            .cloned()
     }
 
     fn timers(&self) -> std::sync::MutexGuard<'_, Timers> {
         self.timers.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn typed_signature(&self, id: u64) -> Option<EventSignature> {
+        self.signatures
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(&id)
+            .cloned()
+    }
+
+    /// Register a dynamic Gamma descriptor while retaining its local script
+    /// payload types. Object payloads appear as `FieldType::Bytes` to Gamma;
+    /// this signature supplies the stable value type used to decode bytes
+    /// after local delivery.
+    pub fn register_event_decl(&self, class: &str, decl: &EventDecl) -> Result<u64, String> {
+        let descriptor = descriptor_of(decl)?;
+        let id = self
+            .hub
+            .register(descriptor, EventCategory::Custom(class.to_owned()))
+            .map_err(|error| error.to_string())?;
+        let mut signature = EventSignature::from(decl);
+        signature.id = id;
+        let mut signatures = self.signatures.write().unwrap_or_else(|p| p.into_inner());
+        if let Some(previous) = signatures.get(&id) {
+            if previous.name != signature.name || previous.fields != signature.fields {
+                return Err(format!(
+                    "event `{}` has conflicting local payload types: {:?} vs {:?}",
+                    decl.name, previous.fields, signature.fields
+                ));
+            }
+        } else {
+            signatures.insert(id, signature);
+        }
+        Ok(id)
     }
 
     /// Set the game time new timers count from.
@@ -203,7 +282,9 @@ impl ScriptEventBridge {
             let mut timers = self.timers();
             timers.now = now;
             let mut fired = Vec::new();
-            timers.timers.sort_by(|a, b| a.due.total_cmp(&b.due).then(a.id.cmp(&b.id)));
+            timers
+                .timers
+                .sort_by(|a, b| a.due.total_cmp(&b.due).then(a.id.cmp(&b.id)));
             timers.timers.retain_mut(|t| {
                 if t.due > now {
                     return true;
@@ -222,7 +303,8 @@ impl ScriptEventBridge {
         };
         for (id, owner) in &fired {
             let channel = owner.map_or(Channel::Global, |e| entity_channel(e.bits()));
-            self.hub.publish(channel, pulsar_events::builtin::TimerFired { timer: *id });
+            self.hub
+                .publish(channel, pulsar_events::builtin::TimerFired { timer: *id });
         }
         fired.len()
     }
@@ -248,12 +330,20 @@ impl EventSink for ScriptEventBridge {
             EventTarget::Global => Channel::Global,
             EventTarget::Entity(entity) => entity_channel(entity.bits()),
             EventTarget::Class(class) => {
-                let guid = self.class_guid(class).ok_or_else(|| format!("no class `{class}` in this project"))?;
+                let guid = self
+                    .class_guid(class)
+                    .ok_or_else(|| format!("no class `{class}` in this project"))?;
                 class_channel(&guid)
             }
         };
-        let values = fields.iter().enumerate().map(|(i, v)| to_dyn_value(i, v)).collect::<Result<Vec<_>, _>>()?;
-        self.hub.publish_named(channel, name, values).map_err(|e| e.to_string())
+        let values = fields
+            .iter()
+            .enumerate()
+            .map(|(i, v)| to_dyn_value(i, v))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.hub
+            .publish_named(channel, name, values)
+            .map_err(|e| e.to_string())
     }
 
     fn set_timer(&self, owner: Option<Entity>, seconds: f64, looping: bool) -> Result<i64, String> {
@@ -267,7 +357,12 @@ impl EventSink for ScriptEventBridge {
         timers.next_id += 1;
         let id = timers.next_id;
         let due = timers.now + seconds;
-        timers.timers.push(Timer { id, owner, due, interval: looping.then_some(seconds) });
+        timers.timers.push(Timer {
+            id,
+            owner,
+            due,
+            interval: looping.then_some(seconds),
+        });
         Ok(id)
     }
 
@@ -281,21 +376,21 @@ impl EventSink for ScriptEventBridge {
 
 impl EventCatalog for ScriptEventBridge {
     fn event_by_name(&self, name: &str) -> Option<EventSignature> {
-        signature_of(&*self.hub.descriptor_by_name(name)?)
+        let descriptor = self.hub.descriptor_by_name(name)?;
+        self.typed_signature(descriptor.id)
+            .or_else(|| signature_of(&descriptor))
     }
 
     fn event_by_id(&self, id: u64) -> Option<EventSignature> {
-        signature_of(&*self.hub.descriptor(id)?)
+        let descriptor = self.hub.descriptor(id)?;
+        self.typed_signature(id)
+            .or_else(|| signature_of(&descriptor))
     }
 }
 
 impl EventHost for ScriptEventBridge {
     fn declare(&self, class: &str, decl: &EventDecl) -> Result<(), String> {
-        let descriptor = descriptor_of(decl)?;
-        self.hub
-            .register(descriptor, EventCategory::Custom(class.to_owned()))
-            .map(drop)
-            .map_err(|e| e.to_string())
+        self.register_event_decl(class, decl).map(drop)
     }
 }
 
@@ -379,7 +474,8 @@ impl ScriptEvents {
         entity: Option<Entity>,
     ) -> Vec<String> {
         self.unsubscribe(id);
-        self.subscribe_handlers(runtime, id, class, class_guid, entity).0
+        self.subscribe_handlers(runtime, id, class, class_guid, entity)
+            .0
     }
 
     /// Subscribe instance `id` again after its class was reloaded (#925):
@@ -401,7 +497,10 @@ impl ScriptEvents {
             if &*call.instance != id {
                 return true;
             }
-            match handlers.iter().find(|(event, _, _)| *event == call.event.id) {
+            match handlers
+                .iter()
+                .find(|(event, _, _)| *event == call.event.id)
+            {
                 Some(&(_, handler, params)) => {
                     call.handler = handler;
                     call.params = params;
@@ -456,16 +555,24 @@ impl ScriptEvents {
             let instance = Arc::clone(&instance);
             let (handler, params) = (sub.handler, sub.params);
             handlers.push((descriptor.id, handler, params));
-            handles.push(hub.bus().subscribe_dyn(descriptor.id, SubscribeOptions::channel(channel), move |event| {
-                calls.lock().unwrap_or_else(|p| p.into_inner()).push(PendingCall {
-                    instance: Arc::clone(&instance),
-                    handler,
-                    params,
-                    event: event.clone(),
-                });
-            }));
+            handles.push(hub.bus().subscribe_dyn(
+                descriptor.id,
+                SubscribeOptions::channel(channel),
+                move |event| {
+                    calls
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .push(PendingCall {
+                            instance: Arc::clone(&instance),
+                            handler,
+                            params,
+                            event: event.clone(),
+                        });
+                },
+            ));
         }
-        self.instances.insert(id.to_owned(), InstanceSubscriptions { entity, handles });
+        self.instances
+            .insert(id.to_owned(), InstanceSubscriptions { entity, handles });
         (failures, handlers)
     }
 
@@ -496,23 +603,60 @@ impl ScriptEvents {
             return false;
         }
         self.level_announced = true;
-        self.hub().publish(Channel::Global, pulsar_events::builtin::LevelLoaded { level: level.to_owned() });
+        self.hub().publish(
+            Channel::Global,
+            pulsar_events::builtin::LevelLoaded {
+                level: level.to_owned(),
+            },
+        );
         true
     }
 
     /// Run every queued handler call, in delivery order. Calls for
     /// instances that stopped since are skipped.
-    pub fn run_calls(&mut self, runtime: &mut ScriptRuntime, world: &mut pulsar_scenedb::World) -> Vec<RuntimeError> {
+    pub fn run_calls(
+        &mut self,
+        runtime: &mut ScriptRuntime,
+        world: &mut pulsar_scenedb::World,
+    ) -> Vec<RuntimeError> {
         let calls = std::mem::take(&mut *self.lock_calls());
         let mut errors = Vec::new();
         for call in calls {
             if !self.instances.contains_key(&*call.instance) {
                 continue;
             }
-            let Some(args) = call.event.fields.iter().take(call.params).map(to_value).collect::<Option<Vec<_>>>()
-            else {
-                tracing::warn!(instance = %call.instance, "event with byte fields cannot reach a script handler");
-                continue;
+            let signature = self.bridge.typed_signature(call.event.id).or_else(|| {
+                self.bridge
+                    .hub()
+                    .descriptor(call.event.id)
+                    .and_then(|descriptor| signature_of(&descriptor))
+            });
+            let event_name = signature
+                .as_ref()
+                .map(|signature| signature.name.as_str())
+                .unwrap_or("<unknown>");
+            let args = call
+                .event
+                .fields
+                .iter()
+                .take(call.params)
+                .enumerate()
+                .map(|(index, value)| {
+                    to_value(
+                        value,
+                        signature
+                            .as_ref()
+                            .and_then(|sig| sig.fields.get(index))
+                            .map(|field| &field.ty),
+                    )
+                })
+                .collect::<Result<Vec<_>, _>>();
+            let args = match args {
+                Ok(args) => args,
+                Err(error) => {
+                    tracing::warn!(instance = %call.instance, event = %event_name, "event payload could not be decoded for script handler: {error}");
+                    continue;
+                }
             };
             if let Err(error) = runtime.call_function(&call.instance, call.handler, &args, world) {
                 tracing::warn!("{error}");

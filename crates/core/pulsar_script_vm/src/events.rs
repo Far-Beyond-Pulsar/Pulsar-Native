@@ -23,13 +23,16 @@
 //! | `timer::set` | `(seconds: float, looping: bool) -> int` | `TimerFired` on `self`'s channel (global for unbound scripts) |
 //! | `timer::clear` | `(timer: int)` | |
 //!
-//! `fields...` are the event's fields in order, any number of `bool`,
-//! `int`, `float`, `string` or `entity` arguments: the three `event::*`
-//! natives are *polymorphic* ([`crate::native::PolyNative`]); each import
-//! names its own signature and the linker instantiates it. The arguments
-//! are checked against the event's descriptor when the call runs; a
-//! mismatch (unknown event, wrong count or type) fails the script call
-//! with an error, it never panics.
+//! `fields...` are the event's fields in order: primitives (`bool`, `int`,
+//! `float`, `string`, `entity`) or registered value objects. Object fields
+//! use the value type's explicit [`crate::script_event_codec!`] serializer
+//! over Gamma's opaque `Bytes`; the script type and Rust value are decoded
+//! only after delivery in the local VM. No Rust event type crosses Gamma or
+//! a DLL boundary. The three `event::*` natives are *polymorphic*
+//! ([`crate::native::PolyNative`]); each import names its own signature and
+//! the linker instantiates it. The arguments are checked against the event's
+//! descriptor when the call runs; a mismatch (unknown event, wrong count or
+//! type) fails the script call with an error, it never panics.
 
 use pulsar_scenedb::Entity;
 
@@ -91,7 +94,7 @@ pub trait EventSink: Send + Sync {
 pub fn is_event_field_type(ty: &Type) -> bool {
     matches!(
         ty,
-        Type::Bool | Type::Int | Type::Float | Type::Str | Type::Entity
+        Type::Bool | Type::Int | Type::Float | Type::Str | Type::Entity | Type::Object(_)
     )
 }
 

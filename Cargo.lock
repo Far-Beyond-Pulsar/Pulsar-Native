@@ -5136,6 +5136,7 @@ dependencies = [
  "helio-pass-water-sim",
  "helio-voxel-data",
  "plugin_editor_api",
+ "pulsar_events",
  "pulsar_reflection",
  "pulsar_scene_model",
  "pulsar_scenedb",
@@ -9470,6 +9471,7 @@ version = "0.1.0"
 dependencies = [
  "glam 0.33.5",
  "inventory",
+ "pulsar_events",
  "pulsar_reflection",
  "pulsar_scene_model",
  "pulsar_scenedb",

@@ -267,9 +267,7 @@ macro_rules! int_value {
         }
     )*};
 }
-int_value!(
-    i8, i16, i32, i64, isize, i128, u8, u16, u32, u64, usize, u128
-);
+int_value!(i8, i16, i32, i64, isize, i128, u8, u16, u32, u64, usize, u128);
 
 impl ScriptValue for f64 {
     fn script_type() -> Type {
@@ -464,9 +462,7 @@ impl ScriptKey for Arc<str> {}
 macro_rules! int_key {
     ($($ty:ty),*) => {$(impl ScriptKey for $ty {})*};
 }
-int_key!(
-    i8, i16, i32, i64, isize, i128, u8, u16, u32, u64, usize, u128
-);
+int_key!(i8, i16, i32, i64, isize, i128, u8, u16, u32, u64, usize, u128);
 
 macro_rules! map_value {
     ($map:ident $(, $bound:path)*) => {
@@ -589,6 +585,41 @@ pub struct ValueTypeRegistration {
 }
 
 inventory::collect!(ValueTypeRegistration);
+
+/// A serializer for a script value used as an opaque Gamma `Bytes` event
+/// field. Its stable script name is the cross-module schema identity; Rust
+/// `TypeId`s and function pointers never cross the DLL boundary.
+pub struct EventValueCodecRegistration {
+    pub name: &'static str,
+    pub encode: fn(&Object) -> Result<Vec<u8>, String>,
+    pub decode: fn(&[u8]) -> Result<Object, String>,
+}
+
+inventory::collect!(EventValueCodecRegistration);
+
+/// Register a DLL-safe payload codec for an already registered script value
+/// type. The custom codecs define the stable wire format; they must be
+/// deterministic and compatible across engine/plugin versions.
+#[macro_export]
+macro_rules! script_event_codec {
+    ($ty:ty, $name:expr, encode = $encode:expr, decode = $decode:expr $(,)?) => {
+        $crate::__private::inventory::submit! {
+            $crate::types::EventValueCodecRegistration {
+                name: $name,
+                encode: |object| {
+                    let encode: fn(&$ty) -> ::std::result::Result<::std::vec::Vec<u8>, String> = $encode;
+                    object.downcast_ref::<$ty>()
+                        .ok_or_else(|| format!("expected a {}", $name))
+                        .and_then(encode)
+                },
+                decode: |bytes| {
+                    let decode: fn(&[u8]) -> ::std::result::Result<$ty, String> = $decode;
+                    decode(bytes).map(|value| $crate::value::Object::new($name, value))
+                },
+            }
+        }
+    };
+}
 
 /// Register component `$ty` for scripts, as `$name` (default: the type's
 /// identifier).
@@ -767,6 +798,7 @@ pub struct TypeRegistry {
     objects: HashMap<&'static str, &'static ValueTypeRegistration>,
     objects_by_rust: HashMap<TypeId, &'static str>,
     ops: HashMap<&'static str, &'static ValueOpsRegistration>,
+    event_codecs: HashMap<&'static str, &'static EventValueCodecRegistration>,
 }
 
 static GLOBAL: LazyLock<TypeRegistry> = LazyLock::new(TypeRegistry::collect);
@@ -784,6 +816,7 @@ impl TypeRegistry {
             objects: HashMap::new(),
             objects_by_rust: HashMap::new(),
             ops: HashMap::new(),
+            event_codecs: HashMap::new(),
         };
         macro_rules! builtin {
             ($($ty:ty),*) => {$(
@@ -856,6 +889,14 @@ impl TypeRegistry {
                 );
             }
         }
+        for codec in inventory::iter::<EventValueCodecRegistration> {
+            if registry.event_codecs.insert(codec.name, codec).is_some() {
+                tracing::error!(
+                    "script value type `{}` has more than one event codec",
+                    codec.name
+                );
+            }
+        }
         registry
     }
 
@@ -919,6 +960,67 @@ impl TypeRegistry {
             .encode
             .ok_or_else(|| format!("value type `{name}` cannot be saved"))?;
         encode(object)
+    }
+
+    /// Encode a registered object as a payload for Gamma's `Bytes` field.
+    /// No Rust type or vtable crosses the DLL boundary.
+    pub fn encode_event_value(&self, object: &Object) -> Result<Vec<u8>, String> {
+        let codec = self.event_codecs.get(object.type_name()).ok_or_else(|| {
+            format!(
+                "value type `{}` has no DLL-safe event codec",
+                object.type_name()
+            )
+        })?;
+        let payload = (codec.encode)(object)?;
+        let name = object.type_name().as_bytes();
+        let name_len = u16::try_from(name.len())
+            .map_err(|_| format!("event value type name `{}` is too long", object.type_name()))?;
+        let mut bytes = Vec::with_capacity(8 + name.len() + payload.len());
+        bytes.extend_from_slice(b"PSEV");
+        bytes.extend_from_slice(&1u16.to_le_bytes());
+        bytes.extend_from_slice(&name_len.to_le_bytes());
+        bytes.extend_from_slice(name);
+        bytes.extend_from_slice(&payload);
+        Ok(bytes)
+    }
+
+    /// Decode a Gamma `Bytes` event payload at the local script boundary.
+    pub fn decode_event_value(&self, name: &str, bytes: &[u8]) -> Result<Object, String> {
+        let codec = self
+            .event_codecs
+            .get(name)
+            .ok_or_else(|| format!("value type `{name}` has no DLL-safe event codec"))?;
+        if bytes.len() < 8 || &bytes[..4] != b"PSEV" {
+            return Err("invalid event value envelope (missing PSEV header)".into());
+        }
+        let version = u16::from_le_bytes([bytes[4], bytes[5]]);
+        if version != 1 {
+            return Err(format!(
+                "unsupported event value envelope version {version}"
+            ));
+        }
+        let name_len = u16::from_le_bytes([bytes[6], bytes[7]]) as usize;
+        let name_end = 8usize
+            .checked_add(name_len)
+            .ok_or_else(|| "event value type name length overflow".to_owned())?;
+        let encoded_name = bytes
+            .get(8..name_end)
+            .ok_or_else(|| "truncated event value type name".to_owned())?;
+        let encoded_name = std::str::from_utf8(encoded_name)
+            .map_err(|_| "event value type name is not UTF-8".to_owned())?;
+        if encoded_name != name {
+            return Err(format!(
+                "event payload is `{encoded_name}`, expected `{name}`"
+            ));
+        }
+        let object = (codec.decode)(&bytes[name_end..])?;
+        if object.type_name() != name {
+            return Err(format!(
+                "event codec `{name}` decoded an object named `{}`",
+                object.type_name()
+            ));
+        }
+        Ok(object)
     }
 
     /// Whether `ty` names something that exists.

@@ -428,6 +428,12 @@ impl ScriptDriver {
             old.clear();
         }
         let events = ScriptEvents::new(hub);
+        for registration in pulsar_world_registry::component_event_registrations() {
+            let declaration = (registration.declaration)();
+            if let Err(error) = events.bridge().register_event_decl(registration.class_name, &declaration) {
+                tracing::warn!(event = %declaration.name, %error, "component event could not be linked to Blueprint");
+            }
+        }
         for entry in self.registry.entries() {
             events.bridge().add_class(&entry.name, entry.id.as_str());
         }

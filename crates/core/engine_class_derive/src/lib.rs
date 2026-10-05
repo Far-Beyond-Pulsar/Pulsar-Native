@@ -57,9 +57,9 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    Attribute, Data, DeriveInput, Expr, Field, Fields, ItemImpl, ItemStruct, Lit,
+    Attribute, Data, DeriveInput, Expr, Field, Fields, ItemImpl, ItemStruct, ItemTrait, Lit,
     Meta, MetaNameValue,
-    parse::{Parse, ParseStream},
+    parse::{Parse, ParseStream, Parser},
     parse_macro_input,
     punctuated::Punctuated,
 };
@@ -919,6 +919,535 @@ pub fn register_runtime_behavior(attr: TokenStream, item: TokenStream) -> TokenS
     };
 
     output.into()
+}
+
+/// Register an inherent `tick(&mut self, context: &mut ComponentContext,
+/// delta_seconds: f32)` method as a
+/// native SceneDB component callback. The generated dispatcher queries the
+/// actual typed World rows and calls the method while holding that live
+/// component borrow; it never creates a serialized or cloned runtime copy.
+///
+/// ```ignore
+/// #[register_component_runtime]
+/// impl VoxelTerrainComponent {
+///     fn tick(&mut self, context: &mut pulsar_world_registry::ComponentContext<'_>, delta_seconds: f32) { /* ... */ }
+///
+///     #[bp_handler("block_broken")]
+///     fn on_block_broken(&mut self, context: &mut pulsar_world_registry::ComponentContext<'_>, block: BlockData) { /* ... */ }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn register_component_runtime(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = match syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated
+        .parse(attr)
+    {
+        Ok(args) => args,
+        Err(error) => return error.to_compile_error().into(),
+    };
+    let enabled_field = args.iter().find_map(|meta| match meta {
+        syn::Meta::NameValue(value) if value.path.is_ident("enabled") => match &value.value {
+            syn::Expr::Path(path) => path.path.get_ident().cloned(),
+            _ => None,
+        },
+        _ => None,
+    });
+    let explicit_class = args.iter().find_map(|meta| match meta {
+        syn::Meta::NameValue(value) if value.path.is_ident("class") => match &value.value {
+            syn::Expr::Lit(expr) => match &expr.lit {
+                syn::Lit::Str(value) => Some(value.value()),
+                _ => None,
+            },
+            _ => None,
+        },
+        _ => None,
+    });
+    if args.iter().any(|meta| !matches!(meta, syn::Meta::NameValue(value) if value.path.is_ident("enabled") || value.path.is_ident("class")))
+        || (args.iter().any(|meta| matches!(meta, syn::Meta::NameValue(value) if value.path.is_ident("enabled"))) && enabled_field.is_none())
+        || (args.iter().any(|meta| matches!(meta, syn::Meta::NameValue(value) if value.path.is_ident("class"))) && explicit_class.is_none())
+    {
+        return syn::Error::new(proc_macro2::Span::call_site(), "expected optional `enabled = field_name` and/or `class = \"ComponentClass\"`")
+            .to_compile_error()
+            .into();
+    }
+    let mut impl_block = parse_macro_input!(item as ItemImpl);
+    if impl_block.trait_.is_some() || !impl_block.generics.params.is_empty() {
+        return syn::Error::new_spanned(
+            &impl_block,
+            "#[register_component_runtime] requires a non-generic inherent impl block",
+        )
+        .to_compile_error()
+        .into();
+    }
+    let self_ty = &impl_block.self_ty;
+    let Some(ty_ident) = (match &**self_ty {
+        syn::Type::Path(path) => path.path.segments.last().map(|segment| &segment.ident),
+        _ => None,
+    }) else {
+        return syn::Error::new_spanned(self_ty, "expected a named component type")
+            .to_compile_error()
+            .into();
+    };
+    let class_name = explicit_class.unwrap_or_else(|| ty_ident.to_string());
+    let mut handler_calls = Vec::new();
+    let mut handler_events = std::collections::BTreeSet::new();
+    for item in &mut impl_block.items {
+        let syn::ImplItem::Fn(method) = item else { continue };
+        let Some(handler_attr_index) = method.attrs.iter().position(|attr| attr.path().is_ident("bp_handler")) else {
+            continue;
+        };
+        let handler_attr = method.attrs.remove(handler_attr_index);
+        let event_short_name = handler_attr.parse_args::<syn::LitStr>();
+        let event_short_name = match event_short_name {
+            Ok(name) => name.value(),
+            Err(error) => {
+                return syn::Error::new_spanned(handler_attr, format!("expected #[bp_handler(\"event_name\")]: {error}"))
+                    .to_compile_error()
+                    .into();
+            }
+        };
+        if method.sig.inputs.len() < 3
+            || !matches!(method.sig.inputs.first(), Some(syn::FnArg::Receiver(receiver)) if receiver.reference.is_some() && receiver.mutability.is_some())
+            || !matches!(method.sig.inputs.iter().nth(1), Some(syn::FnArg::Typed(arg)) if matches!(&*arg.ty, syn::Type::Reference(reference) if matches!(&*reference.elem, syn::Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "ComponentContext"))))
+            || !matches!(method.sig.output, syn::ReturnType::Default)
+        {
+            return syn::Error::new_spanned(
+                &method.sig,
+                "bp_handler must have signature `fn handler(&mut self, context: &mut ComponentContext, event_argument..., payload)`",
+            )
+            .to_compile_error()
+            .into();
+        }
+        let event_name = format!("{class_name}.{event_short_name}");
+        let method_name = method.sig.ident.clone();
+        if !handler_events.insert(event_name.clone()) {
+            return syn::Error::new_spanned(
+                &method.sig,
+                format!("multiple native handlers target component event `{event_name}`"),
+            )
+            .to_compile_error()
+            .into();
+        }
+        let mut decoded_names = Vec::new();
+        let mut decode_fields = Vec::new();
+        for (index, arg) in method.sig.inputs.iter().skip(2).enumerate() {
+            let syn::FnArg::Typed(arg) = arg else { unreachable!("validated") };
+            let syn::Pat::Ident(pattern) = arg.pat.as_ref() else {
+                return syn::Error::new_spanned(&arg.pat, "native event handler arguments must use named identifiers")
+                    .to_compile_error().into();
+            };
+            let syn::Type::Path(path) = arg.ty.as_ref() else {
+                return syn::Error::new_spanned(&arg.ty, "native event handler arguments must be owned named value types")
+                    .to_compile_error().into();
+            };
+            if path.qself.is_some() || path.path.segments.last().is_some_and(|segment| !matches!(segment.arguments, syn::PathArguments::None)) {
+                return syn::Error::new_spanned(&arg.ty, "native event handler arguments must use concrete registered value types")
+                    .to_compile_error().into();
+            }
+            let payload_ident = path.path.segments.last().unwrap().ident.clone();
+            let payload_name = payload_ident.to_string();
+            let local = quote::format_ident!("__pulsar_handler_arg_{index}");
+            let payload_type = &arg.ty;
+            decoded_names.push(local.clone());
+            decode_fields.push(quote::quote! {
+                let Some(pulsar_events::gamma::DynValue::Bytes(bytes)) = queued_event.fields.get(#index) else {
+                    tracing::warn!(event = #event_name, "native component event handler received malformed payload fields");
+                    continue;
+                };
+                let decoded = pulsar_world_registry::pulsar_script_vm::TypeRegistry::global()
+                    .decode_event_value(#payload_name, bytes);
+                let #local = match decoded.and_then(|object| {
+                    object.downcast_ref::<#payload_type>()
+                        .cloned()
+                        .ok_or_else(|| format!("decoded event field was not {}", #payload_name))
+                }) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        tracing::warn!(event = #event_name, %error, "native component event handler field decode failed");
+                        continue;
+                    }
+                };
+            });
+            let _ = pattern;
+        }
+        let handler_field_count = decoded_names.len();
+        handler_calls.push(quote::quote! {
+            #event_name => {
+                if queued_event.fields.len() != #handler_field_count {
+                    tracing::warn!(event = #event_name, expected = #handler_field_count, actual = queued_event.fields.len(), "native component event handler received the wrong field count");
+                    continue;
+                }
+                #(#decode_fields)*
+                component.#method_name(&mut context, #(#decoded_names),*);
+            }
+        });
+    }
+    let tick = impl_block.items.iter().find_map(|item| match item {
+        syn::ImplItem::Fn(method) if method.sig.ident == "tick" => Some(method),
+        _ => None,
+    });
+    let Some(tick) = tick else {
+        return syn::Error::new_spanned(
+            &impl_block,
+            "the impl must define `fn tick(&mut self, context: &mut ComponentContext, delta_seconds: f32)`",
+        )
+        .to_compile_error()
+        .into();
+    };
+    let tick_sig = &tick.sig;
+    let valid_args = tick_sig.inputs.len() == 3
+        && matches!(tick_sig.inputs.first(), Some(syn::FnArg::Receiver(receiver)) if receiver.reference.is_some() && receiver.mutability.is_some())
+        && matches!(tick_sig.inputs.iter().nth(1), Some(syn::FnArg::Typed(arg)) if matches!(&*arg.ty, syn::Type::Reference(reference) if matches!(&*reference.elem, syn::Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "ComponentContext"))))
+        && matches!(tick_sig.inputs.iter().nth(2), Some(syn::FnArg::Typed(arg)) if matches!(&*arg.ty, syn::Type::Path(path) if path.path.is_ident("f32")));
+    if !valid_args || !matches!(tick_sig.output, syn::ReturnType::Default) {
+        return syn::Error::new_spanned(
+            tick_sig,
+            "tick must have signature `fn tick(&mut self, context: &mut ComponentContext, delta_seconds: f32)` and return `()`",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let begin_play = impl_block.items.iter().find_map(|item| match item {
+        syn::ImplItem::Fn(method) if method.sig.ident == "begin_play" => Some(method),
+        _ => None,
+    });
+    if let Some(begin_play) = begin_play {
+        let sig = &begin_play.sig;
+        let valid = sig.inputs.len() == 2
+            && matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(receiver)) if receiver.reference.is_some() && receiver.mutability.is_some())
+            && matches!(sig.inputs.iter().nth(1), Some(syn::FnArg::Typed(arg)) if matches!(&*arg.ty, syn::Type::Reference(reference) if matches!(&*reference.elem, syn::Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "ComponentContext"))))
+            && matches!(sig.output, syn::ReturnType::Default);
+        if !valid {
+            return syn::Error::new_spanned(sig, "begin_play must have signature `fn begin_play(&mut self, context: &mut ComponentContext)`")
+                .to_compile_error()
+                .into();
+        }
+    }
+    let end_play = impl_block.items.iter().find_map(|item| match item {
+        syn::ImplItem::Fn(method) if method.sig.ident == "end_play" => Some(method),
+        _ => None,
+    });
+    if let Some(end_play) = end_play {
+        let sig = &end_play.sig;
+        let valid = sig.inputs.len() == 2
+            && matches!(sig.inputs.first(), Some(syn::FnArg::Typed(arg)) if matches!(&*arg.ty, syn::Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "Entity")))
+            && matches!(sig.inputs.iter().nth(1), Some(syn::FnArg::Typed(arg)) if matches!(&*arg.ty, syn::Type::Reference(reference) if matches!(&*reference.elem, syn::Type::Path(path) if path.path.segments.last().is_some_and(|segment| segment.ident == "ComponentContext"))))
+            && matches!(sig.output, syn::ReturnType::Default);
+        if !valid {
+            return syn::Error::new_spanned(sig, "end_play must have signature `fn end_play(entity: Entity, context: &mut ComponentContext)`")
+                .to_compile_error()
+                .into();
+        }
+    }
+
+    let shim = quote::format_ident!("__pulsar_component_tick_{}", ty_ident);
+    let end_shim = quote::format_ident!("__pulsar_component_end_{}", ty_ident);
+    let enabled = enabled_field.map(|field| quote::quote! { component.#field });
+    let begin_call = begin_play.map(|_| quote::quote! { component.begin_play(&mut context); });
+    let end_callback = end_play.map(|_| quote::quote! {
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #end_shim(entity: pulsar_scenedb::Entity, events: &pulsar_events::EventHub) {
+            let mut context = pulsar_world_registry::ComponentContext::new(entity, events);
+            #self_ty::end_play(entity, &mut context);
+        }
+    });
+    let end_callback_value = end_play.map(|_| quote::quote! { Some(#end_shim) }).unwrap_or_else(|| quote::quote! { None });
+    let activation_check = if let Some(enabled) = enabled {
+        quote::quote! { if !#enabled { continue; } }
+    } else {
+        quote::quote! {}
+    };
+    let handler_event_names = handler_events.iter().collect::<Vec<_>>();
+    quote::quote! {
+        #impl_block
+
+        #end_callback
+
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #shim(
+            world: &mut pulsar_scenedb::World,
+            events: &pulsar_events::EventHub,
+            delta_seconds: f32,
+            previous: &std::collections::HashSet<pulsar_scenedb::Entity>,
+            current: &mut std::collections::HashSet<pulsar_scenedb::Entity>,
+            runtime: &mut pulsar_world_registry::ComponentRuntimeState,
+        ) {
+            for (entity, mut component) in world.query::<&mut #self_ty>() {
+                #activation_check
+                let first_frame = !previous.contains(&entity);
+                current.insert(entity);
+                let instance = pulsar_world_registry::ComponentInstanceKey {
+                    component_type: pulsar_scenedb::component_id::<#self_ty>(),
+                    entity,
+                };
+                runtime.subscribe_instance(instance, events, &[#(#handler_event_names),*]);
+                let mut context = pulsar_world_registry::ComponentContext::new(entity, events);
+                if first_frame { #begin_call }
+                for queued_event in runtime.take_events(instance) {
+                    match queued_event.name.as_str() {
+                        #(#handler_calls)*
+                        _ => {}
+                    }
+                }
+                component.tick(&mut context, delta_seconds);
+            }
+        }
+
+        pulsar_world_registry::inventory::submit! {
+            pulsar_world_registry::ComponentTickRegistration {
+                type_name: stringify!(#self_ty),
+                class_name: #class_name,
+                handler_events: &[#(#handler_event_names),*],
+                component_type: pulsar_scenedb::component_id::<#self_ty>,
+                tick: #shim,
+                end_play: #end_callback_value,
+            }
+        }
+    }
+    .into()
+}
+
+/// Declare named events owned by a component. The generated writer method
+/// accepts the declared arguments followed by the declared return payload.
+/// Each argument and the payload remain their original Rust types and become
+/// matching Blueprint pins; the macro uses stable names and versioned codecs
+/// only at the Gamma DLL boundary.
+///
+/// ```ignore
+/// #[component_events(class = "VoxelTerrainComponent")]
+/// pub trait TerrainEvents {
+///     #[bp_event]
+///     fn block_broken() -> BlockData {}
+///     fn block_changed(x: i32, y: i32, material: String) -> BlockData {}
+/// }
+/// // `context.events.block_broken(data)` and
+/// // `context.events.block_changed(x, y, material, data)` after importing the generated
+/// // `TerrainEventWriterExt` trait.
+/// ```
+#[proc_macro_attribute]
+pub fn component_events(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let metas = match syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated
+        .parse(attr)
+    {
+        Ok(metas) => metas,
+        Err(error) => return error.to_compile_error().into(),
+    };
+    let class_name = metas.iter().find_map(|meta| match meta {
+        syn::Meta::NameValue(value) if value.path.is_ident("class") => match &value.value {
+            syn::Expr::Lit(expr) => match &expr.lit {
+                syn::Lit::Str(value) => Some(value.clone()),
+                _ => None,
+            },
+            _ => None,
+        },
+        _ => None,
+    });
+    let Some(class_name) = class_name else {
+        return syn::Error::new(proc_macro2::Span::call_site(), "expected `class = \"ComponentClassName\"`")
+            .to_compile_error()
+            .into();
+    };
+    let mut event_trait = parse_macro_input!(item as ItemTrait);
+    if !event_trait.generics.params.is_empty() {
+        return syn::Error::new_spanned(&event_trait.generics, "component event traits cannot be generic")
+            .to_compile_error()
+            .into();
+    }
+    let trait_name = event_trait.ident.clone();
+    let visibility = event_trait.vis.clone();
+    let emitter_name = quote::format_ident!("{}EventWriterExt", trait_name);
+    let original_items = std::mem::take(&mut event_trait.items);
+    let mut event_methods = Vec::new();
+    let mut event_impl_methods = Vec::new();
+    let mut descriptor_submits = Vec::new();
+    let mut payload_registrations = Vec::new();
+    let mut registered_payloads = std::collections::HashSet::new();
+    for trait_item in original_items {
+        let syn::TraitItem::Fn(mut method) = trait_item else {
+            return syn::Error::new_spanned(trait_item, "component event traits may contain only event methods")
+                .to_compile_error()
+                .into();
+        };
+        let is_bp_event = method.attrs.iter().any(|attr| attr.path().is_ident("bp_event"));
+        if !is_bp_event {
+            return syn::Error::new_spanned(&method, "event methods must be marked `#[bp_event]`")
+                .to_compile_error()
+                .into();
+        }
+        method.attrs.retain(|attr| !attr.path().is_ident("bp_event"));
+        if !method.sig.generics.params.is_empty() || method.sig.variadic.is_some() {
+            return syn::Error::new_spanned(&method.sig, "component event declarations cannot be generic or variadic")
+                .to_compile_error().into();
+        }
+        let syn::ReturnType::Type(_, payload_type) = &method.sig.output else {
+            return syn::Error::new_spanned(&method.sig, "event declarations must return their payload type")
+                .to_compile_error()
+                .into();
+        };
+        if !matches!(payload_type.as_ref(), syn::Type::Path(path) if path.qself.is_none() && path.path.segments.last().is_some_and(|segment| matches!(segment.arguments, syn::PathArguments::None))) {
+            return syn::Error::new_spanned(payload_type, "event return payloads must be owned, concrete named Rust value types")
+                .to_compile_error()
+                .into();
+        }
+        let event_name = format!("{}.{}", class_name.value(), method.sig.ident);
+        let method_name = method.sig.ident.clone();
+        let descriptor_fn = quote::format_ident!("__pulsar_event_descriptor_{}_{}", trait_name, method_name);
+        let declaration_fn = quote::format_ident!("__pulsar_event_declaration_{}_{}", trait_name, method_name);
+        fn event_value_type(ty: &syn::Type) -> Option<(&syn::Type, bool)> {
+            match ty {
+                syn::Type::Path(path) if path.qself.is_none() => Some((ty, false)),
+                syn::Type::Reference(reference) if reference.mutability.is_none() => {
+                    match reference.elem.as_ref() {
+                        syn::Type::Path(path) if path.qself.is_none() => Some((&reference.elem, true)),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        }
+        fn register_event_value(
+            ty: &syn::Type,
+            trait_name: &syn::Ident,
+            registrations: &mut Vec<proc_macro2::TokenStream>,
+            registered: &mut std::collections::HashSet<String>,
+        ) -> Result<(String, syn::Type), syn::Error> {
+            let Some((base, _)) = event_value_type(ty) else {
+                return Err(syn::Error::new_spanned(ty, "event fields must be named, non-generic Rust value types (or shared references to them)"));
+            };
+            let syn::Type::Path(path) = base else { unreachable!() };
+            let ident = path.path.segments.last().map(|segment| segment.ident.clone()).expect("nonempty type path");
+            if path.path.segments.last().is_some_and(|segment| !matches!(segment.arguments, syn::PathArguments::None)) {
+                return Err(syn::Error::new_spanned(base, "generic event value types need a concrete registered wrapper type"));
+            }
+            let name = ident.to_string();
+            let key = quote::quote!(#base).to_string();
+            if registered.insert(key) {
+                let encode_fn = quote::format_ident!("__pulsar_event_encode_{}_{}", trait_name, ident);
+                let decode_fn = quote::format_ident!("__pulsar_event_decode_{}_{}", trait_name, ident);
+                registrations.push(quote::quote! {
+                    #[doc(hidden)]
+                    #[allow(non_snake_case)]
+                    fn #encode_fn(value: &#base) -> Result<Vec<u8>, String> {
+                        ::serde_json::to_vec(value).map_err(|error| error.to_string())
+                    }
+                    #[doc(hidden)]
+                    #[allow(non_snake_case)]
+                    fn #decode_fn(bytes: &[u8]) -> Result<#base, String> {
+                        ::serde_json::from_slice(bytes).map_err(|error| error.to_string())
+                    }
+                    pulsar_world_registry::pulsar_script_vm::script_value_type!(#base, #name);
+                    pulsar_world_registry::pulsar_script_vm::script_event_codec!(
+                        #base, #name, encode = #encode_fn, decode = #decode_fn,
+                    );
+                });
+            }
+            Ok((name, base.clone()))
+        }
+        let mut argument_parameters = Vec::new();
+        let mut argument_values = Vec::new();
+        let mut declaration_fields = Vec::new();
+        let mut descriptor_fields = Vec::new();
+        for input in &method.sig.inputs {
+            let syn::FnArg::Typed(input) = input else {
+                return syn::Error::new_spanned(input, "event methods cannot have a receiver").to_compile_error().into();
+            };
+            let syn::Pat::Ident(pattern) = input.pat.as_ref() else {
+                return syn::Error::new_spanned(&input.pat, "event arguments must use named identifiers").to_compile_error().into();
+            };
+            let name = &pattern.ident;
+            let name_str = name.to_string();
+            let argument_type = &input.ty;
+            let (value_name, base_type) = match register_event_value(&input.ty, &trait_name, &mut payload_registrations, &mut registered_payloads) {
+                Ok(value) => value,
+                Err(error) => return error.to_compile_error().into(),
+            };
+            let (_, by_ref) = event_value_type(&input.ty).unwrap();
+            let _ = base_type;
+            let owned_value = if by_ref { quote::quote!((*#name).clone()) } else { quote::quote!(#name.clone()) };
+            argument_parameters.push(quote::quote!(#name: #argument_type));
+            argument_values.push(quote::quote! {
+                fields.push(pulsar_events::gamma::DynValue::Bytes(
+                    pulsar_world_registry::pulsar_script_vm::TypeRegistry::global()
+                        .encode_event_value(&pulsar_world_registry::pulsar_script_vm::Object::new(#value_name, #owned_value))?
+                ));
+            });
+            declaration_fields.push(quote::quote!(pulsar_world_registry::pulsar_script_vm::EventField::new(#name_str, pulsar_world_registry::pulsar_script_vm::Type::Object(#value_name.to_owned()))));
+            descriptor_fields.push(quote::quote!((#name_str, pulsar_events::gamma::FieldType::Bytes)));
+        }
+        let (payload_name, payload_base) = match register_event_value(payload_type, &trait_name, &mut payload_registrations, &mut registered_payloads) {
+            Ok(value) => value,
+            Err(error) => return error.to_compile_error().into(),
+        };
+        let _ = payload_base;
+        let payload_parameter = quote::format_ident!("__pulsar_payload");
+        let payload_value_type = payload_type;
+        let mut all_event_fields = declaration_fields;
+        all_event_fields.push(quote::quote!(pulsar_world_registry::pulsar_script_vm::EventField::new("payload", pulsar_world_registry::pulsar_script_vm::Type::Object(#payload_name.to_owned()))));
+        let mut all_descriptor_fields = descriptor_fields;
+        all_descriptor_fields.push(quote::quote!(("payload", pulsar_events::gamma::FieldType::Bytes)));
+        event_methods.push(quote::quote! {
+            fn #method_name(&self, #(#argument_parameters,)* #payload_parameter: #payload_value_type) -> Result<(), String>
+            where
+                #payload_value_type: Clone + Send + Sync + 'static,
+            ;
+        });
+        event_impl_methods.push(quote::quote! {
+            fn #method_name(&self, #(#argument_parameters,)* #payload_parameter: #payload_value_type) -> Result<(), String>
+            where
+                #payload_value_type: Clone + Send + Sync + 'static,
+            {
+                let mut fields = Vec::new();
+                #(#argument_values)*
+                fields.push(pulsar_events::gamma::DynValue::Bytes(
+                    pulsar_world_registry::pulsar_script_vm::TypeRegistry::global()
+                        .encode_event_value(&pulsar_world_registry::pulsar_script_vm::Object::new(#payload_name, #payload_parameter.clone()))?
+                ));
+                self.emit_named(#event_name, fields)
+            }
+        });
+        descriptor_submits.push(quote::quote! {
+            #[doc(hidden)]
+            #[allow(non_snake_case)]
+            fn #descriptor_fn() -> pulsar_events::gamma::EventDescriptor {
+                pulsar_events::gamma::EventDescriptor::dynamic(
+                    #event_name,
+                    [#(#all_descriptor_fields),*],
+                )
+            }
+            #[doc(hidden)]
+            #[allow(non_snake_case)]
+            fn #declaration_fn() -> pulsar_world_registry::pulsar_script_vm::EventDecl {
+                pulsar_world_registry::pulsar_script_vm::EventDecl {
+                    name: #event_name.to_owned(),
+                    fields: vec![#(#all_event_fields),*],
+                }
+            }
+            pulsar_world_registry::inventory::submit! {
+                pulsar_world_registry::ComponentEventRegistration {
+                    class_name: #class_name,
+                    descriptor: #descriptor_fn,
+                    declaration: #declaration_fn,
+                }
+            }
+        });
+    }
+    quote::quote! {
+        #event_trait
+
+        #visibility trait #emitter_name {
+            #(#event_methods)*
+        }
+
+        impl<'__pulsar_event> #emitter_name for pulsar_world_registry::ComponentEventWriter<'__pulsar_event> {
+            #(#event_impl_methods)*
+        }
+
+        #(#payload_registrations)*
+        #(#descriptor_submits)*
+    }
+    .into()
 }
 
 /// Opt a component into `pulsar_world_registry`'s `World` bridge

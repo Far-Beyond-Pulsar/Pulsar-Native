@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use crate::error::VerifyError;
 use crate::events::{check_handler, is_event_field_type};
 use crate::module::{
-    BinOp, CollOp, EventRef, FORMAT_VERSION, Instr, MIN_FORMAT_VERSION, Module, Reg, UnOp,
+    BinOp, CollOp, EventRef, Instr, Module, Reg, UnOp, FORMAT_VERSION, MIN_FORMAT_VERSION,
 };
 use crate::types::Type;
 
@@ -115,7 +115,7 @@ fn verify_events(module: &Module) -> Result<(), VerifyError> {
             }
             if !is_event_field_type(&field.ty) {
                 return Err(VerifyError::module(format!(
-                    "event `{}` field `{}` is {}; event fields are bool, int, float, string or entity",
+                    "event `{}` field `{}` is {}; event fields are bool, int, float, string, entity or a registered value type",
                     event.name, field.name, field.ty
                 )));
             }
@@ -146,7 +146,7 @@ fn verify_events(module: &Module) -> Result<(), VerifyError> {
         }
         if let Some(bad) = handler.params.iter().find(|ty| !is_event_field_type(ty)) {
             return Err(err(format!(
-                "{}: handler parameter type {bad} is not an event field type",
+                "{}: handler parameter type {bad} is not an event field type (expected a primitive or registered value type)",
                 what()
             )));
         }
@@ -222,7 +222,10 @@ impl FunctionVerifier<'_> {
             {
                 return Err(self.err(
                     None,
-                    format!("debug register {} is outside the register file", source.register),
+                    format!(
+                        "debug register {} is outside the register file",
+                        source.register
+                    ),
                 ));
             }
         }
@@ -305,7 +308,9 @@ impl FunctionVerifier<'_> {
                     (UnOp::FloatToInt, Type::Float) => Type::Int,
                     (UnOp::ToStr, _) => Type::Str,
                     _ => {
-                        return Err(self.err(Some(pc), format!("{op:?} does not apply to {src_ty}")));
+                        return Err(
+                            self.err(Some(pc), format!("{op:?} does not apply to {src_ty}"))
+                        );
                     }
                 };
                 self.expect(pc, *dst, &dst_ty)
