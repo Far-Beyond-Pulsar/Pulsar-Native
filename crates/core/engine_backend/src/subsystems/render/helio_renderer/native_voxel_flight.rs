@@ -47,7 +47,10 @@ impl NativeVoxelFlight {
         let protocol = if self.stress { STRESS_PROTOCOL } else { PROTOCOL };
         let duration = if self.stress { STRESS_MOVING_SECONDS + STRESS_SETTLE_SECONDS } else { 27.0 };
         let timeout = if self.stress { duration + 90.0 } else { 90.0 };
-        if interrupted || now.duration_since(self.armed_at).as_secs_f64() > timeout {
+        // Readiness may take most of the armed allowance. A started flight
+        // gets its full route duration independently of that startup wait.
+        let timeout_started = self.flight.as_ref().map_or(self.armed_at, |flight| flight.started);
+        if interrupted || now.duration_since(timeout_started).as_secs_f64() > timeout {
             if self.force_frames() { tracing::info!("VOXEL_NATIVE_FLIGHT cancelled protocol={protocol}"); }
             self.armed = false;
             self.flight = None;
@@ -229,6 +232,58 @@ mod tests {
         assert!(!driver.force_frames());
         // The stress switch cannot arm a normal session by itself.
         assert!(driver.advance(now, true, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_none());
+    }
+
+    #[test]
+    fn late_readiness_keeps_the_full_route_and_interruptions_still_cancel() {
+        let now = Instant::now();
+        let eye = DVec3::Y * 6_371_730.0;
+        for stress in [false, true] {
+            let wait = if stress { 399 } else { 89 };
+            let duration = if stress { 310 } else { 27 };
+            let started = now + std::time::Duration::from_secs(wait);
+            let driver = || NativeVoxelFlight {
+                armed: true, stress, armed_at: now, flight: None, last_report: now,
+            };
+            let mut complete = driver();
+            assert!(complete.advance(started, false, false, eye, Some(30.0),
+                -Vec3::Z, -0.15, sphere_surface).is_none());
+            assert!(complete.force_frames());
+            assert!(complete.advance(started, true, false, eye, Some(30.0),
+                -Vec3::Z, -0.15, sphere_surface).is_some());
+            for second in [1, duration - 10, duration] {
+                assert!(complete.advance(started + std::time::Duration::from_secs(second),
+                    false, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_some());
+            }
+            assert!(complete.advance(started + std::time::Duration::from_millis(duration * 1000 + 1),
+                false, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_none());
+            assert!(!complete.force_frames());
+
+            let mut interrupted = driver();
+            assert!(interrupted.advance(started, true, false, eye, Some(30.0),
+                -Vec3::Z, -0.15, sphere_surface).is_some());
+            let stop = started + std::time::Duration::from_secs(1);
+            assert!(interrupted.advance(stop, false, true, eye, Some(30.0),
+                -Vec3::Z, -0.15, sphere_surface).is_none());
+            assert!(!interrupted.force_frames());
+            assert!(interrupted.advance(stop, true, false, eye, Some(30.0),
+                -Vec3::Z, -0.15, sphere_surface).is_none());
+        }
+    }
+
+    #[test]
+    fn readiness_wait_still_has_a_bounded_timeout() {
+        let now = Instant::now();
+        let eye = DVec3::Y * 6_371_730.0;
+        for stress in [false, true] {
+            let mut driver = NativeVoxelFlight {
+                armed: true, stress, armed_at: now, flight: None, last_report: now,
+            };
+            let timeout = if stress { 400_001 } else { 90_001 };
+            assert!(driver.advance(now + std::time::Duration::from_millis(timeout),
+                true, false, eye, Some(30.0), -Vec3::Z, -0.15, sphere_surface).is_none());
+            assert!(!driver.force_frames());
+        }
     }
 
 
