@@ -192,6 +192,7 @@ fn unop(op: UnOp) -> &'static str {
         UnOp::Not => "Not",
         UnOp::IntToFloat => "IntToFloat",
         UnOp::FloatToInt => "FloatToInt",
+        UnOp::IntToI32Checked => "IntToI32Checked",
         UnOp::ToStr => "ToStr",
     }
 }

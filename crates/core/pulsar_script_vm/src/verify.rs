@@ -319,6 +319,7 @@ impl FunctionVerifier<'_> {
                     (UnOp::Neg, Type::Int | Type::Float) => src_ty.clone(),
                     (UnOp::Not, Type::Bool) => Type::Bool,
                     (UnOp::IntToFloat, Type::Int) => Type::Float,
+                    (UnOp::IntToI32Checked, Type::Int) => Type::Int,
                     (UnOp::FloatToInt, Type::Float) => Type::Int,
                     (UnOp::ToStr, _) => Type::Str,
                     _ => {

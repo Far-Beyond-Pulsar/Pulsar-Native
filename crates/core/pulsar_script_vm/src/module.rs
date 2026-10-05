@@ -229,7 +229,9 @@ impl Module {
                     })
                 })
             }
-            LinkError::UnsupportedOperation { function, pc, .. } => at_function(function, Some(*pc)),
+            LinkError::UnsupportedOperation { function, pc, .. } => {
+                at_function(function, Some(*pc))
+            }
             LinkError::HandlerMismatch { handler, .. } => at_function(handler, None),
             LinkError::UnknownEvent { event } => {
                 let subscription = self
@@ -651,6 +653,8 @@ pub enum UnOp {
     IntToFloat,
     /// `float -> int`, truncating and saturating.
     FloatToInt,
+    /// Checked `i64`-backed script integer narrowing to the reflected `i32` range.
+    IntToI32Checked,
     /// Any builtin value to its display string.
     ToStr,
 }
