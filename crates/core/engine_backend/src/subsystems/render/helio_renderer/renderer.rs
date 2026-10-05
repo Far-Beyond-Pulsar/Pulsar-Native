@@ -1253,6 +1253,14 @@ impl HelioRenderer {
         self.gpu_profiler.clone()
     }
 
+    /// Helio's scene depth buffer (`Depth32Float`, `COPY_SRC`) as of the last
+    /// encoded frame; `None` before the first. Read-only diagnostics: lets a
+    /// test tell geometry that rasterized but shaded black from geometry
+    /// that was never drawn (the SceneDB Phase 0 render baseline).
+    pub fn debug_depth_texture(&self) -> Option<&wgpu::Texture> {
+        self.inner.as_ref().map(|inner| inner.renderer.debug_depth_texture())
+    }
+
     // ── SceneDB-backed editor integration ───────────────────────────────────
 
     pub fn queue_gizmo_mode(&self, mode: GizmoMode) {

@@ -19,6 +19,8 @@ This packet turns the confirmed SceneDB/rendering failures into a set of archite
 | [08-implementation-and-delegation.md](08-implementation-and-delegation.md) | Dependency order, work package boundaries, definition of done |
 | [09-component-structure-and-graph-boundary.md](09-component-structure-and-graph-boundary.md) | Generic component lifecycle, component module template, pass isolation rule |
 | [10-phase-0-audit.md](10-phase-0-audit.md) | Primary-reviewed source/dependency inventory and current feasibility gaps |
+| [11-phase-0-closure.md](11-phase-0-closure.md) | Phase 0 exit: decisions D1–D4, validation targets, failure baseline |
+| [ledger.toml](ledger.toml) | Closure ledger checked by `cargo test -p scene_inventory` |
 
 ## How to review
 

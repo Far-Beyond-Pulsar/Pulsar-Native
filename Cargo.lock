@@ -5136,6 +5136,7 @@ dependencies = [
  "helio-pass-water-sim",
  "helio-voxel-data",
  "plugin_editor_api",
+ "pollster 0.4.0",
  "pulsar_reflection",
  "pulsar_scene_model",
  "pulsar_scenedb",
@@ -10603,6 +10604,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ece8e78b2f38ec51c51f5d475df0a7187ba5111b2a28bdc761ee05b075d40a71"
 
 [[package]]
+name = "scene_inventory"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "helio_component",
+ "pulsar_class",
+ "pulsar_physics",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+ "regex",
+ "serde",
+ "toml 1.1.4+spec-1.1.0",
+]
+
+[[package]]
 name = "scenedb-inspector-agent"
 version = "0.1.0"
 dependencies = [
@@ -13619,6 +13637,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "plugin_manager",
+ "pollster 0.4.0",
  "profiling 0.1.0",
  "pulsar_class",
  "pulsar_events",
@@ -13639,6 +13658,7 @@ dependencies = [
  "tool_registry",
  "tool_registry_macros",
  "tracing",
+ "tracing-subscriber",
  "ui",
  "ui_build",
  "ui_common",

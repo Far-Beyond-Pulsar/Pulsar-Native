@@ -13,6 +13,13 @@ members = [
     "crates/agent-providers/*",
     "crates/ui/wgpui-base",
     "plugins/vendor/asset_viewer",
+    # Helio's component crate names this workspace as its own
+    # (`package.workspace`) so its inventory registrations share the editor's
+    # SceneDB/reflection copies. Listing it here overrides the
+    # `crates/renderer/helio` exclusion below; as a non-member, Cargo refused
+    # `cargo test -p helio_component` because it could not build its
+    # dev-dependencies.
+    "crates/renderer/helio/crates/helio-component",
 ]
 
 # External plugin repositories are linked into `ui_core` as libraries, but own
