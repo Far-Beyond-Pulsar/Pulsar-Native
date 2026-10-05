@@ -22,9 +22,9 @@ fn everything() -> Module {
         sig: Signature::new([Param::new(Type::Float), Param::inout(Type::object("Vec3"))], Type::Float),
     }];
     module.variables = vec![
-        Variable { name: "speed".into(), ty: Type::Float, default: Some(Constant::Float(1.5)) },
-        Variable { name: "target".into(), ty: Type::Entity, default: None },
-        Variable { name: "__slot:abc".into(), ty: Type::component("Health"), default: None },
+        Variable { name: "speed".into(), ty: Type::Float, default: Some(Constant::Float(1.5)), id: None },
+        Variable { name: "target".into(), ty: Type::Entity, default: None, id: None },
+        Variable { name: "__slot:abc".into(), ty: Type::component("Health"), default: None, id: None },
     ];
     let mut debug = DebugInfo::default();
     debug.record(0, &SourceLoc::node("graph_save.json", "node_1"));

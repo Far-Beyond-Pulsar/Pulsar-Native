@@ -32,7 +32,9 @@ impl CapabilityPolicy {
 
     /// Allow only `capabilities`.
     pub fn only<S: Into<String>>(capabilities: impl IntoIterator<Item = S>) -> Self {
-        Self { allowed: Some(capabilities.into_iter().map(Into::into).collect()) }
+        Self {
+            allowed: Some(capabilities.into_iter().map(Into::into).collect()),
+        }
     }
 
     /// Whether a native needing `capability` may be imported.

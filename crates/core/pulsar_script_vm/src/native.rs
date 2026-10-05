@@ -18,31 +18,124 @@ use pulsar_reflection::methods::MethodFlags;
 use pulsar_scenedb::{Entity, World};
 
 use crate::error::ScriptError;
-use crate::events::{is_event_field_type, EventSink};
+use crate::events::{EventSink, is_event_field_type};
 use crate::library::{LibraryId, ShadowLibrary};
 use crate::module::{Param, Signature};
 use crate::types::{ScriptValue, Type};
 use crate::value::Value;
 
+/// How a [`Host`] reaches the world.
+enum WorldAccess<'w> {
+    Write(&'w mut World),
+    Read(&'w World),
+}
+
+/// What a native does to the world, for deciding which scripts can run under
+/// a shared lock.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Access {
+    /// At most reads the world (or does not touch it): safe in a read-only host.
+    Read,
+    /// May change the world.
+    Write,
+}
+
 /// What a native can reach: the world, the entity the calling script
 /// instance is bound to, and the engine's event hub.
+///
+/// The world is reached through [`world`](Host::world) (always) and
+/// [`world_mut`](Host::world_mut) (only in a host built with write access):
+/// a script phase that runs read-only classes concurrently under a shared
+/// lock hands them hosts that cannot write.
 pub struct Host<'w> {
-    pub world: &'w mut World,
+    access: WorldAccess<'w>,
     pub entity: Entity,
     /// Game time in seconds, read by the `Now` instruction.
     pub time: f64,
     /// Where the `event::*` natives publish. `None` in hosts without an
     /// event hub: those natives then fail the call.
     pub events: Option<&'w dyn EventSink>,
+    /// Old state a class's `migrate` function reads; `None` otherwise.
+    pub migration: Option<&'w dyn crate::migrate::MigrationSource>,
+    /// The instance's latent state (timers, wait requests); `None` in hosts
+    /// that cannot suspend a call for anything but a duration.
+    pub latent: Option<&'w mut crate::latent::Latent>,
 }
 
 impl<'w> Host<'w> {
     pub fn new(world: &'w mut World, entity: Entity) -> Self {
-        Self { world, entity, time: 0.0, events: None }
+        Self {
+            access: WorldAccess::Write(world),
+            entity,
+            time: 0.0,
+            events: None,
+            migration: None,
+            latent: None,
+        }
     }
 
     pub fn at_time(world: &'w mut World, entity: Entity, time: f64) -> Self {
-        Self { world, entity, time, events: None }
+        Self {
+            access: WorldAccess::Write(world),
+            entity,
+            time,
+            events: None,
+            migration: None,
+            latent: None,
+        }
+    }
+
+
+    /// A host that can read the world but not change it. Natives that need
+    /// [`world_mut`](Self::world_mut) fail the call; classes whose imports
+    /// are all read-access ([`NativeFn::access`]) never reach one.
+    pub fn read_only(world: &'w World, entity: Entity, time: f64) -> Self {
+        Self {
+            access: WorldAccess::Read(world),
+            entity,
+            time,
+            events: None,
+            migration: None,
+            latent: None,
+        }
+    }
+
+    /// The world, for reading.
+    pub fn world(&self) -> &World {
+        match &self.access {
+            WorldAccess::Write(world) => world,
+            WorldAccess::Read(world) => world,
+        }
+    }
+
+    /// The world, for writing. An error in a read-only host.
+    pub fn world_mut(&mut self) -> Result<&mut World, ScriptError> {
+        match &mut self.access {
+            WorldAccess::Write(world) => Ok(world),
+            WorldAccess::Read(_) => Err(ScriptError::native(
+                "this native changes the world, but the script is running in the read-only phase",
+            )),
+        }
+    }
+
+    /// Whether [`world_mut`](Self::world_mut) fails.
+    pub fn is_read_only(&self) -> bool {
+        matches!(self.access, WorldAccess::Read(_))
+    }
+
+    /// Attach the instance's latent state (see [`crate::latent`]).
+    pub fn with_latent(mut self, latent: Option<&'w mut crate::latent::Latent>) -> Self {
+        self.latent = latent;
+        self
+    }
+
+    /// Make `source`'s values readable through the `migration::old_*` natives.
+    pub fn with_migration(
+        mut self,
+        source: Option<&'w dyn crate::migrate::MigrationSource>,
+    ) -> Self {
+        self.migration = source;
+        self
     }
 
     /// Attach an event sink.
@@ -109,14 +202,30 @@ impl NativeFn {
     }
 
     pub fn attr(&self, key: &str) -> Option<&str> {
-        self.attrs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+        self.attrs
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    }
+
+    /// What this native does to the world. A native states it with the
+    /// `access` attribute (`read` or `write`); otherwise a side-effect-free
+    /// native is [`Access::Read`] and any other is [`Access::Write`].
+    pub fn access(&self) -> Access {
+        match self.attr("access") {
+            Some("read") => Access::Read,
+            Some("write") => Access::Write,
+            _ if self.flags.side_effect_free => Access::Read,
+            _ => Access::Write,
+        }
     }
 
     /// The capability a module needs to import this native (#869): its
     /// [`CAPABILITY_ATTR`](crate::capability::CAPABILITY_ATTR) attribute.
     /// `None`: every module may import it.
     pub fn capability(&self) -> Option<&str> {
-        self.attr(crate::capability::CAPABILITY_ATTR).filter(|c| !c.is_empty())
+        self.attr(crate::capability::CAPABILITY_ATTR)
+            .filter(|c| !c.is_empty())
     }
 
     pub(crate) fn attach_library(&mut self, id: LibraryId, library: Arc<ShadowLibrary>) {
@@ -240,7 +349,8 @@ impl<T: ScriptValue, E: fmt::Display> NativeReturn for Result<T, E> {
         T::script_type()
     }
     fn into_result(self) -> Result<Value, ScriptError> {
-        self.map(T::into_value).map_err(|e| ScriptError::native(e.to_string()))
+        self.map(T::into_value)
+            .map_err(|e| ScriptError::native(e.to_string()))
     }
 }
 
@@ -324,6 +434,13 @@ pub struct NativeProvider {
 
 inventory::collect!(NativeProvider);
 
+/// Generic natives registered at link time (see [`GenericNative`]).
+pub struct GenericProvider {
+    pub natives: fn() -> Vec<GenericNative>,
+}
+
+inventory::collect!(GenericProvider);
+
 /// A *polymorphic* native: a fixed parameter list followed by any number
 /// of trailing arguments of event field types (`bool`, `int`, `float`,
 /// `string`, `entity`). Each module import names its own full signature;
@@ -381,18 +498,31 @@ impl PolyNative {
         let fixed = self.fixed.len();
         if sig.params.len() < fixed || sig.params[..fixed] != self.fixed[..] {
             let expected = Signature::new(self.fixed.iter().cloned(), self.ret.clone());
-            return Err(format!("takes {expected} followed by event fields, the module imports it as {sig}"));
+            return Err(format!(
+                "takes {expected} followed by event fields, the module imports it as {sig}"
+            ));
         }
         if sig.ret != self.ret {
-            return Err(format!("returns {}, the module expects {}", self.ret, sig.ret));
+            return Err(format!(
+                "returns {}, the module expects {}",
+                self.ret, sig.ret
+            ));
         }
-        if let Some(bad) = sig.params[fixed..].iter().find(|p| p.inout || !is_event_field_type(&p.ty)) {
-            return Err(format!("trailing argument type {} is not an event field type", bad.ty));
+        if let Some(bad) = sig.params[fixed..]
+            .iter()
+            .find(|p| p.inout || !is_event_field_type(&p.ty))
+        {
+            return Err(format!(
+                "trailing argument type {} is not an event field type",
+                bad.ty
+            ));
         }
         let mut names = self.fixed_names.clone();
         names.extend((0..sig.params.len() - fixed).map(|i| format!("field{i}")));
         let call = Arc::clone(&self.call);
-        let mut builder = NativeFn::builder(self.name.clone()).doc(self.doc.clone()).params(names);
+        let mut builder = NativeFn::builder(self.name.clone())
+            .doc(self.doc.clone())
+            .params(names);
         for (k, v) in &self.attrs {
             builder = builder.attr(k.clone(), v.clone());
         }
@@ -407,7 +537,125 @@ pub fn poly_base_name(import: &str) -> &str {
 
 impl fmt::Debug for PolyNative {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}...", self.name, Signature::new(self.fixed.iter().cloned(), self.ret.clone()))
+        write!(
+            f,
+            "{}{}...",
+            self.name,
+            Signature::new(self.fixed.iter().cloned(), self.ret.clone())
+        )
+    }
+}
+
+/// A native generic over one type, instantiated by the module that imports
+/// it: `array_push<T>(list<T>, T) -> list<T>`. The registry holds the
+/// template; a module imports `name@<tag>` with the concrete signature
+/// (the tag only keeps the instantiations' import names distinct), and
+/// linking checks that signature is the template at some type `T`.
+pub struct GenericNative {
+    pub name: String,
+    pub doc: String,
+    pub param_names: Vec<String>,
+    pub attrs: Vec<(String, String)>,
+    pub flags: MethodFlags,
+    template: fn(&Type) -> Signature,
+    call: Arc<GenericImpl>,
+}
+
+/// A generic native's body: the element type it was instantiated at, the
+/// host, and the arguments.
+pub type GenericImpl =
+    dyn Fn(&Type, &mut Host<'_>, &mut [Value]) -> Result<Value, ScriptError> + Send + Sync;
+
+impl GenericNative {
+    pub fn new(
+        name: impl Into<String>,
+        param_names: &[&str],
+        template: fn(&Type) -> Signature,
+        call: impl Fn(&Type, &mut Host<'_>, &mut [Value]) -> Result<Value, ScriptError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            doc: String::new(),
+            param_names: param_names.iter().map(|n| (*n).to_owned()).collect(),
+            attrs: Vec::new(),
+            flags: MethodFlags::NONE,
+            template,
+            call: Arc::new(call),
+        }
+    }
+
+    pub fn doc(mut self, doc: impl Into<String>) -> Self {
+        self.doc = doc.into();
+        self
+    }
+
+    pub fn attr(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.attrs.push((key.into(), value.into()));
+        self
+    }
+
+    /// Mark the native free of side effects (a pure node).
+    pub fn side_effect_free(mut self) -> Self {
+        self.flags.side_effect_free = true;
+        self
+    }
+
+    /// The signature at element type `element`.
+    pub fn signature(&self, element: &Type) -> Signature {
+        (self.template)(element)
+    }
+
+    /// The native for import signature `sig`, if it is this template at
+    /// some type: tried at every type `sig` mentions, and inside its lists,
+    /// maps and tuples.
+    pub fn instantiate(&self, sig: &Signature) -> Result<NativeFn, String> {
+        let mut candidates = Vec::new();
+        for ty in sig.params.iter().map(|p| &p.ty).chain([&sig.ret]) {
+            collect_types(ty, &mut candidates);
+        }
+        let element = candidates
+            .into_iter()
+            .find(|candidate| (self.template)(candidate) == *sig)
+            .ok_or_else(|| {
+                format!(
+                    "is generic; the module imports it as {sig}, which is not an instance of it"
+                )
+            })?;
+        let call = Arc::clone(&self.call);
+        let mut builder = NativeFn::builder(self.name.clone())
+            .doc(self.doc.clone())
+            .params(self.param_names.clone())
+            .flags(self.flags);
+        for (k, v) in &self.attrs {
+            builder = builder.attr(k.clone(), v.clone());
+        }
+        Ok(builder.build_raw(
+            sig.clone(),
+            Box::new(move |host, args| call(&element, host, args)),
+        ))
+    }
+}
+
+/// `ty` and every type nested in it.
+fn collect_types(ty: &Type, out: &mut Vec<Type>) {
+    out.push(ty.clone());
+    match ty {
+        Type::List(element) => collect_types(element, out),
+        Type::Map(key, value) => {
+            collect_types(key, out);
+            collect_types(value, out);
+        }
+        Type::Tuple(items) => items.iter().for_each(|item| collect_types(item, out)),
+        _ => {}
+    }
+}
+
+impl fmt::Debug for GenericNative {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}<T>", self.name)
     }
 }
 
@@ -426,6 +674,7 @@ pub struct DuplicateNative(pub String);
 pub struct NativeRegistry {
     natives: HashMap<String, Arc<NativeFn>>,
     poly: HashMap<String, Arc<PolyNative>>,
+    generic: HashMap<String, Arc<GenericNative>>,
     generation: u64,
 }
 
@@ -453,6 +702,13 @@ impl NativeRegistry {
                 }
             }
         }
+        for provider in inventory::iter::<GenericProvider> {
+            for native in (provider.natives)() {
+                if let Err(err) = registry.register_generic(native) {
+                    tracing::debug!("script natives: skipping provided {err}");
+                }
+            }
+        }
         registry
     }
 
@@ -474,6 +730,29 @@ impl NativeRegistry {
         self.poly.insert(native.name.clone(), Arc::new(native));
         self.generation += 1;
         Ok(())
+    }
+
+    /// Register a native generic over one type. Its name must not be taken.
+    pub fn register_generic(&mut self, native: GenericNative) -> Result<(), DuplicateNative> {
+        if self.natives.contains_key(&native.name)
+            || self.poly.contains_key(&native.name)
+            || self.generic.contains_key(&native.name)
+        {
+            return Err(DuplicateNative(native.name));
+        }
+        self.generic.insert(native.name.clone(), Arc::new(native));
+        self.generation += 1;
+        Ok(())
+    }
+
+    /// The generic native `name`.
+    pub fn generic(&self, name: &str) -> Option<&Arc<GenericNative>> {
+        self.generic.get(name)
+    }
+
+    /// Every generic native, in no particular order.
+    pub fn generic_functions(&self) -> impl Iterator<Item = &Arc<GenericNative>> {
+        self.generic.values()
     }
 
     /// The polymorphic native `name`.
@@ -515,7 +794,9 @@ impl NativeRegistry {
     /// Natives callable on a value or reference of type `ty` (its methods,
     /// accessors and properties).
     pub fn methods_for<'a>(&'a self, ty: &'a Type) -> impl Iterator<Item = &'a Arc<NativeFn>> {
-        self.natives.values().filter(move |n| n.receiver.as_ref() == Some(ty))
+        self.natives
+            .values()
+            .filter(move |n| n.receiver.as_ref() == Some(ty))
     }
 
     pub fn generation(&self) -> u64 {

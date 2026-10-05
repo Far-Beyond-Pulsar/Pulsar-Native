@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Scripting languages register themselves at link time (`LinkedScriptLanguage`).
+inventory = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 schemars = { workspace = true }
@@ -30,6 +32,7 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tracing = { workspace = true }
+gpui-ce = { workspace = true, features = ["test-support"] }
 [lib]
 crate-type = ["lib", "cdylib"]
 

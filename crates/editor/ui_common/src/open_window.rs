@@ -39,7 +39,11 @@ pub trait PulsarWindowExt: PulsarWindow {
         let _ = WindowManager::update_global(cx, |wm, cx| {
             if let Some(profile) = profile {
                 let wrapper_kind = profile.wrapper();
-                let profile_options = profile.options();
+                let mut profile_options = profile.options();
+                // A saved position can be on a monitor that is gone.
+                profile_options.window_bounds = profile_options
+                    .window_bounds
+                    .map(|b| keep_on_screen(b, cx));
                 wm.create_window(
                     request,
                     profile_options,
@@ -81,3 +85,28 @@ pub trait PulsarWindowExt: PulsarWindow {
 }
 
 impl<W: PulsarWindow> PulsarWindowExt for W {}
+
+/// `bounds` itself if its window would be visible on a connected display;
+/// otherwise the same size (and maximized / fullscreen state) centred on the
+/// primary display. Saved window positions can outlive the monitor they were
+/// on.
+fn keep_on_screen(bounds: WindowBounds, cx: &App) -> WindowBounds {
+    let restore = match bounds {
+        WindowBounds::Windowed(b) | WindowBounds::Maximized(b) | WindowBounds::Fullscreen(b) => b,
+    };
+    let visible = cx
+        .displays()
+        .iter()
+        .any(|display| display.bounds().contains(&restore.center()));
+    if visible {
+        return bounds;
+    }
+    let WindowBounds::Windowed(centered) = WindowBounds::centered(restore.size, cx) else {
+        return bounds;
+    };
+    match bounds {
+        WindowBounds::Windowed(_) => WindowBounds::Windowed(centered),
+        WindowBounds::Maximized(_) => WindowBounds::Maximized(centered),
+        WindowBounds::Fullscreen(_) => WindowBounds::Fullscreen(centered),
+    }
+}

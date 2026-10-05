@@ -32,6 +32,8 @@
 //!   exactly like properties-panel edits.
 
 use std::any::Any;
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, PoisonError, RwLock};
 
 use pulsar_reflection::{
     MethodArgs, MethodMetadata, MethodReturnValue, PropertyMetadata, RuntimeTypeInfo, REGISTRY,
@@ -79,7 +81,7 @@ pub fn invoke_component_method(
     validate_args(class_name, &meta, &args)?;
 
     let _ = component_index; // methods are class-level behavior; see module doc
-    let instance = crate::get_world_component_as_engine_class_mut(class_name, world, entity)
+    let mut instance = crate::get_world_component_as_engine_class_mut(class_name, world, entity)
         .ok_or_else(|| ScriptRefError::ComponentMissing {
             entity,
             class_name: class_name.to_string(),
@@ -99,7 +101,7 @@ pub fn get_component_property(
     component_index: u32,
     property: &str,
 ) -> Result<Value, ScriptRefError> {
-    let meta = property_metadata(class_name, property)?;
+    let meta = property_descriptor(class_name, property)?;
     let instance = live_instance(world, entity, class_name, component_index)?;
     let value = (meta.getter)(instance);
     crate::marshal::any_to_json(&property_context(class_name, property), &*value)
@@ -114,7 +116,7 @@ pub fn get_component_property_boxed(
     component_index: u32,
     property: &str,
 ) -> Result<Box<dyn Any>, ScriptRefError> {
-    let meta = property_metadata(class_name, property)?;
+    let meta = property_descriptor(class_name, property)?;
     let instance = live_instance(world, entity, class_name, component_index)?;
     Ok((meta.getter)(instance))
 }
@@ -133,13 +135,13 @@ pub fn set_component_property(
     property: &str,
     value: Value,
 ) -> Result<(), ScriptRefError> {
-    let meta = property_metadata(class_name, property)?;
+    let meta = property_descriptor(class_name, property)?;
     let typed = crate::marshal::json_to_any(
         &property_context(class_name, property),
         meta.type_info,
         value,
     )?;
-    set_typed(world, entity, class_name, component_index, meta, typed)
+    set_typed(world, entity, class_name, component_index, &meta, typed)
 }
 
 /// Write one reflected property from an already-typed `Box<dyn Any>` -- the
@@ -154,7 +156,7 @@ pub fn set_component_property_boxed(
     property: &str,
     value: Box<dyn Any>,
 ) -> Result<(), ScriptRefError> {
-    let meta = property_metadata(class_name, property)?;
+    let meta = property_descriptor(class_name, property)?;
     validate_arg_type(
         class_name,
         property,
@@ -163,7 +165,7 @@ pub fn set_component_property_boxed(
         meta.type_info,
         value.as_ref(),
     )?;
-    set_typed(world, entity, class_name, component_index, meta, value)
+    set_typed(world, entity, class_name, component_index, &meta, value)
 }
 
 /// Convert graph-domain JSON argument values into a method's declared
@@ -221,31 +223,47 @@ fn set_typed(
     entity: Entity,
     class_name: &str,
     component_index: u32,
-    meta: PropertyMetadata,
+    meta: &PropertyMetadata,
     typed: Box<dyn Any>,
 ) -> Result<(), ScriptRefError> {
-    let instance = live_instance_mut(world, entity, class_name, component_index)?;
+    let mut instance = live_instance_mut(world, entity, class_name, component_index)?;
     (meta.setter)(&mut *instance, typed);
     Ok(())
 }
 
-/// Reflected metadata for one property, resolved through a throwaway default
-/// instance exactly like the properties panel does -- only the type-bound
-/// getter/setter closures are used, never the throwaway's values.
-fn property_metadata(class_name: &str, property: &str) -> Result<PropertyMetadata, ScriptRefError> {
-    REGISTRY
-        .create_instance(class_name)
-        .and_then(|instance| {
-            instance
-                .get_properties()
-                .into_iter()
-                .find(|p| p.name == property)
-        })
-        .ok_or_else(|| ScriptRefError::UnknownProperty {
-            class_name: class_name.to_string(),
-            property: property.to_string(),
-        })
+/// Reflected metadata for one property: its type-bound getter/setter
+/// closures and type information.
+///
+/// Descriptors are immutable and per class, and the registry is fixed at
+/// link time, so each class's are built once (through one throwaway default
+/// instance, exactly as the properties panel does) and shared afterwards:
+/// an access is a read lock and two hash lookups, with no `EngineClass`
+/// construction. Only the type-bound closures are used, never the
+/// throwaway's values. Nothing here refers to an entity or a borrowed
+/// component, so the cache can never hold a stale pointer.
+pub fn property_descriptor(class_name: &str, property: &str) -> Result<Arc<PropertyMetadata>, ScriptRefError> {
+    static CACHE: LazyLock<RwLock<HashMap<String, Arc<ClassProperties>>>> = LazyLock::new(Default::default);
+
+    let unknown = || ScriptRefError::UnknownProperty {
+        class_name: class_name.to_string(),
+        property: property.to_string(),
+    };
+    let cached = CACHE.read().unwrap_or_else(PoisonError::into_inner).get(class_name).cloned();
+    let class = match cached {
+        Some(class) => class,
+        None => {
+            let instance = REGISTRY.create_instance(class_name).ok_or_else(unknown)?;
+            let built: Arc<ClassProperties> = Arc::new(
+                instance.get_properties().into_iter().map(|p| (p.name, Arc::new(p))).collect(),
+            );
+            let mut cache = CACHE.write().unwrap_or_else(PoisonError::into_inner);
+            Arc::clone(cache.entry(class_name.to_owned()).or_insert(built))
+        }
+    };
+    class.get(property).cloned().ok_or_else(unknown)
 }
+
+type ClassProperties = HashMap<&'static str, Arc<PropertyMetadata>>;
 
 fn live_instance<'w>(
     world: &'w World,
@@ -273,7 +291,7 @@ fn live_instance_mut<'w>(
     entity: Entity,
     class_name: &str,
     component_index: u32,
-) -> Result<&'w mut dyn pulsar_reflection::EngineClass, ScriptRefError> {
+) -> Result<crate::EngineClassMut<'w>, ScriptRefError> {
     if component_index != 0 {
         return Err(ScriptRefError::InstanceMissing {
             entity,

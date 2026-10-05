@@ -92,6 +92,7 @@ pub mod metadata;
 pub mod plugin;
 pub mod scripting;
 pub mod statusbar;
+pub mod surface_animation;
 pub mod subsystems;
 pub mod version;
 

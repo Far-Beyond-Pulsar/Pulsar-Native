@@ -1,4 +1,3 @@
-use crate::state::{BuildConfig, BuildMode, MultiplayerMode, TargetPlatform};
 use crate::tool_modes::ToolModeId;
 use gpui::*;
 
@@ -14,26 +13,8 @@ pub struct SetTimeScale(pub f32);
 
 #[derive(Action, Clone, PartialEq)]
 #[action(namespace = level_editor_toolbar, no_json)]
-pub struct SetMultiplayerMode(pub MultiplayerMode);
+pub struct SetTransformSnap(pub u8, pub f32);
 
-#[derive(Action, Clone, PartialEq)]
-#[action(namespace = level_editor_toolbar, no_json)]
-pub struct SetBuildConfig(pub BuildConfig);
-
-#[derive(Action, Clone, PartialEq)]
-#[action(namespace = level_editor_toolbar, no_json)]
-pub struct SetTargetPlatform(pub TargetPlatform);
-
-/// Trigger a full project build: compile all scene blueprints and emit a runnable
-/// Pulsar game crate under `<project_root>/build/`.
-#[derive(Action, Clone, PartialEq, Default)]
-#[action(namespace = level_editor_toolbar, no_json)]
-pub struct BuildCore;
-
-/// Switch the build button's primary action mode.
-#[derive(Action, Clone, PartialEq)]
-#[action(namespace = level_editor_toolbar, no_json)]
-pub struct SetBuildMode(pub BuildMode);
 
 /// Save the current scene as the engine's built-in default level.
 ///

@@ -39,7 +39,7 @@ fn import(name: &str, params: Vec<Type>, ret: Type) -> Import {
 /// `begin_play`: `me = self`, log "begin". `end_play`: log "end".
 fn minion_module() -> Module {
     let mut m = Module::new("Minion");
-    m.variables = vec![Variable { name: "me".into(), ty: Type::Entity, default: None }];
+    m.variables = vec![Variable { name: "me".into(), ty: Type::Entity, default: None, id: None }];
     m.constants = vec![Constant::Str("begin".into()), Constant::Str("end".into())];
     m.imports = vec![import("test::event", vec![Type::Str], Type::Unit)];
     m.functions = vec![
@@ -64,8 +64,8 @@ fn minion_module() -> Module {
 fn spawner_module() -> Module {
     let mut m = Module::new("Spawner");
     m.variables = (0..5)
-        .map(|i| Variable { name: format!("e{i}"), ty: Type::Entity, default: None })
-        .chain([Variable { name: "ticks".into(), ty: Type::Int, default: None }])
+        .map(|i| Variable { name: format!("e{i}"), ty: Type::Entity, default: None, id: None })
+        .chain([Variable { name: "ticks".into(), ty: Type::Int, default: None, id: None }])
         .collect();
     m.constants = vec![
         Constant::Str("Minion".into()),
@@ -176,7 +176,7 @@ fn install_log(driver: &mut ScriptDriver) -> Log {
         .runtime_mut()
         .register_native(NativeFn::builder("test::event").params(["name"]).build(
             move |host: &mut Host<'_>, name: String| {
-                let who = host.world.stable_id_of(host.entity).unwrap_or_default().to_owned();
+                let who = host.world().stable_id_of(host.entity).unwrap_or_default().to_owned();
                 sink.lock().unwrap().push((name, who));
             },
         ))
@@ -482,8 +482,8 @@ fn class_reload_rebinds_slots_of_live_instances() {
     let slot_var = pulsar_class::slot_variable_name(&slot);
     let mut module = Module::new("Lamp");
     module.variables = vec![
-        Variable { name: slot_var.clone(), ty: Type::Component("LightComponent".into()), default: None },
-        Variable { name: "kept".into(), ty: Type::Int, default: None },
+        Variable { name: slot_var.clone(), ty: Type::Component("LightComponent".into()), default: None, id: None },
+        Variable { name: "kept".into(), ty: Type::Int, default: None, id: None },
     ];
     std::fs::write(def.dir.join("events/.build/module.json"), module.to_json().unwrap()).unwrap();
 
@@ -578,7 +578,7 @@ fn component_natives_on_none_are_errors_not_panics() {
         .clone();
     let component = Type::Component("LightComponent".into());
     let mut m = Module::new("Prober");
-    m.variables = vec![Variable { name: "found".into(), ty: Type::Bool, default: None }];
+    m.variables = vec![Variable { name: "found".into(), ty: Type::Bool, default: None, id: None }];
     m.imports = vec![
         Import { name: of.name.clone(), sig: of.sig.clone() },
         Import { name: exists.name.clone(), sig: exists.sig.clone() },
@@ -653,6 +653,7 @@ mod script_events {
                 name: name.into(),
                 ty: if name == "last_other" { Type::Entity } else { Type::Int },
                 default: None,
+                id: None,
             })
             .collect();
         m.constants = vec![Constant::Int(1)];
@@ -965,9 +966,9 @@ mod pie_session {
     fn counter_module(step: i64) -> Module {
         let mut m = Module::new("Counter");
         m.variables = vec![
-            Variable { name: "count".into(), ty: Type::Int, default: None },
-            Variable { name: "late".into(), ty: Type::Bool, default: None },
-            Variable { name: "timer".into(), ty: Type::Int, default: None },
+            Variable { name: "count".into(), ty: Type::Int, default: None, id: None },
+            Variable { name: "late".into(), ty: Type::Bool, default: None, id: None },
+            Variable { name: "timer".into(), ty: Type::Int, default: None, id: None },
         ];
         m.constants = vec![
             Constant::Int(step),
@@ -1289,4 +1290,23 @@ mod pie_session {
             }
         }
     }
+}
+
+/// A frame through the shared-scene path runs the same script phase and
+/// says how long it held each lock; both locks are free afterwards.
+#[test]
+fn a_shared_frame_reports_its_lock_times_and_releases_the_scene() {
+    let project = project();
+    let registry = ClassRegistry::scan(project.path());
+    let mut driver = ScriptDriver::with_parts(super::new_runtime(), project.path(), registry, Default::default());
+    let log = install_log(&mut driver);
+    let scene: engine_backend::scene::SharedScene =
+        std::sync::Arc::new(parking_lot::RwLock::new(engine_backend::scene::new_scene()));
+
+    let report = driver.run_frame_shared(&scene, 0.016);
+    assert!(report.script_errors.is_empty(), "{:?}", report.script_errors);
+    let locks = report.locks.expect("a shared frame is timed");
+    assert!(locks.write_hold > std::time::Duration::ZERO && locks.read_hold > std::time::Duration::ZERO, "{locks:?}");
+    assert!(scene.try_write().is_some(), "the write lock is released");
+    assert!(scene.try_read().is_some(), "and the read lock");
 }

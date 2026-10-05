@@ -41,13 +41,15 @@ pub mod channel;
 pub mod foreign_tap;
 pub mod host;
 pub mod hub;
+pub mod playback;
 pub mod problems;
 pub mod session;
 pub mod tap;
 
 pub use assets::{AssetSubscription, AssetUpdated, publish_asset_updated, subscribe_asset_updates};
+pub use playback::{PlaybackCommand, PlaybackSubscription, publish_playback_command, subscribe_playback_commands};
 pub use problems::{
-    ProblemSeverity, ScriptProblem, ScriptProblemsEvent, publish_script_problem, publish_script_problems_cleared,
+    ProblemSeverity, ScriptOutputValue, ScriptProblem, ScriptProblemsEvent, publish_script_problem, publish_script_problems_cleared,
     subscribe_script_problems,
 };
 pub use session::{PieSessionEvent, announce_session_started, announce_session_stopping, subscribe_pie_sessions};

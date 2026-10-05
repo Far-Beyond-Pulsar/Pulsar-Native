@@ -42,8 +42,8 @@ use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 
 use crate::native::{DuplicateNative, NativeFn, NativeRegistry, Origin};
 
@@ -69,7 +69,8 @@ pub struct HostAllocator {
     pub alloc: unsafe extern "C" fn(size: usize, align: usize) -> *mut u8,
     pub alloc_zeroed: unsafe extern "C" fn(size: usize, align: usize) -> *mut u8,
     pub dealloc: unsafe extern "C" fn(ptr: *mut u8, size: usize, align: usize),
-    pub realloc: unsafe extern "C" fn(ptr: *mut u8, size: usize, align: usize, new_size: usize) -> *mut u8,
+    pub realloc:
+        unsafe extern "C" fn(ptr: *mut u8, size: usize, align: usize, new_size: usize) -> *mut u8,
 }
 
 impl HostAllocator {
@@ -84,10 +85,24 @@ impl HostAllocator {
         unsafe extern "C" fn dealloc(ptr: *mut u8, size: usize, align: usize) {
             std::alloc::dealloc(ptr, Layout::from_size_align_unchecked(size, align))
         }
-        unsafe extern "C" fn realloc(ptr: *mut u8, size: usize, align: usize, new_size: usize) -> *mut u8 {
-            std::alloc::realloc(ptr, Layout::from_size_align_unchecked(size, align), new_size)
+        unsafe extern "C" fn realloc(
+            ptr: *mut u8,
+            size: usize,
+            align: usize,
+            new_size: usize,
+        ) -> *mut u8 {
+            std::alloc::realloc(
+                ptr,
+                Layout::from_size_align_unchecked(size, align),
+                new_size,
+            )
         }
-        static GLOBAL: HostAllocator = HostAllocator { alloc, alloc_zeroed, dealloc, realloc };
+        static GLOBAL: HostAllocator = HostAllocator {
+            alloc,
+            alloc_zeroed,
+            dealloc,
+            realloc,
+        };
         &GLOBAL
     }
 }
@@ -103,12 +118,17 @@ pub struct ForwardingAllocator {
 
 impl ForwardingAllocator {
     pub const fn new() -> Self {
-        Self { host: AtomicPtr::new(std::ptr::null_mut()) }
+        Self {
+            host: AtomicPtr::new(std::ptr::null_mut()),
+        }
     }
 
     /// Route every later allocation to `host`.
     pub fn install(&self, host: &'static HostAllocator) {
-        self.host.store(host as *const HostAllocator as *mut HostAllocator, Ordering::Release);
+        self.host.store(
+            host as *const HostAllocator as *mut HostAllocator,
+            Ordering::Release,
+        );
     }
 
     #[inline]
@@ -201,9 +221,15 @@ macro_rules! native_library {
 #[derive(Debug, thiserror::Error)]
 pub enum LibraryError {
     #[error("could not copy `{path}` for loading: {source}")]
-    Copy { path: PathBuf, source: std::io::Error },
+    Copy {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("could not load `{path}`: {source}")]
-    Load { path: PathBuf, source: libloading::Error },
+    Load {
+        path: PathBuf,
+        source: libloading::Error,
+    },
     #[error("`{path}` is not a script native library (missing `{symbol}`)")]
     NotALibrary { path: PathBuf, symbol: String },
     #[error("`{path}` was built against a different pulsar_script_vm or compiler")]
@@ -271,7 +297,13 @@ impl NativeLibraries {
         let natives = self.open(path.as_ref(), id)?;
         let names = Self::install(registry, natives)?;
         self.next_id += 1;
-        self.loaded.insert(id, Loaded { source: path.as_ref().to_owned(), natives: names });
+        self.loaded.insert(
+            id,
+            Loaded {
+                source: path.as_ref().to_owned(),
+                natives: names,
+            },
+        );
         Ok(id)
     }
 
@@ -283,7 +315,12 @@ impl NativeLibraries {
         id: LibraryId,
         registry: &mut NativeRegistry,
     ) -> Result<(), LibraryError> {
-        let source = self.loaded.get(&id).ok_or(LibraryError::NotLoaded(id))?.source.clone();
+        let source = self
+            .loaded
+            .get(&id)
+            .ok_or(LibraryError::NotLoaded(id))?
+            .source
+            .clone();
         let natives = self.open(&source, id)?;
         registry.remove_origin(Origin::Library(id));
         let names = Self::install(registry, natives)?;
@@ -293,7 +330,11 @@ impl NativeLibraries {
 
     /// Unregister library `id`'s natives. Its code stays mapped until
     /// every program linked against it is dropped.
-    pub fn unload(&mut self, id: LibraryId, registry: &mut NativeRegistry) -> Result<(), LibraryError> {
+    pub fn unload(
+        &mut self,
+        id: LibraryId,
+        registry: &mut NativeRegistry,
+    ) -> Result<(), LibraryError> {
         self.loaded.remove(&id).ok_or(LibraryError::NotLoaded(id))?;
         registry.remove_origin(Origin::Library(id));
         Ok(())
@@ -322,17 +363,24 @@ impl NativeLibraries {
 
     /// Map a shadow copy of `path` and collect its natives.
     fn open(&self, path: &Path, id: LibraryId) -> Result<Vec<NativeFn>, LibraryError> {
-        std::fs::create_dir_all(&self.shadow_dir)
-            .map_err(|source| LibraryError::Copy { path: path.to_owned(), source })?;
-        let file_name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        std::fs::create_dir_all(&self.shadow_dir).map_err(|source| LibraryError::Copy {
+            path: path.to_owned(),
+            source,
+        })?;
+        let file_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let shadow = self.shadow_dir.join(format!(
             "{}-{}-{}-{file_name}",
             std::process::id(),
             id.0,
             SHADOW_COUNTER.fetch_add(1, Ordering::Relaxed)
         ));
-        std::fs::copy(path, &shadow)
-            .map_err(|source| LibraryError::Copy { path: path.to_owned(), source })?;
+        std::fs::copy(path, &shadow).map_err(|source| LibraryError::Copy {
+            path: path.to_owned(),
+            source,
+        })?;
 
         // SAFETY: loading runs the library's initializers. Native libraries
         // are trusted engine extensions, like editor plugins.
@@ -340,10 +388,16 @@ impl NativeLibraries {
             Ok(library) => library,
             Err(source) => {
                 let _ = std::fs::remove_file(&shadow);
-                return Err(LibraryError::Load { path: path.to_owned(), source });
+                return Err(LibraryError::Load {
+                    path: path.to_owned(),
+                    source,
+                });
             }
         };
-        let library = Arc::new(ShadowLibrary { library: ManuallyDrop::new(library), path: shadow });
+        let library = Arc::new(ShadowLibrary {
+            library: ManuallyDrop::new(library),
+            path: shadow,
+        });
 
         let not_a_library = |symbol: &[u8]| LibraryError::NotALibrary {
             path: path.to_owned(),
@@ -353,19 +407,26 @@ impl NativeLibraries {
         // these types; the ABI check below (a `TypeId` that differs between
         // builds) runs before anything else is called.
         let natives = unsafe {
-            let abi: libloading::Symbol<'_, fn() -> TypeId> =
-                library.library.get(ABI_SYMBOL).map_err(|_| not_a_library(ABI_SYMBOL))?;
+            let abi: libloading::Symbol<'_, fn() -> TypeId> = library
+                .library
+                .get(ABI_SYMBOL)
+                .map_err(|_| not_a_library(ABI_SYMBOL))?;
             if abi() != TypeId::of::<LibraryRegistrar>() {
-                return Err(LibraryError::AbiMismatch { path: path.to_owned() });
+                return Err(LibraryError::AbiMismatch {
+                    path: path.to_owned(),
+                });
             }
             // Before anything that allocates.
-            if let Ok(set_allocator) =
-                library.library.get::<fn(&'static HostAllocator)>(SET_ALLOCATOR_SYMBOL)
+            if let Ok(set_allocator) = library
+                .library
+                .get::<fn(&'static HostAllocator)>(SET_ALLOCATOR_SYMBOL)
             {
                 set_allocator(self.allocator);
             }
-            let register: libloading::Symbol<'_, fn(&mut LibraryRegistrar)> =
-                library.library.get(REGISTER_SYMBOL).map_err(|_| not_a_library(REGISTER_SYMBOL))?;
+            let register: libloading::Symbol<'_, fn(&mut LibraryRegistrar)> = library
+                .library
+                .get(REGISTER_SYMBOL)
+                .map_err(|_| not_a_library(REGISTER_SYMBOL))?;
             let mut registrar = LibraryRegistrar::default();
             register(&mut registrar);
             registrar.natives

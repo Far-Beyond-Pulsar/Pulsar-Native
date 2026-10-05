@@ -5,12 +5,12 @@
 //! - **CI golden test** (`pulsar_physics/tests/golden_metadata.rs` and any
 //!   other crate that links real component classes):
 //!   [`metadata_snapshot_json`] is diffed against a checked-in file, so a
-//!   metadata regression -- renamed parameter, flipped `method_type`, lost
+//!   metadata regression -- renamed parameter, flipped `flags`, lost
 //!   category -- fails the build instead of silently degrading Blueprint
 //!   discovery.
 //! - **Debug builds / tooling**: [`find_overloaded_methods`] sweeps every
 //!   registered class for name collisions. The compile-time half of the
-//!   overload policy lives in `#[component_methods]` (one impl block);
+//!   overload policy lives in SceneDB's `#[component_methods]` (one impl block);
 //!   this is the link-time half, catching collisions across separate
 //!   registrations for the same class that no single macro expansion can
 //!   see.
@@ -67,12 +67,12 @@ pub fn find_overloaded_methods() -> Vec<MetadataAuditError> {
 
 /// Deterministic JSON snapshot of every registered class's full reflected
 /// surface: properties (name/display/category/type) and methods
-/// (name/display/category/params/return/`method_type`). Sorted at every
+/// (name/display/category/params/return/`flags`). Sorted at every
 /// level so the output is stable across runs and link orderings -- exactly
 /// what a checked-in golden file needs.
 ///
-/// `method_type` is included deliberately: it is the purity contract
-/// rust_codegen inlining relies on (#645), so a flipped Pure↔Fn must show
+/// `flags` is included deliberately: it is the purity contract
+/// rust_codegen inlining relies on (#645), so a flipped purity flag must show
 /// up as a reviewable snapshot diff, not a silent behavior change.
 pub fn metadata_snapshot_json() -> Value {
     let mut classes: Vec<Value> = Vec::new();
@@ -113,7 +113,7 @@ pub fn metadata_snapshot_json() -> Value {
                     "category": method.category,
                     "params": params,
                     "return_type": method.return_type.map(|r| json!(r.type_info.type_name)),
-                    "method_type": format!("{:?}", method.method_type),
+                    "flags": json!({ "side_effect_free": method.flags.side_effect_free, "deterministic": method.flags.deterministic }),
                 })
             })
             .collect();
@@ -158,7 +158,7 @@ mod tests {
     }
 
     /// Snapshot entries carry the fields downstream discovery needs --
-    /// including the load-bearing method_type purity tag (#645).
+    /// including the load-bearing purity flags (#645).
     #[test]
     fn snapshot_entries_are_fully_populated() {
         let snapshot = metadata_snapshot_json();
@@ -166,11 +166,9 @@ mod tests {
             assert!(class["name"].as_str().is_some());
             for method in class["methods"].as_array().unwrap() {
                 assert!(
-                    matches!(
-                        method["method_type"].as_str(),
-                        Some("Pure") | Some("Fn") | Some("ControlFlow")
-                    ),
-                    "method {} of {} lacks a valid method_type tag",
+                    method["flags"]["side_effect_free"].is_boolean()
+                        && method["flags"]["deterministic"].is_boolean(),
+                    "method {} of {} lacks purity flags",
                     method["name"],
                     class["name"]
                 );

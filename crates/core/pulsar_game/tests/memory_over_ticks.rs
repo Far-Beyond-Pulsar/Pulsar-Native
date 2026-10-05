@@ -194,7 +194,7 @@ fn import(name: &str, params: Vec<Type>, ret: Type) -> Import {
 }
 
 fn var(name: &str, ty: Type) -> Variable {
-    Variable { name: name.into(), ty, default: None }
+    Variable { name: name.into(), ty, default: None, id: None }
 }
 
 /// `tick(dt)`: `total += dt; label = "t=" + to_str(total)` (a fresh string

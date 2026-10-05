@@ -40,9 +40,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::Type;
 
-/// Bumped on any incompatible change to the format. Version 2 added
+/// Bumped on any incompatible change to the format. Version 3 added
+/// [`Constant::Value`], [`Variable::id`] and [`Module::class_version`];
+/// version 2 added
 /// [`Module::events`] and [`Module::subscriptions`].
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 4;
 
 /// The oldest format version this VM still reads. Version 1 modules have
 /// no events or subscriptions (both default to empty).
@@ -94,6 +96,15 @@ pub struct Module {
     /// Event handlers, subscribed per instance.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subscriptions: Vec<Subscription>,
+    /// The class's schema version, independent of [`FORMAT_VERSION`]: bumped
+    /// by the language frontend when the class's state layout changes in a
+    /// way a `migrate` function should handle. See [`crate::migrate`].
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub class_version: u32,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }
 
 impl Module {
@@ -107,6 +118,7 @@ impl Module {
             functions: Vec::new(),
             events: Vec::new(),
             subscriptions: Vec::new(),
+            class_version: 0,
         }
     }
 
@@ -140,7 +152,10 @@ impl Module {
         }
         let found = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
         if found != FORMAT_VERSION {
-            return Err(ModuleDecodeError::UnsupportedVersion { found, expected: FORMAT_VERSION });
+            return Err(ModuleDecodeError::UnsupportedVersion {
+                found,
+                expected: FORMAT_VERSION,
+            });
         }
         let (module, read): (Self, usize) =
             bincode::decode_from_slice(&bytes[BINARY_HEADER_LEN..], bincode_config())
@@ -188,7 +203,11 @@ impl Module {
                 Some(pc) => function.location(pc),
                 None => function.first_location(),
             };
-            Some(ErrorSite { function: function.name.clone(), pc, location: location.cloned() })
+            Some(ErrorSite {
+                function: function.name.clone(),
+                pc,
+                location: location.cloned(),
+            })
         };
         match error {
             LinkError::Verify(verify) => at_function(verify.function.as_deref()?, verify.pc),
@@ -208,11 +227,30 @@ impl Module {
                     })
                 })
             }
+            LinkError::UnsupportedOperation { function, pc, .. } => at_function(function, Some(*pc)),
             LinkError::HandlerMismatch { handler, .. } => at_function(handler, None),
             LinkError::UnknownEvent { event } => {
-                let subscription = self.subscriptions.iter().find(|s| s.event.to_string() == *event)?;
+                let subscription = self
+                    .subscriptions
+                    .iter()
+                    .find(|s| s.event.to_string() == *event)?;
                 let function = self.functions.get(subscription.handler as usize)?;
                 at_function(&function.name, None)
+            }
+            LinkError::BadConstant { ty, json, .. } => {
+                let index = self.constants.iter().position(
+                    |c| matches!(c, Constant::Value { ty: t, json: j } if t == ty && j == json),
+                )? as u32;
+                self.functions.iter().find_map(|function| {
+                    let pc = function.code.iter().position(
+                        |instr| matches!(instr, Instr::Const { index: i, .. } if *i == index),
+                    )?;
+                    Some(ErrorSite {
+                        function: function.name.clone(),
+                        pc: Some(pc),
+                        location: function.location(pc).cloned(),
+                    })
+                })
             }
             LinkError::UnknownType { .. } => None,
         }
@@ -261,7 +299,10 @@ pub struct EventField {
 
 impl EventField {
     pub fn new(name: impl Into<String>, ty: Type) -> Self {
-        Self { name: name.into(), ty }
+        Self {
+            name: name.into(),
+            ty,
+        }
     }
 }
 
@@ -284,7 +325,9 @@ impl std::fmt::Display for EventRef {
 }
 
 /// The channel a subscription listens on, relative to the instance.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode,
+)]
 pub enum SubscriptionScope {
     /// The entity channel of the entity the instance is bound to: events
     /// about or sent to this object only. Not subscribed for an unbound
@@ -315,6 +358,14 @@ pub enum Constant {
     Int(i64),
     Float(f64),
     Str(String),
+    /// A literal of a registered value type (e.g. a `Vec3` default). `json`
+    /// is the type's registered text form; it is decoded once, at link time,
+    /// and every use clones the decoded value, so no instance can mutate the
+    /// pool or another instance.
+    Value {
+        ty: String,
+        json: String,
+    },
 }
 
 impl Constant {
@@ -324,6 +375,7 @@ impl Constant {
             Self::Int(_) => Type::Int,
             Self::Float(_) => Type::Float,
             Self::Str(_) => Type::Str,
+            Self::Value { ty, .. } => Type::Object(ty.clone()),
         }
     }
 }
@@ -344,7 +396,10 @@ pub struct Signature {
 
 impl Signature {
     pub fn new(params: impl IntoIterator<Item = Param>, ret: Type) -> Self {
-        Self { params: params.into_iter().collect(), ret }
+        Self {
+            params: params.into_iter().collect(),
+            ret,
+        }
     }
 }
 
@@ -391,6 +446,11 @@ pub struct Variable {
     /// Initial value; `None` means the type's default.
     #[serde(default)]
     pub default: Option<Constant>,
+    /// Stable identity, kept by the frontend across renames. State carries
+    /// over a reload by id when both versions have one, by name otherwise
+    /// (see [`crate::migrate`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Encode, Decode)]
@@ -446,7 +506,12 @@ pub struct SourceLoc {
 impl SourceLoc {
     /// A location naming graph node `node` in `file`.
     pub fn node(file: impl Into<String>, node: impl Into<String>) -> Self {
-        Self { file: file.into(), node: node.into(), line: None, column: None }
+        Self {
+            file: file.into(),
+            node: node.into(),
+            line: None,
+            column: None,
+        }
     }
 }
 
@@ -476,6 +541,19 @@ impl std::fmt::Display for SourceLoc {
 pub struct DebugInfo {
     #[serde(default)]
     pub ranges: Vec<DebugRange>,
+    /// Register values produced for output pins, when the frontend has pin
+    /// metadata (Blueprints). Other languages may leave this empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub register_sources: Vec<RegisterSource>,
+}
+
+/// Source pin represented by a bytecode register. Opaque to the VM so each
+/// language can define its own node and pin identifiers.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Encode, Decode)]
+pub struct RegisterSource {
+    pub register: Reg,
+    pub node: String,
+    pub pin: String,
 }
 
 /// Instructions `start..end` came from `loc`.
@@ -492,7 +570,10 @@ impl DebugInfo {
     pub fn location(&self, pc: usize) -> Option<&SourceLoc> {
         let pc = u32::try_from(pc).ok()?;
         let index = self.ranges.partition_point(|r| r.end <= pc);
-        self.ranges.get(index).filter(|r| r.start <= pc).map(|r| &r.loc)
+        self.ranges
+            .get(index)
+            .filter(|r| r.start <= pc)
+            .map(|r| &r.loc)
     }
 
     /// Record that instruction `pc` came from `loc`. Pcs must be recorded
@@ -508,10 +589,51 @@ impl DebugInfo {
                 return;
             }
         }
-        self.ranges.push(DebugRange { start: pc, end: pc + 1, loc: loc.clone() });
+        self.ranges.push(DebugRange {
+            start: pc,
+            end: pc + 1,
+            loc: loc.clone(),
+        });
     }
 }
 
+/// What a [`Instr::Collection`] does. Types are checked by the verifier;
+/// index and key failures are runtime errors.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
+pub enum CollOp {
+    /// `(item..) -> list<T>`; `dst`'s type gives `T`.
+    MakeList,
+    /// `list<T> -> int`.
+    ListLen,
+    /// `(list<T>, int) -> T`.
+    ListGet,
+    /// `(list<T>, int, T) -> list<T>`: replace an element.
+    ListSet,
+    /// `(list<T>, T) -> list<T>`.
+    ListPush,
+    /// `(list<T>, int, T) -> list<T>`: insert before an index (`len` appends).
+    ListInsert,
+    /// `(list<T>, int) -> list<T>`.
+    ListRemove,
+    /// `(key, value, key, value..) -> map<K, V>`.
+    MakeMap,
+    /// `map<K, V> -> int`.
+    MapLen,
+    /// `(map<K, V>, K) -> V`.
+    MapGet,
+    /// `(map<K, V>, K) -> bool`.
+    MapHas,
+    /// `(map<K, V>, K, V) -> map<K, V>`.
+    MapSet,
+    /// `(map<K, V>, K) -> map<K, V>`: removing an absent key changes nothing.
+    MapRemove,
+    /// `map<K, V> -> list<K>`, in key order.
+    MapKeys,
+    /// `(item..) -> (T0, T1..)`.
+    MakeTuple,
+    /// `(T0, T1..) -> Ti`.
+    TupleGet(u32),
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Encode, Decode)]
 pub enum UnOp {
     /// `int -> int`, `float -> float`.
@@ -553,33 +675,88 @@ pub enum BinOp {
 
 impl BinOp {
     pub fn is_comparison(self) -> bool {
-        matches!(self, Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge)
+        matches!(
+            self,
+            Self::Eq | Self::Ne | Self::Lt | Self::Le | Self::Gt | Self::Ge
+        )
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Encode, Decode)]
 pub enum Instr {
     /// `dst = constants[index]`.
-    Const { dst: Reg, index: u32 },
-    Move { dst: Reg, src: Reg },
-    Unary { op: UnOp, dst: Reg, src: Reg },
-    Binary { op: BinOp, dst: Reg, a: Reg, b: Reg },
-    Jump { target: u32 },
-    Branch { cond: Reg, then: u32, otherwise: u32 },
+    Const {
+        dst: Reg,
+        index: u32,
+    },
+    Move {
+        dst: Reg,
+        src: Reg,
+    },
+    Unary {
+        op: UnOp,
+        dst: Reg,
+        src: Reg,
+    },
+    Binary {
+        op: BinOp,
+        dst: Reg,
+        a: Reg,
+        b: Reg,
+    },
+    Jump {
+        target: u32,
+    },
+    Branch {
+        cond: Reg,
+        then: u32,
+        otherwise: u32,
+    },
     /// Call module function `func`; `dst` receives the result.
-    Call { func: u32, args: Vec<Reg>, dst: Option<Reg> },
+    Call {
+        func: u32,
+        args: Vec<Reg>,
+        dst: Option<Reg>,
+    },
     /// Call `imports[import]`. `inout` arguments are written back.
-    CallNative { import: u32, args: Vec<Reg>, dst: Option<Reg> },
-    LoadVar { dst: Reg, var: u32 },
-    StoreVar { var: u32, src: Reg },
+    CallNative {
+        import: u32,
+        args: Vec<Reg>,
+        dst: Option<Reg>,
+    },
+    LoadVar {
+        dst: Reg,
+        var: u32,
+    },
+    StoreVar {
+        var: u32,
+        src: Reg,
+    },
     /// The entity this instance is bound to.
-    SelfEntity { dst: Reg },
+    SelfEntity {
+        dst: Reg,
+    },
     /// Game time in seconds (`float`), as the host reports it.
-    Now { dst: Reg },
+    Now {
+        dst: Reg,
+    },
     /// Suspend this call for `seconds` (`float`) of game time. The host
     /// resumes it later with [`Vm::resume`](crate::Vm::resume); execution
     /// continues at the next instruction with every frame and register as
     /// it was.
-    Wait { seconds: Reg },
-    Return { value: Option<Reg> },
+    Wait {
+        seconds: Reg,
+    },
+    Return {
+        value: Option<Reg>,
+    },
+    /// A collection operation: `dst = op(args)`. Collections have value
+    /// semantics, so an operation that changes one returns the changed
+    /// collection; storage is shared until a copy is written to, and a
+    /// result written back over its own first argument edits in place.
+    Collection {
+        op: CollOp,
+        dst: Reg,
+        args: Vec<Reg>,
+    },
 }

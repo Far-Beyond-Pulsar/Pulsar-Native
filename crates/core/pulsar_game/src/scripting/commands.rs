@@ -116,12 +116,16 @@ fn spawn(host: &mut Host<'_>, parent: Option<Entity>, class: String, position: [
         return Entity::DANGLING;
     }
     if let Some(parent) = parent {
-        if parent == Entity::DANGLING || !host.world.is_alive(parent) {
+        if parent == Entity::DANGLING || !host.world().is_alive(parent) {
             tracing::warn!(class = %class, "world::spawn_child: the parent is not live; nothing spawned");
             return Entity::DANGLING;
         }
     }
-    let entity = host.world.spawn();
+    let Ok(world) = host.world_mut() else {
+        tracing::warn!(class = %class, "world::spawn needs write access; nothing spawned");
+        return Entity::DANGLING;
+    };
+    let entity = world.spawn();
     queue(WorldCommand::Spawn { entity, class, parent, position });
     entity
 }

@@ -4,9 +4,10 @@
 use std::sync::Arc;
 
 use crate::capability::CapabilityPolicy;
+use crate::compiled::CompiledCode;
 use crate::error::LinkError;
-use crate::events::{check_handler, EventCatalog, EventSignature};
-use crate::module::{Constant, EventRef, Module, SubscriptionScope};
+use crate::events::{EventCatalog, EventSignature, check_handler};
+use crate::module::{BinOp, Constant, EventRef, Instr, Module, SubscriptionScope, UnOp};
 use crate::native::{NativeFn, NativeRegistry};
 use crate::types::{Type, TypeRegistry};
 use crate::value::Value;
@@ -23,6 +24,9 @@ pub struct Program {
     variables: Vec<Value>,
     subscriptions: Vec<LinkedSubscription>,
     generation: u64,
+    /// Generated code that runs the functions instead of the interpreter's
+    /// instruction loop (see [`crate::compiled`]).
+    pub(crate) compiled: Option<Arc<dyn CompiledCode>>,
 }
 
 /// A module subscription after linking: the handler checked against the
@@ -86,63 +90,92 @@ impl Program {
         policy: &CapabilityPolicy,
     ) -> Result<Self, LinkError> {
         verify(&module)?;
+        Self::link_inner(module, registry, events, policy, None)
+    }
+
+    /// Link a module whose functions are run by generated `code` instead of
+    /// the interpreter (see [`crate::compiled`]). `module` carries everything
+    /// but the instruction streams, which may be empty: the generator
+    /// verified the full module when it produced `code`, so this does not
+    /// verify it again. Imports, constants, variables and subscriptions are
+    /// linked exactly as [`link_with_policy`](Self::link_with_policy) does.
+    pub fn link_compiled(
+        module: Arc<Module>,
+        code: Arc<dyn CompiledCode>,
+        registry: &NativeRegistry,
+        events: Option<&dyn EventCatalog>,
+        policy: &CapabilityPolicy,
+    ) -> Result<Self, LinkError> {
+        Self::link_inner(module, registry, events, policy, Some(code))
+    }
+
+    fn link_inner(
+        module: Arc<Module>,
+        registry: &NativeRegistry,
+        events: Option<&dyn EventCatalog>,
+        policy: &CapabilityPolicy,
+        compiled: Option<Arc<dyn CompiledCode>>,
+    ) -> Result<Self, LinkError> {
         let types = TypeRegistry::global();
         let default = |ty: &Type| {
-            types.default_value(ty).ok_or_else(|| LinkError::UnknownType { name: ty.to_string() })
+            types
+                .default_value(ty)
+                .ok_or_else(|| LinkError::UnknownType {
+                    name: ty.to_string(),
+                })
         };
 
-        let mut natives = Vec::with_capacity(module.imports.len());
-        for import in &module.imports {
-            for param in &import.sig.params {
-                default(&param.ty)?;
-            }
-            default(&import.sig.ret)?;
-            let native = match registry.get(&import.name) {
-                Some(native) => Arc::clone(native),
-                None => match registry.poly(crate::native::poly_base_name(&import.name)) {
-                    Some(poly) => Arc::new(
-                        poly.instantiate(&import.sig)
-                            .map_err(|message| LinkError::PolyNative { name: import.name.clone(), message })?,
-                    ),
-                    None => return Err(LinkError::MissingNative { name: import.name.clone() }),
-                },
-            };
-            if !policy.allows(native.capability()) {
-                return Err(LinkError::CapabilityDenied {
-                    name: import.name.clone(),
-                    capability: native.capability().unwrap_or_default().to_owned(),
-                });
-            }
-            if native.sig != import.sig {
-                return Err(LinkError::SignatureMismatch {
-                    name: import.name.clone(),
-                    expected: Box::new(import.sig.clone()),
-                    found: Box::new(native.sig.clone()),
-                });
-            }
-            natives.push(native);
-        }
+        let natives = resolve_imports(&module, registry, policy)?;
+        check_object_operations(&module)?;
 
         let registers = module
             .functions
             .iter()
             .map(|f| {
                 default(&f.ret)?;
-                f.registers.iter().map(default).collect::<Result<Vec<_>, _>>()
+                f.registers
+                    .iter()
+                    .map(default)
+                    .collect::<Result<Vec<_>, _>>()
             })
             .collect::<Result<Vec<_>, _>>()?;
         let variables = module
             .variables
             .iter()
             .map(|v| match &v.default {
-                Some(constant) => Ok(constant_value(constant)),
+                Some(constant) => constant_value(constant),
                 None => default(&v.ty),
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let constants = module.constants.iter().map(constant_value).collect();
+        let constants = module
+            .constants
+            .iter()
+            .map(constant_value)
+            .collect::<Result<Vec<_>, _>>()?;
         let subscriptions = link_subscriptions(&module, events)?;
 
-        Ok(Self { module, natives, constants, registers, variables, subscriptions, generation: registry.generation() })
+        Ok(Self {
+            module,
+            natives,
+            constants,
+            registers,
+            variables,
+            subscriptions,
+            generation: registry.generation(),
+            compiled,
+        })
+    }
+
+    /// What running this program can do to the world: [`Access::Read`] if
+    /// every native it imports at most reads (or never touches) the world.
+    /// Such a program can run in a read-only host, concurrently with
+    /// others, under a shared lock; any other needs exclusive access.
+    pub fn access(&self) -> crate::native::Access {
+        if self.natives.iter().all(|native| native.access() == crate::native::Access::Read) {
+            crate::native::Access::Read
+        } else {
+            crate::native::Access::Write
+        }
     }
 
     /// The module's event subscriptions, checked.
@@ -162,12 +195,18 @@ impl Program {
 
     /// A fresh instance with every variable at its default.
     pub fn instantiate(&self) -> Instance {
-        Instance { module: Arc::clone(&self.module), vars: self.variables.clone() }
+        Instance {
+            module: Arc::clone(&self.module),
+            vars: self.variables.clone(),
+        }
     }
 
     /// An exported function by name.
     pub fn entry(&self, name: &str) -> Option<FuncId> {
-        self.module.function(name).filter(|(_, f)| f.exported).map(|(i, _)| FuncId(i))
+        self.module
+            .function(name)
+            .filter(|(_, f)| f.exported)
+            .map(|(i, _)| FuncId(i))
     }
 
     /// Index of variable `name`.
@@ -181,8 +220,17 @@ impl Program {
     }
 
     /// Set variable `index` of `instance`, if `value` has its type.
-    pub fn set_var(&self, instance: &mut Instance, index: usize, value: Value) -> Result<(), String> {
-        let var = self.module.variables.get(index).ok_or_else(|| format!("no variable {index}"))?;
+    pub fn set_var(
+        &self,
+        instance: &mut Instance,
+        index: usize,
+        value: Value,
+    ) -> Result<(), String> {
+        let var = self
+            .module
+            .variables
+            .get(index)
+            .ok_or_else(|| format!("no variable {index}"))?;
         let fits = match (&value, &var.ty) {
             (Value::Object(obj), Type::Object(name)) => obj.type_name() == name,
             (Value::Component(c), Type::Component(name)) => TypeRegistry::global()
@@ -191,20 +239,32 @@ impl Program {
             (value, ty) => value.fits(ty),
         };
         if !fits {
-            return Err(format!("`{}` is {}, got {}", var.name, var.ty, value.kind()));
+            return Err(format!(
+                "`{}` is {}, got {}",
+                var.name,
+                var.ty,
+                value.kind()
+            ));
         }
         instance.vars[index] = value;
         Ok(())
     }
 }
 
-fn link_subscriptions(module: &Module, events: Option<&dyn EventCatalog>) -> Result<Vec<LinkedSubscription>, LinkError> {
+fn link_subscriptions(
+    module: &Module,
+    events: Option<&dyn EventCatalog>,
+) -> Result<Vec<LinkedSubscription>, LinkError> {
     let mut linked = Vec::with_capacity(module.subscriptions.len());
     for subscription in &module.subscriptions {
         // The verifier checked the handler index.
         let handler = &module.functions[subscription.handler as usize];
         let declared = match &subscription.event {
-            EventRef::Name(name) => module.events.iter().find(|e| &e.name == name).map(EventSignature::from),
+            EventRef::Name(name) => module
+                .events
+                .iter()
+                .find(|e| &e.name == name)
+                .map(EventSignature::from),
             EventRef::Id(_) => None,
         };
         let known = events.and_then(|catalog| match &subscription.event {
@@ -215,27 +275,38 @@ fn link_subscriptions(module: &Module, events: Option<&dyn EventCatalog>) -> Res
             (Some(known), _) => Some(known),
             (None, Some(declared)) => Some(declared),
             (None, None) if events.is_some() => {
-                return Err(LinkError::UnknownEvent { event: subscription.event.to_string() })
+                return Err(LinkError::UnknownEvent {
+                    event: subscription.event.to_string(),
+                });
             }
             (None, None) => None,
         };
         if let Some(signature) = &signature {
-            check_handler(&handler.params, &signature.field_types()).map_err(|message| LinkError::HandlerMismatch {
-                event: signature.name.clone(),
-                handler: handler.name.clone(),
-                message,
+            check_handler(&handler.params, &signature.field_types()).map_err(|message| {
+                LinkError::HandlerMismatch {
+                    event: signature.name.clone(),
+                    handler: handler.name.clone(),
+                    message,
+                }
             })?;
         }
         linked.push(LinkedSubscription {
             event: subscription.event.clone(),
-            event_name: signature.as_ref().map(|s| s.name.clone()).or_else(|| match &subscription.event {
-                EventRef::Name(name) => Some(name.clone()),
-                EventRef::Id(_) => None,
-            }),
-            event_id: signature.as_ref().map(|s| s.id).filter(|id| *id != 0).or(match subscription.event {
-                EventRef::Id(id) => Some(id),
-                EventRef::Name(_) => None,
-            }),
+            event_name: signature
+                .as_ref()
+                .map(|s| s.name.clone())
+                .or_else(|| match &subscription.event {
+                    EventRef::Name(name) => Some(name.clone()),
+                    EventRef::Id(_) => None,
+                }),
+            event_id: signature
+                .as_ref()
+                .map(|s| s.id)
+                .filter(|id| *id != 0)
+                .or(match subscription.event {
+                    EventRef::Id(id) => Some(id),
+                    EventRef::Name(_) => None,
+                }),
             handler: FuncId(subscription.handler),
             scope: subscription.scope,
             params: handler.params.len(),
@@ -244,11 +315,135 @@ fn link_subscriptions(module: &Module, events: Option<&dyn EventCatalog>) -> Res
     Ok(linked)
 }
 
-fn constant_value(constant: &Constant) -> Value {
-    match constant {
+/// The runtime value of a constant. Value-type literals are decoded here,
+/// once per link; instances clone the result.
+fn constant_value(constant: &Constant) -> Result<Value, LinkError> {
+    Ok(match constant {
         Constant::Bool(b) => Value::Bool(*b),
         Constant::Int(i) => Value::Int(*i),
         Constant::Float(f) => Value::Float(*f),
         Constant::Str(s) => Value::Str(s.as_str().into()),
+        Constant::Value { ty, json } => {
+            TypeRegistry::global()
+                .decode_value(ty, json)
+                .map_err(|message| LinkError::BadConstant {
+                    ty: ty.clone(),
+                    json: json.clone(),
+                    message,
+                })?
+        }
+    })
+}
+
+/// Bind each of `module`'s imports to the native registered under its name,
+/// checking its signature and the link policy. Shared by [`Program::link`]
+/// and by code generated from a module, so both resolve and refuse imports
+/// identically.
+pub fn resolve_imports(
+    module: &Module,
+    registry: &NativeRegistry,
+    policy: &CapabilityPolicy,
+) -> Result<Vec<Arc<NativeFn>>, LinkError> {
+    let types = TypeRegistry::global();
+    let known = |ty: &Type| {
+        types
+            .default_value(ty)
+            .map(drop)
+            .ok_or_else(|| LinkError::UnknownType {
+                name: ty.to_string(),
+            })
+    };
+    let mut natives = Vec::with_capacity(module.imports.len());
+    for import in &module.imports {
+        for param in &import.sig.params {
+            known(&param.ty)?;
+        }
+        known(&import.sig.ret)?;
+        let native = match registry.get(&import.name) {
+            Some(native) => Arc::clone(native),
+            None => match registry.poly(crate::native::poly_base_name(&import.name)) {
+                Some(poly) => Arc::new(poly.instantiate(&import.sig).map_err(|message| {
+                    LinkError::PolyNative {
+                        name: import.name.clone(),
+                        message,
+                    }
+                })?),
+                None => match registry.generic(crate::native::poly_base_name(&import.name)) {
+                    Some(generic) => {
+                        Arc::new(generic.instantiate(&import.sig).map_err(|message| {
+                            LinkError::PolyNative {
+                                name: import.name.clone(),
+                                message,
+                            }
+                        })?)
+                    }
+                    None => {
+                        return Err(LinkError::MissingNative {
+                            name: import.name.clone(),
+                        });
+                    }
+                },
+            },
+        };
+        if !policy.allows(native.capability()) {
+            return Err(LinkError::CapabilityDenied {
+                name: import.name.clone(),
+                capability: native.capability().unwrap_or_default().to_owned(),
+            });
+        }
+        if native.sig != import.sig {
+            return Err(LinkError::SignatureMismatch {
+                name: import.name.clone(),
+                expected: Box::new(import.sig.clone()),
+                found: Box::new(native.sig.clone()),
+            });
+        }
+        natives.push(native);
     }
+    Ok(natives)
+}
+
+/// `==`, `!=` and string conversion need equality and display hooks for any
+/// value type they touch; the verifier knows types by name only, so this is
+/// checked here, where the registry is known. (Generated code links without
+/// its instructions; there a missing hook makes values unequal and prints
+/// the type's name.)
+fn check_object_operations(module: &Module) -> Result<(), LinkError> {
+    let types = TypeRegistry::global();
+    for function in &module.functions {
+        for (pc, instr) in function.code.iter().enumerate() {
+            let (what, ty, supported): (&str, &Type, fn(&TypeRegistry, &Type) -> bool) = match instr
+            {
+                Instr::Binary {
+                    op: BinOp::Eq | BinOp::Ne,
+                    a,
+                    ..
+                } => (
+                    "compares",
+                    &function.registers[usize::from(*a)],
+                    TypeRegistry::supports_eq,
+                ),
+                Instr::Unary {
+                    op: UnOp::ToStr,
+                    src,
+                    ..
+                } => (
+                    "converts to a string",
+                    &function.registers[usize::from(*src)],
+                    TypeRegistry::supports_display,
+                ),
+                _ => continue,
+            };
+            if !supported(types, ty) {
+                return Err(LinkError::UnsupportedOperation {
+                    function: function.name.clone(),
+                    pc,
+                    message: format!(
+                        "this {what} a `{ty}`, which has no such operation registered"
+                    ),
+                });
+            }
+        }
+    }
+    Ok(())
 }

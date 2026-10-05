@@ -66,17 +66,17 @@ impl PropertiesPanel {
 
                         // Render new ObjectHeaderSection if available (new binding system)
                         if let Some(ref section) = object_header_section {
-                            flex = flex.child(section.clone());
+                            flex = flex.child(Self::cached_section(section));
                         }
 
                         // Render new TransformSection if available (new binding system)
                         if let Some(ref section) = transform_section {
-                            flex = flex.child(section.clone());
+                            flex = flex.child(Self::cached_section(section));
                         }
 
                         // Reflection-backed object type properties — always present.
                         if let Some(ref section) = object_type_fields_section {
-                            flex = flex.child(section.clone());
+                            flex = flex.child(Self::cached_section(section));
                         }
 
                         flex.into_any_element()
@@ -85,6 +85,18 @@ impl PropertiesPanel {
                     },
                 ),
             ))
+    }
+
+    /// A section as its own cached view whose height follows its content.
+    ///
+    /// Sections are the panel's invalidation boundaries: without them a hover,
+    /// a scroll tick or a gizmo-driven value push anywhere in the panel rebuilds
+    /// every section (thousands of elements), because the panel is the nearest
+    /// cached view. With them the panel rebuilds only its own few elements and
+    /// every clean section replays.
+    fn cached_section<V: Render>(section: &Entity<V>) -> AnyView {
+        AnyView::from(section.clone())
+            .cached_auto_height(StyleRefinement::default().w_full().flex_shrink_0())
     }
 
     fn render_header(

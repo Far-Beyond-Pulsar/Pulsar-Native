@@ -13,8 +13,10 @@ path = "src/main.rs"
 # compile Blueprint graphs headlessly (ScriptLanguage::compile_project,
 # #879). Without it, classes must already have compiled modules (the
 # editor writes them on save); they are still verified and linked.
-default = ["blueprint"]
+default = ["blueprint", "typescript"]
 blueprint = ["dep:blueprint_editor_plugin", "dep:plugin_editor_api"]
+# Likewise for TypeScript classes (`src/classes/<Class>/class.ts`).
+typescript = ["dep:plugin_typescript", "dep:plugin_editor_api"]
 
 [dependencies]
 pulsar_content = { workspace = true }
@@ -37,6 +39,7 @@ thiserror = { workspace = true }
 
 blueprint_editor_plugin = { path = "../../../plugins/vendor/blueprint_editor", features = ["builtin"], optional = true }
 plugin_editor_api = { workspace = true, optional = true }
+plugin_typescript = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -10,3 +10,4 @@ as git deps with local reference copies.
 | `toolbelt/` | No (git) | Tool registry and macros (has its own workspace) |
 | `psgc/` | No (git) | Pulsar Shader Graph Compiler (has its own workspace) |
 | `pulsar-config/` | Yes | High-performance config management |
+

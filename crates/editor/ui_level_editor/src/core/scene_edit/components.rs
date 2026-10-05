@@ -642,7 +642,7 @@ pub fn update_live_component_property(
             // refuse the edit rather than guess.
             return Err(new_value);
         }
-        let Some(instance) = pulsar_world_registry::get_world_component_as_engine_class_mut(
+        let Some(mut instance) = pulsar_world_registry::get_world_component_as_engine_class_mut(
             class_name,
             &mut scratch,
             scratch_entity,
@@ -651,7 +651,7 @@ pub fn update_live_component_property(
             // (plugin-only). Hand the value back untouched.
             return Err(new_value);
         };
-        (prop_meta.setter)(instance, new_value);
+        (prop_meta.setter)(&mut *instance, new_value);
         let Ok(value_json) = instance.to_json() else {
             return Err(Box::new(()));
         };
@@ -666,14 +666,18 @@ pub fn update_live_component_property(
     let Some(entity) = world.entity_for(object_id) else {
         return Err(new_value);
     };
-    let Some(instance) =
-        pulsar_world_registry::get_world_component_as_engine_class_mut(class_name, world, entity)
-    else {
-        return Err(new_value);
+    // The guard reports the write to SceneDB when it drops, so scope it: the
+    // edit must be finished before anything else touches `world`.
+    let persisted_json = {
+        let Some(mut instance) = pulsar_world_registry::get_world_component_as_engine_class_mut(
+            class_name, world, entity,
+        ) else {
+            return Err(new_value);
+        };
+        (setter)(&mut *instance, new_value);
+        // Capture the component's full current shape while `instance` is still borrowed.
+        instance.to_json().ok()
     };
-    (setter)(instance, new_value);
-    // Capture the component's full current shape while `instance` is still borrowed.
-    let persisted_json = instance.to_json().ok();
     record_property_change(object_id, class_name, prop_name);
 
     // A live migrated class is deliberately not written back: the world is its

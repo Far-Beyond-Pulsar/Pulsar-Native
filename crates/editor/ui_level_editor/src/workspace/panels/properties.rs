@@ -300,3 +300,7 @@ impl Panel for PropertiesPanelWrapper {
         "Properties".into_any_element()
     }
 }
+
+#[cfg(test)]
+#[path = "properties_perf_tests.rs"]
+mod perf_tests;

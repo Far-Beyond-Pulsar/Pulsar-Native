@@ -7,9 +7,9 @@
 
 mod handlers;
 pub(crate) mod pie;
-pub(super) use pie::{begin_pie, end_pie};
 mod camera;
 mod lifecycle;
+mod playback_host;
 pub(crate) mod spline;
 mod workspace_sync;
 
@@ -70,6 +70,9 @@ pub struct LevelEditorPanel {
     // Play In Editor (issue #243): the Game tab is opened when the game starts
     // and removed on stop. `game_panel` is the live tab entity, if open.
     game_panel: Option<Entity<crate::ui::viewport::game_viewport::GameViewport>>,
+
+    /// Subscribes this editor to playback commands; see `playback_host`.
+    playback_host: playback_host::PlaybackHostBinding,
 
     /// Last `(building, active, pending_start, has_error)` tuple that
     /// [`Self::sync_game_tab`] acted on. Render runs several times per second
@@ -244,11 +247,7 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_scale_tool))
             // Toolbar actions
             .on_action(cx.listener(Self::on_set_tool_mode))
-            .on_action(cx.listener(Self::on_set_time_scale))
-            .on_action(cx.listener(Self::on_set_multiplayer_mode))
-            .on_action(cx.listener(Self::on_set_build_config))
-            .on_action(cx.listener(Self::on_set_target_platform))
-            .on_action(cx.listener(Self::on_set_build_mode))
+            .on_action(cx.listener(Self::on_set_transform_snap))
             // Object operations
             .on_action(cx.listener(Self::on_add_object))
             .on_action(cx.listener(Self::on_add_object_of_type))

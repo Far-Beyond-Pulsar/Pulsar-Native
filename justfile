@@ -32,6 +32,12 @@ run:
 test:
     cargo test --workspace
 
+# Interpreted vs generated Rust: both profiles, since overflow and wrapping
+# behaviour is where a debug and a release build could disagree
+conformance:
+    cargo test -p pulsar_script_conformance
+    cargo test -p pulsar_script_conformance --release
+
 # Test a specific crate: just test-crate <name>
 test-crate name:
     cargo test -p {{name}}
@@ -113,3 +119,21 @@ exe := if os() == "windows" { ".exe" } else { "" }
 # Build the engine, then launch it under the SceneDB inspector (live CPU + GPU view)
 inspect: build
     cargo run --release --manifest-path {{scenedb_dir}}/crates/scenedb_inspector/Cargo.toml -- target/debug/{{project}}{{exe}}
+
+# The editor without the Blueprint plugin (a plugin like any other)
+check-no-blueprint:
+    cargo check -p pulsar_engine --no-default-features
+
+# Run tsc over the generated TypeScript declarations and sample classes (needs Node)
+check-typescript-declarations:
+    cargo test -p pulsar_script_ts --test tsc -- --ignored
+
+# ── Plugin pins (#847) ────────────────────────────────────────────────────────
+# Rewrite every Pulsar-Native `rev = ...` in plugins/vendor to REV (default
+# HEAD) and refresh the plugins' lockfiles; `check` is what CI runs.
+bump-plugin-pins rev="HEAD":
+    bash scripts/plugin-pins.sh bump {{rev}}
+
+check-plugin-pins:
+    bash scripts/plugin-pins.sh check
+

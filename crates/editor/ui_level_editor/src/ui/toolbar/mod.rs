@@ -12,25 +12,26 @@ use ui::{
 };
 
 mod actions;
-mod build;
 mod feature_toggles;
+mod global_toolbar;
+mod level_editor_menus;
 mod mode_indicator;
-mod multiplayer_dropdown;
+mod multiplayer_panel;
 mod playback_controls;
+mod snap_controls;
 mod time_scale_dropdown;
 mod tool_mode_dropdown;
 mod view;
 
 pub use actions::*;
-use build::build_core::BuildCoreButton;
-use build::build_dropdowns::BuildDropdowns;
 use feature_toggles::FeatureToggles;
 use mode_indicator::ModeIndicator;
-use multiplayer_dropdown::MultiplayerDropdown;
-use playback_controls::PlaybackControls;
-use time_scale_dropdown::TimeScaleDropdown;
 use tool_mode_dropdown::ToolModeDropdown;
+pub use global_toolbar::{GLOBAL_TOOLBAR_HEIGHT, GlobalToolbarView};
 pub use view::ToolbarView;
+use level_editor_menus::LevelEditorMenus;
+use snap_controls::TransformSnapControls;
+use snap_controls::SnapPanel;
 
 use crate::ui::mode_widgets::{active_mode_widgets, render_mode_widgets};
 use crate::LevelEditorState;
@@ -64,6 +65,7 @@ impl ToolbarPanel {
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+        snap_panels: &[Entity<SnapPanel>; 3],
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -79,18 +81,17 @@ impl ToolbarPanel {
 
         h_flex()
             .w_full()
-            .h(px(48.0))
-            .px_4()
-            .gap_3()
+            .h(px(36.0))
+            .px_2()
+            .gap_2()
             .items_center()
-            .bg(theme.sidebar.opacity(0.98))
-            .border_b_1()
-            .border_color(theme.border.opacity(0.8))
-            .shadow_sm()
+            .bg(theme.background)
             .child({
                 let _scope = gpui::render_stats::scope("toolbar: tool mode dropdown");
                 ToolModeDropdown::render(state, state_arc.clone(), cx)
             })
+            .child(LevelEditorMenus::render())
+            .child(TransformSnapControls::render(snap_panels, state))
             .child(self.render_separator(cx))
             .when(has_mode_controls, |el| {
                 el.child(render_mode_widgets(
@@ -102,26 +103,6 @@ impl ToolbarPanel {
                 .child(self.render_separator(cx))
             })
             .child({
-                let _scope = gpui::render_stats::scope("toolbar: playback controls");
-                PlaybackControls::render(state, state_arc.clone(), cx)
-            })
-            .child(self.render_separator(cx))
-            .child({
-                let _scope = gpui::render_stats::scope("toolbar: time scale dropdown");
-                TimeScaleDropdown::render(state, state_arc.clone(), cx)
-            })
-            .child(self.render_separator(cx))
-            .child({
-                let _scope = gpui::render_stats::scope("toolbar: multiplayer dropdown");
-                MultiplayerDropdown::render(state, state_arc.clone(), cx)
-            })
-            .child(self.render_separator(cx))
-            .child({
-                let _scope = gpui::render_stats::scope("toolbar: build dropdowns");
-                BuildDropdowns::render(state, state_arc.clone(), cx)
-            })
-            .child(self.render_separator(cx))
-            .child({
                 let _scope = gpui::render_stats::scope("toolbar: feature toggles");
                 FeatureToggles::render(state, state_arc.clone(), gpu_engine.clone(), cx)
             })
@@ -129,11 +110,6 @@ impl ToolbarPanel {
             .child({
                 let _scope = gpui::render_stats::scope("toolbar: mode indicator");
                 ModeIndicator::render(state, cx)
-            })
-            .child(self.render_separator(cx))
-            .child({
-                let _scope = gpui::render_stats::scope("toolbar: build core");
-                BuildCoreButton::render(state, state_arc.clone(), cx)
             })
             .child(self.render_separator(cx))
             .child({

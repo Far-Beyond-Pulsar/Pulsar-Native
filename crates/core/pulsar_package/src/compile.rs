@@ -89,6 +89,12 @@ pub fn compile_project(project: &Path, settings: &ProjectSettings) -> CompileOut
                         .into(),
                     Some(graph),
                 ));
+            } else if entry.dir.join("class.ts").is_file() {
+                output.problems.push(problem(
+                    "has TypeScript source but no compiled module; build this tool with the `typescript` feature to compile it here"
+                        .into(),
+                    Some(entry.dir.join("class.ts")),
+                ));
             }
             modules.push((entry.clone(), None));
             continue;
@@ -164,11 +170,17 @@ fn is_older(a: &Path, b: &Path) -> bool {
     matches!((modified(a), modified(b)), (Some(a), Some(b)) if a < b)
 }
 
+// The languages linked into this tool: the features link the crates, and each
+// registers itself (`plugin_editor_api::LinkedScriptLanguage`), so this names
+// none of them and finds exactly the ids and compilers the editor uses.
 #[cfg(feature = "blueprint")]
+use blueprint_editor_plugin as _;
+#[cfg(feature = "typescript")]
+use plugin_typescript as _;
+
+#[cfg(any(feature = "blueprint", feature = "typescript"))]
 fn run_languages(project: &Path, natives: &pulsar_script_vm::NativeRegistry, output: &mut CompileOutput) {
-    use plugin_editor_api::ScriptLanguage;
-    let languages: Vec<std::sync::Arc<dyn ScriptLanguage>> = vec![blueprint_editor_plugin::script_language()];
-    for language in languages {
+    for language in plugin_editor_api::linked_script_languages() {
         tracing::info!(language = language.display_name(), "Compiling scripts");
         for diagnostic in language.compile_project(project, natives) {
             output.problems.push(ScriptProblem {
@@ -185,10 +197,10 @@ fn run_languages(project: &Path, natives: &pulsar_script_vm::NativeRegistry, out
     }
 }
 
-#[cfg(not(feature = "blueprint"))]
+#[cfg(not(any(feature = "blueprint", feature = "typescript")))]
 fn run_languages(_project: &Path, _natives: &pulsar_script_vm::NativeRegistry, _output: &mut CompileOutput) {
     tracing::warn!(
-        "No scripting language compilers are linked into this build of the packager (feature `blueprint`); \
+        "No scripting language compilers are linked into this build of the packager (features `blueprint`, `typescript`); \
          using the classes' existing compiled modules"
     );
 }

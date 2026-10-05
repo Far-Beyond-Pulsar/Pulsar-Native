@@ -1,5 +1,4 @@
 use gpui::*;
-use std::sync::Arc;
 use ui::{
     ActiveTheme, IconName, Sizable,
     button::{Button, ButtonVariants as _},
@@ -7,22 +6,20 @@ use ui::{
 };
 
 use super::actions::SetTimeScale;
-use crate::state::LevelEditorState;
 
 /// Time scale dropdown - Polished, professional simulation speed control
 pub struct TimeScaleDropdown;
 
 impl TimeScaleDropdown {
     pub fn render<V>(
-        state: &LevelEditorState,
-        _state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        state: &engine_state::playback::PlaybackState,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let theme = cx.theme();
-        let time_scale = state.play.time_scale;
+        let time_scale = state.time_scale;
 
         ui::h_flex()
             .gap_2()

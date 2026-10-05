@@ -8,7 +8,7 @@ use gpui::{
 use rust_i18n::t;
 use std::path::PathBuf;
 use ui::{
-    notification::Notification, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, Root,
+    notification::Notification, h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, Root,
     StyledExt as _,
 };
 use ui_common::menu::{
@@ -31,6 +31,7 @@ pub struct PulsarRoot {
 
 struct EditorWindowShell {
     title_bar: Entity<AppTitleBar>,
+    global_toolbar: Entity<ui_level_editor::GlobalToolbarView>,
     content: AnyView,
     show_multiplayer: bool,
     friends_popover: Entity<ui_friends::FriendsPopover>,
@@ -45,6 +46,7 @@ impl EditorWindowShell {
         cx: &mut Context<Self>,
     ) -> Self {
         let title_bar = cx.new(|cx| AppTitleBar::new(title, window, cx));
+        let global_toolbar = cx.new(|cx| ui_level_editor::GlobalToolbarView::new(window, cx));
         let friends_popover = cx.new(|cx| ui_friends::FriendsPopover::new(window, cx));
 
         let subscriptions = vec![cx.subscribe_in(
@@ -63,6 +65,7 @@ impl EditorWindowShell {
 
         Self {
             title_bar,
+            global_toolbar,
             content,
             show_multiplayer: false,
             friends_popover,
@@ -256,10 +259,32 @@ impl Render for EditorWindowShell {
 
         div()
             .size_full()
+            .bg(cx.theme().background)
             .child(
                 v_flex()
                     .size_full()
-                    .child(self.title_bar.clone())
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .flex_shrink_0()
+                            .child(
+                                div()
+                                    .w(px(68.))
+                                    .h(px(68.))
+                                    .flex_shrink_0()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .children(self.title_bar.read(cx).app_menu_view(cx)),
+                            )
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(self.title_bar.clone())
+                                    .child(self.global_toolbar.clone()),
+                            ),
+                    )
                     .child(div().flex_1().overflow_hidden().child(self.content.clone())),
             )
             .when(self.show_multiplayer, |this| {
@@ -302,12 +327,20 @@ impl PulsarWindow for PulsarRoot {
         "PulsarEditorWindow"
     }
 
-    fn window_options(_path: &PathBuf) -> gpui::WindowOptions {
-        WindowConfig::editor()
+    fn window_options(path: &PathBuf) -> gpui::WindowOptions {
+        let mut options = WindowConfig::editor();
+        if let Some(bounds) = crate::app::saved_window_bounds(path) {
+            options.window_bounds = Some(bounds);
+        }
+        options
     }
 
-    fn window_profile(_path: &PathBuf) -> Option<window_manager::WindowProfile> {
-        Some(WindowConfig::editor_profile())
+    fn window_profile(path: &PathBuf) -> Option<window_manager::WindowProfile> {
+        // Reopen the window as the project last had it.
+        Some(
+            WindowConfig::editor_profile()
+                .with_window_bounds(crate::app::saved_window_bounds(path)),
+        )
     }
 
     fn window_request(path: &PathBuf) -> WindowRequest {

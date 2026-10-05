@@ -46,7 +46,6 @@ pulsar_events = { workspace = true }
 
 # Built-in plugins (local vendor clones). Plugins with a dynamic loader ABI must
 # disable those process-global exports when linked into the editor executable.
-blueprint_editor_plugin = { path = "../../../plugins/vendor/blueprint_editor", features = ["builtin"] }
 script_editor_plugin = { path = "../../../plugins/vendor/code_editor", features = ["builtin"] }
 plugin_matter = { path = "../../../plugins/vendor/matter_editor" }
 shader_editor_plugin = { path = "../../../plugins/vendor/shader_editor" }

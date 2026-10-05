@@ -39,7 +39,7 @@ use crate::state::LevelEditorState;
 use crate::ui::viewport::components::camera_selector::CameraSpeedControl;
 use components::camera_selector::render_camera_selector;
 use components::gpu_pipeline_overlay::render_gpu_pipeline_overlay;
-use components::performance_overlay::render_performance_overlay;
+use components::performance_overlay::{PerformanceOverlay, render_performance_overlay};
 use components::viewport_options::render_viewport_options;
 use input_state::InputState;
 use performance::*;
@@ -154,8 +154,16 @@ pub struct ViewportPanel {
     /// Element bounds for coordinate conversion
     element_bounds: Rc<RefCell<Option<Bounds<Pixels>>>>,
 
-    /// Performance metrics tracking
-    metrics: RefCell<PerformanceMetrics>,
+    /// Per-frame performance samples, read by the overlay's sections at their
+    /// own refresh rates.
+    stats: SharedStats,
+
+    /// The performance overlay, alive only while it is shown (so its refresh
+    /// timers run only then).
+    perf_overlay: RefCell<Option<Entity<PerformanceOverlay>>>,
+
+    /// The render pipeline overlay, alive only while it is shown.
+    gpu_overlay: RefCell<Option<Entity<components::gpu_pipeline_overlay::GpuPipelineOverlay>>>,
 
     /// Lock-free input state
     input_state: Arc<InputState>,
@@ -212,7 +220,9 @@ impl ViewportPanel {
             viewport_controls: ViewportControls::new(),
             render_enabled,
             element_bounds: Rc::new(RefCell::new(None)),
-            metrics: RefCell::new(PerformanceMetrics::new()),
+            stats: SharedStats::default(),
+            perf_overlay: RefCell::new(None),
+            gpu_overlay: RefCell::new(None),
             input_state,
             input_thread_spawned: Arc::new(AtomicBool::new(false)),
             input_thread_stop: Arc::new(AtomicBool::new(false)),
@@ -252,66 +262,8 @@ impl ViewportPanel {
             self.input_state.take_zoom_delta(),
         );
 
-        // Update performance metrics
-        self.update_performance_metrics(
-            snapshot.as_ref(),
-            state.overlays.state.show_performance_overlay,
-        );
-
         // Build the viewport UI
         self.build_viewport_ui(state, state_arc, snapshot, gpu_engine, cx)
-    }
-}
-
-impl ViewportPanel {
-    /// Update performance metrics from the per-frame engine snapshot.
-    fn update_performance_metrics(
-        &self,
-        snapshot: Option<&EngineFrameSnapshot>,
-        track_consistency: bool,
-    ) {
-        let mut metrics = self.metrics.borrow_mut();
-
-        if let Some(snapshot) = snapshot {
-            // Update FPS using the renderer metric when UI-side frame count is not yet available.
-            let display_fps = if snapshot.ui_fps > 0.0 {
-                snapshot.ui_fps
-            } else {
-                snapshot.helio_fps
-            };
-            metrics.add_fps(display_fps);
-
-            metrics.add_frame_time(snapshot.frame_time_ms);
-            metrics.add_memory(snapshot.memory_mb);
-            metrics.add_draw_calls(snapshot.draw_calls);
-            metrics.add_vertices(snapshot.vertices);
-
-            if track_consistency && metrics.fps_history.len() >= 10 {
-                // Calculate UI consistency (FPS variance)
-                let sample_size = metrics.fps_history.len().min(30);
-                let recent_fps: Vec<f64> = metrics
-                    .fps_history
-                    .iter()
-                    .rev()
-                    .take(sample_size)
-                    .map(|d| d.fps)
-                    .collect();
-
-                let mean = recent_fps.iter().sum::<f64>() / recent_fps.len() as f64;
-                let variance = recent_fps
-                    .iter()
-                    .map(|fps| (fps - mean).powi(2))
-                    .sum::<f64>()
-                    / recent_fps.len() as f64;
-                let std_dev = variance.sqrt();
-
-                metrics.add_ui_consistency(std_dev);
-            }
-        }
-
-        // Add input latency
-        let latency_us = self.input_state.get_input_latency_us();
-        metrics.add_input_latency(latency_us as f64 / 1000.0);
     }
 }
 

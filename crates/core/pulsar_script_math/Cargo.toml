@@ -1,0 +1,17 @@
+[package]
+name = "pulsar_script_math"
+version = "0.1.0"
+edition = "2021"
+description = "glam math types (Vec2/Vec3/Vec4/DVec3/Quat/Mat4) as script value types, with constructor, field and arithmetic natives. Linked by the editor and packaged games, never by the VM itself."
+
+[dependencies]
+pulsar_script_vm = { workspace = true }
+glam             = { workspace = true }
+serde_json       = { workspace = true }
+
+
+[dev-dependencies]
+pulsar_scenedb = { workspace = true }
+
+[lints]
+workspace = true

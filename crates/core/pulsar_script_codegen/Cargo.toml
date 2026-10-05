@@ -1,0 +1,11 @@
+[package]
+name = "pulsar_script_codegen"
+version = "0.1.0"
+edition = "2021"
+description = "Generates Rust from a verified script module (pulsar_script_vm::Module): one compiled step function per module function, run by the same VM as interpreted code. GPUI-free; used by the standalone Rust export."
+
+[dependencies]
+pulsar_script_vm = { workspace = true }
+
+[lints]
+workspace = true

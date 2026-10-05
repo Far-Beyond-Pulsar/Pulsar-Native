@@ -1,7 +1,6 @@
 //! Application state structure
 
 use gpui::{Entity, FocusHandle, Task};
-use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::dock::{DockArea, PanelView, TabPanel};
@@ -89,38 +88,33 @@ pub struct AppState {
     // Git auto-fetch listener for the primary project window
     pub git_auto_fetch_task: Option<Task<()>>,
 
+    // Dock layout persistence (see `layout_persistence`)
+    /// This window saves and restores the project layout.
+    pub layout_persist: bool,
+    /// Last known window geometry, saved with the layout.
+    pub window_bounds: Option<gpui::WindowBounds>,
+    /// The last windowed (not maximized / fullscreen) bounds: the size to
+    /// return to when leaving those states.
+    pub window_restore_bounds: Option<gpui::Bounds<gpui::Pixels>>,
+    /// The saved layout has been restored (or there was none); saving is safe.
+    pub layout_ready: bool,
+    /// Pending debounced save; dropping it cancels the save.
+    pub layout_save_task: Option<Task<()>>,
+
     // Navigation history
-    pub navigation_history: VecDeque<PathBuf>,
-    pub navigation_history_index: usize,
+    pub navigation: super::navigation::NavigationHistory,
 }
 
 impl AppState {
     pub fn push_navigation(&mut self, path: PathBuf) {
-        self.navigation_history
-            .truncate(self.navigation_history_index);
-        self.navigation_history.push_back(path);
-        self.navigation_history_index = self.navigation_history.len();
+        self.navigation.visit(path);
     }
 
     pub fn go_back(&mut self) -> Option<PathBuf> {
-        if self.navigation_history_index > 0 {
-            self.navigation_history_index -= 1;
-            self.navigation_history
-                .get(self.navigation_history_index)
-                .cloned()
-        } else {
-            None
-        }
+        self.navigation.back()
     }
 
     pub fn go_forward(&mut self) -> Option<PathBuf> {
-        if self.navigation_history_index + 1 < self.navigation_history.len() {
-            self.navigation_history_index += 1;
-            self.navigation_history
-                .get(self.navigation_history_index)
-                .cloned()
-        } else {
-            None
-        }
+        self.navigation.forward()
     }
 }

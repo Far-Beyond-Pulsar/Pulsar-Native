@@ -151,9 +151,23 @@ impl PulsarApp {
     ///
     /// This is the ONLY method needed for file opening - the plugin system handles everything.
     pub fn open_path(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_path_with_history(path, true, window, cx);
+    }
+
+    /// [`Self::open_path`], optionally without recording the visit. Back and
+    /// Forward replay history, so they must not append to it.
+    pub(crate) fn open_path_with_history(
+        &mut self,
+        path: PathBuf,
+        record_history: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         tracing::debug!("Opening path: {:?}", path);
 
-        self.state.push_navigation(path.clone());
+        if record_history {
+            self.state.push_navigation(path.clone());
+        }
 
         if self.activate_open_editor_by_path(&path, window, cx) {
             tracing::debug!("Activated existing editor for: {:?}", path);

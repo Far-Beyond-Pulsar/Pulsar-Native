@@ -1102,6 +1102,7 @@ dependencies = [
 name = "blueprint_compiler"
 version = "0.1.0"
 dependencies = [
+ "blueprint_graph",
  "graphy",
  "pulsar_reflection",
  "pulsar_scenedb",
@@ -1116,9 +1117,11 @@ dependencies = [
  "anyhow",
  "arboard",
  "blueprint_compiler",
+ "blueprint_graph",
  "bytemuck",
  "chrono",
  "engine_backend",
+ "engine_fs",
  "fontdue",
  "futures",
  "gpui-ce",
@@ -1127,7 +1130,9 @@ dependencies = [
  "parking_lot",
  "pbgc",
  "plugin_editor_api",
+ "plugin_manager",
  "pulsar_reflection",
+ "pulsar_script_codegen",
  "pulsar_script_vm",
  "schemars",
  "serde",
@@ -1144,6 +1149,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "blueprint_graph"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "boa_ast"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1154,7 +1169,7 @@ dependencies = [
  "boa_macros",
  "boa_string",
  "indexmap",
- "num-bigint",
+ "num-bigint 0.4.8",
  "rustc-hash 2.1.3",
 ]
 
@@ -1188,7 +1203,7 @@ dependencies = [
  "indexmap",
  "intrusive-collections",
  "itertools 0.14.0",
- "num-bigint",
+ "num-bigint 0.4.8",
  "num-integer",
  "num-traits",
  "num_enum",
@@ -1264,7 +1279,7 @@ dependencies = [
  "boa_macros",
  "fast-float2",
  "icu_properties",
- "num-bigint",
+ "num-bigint 0.4.8",
  "num-traits",
  "regress",
  "rustc-hash 2.1.3",
@@ -1384,6 +1399,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bytecount"
+version = "0.6.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "175812e0be2bccb6abe50bb8d566126198344f707e304f45c648fd8f2cc0365e"
+
+[[package]]
 name = "bytemuck"
 version = "1.25.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1452,6 +1473,15 @@ name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
+
+[[package]]
+name = "castaway"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dec551ab6e7578819132c713a93c022a05d60159dc86e7a7050223577484c55a"
+dependencies = [
+ "rustversion",
+]
 
 [[package]]
 name = "cc"
@@ -1679,6 +1709,19 @@ checksum = "1b60b5124979fccd9addd89d8b97a1d6eebb4950694520c75ddd722535ea443f"
 dependencies = [
  "nix 0.31.3",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "compact_str"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79fcda08c33bb58b97008b2cdada6622500e949e060f5913361763121abd2416"
+dependencies = [
+ "castaway",
+ "cfg-if",
+ "itoa",
+ "static_assertions",
+ "zmij",
 ]
 
 [[package]]
@@ -2345,7 +2388,7 @@ dependencies = [
  "asn1-rs",
  "displaydoc",
  "nom",
- "num-bigint",
+ "num-bigint 0.4.8",
  "num-traits",
  "rusticata-macros",
 ]
@@ -2654,6 +2697,12 @@ name = "dpi"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
+
+[[package]]
+name = "dragonbox_ecma"
+version = "0.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd8e701084c37e7ef62d3f9e453b618130cbc0ef3573847785952a3ac3f746bf"
 
 [[package]]
 name = "dtoa"
@@ -3031,6 +3080,7 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "tracing",
  "ui_types_common",
+ "uuid",
  "window_manager",
 ]
 
@@ -3940,12 +3990,6 @@ checksum = "9e05e7e6723e3455f4818c7b26e855439f7546cf617ef669d1adedb8669e5cb9"
 
 [[package]]
 name = "glam"
-version = "0.29.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8babf46d4c1c9d92deac9f7be466f76dfc4482b6452fc5024b5e8daf6ffeb3ee"
-
-[[package]]
-name = "glam"
 version = "0.30.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
@@ -4426,6 +4470,7 @@ version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 dependencies = [
+ "allocator-api2",
  "foldhash 0.2.0",
 ]
 
@@ -6590,7 +6635,7 @@ dependencies = [
  "darling",
  "heck",
  "manyhow",
- "num-bigint",
+ "num-bigint 0.4.8",
  "proc-macro-crate",
  "proc-macro2",
  "quote",
@@ -6614,7 +6659,7 @@ dependencies = [
  "flate2",
  "getrandom 0.3.4",
  "mysql-common-derive",
- "num-bigint",
+ "num-bigint 0.4.8",
  "num-traits",
  "regex",
  "saturating",
@@ -6794,6 +6839,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "nonmax"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "610a5acd306ec67f907abe5567859a3c693fb9886eb1f012ab8f2a47bef3db51"
+
+[[package]]
 name = "normpath"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6878,6 +6929,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "num-bigint"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93e7820bc0a80a0238e650327316f929ba18d5be054b647490a3a6a339f3e7c0"
+dependencies = [
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
 name = "num-bigint-dig"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6944,7 +7005,7 @@ version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f83d14da390562dca69fc84082e73e548e1ad308d24accdedd2720017cb37824"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.8",
  "num-integer",
  "num-traits",
 ]
@@ -7639,6 +7700,190 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d211803b9b6b570f68772237e415a029d5a50c65d382910b879fb19d3271f94d"
 
 [[package]]
+name = "oxc_allocator"
+version = "0.152.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f24a6005a6ff29f17c8782d1088772db6329b50cf8ad264f66df542215df7c2f"
+dependencies = [
+ "allocator-api2",
+ "hashbrown 0.17.1",
+ "oxc_data_structures",
+ "rustc-hash 2.1.3",
+]
+
+[[package]]
+name = "oxc_ast"
+version = "0.152.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d07280aa0e456352d72a1a98d2a91a127358177d8b246feee615b99b778ea1f"
+dependencies = [
+ "bitflags 2.13.1",
+ "oxc_allocator",
+ "oxc_ast_macros",
+ "oxc_data_structures",
+ "oxc_diagnostics",
+ "oxc_estree",
+ "oxc_regular_expression",
+ "oxc_span",
+ "oxc_str",
+ "oxc_syntax",
+]
+
+[[package]]
+name = "oxc_ast_macros"
+version = "0.152.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ce1a0ca39332490e992eca47e20501f3774740718713b7ff53644ec590e2016"
+dependencies = [
+ "phf 0.14.0",
+ "proc-macro2",
+ "quote",
+ "syn 3.0.4",
+]
+
+[[package]]
+name = "oxc_data_structures"
+version = "0.152.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac3f0180ce8b10906ae03adcd76cbc3f67cc162459372197edbc978baf5ae7f9"
+
+[[package]]
+name = "oxc_diagnostics"
+version = "0.152.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14144d3bdedc81c60fd465ae46ea16018f4a2ca11df8f4cfe85d6bcb320af9b9"
+dependencies = [
+ "bytecount",
+ "cow-utils",
+ "itoa",
+ "memchr",
+ "oxc_span",
+ "percent-encoding",
+ "smallvec",
+ "textwrap",
+ "unicode-segmentation",
+ "unicode-width",
+]
+
+[[package]]
+name = "oxc_ecmascript"
+version = "0.152.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "143f70d2c47792bcdd3e8c3e3fbdc24506043499c50d092c752afba1c6103620"
+dependencies = [
+ "dragonbox_ecma",
+ "itoa",
+ "num-bigint 0.5.1",
+ "num-traits",
+ "oxc_ast",
+ "oxc_data_structures",
+ "oxc_span",
+ "oxc_syntax",
+]
+
+[[package]]
+name = "oxc_estree"
+version = "0.152.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc212d653c5ee92487e637b9b44a51b8430cd48040d5f4abdce933a2f9a5edd3"
+
+[[package]]
+name = "oxc_index"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "191884bee6c3744909a51acc7d78d4ae370d817b25875b10642f632327b6296e"
+dependencies = [
+ "nonmax",
+ "serde",
+]
+
+[[package]]
+name = "oxc_parser"
+version = "0.152.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2193499addde2689649d31816af73dc10c32f1855dba40d61cee17d341b05d9e"
+dependencies = [
+ "bitflags 2.13.1",
+ "cow-utils",
+ "memchr",
+ "num-bigint 0.5.1",
+ "num-traits",
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_data_structures",
+ "oxc_diagnostics",
+ "oxc_ecmascript",
+ "oxc_regular_expression",
+ "oxc_span",
+ "oxc_str",
+ "oxc_syntax",
+ "rustc-hash 2.1.3",
+ "seq-macro",
+]
+
+[[package]]
+name = "oxc_regular_expression"
+version = "0.152.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b8330be1634468fdb3c9b850d831e1d82ded5c413d1154a46c0fc62eba2389bc"
+dependencies = [
+ "bitflags 2.13.1",
+ "oxc_allocator",
+ "oxc_ast_macros",
+ "oxc_diagnostics",
+ "oxc_span",
+ "oxc_str",
+ "phf 0.14.0",
+ "rustc-hash 2.1.3",
+ "unicode-id-start",
+]
+
+[[package]]
+name = "oxc_span"
+version = "0.152.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f32dae5b09cc262867e383533cdc822c40bccb09d84bbdc889716c99265197a1"
+dependencies = [
+ "compact_str",
+ "oxc_allocator",
+ "oxc_ast_macros",
+ "oxc_estree",
+ "oxc_str",
+]
+
+[[package]]
+name = "oxc_str"
+version = "0.152.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49552c2eeb7cbfa118d55485fb38c6689be5ce1b313af7e0116e5d8da0dc22e0"
+dependencies = [
+ "compact_str",
+ "hashbrown 0.17.1",
+ "oxc_allocator",
+ "oxc_estree",
+]
+
+[[package]]
+name = "oxc_syntax"
+version = "0.152.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "87b3087c9e6f2039a4a46af8b0a9f9a5108ee3390a1fc8d98b24a5461e47888d"
+dependencies = [
+ "bitflags 2.13.1",
+ "cow-utils",
+ "dragonbox_ecma",
+ "nonmax",
+ "oxc_allocator",
+ "oxc_ast_macros",
+ "oxc_estree",
+ "oxc_index",
+ "oxc_span",
+ "oxc_str",
+ "phf 0.14.0",
+ "unicode-id-start",
+]
+
+[[package]]
 name = "p256"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7764,15 +8009,11 @@ dependencies = [
 
 [[package]]
 name = "pbgc"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "graphy",
  "pulsar_std",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -7894,6 +8135,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "phf"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "010378780309880b08997fae13be7834dba947d36393bd372f2b1556deb2a2f6"
+dependencies = [
+ "phf_macros 0.14.0",
+ "phf_shared 0.14.0",
+ "serde",
+]
+
+[[package]]
 name = "phf_codegen"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7954,6 +8206,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "phf_generator"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aeb62e0959d5a1bebc965f4d15d9e2b7cea002b6b0f5ba8cde6cc26738467100"
+dependencies = [
+ "fastrand 2.5.0",
+ "phf_shared 0.14.0",
+]
+
+[[package]]
 name = "phf_macros"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7974,6 +8236,19 @@ checksum = "812f032b54b1e759ccd5f8b6677695d5268c588701effba24601f6932f8269ef"
 dependencies = [
  "phf_generator 0.13.1",
  "phf_shared 0.13.1",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "phf_macros"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fa8d0ca26d424d27630da600c6624696e7dec8bf7b3b492b383c5dc49e5e085"
+dependencies = [
+ "phf_generator 0.14.0",
+ "phf_shared 0.14.0",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -8002,6 +8277,15 @@ name = "phf_shared"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e57fef6bc5981e38c2ce2d63bfa546861309f875b8a75f092d1d54ae2d64f266"
+dependencies = [
+ "siphasher 1.0.3",
+]
+
+[[package]]
+name = "phf_shared"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6fd9027e2d9319be6349febd1db4e8d02aa544921200c9b777720ac34a3aa89"
 dependencies = [
  "siphasher 1.0.3",
 ]
@@ -8122,6 +8406,7 @@ version = "0.1.0"
 dependencies = [
  "engine_subsystems",
  "gpui-ce",
+ "inventory",
  "pulsar_events",
  "pulsar_reflection",
  "pulsar_script_vm",
@@ -8148,6 +8433,7 @@ dependencies = [
  "engine_subsystems",
  "env_logger",
  "gpui-ce",
+ "inventory",
  "libloading 0.9.0",
  "once_cell",
  "parking_lot",
@@ -8183,6 +8469,22 @@ dependencies = [
  "ui",
  "uuid",
  "wgpu",
+]
+
+[[package]]
+name = "plugin_typescript"
+version = "0.1.0"
+dependencies = [
+ "gpui-ce",
+ "plugin_editor_api",
+ "plugin_manager",
+ "pulsar_script_math",
+ "pulsar_script_ts",
+ "pulsar_script_vm",
+ "serde_json",
+ "tempfile",
+ "tracing",
+ "ui",
 ]
 
 [[package]]
@@ -8765,6 +9067,7 @@ name = "pulsar_engine"
 version = "0.2.42"
 dependencies = [
  "anyhow",
+ "blueprint_editor_plugin",
  "chrono",
  "core-foundation-sys",
  "dhat",
@@ -8775,6 +9078,9 @@ dependencies = [
  "file-association-manager",
  "futures",
  "gpui-ce",
+ "plugin_editor_api",
+ "plugin_manager",
+ "plugin_typescript",
  "profiling 0.1.0",
  "profiling 1.0.18",
  "pulsar_auth",
@@ -8832,7 +9138,6 @@ dependencies = [
  "inventory",
  "libloading 0.9.0",
  "parking_lot",
- "pbgc",
  "pollster 1.0.1",
  "profiling 0.1.0",
  "pulsar_class",
@@ -8843,6 +9148,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scene",
  "pulsar_scenedb",
+ "pulsar_script_codegen",
  "pulsar_script_object_model",
  "pulsar_script_runtime",
  "pulsar_script_vm",
@@ -8903,6 +9209,7 @@ dependencies = [
  "clap",
  "engine_state",
  "plugin_editor_api",
+ "plugin_typescript",
  "pulsar_class",
  "pulsar_content",
  "pulsar_events",
@@ -8940,9 +9247,10 @@ version = "0.1.0"
 [[package]]
 name = "pulsar_reflection"
 version = "0.1.0"
+source = "git+https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection?rev=2dab12bfb147d813e508e1db0b5220ba9ba167ae#2dab12bfb147d813e508e1db0b5220ba9ba167ae"
 dependencies = [
  "dashmap",
- "glam 0.29.3",
+ "glam 0.33.5",
  "gpui-ce",
  "inventory",
  "once_cell",
@@ -8957,6 +9265,7 @@ dependencies = [
 [[package]]
 name = "pulsar_reflection_codegen"
 version = "0.1.0"
+source = "git+https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection?rev=2dab12bfb147d813e508e1db0b5220ba9ba167ae#2dab12bfb147d813e508e1db0b5220ba9ba167ae"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8966,6 +9275,7 @@ dependencies = [
 [[package]]
 name = "pulsar_reflection_derive"
 version = "0.1.0"
+source = "git+https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection?rev=2dab12bfb147d813e508e1db0b5220ba9ba167ae#2dab12bfb147d813e508e1db0b5220ba9ba167ae"
 dependencies = [
  "owo-colors",
  "proc-macro2",
@@ -8993,6 +9303,8 @@ dependencies = [
 name = "pulsar_scene_model"
 version = "0.1.0"
 dependencies = [
+ "glam 0.33.5",
+ "inventory",
  "pulsar_reflection",
  "pulsar_scenedb",
  "serde",
@@ -9004,7 +9316,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=0801d2638a66b81692df6a03130c3dcf1b3f1dbf#0801d2638a66b81692df6a03130c3dcf1b3f1dbf"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=e74df984b95ffe5235a67653a5b95a07e579df47#e74df984b95ffe5235a67653a5b95a07e579df47"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9020,12 +9332,41 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=0801d2638a66b81692df6a03130c3dcf1b3f1dbf#0801d2638a66b81692df6a03130c3dcf1b3f1dbf"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=e74df984b95ffe5235a67653a5b95a07e579df47#e74df984b95ffe5235a67653a5b95a07e579df47"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection_codegen",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "pulsar_script_codegen"
+version = "0.1.0"
+dependencies = [
+ "pulsar_script_vm",
+]
+
+[[package]]
+name = "pulsar_script_conformance"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.5",
+ "pulsar_scenedb",
+ "pulsar_script_codegen",
+ "pulsar_script_math",
+ "pulsar_script_vm",
+ "serde_json",
+]
+
+[[package]]
+name = "pulsar_script_math"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.5",
+ "pulsar_scenedb",
+ "pulsar_script_vm",
+ "serde_json",
 ]
 
 [[package]]
@@ -9047,11 +9388,34 @@ dependencies = [
 name = "pulsar_script_runtime"
 version = "0.1.0"
 dependencies = [
+ "glam 0.33.5",
+ "profiling 0.1.0",
  "pulsar_scenedb",
+ "pulsar_script_math",
  "pulsar_script_vm",
+ "serde",
  "serde_json",
  "thiserror 2.0.20",
  "tracing",
+]
+
+[[package]]
+name = "pulsar_script_ts"
+version = "0.1.0"
+dependencies = [
+ "oxc_allocator",
+ "oxc_ast",
+ "oxc_parser",
+ "oxc_span",
+ "pulsar_scenedb",
+ "pulsar_script_conformance",
+ "pulsar_script_math",
+ "pulsar_script_runtime",
+ "pulsar_script_vm",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]
@@ -9105,9 +9469,12 @@ dependencies = [
 name = "pulsar_world_registry"
 version = "0.1.0"
 dependencies = [
+ "glam 0.33.5",
  "inventory",
  "pulsar_reflection",
+ "pulsar_scene_model",
  "pulsar_scenedb",
+ "pulsar_script_math",
  "pulsar_script_vm",
  "serde",
  "serde_json",
@@ -10429,6 +10796,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "seq-macro"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1bc711410fbe7399f390ca1c3b60ad0f53f80e95c5eb935e52268a0e2cd49acc"
+
+[[package]]
 name = "serde"
 version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10653,6 +11026,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arboard",
+ "blueprint_graph",
  "bytemuck",
  "chrono",
  "fontdue",
@@ -10875,6 +11249,12 @@ checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "smawk"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8e2fb0f499abb4d162f2bedad68f5ef91a1682b5a03596ddb67efd37768d100"
 
 [[package]]
 name = "smithay-client-toolkit"
@@ -11746,6 +12126,17 @@ name = "termtree"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
+
+[[package]]
+name = "textwrap"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
+dependencies = [
+ "smawk",
+ "unicode-linebreak",
+ "unicode-width",
+]
 
 [[package]]
 name = "thin-vec"
@@ -12954,6 +13345,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui_build"
+version = "0.1.0"
+dependencies = [
+ "engine_backend",
+ "engine_state",
+ "gpui-ce",
+ "parking_lot",
+ "profiling 0.1.0",
+ "serde_json",
+ "smol",
+ "tracing",
+ "ui",
+ "ui_common",
+ "window_manager",
+]
+
+[[package]]
 name = "ui_common"
 version = "0.1.0"
 dependencies = [
@@ -12998,7 +13406,6 @@ dependencies = [
  "agent_provider_vertex_ai",
  "anyhow",
  "asset_viewer_plugin",
- "blueprint_editor_plugin",
  "directories 6.0.0",
  "dirs 6.0.0",
  "editor_table_plugin",
@@ -13234,6 +13641,7 @@ dependencies = [
  "tool_registry_macros",
  "tracing",
  "ui",
+ "ui_build",
  "ui_common",
  "ui_types_common",
  "wayland-backend",
@@ -13431,6 +13839,12 @@ name = "unicode-id"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "70ba288e709927c043cbe476718d37be306be53fb1fafecd0dbe36d072be2580"
+
+[[package]]
+name = "unicode-id-start"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0825d2e09dcae814a4273c1e1435979d414ede25b2ee235b1545da6682483765"
 
 [[package]]
 name = "unicode-ident"

@@ -65,6 +65,15 @@ impl WindowProfile {
         self.options
     }
 
+    /// Open the window with `bounds` (size, position and maximized / fullscreen
+    /// state) instead of the profile's default, if there are any.
+    pub fn with_window_bounds(mut self, bounds: Option<gpui::WindowBounds>) -> Self {
+        if bounds.is_some() {
+            self.options.window_bounds = bounds;
+        }
+        self
+    }
+
     pub fn wrapper(&self) -> WindowContentWrapper {
         self.wrapper
     }

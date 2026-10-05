@@ -26,7 +26,7 @@ mygame/
 └── src/
     ├── main.rs / lib.rs  # standalone entry + PIE shim (generated)
     ├── engine_main.rs    # level bootstrap (generated)
-    └── classes/          # Blueprint-graph classes (PBGC output)
+    └── classes/          # Blueprint-graph classes (exported by pulsar_script_codegen)
 ```
 
 ## 2. Your script crate: `scripts/<game>_scripts`

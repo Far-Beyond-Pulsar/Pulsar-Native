@@ -4,7 +4,7 @@
 
 use pulsar_reflection::{
     ComponentMethodRegistration, EngineClass, EngineClassRegistration, MethodMetadata,
-    MethodParameter, MethodReturnType, MethodType, PropertyMetadata, RuntimeTypeInfo,
+    MethodParameter, MethodFlags, MethodReturnType, PropertyMetadata, RuntimeTypeInfo,
     RUNTIME_TYPE_REGISTRY,
 };
 use pulsar_scenedb::{component_id, Entity, World};
@@ -60,7 +60,7 @@ impl EngineClass for VmProbe {
             return_type: Some(MethodReturnType {
                 type_info: i32_info,
             }),
-            method_type: MethodType::Fn,
+            flags: MethodFlags::NONE,
             caller: Box::new(
                 |c: &mut dyn EngineClass, args: Vec<Box<dyn std::any::Any>>| {
                     let amount = args
@@ -100,10 +100,8 @@ fn vm_probe_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
     world.get::<VmProbe>(entity).map(|c| c as &dyn EngineClass)
 }
 
-fn vm_probe_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
-    world
-        .get_mut::<VmProbe>(entity)
-        .map(|c| c.into_inner() as &mut dyn EngineClass)
+fn vm_probe_get_mut(world: &mut World, entity: Entity) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
+    pulsar_world_registry::EngineClassMut::of::<VmProbe>(world, entity)
 }
 
 fn vm_probe_hydrate(world: &mut World, entity: Entity, data: &JsonValue) -> Result<(), String> {

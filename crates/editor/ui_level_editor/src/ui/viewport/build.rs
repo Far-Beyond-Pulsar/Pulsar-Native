@@ -23,17 +23,6 @@ impl ViewportPanel {
             self.cached_frame_snapshot = snapshot;
         }
         let snap = &self.cached_frame_snapshot;
-        let ui_fps = snap.ui_fps;
-        let render_fps = snap.render_fps;
-
-        // Collect metric histories only while the performance overlay can
-        // show them; cloning eight Vecs per frame with the overlay closed is
-        // pure waste on a hot path.
-        let perf_snapshot = if state.overlays.state.show_performance_overlay {
-            PerformanceSnapshot::capture(&self.metrics.borrow(), ui_fps, render_fps)
-        } else {
-            PerformanceSnapshot::empty()
-        };
 
         // Clone for event handlers
         let _input_state_scroll = Arc::clone(&self.input_state);
@@ -339,6 +328,6 @@ impl ViewportPanel {
                 .size_full()
             })
             // Overlays
-            .child(self.render_overlays(state, state_arc, perf_snapshot, gpu_engine, cx))
+            .child(self.render_overlays(state, state_arc, gpu_engine, cx))
     }
 }

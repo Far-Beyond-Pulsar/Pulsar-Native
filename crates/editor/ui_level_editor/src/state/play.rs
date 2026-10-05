@@ -1,22 +1,17 @@
-//! Play Domain — parameters that control scene playback: time scale, target
-//! frame rate, and multiplayer mode.
+//! Play Domain — Play-In-Editor control channel for the level editor.
+//!
+//! Speed, multiplayer mode and play/pause state shown in the toolbar are
+//! engine-global (`engine_state::playback`); this domain only carries the
+//! editor-internal PiE plumbing.
 //!
 //! These values are consumed by the toolbar's playback controls and affect
 //! the game loop timing when the scene is played.
 
 use std::path::PathBuf;
 
-use super::editor::MultiplayerMode;
-
 /// Playback domain — runtime parameters for scene simulation.
 #[derive(Clone)]
 pub struct PlayDomain {
-    /// Game time scale (1.0 = real-time, 0.5 = half-speed, 2.0 = double-speed).
-    pub time_scale: f32,
-    /// Target frame rate for the game loop (0 = uncapped).
-    pub target_fps: u32,
-    /// Multiplayer networking mode.
-    pub multiplayer_mode: MultiplayerMode,
     /// Play-In-Editor control channel between the toolbar handlers (which start
     /// the build) and the viewport (which owns the non-`Send` `PieHost`).
     pub pie: PieControl,
@@ -25,9 +20,6 @@ pub struct PlayDomain {
 impl Default for PlayDomain {
     fn default() -> Self {
         Self {
-            time_scale: 1.0,
-            target_fps: 60,
-            multiplayer_mode: MultiplayerMode::Offline,
             pie: PieControl::default(),
         }
     }

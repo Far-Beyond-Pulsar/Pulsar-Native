@@ -1,0 +1,26 @@
+[package]
+name = "pulsar_script_ts"
+version = "0.1.0"
+edition = "2021"
+description = "A TypeScript subset compiled to engine script modules (pulsar_script_vm): parse, type-check against the native registry, lower. GPUI-free; the TypeScript language plugin wraps it."
+
+[dependencies]
+pulsar_script_vm = { workspace = true }
+# One pinned parser; see the crate docs for why oxc.
+oxc_allocator = "=0.152.0"
+oxc_ast = "=0.152.0"
+oxc_parser = "=0.152.0"
+oxc_span = "=0.152.0"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+pulsar_script_math = { workspace = true }
+pulsar_script_conformance = { path = "../pulsar_script_conformance" }
+pulsar_scenedb = { workspace = true }
+tempfile = { workspace = true }
+pulsar_script_runtime = { workspace = true }
+
+[lints]
+workspace = true

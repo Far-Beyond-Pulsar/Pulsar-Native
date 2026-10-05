@@ -52,6 +52,9 @@ sysuri.workspace = true
 urlencoding.workspace = true
 dotenv = "0.15"
 window_manager.workspace = true
+# Registers itself at link time (see plugin_manager::LinkedEditorProvider).
+blueprint_editor_plugin = { path = "../../../plugins/vendor/blueprint_editor", features = ["builtin"], optional = true }
+plugin_typescript = { workspace = true, optional = true }
 pulsar_std = { workspace = true }
 tracing-appender = "0.2.4"
 
@@ -62,6 +65,13 @@ tracing-appender = "0.2.4"
 dhat = { version = "0.3", optional = true }
 
 [features]
+# The Blueprint editor and its scripting language. They are a plugin like any
+# other: the editor shell does not depend on them, and `--no-default-features`
+# builds an editor without them (CI keeps that building).
+default = ["blueprint", "typescript"]
+blueprint = ["dep:blueprint_editor_plugin"]
+# TypeScript scripting (`class.ts`); likewise optional.
+typescript = ["dep:plugin_typescript"]
 dhat-heap = ["dep:dhat"]
 # Live shader editing is on by default through helio; this forwards the feature
 # for builds that disable helio's defaults. See engine_backend's feature of the
@@ -86,6 +96,8 @@ winresource = "0.1"
 
 [dev-dependencies]
 tempfile = { workspace = true }
+plugin_manager = { workspace = true }
+plugin_editor_api = { workspace = true }
 
 [lints]
 workspace = true

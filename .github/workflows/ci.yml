@@ -45,6 +45,11 @@ jobs:
       - name: cargo check
         run: cargo check --workspace --exclude pulsar_docs --all-targets
 
+      # The Blueprint editor is a plugin: the editor must still build, and its
+      # shell must not have grown a dependency back, without it.
+      - name: Editor builds without the Blueprint plugin
+        run: cargo check -p pulsar_engine --no-default-features
+
       - name: Validate workspace dependency modes
         shell: pwsh
         run: |
@@ -125,8 +130,9 @@ jobs:
             } | ForEach-Object { $_["name"] } | Sort-Object
           )
           # These two are explicit root-workspace members: the built-in asset
-          # viewer and the Blueprint compiler tested against Pulsar's VM.
-          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin", "blueprint_compiler")
+          # viewer, and the GPUI-free Blueprint compiler and graph model tested
+          # against Pulsar's VM.
+          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin", "blueprint_compiler", "blueprint_graph")
           $workspaceMemberDifference = @(
             Compare-Object $expectedVendorWorkspaceMembers $vendorWorkspaceMembers
           )
@@ -145,7 +151,6 @@ jobs:
           )
           $expectedBuiltins = @(
             "asset_viewer_plugin",
-            "blueprint_editor_plugin",
             "editor_table_plugin",
             "plugin_matter",
             "script_editor_plugin",
@@ -156,6 +161,16 @@ jobs:
           )
           if ($missingBuiltins.Count -ne 0) {
             throw "ui_core lost built-in plugin integrations: $($missingBuiltins -join ', ')"
+          }
+
+          # Scripting languages are plugins on equal footing: the editor shell
+          # must not link any of them. The Blueprint editor registers itself
+          # at link time (plugin_manager::LinkedEditorProvider) and is part of
+          # a build through pulsar_engine's `blueprint` feature.
+          foreach ($language in @("blueprint_editor_plugin", "blueprint_compiler")) {
+            if ($uiCoreDependencies -contains $language) {
+              throw "ui_core depends on $language; scripting languages must stay plugins"
+            }
           }
 
       - name: Resolve Pulsar's pinned SceneDB source
@@ -315,3 +330,18 @@ jobs:
       - name: Generated project compiles
         if: ${{ matrix.run_on == 'ubuntu-latest' }}
         run: cargo test -p pulsar_game --test generated_project_compiles -- --ignored
+
+  # The plugins pin Pulsar-Native crates by git rev (#847): every pin must be a
+  # commit this repository already contains, so standalone plugin builds can
+  # fetch it. Fix with `just bump-plugin-pins`.
+  plugin-pins:
+    name: plugin pins are ancestors of HEAD
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Check plugin pins
+        run: scripts/plugin-pins.sh check

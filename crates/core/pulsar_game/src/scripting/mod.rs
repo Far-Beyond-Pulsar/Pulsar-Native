@@ -20,20 +20,22 @@
 
 use std::path::{Path, PathBuf};
 
-pub use pulsar_script_runtime::{RuntimeError, ScriptRuntime};
+pub use pulsar_script_runtime::{InstanceRuntimeStats, RuntimeError, ScriptRuntime};
+pub use pulsar_script_vm::{DebugCommand, DebugSnapshot};
 
 use pulsar_scenedb::Entity;
 
 pub mod commands;
 pub mod driver;
 pub mod events;
+pub mod export;
 #[cfg(test)]
 mod tests;
 
 pub use commands::WorldCommand;
 pub use events::{ScriptEventBridge, ScriptEvents};
 pub use driver::{
-    global_instance_id, instance_id_for, module_file, scripting_config_path, DriverReport, ReloadRequests,
+    global_instance_id, instance_id_for, module_file, scripting_config_path, DriverReport, LockTimes, ReloadRequests,
     ScriptDriver, ScriptingConfig, MODULE_BINARY_FILE, MODULE_JSON_FILE, SCRIPTING_CONFIG_FILE,
 };
 
@@ -48,7 +50,7 @@ inventory::submit! {
                 .attr("category", "World")
                 .params(["stable_id"])
                 .build(|host: &mut pulsar_script_vm::Host<'_>, id: String| {
-                    engine_backend::scene::entity_with_stable_id(host.world, &id)
+                    engine_backend::scene::entity_with_stable_id(host.world(), &id)
                         .unwrap_or(pulsar_scenedb::Entity::DANGLING)
                 })
         },
@@ -64,7 +66,7 @@ inventory::submit! {
                 .attr("category", "World")
                 .params(["name"])
                 .build(|host: &mut pulsar_script_vm::Host<'_>, name: String| {
-                    engine_backend::scene::first_entity_named(host.world, &name)
+                    engine_backend::scene::first_entity_named(host.world(), &name)
                         .unwrap_or(pulsar_scenedb::Entity::DANGLING)
                 })
         },

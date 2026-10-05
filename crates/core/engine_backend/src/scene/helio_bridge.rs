@@ -297,6 +297,10 @@ pub fn sync_static_mesh_rows(
         let world_center = model.transform_point3(local_center);
         let world_radius =
             bounds_local[3] * glam::Vec3::from_array(transform.scale).abs().max_element();
+        let world_radius = world_radius.max(0.0);
+        let world_extents = glam::Vec3::splat(world_radius);
+        let world_center_vec = glam::Vec3::new(world_center.x, world_center.y, world_center.z);
+
         let object_row = helio_pass_gbuffer::StaticObjectComponent::new(
             entity.index(),
             entity.generation().wrapping_add(1),

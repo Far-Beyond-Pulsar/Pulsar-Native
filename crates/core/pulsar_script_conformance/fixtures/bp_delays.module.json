@@ -1,0 +1,1092 @@
+{
+  "format_version": 3,
+  "name": "bp_delays",
+  "constants": [
+    {
+      "Str": "a"
+    },
+    {
+      "Int": 500
+    },
+    {
+      "Float": 1000.0
+    },
+    {
+      "Bool": true
+    },
+    {
+      "Bool": false
+    },
+    {
+      "Str": "b"
+    },
+    {
+      "Int": 1000
+    },
+    {
+      "Float": 0.0
+    },
+    {
+      "Str": "!"
+    },
+    {
+      "Int": 200
+    },
+    {
+      "Str": "x"
+    },
+    {
+      "Int": 300
+    },
+    {
+      "Str": "y"
+    }
+  ],
+  "imports": [
+    {
+      "name": "std::append",
+      "sig": {
+        "params": [
+          {
+            "ty": {
+              "kind": "str"
+            },
+            "inout": false
+          },
+          {
+            "ty": {
+              "kind": "str"
+            },
+            "inout": false
+          }
+        ],
+        "ret": {
+          "kind": "str"
+        }
+      }
+    }
+  ],
+  "variables": [
+    {
+      "name": "log",
+      "ty": {
+        "kind": "str"
+      },
+      "default": null,
+      "id": "var-log"
+    },
+    {
+      "name": "count",
+      "ty": {
+        "kind": "int"
+      },
+      "default": {
+        "Int": 0
+      },
+      "id": "var-count"
+    },
+    {
+      "name": "__bp_delay_active_wait",
+      "ty": {
+        "kind": "bool"
+      },
+      "default": null,
+      "id": "bp-state:delay_active:wait"
+    },
+    {
+      "name": "__bp_retrigger_active_rwait",
+      "ty": {
+        "kind": "bool"
+      },
+      "default": null,
+      "id": "bp-state:retrigger_active:rwait"
+    },
+    {
+      "name": "__bp_retrigger_deadline_rwait",
+      "ty": {
+        "kind": "float"
+      },
+      "default": null,
+      "id": "bp-state:retrigger_deadline:rwait"
+    },
+    {
+      "name": "__bp_delay_active_d1",
+      "ty": {
+        "kind": "bool"
+      },
+      "default": null,
+      "id": "bp-state:delay_active:d1"
+    },
+    {
+      "name": "__bp_delay_active_d2",
+      "ty": {
+        "kind": "bool"
+      },
+      "default": null,
+      "id": "bp-state:delay_active:d2"
+    }
+  ],
+  "functions": [
+    {
+      "name": "on_fire",
+      "exported": true,
+      "params": [],
+      "ret": {
+        "kind": "unit"
+      },
+      "registers": [
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        }
+      ],
+      "code": [
+        {
+          "LoadVar": {
+            "dst": 0,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 1,
+            "index": 0
+          }
+        },
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              0,
+              1
+            ],
+            "dst": 2
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 2
+          }
+        },
+        {
+          "Const": {
+            "dst": 3,
+            "index": 1
+          }
+        },
+        {
+          "Unary": {
+            "op": "IntToFloat",
+            "dst": 4,
+            "src": 3
+          }
+        },
+        {
+          "Const": {
+            "dst": 5,
+            "index": 2
+          }
+        },
+        {
+          "Binary": {
+            "op": "Div",
+            "dst": 6,
+            "a": 4,
+            "b": 5
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 7,
+            "var": 2
+          }
+        },
+        {
+          "Unary": {
+            "op": "Not",
+            "dst": 8,
+            "src": 7
+          }
+        },
+        {
+          "Branch": {
+            "cond": 8,
+            "then": 11,
+            "otherwise": 21
+          }
+        },
+        {
+          "Const": {
+            "dst": 9,
+            "index": 3
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 2,
+            "src": 9
+          }
+        },
+        {
+          "Wait": {
+            "seconds": 6
+          }
+        },
+        {
+          "Const": {
+            "dst": 10,
+            "index": 4
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 2,
+            "src": 10
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 11,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 12,
+            "index": 5
+          }
+        },
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              11,
+              12
+            ],
+            "dst": 13
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 13
+          }
+        },
+        {
+          "Jump": {
+            "target": 21
+          }
+        },
+        {
+          "Return": {
+            "value": null
+          }
+        }
+      ],
+      "debug": {
+        "ranges": [
+          {
+            "start": 0,
+            "end": 1,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "a_get"
+            }
+          },
+          {
+            "start": 1,
+            "end": 3,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "a_append"
+            }
+          },
+          {
+            "start": 3,
+            "end": 4,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "a"
+            }
+          },
+          {
+            "start": 4,
+            "end": 16,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "wait"
+            }
+          },
+          {
+            "start": 16,
+            "end": 17,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "b_get"
+            }
+          },
+          {
+            "start": 17,
+            "end": 19,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "b_append"
+            }
+          },
+          {
+            "start": 19,
+            "end": 20,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "b"
+            }
+          },
+          {
+            "start": 20,
+            "end": 21,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "wait"
+            }
+          },
+          {
+            "start": 21,
+            "end": 22,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "ev"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "on_retrigger",
+      "exported": true,
+      "params": [],
+      "ret": {
+        "kind": "unit"
+      },
+      "registers": [
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        }
+      ],
+      "code": [
+        {
+          "Const": {
+            "dst": 0,
+            "index": 6
+          }
+        },
+        {
+          "Unary": {
+            "op": "IntToFloat",
+            "dst": 1,
+            "src": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 2,
+            "index": 2
+          }
+        },
+        {
+          "Binary": {
+            "op": "Div",
+            "dst": 3,
+            "a": 1,
+            "b": 2
+          }
+        },
+        {
+          "Now": {
+            "dst": 4
+          }
+        },
+        {
+          "Binary": {
+            "op": "Add",
+            "dst": 5,
+            "a": 4,
+            "b": 3
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 4,
+            "src": 5
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 6,
+            "var": 3
+          }
+        },
+        {
+          "Unary": {
+            "op": "Not",
+            "dst": 7,
+            "src": 6
+          }
+        },
+        {
+          "Branch": {
+            "cond": 7,
+            "then": 10,
+            "otherwise": 27
+          }
+        },
+        {
+          "Const": {
+            "dst": 8,
+            "index": 3
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 3,
+            "src": 8
+          }
+        },
+        {
+          "Const": {
+            "dst": 9,
+            "index": 7
+          }
+        },
+        {
+          "Now": {
+            "dst": 10
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 11,
+            "var": 4
+          }
+        },
+        {
+          "Binary": {
+            "op": "Sub",
+            "dst": 12,
+            "a": 11,
+            "b": 10
+          }
+        },
+        {
+          "Binary": {
+            "op": "Gt",
+            "dst": 13,
+            "a": 12,
+            "b": 9
+          }
+        },
+        {
+          "Branch": {
+            "cond": 13,
+            "then": 18,
+            "otherwise": 20
+          }
+        },
+        {
+          "Wait": {
+            "seconds": 12
+          }
+        },
+        {
+          "Jump": {
+            "target": 13
+          }
+        },
+        {
+          "Const": {
+            "dst": 14,
+            "index": 4
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 3,
+            "src": 14
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 15,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 16,
+            "index": 8
+          }
+        },
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              15,
+              16
+            ],
+            "dst": 17
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 17
+          }
+        },
+        {
+          "Jump": {
+            "target": 27
+          }
+        },
+        {
+          "Return": {
+            "value": null
+          }
+        }
+      ],
+      "debug": {
+        "ranges": [
+          {
+            "start": 0,
+            "end": 22,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "rwait"
+            }
+          },
+          {
+            "start": 22,
+            "end": 23,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "rdone_get"
+            }
+          },
+          {
+            "start": 23,
+            "end": 25,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "rdone_append"
+            }
+          },
+          {
+            "start": 25,
+            "end": 26,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "rdone"
+            }
+          },
+          {
+            "start": 26,
+            "end": 27,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "rwait"
+            }
+          },
+          {
+            "start": 27,
+            "end": 28,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "rt"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "on_two",
+      "exported": true,
+      "params": [],
+      "ret": {
+        "kind": "unit"
+      },
+      "registers": [
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        }
+      ],
+      "code": [
+        {
+          "Const": {
+            "dst": 0,
+            "index": 9
+          }
+        },
+        {
+          "Unary": {
+            "op": "IntToFloat",
+            "dst": 1,
+            "src": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 2,
+            "index": 2
+          }
+        },
+        {
+          "Binary": {
+            "op": "Div",
+            "dst": 3,
+            "a": 1,
+            "b": 2
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 4,
+            "var": 5
+          }
+        },
+        {
+          "Unary": {
+            "op": "Not",
+            "dst": 5,
+            "src": 4
+          }
+        },
+        {
+          "Branch": {
+            "cond": 5,
+            "then": 7,
+            "otherwise": 34
+          }
+        },
+        {
+          "Const": {
+            "dst": 6,
+            "index": 3
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 5,
+            "src": 6
+          }
+        },
+        {
+          "Wait": {
+            "seconds": 3
+          }
+        },
+        {
+          "Const": {
+            "dst": 7,
+            "index": 4
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 5,
+            "src": 7
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 8,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 9,
+            "index": 10
+          }
+        },
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              8,
+              9
+            ],
+            "dst": 10
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 10
+          }
+        },
+        {
+          "Const": {
+            "dst": 11,
+            "index": 11
+          }
+        },
+        {
+          "Unary": {
+            "op": "IntToFloat",
+            "dst": 12,
+            "src": 11
+          }
+        },
+        {
+          "Const": {
+            "dst": 13,
+            "index": 2
+          }
+        },
+        {
+          "Binary": {
+            "op": "Div",
+            "dst": 14,
+            "a": 12,
+            "b": 13
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 15,
+            "var": 6
+          }
+        },
+        {
+          "Unary": {
+            "op": "Not",
+            "dst": 16,
+            "src": 15
+          }
+        },
+        {
+          "Branch": {
+            "cond": 16,
+            "then": 23,
+            "otherwise": 33
+          }
+        },
+        {
+          "Const": {
+            "dst": 17,
+            "index": 3
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 6,
+            "src": 17
+          }
+        },
+        {
+          "Wait": {
+            "seconds": 14
+          }
+        },
+        {
+          "Const": {
+            "dst": 18,
+            "index": 4
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 6,
+            "src": 18
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 19,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 20,
+            "index": 12
+          }
+        },
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              19,
+              20
+            ],
+            "dst": 21
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 21
+          }
+        },
+        {
+          "Jump": {
+            "target": 33
+          }
+        },
+        {
+          "Jump": {
+            "target": 34
+          }
+        },
+        {
+          "Return": {
+            "value": null
+          }
+        }
+      ],
+      "debug": {
+        "ranges": [
+          {
+            "start": 0,
+            "end": 12,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "d1"
+            }
+          },
+          {
+            "start": 12,
+            "end": 13,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "lx_get"
+            }
+          },
+          {
+            "start": 13,
+            "end": 15,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "lx_append"
+            }
+          },
+          {
+            "start": 15,
+            "end": 16,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "lx"
+            }
+          },
+          {
+            "start": 16,
+            "end": 28,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "d2"
+            }
+          },
+          {
+            "start": 28,
+            "end": 29,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "ly_get"
+            }
+          },
+          {
+            "start": 29,
+            "end": 31,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "ly_append"
+            }
+          },
+          {
+            "start": 31,
+            "end": 32,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "ly"
+            }
+          },
+          {
+            "start": 32,
+            "end": 33,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "d2"
+            }
+          },
+          {
+            "start": 33,
+            "end": 34,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "d1"
+            }
+          },
+          {
+            "start": 34,
+            "end": 35,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "two"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

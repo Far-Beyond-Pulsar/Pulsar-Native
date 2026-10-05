@@ -17,7 +17,7 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use pulsar_reflection::{MethodFlags, MethodType, PropertyMetadata, REGISTRY};
+use pulsar_reflection::{MethodFlags, PropertyMetadata, REGISTRY};
 use pulsar_scenedb::Entity;
 use pulsar_script_vm::{
     ComponentProvider, NativeFn, NativeProvider, Param, ProvidedComponent, ScriptError,
@@ -25,6 +25,11 @@ use pulsar_script_vm::{
 };
 
 use crate::WorldComponentRegistration;
+
+// Scene-vocabulary components are not reflected `EngineClass`es, so the
+// world registry does not list them; their script surface is the
+// `#[component_methods]` block next to the component.
+pulsar_script_vm::script_component!(pulsar_scene_model::Transform, "Transform");
 
 inventory::submit! {
     ComponentProvider { components: world_components }
@@ -105,7 +110,7 @@ fn property_natives(
         Signature::new([Param::new(ty.clone())], value_ty.clone()),
         Box::new(move |host, args| {
             let entity = entity_of(&args[0])?;
-            let instance = (registration.get_as_engine_class)(host.world, entity)
+            let instance = (registration.get_as_engine_class)(host.world(), entity)
                 .ok_or_else(|| missing(entity, class))?;
             let value = (getter.getter)(instance);
             Ok(binding.to_value(&*value))
@@ -116,13 +121,16 @@ fn property_natives(
         Box::new(move |host, args| {
             let entity = entity_of(&args[0])?;
             let value = binding.from_value(&args[1]).map_err(ScriptError::native)?;
-            let instance = (registration.get_as_engine_class_mut)(host.world, entity)
-                .ok_or_else(|| missing(entity, class))?;
-            (property.setter)(instance, value);
-            // The `&mut dyn EngineClass` bridge reports the write when it is
-            // borrowed, before the setter runs; re-sync GPU mirrors after,
-            // as the properties panel does.
-            (registration.refresh_gpu_mirror)(host.world, entity);
+            let world = host.world_mut()?;
+            {
+                let mut instance = (registration.get_as_engine_class_mut)(world, entity)
+                    .ok_or_else(|| missing(entity, class))?;
+                (property.setter)(&mut *instance, value);
+                // The guard reports the write to SceneDB as it drops, here.
+            }
+            // A companion GPU mirror is a derived component, not a field; the
+            // guard does not rebuild it, so re-sync it after, as the panel does.
+            (registration.refresh_gpu_mirror)(world, entity);
             Ok(Value::Unit)
         }),
     );
@@ -162,8 +170,9 @@ fn method_native(
     let mut builder = NativeFn::builder(format!("{class}::{}", method.name))
         .doc(method.display_name.clone())
         .method_of(ty.clone())
-        .params(names);
-    if method.method_type == MethodType::Pure {
+        .params(names)
+        .attr("access", "write");
+    if method.flags.side_effect_free {
         builder = builder.side_effect_free();
     }
     if let Some(category) = method.category {
@@ -182,11 +191,14 @@ fn method_native(
                 .zip(&args[1..])
                 .map(|(b, v)| b.from_value(v).map_err(ScriptError::native))
                 .collect::<Result<_, _>>()?;
-            let instance = (registration.get_as_engine_class_mut)(host.world, entity)
-                .ok_or_else(|| missing(entity, class))?;
-            let result = caller(instance, boxed);
+            let world = host.world_mut()?;
+            let result = {
+                let mut instance = (registration.get_as_engine_class_mut)(world, entity)
+                    .ok_or_else(|| missing(entity, class))?;
+                caller(&mut *instance, boxed)
+            };
             // As for property setters: the method may have written.
-            (registration.refresh_gpu_mirror)(host.world, entity);
+            (registration.refresh_gpu_mirror)(world, entity);
             match (ret_binding, result) {
                 (Some(binding), Some(value)) => Ok(binding.to_value(&*value)),
                 (Some(_), None) => Err(ScriptError::native(format!("{class}::{name} returned nothing"))),

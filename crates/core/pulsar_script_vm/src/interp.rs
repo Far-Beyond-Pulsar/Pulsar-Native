@@ -7,9 +7,12 @@
 
 use std::sync::Arc;
 
+use crate::compiled::{Cx, Exit};
+use crate::debugger::{DebugSnapshot, Debugger, FrameSnapshot, OutputValueSnapshot, RegisterSnapshot, StopReason};
 use crate::error::{ScriptError, ScriptErrorKind};
+use crate::exec::{self, binary, binary_scalar, unary};
 use crate::link::{FuncId, Instance, Program};
-use crate::module::{BinOp, Instr, Reg, UnOp};
+use crate::module::{Instr, Reg};
 use crate::native::Host;
 use crate::value::Value;
 
@@ -40,7 +43,17 @@ pub enum Completion {
     Returned(Value),
     /// The call executed `Wait`: resume `continuation` after `seconds` of
     /// game time.
-    Waiting { seconds: f64, continuation: Continuation },
+    Waiting {
+        seconds: f64,
+        continuation: Continuation,
+    },
+    /// Execution stopped at a breakpoint or stepping boundary. Pass the
+    /// continuation to [`Vm::resume`] after issuing a command on the VM's
+    /// debugger.
+    Paused {
+        snapshot: DebugSnapshot,
+        continuation: Continuation,
+    },
 }
 
 /// A suspended call: its frames and registers, for [`Vm::resume`]. Tied to
@@ -60,7 +73,21 @@ impl Continuation {
 
     /// Names of the suspended functions, outermost first.
     pub fn functions(&self) -> Vec<&str> {
-        self.frames.iter().map(|f| self.module.functions[f.func as usize].name.as_str()).collect()
+        self.frames
+            .iter()
+            .map(|f| self.module.functions[f.func as usize].name.as_str())
+            .collect()
+    }
+
+    /// Snapshot the suspended registers without resuming execution.
+    pub fn register_values(&self) -> Vec<Vec<Value>> {
+        self.frames
+            .iter()
+            .map(|frame| {
+                let count = self.module.functions[frame.func as usize].registers.len();
+                self.regs[frame.base..frame.base + count].to_vec()
+            })
+            .collect()
     }
 
     /// Move this suspended call onto `module`, a new version of the module
@@ -82,7 +109,10 @@ impl Continuation {
                 .function(&old.name)
                 .ok_or_else(|| format!("function `{}` no longer exists", old.name))?;
             if new.params != old.params || new.ret != old.ret || new.registers != old.registers {
-                return Err(format!("function `{}` changed its parameters or registers", old.name));
+                return Err(format!(
+                    "function `{}` changed its parameters or registers",
+                    old.name
+                ));
             }
             if new.code.len() != old.code.len() {
                 return Err(format!(
@@ -93,7 +123,10 @@ impl Continuation {
                 ));
             }
             new_indices.push(index);
-            frames.push(Frame { func: index, ..frame.clone() });
+            frames.push(Frame {
+                func: index,
+                ..frame.clone()
+            });
         }
         for (depth, frame) in frames.iter().enumerate() {
             let code = &module.functions[frame.func as usize].code;
@@ -101,20 +134,31 @@ impl Continuation {
             match new_indices.get(depth + 1) {
                 // Outer frame: parked on the call of the next frame.
                 Some(&callee) => {
-                    if !matches!(code.get(frame.pc), Some(Instr::Call { func, .. }) if *func == callee) {
-                        return Err(format!("function `{name}` no longer calls the waiting function at {}", frame.pc));
+                    if !matches!(code.get(frame.pc), Some(Instr::Call { func, .. }) if *func == callee)
+                    {
+                        return Err(format!(
+                            "function `{name}` no longer calls the waiting function at {}",
+                            frame.pc
+                        ));
                     }
                 }
                 // Innermost: resumes right after its `Wait`.
                 None => {
                     let waited = frame.pc.checked_sub(1).and_then(|pc| code.get(pc));
-                    if !matches!(waited, Some(Instr::Wait { .. })) {
-                        return Err(format!("function `{name}` no longer waits at {}", frame.pc.saturating_sub(1)));
+                    if !matches!(waited, Some(Instr::Wait { .. } | Instr::CallNative { .. })) {
+                        return Err(format!(
+                            "function `{name}` no longer waits at {}",
+                            frame.pc.saturating_sub(1)
+                        ));
                     }
                 }
             }
         }
-        Ok(Continuation { module: Arc::clone(module), frames, regs: self.regs.clone() })
+        Ok(Continuation {
+            module: Arc::clone(module),
+            frames,
+            regs: self.regs.clone(),
+        })
     }
 }
 
@@ -134,6 +178,8 @@ pub struct Vm {
     /// (#858). Off by default, like a Rust release build; the engine turns
     /// it on in the editor and Play-in-Editor and off in shipping builds.
     pub checked_arithmetic: bool,
+    /// Optional language-neutral debugger attached to this VM.
+    pub debugger: Option<Debugger>,
 }
 
 impl Default for Vm {
@@ -144,6 +190,7 @@ impl Default for Vm {
             args: Vec::new(),
             max_depth: DEFAULT_MAX_DEPTH,
             checked_arithmetic: false,
+            debugger: None,
         }
     }
 }
@@ -153,9 +200,17 @@ impl Vm {
         Self::default()
     }
 
+    pub fn attach_debugger(&mut self, debugger: Debugger) {
+        self.debugger = Some(debugger);
+    }
+
+    pub fn detach_debugger(&mut self) -> Option<Debugger> {
+        self.debugger.take()
+    }
+
     /// Run `func` of `program` with `args` on `instance` to completion. A
-    /// function that waits fails with [`ScriptErrorKind::Suspended`]; use
-    /// [`start`](Self::start) where waiting is allowed.
+    /// function that waits or pauses fails with [`ScriptErrorKind::Suspended`];
+    /// use [`start`](Self::start) where waiting or debugger stops are allowed.
     pub fn call(
         &mut self,
         program: &Program,
@@ -167,7 +222,9 @@ impl Vm {
     ) -> Result<Value, ScriptError> {
         match self.start(program, instance, func, args, host, budget)? {
             Completion::Returned(value) => Ok(value),
-            Completion::Waiting { .. } => Err(ScriptError::new(ScriptErrorKind::Suspended)),
+            Completion::Waiting { .. } | Completion::Paused { .. } => {
+                Err(ScriptError::new(ScriptErrorKind::Suspended))
+            }
         }
     }
 
@@ -183,17 +240,24 @@ impl Vm {
         budget: &mut Budget,
     ) -> Result<Completion, ScriptError> {
         let module = Arc::clone(program.module());
-        let function = module
-            .functions
-            .get(func.0 as usize)
-            .ok_or_else(|| ScriptError::new(ScriptErrorKind::BadEntryCall(format!("no function {}", func.0))))?;
+        let function = module.functions.get(func.0 as usize).ok_or_else(|| {
+            ScriptError::new(ScriptErrorKind::BadEntryCall(format!(
+                "no function {}",
+                func.0
+            )))
+        })?;
         if args.len() != function.params.len()
             || !args.iter().zip(&function.params).all(|(v, t)| v.fits(t))
         {
             return Err(ScriptError::new(ScriptErrorKind::BadEntryCall(format!(
                 "`{}` takes ({}), got {:?}",
                 function.name,
-                function.params.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "),
+                function
+                    .params
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 args
             ))));
         }
@@ -231,10 +295,11 @@ impl Vm {
         let stack_base = self.regs.len();
         let frame_base = self.frames.len();
         self.regs.extend(continuation.regs);
-        self.frames.extend(continuation.frames.into_iter().map(|mut f| {
-            f.base += stack_base;
-            f
-        }));
+        self.frames
+            .extend(continuation.frames.into_iter().map(|mut f| {
+                f.base += stack_base;
+                f
+            }));
         let result = self.run(program, instance, host, budget, frame_base);
         self.regs.truncate(stack_base);
         self.frames.truncate(frame_base);
@@ -249,19 +314,94 @@ impl Vm {
         ret_dst: Option<Reg>,
     ) {
         let base = self.regs.len();
-        self.regs.extend(program.registers[func as usize].iter().cloned());
+        self.regs
+            .extend(program.registers[func as usize].iter().cloned());
         for (slot, arg) in self.regs[base..].iter_mut().zip(args) {
             *slot = arg;
         }
-        self.frames.push(Frame { func, pc: 0, base, ret_dst });
+        self.frames.push(Frame {
+            func,
+            pc: 0,
+            base,
+            ret_dst,
+        });
+    }
+
+    /// [`push_frame`](Self::push_frame) for a call from the running frame:
+    /// the arguments are copied register to register, with no intermediate
+    /// allocation.
+    fn push_frame_from(&mut self, program: &Program, func: u32, caller_base: usize, args: &[Reg], ret_dst: Option<Reg>) {
+        let base = self.regs.len();
+        self.regs
+            .extend(program.registers[func as usize].iter().cloned());
+        for (slot, arg) in args.iter().enumerate() {
+            self.regs[base + slot] = self.regs[caller_base + usize::from(*arg)].clone();
+        }
+        self.frames.push(Frame {
+            func,
+            pc: 0,
+            base,
+            ret_dst,
+        });
+    }
+
+    /// Park the call that started at `frame_base` as a continuation. The
+    /// innermost frame's `pc` is already past the `Wait`. Seconds that are
+    /// NaN or negative must already be clamped to zero.
+    fn suspend(&mut self, program: &Program, frame_base: usize, seconds: f64) -> Completion {
+        let stack_base = self.frames[frame_base].base;
+        let frames = self
+            .frames
+            .drain(frame_base..)
+            .map(|mut f| {
+                f.base -= stack_base;
+                f
+            })
+            .collect();
+        let regs = self.regs.split_off(stack_base);
+        let continuation = Continuation {
+            module: Arc::clone(program.module()),
+            frames,
+            regs,
+        };
+        Completion::Waiting {
+            seconds,
+            continuation,
+        }
+    }
+
+    /// Pop the returning frame. `Some` when it was the call's outermost
+    /// frame (the call is done); otherwise hand `value` to the caller and
+    /// move it past its `Call`.
+    fn finish_frame(&mut self, value: Value, frame_base: usize) -> Option<Completion> {
+        let frame = self.frames.pop().expect("active");
+        self.regs.truncate(frame.base);
+        if self.frames.len() == frame_base {
+            return Some(Completion::Returned(value));
+        }
+        let caller = self.frames.last_mut().expect("caller");
+        caller.pc += 1;
+        if let Some(dst) = frame.ret_dst {
+            self.regs[caller.base + usize::from(dst)] = value;
+        }
+        None
     }
 
     fn fail(&self, program: &Program, frame_base: usize, kind: ScriptErrorKind) -> ScriptError {
         let module = program.module();
         let frames = self.frames[frame_base..].iter().rev();
-        let trace = frames.clone().map(|f| (module.functions[f.func as usize].name.clone(), f.pc)).collect();
-        let locations = frames.map(|f| module.functions[f.func as usize].location(f.pc).cloned()).collect();
-        ScriptError { kind, trace, locations }
+        let trace = frames
+            .clone()
+            .map(|f| (module.functions[f.func as usize].name.clone(), f.pc))
+            .collect();
+        let locations = frames
+            .map(|f| module.functions[f.func as usize].location(f.pc).cloned())
+            .collect();
+        ScriptError {
+            kind,
+            trace,
+            locations,
+        }
     }
 
     fn run(
@@ -274,6 +414,54 @@ impl Vm {
     ) -> Result<Completion, ScriptError> {
         let module = Arc::clone(program.module());
         loop {
+            if self.debugger.is_none() {
+                if let Some(code) = &program.compiled {
+                    // Generated code runs the function until it must call,
+                    // return, wait or fail; calls, returns and waits are handled
+                    // here, as for interpreted code. It charges the budget
+                    // itself, per instruction.
+                    let frame = self.frames.last_mut().expect("a frame is active");
+                    let func = frame.func;
+                    let registers = program.registers[func as usize].len();
+                    let mut cx = Cx {
+                        host: &mut *host,
+                        vars: &mut instance.vars,
+                        budget: &mut *budget,
+                        natives: &program.natives,
+                        constants: &program.constants,
+                        checked: self.checked_arithmetic,
+                        scratch: &mut self.args,
+                    };
+                    let regs = &mut self.regs[frame.base..frame.base + registers];
+                    let exit = code.step(func, &mut frame.pc, regs, &mut cx);
+                    match exit {
+                        Err(kind) => return Err(self.fail(program, frame_base, kind)),
+                        Ok(Exit::Call {
+                            func: callee,
+                            args,
+                            dst,
+                        }) => {
+                            if self.frames.len() - frame_base >= self.max_depth {
+                                return Err(self.fail(
+                                    program,
+                                    frame_base,
+                                    ScriptErrorKind::StackOverflow,
+                                ));
+                            }
+                            self.push_frame(program, callee, args.into_iter(), dst);
+                        }
+                        Ok(Exit::Return(value)) => {
+                            if let Some(done) = self.finish_frame(value, frame_base) {
+                                return Ok(done);
+                            }
+                        }
+                        Ok(Exit::Wait(seconds)) => {
+                            return Ok(self.suspend(program, frame_base, seconds));
+                        }
+                    }
+                    continue;
+                }
+            }
             if budget.remaining == 0 {
                 return Err(self.fail(program, frame_base, ScriptErrorKind::BudgetExceeded));
             }
@@ -281,6 +469,28 @@ impl Vm {
 
             let frame = self.frames.last().expect("a frame is active");
             let (func, pc, base) = (frame.func, frame.pc, frame.base);
+            let function = &module.functions[func as usize];
+            // Source locations are only looked up for the debugger; without
+            // one the interpreter pays nothing for them (#853).
+            if let Some(reason) = self.debugger.as_mut().and_then(|debugger| {
+                debugger.should_stop(
+                    &function.name,
+                    pc,
+                    self.frames.len() - frame_base,
+                    function.location(pc),
+                )
+            }) {
+                let snapshot = self.snapshot(program, instance, frame_base, reason);
+                let continuation = match self.suspend(program, frame_base, 0.0) {
+                    Completion::Waiting { continuation, .. } => continuation,
+                    Completion::Returned(_) => unreachable!("suspend always yields a continuation"),
+                    Completion::Paused { .. } => unreachable!("suspend does not pause"),
+                };
+                return Ok(Completion::Paused {
+                    snapshot,
+                    continuation,
+                });
+            }
             let code = &module.functions[func as usize].code;
             let r = |reg: Reg| base + usize::from(reg);
             let mut next = pc + 1;
@@ -298,23 +508,34 @@ impl Vm {
                     self.regs[r(*dst)] = value;
                 }
                 Instr::Binary { op, dst, a, b } => {
-                    let value = binary(*op, &self.regs[r(*a)], &self.regs[r(*b)], self.checked_arithmetic)
-                        .map_err(|kind| self.fail(program, frame_base, kind))?;
+                    let (x, y) = (&self.regs[r(*a)], &self.regs[r(*b)]);
+                    let value = match binary_scalar(*op, x, y, self.checked_arithmetic) {
+                        Some(value) => value,
+                        None => binary(*op, x, y, self.checked_arithmetic)
+                            .map_err(|kind| self.fail(program, frame_base, kind))?,
+                    };
                     self.regs[r(*dst)] = value;
                 }
                 Instr::Jump { target } => next = *target as usize,
-                Instr::Branch { cond, then, otherwise } => {
+                Instr::Branch {
+                    cond,
+                    then,
+                    otherwise,
+                } => {
                     let taken = matches!(self.regs[r(*cond)], Value::Bool(true));
                     next = if taken { *then } else { *otherwise } as usize;
                 }
-                Instr::Call { func: callee, args, dst } => {
+                Instr::Call {
+                    func: callee,
+                    args,
+                    dst,
+                } => {
                     if self.frames.len() - frame_base >= self.max_depth {
                         return Err(self.fail(program, frame_base, ScriptErrorKind::StackOverflow));
                     }
                     // The caller stays at the call site (for traces) and
                     // advances when the callee returns.
-                    let values: Vec<Value> = args.iter().map(|a| self.regs[r(*a)].clone()).collect();
-                    self.push_frame(program, *callee, values.into_iter(), *dst);
+                    self.push_frame_from(program, *callee, base, args, *dst);
                     continue;
                 }
                 Instr::CallNative { import, args, dst } => {
@@ -322,32 +543,17 @@ impl Vm {
                     let mut values = std::mem::take(&mut self.args);
                     values.clear();
                     values.extend(args.iter().map(|a| self.regs[r(*a)].clone()));
-                    // A panicking native fails the call instead of unwinding
-                    // through the VM into the game loop.
-                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        native.call(host, &mut values)
-                    }))
-                    .unwrap_or_else(|panic| Err(ScriptError::native(panic_message(&*panic))));
+                    let result = exec::call_native(native, host, &mut values);
                     let result = match result {
-                        Ok(value) if value.fits(&native.sig.ret) => value,
-                        Ok(value) => {
+                        Ok(value) => value,
+                        Err(kind) => {
                             self.args = values;
-                            let message = format!("returned {}, declared {}", value.kind(), native.sig.ret);
-                            let kind = ScriptErrorKind::Native { name: native.name.clone(), message };
-                            return Err(self.fail(program, frame_base, kind));
-                        }
-                        Err(err) => {
-                            self.args = values;
-                            let kind = match err.kind {
-                                ScriptErrorKind::Native { message, .. } => {
-                                    ScriptErrorKind::Native { name: native.name.clone(), message }
-                                }
-                                other => other,
-                            };
                             return Err(self.fail(program, frame_base, kind));
                         }
                     };
-                    for ((param, arg), value) in native.sig.params.iter().zip(args).zip(values.drain(..)) {
+                    for ((param, arg), value) in
+                        native.sig.params.iter().zip(args).zip(values.drain(..))
+                    {
                         if param.inout && value.fits(&param.ty) {
                             self.regs[r(*arg)] = value;
                         }
@@ -355,6 +561,13 @@ impl Vm {
                     self.args = values;
                     if let Some(dst) = dst {
                         self.regs[r(*dst)] = result;
+                    }
+                    // A latent native (`wait::frames`, ..) asked for the call to
+                    // suspend: park it right after the call; the runtime reads what
+                    // it is waiting for from the host's latent state.
+                    if host.latent.as_deref().is_some_and(crate::latent::Latent::suspend_requested) {
+                        self.frames.last_mut().expect("active").pc = next;
+                        return Ok(self.suspend(program, frame_base, 0.0));
                     }
                 }
                 Instr::LoadVar { dst, var } => {
@@ -374,30 +587,31 @@ impl Vm {
                     // NaN and negative waits resume on the next opportunity.
                     let seconds = if seconds > 0.0 { seconds } else { 0.0 };
                     self.frames.last_mut().expect("active").pc = next;
-                    let stack_base = self.frames[frame_base].base;
-                    let frames = self
-                        .frames
-                        .drain(frame_base..)
-                        .map(|mut f| {
-                            f.base -= stack_base;
-                            f
-                        })
-                        .collect();
-                    let regs = self.regs.split_off(stack_base);
-                    let continuation = Continuation { module: Arc::clone(&module), frames, regs };
-                    return Ok(Completion::Waiting { seconds, continuation });
+                    return Ok(self.suspend(program, frame_base, seconds));
+                }
+                Instr::Collection { op, dst, args } => {
+                    let mut values = std::mem::take(&mut self.args);
+                    values.clear();
+                    for (position, arg) in args.iter().enumerate() {
+                        // A result written back over its own first argument
+                        // is moved, not cloned, so the edit is in place.
+                        let moved = position == 0 && arg == dst && !args[1..].contains(arg);
+                        values.push(if moved {
+                            std::mem::replace(&mut self.regs[r(*arg)], Value::Unit)
+                        } else {
+                            self.regs[r(*arg)].clone()
+                        });
+                    }
+                    let result = exec::collection(*op, &mut values);
+                    values.clear();
+                    self.args = values;
+                    self.regs[r(*dst)] =
+                        result.map_err(|kind| self.fail(program, frame_base, kind))?;
                 }
                 Instr::Return { value } => {
                     let value = value.map_or(Value::Unit, |v| self.regs[r(v)].clone());
-                    let frame = self.frames.pop().expect("active");
-                    self.regs.truncate(frame.base);
-                    if self.frames.len() == frame_base {
-                        return Ok(Completion::Returned(value));
-                    }
-                    let caller = self.frames.last_mut().expect("caller");
-                    caller.pc += 1;
-                    if let Some(dst) = frame.ret_dst {
-                        self.regs[caller.base + usize::from(dst)] = value;
+                    if let Some(done) = self.finish_frame(value, frame_base) {
+                        return Ok(done);
                     }
                     continue;
                 }
@@ -405,103 +619,58 @@ impl Vm {
             self.frames.last_mut().expect("active").pc = next;
         }
     }
-}
 
-fn panic_message(panic: &(dyn std::any::Any + Send)) -> String {
-    let message = panic
-        .downcast_ref::<&str>()
-        .map(|s| s.to_string())
-        .or_else(|| panic.downcast_ref::<String>().cloned())
-        .unwrap_or_else(|| "unknown panic".into());
-    format!("panicked: {message}")
-}
-
-fn overflow(op: &str) -> ScriptErrorKind {
-    ScriptErrorKind::Overflow { op: op.to_owned() }
-}
-
-fn unary(op: UnOp, value: &Value, checked: bool) -> Result<Value, ScriptErrorKind> {
-    Ok(match (op, value) {
-        (UnOp::Neg, Value::Int(i)) if checked => Value::Int(i.checked_neg().ok_or_else(|| overflow("Neg"))?),
-        (UnOp::Neg, Value::Int(i)) => Value::Int(i.wrapping_neg()),
-        (UnOp::Neg, Value::Float(f)) => Value::Float(-f),
-        (UnOp::Not, Value::Bool(b)) => Value::Bool(!b),
-        (UnOp::IntToFloat, Value::Int(i)) => Value::Float(*i as f64),
-        // `i64::MAX as f64` rounds up to 2^63, which is already out of range.
-        (UnOp::FloatToInt, Value::Float(f)) if checked && !(f.is_finite() && *f >= -(2f64.powi(63)) && *f < 2f64.powi(63)) => {
-            return Err(overflow("FloatToInt"));
-        }
-        // `as` saturates and maps NaN to 0.
-        (UnOp::FloatToInt, Value::Float(f)) => Value::Int(*f as i64),
-        (UnOp::ToStr, v) => Value::Str(display(v).into()),
-        // The verifier rules out every other combination.
-        _ => unreachable!("unverified unary operand"),
-    })
-}
-
-fn display(value: &Value) -> String {
-    match value {
-        Value::Unit => "()".into(),
-        Value::Bool(b) => b.to_string(),
-        Value::Int(i) => i.to_string(),
-        Value::Float(f) => f.to_string(),
-        Value::Str(s) => s.to_string(),
-        Value::Entity(e) => e.to_string(),
-        Value::Component(c) => format!("{}({})", pulsar_scenedb::component::type_name(c.component), c.entity),
-        Value::Object(o) => o.type_name().to_owned(),
-    }
-}
-
-fn binary(op: BinOp, a: &Value, b: &Value, checked: bool) -> Result<Value, ScriptErrorKind> {
-    use Value::{Bool, Float, Int, Str};
-    if checked {
-        if let (Int(x), Int(y)) = (a, b) {
-            let result = match op {
-                BinOp::Add => Some(x.checked_add(*y)),
-                BinOp::Sub => Some(x.checked_sub(*y)),
-                BinOp::Mul => Some(x.checked_mul(*y)),
-                BinOp::Div | BinOp::Rem if *y == 0 => return Err(ScriptErrorKind::DivideByZero),
-                BinOp::Div => Some(x.checked_div(*y)),
-                BinOp::Rem => Some(x.checked_rem(*y)),
-                _ => None,
-            };
-            if let Some(result) = result {
-                return result.map(Int).ok_or_else(|| overflow(&format!("{op:?}")));
-            }
+    fn snapshot(
+        &self,
+        program: &Program,
+        instance: &Instance,
+        frame_base: usize,
+        reason: StopReason,
+    ) -> DebugSnapshot {
+        let module = program.module();
+        let call_stack = self.frames[frame_base..]
+            .iter()
+            .map(|frame| {
+                let function = &module.functions[frame.func as usize];
+                FrameSnapshot {
+                    function: function.name.clone(),
+                    pc: frame.pc,
+                    location: function.location(frame.pc).cloned(),
+                    registers: function
+                        .registers
+                        .iter()
+                        .enumerate()
+                        .map(|(index, ty)| RegisterSnapshot {
+                            index,
+                            ty: ty.to_string(),
+                            value: self.regs[frame.base + index].clone(),
+                        })
+                        .collect(),
+                    output_values: function.debug.as_ref().into_iter()
+                        .flat_map(|debug| debug.register_sources.iter())
+                        .filter_map(|source| {
+                            let register = usize::from(source.register);
+                            Some(OutputValueSnapshot {
+                                node: source.node.clone(),
+                                pin: source.pin.clone(),
+                                register,
+                                value: self.regs.get(frame.base + register)?.clone(),
+                            })
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+        let instance_variables = module
+            .variables
+            .iter()
+            .zip(&instance.vars)
+            .map(|(variable, value)| (variable.name.clone(), value.clone()))
+            .collect();
+        DebugSnapshot {
+            reason,
+            call_stack,
+            instance_variables,
         }
     }
-    Ok(match (op, a, b) {
-        (BinOp::Add, Int(a), Int(b)) => Int(a.wrapping_add(*b)),
-        (BinOp::Sub, Int(a), Int(b)) => Int(a.wrapping_sub(*b)),
-        (BinOp::Mul, Int(a), Int(b)) => Int(a.wrapping_mul(*b)),
-        (BinOp::Div | BinOp::Rem, Int(_), Int(0)) => return Err(ScriptErrorKind::DivideByZero),
-        (BinOp::Div, Int(a), Int(b)) => Int(a.wrapping_div(*b)),
-        (BinOp::Rem, Int(a), Int(b)) => Int(a.wrapping_rem(*b)),
-        (BinOp::Add, Float(a), Float(b)) => Float(a + b),
-        (BinOp::Sub, Float(a), Float(b)) => Float(a - b),
-        (BinOp::Mul, Float(a), Float(b)) => Float(a * b),
-        (BinOp::Div, Float(a), Float(b)) => Float(a / b),
-        (BinOp::Rem, Float(a), Float(b)) => Float(a % b),
-        (BinOp::Add, Str(a), Str(b)) => Str(format!("{a}{b}").into()),
-        (BinOp::Eq, a, b) => Bool(a == b),
-        (BinOp::Ne, a, b) => Bool(a != b),
-        (BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge, a, b) => {
-            let ordering = match (a, b) {
-                (Int(a), Int(b)) => a.partial_cmp(b),
-                (Float(a), Float(b)) => a.partial_cmp(b),
-                (Str(a), Str(b)) => a.partial_cmp(b),
-                _ => unreachable!("unverified comparison operands"),
-            };
-            // NaN compares false, like IEEE.
-            Bool(ordering.is_some_and(|o| match op {
-                BinOp::Lt => o.is_lt(),
-                BinOp::Le => o.is_le(),
-                BinOp::Gt => o.is_gt(),
-                _ => o.is_ge(),
-            }))
-        }
-        (BinOp::And, Bool(a), Bool(b)) => Bool(*a && *b),
-        (BinOp::Or, Bool(a), Bool(b)) => Bool(*a || *b),
-        _ => unreachable!("unverified binary operands"),
-    })
 }

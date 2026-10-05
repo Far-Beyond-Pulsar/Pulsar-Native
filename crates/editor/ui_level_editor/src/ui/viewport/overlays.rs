@@ -8,7 +8,6 @@ impl ViewportPanel {
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        perf_snapshot: PerformanceSnapshot,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -90,11 +89,35 @@ impl ViewportPanel {
             );
         }
 
-        // Bottom-left: Performance overlay
+        // What the overlay samples, on its own timer: the renderer's statistics
+        // and the input latency.
+        let sampler: Sampler = {
+            let engine = gpu_engine.clone();
+            let input = self.input_state.clone();
+            std::rc::Rc::new(move |stats: &mut LiveStats| {
+                if let Some(snapshot) = EngineFrameSnapshot::read_stats(&engine) {
+                    snapshot.record_into(stats);
+                }
+                stats.record(Metric::InputLatencyMs, input.get_input_latency_us() as f64 / 1000.0);
+            })
+        };
+
+        // Bottom-left: Performance overlay. A view with its own refresh timers,
+        // not rebuilt here; see `components/performance_overlay`.
         if state.overlays.state.show_performance_overlay {
             overlays = overlays.child(div().absolute().bottom_2().left_2().max_w(px(400.0)).child(
-                render_performance_overlay(state, state_arc.clone(), perf_snapshot, cx),
+                render_performance_overlay(
+                    state,
+                    state_arc.clone(),
+                    &self.stats,
+                    sampler,
+                    &self.perf_overlay,
+                    cx,
+                ),
             ));
+        } else {
+            // Closed: drop the overlay so its timers stop.
+            self.perf_overlay.borrow_mut().take();
         }
 
         // GPU Pipeline overlay - positions next to performance overlay if both visible
@@ -108,8 +131,10 @@ impl ViewportPanel {
             };
 
             overlays = overlays.child(overlay_div.max_w(px(400.0)).child(
-                render_gpu_pipeline_overlay(state, state_arc.clone(), gpu_engine, cx),
+                render_gpu_pipeline_overlay(gpu_engine, &self.gpu_overlay, cx),
             ));
+        } else {
+            self.gpu_overlay.borrow_mut().take();
         }
 
         overlays

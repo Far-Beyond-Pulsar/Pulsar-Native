@@ -26,11 +26,16 @@
 
 pub(crate) mod adapters;
 pub mod capability;
+pub mod compiled;
+pub mod debugger;
 pub mod error;
 pub mod events;
+pub mod exec;
 pub mod interp;
+pub mod latent;
 pub mod library;
 pub mod link;
+pub mod migrate;
 pub mod module;
 pub mod native;
 pub(crate) mod stdlib;
@@ -38,25 +43,34 @@ pub mod types;
 pub mod value;
 pub mod verify;
 
-pub use capability::{CapabilityPolicy, CAPABILITY_ATTR};
+pub use capability::{CAPABILITY_ATTR, CapabilityPolicy};
+pub use debugger::{
+    Breakpoint, DebugCommand, DebugSnapshot, Debugger, FrameSnapshot, OutputValueSnapshot,
+    RegisterSnapshot, StopReason,
+};
 pub use error::{LinkError, ScriptError, ScriptErrorKind, VerifyError};
-pub use interp::{Budget, Completion, Continuation, Vm, DEFAULT_MAX_DEPTH};
+pub use events::{EventCatalog, EventSignature, EventSink, EventTarget};
+pub use latent::{Fired, Latent, Timer, Wake};
+pub use interp::{Budget, Completion, Continuation, DEFAULT_MAX_DEPTH, Vm};
 pub use library::{
     ForwardingAllocator, HostAllocator, LibraryError, LibraryId, LibraryRegistrar, NativeLibraries,
 };
-pub use events::{EventCatalog, EventSignature, EventSink, EventTarget};
-pub use link::{FuncId, Instance, LinkedSubscription, Program};
+pub use link::{FuncId, Instance, LinkedSubscription, Program, resolve_imports};
 pub use module::{
-    BinOp, Constant, DebugInfo, DebugRange, ErrorSite, EventDecl, EventField, EventRef, Function,
-    Import, Instr, Module, ModuleDecodeError, Param, Reg, Signature, SourceLoc, Subscription,
-    SubscriptionScope, UnOp, Variable, BINARY_MAGIC, FORMAT_VERSION, MIN_FORMAT_VERSION,
+    BINARY_MAGIC, BinOp, CollOp, Constant, DebugInfo, DebugRange, ErrorSite, EventDecl, EventField,
+    EventRef, FORMAT_VERSION, Function, Import, Instr, MIN_FORMAT_VERSION, Module, RegisterSource,
+    ModuleDecodeError, Param, Reg, Signature, SourceLoc, Subscription, SubscriptionScope, UnOp,
+    Variable,
 };
 pub use native::{
-    Host, NativeBuilder, NativeFn, NativeProvider, NativeRegistration, NativeRegistry, Origin,
-    PolyNative,
+    Access, GenericNative, GenericProvider, Host, NativeBuilder, NativeFn, NativeProvider,
+    NativeRegistration, NativeRegistry, Origin, PolyNative,
 };
-pub use types::{ComponentProvider, Obj, ProvidedComponent, ScriptValue, Type, TypeRegistry};
-pub use value::{Object, Value};
+pub use types::{
+    ComponentProvider, Obj, Outcome, ProvidedComponent, ScriptKey, ScriptValue, Type, TypeRegistry,
+    ValueOpsRegistration,
+};
+pub use value::{MapKey, Object, Value};
 pub use verify::verify;
 
 /// Used by this crate's macros. Not a stable API.

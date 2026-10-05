@@ -32,93 +32,7 @@ pub enum CameraMode {
     Side,
 }
 
-// ── Multiplayer Mode ──────────────────────────────────────────────────────
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum MultiplayerMode {
-    Offline,
-    Host,
-    Client,
-}
-
-// ── Build Configuration ───────────────────────────────────────────────────
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BuildConfig {
-    Debug,
-    Release,
-    Shipping,
-}
-
-/// Which action the Build button's primary click performs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum BuildMode {
-    #[default]
-    Build,
-    BuildAndRun,
-    Check,
-    Update,
-    UpdateBuildAndRun,
-    BuildScratch,
-    BuildAndRunScratch,
-    CheckScratch,
-}
-
-/// Complete Rust target platform and architecture support (excluding WASM).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TargetPlatform {
-    WindowsX86_64Msvc,
-    WindowsI686Msvc,
-    WindowsAarch64Msvc,
-    WindowsX86_64Gnu,
-    WindowsI686Gnu,
-    LinuxX86_64Gnu,
-    LinuxI686Gnu,
-    LinuxAarch64Gnu,
-    LinuxArmv7Gnueabihf,
-    LinuxArmGnueabi,
-    LinuxArmGnueabihf,
-    LinuxMips64Gnuabi64,
-    LinuxMips64elGnuabi64,
-    LinuxMipsGnu,
-    LinuxMipselGnu,
-    LinuxPowerpc64Gnu,
-    LinuxPowerpc64leGnu,
-    LinuxPowerpcGnu,
-    LinuxRiscv64Gc,
-    LinuxS390xGnu,
-    LinuxSparcv9,
-    LinuxX86_64Musl,
-    LinuxAarch64Musl,
-    LinuxArmv7Musleabihf,
-    LinuxMipselMusl,
-    LinuxMipsMusl,
-    MacOsX86_64,
-    MacOsAarch64,
-    IosAarch64,
-    IosX86_64,
-    IosAarch64Sim,
-    AndroidAarch64,
-    AndroidArmv7,
-    AndroidI686,
-    AndroidX86_64,
-    FreeBsdX86_64,
-    FreeBsdI686,
-    NetBsdX86_64,
-    OpenBsdX86_64,
-    DragonFlyX86_64,
-    SolarisSparcv9,
-    SolarisX86_64,
-    IlumosX86_64,
-    RedoxX86_64,
-    FuchsiaAarch64,
-    FuchsiaX86_64,
-    PlayStationPs4,
-    PlayStationPs5,
-    XboxOne,
-    XboxSeriesXS,
-    NintendoSwitch,
-}
+pub use engine_state::playback::MultiplayerMode;
 
 // ── Editor domain ─────────────────────────────────────────────────────────
 
@@ -133,6 +47,9 @@ pub struct EditorDomain {
     pub camera_mode: CameraMode,
     /// Camera movement speed (shared between UI and input thread).
     pub camera_move_speed: f32,
+    pub location_snap: f32,
+    pub rotation_snap: f32,
+    pub scale_snap: f32,
 
     // ── Viewport rendering toggles ────────────────────────────────────────
     pub show_wireframe: bool,
@@ -168,6 +85,9 @@ impl Default for EditorDomain {
             current_tool: TransformTool::Move,
             camera_mode: CameraMode::Perspective,
             camera_move_speed: 10.0,
+            location_snap: 1.0,
+            rotation_snap: 15.0,
+            scale_snap: 0.1,
             show_wireframe: false,
             show_lighting: true,
             show_grid: true,
@@ -192,6 +112,9 @@ impl EditorDomain {
             current_tool: self.current_tool,
             camera_mode: self.camera_mode,
             camera_move_speed: self.camera_move_speed,
+            location_snap: self.location_snap,
+            rotation_snap: self.rotation_snap,
+            scale_snap: self.scale_snap,
             show_wireframe: self.show_wireframe,
             show_lighting: self.show_lighting,
             show_grid: self.show_grid,

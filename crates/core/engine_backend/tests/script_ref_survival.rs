@@ -80,10 +80,8 @@ fn bridge_gizmo_get(world: &World, entity: pulsar_scenedb::Entity) -> Option<&dy
 fn bridge_gizmo_get_mut(
     world: &mut World,
     entity: pulsar_scenedb::Entity,
-) -> Option<&mut dyn EngineClass> {
-    world
-        .get_mut::<BridgeGizmo>(entity)
-        .map(|c| c.into_inner() as &mut dyn EngineClass)
+) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
+    pulsar_world_registry::EngineClassMut::of::<BridgeGizmo>(world, entity)
 }
 
 fn bridge_gizmo_hydrate(

@@ -9,7 +9,9 @@ use std::collections::HashSet;
 
 use crate::error::VerifyError;
 use crate::events::{check_handler, is_event_field_type};
-use crate::module::{BinOp, EventRef, Instr, Module, Reg, UnOp, FORMAT_VERSION, MIN_FORMAT_VERSION};
+use crate::module::{
+    BinOp, CollOp, EventRef, FORMAT_VERSION, Instr, MIN_FORMAT_VERSION, Module, Reg, UnOp,
+};
 use crate::types::Type;
 
 pub fn verify(module: &Module) -> Result<(), VerifyError> {
@@ -23,19 +25,44 @@ pub fn verify(module: &Module) -> Result<(), VerifyError> {
     let mut names = HashSet::new();
     for function in &module.functions {
         if !names.insert(function.name.as_str()) {
-            return Err(VerifyError::module(format!("function `{}` defined twice", function.name)));
+            return Err(VerifyError::module(format!(
+                "function `{}` defined twice",
+                function.name
+            )));
         }
     }
     let mut imports = HashSet::new();
     for import in &module.imports {
         if !imports.insert(import.name.as_str()) {
-            return Err(VerifyError::module(format!("`{}` imported twice", import.name)));
+            return Err(VerifyError::module(format!(
+                "`{}` imported twice",
+                import.name
+            )));
         }
     }
     let mut vars = HashSet::new();
+    let mut ids = HashSet::new();
     for var in &module.variables {
         if !vars.insert(var.name.as_str()) {
-            return Err(VerifyError::module(format!("variable `{}` declared twice", var.name)));
+            return Err(VerifyError::module(format!(
+                "variable `{}` declared twice",
+                var.name
+            )));
+        }
+        // Identity must be unambiguous: state is matched by it on reload.
+        if let Some(id) = &var.id {
+            if id.is_empty() {
+                return Err(VerifyError::module(format!(
+                    "variable `{}` has an empty id",
+                    var.name
+                )));
+            }
+            if !ids.insert(id.as_str()) {
+                return Err(VerifyError::module(format!(
+                    "variable id `{id}` is used by more than one variable (second: `{}`)",
+                    var.name
+                )));
+            }
         }
         if let Some(default) = &var.default {
             if default.ty() != var.ty {
@@ -47,6 +74,15 @@ pub fn verify(module: &Module) -> Result<(), VerifyError> {
                 )));
             }
         }
+    }
+
+    for ty in module.variables.iter().map(|v| &v.ty).chain(
+        module
+            .imports
+            .iter()
+            .flat_map(|i| i.sig.params.iter().map(|p| &p.ty).chain([&i.sig.ret])),
+    ) {
+        ty.validate().map_err(VerifyError::module)?;
     }
 
     for function in &module.functions {
@@ -64,7 +100,10 @@ fn verify_events(module: &Module) -> Result<(), VerifyError> {
             return Err(VerifyError::module("an event has an empty name"));
         }
         if !names.insert(event.name.as_str()) {
-            return Err(VerifyError::module(format!("event `{}` declared twice", event.name)));
+            return Err(VerifyError::module(format!(
+                "event `{}` declared twice",
+                event.name
+            )));
         }
         let mut fields = HashSet::new();
         for field in &event.fields {
@@ -84,15 +123,32 @@ fn verify_events(module: &Module) -> Result<(), VerifyError> {
     }
     for (index, subscription) in module.subscriptions.iter().enumerate() {
         let what = || format!("subscription {index} (`{}`)", subscription.event);
-        let handler = module.functions.get(subscription.handler as usize).ok_or_else(|| {
-            VerifyError::module(format!("{}: handler {} out of range", what(), subscription.handler))
-        })?;
-        let err = |message: String| VerifyError { function: Some(handler.name.clone()), pc: None, message };
+        let handler = module
+            .functions
+            .get(subscription.handler as usize)
+            .ok_or_else(|| {
+                VerifyError::module(format!(
+                    "{}: handler {} out of range",
+                    what(),
+                    subscription.handler
+                ))
+            })?;
+        let err = |message: String| VerifyError {
+            function: Some(handler.name.clone()),
+            pc: None,
+            message,
+        };
         if handler.ret != crate::types::Type::Unit {
-            return Err(err(format!("{}: an event handler must return unit", what())));
+            return Err(err(format!(
+                "{}: an event handler must return unit",
+                what()
+            )));
         }
         if let Some(bad) = handler.params.iter().find(|ty| !is_event_field_type(ty)) {
-            return Err(err(format!("{}: handler parameter type {bad} is not an event field type", what())));
+            return Err(err(format!(
+                "{}: handler parameter type {bad} is not an event field type",
+                what()
+            )));
         }
         if let EventRef::Name(name) = &subscription.event {
             if name.trim().is_empty() {
@@ -100,7 +156,8 @@ fn verify_events(module: &Module) -> Result<(), VerifyError> {
             }
             if let Some(event) = module.events.iter().find(|e| &e.name == name) {
                 let fields: Vec<_> = event.fields.iter().map(|f| f.ty.clone()).collect();
-                check_handler(&handler.params, &fields).map_err(|m| err(format!("{}: {m}", what())))?;
+                check_handler(&handler.params, &fields)
+                    .map_err(|m| err(format!("{}: {m}", what())))?;
             }
         }
     }
@@ -114,13 +171,20 @@ struct FunctionVerifier<'a> {
 
 impl FunctionVerifier<'_> {
     fn err(&self, pc: Option<usize>, message: impl Into<String>) -> VerifyError {
-        VerifyError { function: Some(self.function.name.clone()), pc, message: message.into() }
+        VerifyError {
+            function: Some(self.function.name.clone()),
+            pc,
+            message: message.into(),
+        }
     }
 
     fn verify(&self) -> Result<(), VerifyError> {
         let f = self.function;
         if f.registers.len() > usize::from(Reg::MAX) + 1 {
             return Err(self.err(None, "too many registers"));
+        }
+        for ty in f.registers.iter().chain(&f.params).chain([&f.ret]) {
+            ty.validate().map_err(|message| self.err(None, message))?;
         }
         if f.registers.len() < f.params.len() || f.registers[..f.params.len()] != f.params[..] {
             return Err(self.err(None, "the first registers must be the parameters"));
@@ -135,7 +199,10 @@ impl FunctionVerifier<'_> {
         if let Some(debug) = &f.debug {
             let mut previous_end = 0;
             for range in &debug.ranges {
-                if range.start >= range.end || (range.end as usize) > f.code.len() || range.start < previous_end {
+                if range.start >= range.end
+                    || (range.end as usize) > f.code.len()
+                    || range.start < previous_end
+                {
                     return Err(self.err(
                         None,
                         format!(
@@ -147,6 +214,16 @@ impl FunctionVerifier<'_> {
                     ));
                 }
                 previous_end = range.end;
+            }
+            if let Some(source) = debug
+                .register_sources
+                .iter()
+                .find(|source| usize::from(source.register) >= f.registers.len())
+            {
+                return Err(self.err(
+                    None,
+                    format!("debug register {} is outside the register file", source.register),
+                ));
             }
         }
         Ok(())
@@ -189,7 +266,11 @@ impl FunctionVerifier<'_> {
         if args.len() != params.len() {
             return Err(self.err(
                 Some(pc),
-                format!("{what} takes {} arguments, got {}", params.len(), args.len()),
+                format!(
+                    "{what} takes {} arguments, got {}",
+                    params.len(),
+                    args.len()
+                ),
             ));
         }
         for (arg, ty) in args.iter().zip(params) {
@@ -222,11 +303,10 @@ impl FunctionVerifier<'_> {
                     (UnOp::Not, Type::Bool) => Type::Bool,
                     (UnOp::IntToFloat, Type::Int) => Type::Float,
                     (UnOp::FloatToInt, Type::Float) => Type::Int,
-                    (UnOp::ToStr, Type::Object(_)) => {
-                        return Err(self.err(Some(pc), "cannot convert an object to a string"))
-                    }
                     (UnOp::ToStr, _) => Type::Str,
-                    _ => return Err(self.err(Some(pc), format!("{op:?} does not apply to {src_ty}"))),
+                    _ => {
+                        return Err(self.err(Some(pc), format!("{op:?} does not apply to {src_ty}")));
+                    }
                 };
                 self.expect(pc, *dst, &dst_ty)
             }
@@ -236,7 +316,7 @@ impl FunctionVerifier<'_> {
                 let ok = match op {
                     BinOp::Add => matches!(a_ty, Type::Int | Type::Float | Type::Str),
                     BinOp::Sub | BinOp::Mul | BinOp::Div | BinOp::Rem => a_ty.is_numeric(),
-                    BinOp::Eq | BinOp::Ne => !matches!(a_ty, Type::Object(_)),
+                    BinOp::Eq | BinOp::Ne => true,
                     BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
                         matches!(a_ty, Type::Int | Type::Float | Type::Str)
                     }
@@ -249,7 +329,11 @@ impl FunctionVerifier<'_> {
                 self.expect(pc, *dst, &dst_ty)
             }
             Instr::Jump { target } => self.target(pc, *target),
-            Instr::Branch { cond, then, otherwise } => {
+            Instr::Branch {
+                cond,
+                then,
+                otherwise,
+            } => {
                 self.expect(pc, *cond, &Type::Bool)?;
                 self.target(pc, *then)?;
                 self.target(pc, *otherwise)
@@ -280,6 +364,7 @@ impl FunctionVerifier<'_> {
             Instr::SelfEntity { dst } => self.expect(pc, *dst, &Type::Entity),
             Instr::Now { dst } => self.expect(pc, *dst, &Type::Float),
             Instr::Wait { seconds } => self.expect(pc, *seconds, &Type::Float),
+            Instr::Collection { op, dst, args } => self.collection(pc, *op, *dst, args),
             Instr::Return { value: Some(reg) } => self.expect(pc, *reg, &self.function.ret),
             Instr::Return { value: None } => {
                 if self.function.ret == Type::Unit {
@@ -287,6 +372,152 @@ impl FunctionVerifier<'_> {
                 } else {
                     Err(self.err(Some(pc), format!("must return a {}", self.function.ret)))
                 }
+            }
+        }
+    }
+
+    /// The operand and result types of a collection operation.
+    fn collection(&self, pc: usize, op: CollOp, dst: Reg, args: &[Reg]) -> Result<(), VerifyError> {
+        let arity = |n: usize| {
+            if args.len() == n {
+                Ok(())
+            } else {
+                Err(self.err(
+                    Some(pc),
+                    format!("{op:?} takes {n} arguments, got {}", args.len()),
+                ))
+            }
+        };
+        let list_of = |reg: Reg| match self.reg(pc, reg)? {
+            Type::List(element) => Ok((**element).clone()),
+            other => Err(self.err(Some(pc), format!("{op:?} needs a list, r{reg} is {other}"))),
+        };
+        let map_of = |reg: Reg| match self.reg(pc, reg)? {
+            Type::Map(key, value) => Ok(((**key).clone(), (**value).clone())),
+            other => Err(self.err(Some(pc), format!("{op:?} needs a map, r{reg} is {other}"))),
+        };
+        match op {
+            CollOp::MakeList => {
+                let element = match self.reg(pc, dst)? {
+                    Type::List(element) => (**element).clone(),
+                    other => {
+                        return Err(self.err(
+                            Some(pc),
+                            format!("MakeList makes a list, r{dst} is {other}"),
+                        ));
+                    }
+                };
+                args.iter()
+                    .try_for_each(|arg| self.expect(pc, *arg, &element))
+            }
+            CollOp::ListLen => {
+                arity(1)?;
+                list_of(args[0])?;
+                self.expect(pc, dst, &Type::Int)
+            }
+            CollOp::ListGet => {
+                arity(2)?;
+                let element = list_of(args[0])?;
+                self.expect(pc, args[1], &Type::Int)?;
+                self.expect(pc, dst, &element)
+            }
+            CollOp::ListSet | CollOp::ListInsert => {
+                arity(3)?;
+                let element = list_of(args[0])?;
+                self.expect(pc, args[1], &Type::Int)?;
+                self.expect(pc, args[2], &element)?;
+                self.expect(pc, dst, &Type::list(element))
+            }
+            CollOp::ListPush => {
+                arity(2)?;
+                let element = list_of(args[0])?;
+                self.expect(pc, args[1], &element)?;
+                self.expect(pc, dst, &Type::list(element))
+            }
+            CollOp::ListRemove => {
+                arity(2)?;
+                let element = list_of(args[0])?;
+                self.expect(pc, args[1], &Type::Int)?;
+                self.expect(pc, dst, &Type::list(element))
+            }
+            CollOp::MakeMap => {
+                let (key, value) = map_of(dst)?;
+                if args.len() % 2 != 0 {
+                    return Err(self.err(Some(pc), "MakeMap takes key and value pairs"));
+                }
+                for pair in args.chunks(2) {
+                    self.expect(pc, pair[0], &key)?;
+                    self.expect(pc, pair[1], &value)?;
+                }
+                Ok(())
+            }
+            CollOp::MapLen => {
+                arity(1)?;
+                map_of(args[0])?;
+                self.expect(pc, dst, &Type::Int)
+            }
+            CollOp::MapGet => {
+                arity(2)?;
+                let (key, value) = map_of(args[0])?;
+                self.expect(pc, args[1], &key)?;
+                self.expect(pc, dst, &value)
+            }
+            CollOp::MapHas => {
+                arity(2)?;
+                let (key, _) = map_of(args[0])?;
+                self.expect(pc, args[1], &key)?;
+                self.expect(pc, dst, &Type::Bool)
+            }
+            CollOp::MapSet => {
+                arity(3)?;
+                let (key, value) = map_of(args[0])?;
+                self.expect(pc, args[1], &key)?;
+                self.expect(pc, args[2], &value)?;
+                self.expect(pc, dst, &Type::map(key, value))
+            }
+            CollOp::MapRemove => {
+                arity(2)?;
+                let (key, value) = map_of(args[0])?;
+                self.expect(pc, args[1], &key)?;
+                self.expect(pc, dst, &Type::map(key, value))
+            }
+            CollOp::MapKeys => {
+                arity(1)?;
+                let (key, _) = map_of(args[0])?;
+                self.expect(pc, dst, &Type::list(key))
+            }
+            CollOp::MakeTuple => {
+                let Type::Tuple(types) = self.reg(pc, dst)? else {
+                    return Err(self.err(Some(pc), "MakeTuple makes a tuple"));
+                };
+                self.call(
+                    pc,
+                    "MakeTuple",
+                    types,
+                    &self.reg(pc, dst)?.clone(),
+                    args,
+                    None,
+                )
+            }
+            CollOp::TupleGet(index) => {
+                arity(1)?;
+                let Type::Tuple(types) = self.reg(pc, args[0])? else {
+                    return Err(self.err(
+                        Some(pc),
+                        format!(
+                            "TupleGet needs a tuple, r{} is {}",
+                            args[0],
+                            self.reg(pc, args[0])?
+                        ),
+                    ));
+                };
+                let item = types.get(index as usize).ok_or_else(|| {
+                    self.err(
+                        Some(pc),
+                        format!("tuple of {} has no element {index}", types.len()),
+                    )
+                })?;
+                self.expect(pc, dst, item)
             }
         }
     }

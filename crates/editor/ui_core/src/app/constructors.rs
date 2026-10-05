@@ -148,6 +148,8 @@ impl PulsarApp {
                 panic!("Invalid dock configuration: center must be Tabs type");
             }
         };
+        // The editor keeps its tab strip with a single tab, and the last tab stays open.
+        center_tabs.update(cx, |tabs, cx| tabs.set_persistent_tabs(true, cx));
 
         // ── Left-dock side panels ──────────────────────────────────────────────
         let t = std::time::Instant::now();
@@ -450,10 +452,14 @@ impl PulsarApp {
                 // active_type_picker_editor: None, // Migrated to plugins
                 focus_handle: cx.focus_handle(),
                 popped_out_panels: Vec::new(),
-                navigation_history: VecDeque::new(),
-                navigation_history_index: 0,
+                navigation: Default::default(),
                 multiuser_refresh_task: Some(multiuser_refresh_task),
                 git_auto_fetch_task,
+                layout_persist: false,
+                window_bounds: None,
+                window_restore_bounds: None,
+                layout_ready: false,
+                layout_save_task: None,
                 radial: super::radial_menu::RadialHost::new(cx),
             },
         };
@@ -688,6 +694,11 @@ impl PulsarApp {
         // during construction (e.g. the default level editor) without waiting for a
         // tab-change or file-open event.
         app.refresh_open_editor_snapshot(cx);
+
+        // Restore the project's saved tab layout and keep saving it.
+        if has_project && create_level_editor {
+            app.init_layout_persistence(window, cx);
+        }
 
         app
     }

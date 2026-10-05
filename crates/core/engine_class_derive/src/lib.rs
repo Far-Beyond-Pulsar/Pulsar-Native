@@ -55,12 +55,10 @@
 //! ```
 
 use proc_macro::TokenStream;
-use proc_macro2::Span;
 use quote::quote;
-use std::collections::HashMap;
 use syn::{
-    Attribute, Data, DeriveInput, Expr, Field, Fields, FnArg, ImplItem, ItemImpl, ItemStruct, Lit,
-    Meta, MetaNameValue, Pat, PatType, ReturnType, Type,
+    Attribute, Data, DeriveInput, Expr, Field, Fields, ItemImpl, ItemStruct, Lit,
+    Meta, MetaNameValue,
     parse::{Parse, ParseStream},
     parse_macro_input,
     punctuated::Punctuated,
@@ -408,7 +406,7 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                 // Auto-generated property getter/setter methods
                 methods.extend(vec![#(#property_method_items),*]);
 
-                // Manually registered methods from #[component_methods]
+                // Methods registered by hand through `ComponentMethodRegistration`
                 for registration in pulsar_reflection::inventory::iter::<pulsar_reflection::ComponentMethodRegistration>() {
                     if registration.class_name == stringify!(#name) {
                         methods.extend((registration.methods)());
@@ -1346,24 +1344,11 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         fn #get_mut_fn_name(
             world: &mut pulsar_scenedb::World,
             entity: pulsar_scenedb::Entity,
-        ) -> Option<&mut dyn pulsar_reflection::EngineClass> {
-            // `World::get_mut` returns `Mut<'_, T>` (SceneDB's GPU
-            // dirty-mark guard, not a bare `&mut T`) as of the
-            // pulsar_scenedb rev this workspace pins post-2026-08-15
-            // (Pulsar-Native#561 Phase D). `WorldComponentRegistration.
-            // get_as_engine_class_mut` is a plain `fn` pointer with no room
-            // to carry `Mut`'s guard through it, so `.into_inner()` (added
-            // to `Mut` for exactly this) extracts the raw reference, firing
-            // the guard's GPU dispatch immediately for #self_ty's current
-            // field values first. None of `helio_component`'s
-            // `#[register_world_component]` classes are `#[gpu]`-mirrored
-            // today, so that dispatch is a no-op here either way -- see
-            // `Mut::into_inner`'s own doc for the (currently moot) caveat
-            // that would apply to a future GPU-mirrored class taking this
-            // path.
-            world
-                .get_mut::<#self_ty>(entity)
-                .map(|component| component.into_inner() as &mut dyn pulsar_reflection::EngineClass)
+        ) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
+            // A guard, not a bare `&mut`: SceneDB's write hooks (GPU mirror,
+            // change tracker, subscriptions, journals) fire when it drops,
+            // after the edit, and only if it was written through (#841).
+            pulsar_world_registry::EngineClassMut::of::<#self_ty>(world, entity)
         }
 
         pulsar_world_registry::inventory::submit! {
@@ -2037,291 +2022,6 @@ fn title_case(s: &str) -> String {
         .join(" ")
 }
 
-#[proc_macro_attribute]
-pub fn component_methods(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let impl_block = parse_macro_input!(item as ItemImpl);
-
-    // Extract the type name from the impl block
-    let type_name = match &*impl_block.self_ty {
-        Type::Path(type_path) => {
-            if let Some(segment) = type_path.path.segments.last() {
-                segment.ident.clone()
-            } else {
-                return syn::Error::new_spanned(&impl_block.self_ty, "Expected type path")
-                    .to_compile_error()
-                    .into();
-            }
-        }
-        _ => {
-            return syn::Error::new_spanned(&impl_block.self_ty, "Expected type path")
-                .to_compile_error()
-                .into();
-        }
-    };
-
-    let type_name_str = type_name.to_string();
-
-    // ── #645 overload policy: compile-time refusal ────────────────────────
-    // Reflected dispatch is NAME-keyed (`REGISTRY.get_method` returns the
-    // first match), so two `#[method]`s with the same Rust name on one type
-    // would silently shadow each other. Overloads are disallowed outright;
-    // this is the compile-time half (one impl block). Cross-registration
-    // collisions are swept at test time by
-    // `pulsar_world_registry::audit`.
-    {
-        let mut seen: HashMap<String, Span> = HashMap::new();
-        for item in &impl_block.items {
-            if let ImplItem::Fn(method) = item {
-                let has_method_attr = method
-                    .attrs
-                    .iter()
-                    .any(|attr| attr.path().is_ident("method"));
-                if !has_method_attr {
-                    continue;
-                }
-                let name = method.sig.ident.to_string();
-                if let Some(first_span) = seen.get(&name) {
-                    return syn::Error::new(
-                        method.sig.ident.span(),
-                        format!(
-                            "overload policy (#645): method '{name}' is already declared for \
-                             {type_name}; reflected dispatch is name-keyed, so overloads are \
-                             disallowed -- rename one of them (first declared here: line {})",
-                            first_span.start().line
-                        ),
-                    )
-                    .to_compile_error()
-                    .into();
-                }
-                seen.insert(name, method.sig.ident.span());
-            }
-        }
-    }
-
-    // Find all methods marked with #[method]
-    let mut method_metadata_items = Vec::new();
-
-    for item in &impl_block.items {
-        if let ImplItem::Fn(method) = item {
-            // Check if method has #[method] attribute
-            let method_attr = method
-                .attrs
-                .iter()
-                .find(|attr| attr.path().is_ident("method"));
-
-            if let Some(attr) = method_attr {
-                // Parse the method
-                let method_ident = &method.sig.ident;
-                let method_name_str = method_ident.to_string();
-                let display_name = title_case(&method_name_str.replace('_', " "));
-
-                // Extract method type and category from attribute
-                let (method_type, category) = match parse_method_attribute(attr) {
-                    Ok(parsed) => parsed,
-                    Err(err) => return err.to_compile_error().into(),
-                };
-
-                // Extract parameters (skip &self / &mut self)
-                let mut params = Vec::new();
-                for input in &method.sig.inputs {
-                    if let FnArg::Typed(PatType { pat, ty, .. }) = input {
-                        if let Pat::Ident(pat_ident) = &**pat {
-                            let param_name = pat_ident.ident.to_string();
-                            let param_type = ty.clone();
-                            params.push((param_name, param_type));
-                        }
-                    }
-                }
-
-                // Extract return type
-                let return_type = match &method.sig.output {
-                    ReturnType::Default => None,
-                    ReturnType::Type(_, ty) => Some(ty.clone()),
-                };
-
-                // Generate param metadata
-                let param_metadata: Vec<_> = params
-                    .iter()
-                    .map(|(name, ty)| {
-                        quote! {
-                            pulsar_reflection::MethodParameter {
-                                name: #name,
-                                type_info: <#ty as pulsar_reflection::Reflectable>::type_info(),
-                            }
-                        }
-                    })
-                    .collect();
-
-                // Generate return type metadata
-                let return_metadata = if let Some(ret_ty) = &return_type {
-                    quote! {
-                        Some(pulsar_reflection::MethodReturnType {
-                            type_info: <#ret_ty as pulsar_reflection::Reflectable>::type_info(),
-                        })
-                    }
-                } else {
-                    quote! { None }
-                };
-
-                // Determine mutability (for downcasting)
-                let is_mut = method
-                    .sig
-                    .inputs
-                    .iter()
-                    .any(|arg| matches!(arg, FnArg::Receiver(r) if r.mutability.is_some()));
-
-                // Generate caller closure
-                let param_reads: Vec<_> = params
-                    .iter()
-                    .enumerate()
-                    .map(|(i, (_, ty))| {
-                        quote! {
-                            {
-                                let boxed = __pulsar_args
-                                    .next()
-                                    .expect(concat!("Missing argument at index ", stringify!(#i)));
-                                match boxed.downcast::<#ty>() {
-                                    Ok(value) => *value,
-                                    Err(_) => panic!(concat!("Invalid argument type at index ", stringify!(#i))),
-                                }
-                            }
-                        }
-                    })
-                    .collect();
-
-                let caller = if is_mut {
-                    let result_conversion = if return_type.is_some() {
-                        quote! { Some(Box::new(result) as Box<dyn std::any::Any>) }
-                    } else {
-                        quote! { None }
-                    };
-
-                    quote! {
-                        Box::new(|obj: &mut dyn pulsar_reflection::EngineClass, args: pulsar_reflection::MethodArgs| {
-                            let concrete = obj.as_any_mut().downcast_mut::<#type_name>().expect("Downcast failed");
-                            let mut __pulsar_args = args.into_iter();
-                            let result = concrete.#method_ident(#(#param_reads),*);
-                            #result_conversion
-                        })
-                    }
-                } else {
-                    let result_conversion = if return_type.is_some() {
-                        quote! { Some(Box::new(result) as Box<dyn std::any::Any>) }
-                    } else {
-                        quote! { None }
-                    };
-
-                    quote! {
-                        Box::new(|obj: &mut dyn pulsar_reflection::EngineClass, args: pulsar_reflection::MethodArgs| {
-                            let concrete = obj.as_any().downcast_ref::<#type_name>().expect("Downcast failed");
-                            let mut __pulsar_args = args.into_iter();
-                            let result = concrete.#method_ident(#(#param_reads),*);
-                            #result_conversion
-                        })
-                    }
-                };
-
-                // Generate MethodMetadata
-                let category_expr = if let Some(cat) = category {
-                    quote! { Some(#cat) }
-                } else {
-                    quote! { None }
-                };
-
-                method_metadata_items.push(quote! {
-                    pulsar_reflection::MethodMetadata {
-                        name: #method_name_str,
-                        display_name: #display_name.to_string(),
-                        category: #category_expr,
-                        params: vec![#(#param_metadata),*],
-                        return_type: #return_metadata,
-                        method_type: #method_type,
-                        caller: #caller,
-                    }
-                });
-            }
-        }
-    }
-
-    // Generate inventory registration
-    let registration = if !method_metadata_items.is_empty() {
-        quote! {
-            pulsar_reflection::inventory::submit! {
-                pulsar_reflection::ComponentMethodRegistration {
-                    class_name: #type_name_str,
-                    methods: || vec![#(#method_metadata_items),*],
-                }
-            }
-        }
-    } else {
-        quote! {}
-    };
-
-    // Output: original impl block + registration
-    let output = quote! {
-        #impl_block
-        #registration
-    };
-
-    output.into()
-}
-
-/// Parse #[method(...)] attribute to extract type and category.
-///
-/// #645 purity policy: the blueprint type is REQUIRED. `MethodType` is
-/// load-bearing metadata -- rust_codegen inlines `Pure` call bodies -- so a
-/// silent default of `Pure` would let side-effecting methods get illegally
-/// inlined. The author must declare Pure / Fn / ControlFlow explicitly;
-/// omitting it is a compile error spelling out why.
-fn parse_method_attribute(
-    attr: &Attribute,
-) -> syn::Result<(proc_macro2::TokenStream, Option<String>)> {
-    let method_type_error = || {
-        syn::Error::new_spanned(
-            attr,
-            "#[method] must declare its blueprint type explicitly, e.g. \
-             #[method(type = Fn)] with one of Pure | Fn | ControlFlow. Purity is load-bearing: \
-             Pure methods may be inlined by codegen, so side effects must never hide behind a \
-             default (#645).",
-        )
-    };
-
-    let mut method_type: Option<proc_macro2::TokenStream> = None;
-    let mut category = None;
-
-    if let Meta::List(meta_list) = &attr.meta {
-        let tokens_str = meta_list.tokens.to_string();
-
-        // Parse type
-        if tokens_str.contains("type") {
-            if tokens_str.contains("MethodType :: Pure") || tokens_str.contains("Pure") {
-                method_type = Some(quote! { pulsar_reflection::MethodType::Pure });
-            } else if tokens_str.contains("MethodType :: Fn") || tokens_str.contains("Fn") {
-                method_type = Some(quote! { pulsar_reflection::MethodType::Fn });
-            } else if tokens_str.contains("MethodType :: ControlFlow")
-                || tokens_str.contains("ControlFlow")
-            {
-                method_type = Some(quote! { pulsar_reflection::MethodType::ControlFlow });
-            }
-        }
-
-        // Parse category
-        if let Some(start) = tokens_str.find("category") {
-            if let Some(quote_start) = tokens_str[start..].find('"') {
-                let rest = &tokens_str[start + quote_start + 1..];
-                if let Some(quote_end) = rest.find('"') {
-                    category = Some(rest[..quote_end].to_string());
-                }
-            }
-        }
-    }
-
-    match method_type {
-        Some(method_type) => Ok((method_type, category)),
-        None => Err(method_type_error()),
-    }
-}
-
 /// Generate getter and setter method metadata items for properties.
 ///
 /// `field_categories[i]` parallels `fields[i]`: the property's resolved
@@ -2356,7 +2056,7 @@ fn generate_property_method_items(
                 return_type: Some(pulsar_reflection::MethodReturnType {
                     type_info: <#field_type as pulsar_reflection::Reflectable>::type_info(),
                 }),
-                method_type: pulsar_reflection::MethodType::Pure,
+                flags: pulsar_reflection::MethodFlags { side_effect_free: true, deterministic: false },
                 caller: Box::new(|obj: &mut dyn pulsar_reflection::EngineClass, _args: pulsar_reflection::MethodArgs| {
                     let concrete = obj.as_any().downcast_ref::<#struct_name>().unwrap();
                     Some(Box::new(concrete.#field_name.clone()) as Box<dyn std::any::Any>)
@@ -2377,7 +2077,7 @@ fn generate_property_method_items(
                     }
                 ],
                 return_type: None,
-                method_type: pulsar_reflection::MethodType::Fn,
+                flags: pulsar_reflection::MethodFlags::NONE,
                 caller: Box::new(|obj: &mut dyn pulsar_reflection::EngineClass, args: pulsar_reflection::MethodArgs| {
                     let concrete = obj.as_any_mut().downcast_mut::<#struct_name>().unwrap();
                     if let Some(value) = args.into_iter().next() {

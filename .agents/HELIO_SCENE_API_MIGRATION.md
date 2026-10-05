@@ -1,5 +1,7 @@
 # Helio scene API migration audit
 
+Historical audit: its dependency versions, caller inventory, and completion claims require revalidation. The current corrective scope, including editor and runtime producers, is [SCENEDB_CORRECTIVE_PLAN.md](SCENEDB_CORRECTIVE_PLAN.md).
+
 Status: partial Phase 13 migration. `SceneDbHandle` is now a cloneable
 `GpuMirrorHandle` projection, not `Arc<Mutex<SceneDb>>`; Helio never locks or
 flushes the authoritative CPU database. Pass-owned components and the legacy

@@ -1,6 +1,32 @@
 use super::*;
 
 impl LevelEditorPanel {
+    pub(in crate::ui::panel) fn on_set_transform_snap(
+        &mut self,
+        action: &toolbar::SetTransformSnap,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let mut state = self.shared_state.write();
+        let target = match action.0 {
+            0 => &mut state.editor.location_snap,
+            1 => &mut state.editor.rotation_snap,
+            _ => &mut state.editor.scale_snap,
+        };
+        if action.1.is_finite() && action.1 > 0.0 {
+            *target = action.1;
+        }
+        if let Some(mailbox) = &self.helio_mailbox {
+            mailbox.set_gizmo_snap_settings(
+                state.editor.location_snap,
+                state.editor.rotation_snap,
+                state.editor.scale_snap,
+            );
+        }
+        drop(state);
+        cx.notify();
+    }
+
     // Action handlers
     pub(in crate::ui::panel) fn on_select_tool(
         &mut self,
@@ -59,56 +85,6 @@ impl LevelEditorPanel {
     }
 
     // Toolbar action handlers
-    pub(in crate::ui::panel) fn on_set_time_scale(
-        &mut self,
-        action: &toolbar::SetTimeScale,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.shared_state.write().play.time_scale = action.0;
-        cx.notify();
-    }
-
-    pub(in crate::ui::panel) fn on_set_multiplayer_mode(
-        &mut self,
-        action: &toolbar::SetMultiplayerMode,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.shared_state.write().play.multiplayer_mode = action.0;
-        cx.notify();
-    }
-
-    pub(in crate::ui::panel) fn on_set_build_config(
-        &mut self,
-        action: &toolbar::SetBuildConfig,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.shared_state.write().build.config = action.0;
-        cx.notify();
-    }
-
-    pub(in crate::ui::panel) fn on_set_target_platform(
-        &mut self,
-        action: &toolbar::SetTargetPlatform,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.shared_state.write().build.target_platform = action.0;
-        cx.notify();
-    }
-
-    pub(in crate::ui::panel) fn on_set_build_mode(
-        &mut self,
-        action: &toolbar::SetBuildMode,
-        _: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.shared_state.write().build.mode = action.0;
-        cx.notify();
-    }
-
     pub(in crate::ui::panel) fn on_set_tool_mode(
         &mut self,
         action: &toolbar::SetToolMode,

@@ -42,3 +42,5 @@ blueprint_graph_debug.json
 # Local validation outputs and evidence archives.
 /docs/validation/
 /crates/target/generated
+/target-perf-investigation
+/target-perf-investigation-o3

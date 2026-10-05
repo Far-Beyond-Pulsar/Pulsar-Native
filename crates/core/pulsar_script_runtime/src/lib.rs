@@ -40,20 +40,36 @@
 //! [`call_function`](ScriptRuntime::call_function) to run a handler.
 //!
 //! Hot reload: [`ScriptRuntime::reload_class`] swaps a class's code and
-//! keeps each instance's variables whose name and type are unchanged;
+//! carries each instance's variables over by stable id (name for data from
+//! before ids), runs the class's optional `migrate` hook when its version
+//! rises, reports every change, and is all-or-nothing (see
+//! [`pulsar_script_vm::migrate`]). [`SavedState`] saves and restores an
+//! instance through the same migration;
 //! loading, reloading or unloading a native library relinks every class
 //! (see [`RelinkReport`]).
+
+// `RuntimeError` carries the VM's rich error site by value; these are cold paths.
+#![allow(clippy::result_large_err)]
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use pulsar_scenedb::{Entity, World};
+use pulsar_script_vm::migrate::{self, MigrationSource, VariableFate};
+
+mod latent;
+mod phase;
+mod state;
 use pulsar_script_vm::{
-    Budget, CapabilityPolicy, Completion, Continuation, ErrorSite, EventCatalog, EventDecl, EventSink, FuncId, Host,
-    Instance, LibraryError, LibraryId, LinkError, LinkedSubscription, Module, NativeFn,
-    NativeLibraries, NativeRegistry, Program, ScriptError, SourceLoc, Type, Value, Vm,
+    Budget, CapabilityPolicy, Completion, Continuation, DebugCommand, DebugSnapshot, Debugger,
+    ErrorSite, EventCatalog, EventDecl, EventSink, FuncId, Host, Instance, LibraryError, LibraryId,
+    LinkError, LinkedSubscription, Module, NativeFn, NativeLibraries, NativeRegistry, Program,
+    ScriptError, SourceLoc, Type, TypeRegistry, Value, Variable, Vm,
+    Latent, Wake,
 };
+pub use phase::{PhaseStats, DEFAULT_PARALLEL_THRESHOLD};
+pub use state::{value_to_json, RestoreReport, SavedState, SavedVariable};
 
 /// The engine's event hub, as the runtime sees it: a sink for the event
 /// natives, a catalog to link handlers against, and a registry for the
@@ -136,7 +152,11 @@ pub enum RuntimeError {
     #[error("script instance `{0}` already exists")]
     DuplicateInstance(String),
     #[error("`{class}::{name}` must be `{expected}` to be a lifecycle event")]
-    BadEntryPoint { class: String, name: &'static str, expected: &'static str },
+    BadEntryPoint {
+        class: String,
+        name: &'static str,
+        expected: &'static str,
+    },
     #[error("`{class}` has no exported function `{name}`")]
     UnknownEvent { class: String, name: String },
     #[error("variable `{name}`: {reason}")]
@@ -150,15 +170,37 @@ pub enum RuntimeError {
         site: Option<ErrorSite>,
     },
     #[error("script instance `{object_id}` of `{class}`: {source}")]
-    Script { object_id: String, class: String, source: ScriptError },
+    Script {
+        object_id: String,
+        class: String,
+        source: ScriptError,
+    },
     #[error(transparent)]
     Library(#[from] LibraryError),
     #[error("could not read `{path}`: {source}")]
-    Io { path: PathBuf, source: std::io::Error },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("`{path}` is not a script module: {source}")]
-    Parse { path: PathBuf, source: pulsar_script_vm::ModuleDecodeError },
+    Parse {
+        path: PathBuf,
+        source: pulsar_script_vm::ModuleDecodeError,
+    },
     #[error("script class `{class}` declares event `{event}`: {reason}")]
-    EventDeclaration { class: String, event: String, reason: String },
+    EventDeclaration {
+        class: String,
+        event: String,
+        reason: String,
+    },
+    #[error("migrating `{object_id}` of `{class}` failed, so the reload was refused: {source}")]
+    Migration {
+        class: String,
+        object_id: String,
+        source: ScriptError,
+    },
+    #[error("restoring saved state of `{object_id}`: {reason}")]
+    State { object_id: String, reason: String },
 }
 
 struct Entries {
@@ -180,21 +222,31 @@ impl Class {
         policy: &CapabilityPolicy,
     ) -> Result<Self, RuntimeError> {
         let class = module.name.clone();
-        let program = Program::link_with_policy(Arc::clone(&module), natives, events, policy).map_err(|source| {
-            let site = module.locate_link_error(&source);
-            RuntimeError::Link { class: class.clone(), source, site }
-        })?;
-        let entry = |name: &'static str, params: &[Type], expected: &'static str| {
-            match program.module().function(name) {
-                Some((index, f)) if f.exported => {
-                    if f.params == params && f.ret == Type::Unit {
-                        Ok(Some(FuncId(index)))
-                    } else {
-                        Err(RuntimeError::BadEntryPoint { class: class.clone(), name, expected })
-                    }
+        let program = Program::link_with_policy(Arc::clone(&module), natives, events, policy)
+            .map_err(|source| {
+                let site = module.locate_link_error(&source);
+                RuntimeError::Link {
+                    class: class.clone(),
+                    source,
+                    site,
                 }
-                _ => Ok(None),
+            })?;
+        let entry = |name: &'static str, params: &[Type], expected: &'static str| match program
+            .module()
+            .function(name)
+        {
+            Some((index, f)) if f.exported => {
+                if f.params == params && f.ret == Type::Unit {
+                    Ok(Some(FuncId(index)))
+                } else {
+                    Err(RuntimeError::BadEntryPoint {
+                        class: class.clone(),
+                        name,
+                        expected,
+                    })
+                }
             }
+            _ => Ok(None),
         };
         let entries = Entries {
             begin_play: entry(BEGIN_PLAY, &[], "fn begin_play()")?,
@@ -210,8 +262,22 @@ struct ScriptInstance {
     class: String,
     state: Instance,
     entity: Option<Entity>,
+    /// Lifetime instructions executed by this instance, including calls
+    /// that returned an error or suspended on a wait.
+    instructions_executed: u64,
     /// Suspended calls and the game time each resumes at.
     waiting: Vec<(f64, Continuation)>,
+    /// Calls suspended by a latent native (`wait::frames`, `wait::until`,
+    /// `wait::event`), with what each waits for.
+    blocked: Vec<(Wake, Continuation)>,
+    /// Timers and the pending wake request of the running call.
+    latent: Latent,
+    /// Calls stopped by the debugger. These resume only on an explicit
+    /// debugger command, never from the regular tick loop.
+    paused: Vec<(DebugSnapshot, Continuation)>,
+    /// Breakpoints and stepping state belong to this object, even though
+    /// the runtime reuses one VM for all instances.
+    debugger: Debugger,
 }
 
 /// What a class reload did with the instances' waiting calls.
@@ -221,6 +287,67 @@ pub struct ReloadReport {
     pub kept: usize,
     /// Waiting calls dropped because their code changed shape.
     pub dropped: Vec<DroppedCall>,
+    /// Variables, across all instances, whose value carried over unchanged.
+    pub variables_kept: usize,
+    /// Everything else that happened to variables: renames, resets,
+    /// retypes, removals and `migrate` runs, one entry per instance.
+    pub variables: Vec<VariableChange>,
+}
+
+/// One notable change to one instance's variable during a reload.
+#[derive(Clone, Debug, PartialEq)]
+pub struct VariableChange {
+    pub object_id: String,
+    /// The variable (for `Removed`, the old name).
+    pub variable: String,
+    pub kind: ChangeKind,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ChangeKind {
+    /// The value carried over under a new name (matched by id).
+    Renamed { from: String },
+    /// New in this version: starts at its default.
+    Defaulted,
+    /// The type changed: the value was not carried over and the variable
+    /// starts at its default (unless `migrate` set it).
+    Incompatible { from: Type, to: Type },
+    /// Gone from this version: its value was discarded.
+    Removed,
+    /// The class's `migrate` function ran for this instance.
+    MigrateRan { from_version: u32 },
+}
+
+/// The old instance's values, by variable name, for `migrate`.
+struct OldState(HashMap<String, Value>);
+
+impl MigrationSource for OldState {
+    fn old_value(&self, name: &str) -> Option<&Value> {
+        self.0.get(name)
+    }
+}
+
+/// The `migrate` function to run for a reload from `old` to `new`, if any:
+/// the new module raised its class version and exports one.
+fn migration_hook(old_version: u32, new: &Class) -> Result<Option<FuncId>, RuntimeError> {
+    let module = new.program.module();
+    if module.class_version <= old_version {
+        return Ok(None);
+    }
+    match module.function(migrate::MIGRATE_FUNCTION) {
+        Some((index, f)) if f.exported => {
+            if f.params == [Type::Int] && f.ret == Type::Unit {
+                Ok(Some(FuncId(index)))
+            } else {
+                Err(RuntimeError::BadEntryPoint {
+                    class: module.name.clone(),
+                    name: migrate::MIGRATE_FUNCTION,
+                    expected: "fn migrate(from_version: int)",
+                })
+            }
+        }
+        _ => Ok(None),
+    }
 }
 
 /// A waiting call a reload could not keep.
@@ -259,6 +386,29 @@ pub struct ScriptRuntime {
     /// Which native capabilities classes may import (#869).
     capabilities: CapabilityPolicy,
     events: Option<Arc<dyn EventHost>>,
+    debug_events: Vec<(String, DebugSnapshot)>,
+    /// Errors from calls resumed outside a tick (by an event), reported by
+    /// the next `tick_all`.
+    deferred_errors: Vec<RuntimeError>,
+    /// What the last tick's read and write stages did.
+    phase_stats: PhaseStats,
+    /// Read-only instances needed before the read stage uses threads.
+    parallel_threshold: usize,
+}
+
+/// A snapshot of execution counters for one live script instance.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstanceRuntimeStats {
+    /// Runtime object id (the driver uses a stable entity/class identity).
+    pub object_id: String,
+    /// Loaded script class name.
+    pub class: String,
+    /// Lifetime instructions executed since this instance spawned.
+    pub instructions_executed: u64,
+    /// Calls currently suspended on `Wait`.
+    pub waiting_calls: usize,
+    /// Calls stopped at a debugger breakpoint or step boundary.
+    pub paused_calls: usize,
 }
 
 impl ScriptRuntime {
@@ -282,6 +432,10 @@ impl ScriptRuntime {
             class_budgets: HashMap::new(),
             capabilities: CapabilityPolicy::allow_all(),
             events: None,
+            debug_events: Vec::new(),
+            deferred_errors: Vec::new(),
+            phase_stats: PhaseStats::default(),
+            parallel_threshold: DEFAULT_PARALLEL_THRESHOLD,
         }
     }
 
@@ -365,7 +519,103 @@ impl ScriptRuntime {
 
     /// Number of suspended calls on an instance.
     pub fn waiting_calls(&self, object_id: &str) -> usize {
-        self.instances.get(object_id).map_or(0, |i| i.waiting.len())
+        self.instances.get(object_id).map_or(0, |i| i.waiting.len() + i.blocked.len())
+    }
+
+    /// Runtime counters for live script instances, in spawn order.
+    pub fn instance_stats(&self) -> Vec<InstanceRuntimeStats> {
+        self.order
+            .iter()
+            .filter_map(|id| {
+                let instance = self.instances.get(id)?;
+                Some(InstanceRuntimeStats {
+                    object_id: id.clone(),
+                    class: instance.class.clone(),
+                    instructions_executed: instance.instructions_executed,
+                    waiting_calls: instance.waiting.len() + instance.blocked.len(),
+                    paused_calls: instance.paused.len(),
+                })
+            })
+            .collect()
+    }
+
+    /// Stop snapshots for `object_id`, in the order the calls paused.
+    pub fn paused_calls(&self, object_id: &str) -> Vec<DebugSnapshot> {
+        self.instances
+            .get(object_id)
+            .map(|instance| {
+                instance
+                    .paused
+                    .iter()
+                    .map(|(snapshot, _)| snapshot.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Set a bytecode breakpoint for one instance.
+    pub fn set_breakpoint(
+        &mut self,
+        object_id: &str,
+        function: impl Into<String>,
+        pc: usize,
+    ) -> Result<(), RuntimeError> {
+        self.instance_mut(object_id)?
+            .debugger
+            .set_breakpoint(function, pc);
+        Ok(())
+    }
+
+    /// Set breakpoints on all bytecode instructions emitted from a graph node.
+    pub fn set_node_breakpoint(
+        &mut self,
+        object_id: &str,
+        function: &str,
+        file: &str,
+        node: &str,
+    ) -> Result<usize, RuntimeError> {
+        let instance = self
+            .instances
+            .get(object_id)
+            .ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
+        let class = self
+            .classes
+            .get(&instance.class)
+            .ok_or_else(|| RuntimeError::UnknownClass(instance.class.clone()))?;
+        let module = class.program.module();
+        Ok(self
+            .instances
+            .get_mut(object_id)
+            .expect("instance checked")
+            .debugger
+            .set_node_breakpoint(module, function, file, node))
+    }
+
+    /// Remove a bytecode breakpoint for one instance.
+    pub fn remove_breakpoint(
+        &mut self,
+        object_id: &str,
+        function: &str,
+        pc: usize,
+    ) -> Result<bool, RuntimeError> {
+        Ok(self
+            .instance_mut(object_id)?
+            .debugger
+            .remove_breakpoint(function, pc))
+    }
+
+    /// Drain debugger stop notifications in the order the runtime observed them.
+    pub fn take_debug_events(&mut self) -> Vec<(String, DebugSnapshot)> {
+        std::mem::take(&mut self.debug_events)
+    }
+
+    /// The current stop snapshot for one paused call.
+    pub fn debug_snapshot(&self, object_id: &str, index: usize) -> Option<&DebugSnapshot> {
+        self.instances
+            .get(object_id)?
+            .paused
+            .get(index)
+            .map(|(snapshot, _)| snapshot)
     }
 
     /// The natives scripts can link against (for frontends' palettes).
@@ -383,7 +633,10 @@ impl ScriptRuntime {
         Ok(self.relink_all())
     }
 
-    pub fn load_library(&mut self, path: impl AsRef<Path>) -> Result<(LibraryId, RelinkReport), RuntimeError> {
+    pub fn load_library(
+        &mut self,
+        path: impl AsRef<Path>,
+    ) -> Result<(LibraryId, RelinkReport), RuntimeError> {
         let id = self.libraries.load(path, &mut self.natives)?;
         Ok((id, self.relink_all()))
     }
@@ -402,7 +655,12 @@ impl ScriptRuntime {
         let mut report = RelinkReport::default();
         let catalog = self.events.as_deref().map(|e| e as &dyn EventCatalog);
         for (name, class) in &mut self.classes {
-            match Class::link(Arc::clone(class.program.module()), &self.natives, catalog, &self.capabilities) {
+            match Class::link(
+                Arc::clone(class.program.module()),
+                &self.natives,
+                catalog,
+                &self.capabilities,
+            ) {
                 Ok(relinked) => {
                     *class = relinked;
                     report.relinked.push(name.clone());
@@ -425,8 +683,14 @@ impl ScriptRuntime {
             return Err(RuntimeError::ClassLoaded(module.name));
         }
         self.declare_events(&module)?;
-        let class = Class::link(Arc::new(module), &self.natives, self.catalog(), &self.capabilities)?;
-        self.classes.insert(class.program.module().name.clone(), class);
+        let class = Class::link(
+            Arc::new(module),
+            &self.natives,
+            self.catalog(),
+            &self.capabilities,
+        )?;
+        self.classes
+            .insert(class.program.module().name.clone(), class);
         Ok(())
     }
 
@@ -438,9 +702,15 @@ impl ScriptRuntime {
 
     /// [`load_class_file`](Self::load_class_file) from bytes already read
     /// (from a pak, say); `origin` names them in errors.
-    pub fn load_class_bytes(&mut self, bytes: &[u8], origin: &Path) -> Result<(String, ReloadReport), RuntimeError> {
-        let module = Module::decode(bytes)
-            .map_err(|source| RuntimeError::Parse { path: origin.to_owned(), source })?;
+    pub fn load_class_bytes(
+        &mut self,
+        bytes: &[u8],
+        origin: &Path,
+    ) -> Result<(String, ReloadReport), RuntimeError> {
+        let module = Module::decode(bytes).map_err(|source| RuntimeError::Parse {
+            path: origin.to_owned(),
+            source,
+        })?;
         let name = module.name.clone();
         let report = if self.classes.contains_key(&name) {
             self.reload_class(module)?
@@ -458,7 +728,10 @@ impl ScriptRuntime {
         path: impl AsRef<Path>,
     ) -> Result<(String, ReloadReport), RuntimeError> {
         let path = path.as_ref();
-        let bytes = std::fs::read(path).map_err(|source| RuntimeError::Io { path: path.to_owned(), source })?;
+        let bytes = std::fs::read(path).map_err(|source| RuntimeError::Io {
+            path: path.to_owned(),
+            source,
+        })?;
         self.load_class_bytes(&bytes, path)
     }
 
@@ -471,7 +744,13 @@ impl ScriptRuntime {
     /// the hidden `__slot:<uuid>` component handles of class instances).
     pub fn class_variables(&self, class: &str) -> Option<Vec<(String, Type)>> {
         let module = self.classes.get(class)?.program.module();
-        Some(module.variables.iter().map(|v| (v.name.clone(), v.ty.clone())).collect())
+        Some(
+            module
+                .variables
+                .iter()
+                .map(|v| (v.name.clone(), v.ty.clone()))
+                .collect(),
+        )
     }
 
     /// The class an instance runs.
@@ -480,62 +759,117 @@ impl ScriptRuntime {
     }
 
     /// Swap a loaded class's code. Instances keep their identity, binding
-    /// and every variable whose name and type are unchanged; new or
-    /// retyped variables start at their defaults. Waiting calls continue
-    /// in the new code when their functions' layout is unchanged (see
-    /// `Continuation::rebase`), and are dropped otherwise, listed in the
-    /// report. On error nothing changes.
+    /// and every variable [`migrate::plan`] matches (by stable id, else by
+    /// name) to a variable of the same type; new, retyped and unmatched
+    /// variables are reported in [`ReloadReport::variables`]. When the new
+    /// module raises [`Module::class_version`] and exports `migrate`, it
+    /// runs once per instance on the new state (see
+    /// [`pulsar_script_vm::migrate`]).
+    ///
+    /// Waiting calls continue in the new code when their functions' layout
+    /// is unchanged (see `Continuation::rebase`), and are dropped otherwise,
+    /// listed in the report.
+    ///
+    /// The reload is all-or-nothing: every instance's new state is built
+    /// first, and the code, event declarations and state are committed
+    /// together only if all of that succeeds. On error the old class keeps
+    /// running untouched.
     pub fn reload_class(&mut self, module: Module) -> Result<ReloadReport, RuntimeError> {
         let name = module.name.clone();
         if !self.classes.contains_key(&name) {
             return Err(RuntimeError::UnknownClass(name));
         }
+        // Events are declared before linking: the class's own handlers link
+        // against the host's catalog. The host cannot retract a declaration,
+        // so a reload that fails after this leaves any newly declared events
+        // registered (harmless; changed re-declarations are refused anyway);
+        // class state, code and waiting calls are all-or-nothing.
         self.declare_events(&module)?;
-        let new = Class::link(Arc::new(module), &self.natives, self.catalog(), &self.capabilities)?;
+        let new = Class::link(
+            Arc::new(module),
+            &self.natives,
+            self.catalog(),
+            &self.capabilities,
+        )?;
         let old = &self.classes[&name];
-
         let old_module = Arc::clone(old.program.module());
-        let mut migrated = 0;
-        let mut kept = 0;
-        let mut report = ReloadReport::default();
-        for (object_id, instance) in self.instances.iter_mut().filter(|(_, i)| i.class == name) {
-            let mut state = new.program.instantiate();
-            for (index, var) in new.program.module().variables.iter().enumerate() {
-                let Some(old_index) = old_module.variables.iter().position(|v| v.name == var.name && v.ty == var.ty)
-                else {
-                    continue;
-                };
-                if let Some(value) = old.program.var(&instance.state, old_index) {
-                    // Same name and type: always fits.
-                    let _ = new.program.set_var(&mut state, index, value.clone());
-                }
-            }
-            instance.state = state;
+
+        // Stage every instance; nothing is touched until all of them work.
+        let mut scratch = World::new();
+        let mut staged = Vec::new();
+        for (object_id, instance) in self.instances.iter().filter(|(_, i)| i.class == name) {
+            let old_values: Vec<Option<Value>> = (0..old_module.variables.len())
+                .map(|i| old.program.var(&instance.state, i).cloned())
+                .collect();
+            let carried = carry_state(
+                &new,
+                object_id,
+                &old_module.variables,
+                old_module.class_version,
+                &old_values,
+                &mut scratch,
+            )?;
             // Suspended calls ran the old code: they continue in the new
             // code where its layout is compatible (#862), see
             // `Continuation::rebase`; the others are dropped.
-            for (wake, continuation) in std::mem::take(&mut instance.waiting) {
-                match continuation.rebase(new.program.module()) {
-                    Ok(rebased) => {
-                        instance.waiting.push((wake, rebased));
-                        kept += 1;
+            let waiting = instance
+                .waiting
+                .iter()
+                .map(|(wake, continuation)| (*wake, continuation.rebase(new.program.module())))
+                .collect::<Vec<_>>();
+            staged.push((object_id.clone(), carried, waiting));
+        }
+
+        let mut report = ReloadReport::default();
+        let mut migrated = 0;
+        for (
+            object_id,
+            Carried {
+                state,
+                changes,
+                kept,
+            },
+            waiting,
+        ) in staged
+        {
+            let instance = self
+                .instances
+                .get_mut(&object_id)
+                .expect("staged instances exist");
+            let previous = std::mem::take(&mut instance.waiting);
+            instance.state = state;
+            for ((wake, rebased), (_, original)) in waiting.into_iter().zip(previous) {
+                match rebased {
+                    Ok(continuation) => {
+                        instance.waiting.push((wake, continuation));
+                        report.kept += 1;
                     }
                     Err(reason) => {
-                        let function = continuation.functions().last().map(|f| f.to_string()).unwrap_or_default();
+                        let function = original
+                            .functions()
+                            .last()
+                            .map(|f| f.to_string())
+                            .unwrap_or_default();
                         tracing::warn!(
                             class = %name,
                             function = %function,
                             "reload dropped a waiting script call of `{name}::{function}`: {reason}"
                         );
-                        report.dropped.push(DroppedCall { object_id: object_id.clone(), function, reason });
+                        report.dropped.push(DroppedCall {
+                            object_id: object_id.clone(),
+                            function,
+                            reason,
+                        });
                     }
                 }
             }
+            report.variables_kept += kept;
+            report.variables.extend(changes);
             migrated += 1;
         }
-        tracing::info!(class = %name, instances = migrated, kept_waiting = kept, "reloaded script class");
-        report.kept = kept;
-        self.classes.insert(name, new);
+        tracing::info!(class = %name, instances = migrated, kept_waiting = report.kept, "reloaded script class");
+        self.classes.insert(name.clone(), new);
+        self.carry_latent_across_reload(&name, &mut report);
         Ok(report)
     }
 
@@ -555,20 +889,41 @@ impl ScriptRuntime {
         if self.instances.contains_key(&object_id) {
             return Err(RuntimeError::DuplicateInstance(object_id));
         }
-        let program = &self.classes.get(class).ok_or_else(|| RuntimeError::UnknownClass(class.to_owned()))?.program;
+        let program = &self
+            .classes
+            .get(class)
+            .ok_or_else(|| RuntimeError::UnknownClass(class.to_owned()))?
+            .program;
         let mut state = program.instantiate();
         for (name, value) in overrides {
-            let index = program.variable(name).ok_or_else(|| RuntimeError::BadVariable {
-                name: name.clone(),
-                reason: format!("`{class}` has no such variable"),
-            })?;
+            // A key is a stable variable id or a name (data from before ids).
+            let index =
+                migrate::resolve_key(&program.module().variables, name).map_err(|reason| {
+                    RuntimeError::BadVariable {
+                        name: name.clone(),
+                        reason: format!("`{class}`: {reason}"),
+                    }
+                })?;
             program
                 .set_var(&mut state, index, value.clone())
-                .map_err(|reason| RuntimeError::BadVariable { name: name.clone(), reason })?;
+                .map_err(|reason| RuntimeError::BadVariable {
+                    name: name.clone(),
+                    reason,
+                })?;
         }
         self.instances.insert(
             object_id.clone(),
-            ScriptInstance { class: class.to_owned(), state, entity, waiting: Vec::new() },
+            ScriptInstance {
+                class: class.to_owned(),
+                state,
+                entity,
+                waiting: Vec::new(),
+                blocked: Vec::new(),
+                latent: Latent::new(),
+                paused: Vec::new(),
+                debugger: Debugger::new(),
+                instructions_executed: 0,
+            },
         );
         self.order.push(object_id.clone());
         self.pending_begin_play.push(object_id);
@@ -585,17 +940,39 @@ impl ScriptRuntime {
         entity: Option<Entity>,
         overrides: &HashMap<String, serde_json::Value>,
     ) -> Result<(), RuntimeError> {
-        let program = &self.classes.get(class).ok_or_else(|| RuntimeError::UnknownClass(class.to_owned()))?.program;
+        let program = &self
+            .classes
+            .get(class)
+            .ok_or_else(|| RuntimeError::UnknownClass(class.to_owned()))?
+            .program;
         let mut converted = Vec::with_capacity(overrides.len());
         for (name, json) in overrides {
             // Level files outlive graph edits: a variable that no longer
             // exists is skipped, not fatal.
-            let Some(var) = program.variable(name).map(|i| &program.module().variables[i]) else {
-                tracing::warn!("`{class}` has no variable `{name}`; ignoring its override");
-                continue;
+            let variables = &program.module().variables;
+            let var = match migrate::resolve_key(variables, name) {
+                Ok(index) => &variables[index],
+                Err(reason)
+                    if variables
+                        .iter()
+                        .any(|v| v.id.as_deref() == Some(name) || &v.name == name) =>
+                {
+                    // Known but ambiguous: refuse instead of guessing.
+                    return Err(RuntimeError::BadVariable {
+                        name: name.clone(),
+                        reason,
+                    });
+                }
+                Err(_) => {
+                    tracing::warn!("`{class}` has no variable `{name}`; ignoring its override");
+                    continue;
+                }
             };
-            let value = value_from_json(json, &var.ty)
-                .map_err(|reason| RuntimeError::BadVariable { name: name.clone(), reason })?;
+            let value =
+                value_from_json(json, &var.ty).map_err(|reason| RuntimeError::BadVariable {
+                    name: name.clone(),
+                    reason,
+                })?;
             converted.push((name.clone(), value));
         }
         self.spawn(object_id, class, entity, &converted)
@@ -607,14 +984,22 @@ impl ScriptRuntime {
             return Err(RuntimeError::UnknownInstance(object_id.to_owned()));
         }
         let begun = !self.pending_begin_play.iter().any(|id| id == object_id);
-        let result = if begun { self.run_lifecycle(object_id, END_PLAY, world) } else { Ok(()) };
+        let result = if begun {
+            self.run_lifecycle(object_id, END_PLAY, world)
+        } else {
+            Ok(())
+        };
         self.instances.remove(object_id);
         self.order.retain(|id| id != object_id);
         self.pending_begin_play.retain(|id| id != object_id);
         result
     }
 
-    pub fn bind(&mut self, object_id: &str, entity: Entity) -> Result<Option<Entity>, RuntimeError> {
+    pub fn bind(
+        &mut self,
+        object_id: &str,
+        entity: Entity,
+    ) -> Result<Option<Entity>, RuntimeError> {
         let instance = self.instance_mut(object_id)?;
         Ok(instance.entity.replace(entity))
     }
@@ -639,16 +1024,37 @@ impl ScriptRuntime {
         program.var(&instance.state, program.variable(name)?)
     }
 
-    pub fn set_variable(&mut self, object_id: &str, name: &str, value: Value) -> Result<(), RuntimeError> {
-        let instance = self.instances.get_mut(object_id).ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
-        let program = &self.classes.get(&instance.class).ok_or_else(|| RuntimeError::UnknownClass(instance.class.clone()))?.program;
-        let bad = |reason: String| RuntimeError::BadVariable { name: name.to_owned(), reason };
-        let index = program.variable(name).ok_or_else(|| bad("no such variable".into()))?;
-        program.set_var(&mut instance.state, index, value).map_err(bad)
+    pub fn set_variable(
+        &mut self,
+        object_id: &str,
+        name: &str,
+        value: Value,
+    ) -> Result<(), RuntimeError> {
+        let instance = self
+            .instances
+            .get_mut(object_id)
+            .ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
+        let program = &self
+            .classes
+            .get(&instance.class)
+            .ok_or_else(|| RuntimeError::UnknownClass(instance.class.clone()))?
+            .program;
+        let bad = |reason: String| RuntimeError::BadVariable {
+            name: name.to_owned(),
+            reason,
+        };
+        let index = program
+            .variable(name)
+            .ok_or_else(|| bad("no such variable".into()))?;
+        program
+            .set_var(&mut instance.state, index, value)
+            .map_err(bad)
     }
 
     fn instance_mut(&mut self, object_id: &str) -> Result<&mut ScriptInstance, RuntimeError> {
-        self.instances.get_mut(object_id).ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))
+        self.instances
+            .get_mut(object_id)
+            .ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))
     }
 
     // ---- events --------------------------------------------------------
@@ -668,45 +1074,75 @@ impl ScriptRuntime {
     /// due, then run `tick(delta_time)` on every instance that has begun,
     /// in spawn order. A failing instance does not stop the others.
     pub fn tick_all(&mut self, world: &mut World, delta_time: f64) -> Vec<RuntimeError> {
-        self.time += delta_time;
-        let ids: Vec<String> = self
-            .order
-            .iter()
-            .filter(|id| !self.pending_begin_play.contains(id))
-            .cloned()
-            .collect();
-        let mut errors: Vec<RuntimeError> =
-            ids.iter().flat_map(|id| self.resume_due(id, world)).collect();
-        errors.extend(ids.iter().filter_map(|id| {
-                let func = self.instances.get(id).and_then(|i| self.classes.get(&i.class)).and_then(|c| c.entries.tick)?;
-                self.call(id, func, &[Value::Float(delta_time)], world).err()
-            }));
-        for err in &errors {
-            tracing::warn!("{err}");
-        }
+        self.begin_tick(delta_time);
+        let mut errors = self.run_read_stage(world, delta_time);
+        errors.extend(self.run_write_stage(world, delta_time));
         errors
     }
 
     /// Resume an instance's calls that are due at the current time. Calls
     /// that wait again (even for zero seconds) resume on a later tick.
     fn resume_due(&mut self, object_id: &str, world: &mut World) -> Vec<RuntimeError> {
-        let Some(instance) = self.instances.get_mut(object_id) else { return Vec::new() };
+        // Calls whose latent wait (frames, a condition) is over resume with
+        // the ones whose time has come.
+        let (ready, mut errors) = self.ready_blocked(object_id, world);
+        let Some(instance) = self.instances.get_mut(object_id) else {
+            return errors;
+        };
         let now = self.time;
-        let (mut due, later): (Vec<_>, Vec<_>) =
-            std::mem::take(&mut instance.waiting).into_iter().partition(|(wake, _)| *wake <= now);
+        let (mut due, later): (Vec<_>, Vec<_>) = std::mem::take(&mut instance.waiting)
+            .into_iter()
+            .partition(|(wake, _)| *wake <= now);
         instance.waiting = later;
         due.sort_by(|a, b| a.0.total_cmp(&b.0));
-        let mut errors = Vec::new();
+        due.extend(ready.into_iter().map(|continuation| (now, continuation)));
         for (_, continuation) in due {
-            let Some(instance) = self.instances.get_mut(object_id) else { break };
-            let Some(class) = self.classes.get(&instance.class) else { break };
+            let Some(instance) = self.instances.get_mut(object_id) else {
+                break;
+            };
+            let Some(class) = self.classes.get(&instance.class) else {
+                break;
+            };
             let mut host = Host::at_time(world, instance.entity.unwrap_or(Entity::DANGLING), now)
-                .with_events(self.events.as_deref().map(|e| e as &dyn EventSink));
-            let mut budget = Budget::new(self.class_budgets.get(&instance.class).copied().unwrap_or(self.budget));
-            match self.vm.resume(&class.program, &mut instance.state, continuation, &mut host, &mut budget) {
+                .with_events(self.events.as_deref().map(|e| e as &dyn EventSink))
+                .with_latent(Some(&mut instance.latent));
+            let mut budget = Budget::new(
+                self.class_budgets
+                    .get(&instance.class)
+                    .copied()
+                    .unwrap_or(self.budget),
+            );
+            let starting_budget = budget.remaining;
+            let function = continuation.functions().last().copied().unwrap_or("resume");
+            let _profile_scope = profiling::is_profiling_enabled().then(|| {
+                profiling::ProfileScope::new(format!("script:{}::{function}", instance.class))
+            });
+            let prior_debugger = self.vm.debugger.take();
+            self.vm.debugger = Some(std::mem::replace(&mut instance.debugger, Debugger::new()));
+            let outcome = self.vm.resume(
+                &class.program,
+                &mut instance.state,
+                continuation,
+                &mut host,
+                &mut budget,
+            );
+            instance.debugger = self.vm.debugger.take().unwrap_or_default();
+            self.vm.debugger = prior_debugger;
+            match outcome {
                 Ok(Completion::Returned(_)) => {}
-                Ok(Completion::Waiting { seconds, continuation }) => {
-                    instance.waiting.push((now + seconds, continuation));
+                Ok(Completion::Waiting {
+                    seconds,
+                    continuation,
+                }) => {
+                    latent::park(instance, now, seconds, continuation);
+                }
+                Ok(Completion::Paused {
+                    snapshot,
+                    continuation,
+                }) => {
+                    self.debug_events
+                        .push((object_id.to_owned(), snapshot.clone()));
+                    instance.paused.push((snapshot, continuation));
                 }
                 Err(source) => errors.push(RuntimeError::Script {
                     object_id: object_id.to_owned(),
@@ -714,6 +1150,9 @@ impl ScriptRuntime {
                     source,
                 }),
             }
+            instance.instructions_executed = instance
+                .instructions_executed
+                .saturating_add(starting_budget - budget.remaining);
         }
         errors
     }
@@ -740,13 +1179,24 @@ impl ScriptRuntime {
         args: &[Value],
         world: &mut World,
     ) -> Result<Value, RuntimeError> {
-        let instance = self.instances.get(object_id).ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
-        let class = self.classes.get(&instance.class).ok_or_else(|| RuntimeError::UnknownClass(instance.class.clone()))?;
-        let func = class.program.entry(name).ok_or_else(|| RuntimeError::UnknownEvent {
-            class: instance.class.clone(),
-            name: name.to_owned(),
-        })?;
-        self.call(object_id, func, args, world)
+        let instance = self
+            .instances
+            .get(object_id)
+            .ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
+        let class = self
+            .classes
+            .get(&instance.class)
+            .ok_or_else(|| RuntimeError::UnknownClass(instance.class.clone()))?;
+        let func = class
+            .program
+            .entry(name)
+            .ok_or_else(|| RuntimeError::UnknownEvent {
+                class: instance.class.clone(),
+                name: name.to_owned(),
+            })?;
+        let result = self.call(object_id, func, args, world)?;
+        self.wake_event(object_id, name, world);
+        Ok(result)
     }
 
     /// Run function `func` (any function of the instance's class, exported
@@ -759,17 +1209,33 @@ impl ScriptRuntime {
         args: &[Value],
         world: &mut World,
     ) -> Result<Value, RuntimeError> {
-        self.call(object_id, func, args, world)
+        let result = self.call(object_id, func, args, world)?;
+        // Calls waiting for the event this function handles resume now.
+        for name in self.event_names_handled_by(object_id, func) {
+            self.wake_event(object_id, &name, world);
+        }
+        Ok(result)
     }
 
     /// Whether `object_id` has run `begin_play` (or has none pending).
     pub fn has_begun(&self, object_id: &str) -> bool {
-        self.instances.contains_key(object_id) && !self.pending_begin_play.iter().any(|id| id == object_id)
+        self.instances.contains_key(object_id)
+            && !self.pending_begin_play.iter().any(|id| id == object_id)
     }
 
-    fn run_lifecycle(&mut self, object_id: &str, event: &str, world: &mut World) -> Result<(), RuntimeError> {
-        let instance = self.instances.get(object_id).ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
-        let Some(class) = self.classes.get(&instance.class) else { return Ok(()) };
+    fn run_lifecycle(
+        &mut self,
+        object_id: &str,
+        event: &str,
+        world: &mut World,
+    ) -> Result<(), RuntimeError> {
+        let instance = self
+            .instances
+            .get(object_id)
+            .ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
+        let Some(class) = self.classes.get(&instance.class) else {
+            return Ok(());
+        };
         let func = match event {
             BEGIN_PLAY => class.entries.begin_play,
             END_PLAY => class.entries.end_play,
@@ -781,25 +1247,182 @@ impl ScriptRuntime {
         }
     }
 
-    fn call(&mut self, object_id: &str, func: FuncId, args: &[Value], world: &mut World) -> Result<Value, RuntimeError> {
-        let instance = self.instances.get_mut(object_id).ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
-        let class = self.classes.get(&instance.class).ok_or_else(|| RuntimeError::UnknownClass(instance.class.clone()))?;
+    fn call(
+        &mut self,
+        object_id: &str,
+        func: FuncId,
+        args: &[Value],
+        world: &mut World,
+    ) -> Result<Value, RuntimeError> {
+        let instance = self
+            .instances
+            .get_mut(object_id)
+            .ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
+        let class = self
+            .classes
+            .get(&instance.class)
+            .ok_or_else(|| RuntimeError::UnknownClass(instance.class.clone()))?;
         // Unbound instances run with a dangling entity: every component
         // access fails its liveness check instead of reaching anything.
-        let mut host = Host::at_time(world, instance.entity.unwrap_or(Entity::DANGLING), self.time)
-            .with_events(self.events.as_deref().map(|e| e as &dyn EventSink));
-        let mut budget = Budget::new(self.class_budgets.get(&instance.class).copied().unwrap_or(self.budget));
-        match self.vm.start(&class.program, &mut instance.state, func, args, &mut host, &mut budget) {
-            Ok(Completion::Returned(value)) => Ok(value),
+        let mut host = Host::at_time(
+            world,
+            instance.entity.unwrap_or(Entity::DANGLING),
+            self.time,
+        )
+        .with_events(self.events.as_deref().map(|e| e as &dyn EventSink))
+        .with_latent(Some(&mut instance.latent));
+        let mut budget = Budget::new(
+            self.class_budgets
+                .get(&instance.class)
+                .copied()
+                .unwrap_or(self.budget),
+        );
+        let starting_budget = budget.remaining;
+        let function_name = class
+            .program
+            .module()
+            .functions
+            .get(func.0 as usize)
+            .map_or("call", |f| f.name.as_str());
+        let _profile_scope = profiling::is_profiling_enabled().then(|| {
+            profiling::ProfileScope::new(format!("script:{}::{function_name}", instance.class))
+        });
+        let prior_debugger = self.vm.debugger.take();
+        self.vm.debugger = Some(std::mem::replace(&mut instance.debugger, Debugger::new()));
+        let outcome = self.vm.start(
+            &class.program,
+            &mut instance.state,
+            func,
+            args,
+            &mut host,
+            &mut budget,
+        );
+        instance.debugger = self.vm.debugger.take().unwrap_or_default();
+        self.vm.debugger = prior_debugger;
+        match outcome {
+            Ok(Completion::Returned(value)) => {
+                instance.instructions_executed = instance
+                    .instructions_executed
+                    .saturating_add(starting_budget - budget.remaining);
+                Ok(value)
+            }
             // A latent event: it finishes on a later tick, so the caller
             // gets unit now.
-            Ok(Completion::Waiting { seconds, continuation }) => {
-                instance.waiting.push((self.time + seconds, continuation));
+            Ok(Completion::Waiting {
+                seconds,
+                continuation,
+            }) => {
+                latent::park(instance, self.time, seconds, continuation);
+                instance.instructions_executed = instance
+                    .instructions_executed
+                    .saturating_add(starting_budget - budget.remaining);
                 Ok(Value::Unit)
+            }
+            Ok(Completion::Paused {
+                snapshot,
+                continuation,
+            }) => {
+                self.debug_events
+                    .push((object_id.to_owned(), snapshot.clone()));
+                instance.paused.push((snapshot, continuation));
+                instance.instructions_executed = instance
+                    .instructions_executed
+                    .saturating_add(starting_budget - budget.remaining);
+                Ok(Value::Unit)
+            }
+            Err(source) => {
+                instance.instructions_executed = instance
+                    .instructions_executed
+                    .saturating_add(starting_budget - budget.remaining);
+                Err(RuntimeError::Script {
+                    object_id: object_id.to_owned(),
+                    class: instance.class.clone(),
+                    source,
+                })
+            }
+        }
+    }
+
+    /// Continue one paused call with a debugger command. A paused call is
+    /// removed from the queue only when resumed; a new stop is available
+    /// through [`debug_snapshot`](Self::debug_snapshot) and
+    /// [`take_debug_events`](Self::take_debug_events).
+    pub fn resume_paused(
+        &mut self,
+        object_id: &str,
+        index: usize,
+        command: DebugCommand,
+        world: &mut World,
+    ) -> Result<(), RuntimeError> {
+        let instance = self
+            .instances
+            .get_mut(object_id)
+            .ok_or_else(|| RuntimeError::UnknownInstance(object_id.to_owned()))?;
+        if index >= instance.paused.len() {
+            return Err(RuntimeError::State {
+                object_id: object_id.to_owned(),
+                reason: format!("no paused call at index {index}"),
+            });
+        }
+        let (snapshot, continuation) = instance.paused.remove(index);
+        let class_name = instance.class.clone();
+        let class = self
+            .classes
+            .get(&class_name)
+            .ok_or_else(|| RuntimeError::UnknownClass(class_name.clone()))?;
+        instance.debugger.command(command, &snapshot);
+        let mut host = Host::at_time(
+            world,
+            instance.entity.unwrap_or(Entity::DANGLING),
+            self.time,
+        )
+        .with_events(self.events.as_deref().map(|e| e as &dyn EventSink))
+        .with_latent(Some(&mut instance.latent));
+        let mut budget = Budget::new(
+            self.class_budgets
+                .get(&class_name)
+                .copied()
+                .unwrap_or(self.budget),
+        );
+        let starting_budget = budget.remaining;
+        let function = continuation.functions().last().copied().unwrap_or("resume");
+        let _profile_scope = profiling::is_profiling_enabled()
+            .then(|| profiling::ProfileScope::new(format!("script:{class_name}::{function}")));
+        let prior_debugger = self.vm.debugger.take();
+        self.vm.debugger = Some(std::mem::replace(&mut instance.debugger, Debugger::new()));
+        let outcome = self.vm.resume(
+            &class.program,
+            &mut instance.state,
+            continuation,
+            &mut host,
+            &mut budget,
+        );
+        instance.debugger = self.vm.debugger.take().unwrap_or_default();
+        self.vm.debugger = prior_debugger;
+        instance.instructions_executed = instance
+            .instructions_executed
+            .saturating_add(starting_budget - budget.remaining);
+        match outcome {
+            Ok(Completion::Returned(_)) => Ok(()),
+            Ok(Completion::Waiting {
+                seconds,
+                continuation,
+            }) => {
+                latent::park(instance, self.time, seconds, continuation);
+                Ok(())
+            }
+            Ok(Completion::Paused {
+                snapshot,
+                continuation,
+            }) => {
+                self.debug_events
+                    .push((object_id.to_owned(), snapshot.clone()));
+                instance.paused.push((snapshot.clone(), continuation));
+                Ok(())
             }
             Err(source) => Err(RuntimeError::Script {
                 object_id: object_id.to_owned(),
-                class: instance.class.clone(),
+                class: class_name,
                 source,
             }),
         }
@@ -829,7 +1452,11 @@ impl RuntimeError {
     /// it has them.
     pub fn details(&self) -> ErrorDetails {
         match self {
-            Self::Script { object_id, class, source } => ErrorDetails {
+            Self::Script {
+                object_id,
+                class,
+                source,
+            } => ErrorDetails {
                 class: Some(class.clone()),
                 object_id: Some(object_id.clone()),
                 function: source.function().map(|(f, _)| f.to_owned()),
@@ -837,7 +1464,11 @@ impl RuntimeError {
                 location: source.location().cloned(),
                 message: source.kind.to_string(),
             },
-            Self::Link { class, source, site } => ErrorDetails {
+            Self::Link {
+                class,
+                source,
+                site,
+            } => ErrorDetails {
                 class: Some(class.clone()),
                 object_id: None,
                 function: site.as_ref().map(|s| s.function.clone()),
@@ -845,9 +1476,11 @@ impl RuntimeError {
                 location: site.as_ref().and_then(|s| s.location.clone()),
                 message: source.to_string(),
             },
-            Self::UnknownClass(class) | Self::ClassLoaded(class) => {
-                ErrorDetails { class: Some(class.clone()), message: self.to_string(), ..Default::default() }
-            }
+            Self::UnknownClass(class) | Self::ClassLoaded(class) => ErrorDetails {
+                class: Some(class.clone()),
+                message: self.to_string(),
+                ..Default::default()
+            },
             Self::BadEntryPoint { class, name, .. } => ErrorDetails {
                 class: Some(class.clone()),
                 function: Some((*name).to_owned()),
@@ -855,23 +1488,34 @@ impl RuntimeError {
                 ..Default::default()
             },
             Self::UnknownEvent { class, .. } | Self::EventDeclaration { class, .. } => {
-                ErrorDetails { class: Some(class.clone()), message: self.to_string(), ..Default::default() }
+                ErrorDetails {
+                    class: Some(class.clone()),
+                    message: self.to_string(),
+                    ..Default::default()
+                }
             }
-            Self::UnknownInstance(id) | Self::DuplicateInstance(id) => {
-                ErrorDetails { object_id: Some(id.clone()), message: self.to_string(), ..Default::default() }
-            }
-            _ => ErrorDetails { message: self.to_string(), ..Default::default() },
+            Self::UnknownInstance(id) | Self::DuplicateInstance(id) => ErrorDetails {
+                object_id: Some(id.clone()),
+                message: self.to_string(),
+                ..Default::default()
+            },
+            _ => ErrorDetails {
+                message: self.to_string(),
+                ..Default::default()
+            },
         }
     }
 }
 
 fn declare_events(events: &dyn EventHost, module: &Module) -> Result<(), RuntimeError> {
     for decl in &module.events {
-        events.declare(&module.name, decl).map_err(|reason| RuntimeError::EventDeclaration {
-            class: module.name.clone(),
-            event: decl.name.clone(),
-            reason,
-        })?;
+        events
+            .declare(&module.name, decl)
+            .map_err(|reason| RuntimeError::EventDeclaration {
+                class: module.name.clone(),
+                event: decl.name.clone(),
+                reason,
+            })?;
     }
     Ok(())
 }
@@ -881,9 +1525,136 @@ pub fn value_from_json(json: &serde_json::Value, ty: &Type) -> Result<Value, Str
     use serde_json::Value as J;
     match (ty, json) {
         (Type::Bool, J::Bool(b)) => Ok(Value::Bool(*b)),
-        (Type::Int, J::Number(n)) => n.as_i64().map(Value::Int).ok_or_else(|| format!("{n} is not an integer")),
-        (Type::Float, J::Number(n)) => n.as_f64().map(Value::Float).ok_or_else(|| format!("{n} is not a number")),
+        (Type::Int, J::Number(n)) => n
+            .as_i64()
+            .map(Value::Int)
+            .ok_or_else(|| format!("{n} is not an integer")),
+        (Type::Float, J::Number(n)) => n
+            .as_f64()
+            .map(Value::Float)
+            .ok_or_else(|| format!("{n} is not a number")),
         (Type::Str, J::String(s)) => Ok(Value::Str(s.as_str().into())),
+        // Value types use their registered literal form (see `Constant::Value`).
+        (Type::Object(name), json) => TypeRegistry::global().decode_value(name, &json.to_string()),
+        (Type::List(element), J::Array(items)) => items
+            .iter()
+            .map(|item| value_from_json(item, element))
+            .collect::<Result<_, _>>()
+            .map(Value::list),
+        (Type::Tuple(types), J::Array(items)) if items.len() == types.len() => items
+            .iter()
+            .zip(types)
+            .map(|(item, ty)| value_from_json(item, ty))
+            .collect::<Result<_, _>>()
+            .map(Value::tuple),
+        (Type::Map(key, value), J::Array(entries)) => {
+            let mut map = std::collections::BTreeMap::new();
+            for entry in entries {
+                let [k, v] = entry.as_array().map(Vec::as_slice).unwrap_or_default() else {
+                    return Err(format!("a map entry is `[key, value]`, got {entry}"));
+                };
+                let k = value_from_json(k, key)?;
+                let k = pulsar_script_vm::MapKey::from_value(&k)
+                    .ok_or_else(|| format!("{k:?} cannot be a map key"))?;
+                map.insert(k, value_from_json(v, value)?);
+            }
+            Ok(Value::Map(std::sync::Arc::new(map)))
+        }
         (ty, json) => Err(format!("cannot use {json} as {ty}")),
     }
+}
+
+/// A new instance's state, carried over from an old version's values.
+struct Carried {
+    state: Instance,
+    changes: Vec<VariableChange>,
+    /// Variables whose value carried over unchanged.
+    kept: usize,
+}
+
+/// Build the state of a `new` instance from `old_values` (parallel to
+/// `old_vars`): match variables with [`migrate::plan`], carry matches, then
+/// run the class's `migrate` function if `old_version` is older. Shared by
+/// hot reload and restoring saved state, so both migrate the same way.
+fn carry_state(
+    new: &Class,
+    object_id: &str,
+    old_vars: &[Variable],
+    old_version: u32,
+    old_values: &[Option<Value>],
+    scratch: &mut World,
+) -> Result<Carried, RuntimeError> {
+    let module = new.program.module();
+    let plan = migrate::plan(old_vars, &module.variables);
+    let mut state = new.program.instantiate();
+    let mut changes = Vec::new();
+    let mut kept = 0;
+    for (index, fate) in plan.fates.iter().enumerate() {
+        let variable = &module.variables[index];
+        let change = |kind| VariableChange {
+            object_id: object_id.to_owned(),
+            variable: variable.name.clone(),
+            kind,
+        };
+        match *fate {
+            VariableFate::Kept { old, renamed } => {
+                let value = old_values.get(old).cloned().flatten();
+                match value.map(|v| new.program.set_var(&mut state, index, v)) {
+                    Some(Ok(())) if renamed => changes.push(change(ChangeKind::Renamed {
+                        from: old_vars[old].name.clone(),
+                    })),
+                    Some(Ok(())) => kept += 1,
+                    _ => changes.push(change(ChangeKind::Defaulted)),
+                }
+            }
+            VariableFate::Retyped { old } => changes.push(change(ChangeKind::Incompatible {
+                from: old_vars[old].ty.clone(),
+                to: variable.ty.clone(),
+            })),
+            VariableFate::Added => changes.push(change(ChangeKind::Defaulted)),
+        }
+    }
+    for &removed in &plan.removed {
+        changes.push(VariableChange {
+            object_id: object_id.to_owned(),
+            variable: old_vars[removed].name.clone(),
+            kind: ChangeKind::Removed,
+        });
+    }
+    if let Some(hook) = migration_hook(old_version, new)? {
+        let source = OldState(
+            old_vars
+                .iter()
+                .zip(old_values)
+                .filter_map(|(v, value)| Some((v.name.clone(), value.clone()?)))
+                .collect(),
+        );
+        let mut host = Host::new(scratch, Entity::DANGLING).with_migration(Some(&source));
+        Vm::new()
+            .call(
+                &new.program,
+                &mut state,
+                hook,
+                &[Value::Int(i64::from(old_version))],
+                &mut host,
+                &mut Budget::new(migrate::MIGRATE_BUDGET),
+            )
+            .map_err(|source| RuntimeError::Migration {
+                class: module.name.clone(),
+                object_id: object_id.to_owned(),
+                source,
+            })?;
+        changes.push(VariableChange {
+            object_id: object_id.to_owned(),
+            variable: migrate::MIGRATE_FUNCTION.to_owned(),
+            kind: ChangeKind::MigrateRan {
+                from_version: old_version,
+            },
+        });
+    }
+    Ok(Carried {
+        state,
+        changes,
+        kept,
+    })
 }

@@ -59,6 +59,18 @@ pub struct ScriptProblem {
     /// The game frame it happened in, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frame: Option<u64>,
+    /// Values for Blueprint output pins at a debugger stop. Other language
+    /// frontends may use their own opaque node and pin identifiers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub output_values: Vec<ScriptOutputValue>,
+}
+
+/// A value snapshot attached to one source output pin.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScriptOutputValue {
+    pub node: String,
+    pub pin: String,
+    pub value: String,
 }
 
 impl ScriptProblem {

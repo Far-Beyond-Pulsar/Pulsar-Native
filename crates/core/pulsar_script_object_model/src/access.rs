@@ -22,7 +22,7 @@
 //! with executable behavior); `component_index` is not consulted for
 //! methods.
 
-use pulsar_reflection::{MethodArgs, MethodReturnValue, PropertyMetadata, REGISTRY};
+use pulsar_reflection::{MethodArgs, MethodReturnValue, PropertyMetadata};
 use pulsar_scenedb::World;
 
 use crate::errors::ScriptRefError;
@@ -104,7 +104,7 @@ impl ComponentRef {
                 // Scoped so the `&mut World` borrow ends before the record
                 // persist-back below re-indexes the store.
                 let persisted_json = {
-                    let instance = self.live_instance_mut(world)?;
+                    let mut instance = self.live_instance_mut(world)?;
                     (meta.setter)(&mut *instance, typed);
                     instance.to_json().ok()
                 };
@@ -120,7 +120,7 @@ impl ComponentRef {
                     let mut scratch =
                         crate::routing::ScratchInstance::hydrate(&self.class_name, &record.data)?;
                     {
-                        let instance = scratch.instance_mut()?;
+                        let mut instance = scratch.instance_mut()?;
                         (meta.setter)(&mut *instance, typed);
                     }
                     scratch.persist()?
@@ -187,7 +187,7 @@ impl ComponentRef {
     fn live_instance_mut<'w>(
         &self,
         world: &'w mut World,
-    ) -> Result<&'w mut dyn pulsar_reflection::EngineClass, ScriptRefError> {
+    ) -> Result<pulsar_world_registry::EngineClassMut<'w>, ScriptRefError> {
         pulsar_world_registry::get_world_component_as_engine_class_mut(
             &self.class_name,
             world,
@@ -199,22 +199,10 @@ impl ComponentRef {
         })
     }
 
-    /// Reflected metadata for one property, looked up through a throwaway
-    /// instance exactly like the properties panel does -- only the type-
-    /// bound getter/setter closures are used, never the throwaway's values.
-    fn property_metadata(&self, property: &str) -> Result<PropertyMetadata, ScriptRefError> {
-        REGISTRY
-            .create_instance(&self.class_name)
-            .and_then(|instance| {
-                instance
-                    .get_properties()
-                    .into_iter()
-                    .find(|p| p.name == property)
-            })
-            .ok_or_else(|| ScriptRefError::UnknownProperty {
-                class_name: self.class_name.clone(),
-                property: property.to_string(),
-            })
+    /// Reflected metadata for one property, from the registry's shared
+    /// descriptor cache (no instance is constructed per access).
+    fn property_metadata(&self, property: &str) -> Result<std::sync::Arc<PropertyMetadata>, ScriptRefError> {
+        pulsar_world_registry::property_descriptor(&self.class_name, property)
     }
 }
 

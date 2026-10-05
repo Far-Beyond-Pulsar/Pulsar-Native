@@ -1,0 +1,1014 @@
+{
+  "format_version": 3,
+  "name": "bp_loops",
+  "constants": [
+    {
+      "Int": 4
+    },
+    {
+      "Int": 0
+    },
+    {
+      "Int": 1
+    },
+    {
+      "Str": "x"
+    },
+    {
+      "Bool": true
+    },
+    {
+      "Int": 3
+    },
+    {
+      "Float": 0.0
+    },
+    {
+      "Bool": false
+    },
+    {
+      "Str": "Y"
+    },
+    {
+      "Str": "N"
+    },
+    {
+      "Str": "A"
+    },
+    {
+      "Str": "!"
+    },
+    {
+      "Str": "B"
+    }
+  ],
+  "imports": [
+    {
+      "name": "std::append",
+      "sig": {
+        "params": [
+          {
+            "ty": {
+              "kind": "str"
+            },
+            "inout": false
+          },
+          {
+            "ty": {
+              "kind": "str"
+            },
+            "inout": false
+          }
+        ],
+        "ret": {
+          "kind": "str"
+        }
+      }
+    },
+    {
+      "name": "std::less",
+      "sig": {
+        "params": [
+          {
+            "ty": {
+              "kind": "int"
+            },
+            "inout": false
+          },
+          {
+            "ty": {
+              "kind": "int"
+            },
+            "inout": false
+          }
+        ],
+        "ret": {
+          "kind": "bool"
+        }
+      }
+    },
+    {
+      "name": "std::add",
+      "sig": {
+        "params": [
+          {
+            "ty": {
+              "kind": "int"
+            },
+            "inout": false
+          },
+          {
+            "ty": {
+              "kind": "int"
+            },
+            "inout": false
+          }
+        ],
+        "ret": {
+          "kind": "int"
+        }
+      }
+    }
+  ],
+  "variables": [
+    {
+      "name": "log",
+      "ty": {
+        "kind": "str"
+      },
+      "default": null,
+      "id": "var-log"
+    },
+    {
+      "name": "count",
+      "ty": {
+        "kind": "int"
+      },
+      "default": {
+        "Int": 0
+      },
+      "id": "var-count"
+    },
+    {
+      "name": "__bp_while_active_wh",
+      "ty": {
+        "kind": "bool"
+      },
+      "default": null,
+      "id": "bp-state:while_active:wh"
+    }
+  ],
+  "functions": [
+    {
+      "name": "begin_play",
+      "exported": true,
+      "params": [],
+      "ret": {
+        "kind": "unit"
+      },
+      "registers": [
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        }
+      ],
+      "code": [
+        {
+          "Const": {
+            "dst": 0,
+            "index": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 1,
+            "index": 1
+          }
+        },
+        {
+          "Const": {
+            "dst": 2,
+            "index": 2
+          }
+        },
+        {
+          "Binary": {
+            "op": "Lt",
+            "dst": 3,
+            "a": 1,
+            "b": 0
+          }
+        },
+        {
+          "Branch": {
+            "cond": 3,
+            "then": 5,
+            "otherwise": 11
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 4,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 5,
+            "index": 3
+          }
+        },
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              4,
+              5
+            ],
+            "dst": 6
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 6
+          }
+        },
+        {
+          "Binary": {
+            "op": "Add",
+            "dst": 1,
+            "a": 1,
+            "b": 2
+          }
+        },
+        {
+          "Jump": {
+            "target": 3
+          }
+        },
+        {
+          "Return": {
+            "value": null
+          }
+        }
+      ],
+      "debug": {
+        "ranges": [
+          {
+            "start": 0,
+            "end": 5,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "for"
+            }
+          },
+          {
+            "start": 5,
+            "end": 6,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "body_get"
+            }
+          },
+          {
+            "start": 6,
+            "end": 8,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "body_append"
+            }
+          },
+          {
+            "start": 8,
+            "end": 9,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "body"
+            }
+          },
+          {
+            "start": 9,
+            "end": 11,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "for"
+            }
+          },
+          {
+            "start": 11,
+            "end": 12,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "bp"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "on_count",
+      "exported": true,
+      "params": [],
+      "ret": {
+        "kind": "unit"
+      },
+      "registers": [
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "int"
+        },
+        {
+          "kind": "float"
+        },
+        {
+          "kind": "bool"
+        }
+      ],
+      "code": [
+        {
+          "LoadVar": {
+            "dst": 0,
+            "var": 2
+          }
+        },
+        {
+          "Unary": {
+            "op": "Not",
+            "dst": 1,
+            "src": 0
+          }
+        },
+        {
+          "Branch": {
+            "cond": 1,
+            "then": 3,
+            "otherwise": 19
+          }
+        },
+        {
+          "Const": {
+            "dst": 2,
+            "index": 4
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 2,
+            "src": 2
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 3,
+            "var": 1
+          }
+        },
+        {
+          "Const": {
+            "dst": 4,
+            "index": 5
+          }
+        },
+        {
+          "CallNative": {
+            "import": 1,
+            "args": [
+              3,
+              4
+            ],
+            "dst": 5
+          }
+        },
+        {
+          "Branch": {
+            "cond": 5,
+            "then": 9,
+            "otherwise": 16
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 6,
+            "var": 1
+          }
+        },
+        {
+          "Const": {
+            "dst": 7,
+            "index": 2
+          }
+        },
+        {
+          "CallNative": {
+            "import": 2,
+            "args": [
+              6,
+              7
+            ],
+            "dst": 8
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 1,
+            "src": 8
+          }
+        },
+        {
+          "Const": {
+            "dst": 9,
+            "index": 6
+          }
+        },
+        {
+          "Wait": {
+            "seconds": 9
+          }
+        },
+        {
+          "Jump": {
+            "target": 5
+          }
+        },
+        {
+          "Const": {
+            "dst": 10,
+            "index": 7
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 2,
+            "src": 10
+          }
+        },
+        {
+          "Jump": {
+            "target": 19
+          }
+        },
+        {
+          "Return": {
+            "value": null
+          }
+        }
+      ],
+      "debug": {
+        "ranges": [
+          {
+            "start": 0,
+            "end": 5,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "wh"
+            }
+          },
+          {
+            "start": 5,
+            "end": 6,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "c1"
+            }
+          },
+          {
+            "start": 6,
+            "end": 8,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "lt"
+            }
+          },
+          {
+            "start": 8,
+            "end": 9,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "wh"
+            }
+          },
+          {
+            "start": 9,
+            "end": 10,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "c2"
+            }
+          },
+          {
+            "start": 10,
+            "end": 12,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "inc"
+            }
+          },
+          {
+            "start": 12,
+            "end": 13,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "setc"
+            }
+          },
+          {
+            "start": 13,
+            "end": 19,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "wh"
+            }
+          },
+          {
+            "start": 19,
+            "end": 20,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "bp2"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "on_check",
+      "exported": true,
+      "params": [
+        {
+          "kind": "bool"
+        }
+      ],
+      "ret": {
+        "kind": "unit"
+      },
+      "registers": [
+        {
+          "kind": "bool"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        }
+      ],
+      "code": [
+        {
+          "Branch": {
+            "cond": 0,
+            "then": 1,
+            "otherwise": 6
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 1,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 2,
+            "index": 8
+          }
+        },
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              1,
+              2
+            ],
+            "dst": 3
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 3
+          }
+        },
+        {
+          "Jump": {
+            "target": 10
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 4,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 5,
+            "index": 9
+          }
+        },
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              4,
+              5
+            ],
+            "dst": 6
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 6
+          }
+        },
+        {
+          "Return": {
+            "value": null
+          }
+        }
+      ],
+      "debug": {
+        "ranges": [
+          {
+            "start": 0,
+            "end": 1,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "br"
+            }
+          },
+          {
+            "start": 1,
+            "end": 2,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "yes_get"
+            }
+          },
+          {
+            "start": 2,
+            "end": 4,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "yes_append"
+            }
+          },
+          {
+            "start": 4,
+            "end": 5,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "yes"
+            }
+          },
+          {
+            "start": 5,
+            "end": 6,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "br"
+            }
+          },
+          {
+            "start": 6,
+            "end": 7,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "no_get"
+            }
+          },
+          {
+            "start": 7,
+            "end": 9,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "no_append"
+            }
+          },
+          {
+            "start": 9,
+            "end": 10,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "no"
+            }
+          },
+          {
+            "start": 10,
+            "end": 11,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "chk"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "on_seq",
+      "exported": true,
+      "params": [],
+      "ret": {
+        "kind": "unit"
+      },
+      "registers": [
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        },
+        {
+          "kind": "str"
+        }
+      ],
+      "code": [
+        {
+          "LoadVar": {
+            "dst": 0,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 1,
+            "index": 10
+          }
+        },
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              0,
+              1
+            ],
+            "dst": 2
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 2
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 3,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 4,
+            "index": 11
+          }
+        },
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              3,
+              4
+            ],
+            "dst": 5
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 5
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 6,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 7,
+            "index": 12
+          }
+        },
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              6,
+              7
+            ],
+            "dst": 8
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 8
+          }
+        },
+        {
+          "LoadVar": {
+            "dst": 9,
+            "var": 0
+          }
+        },
+        {
+          "Const": {
+            "dst": 10,
+            "index": 11
+          }
+        },
+        {
+          "CallNative": {
+            "import": 0,
+            "args": [
+              9,
+              10
+            ],
+            "dst": 11
+          }
+        },
+        {
+          "StoreVar": {
+            "var": 0,
+            "src": 11
+          }
+        },
+        {
+          "Return": {
+            "value": null
+          }
+        }
+      ],
+      "debug": {
+        "ranges": [
+          {
+            "start": 0,
+            "end": 1,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "sa_get"
+            }
+          },
+          {
+            "start": 1,
+            "end": 3,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "sa_append"
+            }
+          },
+          {
+            "start": 3,
+            "end": 4,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "sa"
+            }
+          },
+          {
+            "start": 4,
+            "end": 5,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "st_get"
+            }
+          },
+          {
+            "start": 5,
+            "end": 7,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "st_append"
+            }
+          },
+          {
+            "start": 7,
+            "end": 8,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "st"
+            }
+          },
+          {
+            "start": 8,
+            "end": 9,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "sb_get"
+            }
+          },
+          {
+            "start": 9,
+            "end": 11,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "sb_append"
+            }
+          },
+          {
+            "start": 11,
+            "end": 12,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "sb"
+            }
+          },
+          {
+            "start": 12,
+            "end": 13,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "st_get"
+            }
+          },
+          {
+            "start": 13,
+            "end": 15,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "st_append"
+            }
+          },
+          {
+            "start": 15,
+            "end": 16,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "st"
+            }
+          },
+          {
+            "start": 16,
+            "end": 17,
+            "loc": {
+              "file": "graph_save.json",
+              "node": "sq"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

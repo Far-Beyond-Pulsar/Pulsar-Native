@@ -33,7 +33,7 @@ impl Asm {
     }
 
     pub fn var(&mut self, name: &str, ty: Type, default: Option<Constant>) -> u32 {
-        self.module.variables.push(Variable { name: name.into(), ty, default });
+        self.module.variables.push(Variable { name: name.into(), ty, default, id: None });
         (self.module.variables.len() - 1) as u32
     }
 

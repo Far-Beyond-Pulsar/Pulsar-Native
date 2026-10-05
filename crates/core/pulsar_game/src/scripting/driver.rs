@@ -71,7 +71,8 @@ use std::sync::{Arc, Mutex};
 use engine_backend::scene::{ObjectType, SceneWorldExt, SpawnObject, Transform};
 use pulsar_class::{ClassEntry, ClassId, ClassInstance, ClassRegistry, LocalTransform};
 use pulsar_scenedb::{ChangeCursor, ChangeRead, ComponentChange, Entity, World};
-use pulsar_script_runtime::{RuntimeError, ScriptRuntime};
+use pulsar_script_runtime::{InstanceRuntimeStats, RuntimeError, ScriptRuntime};
+use pulsar_script_vm::{DebugCommand, DebugSnapshot, LibraryId};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -139,6 +140,126 @@ pub const MODULE_JSON_FILE: &str = "module.json";
 /// games ship (#852).
 pub const MODULE_BINARY_FILE: &str = "module.pvm";
 
+/// Dynamic libraries in each native crate's direct Cargo profile directory.
+/// `deps/` is deliberately excluded: Cargo places transitive dependencies and
+/// proc-macro DLLs there, and they are not Pulsar native extensions.
+fn project_native_library_artifacts(root: &Path) -> Vec<PathBuf> {
+    fn visit_target(dir: &Path, out: &mut Vec<(String, PathBuf)>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if kind.is_file() {
+                continue;
+            }
+            let name = entry.file_name();
+            if name == "deps" || name == "incremental" || name == "build" {
+                continue;
+            }
+            if name == "debug" || name == "release" {
+                let profile = name.to_string_lossy().into_owned();
+                let Ok(files) = std::fs::read_dir(path) else {
+                    continue;
+                };
+                for file in files.flatten() {
+                    let artifact = file.path();
+                    if file.file_type().is_ok_and(|t| t.is_file())
+                        && artifact.extension().is_some_and(|ext| {
+                            ext.eq_ignore_ascii_case(std::env::consts::DLL_EXTENSION)
+                        })
+                    {
+                        out.push((profile.clone(), artifact));
+                    }
+                }
+            } else if kind.is_dir() {
+                // Cross-compiled artifacts use target/<triple>/<profile>.
+                visit_target(&path, out);
+            }
+        }
+    }
+
+    fn visit(dir: &Path, out: &mut Vec<(String, PathBuf)>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
+            if !kind.is_dir() {
+                continue;
+            }
+            if path.file_name().is_some_and(|name| name == "target") {
+                visit_target(&path, out);
+                continue;
+            }
+            visit(&path, out);
+        }
+    }
+    let mut candidates = Vec::new();
+    if root.is_dir() {
+        visit(root, &mut candidates);
+    }
+    // Debug and release outputs register identical native names. Load only
+    // the profile matching the running game; use the other when that crate
+    // has not yet produced the preferred profile.
+    let preferred = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "release"
+    };
+    candidates.sort_by(|(left_profile, left_path), (right_profile, right_path)| {
+        let left_preferred = left_profile == preferred;
+        let right_preferred = right_profile == preferred;
+        right_preferred
+            .cmp(&left_preferred)
+            .then_with(|| left_path.cmp(right_path))
+    });
+    let mut selected = HashMap::<PathBuf, PathBuf>::new();
+    for (_, path) in candidates {
+        selected
+            .entry(native_library_key(root, &path))
+            .or_insert(path);
+    }
+    let mut artifacts: Vec<_> = selected.into_values().collect();
+    artifacts.sort();
+    artifacts
+}
+
+/// Stable identity for one native crate across debug/release profile paths.
+fn native_library_key(native_root: &Path, artifact: &Path) -> PathBuf {
+    let crate_root = artifact
+        .ancestors()
+        .find(|path| path.file_name().is_some_and(|name| name == "target"))
+        .and_then(Path::parent)
+        .unwrap_or(native_root);
+    let mut key = crate_root
+        .strip_prefix(native_root)
+        .unwrap_or(crate_root)
+        .to_owned();
+    if let Some(stem) = artifact.file_stem() {
+        key.push(stem);
+    }
+    key
+}
+
+fn log_relink_report(report: pulsar_script_runtime::RelinkReport) {
+    for class in report.relinked {
+        tracing::debug!(class, "relinked script class after native library change");
+    }
+    for (class, error) in report.failed {
+        tracing::error!(
+            class,
+            "script class failed to relink after native library change: {error}"
+        );
+    }
+}
+
 /// Where a class's compiled script module lives: the binary one when the
 /// class has it (packaged content), else the editor's JSON one. Either may
 /// be missing. Checked through the virtual filesystem, so a pak counts.
@@ -161,6 +282,20 @@ fn read_module_bytes(path: &Path) -> Option<std::io::Result<Vec<u8>>> {
     Some(engine_fs::virtual_fs::read_file(path).map_err(|e| std::io::Error::other(e.to_string())))
 }
 
+/// What a frame cost in scene-lock time. The write lock is what blocks the
+/// renderer's snapshot and readback; the read lock shares with it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LockTimes {
+    /// Time spent waiting to take the write lock (both acquisitions).
+    pub write_wait: std::time::Duration,
+    /// Time the write lock was held (both acquisitions).
+    pub write_hold: std::time::Duration,
+    pub read_wait: std::time::Duration,
+    pub read_hold: std::time::Duration,
+    /// What the script runtime's stages did.
+    pub phase: pulsar_script_runtime::PhaseStats,
+}
+
 /// What one reconcile or frame did.
 #[derive(Debug, Default)]
 pub struct DriverReport {
@@ -181,12 +316,17 @@ pub struct DriverReport {
     pub dropped_calls: Vec<(String, pulsar_script_runtime::DroppedCall)>,
     /// Instances or commands that could not be applied, as messages.
     pub failures: Vec<String>,
+    /// How long the scene lock was waited for and held, when the frame ran
+    /// through [`run_frame_shared`](ScriptDriver::run_frame_shared).
+    pub locks: Option<LockTimes>,
 }
 
 impl DriverReport {
     /// Whether the frame raised any error or warning worth reporting.
     pub fn has_problems(&self) -> bool {
-        !self.script_errors.is_empty() || !self.load_errors.is_empty() || !self.dropped_calls.is_empty()
+        !self.script_errors.is_empty()
+            || !self.load_errors.is_empty()
+            || !self.dropped_calls.is_empty()
     }
 }
 
@@ -227,6 +367,10 @@ pub struct ScriptDriver {
     events: Option<ScriptEvents>,
     /// Level name reported by `LevelLoaded`.
     level: String,
+    /// Native project libraries found below `native/target/{debug,release}`.
+    /// The source path remains stable while Cargo replaces the build artifact;
+    /// ScriptRuntime maps a shadow copy on each reload.
+    native_libraries: HashMap<PathBuf, (LibraryId, PathBuf, std::time::SystemTime)>,
 }
 
 impl ScriptDriver {
@@ -238,6 +382,7 @@ impl ScriptDriver {
         let config = ScriptingConfig::load(&project_root);
         let mut driver = Self::with_parts(runtime, project_root, registry, config);
         driver.rescan_registry = true;
+        driver.load_project_native_libraries();
         driver
     }
 
@@ -265,6 +410,7 @@ impl ScriptDriver {
             scratch: Vec::new(),
             events: None,
             level: String::new(),
+            native_libraries: HashMap::new(),
         }
     }
 
@@ -303,14 +449,18 @@ impl ScriptDriver {
         }
         for entry in self.registry.entries() {
             let path = module_file(entry);
-            let Some(Ok(bytes)) = read_module_bytes(&path) else { continue };
+            let Some(Ok(bytes)) = read_module_bytes(&path) else {
+                continue;
+            };
             match pulsar_script_vm::Module::decode(&bytes) {
                 Ok(module) => {
                     if let Err(error) = self.runtime.declare_events(&module) {
                         tracing::warn!("{error}");
                     }
                 }
-                Err(error) => tracing::debug!(path = %path.display(), "unreadable script module: {error}"),
+                Err(error) => {
+                    tracing::debug!(path = %path.display(), "unreadable script module: {error}")
+                }
             }
         }
     }
@@ -333,7 +483,9 @@ impl ScriptDriver {
     /// (Re)subscribe the live instances of `class` (the runtime's class
     /// name), or of every class when `None`.
     fn resubscribe(&mut self, class: Option<&str>) {
-        let Some(events) = self.events.as_mut() else { return };
+        let Some(events) = self.events.as_mut() else {
+            return;
+        };
         let targets: Vec<(String, String, String, Option<Entity>)> = self
             .runtime
             .instance_ids()
@@ -349,7 +501,12 @@ impl ScriptDriver {
                     .find(|(_, name)| name.as_str() == class_name)
                     .map(|(guid, _)| guid.as_str().to_owned())
                     .unwrap_or_default();
-                Some((id.clone(), class_name.to_owned(), guid, self.by_instance.get(id).copied()))
+                Some((
+                    id.clone(),
+                    class_name.to_owned(),
+                    guid,
+                    self.by_instance.get(id).copied(),
+                ))
             })
             .collect();
         for (id, class_name, guid, entity) in targets {
@@ -360,7 +517,14 @@ impl ScriptDriver {
         }
     }
 
-    fn subscribe_instance(&mut self, id: &str, class: &str, guid: &str, entity: Option<Entity>, report: &mut DriverReport) {
+    fn subscribe_instance(
+        &mut self,
+        id: &str,
+        class: &str,
+        guid: &str,
+        entity: Option<Entity>,
+        report: &mut DriverReport,
+    ) {
         if let Some(events) = self.events.as_mut() {
             events.bridge().add_class(class, guid);
             for failure in events.subscribe(&self.runtime, id, class, guid, entity) {
@@ -370,7 +534,11 @@ impl ScriptDriver {
         }
     }
 
-    fn publish<T: pulsar_events::gamma::Event + Send>(&self, channel: pulsar_events::gamma::Channel, event: T) {
+    fn publish<T: pulsar_events::gamma::Event + Send>(
+        &self,
+        channel: pulsar_events::gamma::Channel,
+        event: T,
+    ) {
         if let Some(events) = &self.events {
             events.hub().publish(channel, event);
         }
@@ -382,6 +550,64 @@ impl ScriptDriver {
 
     pub fn runtime_mut(&mut self) -> &mut ScriptRuntime {
         &mut self.runtime
+    }
+
+    /// Per-instance lifetime instruction counters for the live script runtime.
+    pub fn runtime_stats(&self) -> Vec<InstanceRuntimeStats> {
+        self.runtime.instance_stats()
+    }
+
+    /// Set a bytecode breakpoint on one live script instance.
+    pub fn set_breakpoint(
+        &mut self,
+        instance: &str,
+        function: impl Into<String>,
+        pc: usize,
+    ) -> Result<(), RuntimeError> {
+        self.runtime.set_breakpoint(instance, function, pc)
+    }
+
+    /// Set breakpoints on all instructions emitted from a graph node.
+    pub fn set_node_breakpoint(
+        &mut self,
+        instance: &str,
+        function: &str,
+        file: &str,
+        node: &str,
+    ) -> Result<usize, RuntimeError> {
+        self.runtime
+            .set_node_breakpoint(instance, function, file, node)
+    }
+
+    /// Remove one bytecode breakpoint from a live script instance.
+    pub fn remove_breakpoint(
+        &mut self,
+        instance: &str,
+        function: &str,
+        pc: usize,
+    ) -> Result<bool, RuntimeError> {
+        self.runtime.remove_breakpoint(instance, function, pc)
+    }
+
+    /// Snapshot paused script calls, by instance id and in arrival order.
+    pub fn take_debug_events(&mut self) -> Vec<(String, DebugSnapshot)> {
+        self.runtime.take_debug_events()
+    }
+
+    /// The stop snapshot for one paused call on `instance`.
+    pub fn debug_snapshot(&self, instance: &str, index: usize) -> Option<&DebugSnapshot> {
+        self.runtime.debug_snapshot(instance, index)
+    }
+
+    /// Resume one paused call with a debugger command.
+    pub fn resume_paused(
+        &mut self,
+        instance: &str,
+        index: usize,
+        command: DebugCommand,
+        world: &mut World,
+    ) -> Result<(), RuntimeError> {
+        self.runtime.resume_paused(instance, index, command, world)
     }
 
     pub fn registry(&self) -> &ClassRegistry {
@@ -427,25 +653,108 @@ impl ScriptDriver {
     /// Run one script phase against `world`. See the module doc.
     pub fn run_frame(&mut self, world: &mut World, delta_time: f64) -> DriverReport {
         let mut report = DriverReport::default();
-        let mut scope = CommandScope::begin();
+        let scope = self.frame_start(world, &mut report);
+        report
+            .script_errors
+            .extend(self.runtime.tick_all(world, delta_time));
+        self.frame_finish(world, scope, &mut report);
+        report
+    }
+
+    /// Run one script phase against a shared scene, holding its lock as
+    /// briefly and as shared as the phase allows. Same result as
+    /// [`run_frame`](Self::run_frame) except for the order the runtime
+    /// ticks instances in (see `pulsar_script_runtime::phase`), and
+    /// `report.locks` says how long each lock was waited for and held:
+    ///
+    /// 1. **Write lock**: reconcile instances with the world, `begin_play`,
+    ///    queued event handlers.
+    /// 2. **Read lock**: the read stage. Instances of read-only classes run
+    ///    concurrently; the renderer's own readers are not blocked.
+    /// 3. **Write lock**: every other instance, then the commands scripts
+    ///    queued (spawns, destroys).
+    pub fn run_frame_shared(&mut self, scene: &engine_backend::scene::SharedScene, delta_time: f64) -> DriverReport {
+        use std::time::Instant;
+        let mut report = DriverReport::default();
+        let mut locks = LockTimes::default();
+
+        let asked = Instant::now();
+        let mut store = scene.write();
+        let held = Instant::now();
+        locks.write_wait += held - asked;
+        let scope = self.frame_start(&mut store.world, &mut report);
+        self.runtime.begin_tick(delta_time);
+        locks.write_hold += held.elapsed();
+        drop(store);
+
+        let asked = Instant::now();
+        let store = scene.read();
+        let held = Instant::now();
+        locks.read_wait = held - asked;
+        report
+            .script_errors
+            .extend(self.runtime.run_read_stage(&store.world, delta_time));
+        locks.read_hold = held.elapsed();
+        drop(store);
+
+        let asked = Instant::now();
+        let mut store = scene.write();
+        let held = Instant::now();
+        locks.write_wait += held - asked;
+        report
+            .script_errors
+            .extend(self.runtime.run_write_stage(&mut store.world, delta_time));
+        self.frame_finish(&mut store.world, scope, &mut report);
+        locks.write_hold += held.elapsed();
+        drop(store);
+
+        locks.phase = self.runtime.phase_stats();
+        report.locks = Some(locks);
+        report
+    }
+
+    /// The first part of a frame, with exclusive access: reload native
+    /// libraries, reconcile instances with the world, run `begin_play`
+    /// and queued event handlers. Returns the scope that collects the
+    /// commands scripts queue for [`frame_finish`](Self::frame_finish).
+    fn frame_start(&mut self, world: &mut World, report: &mut DriverReport) -> CommandScope {
+        self.reload_changed_native_libraries();
+        let scope = CommandScope::begin();
         if let Some(events) = &self.events {
             events.bridge().set_time(self.runtime.time());
         }
-        self.reconcile_into(world, &mut report);
+        self.reconcile_into(world, report);
         if !report.started.is_empty() {
-            tracing::info!(instances = report.started.len(), "Starting script instances (begin_play)");
+            tracing::info!(
+                instances = report.started.len(),
+                "Starting script instances (begin_play)"
+            );
         }
-        report.script_errors.extend(self.runtime.dispatch_pending_begin_play(world));
+        report
+            .script_errors
+            .extend(self.runtime.dispatch_pending_begin_play(world));
         for id in &report.started {
             if let Some(entity) = self.by_instance.get(id) {
-                self.publish(entity_channel(entity.bits()), BeginPlay { entity: entity.bits() });
+                self.publish(
+                    entity_channel(entity.bits()),
+                    BeginPlay {
+                        entity: entity.bits(),
+                    },
+                );
             }
         }
         if let Some(events) = self.events.as_mut() {
             events.announce_level(&self.level);
-            report.script_errors.extend(events.run_calls(&mut self.runtime, world));
+            report
+                .script_errors
+                .extend(events.run_calls(&mut self.runtime, world));
         }
-        report.script_errors.extend(self.runtime.tick_all(world, delta_time));
+        scope
+    }
+
+    /// The last part of a frame, with exclusive access: fire hub timers and
+    /// apply the commands scripts queued.
+    fn frame_finish(&mut self, world: &mut World, mut scope: CommandScope, report: &mut DriverReport) {
         if let Some(events) = &self.events {
             events.bridge().fire_timers(self.runtime.time());
         }
@@ -454,14 +763,120 @@ impl ScriptDriver {
             if commands.is_empty() {
                 break;
             }
-            self.apply_commands(world, commands, &mut report);
+            self.apply_commands(world, commands, report);
         }
         let left = scope.finish();
         if !left.is_empty() {
-            tracing::warn!(dropped = left.len(), "Script world commands kept queueing more; dropping the rest");
+            tracing::warn!(
+                dropped = left.len(),
+                "Script world commands kept queueing more; dropping the rest"
+            );
             discard_commands(world, left);
         }
-        report
+    }
+
+    /// Load the project's built cdylibs from `native/<crate>/target/{debug,release}`.
+    /// This layout keeps native extension artifacts separate from the engine's
+    /// own Cargo target directory and works for a single native crate or many.
+    fn load_project_native_libraries(&mut self) {
+        let native_root = self.project_root.join("native");
+        for path in project_native_library_artifacts(&native_root) {
+            let modified = std::fs::metadata(&path)
+                .and_then(|meta| meta.modified())
+                .unwrap_or(std::time::UNIX_EPOCH);
+            let key = native_library_key(&native_root, &path);
+            match self.runtime.load_library(&path) {
+                Ok((id, report)) => {
+                    log_relink_report(report);
+                    self.native_libraries.insert(key, (id, path, modified));
+                }
+                Err(error) => {
+                    tracing::warn!(path = %path.display(), "could not load project native library: {error}")
+                }
+            }
+        }
+    }
+
+    /// Pick up completed Cargo builds while the game or PIE session is running.
+    /// A failed reload leaves the old library registered and is retried after
+    /// the artifact changes again.
+    fn reload_changed_native_libraries(&mut self) {
+        let native_root = self.project_root.join("native");
+        let artifacts = project_native_library_artifacts(&native_root);
+        let mut seen = HashSet::new();
+        for path in artifacts {
+            let modified = match std::fs::metadata(&path).and_then(|meta| meta.modified()) {
+                Ok(modified) => modified,
+                Err(error) => {
+                    tracing::debug!(path = %path.display(), "cannot inspect native library: {error}");
+                    continue;
+                }
+            };
+            let key = native_library_key(&native_root, &path);
+            seen.insert(key.clone());
+            let Some((id, previous_path, previous)) = self.native_libraries.get(&key).cloned()
+            else {
+                match self.runtime.load_library(&path) {
+                    Ok((id, report)) => {
+                        log_relink_report(report);
+                        self.native_libraries.insert(key, (id, path, modified));
+                    }
+                    Err(error) => {
+                        tracing::warn!(path = %path.display(), "could not load project native library: {error}")
+                    }
+                }
+                continue;
+            };
+            if previous_path != path {
+                // The preferred profile became available after startup (for
+                // example, a release build replaced a debug fallback). Swap
+                // the library identity without ever registering both copies.
+                self.native_libraries.remove(&key);
+                match self.runtime.unload_library(id) {
+                    Ok(report) => log_relink_report(report),
+                    Err(error) => {
+                        tracing::warn!(path = %previous_path.display(), "could not unload previous native library profile: {error}")
+                    }
+                }
+                match self.runtime.load_library(&path) {
+                    Ok((id, report)) => {
+                        log_relink_report(report);
+                        self.native_libraries.insert(key, (id, path, modified));
+                    }
+                    Err(error) => {
+                        tracing::warn!(path = %path.display(), "could not load preferred native library profile: {error}")
+                    }
+                }
+                continue;
+            }
+            if modified <= previous {
+                continue;
+            }
+            match self.runtime.reload_library(id) {
+                Ok(report) => {
+                    log_relink_report(report);
+                    self.native_libraries.insert(key, (id, path, modified));
+                }
+                Err(error) => {
+                    tracing::warn!(path = %path.display(), "could not reload project native library: {error}")
+                }
+            }
+        }
+        let removed: Vec<_> = self
+            .native_libraries
+            .iter()
+            .filter(|(key, _)| !seen.contains(*key))
+            .map(|(key, (id, path, _))| (key.clone(), *id, path.clone()))
+            .collect();
+        for (key, id, path) in removed {
+            self.native_libraries.remove(&key);
+            match self.runtime.unload_library(id) {
+                Ok(report) => log_relink_report(report),
+                Err(error) => {
+                    tracing::warn!(path = %path.display(), "could not unload removed project native library: {error}")
+                }
+            }
+        }
     }
 
     /// Bring the script instances in line with the world's
@@ -560,7 +975,12 @@ impl ScriptDriver {
             .collect();
         sort_roots(&mut roots);
         let live: HashSet<Entity> = roots.iter().map(|root| root.2).collect();
-        let mut gone: Vec<Entity> = self.tracked.keys().copied().filter(|e| !live.contains(e)).collect();
+        let mut gone: Vec<Entity> = self
+            .tracked
+            .keys()
+            .copied()
+            .filter(|e| !live.contains(e))
+            .collect();
         gone.sort_by_key(|entity| entity.bits());
         for entity in gone {
             self.stop(world, entity, report);
@@ -600,7 +1020,13 @@ impl ScriptDriver {
         }
     }
 
-    fn start(&mut self, world: &World, entity: Entity, instance: &ClassInstance, report: &mut DriverReport) {
+    fn start(
+        &mut self,
+        world: &World,
+        entity: Entity,
+        instance: &ClassInstance,
+        report: &mut DriverReport,
+    ) {
         let Some(entry) = self.resolve(instance) else {
             let message = format!(
                 "object '{}': class '{}' ({}) is not in this project; its script does not run",
@@ -612,13 +1038,21 @@ impl ScriptDriver {
             report.failures.push(message);
             self.tracked.insert(
                 entity,
-                Tracked { class: instance.class.clone(), class_name: instance.class_name.clone(), instance: None },
+                Tracked {
+                    class: instance.class.clone(),
+                    class_name: instance.class_name.clone(),
+                    instance: None,
+                },
             );
             return;
         };
         self.tracked.insert(
             entity,
-            Tracked { class: entry.id.clone(), class_name: entry.name.clone(), instance: None },
+            Tracked {
+                class: entry.id.clone(),
+                class_name: entry.name.clone(),
+                instance: None,
+            },
         );
         self.try_spawn(world, entity, &instance.variable_overrides, &entry, report);
     }
@@ -642,14 +1076,21 @@ impl ScriptDriver {
             }
         };
         let id = instance_id_for(&stable, &entry.id);
-        if self.by_instance.get(&id).is_some_and(|other| *other != entity) {
+        if self
+            .by_instance
+            .get(&id)
+            .is_some_and(|other| *other != entity)
+        {
             let message = format!("script instance '{id}' already runs on another entity");
             tracing::warn!("{message}");
             report.failures.push(message);
             return;
         }
         let overrides: HashMap<String, Value> = overrides.clone().into_iter().collect();
-        match self.runtime.spawn_with_json(id.clone(), &class, Some(entity), &overrides) {
+        match self
+            .runtime
+            .spawn_with_json(id.clone(), &class, Some(entity), &overrides)
+        {
             Ok(()) => {
                 bind_class_slots(&mut self.runtime, &id, world, entity);
                 if let Some(tracked) = self.tracked.get_mut(&entity) {
@@ -682,14 +1123,24 @@ impl ScriptDriver {
                 report.script_errors.push(error);
             }
             if begun {
-                self.publish(entity_channel(entity.bits()), EndPlay { entity: entity.bits() });
+                self.publish(
+                    entity_channel(entity.bits()),
+                    EndPlay {
+                        entity: entity.bits(),
+                    },
+                );
             }
             report.stopped.push(id);
         }
         if !world.is_alive(entity) {
             // Removed from the world by someone else (world::destroy
             // publishes its own before despawning).
-            self.publish(pulsar_events::gamma::Channel::Global, EntityDestroyed { entity: entity.bits() });
+            self.publish(
+                pulsar_events::gamma::Channel::Global,
+                EntityDestroyed {
+                    entity: entity.bits(),
+                },
+            );
         }
     }
 
@@ -702,7 +1153,10 @@ impl ScriptDriver {
                 continue;
             };
             let Some(class) = self.ensure_class_loaded(&entry, report) else {
-                let message = format!("global script class '{}' has no compiled script", entry.name);
+                let message = format!(
+                    "global script class '{}' has no compiled script",
+                    entry.name
+                );
                 tracing::warn!("{message}");
                 report.failures.push(message);
                 continue;
@@ -766,7 +1220,11 @@ impl ScriptDriver {
 
     /// The runtime's name for `entry`'s script class, loading its module
     /// on first use. `None` when the class has no compiled script.
-    fn ensure_class_loaded(&mut self, entry: &ClassEntry, report: &mut DriverReport) -> Option<String> {
+    fn ensure_class_loaded(
+        &mut self,
+        entry: &ClassEntry,
+        report: &mut DriverReport,
+    ) -> Option<String> {
         if let Some(name) = self.loaded.get(&entry.id) {
             return Some(name.clone());
         }
@@ -784,8 +1242,14 @@ impl ScriptDriver {
                 );
                 return None;
             }
-            Some(Ok(bytes)) => self.runtime.load_class_bytes(&bytes, &module).map(|(name, _)| name),
-            Some(Err(source)) => Err(RuntimeError::Io { path: module.clone(), source }),
+            Some(Ok(bytes)) => self
+                .runtime
+                .load_class_bytes(&bytes, &module)
+                .map(|(name, _)| name),
+            Some(Err(source)) => Err(RuntimeError::Io {
+                path: module.clone(),
+                source,
+            }),
         };
         match loaded {
             Ok(name) => {
@@ -794,7 +1258,10 @@ impl ScriptDriver {
                 Some(name)
             }
             Err(error) => {
-                let message = format!("script module of class '{}' did not load: {error}", entry.name);
+                let message = format!(
+                    "script module of class '{}' did not load: {error}",
+                    entry.name
+                );
                 tracing::warn!("{message}");
                 report.failures.push(message);
                 report.load_errors.push(error);
@@ -814,9 +1281,15 @@ impl ScriptDriver {
     /// it is safe from any thread, even during the script phase.
     pub fn subscribe_class_reloads(&self) -> pulsar_events::AssetSubscription {
         let requests = self.reload_requests();
-        pulsar_events::subscribe_asset_updates(Some(pulsar_events::AssetKind::Blueprint), move |event| {
-            requests.lock().unwrap_or_else(|p| p.into_inner()).push(event.clone());
-        })
+        pulsar_events::subscribe_asset_updates(
+            Some(pulsar_events::AssetKind::Blueprint),
+            move |event| {
+                requests
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .push(event.clone());
+            },
+        )
     }
 
     /// Apply a class update now: reload the class's script module if the
@@ -825,7 +1298,11 @@ impl ScriptDriver {
     /// every live instance of the class again against its current
     /// components, and start the script of instances that had none (the
     /// class just got a compiled module). Returns the class name.
-    pub fn reload_class_for_asset(&mut self, world: &World, event: &pulsar_events::AssetUpdated) -> Option<String> {
+    pub fn reload_class_for_asset(
+        &mut self,
+        world: &World,
+        event: &pulsar_events::AssetUpdated,
+    ) -> Option<String> {
         let mut report = DriverReport::default();
         self.reload_class_for_asset_into(world, event, &mut report)
     }
@@ -855,13 +1332,19 @@ impl ScriptDriver {
             let module = module_file(&entry);
             if let Some(read) = read_module_bytes(&module) {
                 let loaded = read
-                    .map_err(|source| RuntimeError::Io { path: module.clone(), source })
+                    .map_err(|source| RuntimeError::Io {
+                        path: module.clone(),
+                        source,
+                    })
                     .and_then(|bytes| self.runtime.load_class_bytes(&bytes, &module));
                 match loaded {
                     Ok((name, reloaded)) => {
-                        report
-                            .dropped_calls
-                            .extend(reloaded.dropped.into_iter().map(|call| (name.clone(), call)));
+                        report.dropped_calls.extend(
+                            reloaded
+                                .dropped
+                                .into_iter()
+                                .map(|call| (name.clone(), call)),
+                        );
                         if name != class {
                             // The module was renamed: follow it.
                             tracing::warn!(class = %entry.name, module = %name, "Class module name changed on reload");
@@ -940,20 +1423,32 @@ impl ScriptDriver {
             class: details.class,
             instance: details.object_id,
             function: details.function,
-            node: details.location.as_ref().map(|l| l.node.clone()).filter(|n| !n.is_empty()),
+            node: details
+                .location
+                .as_ref()
+                .map(|l| l.node.clone())
+                .filter(|n| !n.is_empty()),
             line: details.location.as_ref().and_then(|l| l.line),
             message: details.message,
             ..Default::default()
         };
-        self.fill_class(&mut problem, details.location.as_ref().map(|l| l.file.as_str()));
+        self.fill_class(
+            &mut problem,
+            details.location.as_ref().map(|l| l.file.as_str()),
+        );
         problem
     }
 
     /// Fill the class GUID and source path from the registry.
     fn fill_class(&self, problem: &mut pulsar_events::ScriptProblem, file: Option<&str>) {
         let Some(entry) = problem.class.as_deref().and_then(|name| {
-            let guid = self.loaded.iter().find(|(_, n)| n.as_str() == name).map(|(guid, _)| guid.clone());
-            guid.and_then(|g| self.registry.by_id(&g)).or_else(|| self.registry.by_name(name))
+            let guid = self
+                .loaded
+                .iter()
+                .find(|(_, n)| n.as_str() == name)
+                .map(|(guid, _)| guid.clone());
+            guid.and_then(|g| self.registry.by_id(&g))
+                .or_else(|| self.registry.by_name(name))
         }) else {
             return;
         };
@@ -966,12 +1461,20 @@ impl ScriptDriver {
 
     // ---- world commands -----------------------------------------------------
 
-    pub(crate) fn apply_commands(&mut self, world: &mut World, commands: Vec<WorldCommand>, report: &mut DriverReport) {
+    pub(crate) fn apply_commands(
+        &mut self,
+        world: &mut World,
+        commands: Vec<WorldCommand>,
+        report: &mut DriverReport,
+    ) {
         for command in commands {
             match command {
-                WorldCommand::Spawn { entity, class, parent, position } => {
-                    self.apply_spawn(world, entity, &class, parent, position, report)
-                }
+                WorldCommand::Spawn {
+                    entity,
+                    class,
+                    parent,
+                    position,
+                } => self.apply_spawn(world, entity, &class, parent, position, report),
                 WorldCommand::Destroy { entity } => self.apply_destroy(world, entity, report),
             }
         }
@@ -989,13 +1492,15 @@ impl ScriptDriver {
         if !world.is_alive(entity) {
             return;
         }
-        let def = self.resolve_class_ref(class).and_then(|entry| match entry.load_definition() {
-            Ok(def) => Some(def),
-            Err(error) => {
-                tracing::warn!(class = %entry.name, "Class definition unreadable: {error}");
-                None
-            }
-        });
+        let def = self
+            .resolve_class_ref(class)
+            .and_then(|entry| match entry.load_definition() {
+                Ok(def) => Some(def),
+                Err(error) => {
+                    tracing::warn!(class = %entry.name, "Class definition unreadable: {error}");
+                    None
+                }
+            });
         let Some(def) = def else {
             let message = format!("world::spawn: class '{class}' is not in this project");
             tracing::warn!("{message}");
@@ -1006,11 +1511,17 @@ impl ScriptDriver {
         let parent = parent.filter(|p| world.is_alive(*p));
         let transform = match parent {
             Some(parent) => {
-                let local = LocalTransform { position, ..LocalTransform::default() };
+                let local = LocalTransform {
+                    position,
+                    ..LocalTransform::default()
+                };
                 let parent_tf = world.get::<Transform>(parent).copied().unwrap_or_default();
                 pulsar_class::world::compose(&parent_tf, &local)
             }
-            None => Transform { position, ..Transform::default() },
+            None => Transform {
+                position,
+                ..Transform::default()
+            },
         };
         let stable_id = self.next_spawn_id(world, &def.name);
         let spec = SpawnObject {
@@ -1021,9 +1532,20 @@ impl ScriptDriver {
             visibility: Default::default(),
             object_type: ObjectType::Blueprint,
         };
-        match pulsar_class::world::instantiate_class_into(world, &def, ClassInstance::default(), spec, entity) {
+        match pulsar_class::world::instantiate_class_into(
+            world,
+            &def,
+            ClassInstance::default(),
+            spec,
+            entity,
+        ) {
             Ok(_) => {
-                self.publish(pulsar_events::gamma::Channel::Global, EntitySpawned { entity: entity.bits() });
+                self.publish(
+                    pulsar_events::gamma::Channel::Global,
+                    EntitySpawned {
+                        entity: entity.bits(),
+                    },
+                );
                 report.spawned.push(entity)
             }
             Err(error) => {
@@ -1064,7 +1586,12 @@ impl ScriptDriver {
             self.stop(world, node, report);
         }
         for &node in &tree {
-            self.publish(pulsar_events::gamma::Channel::Global, EntityDestroyed { entity: node.bits() });
+            self.publish(
+                pulsar_events::gamma::Channel::Global,
+                EntityDestroyed {
+                    entity: node.bits(),
+                },
+            );
         }
         world.despawn_tree(entity);
         report.destroyed.push(entity);

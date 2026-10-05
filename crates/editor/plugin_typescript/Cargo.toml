@@ -1,0 +1,24 @@
+[package]
+name = "plugin_typescript"
+version = "0.1.0"
+edition = "2021"
+description = "TypeScript as a scripting language: a ScriptLanguage plugin that compiles src/classes/<Class>/class.ts to engine script modules (pulsar_script_ts). It has no editor; code editing is the code editor's job."
+
+[dependencies]
+pulsar_script_ts = { workspace = true }
+plugin_editor_api = { workspace = true }
+# Registers itself at link time (see plugin_manager::LinkedEditorProvider).
+plugin_manager = { workspace = true }
+# The BuiltinEditorProvider trait names GPUI types; this plugin makes no UI.
+gpui-ce = { workspace = true }
+ui = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+pulsar_script_vm = { workspace = true }
+pulsar_script_math = { workspace = true }
+
+[lints]
+workspace = true

@@ -177,7 +177,10 @@ mod permanent_library;
 mod registry;
 pub mod tool_bridge;
 
-pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext};
+pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, LinkedEditorProvider};
+/// Re-exported so a linked provider can `inventory::submit!` without its own
+/// dependency (see [`LinkedEditorProvider`]).
+pub use inventory;
 pub use permanent_library::{IntegrityError, PermanentLibrary, PermanentLibraryLoadError};
 pub use registry::{EditorRegistry, FileTypeRegistry};
 pub use tool_bridge::PluginToolBridge;

@@ -1,15 +1,26 @@
-//! Render pipeline timing overlay component.
+//! Render pipeline timing overlay.
+//!
+//! Like the performance overlay, it is a view with its own timer, mounted as an
+//! isolated cached view: it polls the renderer at [`REFRESH`] and re-renders
+//! itself in place only when a new profile arrived. Nothing above it renders,
+//! lays out or prepaints. When the renderer is busy the poll simply finds
+//! nothing new and the last profile stays on screen, at the same size.
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use ui::{ActiveTheme, StyledExt, h_flex, v_flex};
 
-use crate::state::LevelEditorState;
 use engine_backend::subsystems::render::helio_renderer::{
-    DiagnosticMetric, GpuProfilerAvailability,
+    DiagnosticMetric, GpuProfilerAvailability, GpuProfilerData,
 };
+
+type GpuEngine = Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>;
+
+/// How often the renderer is polled for a new profile.
+const REFRESH: Duration = Duration::from_millis(100);
 
 const PASS_COLORS: &[(f32, f32, f32)] = &[
     (0.4, 0.7, 1.0),
@@ -37,22 +48,88 @@ fn timing_color(time_ms: Option<f32>, success: Hsla, warning: Hsla, danger: Hsla
     }
 }
 
-/// Render the latest non-blocking Helio pass timings.
+/// Which profile this is, so an unchanged one does not cause a re-render.
+fn profile_id(data: &GpuProfilerData) -> (u64, Option<u64>) {
+    (data.frame_count, data.gpu_frame_count)
+}
+
+pub struct GpuPipelineOverlay {
+    profile: Option<GpuProfilerData>,
+    _tick: Task<()>,
+}
+
+impl GpuPipelineOverlay {
+    pub fn new(gpu_engine: GpuEngine, cx: &mut Context<Self>) -> Self {
+        let mut this = Self {
+            profile: None,
+            _tick: Task::ready(()),
+        };
+        this.poll(&gpu_engine);
+        this._tick = cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(REFRESH).await;
+                let updated = this.update(cx, |this, cx| {
+                    if this.poll(&gpu_engine) {
+                        cx.notify();
+                    }
+                });
+                if updated.is_err() {
+                    break;
+                }
+            }
+        });
+        this
+    }
+
+    /// Take the renderer's latest profile if it can be had without waiting and
+    /// is new. Returns whether the overlay changed. A busy renderer, or one with
+    /// nothing new, leaves the last profile where it is.
+    fn poll(&mut self, gpu_engine: &GpuEngine) -> bool {
+        let Some(fresh) = gpu_engine
+            .try_lock()
+            .ok()
+            .and_then(|engine| engine.get_gpu_profiler_data())
+        else {
+            return false;
+        };
+        if self.profile.as_ref().map(profile_id) == Some(profile_id(&fresh)) {
+            return false;
+        }
+        self.profile = Some(fresh);
+        true
+    }
+}
+
+/// The overlay for the viewport, created on first use and kept in `slot` so its
+/// timer exists only while the overlay is shown.
 pub fn render_gpu_pipeline_overlay<V>(
-    _state: &LevelEditorState,
-    _state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-    gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+    gpu_engine: &GpuEngine,
+    slot: &std::cell::RefCell<Option<Entity<GpuPipelineOverlay>>>,
     cx: &mut Context<V>,
-) -> impl IntoElement
+) -> AnyElement
 where
-    V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
+    V: 'static,
 {
-    // Cloning is deliberately conditional on the overlay being visible. The
-    // render thread itself updates a reusable cache without allocating.
-    let profiler_data = gpu_engine
-        .try_lock()
-        .ok()
-        .and_then(|engine| engine.get_gpu_profiler_data());
+    let overlay = slot
+        .borrow_mut()
+        .get_or_insert_with(|| {
+            let gpu_engine = gpu_engine.clone();
+            cx.new(|cx| GpuPipelineOverlay::new(gpu_engine, cx))
+        })
+        .clone();
+    div()
+        .w(px(410.0))
+        .child(
+            AnyView::from(overlay)
+                .cached_auto_height(StyleRefinement::default().w_full().flex_shrink_0())
+                .isolated(),
+        )
+        .into_any_element()
+}
+
+impl Render for GpuPipelineOverlay {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let profiler_data = self.profile.clone();
 
     let (background, border, foreground, muted, success, warning, danger) = {
         let theme = cx.theme();
@@ -71,10 +148,10 @@ where
         .gap_2()
         .p_3()
         .w(px(410.0))
-        .bg(background.opacity(0.95))
+        .bg(background.opacity(0.85))
         .rounded_lg()
         .border_1()
-        .border_color(border)
+        .border_color(border.opacity(0.5))
         .shadow_lg()
         .child(
             h_flex()
@@ -268,9 +345,10 @@ where
                     div()
                         .text_xs()
                         .text_color(muted)
-                        .child("Renderer busy; keeping the previous frame responsive"),
+                        .child("Waiting for the renderer"),
                 )
             }
         })
         .into_any_element()
+}
 }

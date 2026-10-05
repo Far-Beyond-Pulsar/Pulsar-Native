@@ -9,7 +9,9 @@
 pub mod attachments;
 pub mod components;
 pub mod instance;
+pub mod motion;
 pub mod payload_catalog;
+mod transform_script;
 pub mod world_ext;
 
 use serde::{Deserialize, Serialize};

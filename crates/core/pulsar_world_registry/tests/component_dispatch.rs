@@ -7,16 +7,54 @@
 
 use pulsar_reflection::{
     ComponentMethodRegistration, EngineClass, EngineClassRegistration, MethodMetadata,
-    MethodParameter, MethodReturnType, MethodType, PropertyMetadata, RuntimeTypeInfo,
+    MethodParameter, MethodFlags, MethodReturnType, PropertyMetadata, RuntimeTypeInfo,
     RUNTIME_TYPE_REGISTRY,
 };
 use pulsar_scenedb::{Entity, World};
 use serde_json::Value;
 
+// Used by the ignored manual benchmark below. This counts allocation and
+// reallocation calls in the integration-test process without adding a runtime
+// dependency.
+struct CountingAllocator;
+
+static ALLOCATION_CALLS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+unsafe impl std::alloc::GlobalAlloc for CountingAllocator {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        ALLOCATION_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        std::alloc::System.alloc(layout)
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
+        std::alloc::System.dealloc(ptr, layout)
+    }
+
+    unsafe fn realloc(
+        &self,
+        ptr: *mut u8,
+        layout: std::alloc::Layout,
+        new_size: usize,
+    ) -> *mut u8 {
+        ALLOCATION_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        std::alloc::System.realloc(ptr, layout, new_size)
+    }
+}
+
+#[global_allocator]
+static TEST_ALLOCATOR: CountingAllocator = CountingAllocator;
+
 use pulsar_world_registry::{
     get_component_property, get_component_property_boxed, invoke_component_method,
     set_component_property, set_component_property_boxed, ScriptRefError,
 };
+
+thread_local! {
+    /// How many times this thread built a property table (the work a
+    /// throwaway `EngineClass` instance exists for).
+    static PROPERTY_TABLE_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 
 // ── one hand-registered test class exercising the full pipeline ────────────
 
@@ -31,6 +69,7 @@ impl EngineClass for DispatchGizmo {
     }
 
     fn get_properties(&self) -> Vec<PropertyMetadata> {
+        PROPERTY_TABLE_BUILDS.with(|n| n.set(n.get() + 1));
         let info: &'static RuntimeTypeInfo = RUNTIME_TYPE_REGISTRY
             .get::<i32>()
             .expect("i32 prim registered");
@@ -70,7 +109,7 @@ impl EngineClass for DispatchGizmo {
             }],
             return_type: Some(MethodReturnType { type_info: info }),
             // Deliberately NOT Pure: mutates state (#645's purity policy).
-            method_type: MethodType::Fn,
+            flags: MethodFlags::NONE,
             caller: Box::new(
                 |c: &mut dyn EngineClass, args: Vec<Box<dyn std::any::Any>>| {
                     let amount = args
@@ -122,12 +161,10 @@ fn gizmo_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
         .map(|c| c as &dyn EngineClass)
 }
 
-fn gizmo_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
-    // Same `Mut`-guard unwrap as the generated shims: writes through here
-    // count as real mutations for subscriptions/GPU mirrors.
-    world
-        .get_mut::<DispatchGizmo>(entity)
-        .map(|c| c.into_inner() as &mut dyn EngineClass)
+fn gizmo_get_mut(world: &mut World, entity: Entity) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
+    // Same guard as the generated shims: writes through it are reported to
+    // subscriptions/GPU mirrors when it drops.
+    pulsar_world_registry::EngineClassMut::of::<DispatchGizmo>(world, entity)
 }
 
 fn gizmo_methods() -> Vec<MethodMetadata> {
@@ -512,4 +549,87 @@ fn dangling_entity_is_not_live_not_a_panic() {
     .unwrap_err();
     assert_eq!(err, ScriptRefError::despawned(none));
     assert!(get_component_property(&world, none, "DispatchGizmo", 0, "charges").is_err());
+}
+
+/// Manual release-mode baseline for the current property read paths.
+///
+/// Run with:
+/// `cargo test -p pulsar_world_registry --test component_dispatch --release baseline_property_reads -- --ignored --nocapture`
+///
+/// This intentionally has no pass/fail latency threshold. It records local
+/// before-change numbers for the direct typed field read, boxed reflected
+/// dispatch, and JSON reflected dispatch. The latter two resolve
+/// metadata through the shared descriptor cache (no EngineClass is
+/// constructed per access; see `property_access_builds_descriptors_once`).
+#[test]
+#[ignore = "manual release-mode property access baseline"]
+fn baseline_property_reads() {
+    use std::hint::black_box;
+    use std::time::Instant;
+
+    const ITERATIONS: usize = 300_000;
+    let (world, entity) = hydrated_world(42);
+
+    let measure = |name: &str, mut access: Box<dyn FnMut() -> i32>| {
+        ALLOCATION_CALLS.store(0, std::sync::atomic::Ordering::Relaxed);
+        let started = Instant::now();
+        let mut checksum = 0i64;
+        for _ in 0..ITERATIONS {
+            checksum += i64::from(black_box(access()));
+        }
+        let elapsed = started.elapsed();
+        let allocations = ALLOCATION_CALLS.load(std::sync::atomic::Ordering::Relaxed);
+        println!(
+            "{name}: {:.1} ns/access, {:.3} allocation calls/access over {ITERATIONS} iterations (checksum {checksum})",
+            elapsed.as_nanos() as f64 / ITERATIONS as f64,
+            allocations as f64 / ITERATIONS as f64,
+        );
+    };
+
+    measure(
+        "direct typed SceneDB read",
+        Box::new(|| black_box(world.get::<DispatchGizmo>(entity).unwrap().charges)),
+    );
+    measure(
+        "boxed reflected read",
+        Box::new(|| {
+            *get_component_property_boxed(&world, entity, "DispatchGizmo", 0, "charges")
+                .unwrap()
+                .downcast::<i32>()
+                .unwrap()
+        }),
+    );
+    measure(
+        "JSON reflected read",
+        Box::new(|| {
+            get_component_property(&world, entity, "DispatchGizmo", 0, "charges")
+                .unwrap()
+                .as_i64()
+                .unwrap() as i32
+        }),
+    );
+}
+
+/// #886: reading and writing a property any number of times builds the
+/// class's property table at most once, not once per access.
+#[test]
+fn property_access_builds_descriptors_once() {
+    let (mut world, entity) = hydrated_world(1);
+    // The first access may build the (process-wide, cached) table.
+    let _ = get_component_property_boxed(&world, entity, "DispatchGizmo", 0, "charges").unwrap();
+    let before = PROPERTY_TABLE_BUILDS.with(|n| n.get());
+    for i in 0..100 {
+        get_component_property_boxed(&world, entity, "DispatchGizmo", 0, "charges").unwrap();
+        get_component_property(&world, entity, "DispatchGizmo", 0, "charges").unwrap();
+        set_component_property_boxed(&mut world, entity, "DispatchGizmo", 0, "charges", Box::new(i as i32)).unwrap();
+        set_component_property(&mut world, entity, "DispatchGizmo", 0, "charges", serde_json::json!(i)).unwrap();
+    }
+    assert_eq!(PROPERTY_TABLE_BUILDS.with(|n| n.get()), before, "a throwaway instance was built per access");
+    assert_eq!(world.get::<DispatchGizmo>(entity).unwrap().charges, 99);
+
+    // Unknown names still fail with the typed error, and are not cached as hits.
+    assert!(matches!(
+        get_component_property_boxed(&world, entity, "DispatchGizmo", 0, "nope"),
+        Err(ScriptRefError::UnknownProperty { .. })
+    ));
 }

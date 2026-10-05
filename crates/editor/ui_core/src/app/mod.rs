@@ -3,7 +3,11 @@
 mod agent_chat_panel;
 mod constructors;
 pub mod event_handlers;
+mod layout_persistence;
+pub(crate) use layout_persistence::saved_window_bounds;
 mod manual_tool_panel;
+mod menu_actions;
+mod navigation;
 mod open_editors;
 mod panel_window;
 mod radial_menu;
@@ -118,13 +122,13 @@ impl PulsarApp {
 
     fn on_go_back(&mut self, _: &menu::GoBack, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(path) = self.state.go_back() {
-            self.open_path(path, window, cx);
+            self.open_path_with_history(path, false, window, cx);
         }
     }
 
     fn on_go_forward(&mut self, _: &menu::GoForward, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(path) = self.state.go_forward() {
-            self.open_path(path, window, cx);
+            self.open_path_with_history(path, false, window, cx);
         }
     }
 

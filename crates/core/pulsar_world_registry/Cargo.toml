@@ -13,9 +13,16 @@ thiserror         = { workspace = true }
 tracing           = { workspace = true }
 # World components as script VM components and natives (`script_natives`).
 pulsar_script_vm  = { workspace = true }
+pulsar_script_math = { workspace = true }
+pulsar_scene_model = { workspace = true }
 
 [dev-dependencies]
+glam = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "script_tick"
+harness = false

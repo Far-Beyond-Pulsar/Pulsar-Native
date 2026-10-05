@@ -43,6 +43,13 @@ static GLOBAL_ALLOCATOR: dhat::Alloc = dhat::Alloc;
 #[cfg(not(feature = "dhat-heap"))]
 use ui_log_viewer::TrackingAllocator;
 
+// The Blueprint editor registers itself at link time; linking the crate is
+// what includes it in the build (feature `blueprint`).
+#[cfg(feature = "blueprint")]
+use blueprint_editor_plugin as _;
+#[cfg(feature = "typescript")]
+use plugin_typescript as _;
+
 #[cfg(not(feature = "dhat-heap"))]
 #[global_allocator]
 static GLOBAL_ALLOCATOR: TrackingAllocator = TrackingAllocator::new();
@@ -50,7 +57,6 @@ static GLOBAL_ALLOCATOR: TrackingAllocator = TrackingAllocator::new();
 // Re-export render from backend where it actually lives
 pub use engine_backend::subsystems::render;
 // Re-export graph from ui crate (canonical location)
-pub use ui::graph;
 // Re-export themes from ui crate (where it belongs)
 pub use ui::themes;
 // Re-export engine state

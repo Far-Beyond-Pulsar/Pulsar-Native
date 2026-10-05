@@ -9,6 +9,8 @@ plugin_editor_api = { workspace = true }
 pulsar_events = { workspace = true }
 engine_subsystems = { workspace = true }
 parking_lot = { workspace = true }
+# Built-in providers register themselves at link time (`LinkedEditorProvider`).
+inventory = { workspace = true }
 
 # Dynamic library loading
 libloading = { workspace = true }
