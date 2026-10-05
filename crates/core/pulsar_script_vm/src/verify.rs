@@ -150,6 +150,20 @@ fn verify_events(module: &Module) -> Result<(), VerifyError> {
                 what()
             )));
         }
+        if let crate::module::SubscriptionScope::Component(variable) = subscription.scope {
+            let source = module.variables.get(variable as usize).ok_or_else(|| {
+                err(format!(
+                    "{}: component reference variable {variable} is out of range",
+                    what()
+                ))
+            })?;
+            if !matches!(&source.ty, crate::types::Type::Component(_)) {
+                return Err(err(format!(
+                    "{}: component reference source `{}` has type {}, expected a component reference",
+                    what(), source.name, source.ty
+                )));
+            }
+        }
         if let EventRef::Name(name) = &subscription.event {
             if name.trim().is_empty() {
                 return Err(err(format!("subscription {index}: empty event name")));

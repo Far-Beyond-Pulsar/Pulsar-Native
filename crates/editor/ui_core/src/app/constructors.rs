@@ -98,6 +98,27 @@ impl PulsarApp {
         let t_total = std::time::Instant::now();
         tracing::info!("[PulsarApp] new_internal start");
 
+        // Component events are registered in the host executable. Publish
+        // their declarations through the shared editor API so Blueprint and
+        // other dynamically loaded editors do not need their own inventory
+        // copy (which cannot see host registrations across a DLL boundary).
+        let mut component_events: Vec<_> =
+            pulsar_world_registry::component_event_registrations()
+                .map(|registration| plugin_editor_api::ComponentEventMetadata {
+                    component_class: registration.class_name.to_owned(),
+                    event: (registration.declaration)(),
+                })
+                .collect();
+        component_events.sort_by(|a, b| {
+            (&a.component_class, &a.event.name).cmp(&(&b.component_class, &b.event.name))
+        });
+        component_events.dedup_by(|a, b| {
+            a.component_class == b.component_class && a.event.name == b.event.name
+        });
+        cx.set_global(plugin_editor_api::ComponentEventCatalog {
+            events: component_events,
+        });
+
         // ── Dock area ──────────────────────────────────────────────────────────
         let t = std::time::Instant::now();
         let dock_area = cx.new(|cx| ui::dock::DockArea::new("main-dock", Some(1), window, cx));

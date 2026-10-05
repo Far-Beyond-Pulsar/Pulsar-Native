@@ -61,12 +61,40 @@ fn enabled_prefab_components_are_hydrated_and_disabled_ones_are_not() {
 fn classes_with_custom_events_are_refused_not_silently_degraded() {
     let mut with_events = empty_class("Door");
     with_events.events = vec![EventDecl { name: "Door.Open".into(), fields: vec![EventField { name: "by".into(), ty: Type::Entity }] }];
-    assert!(matches!(generate_actor("Door", &with_events, &[]), Err(ExportError::Unsupported(_))));
+    let error = generate_actor("Door", &with_events, &[]).unwrap_err();
+    assert!(matches!(error, ExportError::Unsupported(_)));
+    assert!(error.to_string().contains("Door.Open"));
 
     let mut subscribed = empty_class("Door");
     subscribed.subscriptions =
         vec![Subscription { event: EventRef::Name("Hit".into()), handler: 0, scope: SubscriptionScope::Global }];
-    assert!(matches!(generate_actor("Door", &subscribed, &[]), Err(ExportError::Unsupported(_))));
+    let error = generate_actor("Door", &subscribed, &[]).unwrap_err();
+    assert!(matches!(error, ExportError::Unsupported(_)));
+    assert!(error.to_string().contains("subscription #0 for event `Hit`"));
+}
+
+#[test]
+fn component_event_subscriptions_report_the_unavailable_binding_context() {
+    let mut subscribed = empty_class("TerrainListener");
+    subscribed.variables.push(pulsar_script_vm::Variable {
+        name: "terrain".into(),
+        ty: Type::component("VoxelTerrainComponent"),
+        default: None,
+        id: Some("bp-slot:terrain-instance".into()),
+    });
+    subscribed.subscriptions = vec![Subscription {
+        event: EventRef::Name("VoxelTerrainComponent.BlockBroken".into()),
+        handler: 0,
+        scope: SubscriptionScope::Component(0),
+    }];
+
+    let error = generate_actor("TerrainListener", &subscribed, &[]).unwrap_err();
+    assert!(matches!(error, ExportError::Unsupported(_)));
+    let message = error.to_string();
+    assert!(message.contains("subscription #0"));
+    assert!(message.contains("VoxelTerrainComponent.BlockBroken"));
+    assert!(message.contains("component-reference variable 0 (`terrain`: VoxelTerrainComponent&)"));
+    assert!(message.contains("Use the VM compile target"));
 }
 
 #[test]

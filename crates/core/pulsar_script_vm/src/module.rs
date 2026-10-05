@@ -18,8 +18,10 @@
 //!   dynamic event descriptors on the engine event hub when the module is
 //!   loaded;
 //! - **subscriptions**: which function handles which event, and on which
-//!   channel ([`SubscriptionScope`]). The engine subscribes every instance
-//!   when it spawns and unsubscribes it when it despawns.
+//!   channel ([`SubscriptionScope`]). Component-scoped subscriptions point
+//!   to a typed [`Type::Component`] variable holding a live component
+//!   reference. The engine subscribes every instance when it spawns and
+//!   unsubscribes it when it despawns.
 //!
 //! Nothing here refers to a particular source language.
 //!
@@ -40,11 +42,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::Type;
 
-/// Bumped on any incompatible change to the format. Version 3 added
-/// [`Constant::Value`], [`Variable::id`] and [`Module::class_version`];
-/// version 2 added
+/// Bumped on any incompatible change to the format. Version 5 added
+/// component-reference subscriptions; version 3 added [`Constant::Value`],
+/// [`Variable::id`] and [`Module::class_version`]; version 2 added
 /// [`Module::events`] and [`Module::subscriptions`].
-pub const FORMAT_VERSION: u32 = 4;
+pub const FORMAT_VERSION: u32 = 5;
 
 /// The oldest format version this VM still reads. Version 1 modules have
 /// no events or subscriptions (both default to empty).
@@ -340,6 +342,11 @@ pub enum SubscriptionScope {
     /// The class channel of the instance's own class: events sent to every
     /// instance of the class.
     Class,
+    /// The entity channel of a typed component reference stored in the
+    /// module variable at this index. The variable must have type
+    /// [`Type::Component`]. The engine resolves and validates that live
+    /// reference when it binds the instance's subscriptions.
+    Component(u32),
 }
 
 /// "Run `handler` when `event` arrives on `scope`".

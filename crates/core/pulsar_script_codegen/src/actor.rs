@@ -14,7 +14,7 @@
 
 use std::fmt::Write as _;
 
-use pulsar_script_vm::Module;
+use pulsar_script_vm::{Module, SubscriptionScope};
 
 use crate::{generate_with, CodegenError, Options};
 
@@ -91,10 +91,31 @@ const VM: &str = "pulsar_game::scripting::export::vm";
 
 /// The `events.rs` source for class `class_name`, compiled to `module`.
 pub fn generate_actor(class_name: &str, module: &Module, components: &[ComponentSpec]) -> Result<String, ExportError> {
-    if !module.events.is_empty() || !module.subscriptions.is_empty() {
+    if let Some((index, subscription)) = module.subscriptions.iter().enumerate().next() {
+        let event = subscription.event.to_string();
+        if let SubscriptionScope::Component(variable) = subscription.scope {
+            let source = module.variables.get(variable as usize).map_or_else(
+                || format!("component-reference variable {variable}"),
+                |value| format!("component-reference variable {variable} (`{}`: {})", value.name, value.ty),
+            );
+            return Err(ExportError::Unsupported(format!(
+                "`{class_name}` subscription #{index} for event `{event}` uses {source}; exported actors do not \
+                 have the runtime event context needed to resolve that live reference, queue delivery, and dispatch \
+                 its handler. Use the VM compile target for this class."
+            )));
+        }
         return Err(ExportError::Unsupported(format!(
-            "`{class_name}` declares or handles custom events, which an exported actor cannot subscribe to; \
-             use the VM compile target for this class"
+            "`{class_name}` subscription #{index} for event `{event}` uses the `{:?}` scope; exported actors do \
+             not have the runtime event context needed to queue delivery and dispatch its handler. Use the VM \
+             compile target for this class.",
+            subscription.scope
+        )));
+    }
+    if let Some(declaration) = module.events.first() {
+        return Err(ExportError::Unsupported(format!(
+            "`{class_name}` declares event `{}`; exported actors do not have the session event host needed to \
+             register its descriptor and publish payloads. Use the VM compile target for this class.",
+            declaration.name
         )));
     }
     let ident = snake_case(class_name);

@@ -67,6 +67,17 @@ impl CompileOutput {
 pub fn compile_project(project: &Path, settings: &ProjectSettings) -> CompileOutput {
     let mut output = CompileOutput::default();
     let natives_runtime = pulsar_game::scripting::new_runtime();
+    #[cfg(any(feature = "blueprint", feature = "typescript"))]
+    let component_events: Vec<_> =
+        pulsar_world_registry::component_event_registrations()
+            .map(|registration| plugin_editor_api::ComponentEventMetadata {
+                component_class: registration.class_name.to_owned(),
+                event: (registration.declaration)(),
+            })
+            .collect();
+    #[cfg(any(feature = "blueprint", feature = "typescript"))]
+    run_languages(project, natives_runtime.natives(), &component_events, &mut output);
+    #[cfg(not(any(feature = "blueprint", feature = "typescript")))]
     run_languages(project, natives_runtime.natives(), &mut output);
 
     let registry = ClassRegistry::scan(project);
@@ -137,6 +148,20 @@ fn link_all(
     let mut runtime = pulsar_game::scripting::new_runtime();
     runtime.set_capabilities(pulsar_game::scripting::capability_policy(settings));
     let events = pulsar_game::scripting::ScriptEvents::new(pulsar_events::EventHub::new());
+    if let Err(error) = pulsar_world_registry::register_component_events(events.bridge().hub()) {
+        tracing::error!(%error, "could not register component events for package validation");
+    }
+    for registration in pulsar_world_registry::component_event_registrations() {
+        let declaration = (registration.declaration)();
+        if let Err(error) = events.bridge().register_event_decl(registration.class_name, &declaration) {
+            output.problems.push(ScriptProblem {
+                error: true,
+                class: Some(registration.class_name.to_owned()),
+                file: None,
+                message: error,
+            });
+        }
+    }
     for entry in registry.entries() {
         events.bridge().add_class(&entry.name, entry.id.as_str());
     }
@@ -179,10 +204,15 @@ use blueprint_editor_plugin as _;
 use plugin_typescript as _;
 
 #[cfg(any(feature = "blueprint", feature = "typescript"))]
-fn run_languages(project: &Path, natives: &pulsar_script_vm::NativeRegistry, output: &mut CompileOutput) {
+fn run_languages(
+    project: &Path,
+    natives: &pulsar_script_vm::NativeRegistry,
+    component_events: &[plugin_editor_api::ComponentEventMetadata],
+    output: &mut CompileOutput,
+) {
     for language in plugin_editor_api::linked_script_languages() {
         tracing::info!(language = language.display_name(), "Compiling scripts");
-        for diagnostic in language.compile_project(project, natives) {
+        for diagnostic in language.compile_project_with_component_events(project, natives, component_events) {
             output.problems.push(ScriptProblem {
                 error: diagnostic.is_error(),
                 class: diagnostic.class.clone(),
@@ -198,7 +228,11 @@ fn run_languages(project: &Path, natives: &pulsar_script_vm::NativeRegistry, out
 }
 
 #[cfg(not(any(feature = "blueprint", feature = "typescript")))]
-fn run_languages(_project: &Path, _natives: &pulsar_script_vm::NativeRegistry, _output: &mut CompileOutput) {
+fn run_languages(
+    _project: &Path,
+    _natives: &pulsar_script_vm::NativeRegistry,
+    _output: &mut CompileOutput,
+) {
     tracing::warn!(
         "No scripting language compilers are linked into this build of the packager (features `blueprint`, `typescript`); \
          using the classes' existing compiled modules"

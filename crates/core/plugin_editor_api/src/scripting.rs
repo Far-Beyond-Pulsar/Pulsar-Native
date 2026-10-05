@@ -83,6 +83,17 @@ pub trait ScriptLanguage: Send + Sync {
         Ok(())
     }
 
+    /// Validate with component event metadata discovered by the host. The
+    /// default keeps existing scripting plugins source compatible.
+    fn validate_project_with_component_events(
+        &self,
+        project_root: &Path,
+        component_events: &[crate::ComponentEventMetadata],
+    ) -> Result<(), String> {
+        let _ = component_events;
+        self.validate_project(project_root)
+    }
+
     /// Compile every class of this language under `project_root` to engine
     /// script modules (each class's `events/.build/module.json`), with no
     /// GPUI app or editor state: for CI and packaging (#879). Native calls
@@ -93,6 +104,19 @@ pub trait ScriptLanguage: Send + Sync {
     fn compile_project(&self, project_root: &Path, natives: &NativeRegistry) -> Vec<CompileDiagnostic> {
         let _ = (project_root, natives);
         Vec::new()
+    }
+
+    /// Headless compile with the host's component event catalog. This
+    /// explicit input works for both editor DLLs and packaging tools, whose
+    /// local link-time inventories may not contain host component types.
+    fn compile_project_with_component_events(
+        &self,
+        project_root: &Path,
+        natives: &NativeRegistry,
+        component_events: &[crate::ComponentEventMetadata],
+    ) -> Vec<CompileDiagnostic> {
+        let _ = component_events;
+        self.compile_project(project_root, natives)
     }
 }
 

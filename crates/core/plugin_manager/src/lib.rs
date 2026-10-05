@@ -961,11 +961,18 @@ impl PluginManager {
     /// Run every scripting language's pre-Play validation on
     /// `project_root`. `Err` joins the failures.
     pub fn validate_scripts(&self, project_root: &std::path::Path) -> Result<(), String> {
+        let component_events: Vec<_> =
+            pulsar_world_registry::component_event_registrations()
+                .map(|registration| plugin_editor_api::ComponentEventMetadata {
+                    component_class: registration.class_name.to_owned(),
+                    event: (registration.declaration)(),
+                })
+                .collect();
         let failures: Vec<String> = self
             .script_languages()
             .iter()
             .filter_map(|lang| {
-                lang.validate_project(project_root)
+                lang.validate_project_with_component_events(project_root, &component_events)
                     .err()
                     .map(|e| format!("{}: {e}", lang.display_name()))
             })
