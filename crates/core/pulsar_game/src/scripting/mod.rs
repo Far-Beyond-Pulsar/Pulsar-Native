@@ -139,9 +139,9 @@ pub fn new_content_driver(content: &pulsar_content::ContentRoot) -> ScriptDriver
 
 // ---- class component slots (#921) ------------------------------------------
 
-/// Fill the hidden component-slot handles (`__slot:<uuid>` variables, see
-/// `pulsar_class::SLOT_VARIABLE_PREFIX`) of instance `instance_id` from the
-/// placement of the class instance rooted at `root`.
+/// Fill hidden component handles of instance `instance_id`: prefab slots
+/// (`__slot:<uuid>`) resolve through the class placement, while implicit
+/// component event sources (`__component:<class>`) resolve on `root`.
 ///
 /// This is the one place slot UUIDs are resolved: each becomes a handle to
 /// the instance's real component, and the script only ever uses the
@@ -157,32 +157,42 @@ pub fn bind_class_slots(
     let Some(class) = runtime.class_of(instance_id).map(str::to_owned) else {
         return Vec::new();
     };
-    let slot_vars: Vec<(String, String)> = runtime
+    let component_vars: Vec<(String, String)> = runtime
         .class_variables(&class)
         .unwrap_or_default()
         .into_iter()
         .filter_map(|(name, ty)| {
-            pulsar_class::slot_of_variable(&name)?;
             match ty {
-                pulsar_script_vm::Type::Component(component) => Some((name, component)),
+                pulsar_script_vm::Type::Component(component)
+                    if pulsar_class::slot_of_variable(&name).is_some()
+                        || name.starts_with("__component:") =>
+                {
+                    Some((name, component))
+                }
                 _ => None,
             }
         })
         .collect();
-    if slot_vars.is_empty() {
+    if component_vars.is_empty() {
         return Vec::new();
     }
     let placement = pulsar_class::world::placement(world, root);
     let mut unresolved = Vec::new();
-    for (variable, component_class) in slot_vars {
-        let slot = pulsar_class::slot_of_variable(&variable).unwrap_or_default().to_owned();
-        let handle = placement
-            .handle(&slot)
-            .filter(|h| h.class_name == component_class)
-            .and_then(|h| {
-                let id = pulsar_world_registry::component_id_for_class(&component_class)?;
-                Some(pulsar_scenedb::ComponentRef::new(h.entity, id))
-            });
+    for (variable, component_class) in component_vars {
+        let slot = pulsar_class::slot_of_variable(&variable).map(str::to_owned);
+        let handle = if let Some(slot) = slot.as_deref() {
+            placement
+                .handle(slot)
+                .filter(|h| h.class_name == component_class)
+                .and_then(|h| {
+                    let id = pulsar_world_registry::component_id_for_class(&component_class)?;
+                    Some(pulsar_scenedb::ComponentRef::new(h.entity, id))
+                })
+        } else {
+            pulsar_world_registry::component_id_for_class(&component_class)
+                .filter(|id| world.has_component(root, *id))
+                .map(|id| pulsar_scenedb::ComponentRef::new(root, id))
+        };
         match handle {
             Some(handle) => {
                 if let Err(error) = runtime.set_variable(
@@ -190,18 +200,27 @@ pub fn bind_class_slots(
                     &variable,
                     pulsar_script_vm::Value::Component(handle),
                 ) {
-                    tracing::warn!(class = %class, slot = %slot, "Could not bind component slot: {error}");
-                    unresolved.push(slot);
+                    tracing::warn!(class = %class, variable = %variable, "Could not bind component reference: {error}");
+                    unresolved.push(slot.unwrap_or_else(|| component_class.clone()));
                 }
             }
             None => {
-                tracing::warn!(
-                    class = %class,
-                    slot = %slot,
-                    component = %component_class,
-                    "Component slot not found on the placed instance; its handle stays none"
-                );
-                unresolved.push(slot);
+                if let Some(slot) = slot {
+                    tracing::warn!(
+                        class = %class,
+                        slot = %slot,
+                        component = %component_class,
+                        "Component slot not found on the placed instance; its handle stays none"
+                    );
+                    unresolved.push(slot);
+                } else {
+                    tracing::warn!(
+                        class = %class,
+                        component = %component_class,
+                        "Component event source is absent from the script root entity"
+                    );
+                    unresolved.push(component_class);
+                }
             }
         }
     }

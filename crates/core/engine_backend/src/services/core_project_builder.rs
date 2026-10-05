@@ -74,6 +74,13 @@ fn cargo_safe_name(raw: &str) -> String {
     }
 }
 
+/// Cargo permits hyphens in package/dependency names, but Rust source refers
+/// to those crates with underscores. Keep the manifest spelling unchanged and
+/// normalize only the identifier emitted into generated Rust.
+fn rust_crate_ident(cargo_name: &str) -> String {
+    cargo_name.replace('-', "_")
+}
+
 fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
     // Register schemas once before any project settings reads.
     register_default_settings();
@@ -812,7 +819,7 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
                 "    // User gameplay crate `scripts/{dir}`:\n    \
                  {name}::register_scripts(game)?;\n",
                 dir = krate.dir_name,
-                name = krate.name
+                name = rust_crate_ident(&krate.name)
             )
         })
         .collect();
