@@ -932,6 +932,26 @@ mod tests {
     }
 
     #[test]
+    fn generated_setup_normalizes_hyphens_in_script_crate_identifiers() {
+        let project = tempfile::tempdir().unwrap();
+        let script_root = project.path().join("scripts/voxel-reference-project_scripts");
+        std::fs::create_dir_all(script_root.join("src")).unwrap();
+        std::fs::write(
+            script_root.join("Cargo.toml"),
+            "[package]\nname = \"voxel-reference-project_scripts\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+
+        let src = project.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        super::ensure_engine_main(project.path(), &src).unwrap();
+        let text = std::fs::read_to_string(src.join("engine_main.rs")).unwrap();
+
+        assert!(text.contains("voxel_reference_project_scripts::register_scripts(game)?;"));
+        assert!(!text.contains("voxel-reference-project_scripts::"));
+    }
+
+    #[test]
     fn generated_project_pins_the_workspace_helio_revision() {
         let project = tempfile::tempdir().unwrap();
         ensure_core_cargo_toml(project.path()).unwrap();
