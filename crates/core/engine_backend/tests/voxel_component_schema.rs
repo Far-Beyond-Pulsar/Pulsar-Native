@@ -29,7 +29,7 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
     let terrain_restored: VoxelTerrainComponent =
         serde_json::from_value(terrain_json).expect("restore terrain component");
     assert_eq!(terrain_restored.generator.id, terrain.generator.id);
-    assert_eq!(terrain_restored.generator.version, 1);
+    assert_eq!(terrain_restored.generator.version, helio_voxel_data::VOXEL_TERRAIN_GENERATOR_VERSION);
     assert_eq!(terrain_restored.chunk_edge_voxels, 8);
     assert_eq!(terrain_restored.max_chunk_lod, 16);
     assert_eq!(terrain_restored.lod_scale, 2);
@@ -41,6 +41,7 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
         .remove("generator_version");
     older_json.as_object_mut().unwrap().remove("appearance_parameters");
     let older: VoxelTerrainComponent = serde_json::from_value(older_json).unwrap();
+    // Files saved before generator versions keep version 1 (no caves).
     assert_eq!(older.generator.version, 1);
     assert!(older.appearance_parameters.is_empty());
 }
