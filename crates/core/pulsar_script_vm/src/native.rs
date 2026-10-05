@@ -14,14 +14,14 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
-use pulsar_reflection::methods::MethodFlags;
+use pulsar_reflection::{methods::MethodFlags, CONVERSION_REGISTRY};
 use pulsar_scenedb::{Entity, World};
 
 use crate::error::ScriptError;
 use crate::events::{EventSink, is_event_field_type};
 use crate::library::{LibraryId, ShadowLibrary};
 use crate::module::{Param, Signature};
-use crate::types::{ScriptValue, Type};
+use crate::types::{ScriptValue, Type, TypeRegistry};
 use crate::value::Value;
 
 /// How a [`Host`] reaches the world.
@@ -709,6 +709,7 @@ impl NativeRegistry {
                 }
             }
         }
+        register_reflected_conversions(&mut registry);
         registry
     }
 
@@ -809,5 +810,45 @@ impl NativeRegistry {
 
     pub fn is_empty(&self) -> bool {
         self.natives.is_empty()
+    }
+}
+
+/// Expose reflected conversions with script-value bindings as ordinary pure
+/// natives. Reflection keeps its typed Rust conversion functions local to the
+/// process; compiled modules see only stable names and script signatures.
+fn register_reflected_conversions(registry: &mut NativeRegistry) {
+    let types = TypeRegistry::global();
+    for conversion in CONVERSION_REGISTRY.iter() {
+        let Some(source) = types.binding(conversion.source_type_id()).copied() else {
+            tracing::debug!(conversion = conversion.id, "conversion source is not script-callable");
+            continue;
+        };
+        let Some(target) = types.binding(conversion.target_type_id()).copied() else {
+            tracing::debug!(conversion = conversion.id, "conversion target is not script-callable");
+            continue;
+        };
+
+        let source_type = source.script_type();
+        let target_type = target.script_type();
+        let conversion = *conversion;
+        let native = NativeFn::builder(conversion.id)
+            .params(["value"])
+            .pure()
+            .attr("blueprint_conversion", "true")
+            .build_raw(
+                Signature::new([Param::new(source_type)], target_type),
+                Box::new(move |_host, args| {
+                    let source_value = source
+                        .from_value(&args[0])
+                        .map_err(ScriptError::native)?;
+                    let target_value = conversion
+                        .convert(source_value)
+                        .map_err(|error| ScriptError::native(error.to_string()))?;
+                    Ok(target.to_value(target_value.as_ref()))
+                }),
+            );
+        if let Err(error) = registry.register(native) {
+            tracing::error!(conversion = conversion.id, %error, "could not register reflected conversion native");
+        }
     }
 }
