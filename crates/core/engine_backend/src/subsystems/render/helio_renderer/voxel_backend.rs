@@ -695,7 +695,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         let pass = renderer.find_pass::<PlanetPass>()?;
         let s = pass.stats()?;
         let mut line = format!(
-            "planet ready={} resident={} pending={} jobs={} budget={} us_per_job={:.3} failed={} overflow={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={} evictions={} free_pages={}/{} free_units={} recycles={} lod_pressure={:.2} table_refused={}",
+            "planet ready={} resident={} pending={} jobs={} budget={} us_per_job={:.3} failed={} overflow={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={} evictions={} free_pages={}/{} free_units={} recycles={} lod_pressure={:.2} table_refused={} late_plans={} reranked={}",
             s.ready,
             s.resident_columns,
             s.pending_columns,
@@ -718,6 +718,8 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             s.recycles,
             s.lod_pressure,
             s.table_refused,
+            s.late_plans,
+            s.reranked,
         );
         static GPU_STAGES: OnceLock<bool> = OnceLock::new();
         if *GPU_STAGES.get_or_init(|| std::env::var_os("PULSAR_VOXEL_GPU_STAGES").is_some()) {
