@@ -682,11 +682,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
 
     fn pass_factory(&self) -> VoxelPassFactory {
         let frame = Arc::clone(&self.frame);
-        Arc::new(move |_, _, _, _| {
-            let mut settings = helio_pass_voxel_planet::engine::Settings::default();
-            settings.primary_samples |= std::env::var("PULSAR_VOXEL_PRIMARY_SAMPLES").ok().is_some_and(|value| value == "1");
-            Box::new(PlanetPass::with_settings(Arc::clone(&frame), settings))
-        })
+        Arc::new(move |_, _, _, _| Box::new(PlanetPass::new(Arc::clone(&frame))))
     }
 
     fn needs_frame(&self, renderer: &helio::Renderer) -> bool {
@@ -699,7 +695,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         let pass = renderer.find_pass::<PlanetPass>()?;
         let s = pass.stats()?;
         let mut line = format!(
-            "planet ready={} resident={} pending={} jobs={} budget={} us_per_job={:.3} failed={} overflow={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={} free_pages={} free_units={} job_status={:?} visible_blocks={} visible_attempts={} visible_overflow={} queued_bytes={} queued_ops={} wanted_capacity={} admission_attempts={} admission_alias_deferred={} admission_publication_deferred={} admission_batched_columns={}",
+            "planet ready={} resident={} pending={} jobs={} budget={} us_per_job={:.3} failed={} overflow={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={} evictions={} free_pages={}/{} free_units={} recycles={} lod_pressure={:.2} table_refused={}",
             s.ready,
             s.resident_columns,
             s.pending_columns,
@@ -715,53 +711,14 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             s.encode_cpu_ms,
             s.window_rebuild_ms,
             pass.needs_frame(),
+            s.evictions,
             s.free_pages,
-            s.free_pool_units,
-            s.jobs_by_status,
-            s.visible_request_blocks,
-            s.visible_request_attempts,
-            s.visible_request_overflow,
-            s.queued_delta_bytes,
-            s.queued_delta_ops,
-            s.wanted_key_capacity,
-            s.admission_attempts,
-            s.admission_alias_deferred,
-            s.admission_publication_deferred,
-            s.admission_batched_columns,
+            s.pool_pages,
+            s.free_units,
+            s.recycles,
+            s.lod_pressure,
+            s.table_refused,
         );
-        {
-            use std::fmt::Write;
-            let _ = write!(line,
-                " evictions={} reclaimable_pages={} recycled_pages={} free_runs_by_class={:?}",
-                s.evictions, s.reclaimable_pages, s.recycled_pages, s.free_runs_by_class);
-            let _ = write!(line,
-                " requested_serial={} applied_serial={} fine_applied_serial={} far_applied_serial={:?} fine_apply_age_ms={:?} far_apply_age_ms={:?} fine_window_lag_m={:?}",
-                s.requested_serial, s.applied_serial, s.fine_applied_serial,
-                s.far_applied_serial, s.fine_apply_age_ms, s.far_apply_age_ms,
-                s.fine_window_lag_m);
-            let _ = write!(line,
-                " fine_planning_ms={:?} far_planning_ms={:?} plan_edits_ms={} plan_authority_ms={} plan_windows_ms={} plan_near_ms={} plan_visible_ms={} plan_admission_ms={} fine_jobs={} far_jobs={} camera_base_level={} camera_candidate_blocks={:?} camera_lease_blocks={:?} camera_jobs={:?}",
-                s.fine_planning_ms, s.far_planning_ms, s.plan_edits_ms,
-                s.plan_authority_ms, s.plan_windows_ms, s.plan_near_ms,
-                s.plan_visible_ms, s.plan_admission_ms, s.fine_jobs, s.far_jobs,
-                s.camera_base_level, s.camera_candidate_blocks, s.camera_lease_blocks, s.camera_jobs);
-        }
-        if s.primary_sampling_enabled {
-            use std::fmt::Write;
-            if let Some(sample) = s.sampled_primary.filter(|sample|
-                sample.captured_at.elapsed() <= std::time::Duration::from_millis(500)) {
-                let _ = write!(line,
-                    " primary_sample=sparse_projected_estimates source_encoded_frame={} source_frame={} age_frames={} age_ms={:.2} sampled_rays={} sampled_terrain={} sampled_coarse_over2px={} sampled_coarse_over4px={} sampled_unresolved={} sample_stride={} sample_view={} sample_viewport={}x{} sample_projection_y={} sample_eye={:?} sample_forward={:?} sample_up={:?}",
-                    sample.encoded_frame, sample.source_frame, sample.age_frames,
-                    sample.captured_at.elapsed().as_secs_f64() * 1000.0,
-                    sample.sampled_rays, sample.terrain_hits, sample.coarse_over_2px,
-                    sample.coarse_over_4px, sample.unresolved, sample.stride, sample.view_id,
-                    sample.viewport[0], sample.viewport[1], sample.projection_y,
-                    sample.eye.to_array(), sample.forward.to_array(), sample.up.to_array());
-            } else {
-                line.push_str(" primary_sample=unavailable");
-            }
-        }
         static GPU_STAGES: OnceLock<bool> = OnceLock::new();
         if *GPU_STAGES.get_or_init(|| std::env::var_os("PULSAR_VOXEL_GPU_STAGES").is_some()) {
             if let Some(active) = pass.renderer() {

@@ -51,8 +51,7 @@ without rotation and with a uniform scale (scale multiplies all sizes).
 `palette` has 16 `[sRGB red, green, blue, roughness]` entries, `grass` has
 three `[sRGB red, green, blue, 0]` entries (dry, meadow, lush), and `detail`
 is `[patch contrast, pigment variation, edge shading, 0]`. Omitted fields
-inherit defaults;
-an empty value restores them. The viewport resets colour history on changes.
+inherit defaults; an empty value restores them. The viewport resets colour history on changes.
 
 **Generator settings** live in a separate component on the same entity, named
 by the generator (`VoxelLandformComponent` for `helio.landform`,
@@ -185,10 +184,6 @@ and gameplay agree on every block. On generated terrain the older
 - **Altitude, not clearance, for speed.** `air_clearance` is a conservative
   bound (0 anywhere below the highest possible mountain), right for near
   planes but it made the camera crawl at 10 m/s kilometres above lowland.
-- **Distant appearance follows pixel size.** Near geometry and world queries
-  use the authored grid. Helio filters sub-pixel terrain relief and lighting
-  without changing the recipe or edit journal; tiny orbital edits become
-  visible as the camera approaches.
 - **Edits are a journal, not voxel data.** The terrain is procedural, so a
   world is its recipe plus ordered brushes; that keeps saves small and CPU
   queries exact, and lets the GPU regenerate any column at any level.
@@ -204,8 +199,10 @@ and gameplay agree on every block. On generated terrain the older
   (`%APPDATA%/Pulsar/Pulsar_Engine/data/logs/<time>/engine.log`), the
   camera altitude, speed scale, eye/forward/up, viewport and each backend's
   `diagnostics` line
-  (resident / pending columns, jobs, levels, residency CPU times, visible
-  requests and current queued storage). `finest`
+  (resident / pending columns, jobs, levels, residency CPU times, pool
+  `free_units` and `recycles`, and `lod_pressure`: above 1 the viewport
+  wants more columns than the record or pool capacity holds, so Helio draws
+  slightly coarser levels instead of stalling). `finest`
   is the finest active level: from high up it is above 0 by design (fine
   levels switch on only where local terrain can come near). Pending that
   stays high while the camera is still, or `jobs=63` frames while moving,
@@ -229,11 +226,9 @@ and gameplay agree on every block. On generated terrain the older
   `HELIO_VOXEL_FLIGHT_CRUISE=<m>` flies level at the editor's speed).
 
 - `PULSAR_VOXEL_NATIVE_FLIGHT=1` runs a 27 s ascent/orbit/descent/cruise/arrival
-  diagnostic after residency settles and cancels on camera input. Cruise and
-  arrival follow the local surface while moving; the start log names the protocol.
-  Use a copied
-  project with `PULSAR_VOXEL_STATS=1`; delayed `graph_gpu_ms` samples measure
-  graph GPU work, not presentation latency.
+  diagnostic after residency settles and cancels on camera input. Use a copied
+  project with `PULSAR_VOXEL_STATS=1`. Helio's `HELIO_VOXEL_FLIGHT_LONG=<s>`
+  is the sustained-travel equivalent; run it at the editor's resolution.
 
 ## Extending
 
