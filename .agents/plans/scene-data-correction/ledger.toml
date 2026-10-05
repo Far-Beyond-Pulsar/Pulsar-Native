@@ -122,8 +122,9 @@ runtime_behavior = true
 owner = "helio_component::components::material_override"
 disposition = "render, Phase 2. No GPU schema of its own; helio_bridge projects it into gbuffer MaterialComponent and invents a default material otherwise"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: override color reaches the gbuffer"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "broken"
+notes = "Phase 0 baseline: a default instance has alpha 0.0 (derived Default), which helio_bridge turns into a fully transparent, transparent-only material, so adding the component from the editor makes its mesh disappear. The baseline sets alpha 1.0 explicitly for its probe."
 
 [[class]]
 name = "NativeScriptComponent"
@@ -2041,10 +2042,11 @@ crate = "helio-pass-hiz"
 in_default_graph = true
 reads = []
 owner = "helio-pass-hiz"
-disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored input"
-status = "unverified"
+disposition = "fix in Helio: since 0e01e9fd the max pyramid is reused while (unjittered camera generation, scene content signature) holds, so a camera at rest keeps a pyramid built before anything drew and occlusion culling hides every object"
+target_contract = "Helio fix before Phase 2 acceptance; 03-gpu-reflection-and-rendering.md (Mirror lifecycle and frame ordering)"
+test = "crates/renderer/helio/crates/examples/tests/object_batch_skip.rs"
+status = "broken"
+notes = "Bisected on RTX 3060 / Vulkan: Helio's own object_batch_skip test passes at 49b02e92 and fails from 0e01e9fd through the pinned 05c2f7d7 (object not drawn)."
 
 [[pass]]
 crate = "helio-pass-hlfs"

@@ -29,7 +29,7 @@ Status vocabulary: `broken` (reproduced, named test), `at-risk` (source defect a
 
 Scanner limits: buffer consumers are literal `BufferKey::of("…")` lookups, so a consumer that builds the key from a constant or `T::buffer_key()` shows as none (those rows say "consumer not identified", not "unused"). Plugin components loaded from DLLs at runtime are not linked into the test and are covered by the plugin row in the open items below.
 
-Current ledger: 21 classes, 46 GPU schemas, 31 buffers, 49 pass crates, 60 call sites. Status counts: 11 broken, 121 at-risk, 60 unverified, 15 out-of-scope, 0 verified.
+Current ledger: 21 classes, 46 GPU schemas, 31 buffers, 49 pass crates, 60 call sites. Status counts are kept in the ledger; at this commit 13 rows are `broken` (reproduced).
 
 Headline facts the ledger now enforces:
 
@@ -107,33 +107,44 @@ Hosted CI runners have no GPU adapter, and four `helio_component` test binaries 
 |---|---|---|
 | `cargo test -p scene_inventory` | no | yes; all 7 ledger checks pass |
 | `cargo test -p ui_level_editor --test phase0_render_baseline -- --nocapture` | yes (skips without one) | yes, RTX 3060, Vulkan, Windows; passed |
+| Helio: `cargo test -p examples --test object_batch_skip` (in `crates/renderer/helio`) | yes | yes; **fails** at the pin (cause 2) |
 | `cargo test -p helio_component` | yes for four binaries | built; not run |
 | `cargo nextest run --profile ci --all` | no | not run locally (nextest not installed) |
 | SceneDB: `cargo test -p pulsar_scenedb --features gpu --lib` / `--test gpu_layout` | no | covered by existing CI steps; not run here |
 
 ## Failure baseline
 
-From `phase0_render_baseline` (Windows, Vulkan, RTX 3060). The editor producers are `AddObject` + `add_component`, and the panel's subscribe/drain functions are called directly.
+From `phase0_render_baseline` on Windows, Vulkan, RTX 3060, against the pinned Helio. The editor producers are `AddObject` + `add_component`; the properties panel's subscribe and drain functions are called directly. The probe mesh carries an opaque, emissive `MaterialOverrideComponent`, so it shows without lights.
 
-| Case | Typed | GPU pools | Draw + material rows | Depth/color change |
-|---|---|---|---|---|
-| Mesh present before the first frame | yes | 24 v / 36 i | yes | 0 / 0 |
-| Mesh added after the first frame, panel closed (and after an edit) | yes | 24 / 36 | **no** | 0 / 0 |
-| Same, panel open, panel drains first (and after an edit) | yes | 24 / 36 | **no** | 0 / 0 |
-| Same, panel open, renderer drains | yes | 24 / 36 | no; **yes only after an edit** | 0 / 0 |
+Every case runs with the editor camera at rest and again with it nudged, because a moving camera rebuilds Helio's Hi-Z pyramid (see cause 2). Pixel columns: color pixels / depth texels changed versus an empty scene; the cube covers 13,108 / 5,902.
 
-Lights, added after the first frame:
+| Case | Typed | GPU pools | Draw + material rows | At rest | Camera moving |
+|---|---|---|---|---|---|
+| Mesh present before the first frame | yes | 24 v / 36 i | yes | **0 / 0** | 13,108 / 5,902 |
+| Added after the first frame, panel closed (also after an edit) | yes | 24 / 36 | **no** | 0 / 0 | 0 / 0 |
+| Same, panel open, panel drains first (also after an edit) | yes | 24 / 36 | **no** | 0 / 0 | 0 / 0 |
+| Same, panel open, renderer drains | yes | 24 / 36 | no | 0 / 0 | 0 / 0 |
+| ...then an edit | yes | 24 / 36 | yes | 13,108 / 5,902 | 13,108 / 5,902 |
 
-- The panel's own Add component payload and the legacy flat-intensity shape **fail to hydrate**, yet the attachment stays enabled with its JSON.
-- A `to_json` payload hydrates, but no forward-lit light row is created.
+Lights, added after the first frame next to a visible mesh:
 
-Broken stage demonstrated: the draw row. It depends on render subscriptions and on who drains the shared queue first. The light hydration failure is separate from the mesh failure.
+- The properties panel's own Add component payload and the legacy flat-intensity shape **fail to hydrate**, yet the attachment stays enabled with its JSON.
+- A `to_json` payload hydrates, but no forward-lit light row is created and the frame does not change.
 
-**Inconclusive:** final pixels. Even the mesh with every row present changes no depth or color in this headless harness, at 8 or 40 frames. Whether that is a harness gap (no positive control yet) or a real draw failure is not established. The object-batch draw count could not be read, because `HelioRenderer` exposes no batch statistics.
+The positive control (a projected mesh with the camera moving) is asserted, so a zero elsewhere means "not drawn", not "probe blind".
+
+### Why an added mesh is invisible: three independent causes
+
+1. **No draw row (SceneDB/editor; the structural phases).** The draw row is built by the CPU projection in `helio_bridge`. It only runs for entities with an armed render subscription, or on a full projection. A mesh added later through the panel or by asset drop is never subscribed, so no row exists. If the panel is open and drains the shared queue first, it consumes the event the renderer needed. Phase 2 removes this whole mechanism; nothing here patches it.
+2. **Helio Hi-Z regression.** Helio's own `crates/examples/tests/object_batch_skip.rs` fails at the pinned `05c2f7d7` on this machine ("object not drawn at the centre"). Bisecting 20edf449..05c2f7d7 gives first bad commit **`0e01e9fd` "Fix camera-based Hi-Z cache invalidation"** (parent `49b02e92` passes). Since then the max pyramid is reused while `(unjittered camera generation, scene content signature)` holds. A camera at rest therefore keeps a pyramid built before anything drew, and occlusion culling hides every mesh until the camera moves or a scene buffer changes. Forcing a rebuild every frame (local experiment, not committed) makes Helio's test pass and the editor control visible at rest. This is a Helio fix, independent of the SceneDB plan.
+3. **`MaterialOverrideComponent` default alpha is 0.** A default instance makes `helio_bridge` emit a fully transparent, transparent-only material, so adding the component from the editor hides its mesh.
+
+Also found: the DX12 backend cannot run the default graph on this machine. FXC fails to compile the lens-response shader (`error X3511: unable to unroll loop`), so Vulkan is the only working backend here.
 
 ## Open items carried into Phase 1
 
-- A positive pixel control for the headless harness, plus object-batch draw-count readback, so the final stage can be judged. Not attempted: capturing the real GUI editor.
+- Fix the Helio Hi-Z reuse regression (`0e01e9fd`) and the DX12 lens-shader compile failure in Helio; both block Phase 2's rendered-frame acceptance.
+- Object-batch draw counts are still not exposed by `HelioRenderer`; the baseline uses depth and color instead. Not attempted: capturing the real GUI editor.
 - Plugin components loaded from DLLs are not linked into the inventory.
 - Pass-dependency boundary manifest ledger (audit section 4) is not machine-checked.
 - D1/D2 `REVIEW:` answers need maintainer approval.
