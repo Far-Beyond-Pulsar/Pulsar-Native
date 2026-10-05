@@ -1,5 +1,7 @@
 # SceneDB Migration
 
+For the current corrective scope, confirmed violations, implementation order, and acceptance criteria, see [SCENEDB_CORRECTIVE_PLAN.md](SCENEDB_CORRECTIVE_PLAN.md). This older migration outline does not establish that those criteria are implemented.
+
 ## Objective
 
 Make SceneDB the sole owner of scene state. The editor must not maintain a
