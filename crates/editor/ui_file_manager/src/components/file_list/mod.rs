@@ -303,6 +303,10 @@ impl Render for FileManagerDrawer {
             .size_full()
             .track_focus(&self.focus_handle)
             .key_context("FileManagerDrawer")
+            // The drawer is mounted over the editor viewport as a flyout.
+            // Let its own scrollable children handle wheel input, then stop
+            // the event here so it cannot continue into the viewport behind.
+            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
             .on_action(cx.listener(|this, _: &RefreshFileManager, _w, cx| {
                 if let Some(ref p) = this.project_path {
                     this.folder_tree = FolderNode::from_path(p);

@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 /// Thumbnail output size in pixels (square).
 const THUMB_PX: u32 = 128;
 /// Bump when thumbnail output changes so stale cache entries regenerate.
-const THUMBNAIL_RENDER_VERSION: u32 = 2;
+const THUMBNAIL_RENDER_VERSION: u32 = 3;
 /// Maximum number of decoded images held in the memory cache.
 const MEM_CACHE_MAX: usize = 512;
 /// How long an entry can go un-accessed before the eviction thread removes it.
@@ -378,7 +378,67 @@ fn compute_cache_key(path: &Path) -> String {
         }
     }
 
+    // Model previews may use an adjacent BaseColor/Albedo/Diffuse map when an
+    // importer omits the FBX texture connection. Include that dependency in the
+    // key so replacing the image regenerates the thumbnail too.
+    hash_base_color_sidecar(path, &mut hasher);
+
     format!("{:016x}", hasher.finish())
+}
+
+fn hash_base_color_sidecar(path: &Path, hasher: &mut DefaultHasher) {
+    use std::io::Read;
+
+    let (Some(parent), Some(stem)) = (
+        path.parent(),
+        path.file_stem().and_then(|stem| stem.to_str()),
+    ) else {
+        return;
+    };
+    let prefix = format!("{stem}_").to_lowercase();
+    let mut candidates = std::fs::read_dir(parent)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(std::result::Result::ok)
+        .filter_map(|entry| {
+            let candidate = entry.path();
+            let name = candidate.file_name()?.to_str()?.to_lowercase();
+            let extension = candidate.extension()?.to_str()?.to_lowercase();
+            if !name.starts_with(&prefix)
+                || !matches!(extension.as_str(), "png" | "jpg" | "jpeg" | "webp" | "tga")
+            {
+                return None;
+            }
+            let priority = if name.contains("basecolor") || name.contains("base_color") {
+                0
+            } else if name.contains("albedo") {
+                1
+            } else if name.contains("diffuse") {
+                2
+            } else {
+                return None;
+            };
+            Some((priority, candidate))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+
+    if let Some((_, sidecar)) = candidates.into_iter().next() {
+        sidecar.hash(hasher);
+        if let Ok(metadata) = std::fs::metadata(&sidecar) {
+            metadata.len().hash(hasher);
+            if let Ok(modified) = metadata.modified() {
+                modified.hash(hasher);
+            }
+        }
+        if let Ok(mut file) = std::fs::File::open(sidecar) {
+            let mut buffer = [0u8; 8192];
+            if let Ok(length) = file.read(&mut buffer) {
+                buffer[..length].hash(hasher);
+            }
+        }
+    }
 }
 
 fn generate_rgba(abs_path: &Path, ext: &str) -> Option<image::RgbaImage> {
