@@ -779,6 +779,8 @@ pub fn render_grid_item(
                         .w_full()
                         .flex_1()
                         .min_h_0()
+                        .rounded_tl(px(8.0))
+                        .rounded_tr(px(8.0))
                         .bg(ic.opacity(0.15))
                         .flex()
                         .items_center()

@@ -21,7 +21,6 @@ engine_fs = { workspace = true, features = ["editor"] }
 pulsar_reflection = { workspace = true }
 engine_state.workspace = true
 helio_component.workspace = true
-helio_snapshot = { package = "helio-snapshot", path = "../../renderer/helio/crates_other/helio-snapshot" }
 tracing.workspace = true
 
 # Plugin system

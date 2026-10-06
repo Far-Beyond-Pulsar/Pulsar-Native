@@ -21,7 +21,7 @@
 //!    Hash encodes path + mtime, so stale entries regenerate automatically.
 
 use parking_lot::Mutex;
-use std::collections::{hash_map::DefaultHasher, HashMap, HashSet};
+use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -111,6 +111,14 @@ impl MemCache {
 
 /// Global singleton worker.  Lazily started on first access.
 static GLOBAL_SERVICE: OnceLock<ThumbnailService> = OnceLock::new();
+pub type MeshThumbnailRenderer = fn(&Path) -> Option<image::RgbaImage>;
+static MESH_RENDERER: OnceLock<Mutex<Option<MeshThumbnailRenderer>>> = OnceLock::new();
+
+/// Register the editor's mesh renderer. Kept as a function pointer so this
+/// low-level filesystem crate does not depend on the renderer crate.
+pub fn register_mesh_thumbnail_renderer(renderer: MeshThumbnailRenderer) {
+    *MESH_RENDERER.get_or_init(|| Mutex::new(None)).lock() = Some(renderer);
+}
 
 /// Access the process-wide thumbnail service.
 pub fn service() -> &'static ThumbnailService {
@@ -121,8 +129,9 @@ pub fn service() -> &'static ThumbnailService {
 /// and a layered memory + disk cache.
 pub struct ThumbnailService {
     sender: std::sync::mpsc::SyncSender<ThumbnailJob>,
-    /// Paths currently queued or being processed — used for deduplication.
-    pending: Arc<Mutex<HashSet<PathBuf>>>,
+    /// Paths currently queued or being processed, with every caller waiting
+    /// for the shared result.
+    pending: Arc<Mutex<HashMap<PathBuf, Vec<ThumbnailCallback>>>>,
     /// Shared memory cache — written by the worker, read by `request()` on
     /// future calls once the asset is already cached.
     mem_cache: Arc<Mutex<MemCache>>,
@@ -131,15 +140,16 @@ pub struct ThumbnailService {
 struct ThumbnailJob {
     abs_path: PathBuf,
     cache_root: PathBuf,
-    pending: Arc<Mutex<HashSet<PathBuf>>>,
+    pending: Arc<Mutex<HashMap<PathBuf, Vec<ThumbnailCallback>>>>,
     mem_cache: Arc<Mutex<MemCache>>,
-    on_done: Box<dyn FnOnce(Option<Arc<image::RgbaImage>>) + Send + 'static>,
 }
+
+type ThumbnailCallback = Box<dyn FnOnce(Option<Arc<image::RgbaImage>>) + Send + 'static>;
 
 impl ThumbnailService {
     fn new() -> Self {
         let (tx, rx) = std::sync::mpsc::sync_channel::<ThumbnailJob>(128);
-        let pending = Arc::new(Mutex::new(HashSet::<PathBuf>::new()));
+        let pending = Arc::new(Mutex::new(HashMap::<PathBuf, Vec<ThumbnailCallback>>::new()));
         let mem_cache = Arc::new(Mutex::new(MemCache::new()));
 
         // ── Worker thread ────────────────────────────────────────────────────
@@ -152,12 +162,12 @@ impl ThumbnailService {
                     // 1. Memory cache hit — no disk I/O needed.
                     let cached = job.mem_cache.lock().get(&cache_key);
                     if let Some(img) = cached {
-                        job.pending.lock().remove(&job.abs_path);
-                        (job.on_done)(Some(img));
+                        complete_thumbnail(&job.pending, &job.abs_path, Some(img));
                         continue;
                     }
 
                     // 2. Disk cache hit or generate.
+                    tracing::info!("generating thumbnail for {:?}", job.abs_path);
                     let disk_path = get_or_generate_thumbnail_sync(&job.abs_path, &job.cache_root);
 
                     // 3. Decode once, cache in memory.
@@ -172,8 +182,10 @@ impl ThumbnailService {
                         job.mem_cache.lock().insert(cache_key, Arc::clone(img));
                     }
 
-                    job.pending.lock().remove(&job.abs_path);
-                    (job.on_done)(rgba);
+                    if rgba.is_none() {
+                        tracing::warn!("thumbnail generation failed for {:?}", job.abs_path);
+                    }
+                    complete_thumbnail(&job.pending, &job.abs_path, rgba);
                 }
             })
             .expect("failed to spawn thumbnail-worker thread");
@@ -224,10 +236,12 @@ impl ThumbnailService {
     ) {
         {
             let mut pending = self.pending.lock();
-            if pending.contains(&abs_path) {
+            if let Some(waiters) = pending.get_mut(&abs_path) {
+                waiters.push(Box::new(on_done));
                 return;
             }
-            pending.insert(abs_path.clone());
+            tracing::info!("thumbnail requested for {:?}", abs_path);
+            pending.insert(abs_path.clone(), vec![Box::new(on_done)]);
         }
 
         let key = abs_path.clone();
@@ -238,11 +252,10 @@ impl ThumbnailService {
             cache_root,
             pending: Arc::clone(&self.pending),
             mem_cache: Arc::clone(&self.mem_cache),
-            on_done: Box::new(on_done),
         };
 
         if self.sender.try_send(job).is_err() {
-            pending_arc.lock().remove(&key);
+            complete_thumbnail(&pending_arc, &key, None);
         }
     }
 
@@ -250,6 +263,17 @@ impl ThumbnailService {
     #[inline]
     pub fn mem_cache_len(&self) -> usize {
         self.mem_cache.lock().entries.len()
+    }
+}
+
+fn complete_thumbnail(
+    pending: &Mutex<HashMap<PathBuf, Vec<ThumbnailCallback>>>,
+    path: &Path,
+    image: Option<Arc<image::RgbaImage>>,
+) {
+    let waiters = pending.lock().remove(path).unwrap_or_default();
+    for callback in waiters {
+        callback(image.clone());
     }
 }
 
@@ -308,6 +332,10 @@ fn is_supported_ext(ext: &str) -> bool {
             | "obj"
             | "usd"
             | "usda"
+            | "usdc"
+            | "usdz"
+            | "uasset"
+            | "umap"
             | "png"
             | "jpg"
             | "jpeg"
@@ -323,9 +351,15 @@ fn compute_cache_key(path: &Path) -> String {
 
     let mut hasher = DefaultHasher::new();
 
-    // Hash file size so empty files don't collide with each other.
+    path.hash(&mut hasher);
+
+    // Modification time prevents stale previews when an asset is overwritten
+    // with the same size and its changed bytes occur after the short fingerprint.
     if let Ok(meta) = std::fs::metadata(path) {
         meta.len().hash(&mut hasher);
+        if let Ok(modified) = meta.modified() {
+            modified.hash(&mut hasher);
+        }
     }
 
     // Hash the first 8 KiB of content — fast fingerprint that is identical for
@@ -351,6 +385,17 @@ fn generate_rgba(abs_path: &Path, ext: &str) -> Option<image::RgbaImage> {
                     .into_rgba8(),
             )
         }
-        _ => None,
+        _ => {
+            let renderer = MESH_RENDERER
+                .get()
+                .and_then(|renderer| *renderer.lock());
+            match renderer {
+                Some(renderer) => renderer(abs_path),
+                None => {
+                    tracing::warn!("no mesh thumbnail renderer is registered for {:?}", abs_path);
+                    None
+                }
+            }
+        }
     }
 }
