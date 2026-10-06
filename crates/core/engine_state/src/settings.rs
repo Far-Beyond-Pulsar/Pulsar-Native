@@ -357,8 +357,8 @@ mod tests {
     use std::{
         fs,
         sync::{
-            atomic::{AtomicU64, Ordering},
             Arc, Barrier,
+            atomic::{AtomicU64, Ordering},
         },
         thread,
     };
@@ -450,14 +450,18 @@ mod tests {
         fs::write(&path, damaged).expect("write damaged settings");
         fixture.handle.set("selected", 2_i64).expect("set selected");
 
-        assert!(fixture
-            .settings
-            .validate_owner_file(&fixture.owner)
-            .is_err());
-        assert!(fixture
-            .settings
-            .save_owner_keys(&fixture.owner, &["selected"])
-            .is_err());
+        assert!(
+            fixture
+                .settings
+                .validate_owner_file(&fixture.owner)
+                .is_err()
+        );
+        assert!(
+            fixture
+                .settings
+                .save_owner_keys(&fixture.owner, &["selected"])
+                .is_err()
+        );
         assert_eq!(fs::read(&path).expect("read damaged settings"), damaged);
     }
 
@@ -520,10 +524,12 @@ mod tests {
         fs::write(&path, "selected = 5\n").expect("write settings");
         fixture.handle.set("selected", 9_i64).expect("set selected");
 
-        assert!(fixture
-            .settings
-            .validate_owner_file(&fixture.owner)
-            .expect("validate settings"));
+        assert!(
+            fixture
+                .settings
+                .validate_owner_file(&fixture.owner)
+                .expect("validate settings")
+        );
         assert_eq!(fixture.handle.get_int("selected"), Ok(9));
     }
 
@@ -531,14 +537,18 @@ mod tests {
     fn save_owner_keys_validates_requested_keys_before_writing() {
         let fixture = SettingsFixture::new("invalid_keys");
 
-        assert!(fixture
-            .settings
-            .save_owner_keys(&fixture.owner, &["missing"])
-            .is_err());
-        assert!(fixture
-            .settings
-            .save_owner_keys(&fixture.owner, &["read_only"])
-            .is_err());
+        assert!(
+            fixture
+                .settings
+                .save_owner_keys(&fixture.owner, &["missing"])
+                .is_err()
+        );
+        assert!(
+            fixture
+                .settings
+                .save_owner_keys(&fixture.owner, &["read_only"])
+                .is_err()
+        );
         assert!(!fixture.path().exists());
     }
 

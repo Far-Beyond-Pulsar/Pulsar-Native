@@ -72,7 +72,9 @@ fn prompt_continue_without_discrete_gpu() -> bool {
             || std::env::var("WLR_RDP_BACKENDS").is_ok();
 
         if !has_display {
-            eprintln!("[gpu_policy] No display server detected (headless/WSL). Continuing with available GPU.");
+            eprintln!(
+                "[gpu_policy] No display server detected (headless/WSL). Continuing with available GPU."
+            );
             return true;
         }
     }
@@ -110,7 +112,11 @@ pub fn enforce_discrete_gpu_policy_or_exit() {
     }
 
     let preference = engine_state::settings::global_config()
-        .get(engine_state::settings::NS_EDITOR, "renderer", "gpu_preference")
+        .get(
+            engine_state::settings::NS_EDITOR,
+            "renderer",
+            "gpu_preference",
+        )
         .ok()
         .and_then(|value| value.as_str().ok().map(str::to_owned))
         .unwrap_or_else(|| "high_performance".to_owned());

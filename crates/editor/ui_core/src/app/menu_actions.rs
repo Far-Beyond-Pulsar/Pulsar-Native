@@ -6,7 +6,7 @@
 //! shortcuts and toolbar already use, so a menu entry is never a second
 //! implementation.
 
-use gpui::{px, Context, InteractiveElement, Window};
+use gpui::{Context, InteractiveElement, Window, px};
 use ui::{ActiveTheme as _, Theme};
 use ui_common::menu;
 

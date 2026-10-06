@@ -9,8 +9,9 @@ use engine_state::EngineContext;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use ui::{
+    ActiveTheme as _, Icon, IconName, Sizable as _,
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _,
+    h_flex, v_flex,
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -23,12 +24,14 @@ pub struct DevPopover {
 impl DevPopover {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
-        let refresh_task = cx.spawn(async move |this, cx| loop {
-            Timer::after(Duration::from_secs(1)).await;
-            if let Some(this) = this.upgrade() {
-                let _ = this.update(cx, |_, cx| cx.notify());
-            } else {
-                break;
+        let refresh_task = cx.spawn(async move |this, cx| {
+            loop {
+                Timer::after(Duration::from_secs(1)).await;
+                if let Some(this) = this.upgrade() {
+                    let _ = this.update(cx, |_, cx| cx.notify());
+                } else {
+                    break;
+                }
             }
         });
         Self {

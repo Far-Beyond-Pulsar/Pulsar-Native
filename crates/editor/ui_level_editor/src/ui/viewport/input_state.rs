@@ -55,13 +55,13 @@ impl InputState {
             zoom_delta: Arc::new(AtomicI32::new(0)),
             input_latency_us: Arc::new(AtomicU64::new(0)),
             move_speed: Arc::new(AtomicU32::new(
-                engine_state::settings::global_config()
+                (engine_state::settings::global_config()
                     .get(engine_state::settings::NS_EDITOR, "viewport", "camera_move_speed")
                     .ok()
                     .and_then(|value| value.as_float().ok())
                     .filter(|value| value.is_finite())
                     .unwrap_or(10.0)
-                    .clamp(1.0, 100.0) as f32
+                    .clamp(1.0, 100.0) as f32)
                     .to_bits(),
             )),
         }

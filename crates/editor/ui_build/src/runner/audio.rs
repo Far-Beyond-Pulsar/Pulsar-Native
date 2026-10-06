@@ -32,7 +32,11 @@ pub fn play_build_error() {
 
 fn enabled(key: &str) -> bool {
     engine_state::global_config()
-        .get(engine_state::settings::NS_EDITOR, "build_notifications", key)
+        .get(
+            engine_state::settings::NS_EDITOR,
+            "build_notifications",
+            key,
+        )
         .ok()
         .and_then(|value| value.as_bool().ok())
         .unwrap_or(true)
@@ -40,7 +44,11 @@ fn enabled(key: &str) -> bool {
 
 fn volume() -> f32 {
     engine_state::global_config()
-        .get(engine_state::settings::NS_EDITOR, "build_notifications", "volume")
+        .get(
+            engine_state::settings::NS_EDITOR,
+            "build_notifications",
+            "volume",
+        )
         .ok()
         .and_then(|value| value.as_float().ok())
         .unwrap_or(1.0)

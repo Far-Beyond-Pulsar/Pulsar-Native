@@ -2,7 +2,7 @@
 
 use glam::{DVec3, Mat4, Vec3};
 use std::collections::HashSet;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 
 use helio::{Camera, Renderer, RendererConfig};
@@ -523,7 +523,18 @@ impl HelioRenderer {
             };
             config = config.with_shadow_quality(shadow_quality);
             config.shadow_atlas_size = project_setting("shadow_atlas_size")
-                .and_then(|value| value.as_str().ok().and_then(|value| value.parse::<u32>().ok()).or_else(|| value.as_int().ok().and_then(|value| u32::try_from(value).ok())))
+                .and_then(|value| {
+                    value
+                        .as_str()
+                        .ok()
+                        .and_then(|value| value.parse::<u32>().ok())
+                        .or_else(|| {
+                            value
+                                .as_int()
+                                .ok()
+                                .and_then(|value| u32::try_from(value).ok())
+                        })
+                })
                 .filter(|size| matches!(size, 512 | 1024 | 2048 | 4096))
                 .unwrap_or(1024);
             config = match project_string("tsr_quality", "off").as_str() {
@@ -577,7 +588,11 @@ impl HelioRenderer {
             let tile_px = streaming_int("virtual_texture_tile_size")
                 .or_else(|| {
                     engine_state::settings::global_config()
-                        .get(engine_state::settings::NS_PROJECT, "streaming", "virtual_texture_tile_size")
+                        .get(
+                            engine_state::settings::NS_PROJECT,
+                            "streaming",
+                            "virtual_texture_tile_size",
+                        )
                         .ok()
                         .and_then(|value| value.as_str().ok()?.parse::<i64>().ok())
                 })

@@ -92,7 +92,7 @@ pub use engine_state::{
     WindowRequest,
 };
 
-use init::{init_task, task_ids::*, InitContext, InitGraph};
+use init::{InitContext, InitGraph, init_task, task_ids::*};
 
 #[cfg(target_os = "windows")]
 #[unsafe(no_mangle)]
@@ -302,13 +302,21 @@ fn main() {
         _ => wgpu::PowerPreference::HighPerformance,
     };
     let max_frame_latency = renderer_settings
-        .get(engine_state::settings::NS_EDITOR, "renderer", "max_frame_latency")
+        .get(
+            engine_state::settings::NS_EDITOR,
+            "renderer",
+            "max_frame_latency",
+        )
         .ok()
         .and_then(|value| value.as_int().ok())
         .unwrap_or(2)
         .clamp(1, 4) as u32;
     let hardware_ray_queries = renderer_settings
-        .get(engine_state::settings::NS_EDITOR, "renderer", "hardware_ray_queries")
+        .get(
+            engine_state::settings::NS_EDITOR,
+            "renderer",
+            "hardware_ray_queries",
+        )
         .ok()
         .and_then(|value| value.as_bool().ok())
         .unwrap_or(false);

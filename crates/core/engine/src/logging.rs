@@ -12,13 +12,13 @@ use directories::ProjectDirs;
 use serde_json;
 use std::fs;
 use tracing::Subscriber;
+use tracing_subscriber::Layer;
 use tracing_subscriber::fmt::{
-    format::{FormatEvent, FormatFields, Writer},
     FmtContext,
+    format::{FormatEvent, FormatFields, Writer},
 };
 use tracing_subscriber::layer::Context as LayerContext;
 use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::Layer;
 use ui_log_viewer::publish_live_log;
 
 #[allow(dead_code)]

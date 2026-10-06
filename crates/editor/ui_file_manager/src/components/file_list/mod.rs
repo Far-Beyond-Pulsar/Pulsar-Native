@@ -1,20 +1,21 @@
+use engine_state::{ConfigValue, GlobalSettings};
 use gpui::prelude::*;
 use gpui::*;
 use rust_i18n::t;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use engine_state::{ConfigValue, GlobalSettings};
 use ui::{
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt,
+    VirtualListScrollHandle,
     button::{Button, ButtonGroup, ButtonVariants as _},
     h_flex,
     input::{InputState, TextInput},
     menu::context_menu::ContextMenuExt,
     popup_menu::PopupMenuExt as _,
-    resizable::{h_resizable, resizable_panel, ResizableState},
+    resizable::{ResizableState, h_resizable, resizable_panel},
     scroll::{Scrollbar, ScrollbarState},
-    v_flex, v_virtual_list, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _,
-    StyledExt, VirtualListScrollHandle,
+    v_flex, v_virtual_list,
 };
 
 use crate::components::commit_picker::{CommitPicker, CommitSelected};
@@ -176,7 +177,11 @@ impl FileManagerDrawer {
             _ => SortOrder::Ascending,
         };
         let show_hidden_files = engine_state::settings::global_config()
-            .get(engine_state::settings::NS_EDITOR, "file_manager", "show_hidden_files")
+            .get(
+                engine_state::settings::NS_EDITOR,
+                "file_manager",
+                "show_hidden_files",
+            )
             .ok()
             .and_then(|value| value.as_bool().ok())
             .unwrap_or(false);
