@@ -553,10 +553,11 @@ impl Default for PlanetVoxelBackend {
 
 impl VoxelRenderBackend for PlanetVoxelBackend {
     fn configure_appearance(&self, renderer: &mut helio::Renderer, source: &VoxelSceneEntry) -> Result<(), String> {
+        // No appearance JSON: the terrain generator's own materials.
         let appearance = if source.appearance_parameters.trim().is_empty() {
-            helio_pass_voxel_planet::engine::TerrainAppearance::default()
+            None
         } else {
-            serde_json::from_str(&source.appearance_parameters).map_err(|e| format!("invalid terrain appearance JSON: {e}"))?
+            Some(serde_json::from_str(&source.appearance_parameters).map_err(|e| format!("invalid terrain appearance JSON: {e}"))?)
         };
         let changed = renderer.find_pass_mut::<PlanetPass>()
             .is_some_and(|pass| pass.set_appearance(appearance));

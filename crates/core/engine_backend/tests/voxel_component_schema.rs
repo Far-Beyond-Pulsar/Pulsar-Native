@@ -41,8 +41,8 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
         .remove("generator_version");
     older_json.as_object_mut().unwrap().remove("appearance_parameters");
     let older: VoxelTerrainComponent = serde_json::from_value(older_json).unwrap();
-    // Files saved before generator versions keep version 1 (no caves).
-    assert_eq!(older.generator.version, 1);
+    // Files without a version use the generator's registered version.
+    assert_eq!(older.generator.version, 0);
     assert!(older.appearance_parameters.is_empty());
 }
 

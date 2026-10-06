@@ -112,6 +112,7 @@ fn relative_camera_world_compatible(world: &pulsar_scenedb::World) -> bool {
         component_id::<ComponentAttachments>(), component_id::<helio::Movability>(),
         component_id::<helio_component::VoxelComponent>(), component_id::<helio_component::VoxelTerrainComponent>(),
         component_id::<helio_component::VoxelLandformComponent>(), component_id::<helio_component::VoxelFlatTerrainComponent>(),
+        component_id::<helio_component::VoxelMoonComponent>(),
         component_id::<helio_component::components::LightComponent>(),
         component_id::<helio_component::components::LightComponentGpuMirror>(),
         component_id::<helio_pass_forward_lit::LightComponent>(),
