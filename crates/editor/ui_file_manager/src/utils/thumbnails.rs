@@ -99,7 +99,7 @@ impl FileManagerDrawer {
                 .expect("failed to spawn mesh-thumbnail worker");
         } else {
             engine_fs::thumbnails::service().request(abs.clone(), root, move |rgba| {
-                smol::block_on(tx.send(rgba));
+                let _ = smol::block_on(tx.send(rgba));
             });
         }
         cx.spawn(async move |this, cx| {
