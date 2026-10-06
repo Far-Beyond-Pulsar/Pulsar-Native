@@ -443,6 +443,8 @@ impl PulsarApp {
                 drawer_docked: false,
                 drawer_height: 400.0,
                 drawer_resizing: false,
+                drawer_resize_start_y: 0.0,
+                drawer_resize_start_height: 400.0,
                 suppress_drawer_for_drag: false,
                 problems_drawer,
                 type_debugger_drawer,

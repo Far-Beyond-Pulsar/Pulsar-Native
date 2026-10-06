@@ -31,6 +31,8 @@ pub struct AppState {
     pub drawer_docked: bool,
     pub drawer_height: f32,
     pub drawer_resizing: bool,
+    pub drawer_resize_start_y: f32,
+    pub drawer_resize_start_height: f32,
     pub suppress_drawer_for_drag: bool, // Auto-close drawer during asset drag
     pub problems_drawer: Entity<ProblemsDrawer>,
     pub type_debugger_drawer: Entity<TypeDebuggerDrawer>,
