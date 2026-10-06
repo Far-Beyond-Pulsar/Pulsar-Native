@@ -384,6 +384,7 @@ impl Restorer {
         let manager = plugin_manager::global()?;
         let mut manager = manager.write();
         manager.set_project_root(Some(self.project_root.clone()));
+        super::refresh_plugin_editor_settings(&mut manager);
         match manager.create_editor_for_file(&path, window, cx) {
             Ok(panel) => Some(panel),
             Err(error) => {
@@ -675,7 +676,7 @@ mod tests {
 
     #[test]
     fn tile_bounds_and_stacking_survive_a_write_and_read() {
-        use gpui::{point, px, size, Bounds};
+        use gpui::{Bounds, point, px, size};
         use ui::dock::TileMeta;
 
         let metas = vec![
@@ -786,16 +787,20 @@ mod tests {
             origin: point(px(0.), px(0.)),
             size: size(px(10.), px(10.)),
         };
-        assert!(SavedWindow::capture(WindowBounds::Windowed(tiny), None)
-            .to_window_bounds()
-            .is_none());
+        assert!(
+            SavedWindow::capture(WindowBounds::Windowed(tiny), None)
+                .to_window_bounds()
+                .is_none()
+        );
         let nan = Bounds {
             origin: point(px(0.), px(0.)),
             size: size(px(f32::NAN), px(900.)),
         };
-        assert!(SavedWindow::capture(WindowBounds::Windowed(nan), None)
-            .to_window_bounds()
-            .is_none());
+        assert!(
+            SavedWindow::capture(WindowBounds::Windowed(nan), None)
+                .to_window_bounds()
+                .is_none()
+        );
     }
 
     #[test]

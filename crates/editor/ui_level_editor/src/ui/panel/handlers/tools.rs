@@ -16,14 +16,32 @@ impl LevelEditorPanel {
         if action.1.is_finite() && action.1 > 0.0 {
             *target = action.1;
         }
+        let (location, rotation, scale) = (
+            state.editor.location_snap,
+            state.editor.rotation_snap,
+            state.editor.scale_snap,
+        );
         if let Some(mailbox) = &self.helio_mailbox {
-            mailbox.set_gizmo_snap_settings(
-                state.editor.location_snap,
-                state.editor.rotation_snap,
-                state.editor.scale_snap,
-            );
+            mailbox.set_gizmo_snap_settings(location, rotation, scale);
         }
         drop(state);
+        let key = match action.0 {
+            0 => "location_snap",
+            1 => "rotation_snap",
+            _ => "scale_snap",
+        };
+        let value = match action.0 {
+            0 => location,
+            1 => rotation,
+            _ => scale,
+        };
+        if let Err(error) = engine_state::GlobalSettings::new().set_and_save(
+            "viewport",
+            key,
+            engine_state::ConfigValue::Float(value as f64),
+        ) {
+            tracing::warn!(%error, "Could not persist viewport snap setting");
+        }
         cx.notify();
     }
 

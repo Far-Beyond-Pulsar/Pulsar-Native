@@ -249,6 +249,15 @@ impl GlobalSettings {
         self.set(owner, key, value)?;
         self.save_owner_keys(owner, &[key])
     }
+
+    /// Check whether an editor preference was explicitly persisted.
+    pub fn has_saved_key(&self, owner: &str, key: &str) -> anyhow::Result<bool> {
+        let handle = editor_owner_handle(owner)?;
+        let provider = self.local_provider()?;
+        Ok(self
+            .read_owner_table(&provider, &handle)?
+            .is_some_and(|table| table.contains_key(key)))
+    }
 }
 
 fn editor_owner_handle(owner: &str) -> Result<OwnerHandle, ConfigError> {

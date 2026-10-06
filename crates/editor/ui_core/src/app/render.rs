@@ -2,9 +2,9 @@
 
 use engine_backend::services::AnalyzerStatus;
 use gpui::{
-    div, prelude::*, px, relative, rgb, Animation, AnimationExt as _, AnyElement, App, Context,
-    FocusHandle, Focusable, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, Render,
-    Window,
+    Animation, AnimationExt as _, AnyElement, App, Context, FocusHandle, Focusable, Hsla,
+    IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, Render, Window, div, prelude::*, px,
+    relative, rgb,
 };
 use plugin_editor_api::{StatusbarAction, StatusbarPosition};
 use rust_i18n::t;
@@ -12,9 +12,10 @@ use std::path::PathBuf;
 use std::time::Duration;
 use ui::notification::Notification;
 use ui::{
+    ActiveTheme as _, ContextModal as _, Icon, IconName, StyledExt as _,
     button::{Button, ButtonVariants as _},
     dock::DockPlacement,
-    h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, StyledExt as _,
+    h_flex, v_flex,
 };
 use ui_multiuser_status::render_status_bar_indicator;
 
@@ -567,6 +568,7 @@ impl PulsarApp {
 
                                 if let Some(plugin_id) = plugin_id {
                                     let mut pm = pm_lock.write();
+                                    super::refresh_plugin_editor_settings(&mut pm);
                                     match pm.create_editor(&plugin_id, &editor_id, path, window, cx)
                                     {
                                         Ok(panel) => {

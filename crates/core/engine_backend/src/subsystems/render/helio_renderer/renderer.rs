@@ -254,6 +254,7 @@ pub struct HelioRenderer {
     pub pending_errors: Arc<Mutex<Vec<String>>>,
 
     inner: Option<HelioInner>,
+    applied_graph_settings: Option<ProjectGraphSettings>,
 
     // ── Camera State ──
     cam_pos: DVec3,
@@ -324,6 +325,62 @@ struct HelioInner {
     has_rendered_frame: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ProjectGraphSettings {
+    shadow_quality: String,
+    shadow_atlas_size: u32,
+    screen_space_reflections: bool,
+    planar_reflections: bool,
+    render_mode: String,
+}
+
+impl ProjectGraphSettings {
+    fn load() -> Self {
+        let setting = |key: &str| {
+            engine_state::settings::global_config().get(
+                engine_state::settings::NS_PROJECT,
+                "rendering",
+                key,
+            )
+        };
+        let text = |key: &str, fallback: &str| {
+            setting(key)
+                .ok()
+                .and_then(|value| value.as_str().ok().map(str::to_owned))
+                .unwrap_or_else(|| fallback.to_owned())
+        };
+        let boolean = |key: &str, fallback| {
+            setting(key)
+                .ok()
+                .and_then(|value| value.as_bool().ok())
+                .unwrap_or(fallback)
+        };
+        let shadow_atlas_size = setting("shadow_atlas_size")
+            .ok()
+            .and_then(|value| {
+                value
+                    .as_str()
+                    .ok()
+                    .and_then(|value| value.parse::<u32>().ok())
+                    .or_else(|| {
+                        value
+                            .as_int()
+                            .ok()
+                            .and_then(|value| u32::try_from(value).ok())
+                    })
+            })
+            .filter(|size| matches!(size, 512 | 1024 | 2048 | 4096))
+            .unwrap_or(1024);
+        Self {
+            shadow_quality: text("shadow_quality", "medium"),
+            shadow_atlas_size,
+            screen_space_reflections: boolean("screen_space_reflections", false),
+            planar_reflections: boolean("planar_reflections", false),
+            render_mode: text("render_mode", "deferred"),
+        }
+    }
+}
+
 impl HelioRenderer {
     pub fn new(scene_store: crate::scene::SharedScene) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
@@ -346,6 +403,7 @@ impl HelioRenderer {
             static_drag_warning: Arc::new(Mutex::new(None)),
             reset_taa_next_frame: false,
             inner: None,
+            applied_graph_settings: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
             cam_pos: DVec3::new(8.0, 6.0, 12.0),
             cam_yaw: -0.5,
@@ -476,6 +534,20 @@ impl HelioRenderer {
             self.reset_taa_next_frame = true;
         }
 
+        // Graph-affecting project settings rebuild at a frame boundary. This
+        // keeps pass topology and its GPU allocations in sync with the UI.
+        let graph_settings = ProjectGraphSettings::load();
+        if self.inner.is_some()
+            && self
+                .applied_graph_settings
+                .as_ref()
+                .is_some_and(|applied| applied != &graph_settings)
+        {
+            self.inner = None;
+            self.applied_graph_settings = None;
+            self.reset_taa_next_frame = true;
+        }
+
         // ── Lazy init (first frame only) ────────────────────────────────────────
         if self.inner.is_none() {
             #[cfg(feature = "editor-ui")]
@@ -500,11 +572,6 @@ impl HelioRenderer {
                     .and_then(|value| value.as_str().ok().map(str::to_owned))
                     .unwrap_or_else(|| default.to_owned())
             };
-            let project_bool = |key: &str, default: bool| {
-                project_setting(key)
-                    .and_then(|value| value.as_bool().ok())
-                    .unwrap_or(default)
-            };
             let project_float = |key: &str, default: f32| {
                 project_setting(key)
                     .and_then(|value| value.as_float().ok())
@@ -513,30 +580,16 @@ impl HelioRenderer {
             };
             let mut config = RendererConfig::new(width, height, format)
                 .with_render_scale(project_float("render_scale", 0.75).clamp(0.25, 1.0))
-                .with_ssr(project_bool("screen_space_reflections", false))
-                .with_planar_reflections(project_bool("planar_reflections", false));
-            let shadow_quality = match project_string("shadow_quality", "medium").as_str() {
+                .with_ssr(graph_settings.screen_space_reflections)
+                .with_planar_reflections(graph_settings.planar_reflections);
+            let shadow_quality = match graph_settings.shadow_quality.as_str() {
                 "low" => helio::ShadowQuality::Low,
                 "high" => helio::ShadowQuality::High,
                 "ultra" => helio::ShadowQuality::Ultra,
                 _ => helio::ShadowQuality::Medium,
             };
             config = config.with_shadow_quality(shadow_quality);
-            config.shadow_atlas_size = project_setting("shadow_atlas_size")
-                .and_then(|value| {
-                    value
-                        .as_str()
-                        .ok()
-                        .and_then(|value| value.parse::<u32>().ok())
-                        .or_else(|| {
-                            value
-                                .as_int()
-                                .ok()
-                                .and_then(|value| u32::try_from(value).ok())
-                        })
-                })
-                .filter(|size| matches!(size, 512 | 1024 | 2048 | 4096))
-                .unwrap_or(1024);
+            config.shadow_atlas_size = graph_settings.shadow_atlas_size;
             config = match project_string("tsr_quality", "off").as_str() {
                 "performance" => config.with_tsr_quality(helio::TsrQuality::Performance),
                 "balanced" => config.with_tsr_quality(helio::TsrQuality::Balanced),
@@ -544,15 +597,10 @@ impl HelioRenderer {
                 "native" => config.with_tsr_quality(helio::TsrQuality::Native),
                 _ => config.without_tsr(),
             };
-            config = match project_string("render_mode", "deferred").as_str() {
+            config = match graph_settings.render_mode.as_str() {
                 "forward_opaque" => config.with_render_mode(helio::RenderMode::ForwardOpaque),
                 "forward_only" => config.with_render_mode(helio::RenderMode::ForwardOnly),
                 _ => config.with_render_mode(helio::RenderMode::Deferred),
-            };
-            config = match project_string("hdr_output_mode", "ldr").as_str() {
-                "hdr10" => config.with_hdr_output_mode(helio::HdrOutputMode::Hdr10),
-                "scrgb" => config.with_hdr_output_mode(helio::HdrOutputMode::ScRgb),
-                _ => config.with_hdr_output_mode(helio::HdrOutputMode::Ldr),
             };
             // Voxel scenes have a workload-specific temporal preset and take
             // precedence over the project's general TSR preference.
@@ -645,6 +693,7 @@ impl HelioRenderer {
                 has_rendered_frame: false,
             };
             self.inner = Some(inner);
+            self.applied_graph_settings = Some(graph_settings.clone());
             self.viewport_size = (width, height);
 
             tracing::info!(
@@ -980,10 +1029,42 @@ impl HelioRenderer {
         } else {
             terrain_near
         };
-        inner.renderer.set_tsr_quality(
-            self.voxel_backends
-                .temporal_quality(&voxel_entries, [width, height]),
-        );
+        let voxel_tsr_quality = self
+            .voxel_backends
+            .temporal_quality(&voxel_entries, [width, height]);
+        let project_tsr_quality = engine_state::settings::global_config()
+            .get(
+                engine_state::settings::NS_PROJECT,
+                "rendering",
+                "tsr_quality",
+            )
+            .ok()
+            .and_then(|value| value.as_str().ok().map(str::to_owned))
+            .and_then(|quality| match quality.as_str() {
+                "performance" => Some(helio::TsrQuality::Performance),
+                "balanced" => Some(helio::TsrQuality::Balanced),
+                "quality" => Some(helio::TsrQuality::Quality),
+                "native" => Some(helio::TsrQuality::Native),
+                _ => None,
+            });
+        let effective_tsr_quality = voxel_tsr_quality.or(project_tsr_quality);
+        inner.renderer.set_tsr_quality(effective_tsr_quality);
+        if effective_tsr_quality.is_none() {
+            let render_scale = engine_state::settings::global_config()
+                .get(
+                    engine_state::settings::NS_PROJECT,
+                    "rendering",
+                    "render_scale",
+                )
+                .ok()
+                .and_then(|value| value.as_float().ok())
+                .filter(|value| value.is_finite())
+                .unwrap_or(0.75) as f32;
+            let render_scale = render_scale.clamp(0.25, 1.0);
+            if (inner.renderer.render_scale() - render_scale).abs() > f32::EPSILON {
+                inner.renderer.set_render_scale(render_scale);
+            }
+        }
         let t_prepare = Instant::now();
         let camera = {
             #[cfg(feature = "editor-ui")]

@@ -22,6 +22,32 @@ use ui_common::menu;
 
 use crate::actions::*;
 
+pub(crate) fn refresh_plugin_editor_settings(manager: &mut plugin_manager::PluginManager) {
+    use engine_state::settings::{ConfigValue, NS_EDITOR, global_config};
+    use plugin_editor_api::{EditorSettingValue, EditorSettingsSnapshot};
+
+    let settings = global_config()
+        .list_settings(NS_EDITOR, "code_editor")
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|setting| {
+            let value = global_config()
+                .get(NS_EDITOR, "code_editor", &setting.key)
+                .ok()?;
+            let value = match value {
+                ConfigValue::Bool(value) => EditorSettingValue::Boolean(value),
+                ConfigValue::Int(value) => EditorSettingValue::Integer(value),
+                ConfigValue::Float(value) => EditorSettingValue::Float(value),
+                ConfigValue::String(value) => EditorSettingValue::Text(value),
+                ConfigValue::Color(_) | ConfigValue::Array(_) => return None,
+            };
+            Some((setting.key, value))
+        })
+        .collect();
+
+    manager.set_editor_settings_snapshot(EditorSettingsSnapshot::new(settings));
+}
+
 /// Main Pulsar application
 pub struct PulsarApp {
     state: state::AppState,

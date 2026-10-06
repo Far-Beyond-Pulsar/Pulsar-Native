@@ -174,14 +174,16 @@ the editor viewport and game renderer.
 | `shadow_atlas_size` | `1024`; `512`, `1024`, `2048`, `4096` | Apply to the existing `RendererConfig.shadow_atlas_size`; show a VRAM impact hint because memory use grows with atlas area. |
 | `screen_space_reflections` | `false` | Apply through `with_ssr`. This is the actual reflection-pass toggle. |
 | `planar_reflections` | `false` | Apply through `with_planar_reflections`; explain that it rerenders the scene for authored reflection planes. |
-| `hdr_output_mode` | `ldr`; `ldr`, `hdr10`, `scrgb` | Apply `with_hdr_output_mode` and choose a compatible surface format using Helio's `select_hdr_surface_format`. If the display/surface cannot support a requested mode, keep LDR active and show the reason. Do not offer raw passthrough as a normal-user option. |
 | `render_mode` | `deferred`; `deferred`, `forward_opaque`, `forward_only` | Advanced setting mapped to Helio's existing render modes. Validate required feature/pass compatibility and make renderer recreation explicit. |
 
-The effect and graph settings above need a reliable renderer-reconfigure path:
-today most are read only while the render graph is constructed. Prefer a
-single controlled graph rebuild on project setting changes over adding fields
-to the database that do not affect an already-running viewport. TSR and render
-scale already have live renderer setters; use them for those two.
+The effect and graph settings use a controlled renderer rebuild at the next
+viewport frame boundary when the project setting changes. TSR and render scale
+use Helio's live setters. The standalone game renderer reads the same project
+settings when it is created.
+
+HDR output stays out of the catalog until the host surface negotiates and
+reports a compatible HDR format. Setting only Helio's post-process mode while
+the host still presents through an SDR surface would not produce HDR output.
 
 `screen_space_reflections` can use hardware ray queries when both the device
 preference is enabled and the selected adapter supports them. Add a separate

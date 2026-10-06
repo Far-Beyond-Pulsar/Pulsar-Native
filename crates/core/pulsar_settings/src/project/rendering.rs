@@ -87,15 +87,6 @@ pub fn register(cfg: &'static ConfigManager) {
                 .field_type(FieldType::Checkbox),
         )
         .setting(
-            "hdr_output_mode",
-            SchemaEntry::new("HDR display output mode", "ldr")
-                .label("HDR Output")
-                .page("Rendering / Effects")
-                .field_type(FieldType::Dropdown {
-                    options: choices(&[("LDR", "ldr"), ("HDR10", "hdr10"), ("scRGB", "scrgb")]),
-                }),
-        )
-        .setting(
             "render_mode",
             SchemaEntry::new(
                 "Renderer path; changing it rebuilds the render graph",
