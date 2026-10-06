@@ -77,8 +77,8 @@ pub use pulsar_script_vm;
 
 mod component_lifecycle;
 pub use component_lifecycle::{
-    end_live_components, process_component_removals, tick_live_components,
-    ComponentInstanceKey, ComponentRuntimeState,
+    end_live_components, process_component_removals, tick_live_components, ComponentInstanceKey,
+    ComponentRuntimeState,
 };
 
 /// Generated native component lifecycle entry. Unlike the legacy
@@ -122,15 +122,19 @@ inventory::collect!(ComponentEventRegistration);
 /// Calling this more than once is safe when descriptors are identical.
 pub fn register_component_events(hub: &pulsar_events::EventHub) -> Result<(), String> {
     for registration in inventory::iter::<ComponentEventRegistration> {
-        hub.register((registration.descriptor)(), pulsar_events::EventCategory::Gameplay)
-            .map_err(|error| error.to_string())?;
+        hub.register(
+            (registration.descriptor)(),
+            pulsar_events::EventCategory::Gameplay,
+        )
+        .map_err(|error| error.to_string())?;
     }
     Ok(())
 }
 
 /// Link-time component event declarations used to install typed local
 /// signatures in the Blueprint bridge after their Gamma descriptors exist.
-pub fn component_event_registrations() -> impl Iterator<Item = &'static ComponentEventRegistration> {
+pub fn component_event_registrations() -> impl Iterator<Item = &'static ComponentEventRegistration>
+{
     inventory::iter::<ComponentEventRegistration>.into_iter()
 }
 
@@ -156,22 +160,35 @@ pub fn queue_component_event(
     name: impl Into<String>,
     fields: Vec<pulsar_events::gamma::DynValue>,
 ) {
-    let event = QueuedComponentEvent { name: name.into(), fields };
+    let event = QueuedComponentEvent {
+        name: name.into(),
+        fields,
+    };
     if let Some(mut outbox) = world.get_mut::<ComponentEventOutbox>(entity) {
         outbox.events.push(event);
         return;
     }
-    world.insert(entity, ComponentEventOutbox { events: vec![event] });
+    world.insert(
+        entity,
+        ComponentEventOutbox {
+            events: vec![event],
+        },
+    );
 }
 
 /// Publish queued outbox events after all World borrows for the emitting
 /// phase have ended. Unknown/unregistered names remain queued for the next
 /// phase rather than being silently discarded.
 pub fn flush_component_events(world: &mut World, hub: &pulsar_events::EventHub) -> usize {
-    let entities: Vec<_> = world.query::<&ComponentEventOutbox>().map(|(entity, _)| entity).collect();
+    let entities: Vec<_> = world
+        .query::<&ComponentEventOutbox>()
+        .map(|(entity, _)| entity)
+        .collect();
     let mut delivered = 0;
     for entity in entities {
-        let Some(mut outbox) = world.remove::<ComponentEventOutbox>(entity) else { continue };
+        let Some(mut outbox) = world.remove::<ComponentEventOutbox>(entity) else {
+            continue;
+        };
         let mut pending = Vec::new();
         for event in outbox.events.drain(..) {
             match hub.publish_named(
@@ -205,7 +222,10 @@ pub struct ComponentContext<'a> {
 impl<'a> ComponentContext<'a> {
     #[doc(hidden)]
     pub fn new(entity: Entity, hub: &'a pulsar_events::EventHub) -> Self {
-        Self { entity, events: ComponentEventWriter::new(entity, hub) }
+        Self {
+            entity,
+            events: ComponentEventWriter::new(entity, hub),
+        }
     }
 }
 
@@ -228,7 +248,11 @@ impl<'a> ComponentEventWriter<'a> {
         fields: Vec<pulsar_events::gamma::DynValue>,
     ) -> Result<(), String> {
         self.hub
-            .publish_named(pulsar_events::gamma::Channel::Entity(self.entity.bits()), name, fields)
+            .publish_named(
+                pulsar_events::gamma::Channel::Entity(self.entity.bits()),
+                name,
+                fields,
+            )
             .map_err(|error| error.to_string())
     }
 
@@ -243,10 +267,7 @@ impl<'a> ComponentEventWriter<'a> {
     ) -> Result<(), String> {
         let object = pulsar_script_vm::Object::new(payload_type, payload.clone());
         let bytes = pulsar_script_vm::TypeRegistry::global().encode_event_value(&object)?;
-        self.emit_named(
-            name,
-            vec![pulsar_events::gamma::DynValue::Bytes(bytes)],
-        )
+        self.emit_named(name, vec![pulsar_events::gamma::DynValue::Bytes(bytes)])
     }
 }
 
@@ -266,8 +287,8 @@ mod script_natives;
 // graph nodes) uses to touch live World components. No bespoke dispatch
 // downstream.
 pub use dispatch::{
-    get_component_property, get_component_property_boxed, invoke_component_method, property_descriptor,
-    set_component_property, set_component_property_boxed,
+    get_component_property, get_component_property_boxed, invoke_component_method,
+    property_descriptor, set_component_property, set_component_property_boxed,
 };
 // The one script-facing error taxonomy (#641/#643). Canonical home is this
 // crate (next to the dispatcher whose failures these are);
@@ -1025,18 +1046,31 @@ mod tests {
         world.take_component_change_events();
 
         {
-            let guard = get_world_component_as_engine_class_mut("TestComponent", &mut world, entity).unwrap();
+            let guard =
+                get_world_component_as_engine_class_mut("TestComponent", &mut world, entity)
+                    .unwrap();
             let _ = guard.to_json();
         }
-        assert!(world.take_component_change_events().is_empty(), "a read is not a mutation");
+        assert!(
+            world.take_component_change_events().is_empty(),
+            "a read is not a mutation"
+        );
 
-        let mut guard = get_world_component_as_engine_class_mut("TestComponent", &mut world, entity).unwrap();
-        guard.as_any_mut().downcast_mut::<TestComponent>().unwrap().value = 7;
+        let mut guard =
+            get_world_component_as_engine_class_mut("TestComponent", &mut world, entity).unwrap();
+        guard
+            .as_any_mut()
+            .downcast_mut::<TestComponent>()
+            .unwrap()
+            .value = 7;
         drop(guard);
         let events = world.take_component_change_events();
         assert_eq!(events.len(), 1, "{events:?}");
         assert_eq!(events[0].kind, ComponentChangeKind::Mutated);
-        assert_eq!(world.get::<TestComponent>(entity), Some(&TestComponent { value: 7 }));
+        assert_eq!(
+            world.get::<TestComponent>(entity),
+            Some(&TestComponent { value: 7 })
+        );
     }
 
     #[test]

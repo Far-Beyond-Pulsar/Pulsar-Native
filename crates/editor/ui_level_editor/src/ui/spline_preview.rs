@@ -106,4 +106,3 @@ pub(super) fn panel(
     .w_full()
     .h(px(150.))
 }
-

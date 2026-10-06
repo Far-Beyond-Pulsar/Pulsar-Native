@@ -112,5 +112,3 @@ impl InputBaseState<EditorMode> {
         }
     }
 }
-
-

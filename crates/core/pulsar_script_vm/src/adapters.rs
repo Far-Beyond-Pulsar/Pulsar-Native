@@ -17,9 +17,9 @@
 use std::any::{Any, TypeId};
 
 use pulsar_reflection::methods::{
-    MethodInfo, PassMode, Receiver, ReceiverKind, ReflectedMethod, methods_of,
+    methods_of, MethodInfo, PassMode, Receiver, ReceiverKind, ReflectedMethod,
 };
-use pulsar_reflection::{FieldInfo, RUNTIME_TYPE_REGISTRY, TypeStructure};
+use pulsar_reflection::{FieldInfo, TypeStructure, RUNTIME_TYPE_REGISTRY};
 use pulsar_scenedb::component_methods::component_methods_of_type;
 use pulsar_scenedb::{ComponentId, ComponentMethod, ComponentRef, Entity};
 
@@ -224,20 +224,22 @@ fn component_method(
         return None;
     };
     sig_params.insert(0, Param::new(ty.clone()));
-    let native = builder(owner, info, Some(ty)).attr("access", "write").build_raw(
-        Signature::new(sig_params, ret_ty),
-        Box::new(move |host, args| {
-            let entity = component_entity(&args[0])?;
-            let rest = &mut args[1..];
-            let mut boxed = box_args(&bindings, rest)?;
-            let result = host
-                .world_mut()?
-                .invoke_component_method(entity, cid, method, &mut boxed)
-                .map_err(|e| ScriptError::native(e.to_string()))?;
-            write_back(method.info(), &bindings, &boxed, rest);
-            Ok(to_ret(ret_binding, result))
-        }),
-    );
+    let native = builder(owner, info, Some(ty))
+        .attr("access", "write")
+        .build_raw(
+            Signature::new(sig_params, ret_ty),
+            Box::new(move |host, args| {
+                let entity = component_entity(&args[0])?;
+                let rest = &mut args[1..];
+                let mut boxed = box_args(&bindings, rest)?;
+                let result = host
+                    .world_mut()?
+                    .invoke_component_method(entity, cid, method, &mut boxed)
+                    .map_err(|e| ScriptError::native(e.to_string()))?;
+                write_back(method.info(), &bindings, &boxed, rest);
+                Ok(to_ret(ret_binding, result))
+            }),
+        );
     Some(native)
 }
 

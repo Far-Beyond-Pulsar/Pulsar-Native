@@ -27,11 +27,11 @@ use pulsar_reflection::{PropertyMetadata, REGISTRY, RUNTIME_TYPE_REGISTRY};
 use pulsar_scenedb::World;
 use std::any::Any;
 use std::sync::Arc;
-use ui::{ActiveTheme, Icon, IconName, Sizable, button::ButtonVariants as _, h_flex, v_flex};
+use ui::{button::ButtonVariants as _, h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
 use super::category_section::group_rows_by_category;
 use super::{ObjectTypeFieldsSection, PropertyMetadataCacheEntry};
-use crate::core::commands::{SceneCommand, execute_command};
+use crate::core::commands::{execute_command, SceneCommand};
 
 /// Read a property value from the live World, with JSON and default-instance
 /// fallbacks.  Used only when the batch read (via `with_world_component`)
@@ -353,11 +353,10 @@ impl ObjectTypeFieldsSection {
                         .and_then(|d| d.as_ref())
                     {
                         Some(default) => {
-                            let overridden =
-                                !crate::scene_edit::classes::property_equals_default(
-                                    value.as_ref(),
-                                    default.as_ref(),
-                                );
+                            let overridden = !crate::scene_edit::classes::property_equals_default(
+                                value.as_ref(),
+                                default.as_ref(),
+                            );
                             let revert = {
                                 let state_arc = self.state_arc.clone();
                                 let oid = object_id.clone();

@@ -35,7 +35,9 @@ const NOT_SCRIPTABLE: &[(&str, &str)] = &[
 ];
 
 fn data_nodes() -> impl Iterator<Item = &'static pulsar_std::NodeMetadata> {
-    get_all_nodes().iter().filter(|node| matches!(node.node_type, NodeTypes::pure | NodeTypes::fn_))
+    get_all_nodes()
+        .iter()
+        .filter(|node| matches!(node.node_type, NodeTypes::pure | NodeTypes::fn_))
 }
 
 #[test]
@@ -49,11 +51,23 @@ fn every_data_node_is_a_native_or_explained() {
             natives += 1;
         } else if registry.generic(&name(node)).is_some() {
             generics += 1;
-        } else if NOT_SCRIPTABLE.iter().any(|(excluded, _)| *excluded == node.name) {
+        } else if NOT_SCRIPTABLE
+            .iter()
+            .any(|(excluded, _)| *excluded == node.name)
+        {
             excluded += 1;
         } else {
-            let params: Vec<_> = node.params.iter().map(|p| format!("{}: {}", p.name, p.ty)).collect();
-            unexplained.push(format!("{}({}) -> {}", node.name, params.join(", "), node.return_type.unwrap_or("()")));
+            let params: Vec<_> = node
+                .params
+                .iter()
+                .map(|p| format!("{}: {}", p.name, p.ty))
+                .collect();
+            unexplained.push(format!(
+                "{}({}) -> {}",
+                node.name,
+                params.join(", "),
+                node.return_type.unwrap_or("()")
+            ));
         }
     }
     let total = natives + generics + excluded + unexplained.len();
@@ -63,16 +77,24 @@ fn every_data_node_is_a_native_or_explained() {
         natives + generics,
         unexplained.len()
     );
-    assert!(unexplained.is_empty(), "nodes that are neither script natives nor listed in NOT_SCRIPTABLE:\n  {}", unexplained.join("\n  "));
+    assert!(
+        unexplained.is_empty(),
+        "nodes that are neither script natives nor listed in NOT_SCRIPTABLE:\n  {}",
+        unexplained.join("\n  ")
+    );
 }
 
 #[test]
 fn the_exclusion_list_names_real_nodes_that_really_are_not_natives() {
     let registry = NativeRegistry::with_engine_natives();
     for (name, reason) in NOT_SCRIPTABLE {
-        assert!(data_nodes().any(|node| node.name == *name), "`{name}` ({reason}) is not a node: remove it from the list");
         assert!(
-            registry.get(&format!("std::{name}")).is_none() && registry.generic(&format!("std::{name}")).is_none(),
+            data_nodes().any(|node| node.name == *name),
+            "`{name}` ({reason}) is not a node: remove it from the list"
+        );
+        assert!(
+            registry.get(&format!("std::{name}")).is_none()
+                && registry.generic(&format!("std::{name}")).is_none(),
             "`{name}` is a native now: remove it from the list"
         );
     }

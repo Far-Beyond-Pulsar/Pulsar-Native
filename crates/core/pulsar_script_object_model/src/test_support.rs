@@ -9,7 +9,7 @@
 #![allow(dead_code)]
 
 use pulsar_reflection::{
-    ComponentMethodRegistration, EngineClass, MethodMetadata, MethodFlags, MethodReturnType,
+    ComponentMethodRegistration, EngineClass, MethodFlags, MethodMetadata, MethodReturnType,
     PropertyMetadata, RuntimeTypeInfo, RUNTIME_TYPE_REGISTRY,
 };
 use pulsar_scenedb::{Entity, World};
@@ -109,7 +109,10 @@ fn test_gizmo_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
         .map(|c| c as &dyn EngineClass)
 }
 
-fn test_gizmo_get_mut(world: &mut World, entity: Entity) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
+fn test_gizmo_get_mut(
+    world: &mut World,
+    entity: Entity,
+) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
     pulsar_world_registry::EngineClassMut::of::<TestGizmo>(world, entity)
 }
 

@@ -153,5 +153,3 @@ mod tests {
         assert_eq!(scroll.last_drag_position, None);
     }
 }
-
-

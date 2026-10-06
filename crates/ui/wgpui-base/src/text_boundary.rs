@@ -80,5 +80,3 @@ fn clip_offset_left(text: &str, offset: usize) -> usize {
     }
     offset
 }
-
-

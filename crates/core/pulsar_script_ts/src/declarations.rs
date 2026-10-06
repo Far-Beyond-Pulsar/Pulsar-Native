@@ -17,17 +17,78 @@ use std::fmt::Write as _;
 use pulsar_script_vm::{NativeFn, NativeRegistry, Type, TypeRegistry};
 
 const RESERVED: &[&str] = &[
-    "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "enum",
-    "export", "extends", "false", "finally", "for", "function", "if", "import", "in", "instanceof", "new", "null",
-    "return", "super", "switch", "this", "throw", "true", "try", "typeof", "var", "void", "while", "with", "yield",
-    "let", "static", "implements", "interface", "package", "private", "protected", "public", "await", "async",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "debugger",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "enum",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "function",
+    "if",
+    "import",
+    "in",
+    "instanceof",
+    "new",
+    "null",
+    "return",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "var",
+    "void",
+    "while",
+    "with",
+    "yield",
+    "let",
+    "static",
+    "implements",
+    "interface",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "await",
+    "async",
     // Predefined type names: TypeScript refuses them as namespace names.
-    "any", "unknown", "never", "number", "string", "boolean", "symbol", "bigint", "object", "undefined",
+    "any",
+    "unknown",
+    "never",
+    "number",
+    "string",
+    "boolean",
+    "symbol",
+    "bigint",
+    "object",
+    "undefined",
 ];
 
 /// A TypeScript identifier for `name`.
 pub fn ts_name(name: &str) -> String {
-    let mut ident: String = name.chars().map(|c| if c.is_ascii_alphanumeric() || c == '_' { c } else { '_' }).collect();
+    let mut ident: String = name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
     if ident.starts_with(|c: char| c.is_ascii_digit()) {
         ident.insert(0, '_');
     }
@@ -49,7 +110,10 @@ pub fn ts_type(ty: &Type) -> String {
         Type::Component(name) | Type::Object(name) => ts_name(name),
         Type::List(element) => format!("{}[]", ts_type(element)),
         Type::Map(key, value) => format!("Map<{}, {}>", ts_type(key), ts_type(value)),
-        Type::Tuple(items) => format!("[{}]", items.iter().map(ts_type).collect::<Vec<_>>().join(", ")),
+        Type::Tuple(items) => format!(
+            "[{}]",
+            items.iter().map(ts_type).collect::<Vec<_>>().join(", ")
+        ),
     }
 }
 
@@ -91,23 +155,47 @@ pub fn declarations(natives: &NativeRegistry) -> String {
             .params
             .iter()
             .enumerate()
-            .map(|(i, p)| format!("{}: {}", ts_name(native.param_names.get(i).map_or("arg", String::as_str)), ts_type(&p.ty)))
+            .map(|(i, p)| {
+                format!(
+                    "{}: {}",
+                    ts_name(native.param_names.get(i).map_or("arg", String::as_str)),
+                    ts_type(&p.ty)
+                )
+            })
             .collect();
-        let doc = if native.doc.is_empty() { String::new() } else { format!("    /** {} */\n", native.doc.replace("*/", "* /")) };
-        namespaces.entry(ns.replace("::", "_")).or_default().push(format!(
-            "{doc}    function {}({}): {};\n",
-            ts_name(name),
-            params.join(", "),
-            ts_type(&native.sig.ret)
-        ));
+        let doc = if native.doc.is_empty() {
+            String::new()
+        } else {
+            format!("    /** {} */\n", native.doc.replace("*/", "* /"))
+        };
+        namespaces
+            .entry(ns.replace("::", "_"))
+            .or_default()
+            .push(format!(
+                "{doc}    function {}({}): {};\n",
+                ts_name(name),
+                params.join(", "),
+                ts_type(&native.sig.ret)
+            ));
         if let (Some(receiver), Some(first)) = (&native.receiver, native.sig.params.first()) {
             if &first.ty == receiver {
                 if let Type::Component(r) | Type::Object(r) = receiver {
                     let rest = params[1..].join(", ");
-                    let member = if params.len() == 1 && native.sig.ret != Type::Unit && native.flags.side_effect_free {
-                        format!("{doc}    readonly {}: {};\n", ts_name(name), ts_type(&native.sig.ret))
+                    let member = if params.len() == 1
+                        && native.sig.ret != Type::Unit
+                        && native.flags.side_effect_free
+                    {
+                        format!(
+                            "{doc}    readonly {}: {};\n",
+                            ts_name(name),
+                            ts_type(&native.sig.ret)
+                        )
                     } else {
-                        format!("{doc}    {}({rest}): {};\n", ts_name(name), ts_type(&native.sig.ret))
+                        format!(
+                            "{doc}    {}({rest}): {};\n",
+                            ts_name(name),
+                            ts_type(&native.sig.ret)
+                        )
                     };
                     members.entry(r.clone()).or_default().push(member);
                     named.entry(r.clone()).or_insert("type");

@@ -58,7 +58,10 @@ pub struct ContentRoot {
 impl ContentRoot {
     /// A project's own files, loose (dev builds).
     pub fn project(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into(), source: Source::Project }
+        Self {
+            root: root.into(),
+            source: Source::Project,
+        }
     }
 
     /// Cooked content in `dir`: `dir/game.pak` when it exists, loose files
@@ -67,16 +70,26 @@ impl ContentRoot {
         let root = dir.into();
         let pak_path = root.join(PAK_FILE_NAME);
         let pak = if pak_path.is_file() {
-            Some(Arc::new(PakReader::open(&pak_path).map_err(io::Error::from)?))
-        } else if root.join(crate::CLASS_INDEX_FILE).is_file() || root.join(PROJECT_SETTINGS_FILE).is_file() {
+            Some(Arc::new(
+                PakReader::open(&pak_path).map_err(io::Error::from)?,
+            ))
+        } else if root.join(crate::CLASS_INDEX_FILE).is_file()
+            || root.join(PROJECT_SETTINGS_FILE).is_file()
+        {
             None
         } else {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
-                format!("{} holds no cooked content ({PAK_FILE_NAME} or loose files)", root.display()),
+                format!(
+                    "{} holds no cooked content ({PAK_FILE_NAME} or loose files)",
+                    root.display()
+                ),
             ));
         };
-        Ok(Self { root, source: Source::Packaged { pak } })
+        Ok(Self {
+            root,
+            source: Source::Packaged { pak },
+        })
     }
 
     /// Open `dir` as whatever it is: cooked content, or a project.
@@ -87,19 +100,24 @@ impl ContentRoot {
         } else if dir.is_dir() {
             Ok(Self::project(dir))
         } else {
-            Err(io::Error::new(io::ErrorKind::NotFound, format!("{} does not exist", dir.display())))
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("{} does not exist", dir.display()),
+            ))
         }
     }
 
     /// Find this process's content. See the module doc for the order.
     pub fn discover() -> Result<Self, String> {
         if let Some(dir) = std::env::var_os(CONTENT_DIR_ENV).filter(|v| !v.is_empty()) {
-            return Self::packaged(PathBuf::from(dir)).map_err(|e| format!("{CONTENT_DIR_ENV}: {e}"));
+            return Self::packaged(PathBuf::from(dir))
+                .map_err(|e| format!("{CONTENT_DIR_ENV}: {e}"));
         }
         if let Some(dir) = std::env::var_os(PROJECT_ROOT_ENV).filter(|v| !v.is_empty()) {
             return Ok(Self::project(PathBuf::from(dir)));
         }
-        let exe = std::env::current_exe().map_err(|e| format!("cannot locate the executable: {e}"))?;
+        let exe =
+            std::env::current_exe().map_err(|e| format!("cannot locate the executable: {e}"))?;
         let exe_dir = exe.parent().map(Path::to_path_buf).unwrap_or_default();
         Self::discover_from(&exe_dir, std::env::current_dir().ok().as_deref())
     }
@@ -292,21 +310,34 @@ mod tests {
         // A packaged game: <dir>/Content/game.pak next to the exe.
         let shipped = tmp.path().join("shipped");
         std::fs::create_dir_all(shipped.join(CONTENT_DIR_NAME)).unwrap();
-        let mut pak = PakWriter::create(shipped.join(CONTENT_DIR_NAME).join(PAK_FILE_NAME)).unwrap();
-        pak.add(PROJECT_SETTINGS_FILE, br#"{"startup_level":"scenes/a.level"}"#).unwrap();
+        let mut pak =
+            PakWriter::create(shipped.join(CONTENT_DIR_NAME).join(PAK_FILE_NAME)).unwrap();
+        pak.add(
+            PROJECT_SETTINGS_FILE,
+            br#"{"startup_level":"scenes/a.level"}"#,
+        )
+        .unwrap();
         pak.add("assets/meshes/a.mesh", b"mesh").unwrap();
         pak.finish().unwrap();
         let found = ContentRoot::discover_from(&shipped, Some(&project)).unwrap();
         assert!(found.is_packaged());
         assert!(found.pak().is_some());
-        assert_eq!(found.settings().startup_level.as_deref(), Some("scenes/a.level"));
+        assert_eq!(
+            found.settings().startup_level.as_deref(),
+            Some("scenes/a.level")
+        );
         assert!(found.exists("assets/meshes/a.mesh"));
         assert_eq!(found.read("assets/meshes/a.mesh").unwrap(), b"mesh");
 
         // Nothing around: the working directory, then an error.
         let lost = tmp.path().join("lost");
         std::fs::create_dir_all(&lost).unwrap();
-        assert_eq!(ContentRoot::discover_from(&lost, Some(&project)).unwrap().root(), project);
+        assert_eq!(
+            ContentRoot::discover_from(&lost, Some(&project))
+                .unwrap()
+                .root(),
+            project
+        );
         assert!(ContentRoot::discover_from(&lost, None).is_err());
     }
 
@@ -323,10 +354,19 @@ mod tests {
 
         let assets = root.asset_root_in(&tmp.path().join("cache")).unwrap();
         // Unpacked once: a second call finds the cache complete.
-        assert_eq!(root.asset_root_in(&tmp.path().join("cache")).unwrap(), assets);
+        assert_eq!(
+            root.asset_root_in(&tmp.path().join("cache")).unwrap(),
+            assets
+        );
         assert!(assets.starts_with(tmp.path().join("cache")));
-        assert_eq!(std::fs::read(assets.join("assets/meshes/a.mesh")).unwrap(), b"mesh");
-        assert!(!assets.join("scenes/a.level").exists(), "only assets are unpacked");
+        assert_eq!(
+            std::fs::read(assets.join("assets/meshes/a.mesh")).unwrap(),
+            b"mesh"
+        );
+        assert!(
+            !assets.join("scenes/a.level").exists(),
+            "only assets are unpacked"
+        );
 
         // Loose content is its own asset root.
         let loose = ContentRoot::project(tmp.path());

@@ -22,7 +22,10 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
     let terrain = VoxelTerrainComponent::default();
     assert_eq!(terrain.domain_mode, 1);
     // New terrain rows start as a 4 km plane of Helio's terrain generator.
-    assert_eq!(terrain.generator.id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
+    assert_eq!(
+        terrain.generator.id,
+        helio_voxel_data::VOXEL_TERRAIN_GENERATOR
+    );
     assert_eq!(terrain.voxel_size, 0.1);
     let terrain_json = serde_json::to_value(&terrain).expect("serialize terrain component");
     let terrain_restored: VoxelTerrainComponent =
@@ -45,17 +48,40 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
 #[test]
 fn the_inspector_shows_world_generation_and_editing_only() {
     let terrain = VoxelTerrainComponent::default();
-    let names: Vec<_> = terrain.get_properties().iter().map(|property| property.name).collect();
+    let names: Vec<_> = terrain
+        .get_properties()
+        .iter()
+        .map(|property| property.name)
+        .collect();
     assert_eq!(
         names,
-        ["enabled", "shape", "planet_radius", "plane_size", "voxel_size", "generator", "seed", "editable"]
+        [
+            "enabled",
+            "shape",
+            "planet_radius",
+            "plane_size",
+            "voxel_size",
+            "generator",
+            "seed",
+            "editable"
+        ]
     );
     // Chunk layout, LOD and bookkeeping stay serialized but internal.
     let json = serde_json::to_value(&terrain).unwrap();
-    for key in ["generator_id", "generator_version", "chunk_edge_voxels", "max_chunk_lod", "lod_scale", "source_revision"] {
+    for key in [
+        "generator_id",
+        "generator_version",
+        "chunk_edge_voxels",
+        "max_chunk_lod",
+        "lod_scale",
+        "source_revision",
+    ] {
         assert!(json.get(key).is_some(), "{key} is serialized");
     }
-    assert!(json.get("generator").is_none(), "the generator reference is flattened");
+    assert!(
+        json.get("generator").is_none(),
+        "the generator reference is flattened"
+    );
 }
 
 #[test]

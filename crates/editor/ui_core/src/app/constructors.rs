@@ -102,13 +102,12 @@ impl PulsarApp {
         // their declarations through the shared editor API so Blueprint and
         // other dynamically loaded editors do not need their own inventory
         // copy (which cannot see host registrations across a DLL boundary).
-        let mut component_events: Vec<_> =
-            pulsar_world_registry::component_event_registrations()
-                .map(|registration| plugin_editor_api::ComponentEventMetadata {
-                    component_class: registration.class_name.to_owned(),
-                    event: (registration.declaration)(),
-                })
-                .collect();
+        let mut component_events: Vec<_> = pulsar_world_registry::component_event_registrations()
+            .map(|registration| plugin_editor_api::ComponentEventMetadata {
+                component_class: registration.class_name.to_owned(),
+                event: (registration.declaration)(),
+            })
+            .collect();
         component_events.sort_by(|a, b| {
             (&a.component_class, &a.event.name).cmp(&(&b.component_class, &b.event.name))
         });

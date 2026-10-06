@@ -3,9 +3,8 @@
 //! `#[engine_class]` components are.
 
 use pulsar_reflection::{
-    ComponentMethodRegistration, EngineClass, EngineClassRegistration, MethodMetadata,
-    MethodParameter, MethodFlags, MethodReturnType, PropertyMetadata, RuntimeTypeInfo,
-    RUNTIME_TYPE_REGISTRY,
+    ComponentMethodRegistration, EngineClass, EngineClassRegistration, MethodFlags, MethodMetadata,
+    MethodParameter, MethodReturnType, PropertyMetadata, RuntimeTypeInfo, RUNTIME_TYPE_REGISTRY,
 };
 use pulsar_scenedb::{component_id, Entity, World};
 use pulsar_world_registry::WorldComponentRegistration;
@@ -100,7 +99,10 @@ fn vm_probe_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
     world.get::<VmProbe>(entity).map(|c| c as &dyn EngineClass)
 }
 
-fn vm_probe_get_mut(world: &mut World, entity: Entity) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
+fn vm_probe_get_mut(
+    world: &mut World,
+    entity: Entity,
+) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
     pulsar_world_registry::EngineClassMut::of::<VmProbe>(world, entity)
 }
 
@@ -143,4 +145,3 @@ pulsar_reflection::inventory::submit! {
         methods: <VmProbe as EngineClass>::get_methods,
     }
 }
-

@@ -38,22 +38,40 @@ fn hit() -> EventSignature {
 }
 
 fn handler(asm: &mut Asm, name: &str, params: Vec<Type>) -> u32 {
-    asm.function(name, params, Type::Unit, vec![], vec![Return { value: None }])
+    asm.function(
+        name,
+        params,
+        Type::Unit,
+        vec![],
+        vec![Return { value: None }],
+    )
 }
 
 fn subscribe(asm: &mut Asm, event: &str, handler: u32, scope: SubscriptionScope) {
-    asm.module.subscriptions.push(Subscription { event: EventRef::Name(event.into()), handler, scope });
+    asm.module.subscriptions.push(Subscription {
+        event: EventRef::Name(event.into()),
+        handler,
+        scope,
+    });
 }
 
 fn link(asm: &Asm, catalog: Option<&dyn EventCatalog>) -> Result<Program, LinkError> {
-    Program::link_with_events(Arc::new(asm.module.clone()), &NativeRegistry::with_engine_natives(), catalog)
+    Program::link_with_events(
+        Arc::new(asm.module.clone()),
+        &NativeRegistry::with_engine_natives(),
+        catalog,
+    )
 }
 
 #[test]
 fn handlers_are_checked_against_the_catalog() {
     let catalog = Catalog(vec![hit()]);
     let mut asm = Asm::new();
-    let full = handler(&mut asm, "on_hit", vec![Type::Entity, Type::Entity, Type::Float]);
+    let full = handler(
+        &mut asm,
+        "on_hit",
+        vec![Type::Entity, Type::Entity, Type::Float],
+    );
     let prefix = handler(&mut asm, "on_hit_short", vec![Type::Entity]);
     let none = handler(&mut asm, "on_hit_none", vec![]);
     subscribe(&mut asm, "Hit", full, SubscriptionScope::Self_);
@@ -77,14 +95,25 @@ fn handlers_are_checked_against_the_catalog() {
     assert!(err.to_string().contains("parameter 0 is float"), "{err}");
 
     let mut asm = Asm::new();
-    let bad = handler(&mut asm, "on_hit", vec![Type::Entity, Type::Entity, Type::Float, Type::Int]);
+    let bad = handler(
+        &mut asm,
+        "on_hit",
+        vec![Type::Entity, Type::Entity, Type::Float, Type::Int],
+    );
     subscribe(&mut asm, "Hit", bad, SubscriptionScope::Self_);
-    assert!(link(&asm, Some(&catalog)).err().unwrap().to_string().contains("takes 4 parameters"));
+    assert!(link(&asm, Some(&catalog))
+        .err()
+        .unwrap()
+        .to_string()
+        .contains("takes 4 parameters"));
 
     let mut asm = Asm::new();
     let h = handler(&mut asm, "on_nope", vec![]);
     subscribe(&mut asm, "Nope", h, SubscriptionScope::Global);
-    assert!(matches!(link(&asm, Some(&catalog)), Err(LinkError::UnknownEvent { .. })));
+    assert!(matches!(
+        link(&asm, Some(&catalog)),
+        Err(LinkError::UnknownEvent { .. })
+    ));
     // Without a catalog, events the module does not declare are checked later.
     assert!(link(&asm, None).is_ok());
 }
@@ -94,36 +123,77 @@ fn declared_events_are_verified_locally() {
     let mut asm = Asm::new();
     asm.module.events.push(EventDecl {
         name: "Door.Opened".into(),
-        fields: vec![EventField::new("by", Type::Entity), EventField::new("code", Type::Int)],
+        fields: vec![
+            EventField::new("by", Type::Entity),
+            EventField::new("code", Type::Int),
+        ],
     });
     let good = handler(&mut asm, "on_open", vec![Type::Entity, Type::Int]);
     subscribe(&mut asm, "Door.Opened", good, SubscriptionScope::Self_);
     let program = link(&asm, None).expect("links without a catalog");
-    assert_eq!(program.subscriptions()[0].event_id, None, "ids come from the engine");
+    assert_eq!(
+        program.subscriptions()[0].event_id,
+        None,
+        "ids come from the engine"
+    );
 
     let bad = handler(&mut asm, "on_open_bad", vec![Type::Int]);
     subscribe(&mut asm, "Door.Opened", bad, SubscriptionScope::Self_);
     let err = link(&asm, None).err().unwrap().to_string();
-    assert!(err.contains("on_open_bad") && err.contains("parameter 0 is int"), "{err}");
+    assert!(
+        err.contains("on_open_bad") && err.contains("parameter 0 is int"),
+        "{err}"
+    );
 
     // Bad declarations.
     let mut asm = Asm::new();
-    asm.module.events.push(EventDecl { name: "E".into(), fields: vec![EventField::new("v", Type::object("Vec3"))] });
-    assert!(link(&asm, None).err().unwrap().to_string().contains("event fields are"));
+    asm.module.events.push(EventDecl {
+        name: "E".into(),
+        fields: vec![EventField::new("v", Type::object("Vec3"))],
+    });
+    assert!(link(&asm, None)
+        .err()
+        .unwrap()
+        .to_string()
+        .contains("event fields are"));
     let mut asm = Asm::new();
-    asm.module.events.push(EventDecl { name: "E".into(), fields: vec![] });
-    asm.module.events.push(EventDecl { name: "E".into(), fields: vec![] });
-    assert!(link(&asm, None).err().unwrap().to_string().contains("declared twice"));
+    asm.module.events.push(EventDecl {
+        name: "E".into(),
+        fields: vec![],
+    });
+    asm.module.events.push(EventDecl {
+        name: "E".into(),
+        fields: vec![],
+    });
+    assert!(link(&asm, None)
+        .err()
+        .unwrap()
+        .to_string()
+        .contains("declared twice"));
 
     // A handler must return unit and be in range.
     let mut asm = Asm::new();
-    let f = asm.function("f", vec![], Type::Int, vec![Type::Int], vec![Const { dst: 0, index: 0 }, Return { value: Some(0) }]);
+    let f = asm.function(
+        "f",
+        vec![],
+        Type::Int,
+        vec![Type::Int],
+        vec![Const { dst: 0, index: 0 }, Return { value: Some(0) }],
+    );
     asm.constant(Constant::Int(1));
     subscribe(&mut asm, "Hit", f, SubscriptionScope::Global);
-    assert!(link(&asm, None).err().unwrap().to_string().contains("must return unit"));
+    assert!(link(&asm, None)
+        .err()
+        .unwrap()
+        .to_string()
+        .contains("must return unit"));
     let mut asm = Asm::new();
     subscribe(&mut asm, "Hit", 9, SubscriptionScope::Global);
-    assert!(link(&asm, None).err().unwrap().to_string().contains("out of range"));
+    assert!(link(&asm, None)
+        .err()
+        .unwrap()
+        .to_string()
+        .contains("out of range"));
 }
 
 #[test]
@@ -131,12 +201,18 @@ fn format_v1_modules_still_load_and_v2_round_trips() {
     let mut v1 = Module::new("old");
     v1.format_version = 1;
     let json = v1.to_json().unwrap();
-    assert!(!json.contains("subscriptions"), "empty tables are not written");
+    assert!(
+        !json.contains("subscriptions"),
+        "empty tables are not written"
+    );
     let back = Module::from_json(&json).unwrap();
     assert!(Program::link(Arc::new(back), &NativeRegistry::new()).is_ok());
 
     let mut asm = Asm::new();
-    asm.module.events.push(EventDecl { name: "E".into(), fields: vec![EventField::new("x", Type::Float)] });
+    asm.module.events.push(EventDecl {
+        name: "E".into(),
+        fields: vec![EventField::new("x", Type::Float)],
+    });
     let h = handler(&mut asm, "on_e", vec![Type::Float]);
     subscribe(&mut asm, "E", h, SubscriptionScope::Self_);
     assert_eq!(asm.module.format_version, FORMAT_VERSION);
@@ -145,7 +221,10 @@ fn format_v1_modules_still_load_and_v2_round_trips() {
     assert_eq!(Module::from_json(&json).unwrap(), asm.module);
     // Scope defaults to global.
     let json = json.replace(",\n      \"scope\": \"Self\"", "");
-    assert_eq!(Module::from_json(&json).unwrap().subscriptions[0].scope, SubscriptionScope::Global);
+    assert_eq!(
+        Module::from_json(&json).unwrap().subscriptions[0].scope,
+        SubscriptionScope::Global
+    );
 
     let mut future = Module::new("future");
     future.format_version = FORMAT_VERSION + 1;
@@ -160,7 +239,10 @@ impl EventSink for Recorder {
         if name == "Bad" {
             return Err("fields do not match `Bad`".into());
         }
-        self.0.lock().unwrap().push((target, name.into(), fields.to_vec()));
+        self.0
+            .lock()
+            .unwrap()
+            .push((target, name.into(), fields.to_vec()));
         Ok(())
     }
 }
@@ -168,9 +250,29 @@ impl EventSink for Recorder {
 #[test]
 fn event_natives_are_polymorphic_and_fail_cleanly() {
     let mut asm = Asm::new();
-    let emit = asm.import("event::emit", vec![Param::new(Type::Str), Param::new(Type::Int), Param::new(Type::Bool)], Type::Unit);
-    let send = asm.import("event::send", vec![Param::new(Type::Entity), Param::new(Type::Str), Param::new(Type::Float)], Type::Unit);
-    let class = asm.import("event::emit_to_class", vec![Param::new(Type::Str), Param::new(Type::Str)], Type::Unit);
+    let emit = asm.import(
+        "event::emit",
+        vec![
+            Param::new(Type::Str),
+            Param::new(Type::Int),
+            Param::new(Type::Bool),
+        ],
+        Type::Unit,
+    );
+    let send = asm.import(
+        "event::send",
+        vec![
+            Param::new(Type::Entity),
+            Param::new(Type::Str),
+            Param::new(Type::Float),
+        ],
+        Type::Unit,
+    );
+    let class = asm.import(
+        "event::emit_to_class",
+        vec![Param::new(Type::Str), Param::new(Type::Str)],
+        Type::Unit,
+    );
     let name = asm.constant(Constant::Str("Ping".into()));
     let bad = asm.constant(Constant::Str("Bad".into()));
     let klass = asm.constant(Constant::Str("Enemy".into()));
@@ -181,17 +283,48 @@ fn event_natives_are_polymorphic_and_fail_cleanly() {
         "go",
         vec![],
         Type::Unit,
-        vec![Type::Str, Type::Int, Type::Bool, Type::Entity, Type::Float, Type::Str],
         vec![
-            Const { dst: 0, index: name },
-            Const { dst: 1, index: seven },
+            Type::Str,
+            Type::Int,
+            Type::Bool,
+            Type::Entity,
+            Type::Float,
+            Type::Str,
+        ],
+        vec![
+            Const {
+                dst: 0,
+                index: name,
+            },
+            Const {
+                dst: 1,
+                index: seven,
+            },
             Const { dst: 2, index: yes },
-            CallNative { import: emit, args: vec![0, 1, 2], dst: None },
+            CallNative {
+                import: emit,
+                args: vec![0, 1, 2],
+                dst: None,
+            },
             SelfEntity { dst: 3 },
-            Const { dst: 4, index: half },
-            CallNative { import: send, args: vec![3, 0, 4], dst: None },
-            Const { dst: 5, index: klass },
-            CallNative { import: class, args: vec![5, 0], dst: None },
+            Const {
+                dst: 4,
+                index: half,
+            },
+            CallNative {
+                import: send,
+                args: vec![3, 0, 4],
+                dst: None,
+            },
+            Const {
+                dst: 5,
+                index: klass,
+            },
+            CallNative {
+                import: class,
+                args: vec![5, 0],
+                dst: None,
+            },
             Return { value: None },
         ],
     );
@@ -202,9 +335,16 @@ fn event_natives_are_polymorphic_and_fail_cleanly() {
         vec![Type::Str, Type::Int, Type::Bool],
         vec![
             Const { dst: 0, index: bad },
-            Const { dst: 1, index: seven },
+            Const {
+                dst: 1,
+                index: seven,
+            },
             Const { dst: 2, index: yes },
-            CallNative { import: emit, args: vec![0, 1, 2], dst: None },
+            CallNative {
+                import: emit,
+                args: vec![0, 1, 2],
+                dst: None,
+            },
             Return { value: None },
         ],
     );
@@ -215,7 +355,15 @@ fn event_natives_are_polymorphic_and_fail_cleanly() {
     let mut vm = Vm::new();
     let mut instance = program.instantiate();
     let mut host = Host::new(&mut world, me).with_events(Some(&recorder));
-    vm.call(&program, &mut instance, program.entry("go").unwrap(), &[], &mut host, &mut Budget::new(1000)).unwrap();
+    vm.call(
+        &program,
+        &mut instance,
+        program.entry("go").unwrap(),
+        &[],
+        &mut host,
+        &mut Budget::new(1000),
+    )
+    .unwrap();
     let got = recorder.0.lock().unwrap().clone();
     assert_eq!(got.len(), 3);
     assert_eq!(got[0].0, EventTarget::Global);
@@ -227,24 +375,60 @@ fn event_natives_are_polymorphic_and_fail_cleanly() {
 
     // A refused call is a script error.
     let mut host = Host::new(&mut world, me).with_events(Some(&recorder));
-    let err = vm.call(&program, &mut instance, program.entry("bad").unwrap(), &[], &mut host, &mut Budget::new(1000)).unwrap_err();
-    assert!(err.to_string().contains("event::emit") && err.to_string().contains("do not match"), "{err}");
+    let err = vm
+        .call(
+            &program,
+            &mut instance,
+            program.entry("bad").unwrap(),
+            &[],
+            &mut host,
+            &mut Budget::new(1000),
+        )
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("event::emit") && err.to_string().contains("do not match"),
+        "{err}"
+    );
     // No hub: also a script error.
     let mut host = Host::new(&mut world, Entity::DANGLING);
-    let err = vm.call(&program, &mut instance, program.entry("go").unwrap(), &[], &mut host, &mut Budget::new(1000)).unwrap_err();
+    let err = vm
+        .call(
+            &program,
+            &mut instance,
+            program.entry("go").unwrap(),
+            &[],
+            &mut host,
+            &mut Budget::new(1000),
+        )
+        .unwrap_err();
     assert!(err.to_string().contains("no event hub"), "{err}");
 }
 
 #[test]
 fn a_poly_native_can_be_imported_under_several_tags() {
     let mut asm = Asm::new();
-    asm.import("event::emit@A", vec![Param::new(Type::Str), Param::new(Type::Int)], Type::Unit);
-    asm.import("event::emit@B", vec![Param::new(Type::Str), Param::new(Type::Float)], Type::Unit);
-    assert!(Program::link(Arc::new(asm.module.clone()), &NativeRegistry::with_engine_natives()).is_ok());
+    asm.import(
+        "event::emit@A",
+        vec![Param::new(Type::Str), Param::new(Type::Int)],
+        Type::Unit,
+    );
+    asm.import(
+        "event::emit@B",
+        vec![Param::new(Type::Str), Param::new(Type::Float)],
+        Type::Unit,
+    );
+    assert!(Program::link(
+        Arc::new(asm.module.clone()),
+        &NativeRegistry::with_engine_natives()
+    )
+    .is_ok());
     let mut asm = Asm::new();
     asm.import("event::nope@A", vec![Param::new(Type::Str)], Type::Unit);
     assert!(matches!(
-        Program::link(Arc::new(asm.module.clone()), &NativeRegistry::with_engine_natives()),
+        Program::link(
+            Arc::new(asm.module.clone()),
+            &NativeRegistry::with_engine_natives()
+        ),
         Err(LinkError::MissingNative { .. })
     ));
 }
@@ -253,14 +437,22 @@ fn a_poly_native_can_be_imported_under_several_tags() {
 fn poly_natives_reject_bad_import_signatures() {
     let registry = NativeRegistry::with_engine_natives();
     for (params, ret) in [
-        (vec![Param::new(Type::Int)], Type::Unit),                              // fixed part wrong
-        (vec![Param::new(Type::Str)], Type::Int),                               // return type
-        (vec![Param::new(Type::Str), Param::new(Type::Unit)], Type::Unit), // not a field type
-        (vec![Param::new(Type::Str), Param::inout(Type::Int)], Type::Unit),       // inout
+        (vec![Param::new(Type::Int)], Type::Unit), // fixed part wrong
+        (vec![Param::new(Type::Str)], Type::Int),  // return type
+        (
+            vec![Param::new(Type::Str), Param::new(Type::Unit)],
+            Type::Unit,
+        ), // not a field type
+        (
+            vec![Param::new(Type::Str), Param::inout(Type::Int)],
+            Type::Unit,
+        ), // inout
     ] {
         let mut asm = Asm::new();
         asm.import("event::emit", params, ret);
-        let err = Program::link(Arc::new(asm.module.clone()), &registry).err().expect("rejected");
+        let err = Program::link(Arc::new(asm.module.clone()), &registry)
+            .err()
+            .expect("rejected");
         assert!(matches!(err, LinkError::PolyNative { .. }), "{err}");
     }
 }

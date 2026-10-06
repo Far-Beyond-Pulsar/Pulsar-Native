@@ -13,8 +13,8 @@
 //! bounded time for it. Same polling code, same thread, just sampled at the last
 //! possible moment.
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::thread::Thread;
 use std::time::{Duration, Instant};
 
@@ -92,8 +92,8 @@ pub(crate) fn latch_now() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
 
     /// A stand-in input thread that would only poll every 200 ms on its own.
     /// `latch_now` must get a fresh iteration out of it almost immediately, and

@@ -207,7 +207,11 @@ impl TickLoop {
             reload_armed: false,
             paused: false,
             pending_steps: 0,
-            last_time: GameTime { elapsed: std::time::Duration::ZERO, delta: std::time::Duration::ZERO, tick: 0 },
+            last_time: GameTime {
+                elapsed: std::time::Duration::ZERO,
+                delta: std::time::Duration::ZERO,
+                tick: 0,
+            },
             script_problems: Vec::new(),
             collect_problems: false,
             script_stats: ScriptStats::default(),
@@ -247,7 +251,11 @@ impl TickLoop {
             reload_armed: false,
             paused: false,
             pending_steps: 0,
-            last_time: GameTime { elapsed: std::time::Duration::ZERO, delta: std::time::Duration::ZERO, tick: 0 },
+            last_time: GameTime {
+                elapsed: std::time::Duration::ZERO,
+                delta: std::time::Duration::ZERO,
+                tick: 0,
+            },
             script_problems: Vec::new(),
             collect_problems: false,
             script_stats: ScriptStats::default(),
@@ -265,7 +273,10 @@ impl TickLoop {
     pub fn tick_once(&mut self) -> GameTime {
         if self.paused {
             if self.pending_steps == 0 {
-                return GameTime { delta: std::time::Duration::ZERO, ..self.last_time };
+                return GameTime {
+                    delta: std::time::Duration::ZERO,
+                    ..self.last_time
+                };
             }
             self.pending_steps -= 1;
             let delta = match self.mode {
@@ -432,7 +443,9 @@ impl TickLoop {
         // scene: `tick_once` only runs after `spawn_ecs_thread`, once the
         // window is ready. Errors are per instance and logged.
         if let Some(driver) = &self.scripts {
-            let mut driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut driver = driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             // Locks the scene itself, in short exclusive stretches around a
             // shared one (see `ScriptDriver::run_frame_shared`).
             let report = driver.run_frame_shared(&self.scene_store, time.delta.as_secs_f64());
@@ -477,7 +490,8 @@ impl TickLoop {
     /// Queue an input event (a `pulsar_events::builtin::KeyDown`, ...) on
     /// the global channel; delivered at the next tick's first flush.
     pub fn publish_input<T: pulsar_events::gamma::Event + Send>(&self, event: T) {
-        self.events.publish(pulsar_events::gamma::Channel::Global, event);
+        self.events
+            .publish(pulsar_events::gamma::Channel::Global, event);
     }
 
     /// Block the calling thread, running the tick loop at the target rate.
@@ -532,7 +546,9 @@ impl TickLoop {
     /// and capability allowlist of its project settings. Idempotent. The
     /// generated `engine_main::setup()` calls this; nothing about the
     /// project's location is compiled into the game.
-    pub fn enable_project_scripting(&mut self) -> Result<Arc<Mutex<crate::scripting::ScriptDriver>>, String> {
+    pub fn enable_project_scripting(
+        &mut self,
+    ) -> Result<Arc<Mutex<crate::scripting::ScriptDriver>>, String> {
         if let Some(driver) = &self.scripts {
             return Ok(Arc::clone(driver));
         }
@@ -559,7 +575,9 @@ impl TickLoop {
     /// session leaves nothing on its hub.
     pub fn end_scripts(&mut self) {
         if let Some(driver) = &self.scripts {
-            let mut driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut driver = driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             let mut store = self.scene_store.write();
             driver.end_play_all(&mut store.world);
         }

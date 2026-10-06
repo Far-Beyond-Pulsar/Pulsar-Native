@@ -3,8 +3,8 @@
 //! This module provides atomic-based input state tracking with zero mutex contention,
 //! enabling high-performance camera controls with latency tracking.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
+use std::sync::Arc;
 
 use super::components::camera_selector::CameraSpeedControl;
 

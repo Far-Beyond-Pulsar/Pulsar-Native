@@ -143,7 +143,11 @@ fn scene_from(saved: &Saved) -> World {
     for (id, parent) in saved {
         let parent = parent.as_deref().map(|p| world.entity_for(p).unwrap());
         world
-            .spawn_object(SpawnObject::new(id.as_str()).with_id(id.as_str()).with_parent(parent))
+            .spawn_object(
+                SpawnObject::new(id.as_str())
+                    .with_id(id.as_str())
+                    .with_parent(parent),
+            )
             .unwrap();
     }
     world

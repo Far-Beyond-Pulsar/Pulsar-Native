@@ -13,7 +13,9 @@ use crate::plugin::EditorPlugin;
 pub use pulsar_script_vm::NativeRegistry;
 
 /// How bad a [`CompileDiagnostic`] is.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum DiagnosticSeverity {
     /// The class does not compile; the project does not build.
@@ -42,7 +44,13 @@ pub struct CompileDiagnostic {
 
 impl CompileDiagnostic {
     pub fn error(class: Option<String>, file: Option<PathBuf>, message: impl Into<String>) -> Self {
-        Self { severity: DiagnosticSeverity::Error, class, file, location: None, message: message.into() }
+        Self {
+            severity: DiagnosticSeverity::Error,
+            class,
+            file,
+            location: None,
+            message: message.into(),
+        }
     }
 
     pub fn is_error(&self) -> bool {
@@ -101,7 +109,11 @@ pub trait ScriptLanguage: Send + Sync {
     /// against. Returns every problem found; any
     /// [error](CompileDiagnostic::is_error) means the project does not
     /// build. The default compiles nothing.
-    fn compile_project(&self, project_root: &Path, natives: &NativeRegistry) -> Vec<CompileDiagnostic> {
+    fn compile_project(
+        &self,
+        project_root: &Path,
+        natives: &NativeRegistry,
+    ) -> Vec<CompileDiagnostic> {
         let _ = (project_root, natives);
         Vec::new()
     }
@@ -147,7 +159,10 @@ pub use inventory;
 /// Every linked scripting language, by id (a language linked twice counts
 /// once).
 pub fn linked_script_languages() -> Vec<Arc<dyn ScriptLanguage>> {
-    let mut languages: Vec<Arc<dyn ScriptLanguage>> = inventory::iter::<LinkedScriptLanguage>.into_iter().map(|l| (l.create)()).collect();
+    let mut languages: Vec<Arc<dyn ScriptLanguage>> = inventory::iter::<LinkedScriptLanguage>
+        .into_iter()
+        .map(|l| (l.create)())
+        .collect();
     languages.sort_by(|a, b| a.id().cmp(b.id()));
     languages.dedup_by(|a, b| a.id() == b.id());
     languages

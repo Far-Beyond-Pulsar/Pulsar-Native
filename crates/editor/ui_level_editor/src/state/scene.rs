@@ -7,12 +7,10 @@
 //! (running on the GPUI main thread) can detect changes made by background
 //! threads (AI tools, asset import, etc.) and trigger a re-render.
 
-use crate::scene_edit::{
-    self, ObjectId, SceneHistoryDelta, SceneHistorySnapshot, SceneObjectData,
-};
 use crate::scene_edit::history::VoxelEditJournal;
-use engine_backend::scene::SharedScene;
+use crate::scene_edit::{self, ObjectId, SceneHistoryDelta, SceneHistorySnapshot, SceneObjectData};
 use engine_backend::scene::SceneWorldExt;
+use engine_backend::scene::SharedScene;
 use parking_lot::{
     MappedRwLockReadGuard, MappedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
@@ -263,7 +261,9 @@ impl SceneDomain {
     /// Commit a voxel append-range without capturing the terrain component.
     pub fn commit_voxel_journal(&mut self, journal: VoxelEditJournal) {
         self.voxel_undo.push_back(journal);
-        if self.voxel_undo.len() > MAX_UNDO_HISTORY { self.voxel_undo.pop_front(); }
+        if self.voxel_undo.len() > MAX_UNDO_HISTORY {
+            self.voxel_undo.pop_front();
+        }
         self.voxel_redo.clear();
     }
 
@@ -341,15 +341,26 @@ impl SceneDomain {
     fn apply_voxel_journal(&mut self, journal: &VoxelEditJournal, redo: bool) -> bool {
         let mut world = self.world_mut();
         for entry in &journal.entries {
-            let Some(entity) = world.entity_for(&entry.id) else { return false; };
-            let Some(mut terrain) = world.get_mut::<helio_component::VoxelTerrainComponent>(entity) else { return false; };
+            let Some(entity) = world.entity_for(&entry.id) else {
+                return false;
+            };
+            let Some(mut terrain) = world.get_mut::<helio_component::VoxelTerrainComponent>(entity)
+            else {
+                return false;
+            };
             if redo {
-                if terrain.edits.len() != entry.before_len { return false; }
+                if terrain.edits.len() != entry.before_len {
+                    return false;
+                }
                 terrain.edits.extend(entry.edits.iter().cloned());
                 terrain.source_revision = entry.after_revision;
             } else {
-                if terrain.edits.len() < entry.before_len + entry.edits.len() { return false; }
-                while terrain.edits.len() > entry.before_len { terrain.edits.pop(); }
+                if terrain.edits.len() < entry.before_len + entry.edits.len() {
+                    return false;
+                }
+                while terrain.edits.len() > entry.before_len {
+                    terrain.edits.pop();
+                }
                 terrain.source_revision = entry.before_revision;
             }
         }

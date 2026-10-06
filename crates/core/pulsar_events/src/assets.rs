@@ -69,7 +69,11 @@ impl AssetUpdated {
 pub fn descriptor() -> EventDescriptor {
     EventDescriptor::dynamic(
         "AssetUpdated",
-        [("kind", FieldType::Str), ("id", FieldType::Str), ("path", FieldType::Str)],
+        [
+            ("kind", FieldType::Str),
+            ("id", FieldType::Str),
+            ("path", FieldType::Str),
+        ],
     )
 }
 
@@ -87,7 +91,11 @@ fn registered(bus: &HostBus) -> Option<u64> {
 
 fn to_dyn(event: &AssetUpdated, id: u64) -> DynEvent {
     let kind = serde_json::to_string(&event.kind).unwrap_or_default();
-    let path = event.path.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let path = event
+        .path
+        .as_ref()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
     DynEvent::new(
         id,
         vec![
@@ -99,7 +107,8 @@ fn to_dyn(event: &AssetUpdated, id: u64) -> DynEvent {
 }
 
 fn from_dyn(event: &DynEvent) -> Option<AssetUpdated> {
-    let [DynValue::Str(kind), DynValue::Str(id), DynValue::Str(path)] = event.fields.as_slice() else {
+    let [DynValue::Str(kind), DynValue::Str(id), DynValue::Str(path)] = event.fields.as_slice()
+    else {
         return None;
     };
     Some(AssetUpdated {
@@ -204,7 +213,10 @@ mod tests {
             assert_eq!(e.path, None);
             s.fetch_add(1, Ordering::SeqCst);
         });
-        publish_asset_updated_on(&plugin, &AssetUpdated::new(AssetKind::Blueprint).with_id("guid"));
+        publish_asset_updated_on(
+            &plugin,
+            &AssetUpdated::new(AssetKind::Blueprint).with_id("guid"),
+        );
         assert_eq!(seen.load(Ordering::SeqCst), 1);
 
         let back = Arc::new(AtomicUsize::new(0));
@@ -213,7 +225,10 @@ mod tests {
             assert_eq!(e.path.as_deref(), Some(std::path::Path::new("/m.mesh")));
             b.fetch_add(1, Ordering::SeqCst);
         });
-        publish_asset_updated_on(&host, &AssetUpdated::new(AssetKind::Mesh).with_path("/m.mesh"));
+        publish_asset_updated_on(
+            &host,
+            &AssetUpdated::new(AssetKind::Mesh).with_path("/m.mesh"),
+        );
         assert_eq!(back.load(Ordering::SeqCst), 1);
     }
 }

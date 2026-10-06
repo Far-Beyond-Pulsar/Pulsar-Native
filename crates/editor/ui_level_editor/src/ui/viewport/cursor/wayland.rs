@@ -22,9 +22,9 @@ use std::sync::{Mutex, OnceLock};
 use device_query::Keycode;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
 use wayland_client::backend::{Backend, ObjectId};
-use wayland_client::globals::{GlobalListContents, registry_queue_init};
+use wayland_client::globals::{registry_queue_init, GlobalListContents};
 use wayland_client::protocol::{wl_keyboard, wl_pointer, wl_registry, wl_seat, wl_surface};
-use wayland_client::{Connection, Dispatch, Proxy, QueueHandle, WEnum, delegate_noop};
+use wayland_client::{delegate_noop, Connection, Dispatch, Proxy, QueueHandle, WEnum};
 use wayland_protocols::wp::pointer_constraints::zv1::client::{
     zwp_locked_pointer_v1::ZwpLockedPointerV1,
     zwp_pointer_constraints_v1::{self, ZwpPointerConstraintsV1},
@@ -114,7 +114,9 @@ fn init(window: &gpui::Window) -> Option<&'static Shared> {
         tracing::warn!("[VIEWPORT] Wayland: compositor lacks pointer-constraints; the pointer won't be locked while dragging");
     }
     if relative_manager.is_none() {
-        tracing::warn!("[VIEWPORT] Wayland: compositor lacks relative-pointer; mouse-look is unavailable");
+        tracing::warn!(
+            "[VIEWPORT] Wayland: compositor lacks relative-pointer; mouse-look is unavailable"
+        );
     }
 
     let shared: &'static Shared = Box::leak(Box::new(Shared {
@@ -142,12 +144,10 @@ fn init(window: &gpui::Window) -> Option<&'static Shared> {
 
     let spawned = std::thread::Builder::new()
         .name("Wayland Input".into())
-        .spawn(move || {
-            loop {
-                if let Err(e) = queue.blocking_dispatch(&mut state) {
-                    tracing::warn!("[VIEWPORT] Wayland input dispatch ended: {e}");
-                    return;
-                }
+        .spawn(move || loop {
+            if let Err(e) = queue.blocking_dispatch(&mut state) {
+                tracing::warn!("[VIEWPORT] Wayland input dispatch ended: {e}");
+                return;
             }
         });
     if let Err(e) = spawned {
@@ -169,15 +169,21 @@ pub fn lock(window: &gpui::Window) -> bool {
     };
     let (Some(constraints), Some(pointer), Some(raw_surface)) = (
         shared.constraints.as_ref(),
-        shared.pointer.lock().unwrap_or_else(|p| p.into_inner()).clone(),
+        shared
+            .pointer
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone(),
         surface_ptr(window),
     ) else {
         return true;
     };
     // SAFETY: the surface belongs to a live window for the duration of this
     // call; the proxy only borrows it for the lock request.
-    let surface_id = unsafe { ObjectId::from_ptr(wl_surface::WlSurface::interface(), raw_surface.cast()) };
-    let Ok(surface) = surface_id.and_then(|id| wl_surface::WlSurface::from_id(&shared.conn, id)) else {
+    let surface_id =
+        unsafe { ObjectId::from_ptr(wl_surface::WlSurface::interface(), raw_surface.cast()) };
+    let Ok(surface) = surface_id.and_then(|id| wl_surface::WlSurface::from_id(&shared.conn, id))
+    else {
         tracing::warn!("[VIEWPORT] Wayland: could not wrap the window's wl_surface");
         return true;
     };
@@ -201,7 +207,12 @@ pub fn unlock() {
     let Some(shared) = shared() else {
         return;
     };
-    if let Some(locked) = shared.locked.lock().unwrap_or_else(|p| p.into_inner()).take() {
+    if let Some(locked) = shared
+        .locked
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take()
+    {
         locked.destroy();
         let _ = shared.conn.flush();
     }
@@ -228,7 +239,9 @@ pub fn held_keys() -> Vec<Keycode> {
         return Vec::new();
     };
     let keys = shared.keys.lock().unwrap_or_else(|p| p.into_inner());
-    keys.iter().filter_map(|&code| evdev_to_keycode(code)).collect()
+    keys.iter()
+        .filter_map(|&code| evdev_to_keycode(code))
+        .collect()
 }
 
 /// evdev key codes (`linux/input-event-codes.h`) of the keys the camera reads.
@@ -278,7 +291,11 @@ impl Dispatch<wl_seat::WlSeat, ()> for State {
         else {
             return;
         };
-        let mut pointer = state.shared.pointer.lock().unwrap_or_else(|p| p.into_inner());
+        let mut pointer = state
+            .shared
+            .pointer
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
         if caps.contains(wl_seat::Capability::Pointer) && pointer.is_none() {
             let new_pointer = state.seat.get_pointer(qh, ());
             if let Some(manager) = &state.relative_manager {
@@ -312,7 +329,11 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for State {
             }
             // Focus left the window: nothing it sees is held any more.
             wl_keyboard::Event::Leave { .. } => keys.clear(),
-            wl_keyboard::Event::Key { key, state: key_state, .. } => match key_state {
+            wl_keyboard::Event::Key {
+                key,
+                state: key_state,
+                ..
+            } => match key_state {
                 WEnum::Value(wl_keyboard::KeyState::Pressed) => {
                     keys.insert(key);
                 }

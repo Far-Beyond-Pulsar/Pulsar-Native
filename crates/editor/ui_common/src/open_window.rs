@@ -41,9 +41,8 @@ pub trait PulsarWindowExt: PulsarWindow {
                 let wrapper_kind = profile.wrapper();
                 let mut profile_options = profile.options();
                 // A saved position can be on a monitor that is gone.
-                profile_options.window_bounds = profile_options
-                    .window_bounds
-                    .map(|b| keep_on_screen(b, cx));
+                profile_options.window_bounds =
+                    profile_options.window_bounds.map(|b| keep_on_screen(b, cx));
                 wm.create_window(
                     request,
                     profile_options,

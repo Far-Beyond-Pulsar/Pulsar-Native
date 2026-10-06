@@ -5,16 +5,15 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use ui::{
-    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt,
-    VirtualListScrollHandle,
     button::{Button, ButtonGroup, ButtonVariants as _},
     h_flex,
     input::{InputState, TextInput},
     menu::context_menu::ContextMenuExt,
     popup_menu::PopupMenuExt as _,
-    resizable::{ResizableState, h_resizable, resizable_panel},
+    resizable::{h_resizable, resizable_panel, ResizableState},
     scroll::{Scrollbar, ScrollbarState},
-    v_flex, v_virtual_list,
+    v_flex, v_virtual_list, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _,
+    StyledExt, VirtualListScrollHandle,
 };
 
 use crate::components::commit_picker::{CommitPicker, CommitSelected};
@@ -451,12 +450,24 @@ pub fn render_file_content(
                             cx.notify();
                         },
                     ))
+                    .on_drag_move(cx.listener(
+                        move |d, _: &DragMoveEvent<plugin_editor_api::AssetPayload>, _w, cx| {
+                            d.hovered_drop_folder = d.selected_folder.clone();
+                            d.show_drop_hint = true;
+                            cx.notify();
+                        },
+                    ))
                     .drag_over::<DraggedFile>(|s, _, _, cx| {
                         s.bg(cx.theme().accent.opacity(0.12))
                             .border_1()
                             .border_color(cx.theme().accent.opacity(0.8))
                     })
                     .drag_over::<ExternalPaths>(|s, _, _, cx| {
+                        s.bg(cx.theme().accent.opacity(0.12))
+                            .border_1()
+                            .border_color(cx.theme().accent.opacity(0.8))
+                    })
+                    .drag_over::<plugin_editor_api::AssetPayload>(|s, _, _, cx| {
                         s.bg(cx.theme().accent.opacity(0.12))
                             .border_1()
                             .border_color(cx.theme().accent.opacity(0.8))
@@ -474,7 +485,21 @@ pub fn render_file_content(
                         if let Some(ref f) = d.selected_folder.clone() {
                             d.handle_external_drop_on_folder(f, ext.paths(), w, cx);
                         }
-                    }));
+                    }))
+                    .on_drop(cx.listener(
+                        move |d, asset: &plugin_editor_api::AssetPayload, w, cx| {
+                            d.show_drop_hint = false;
+                            d.hovered_drop_folder = None;
+                            if let Some(ref f) = d.selected_folder.clone() {
+                                d.handle_drop_on_folder_new(
+                                    f,
+                                    &[PathBuf::from(&asset.engine_path)],
+                                    w,
+                                    cx,
+                                );
+                            }
+                        },
+                    ));
             }
             let cd = cd.child(match d.view_mode {
                 ViewMode::Grid => render_grid_view(d, &items, w, cx).into_any_element(),
@@ -1363,6 +1388,9 @@ pub fn render_clickable_breadcrumb(
             }
             let cp = path.clone();
             let hp = path.clone();
+            let dp = path.clone();
+            let dap = path.clone();
+            let dep = path.clone();
             els.push(
                 div()
                     .text_sm()
@@ -1386,7 +1414,32 @@ pub fn render_clickable_breadcrumb(
                             .border_1()
                             .border_color(cx.theme().accent)
                     })
-                    .on_drop(cx.listener(move |_d, _: &DraggedFile, _w, _cx| {}))
+                    .drag_over::<plugin_editor_api::AssetPayload>(|s, _, _, cx| {
+                        s.bg(cx.theme().accent.opacity(0.3))
+                            .border_1()
+                            .border_color(cx.theme().accent)
+                    })
+                    .drag_over::<ExternalPaths>(|s, _, _, cx| {
+                        s.bg(cx.theme().accent.opacity(0.3))
+                            .border_1()
+                            .border_color(cx.theme().accent)
+                    })
+                    .on_drop(cx.listener(move |d, drag: &DraggedFile, w, cx| {
+                        d.handle_drop_on_folder_new(&dp, &drag.paths, w, cx);
+                    }))
+                    .on_drop(cx.listener(
+                        move |d, asset: &plugin_editor_api::AssetPayload, w, cx| {
+                            d.handle_drop_on_folder_new(
+                                &dap,
+                                &[PathBuf::from(&asset.engine_path)],
+                                w,
+                                cx,
+                            );
+                        },
+                    ))
+                    .on_drop(cx.listener(move |d, ext: &ExternalPaths, w, cx| {
+                        d.handle_external_drop_on_folder(&dep, ext.paths(), w, cx);
+                    }))
                     .on_mouse_move(cx.listener(move |d, _: &MouseMoveEvent, _w, cx| {
                         if cx.has_active_drag() {
                             d.start_breadcrumb_hover_timer(&hp, cx);

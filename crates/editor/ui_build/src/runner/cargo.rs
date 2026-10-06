@@ -34,17 +34,29 @@ pub struct Progress {
 
 impl Progress {
     pub fn new(pct: Arc<AtomicU32>, status: Arc<Mutex<String>>) -> Self {
-        Self { pct, status, from: 0, to: 100 }
+        Self {
+            pct,
+            status,
+            from: 0,
+            to: 100,
+        }
     }
 
     /// The same bar, restricted to `from..to` percent.
     pub fn slice(&self, (from, to): (u32, u32)) -> Self {
-        Self { from, to, ..self.clone() }
+        Self {
+            from,
+            to,
+            ..self.clone()
+        }
     }
 
     pub fn set(&self, internal: u32) {
         let span = self.to.saturating_sub(self.from);
-        self.pct.store(self.from + internal.min(100) * span / 100, Ordering::Relaxed);
+        self.pct.store(
+            self.from + internal.min(100) * span / 100,
+            Ordering::Relaxed,
+        );
     }
 
     pub fn status(&self, text: impl Into<String>) {
@@ -81,7 +93,10 @@ fn registry_activity(line: &str) -> Option<String> {
         .strip_prefix("Updating ")
         .or_else(|| line.strip_prefix("Locking "))?
         .replace('`', "");
-    Some(format!("Updating {}", what.rsplit('/').next().unwrap_or(&what)))
+    Some(format!(
+        "Updating {}",
+        what.rsplit('/').next().unwrap_or(&what)
+    ))
 }
 
 /// Run `cargo check` or `cargo build`, following its JSON messages for
@@ -93,11 +108,16 @@ pub fn run_compiling(
     cancel: &Arc<AtomicBool>,
 ) -> Result<(), StepError> {
     let mut cmd = command(invocation, project_root);
-    cmd.arg("--message-format=json").stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.arg("--message-format=json")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     tracing::info!("[build] {}", invocation.display());
 
     let mut child = cmd.spawn().map_err(|e| {
-        StepError::Failed(format!("Could not start cargo {}: {e}", invocation.subcommand))
+        StepError::Failed(format!(
+            "Could not start cargo {}: {e}",
+            invocation.subcommand
+        ))
     })?;
     let stdout = BufReader::new(child.stdout.take().expect("piped"));
     let stderr = BufReader::new(child.stderr.take().expect("piped"));
@@ -173,7 +193,10 @@ pub fn run_compiling(
             } else {
                 errors.join(&format!("\n\n{ERROR_SEPARATOR}\n\n"))
             };
-            Err(StepError::Failed(format!("cargo {} failed:\n\n{detail}", invocation.subcommand)))
+            Err(StepError::Failed(format!(
+                "cargo {} failed:\n\n{detail}",
+                invocation.subcommand
+            )))
         }
         Err(e) => Err(StepError::Failed(format!("Could not wait for cargo: {e}"))),
     }
@@ -192,7 +215,10 @@ pub fn run_plain(
     tracing::info!("[build] {}", invocation.display());
 
     let mut child = cmd.spawn().map_err(|e| {
-        StepError::Failed(format!("Could not start cargo {}: {e}", invocation.subcommand))
+        StepError::Failed(format!(
+            "Could not start cargo {}: {e}",
+            invocation.subcommand
+        ))
     })?;
     let stderr = BufReader::new(child.stderr.take().expect("piped"));
     let child = Arc::new(Mutex::new(child));

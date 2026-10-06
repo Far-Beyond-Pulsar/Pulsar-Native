@@ -39,9 +39,12 @@ pub mod settings;
 pub use pak::{PakEntry, PakError, PakReader, PakWriter, PAK_FILE_NAME, PAK_MAGIC, PAK_VERSION};
 pub use provider::ContentFsProvider;
 pub use registry::{AssetKind, AssetRecord, AssetRegistry, ASSET_REGISTRY_FILE};
-pub use root::{current, set_current, ContentRoot, CONTENT_DIR_NAME, CONTENT_DIR_ENV, PROJECT_ROOT_ENV};
+pub use root::{
+    current, set_current, ContentRoot, CONTENT_DIR_ENV, CONTENT_DIR_NAME, PROJECT_ROOT_ENV,
+};
 pub use settings::{
-    BuildProfile, ProjectSettings, ScriptProfileLimits, ScriptSettings, WindowSettings, PROJECT_SETTINGS_FILE,
+    BuildProfile, ProjectSettings, ScriptProfileLimits, ScriptSettings, WindowSettings,
+    PROJECT_SETTINGS_FILE,
 };
 
 /// Class GUID -> class directory index a packaged game reads instead of
@@ -70,8 +73,14 @@ mod tests {
 
     #[test]
     fn relative_paths_normalize() {
-        assert_eq!(normalize_rel("./a\\b//c.mesh").as_deref(), Some("a/b/c.mesh"));
-        assert_eq!(normalize_rel("/Pulsar/project.json").as_deref(), Some("Pulsar/project.json"));
+        assert_eq!(
+            normalize_rel("./a\\b//c.mesh").as_deref(),
+            Some("a/b/c.mesh")
+        );
+        assert_eq!(
+            normalize_rel("/Pulsar/project.json").as_deref(),
+            Some("Pulsar/project.json")
+        );
         assert_eq!(normalize_rel("../x"), None);
         assert_eq!(normalize_rel("C:/x"), None);
         assert_eq!(normalize_rel(""), None);

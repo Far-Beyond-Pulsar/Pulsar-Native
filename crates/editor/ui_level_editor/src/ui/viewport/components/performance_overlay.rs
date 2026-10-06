@@ -22,10 +22,9 @@ use std::time::Duration;
 
 use gpui::*;
 use ui::{
-    ActiveTheme, Icon, IconName, Theme,
     button::{Button, ButtonVariants as _},
     chart::AreaChart,
-    h_flex, v_flex,
+    h_flex, v_flex, ActiveTheme, Icon, IconName, Theme,
 };
 
 use super::super::performance::*;
@@ -40,12 +39,10 @@ fn every<V: 'static>(
     cx: &mut Context<V>,
     mut tick: impl FnMut(&mut V, &mut Context<V>) + 'static,
 ) -> Task<()> {
-    cx.spawn(async move |this, cx| {
-        loop {
-            cx.background_executor().timer(period).await;
-            if this.update(cx, |this, cx| tick(this, cx)).is_err() {
-                break;
-            }
+    cx.spawn(async move |this, cx| loop {
+        cx.background_executor().timer(period).await;
+        if this.update(cx, |this, cx| tick(this, cx)).is_err() {
+            break;
         }
     })
 }
@@ -196,7 +193,12 @@ impl Render for HeadlineStats {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         card(theme)
-            .child(stat_line("UI FPS", self.shown[0].clone(), ui_fps_color(self.ui_fps, theme), theme))
+            .child(stat_line(
+                "UI FPS",
+                self.shown[0].clone(),
+                ui_fps_color(self.ui_fps, theme),
+                theme,
+            ))
             .child(stat_line(
                 "Render FPS",
                 self.shown[1].clone(),
@@ -242,9 +244,18 @@ impl RenderingStats {
         let text = {
             let stats = self.stats.lock();
             [
-                format!("{:.0}", stats.mean_since(&mut self.cursor, Metric::DrawCalls)),
-                format!("{:.0}k", stats.mean_since(&mut self.cursor, Metric::Vertices) / 1000.0),
-                format!("{:.1}MB", stats.mean_since(&mut self.cursor, Metric::MemoryMb)),
+                format!(
+                    "{:.0}",
+                    stats.mean_since(&mut self.cursor, Metric::DrawCalls)
+                ),
+                format!(
+                    "{:.0}k",
+                    stats.mean_since(&mut self.cursor, Metric::Vertices) / 1000.0
+                ),
+                format!(
+                    "{:.1}MB",
+                    stats.mean_since(&mut self.cursor, Metric::MemoryMb)
+                ),
             ]
         };
         let changed = text != self.shown;
@@ -258,9 +269,24 @@ impl Render for RenderingStats {
         let theme = cx.theme();
         card(theme)
             .child(card_title("Rendering", theme))
-            .child(stat_line("Draw Calls", self.shown[0].clone(), theme.foreground, theme))
-            .child(stat_line("Vertices", self.shown[1].clone(), theme.foreground, theme))
-            .child(stat_line("GPU Memory", self.shown[2].clone(), theme.foreground, theme))
+            .child(stat_line(
+                "Draw Calls",
+                self.shown[0].clone(),
+                theme.foreground,
+                theme,
+            ))
+            .child(stat_line(
+                "Vertices",
+                self.shown[1].clone(),
+                theme.foreground,
+                theme,
+            ))
+            .child(stat_line(
+                "GPU Memory",
+                self.shown[2].clone(),
+                theme.foreground,
+                theme,
+            ))
     }
 }
 
@@ -291,7 +317,10 @@ impl InputStats {
     }
 
     fn sample(&mut self) -> bool {
-        let latency = self.stats.lock().mean_since(&mut self.cursor, Metric::InputLatencyMs);
+        let latency = self
+            .stats
+            .lock()
+            .mean_since(&mut self.cursor, Metric::InputLatencyMs);
         let text = format!("{latency:.2}ms");
         let changed = text != self.shown;
         self.shown = text;
@@ -304,7 +333,12 @@ impl Render for InputStats {
         let theme = cx.theme();
         card(theme)
             .child(card_title("Input", theme))
-            .child(stat_line("Latency", self.shown.clone(), theme.warning, theme))
+            .child(stat_line(
+                "Latency",
+                self.shown.clone(),
+                theme.warning,
+                theme,
+            ))
     }
 }
 
@@ -340,9 +374,12 @@ impl ChartSections {
     /// Add one sample to each chart: the mean of the frames since the last one.
     fn sample(&mut self) {
         let stats = self.stats.lock();
-        self.fps.push(stats.mean_since(&mut self.cursor, Metric::UiFps));
-        self.frame_time.push(stats.mean_since(&mut self.cursor, Metric::FrameTimeMs));
-        self.latency.push(stats.mean_since(&mut self.cursor, Metric::InputLatencyMs));
+        self.fps
+            .push(stats.mean_since(&mut self.cursor, Metric::UiFps));
+        self.frame_time
+            .push(stats.mean_since(&mut self.cursor, Metric::FrameTimeMs));
+        self.latency
+            .push(stats.mean_since(&mut self.cursor, Metric::InputLatencyMs));
     }
 
     fn chart(
@@ -355,7 +392,11 @@ impl ChartSections {
     ) -> impl IntoElement {
         card(theme)
             .child(card_title(title, theme))
-            .child(mini_graph(history.points(clamp), label_step(history.len()), color))
+            .child(mini_graph(
+                history.points(clamp),
+                label_step(history.len()),
+                color,
+            ))
     }
 }
 
@@ -369,8 +410,20 @@ impl Render for ChartSections {
             .gap_2()
             .child(self.chart("FPS History", &self.fps, None, fps_color, theme))
             // Spikes are capped so one hitch does not flatten the rest.
-            .child(self.chart("Frame Time (ms)", &self.frame_time, Some(50.0), frame_color, theme))
-            .child(self.chart("Input Latency (ms)", &self.latency, None, theme.warning, theme))
+            .child(self.chart(
+                "Frame Time (ms)",
+                &self.frame_time,
+                Some(50.0),
+                frame_color,
+                theme,
+            ))
+            .child(self.chart(
+                "Input Latency (ms)",
+                &self.latency,
+                None,
+                theme.warning,
+                theme,
+            ))
     }
 }
 
@@ -456,7 +509,10 @@ impl Render for PerformanceOverlay {
                             .ghost()
                             .tooltip("Close")
                             .on_click(move |_, _, _| {
-                                state.write().overlays.set_performance_overlay_collapsed(true);
+                                state
+                                    .write()
+                                    .overlays
+                                    .set_performance_overlay_collapsed(true);
                             }),
                     ),
             )
@@ -518,17 +574,17 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{PerformanceOverlay, render_performance_overlay};
+    use super::{render_performance_overlay, PerformanceOverlay};
     use crate::state::LevelEditorState;
     use crate::ui::viewport::performance::{LiveStats, Metric, Sampler, SharedStats};
     use gpui::{
-        AppContext as _, Context, Entity, EventEmitter, IntoElement, ParentElement as _, Render,
-        Styled as _, TestAppContext, Window, div, px, size,
+        div, px, size, AppContext as _, Context, Entity, EventEmitter, IntoElement,
+        ParentElement as _, Render, Styled as _, TestAppContext, Window,
     };
-    use std::sync::Arc;
-    use std::time::Duration;
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;
+    use std::sync::Arc;
+    use std::time::Duration;
 
     struct FakeViewport {
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -553,10 +609,14 @@ mod tests {
                     cx,
                 )
             };
-            div()
-                .size_full()
-                .relative()
-                .child(div().absolute().bottom_2().left_2().max_w(px(400.)).child(overlay))
+            div().size_full().relative().child(
+                div()
+                    .absolute()
+                    .bottom_2()
+                    .left_2()
+                    .max_w(px(400.))
+                    .child(overlay),
+            )
         }
     }
 

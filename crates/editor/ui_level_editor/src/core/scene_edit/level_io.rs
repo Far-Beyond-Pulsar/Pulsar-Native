@@ -98,7 +98,10 @@ pub(crate) fn save_with_classes<P: AsRef<Path>>(
     editor_camera: Option<LevelEditorCameraState>,
     registry: &ClassRegistry,
 ) -> Result<(), String> {
-    write_level(snapshot_level(world, registry, editor_camera), path.as_ref())
+    write_level(
+        snapshot_level(world, registry, editor_camera),
+        path.as_ref(),
+    )
 }
 
 /// Everything a save needs from the world, captured in one pass.

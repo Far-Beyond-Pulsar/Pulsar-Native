@@ -519,14 +519,20 @@ pub fn ensure_engine_primitives(project_root: &Path) {
             continue;
         };
         if let Err(e) = virtual_fs::create_dir_all(parent) {
-            tracing::warn!("Could not create engine mesh directory {}: {e}", parent.display());
+            tracing::warn!(
+                "Could not create engine mesh directory {}: {e}",
+                parent.display()
+            );
             continue;
         }
 
         match EmbeddedEngineMeshes::get(asset_path) {
             Some(asset) => {
                 if let Err(e) = virtual_fs::write_file(&dst, &asset.data) {
-                    tracing::warn!("Failed to write embedded engine mesh {}: {e}", dst.display());
+                    tracing::warn!(
+                        "Failed to write embedded engine mesh {}: {e}",
+                        dst.display()
+                    );
                 } else {
                     tracing::debug!("Materialized embedded engine mesh → {}", dst.display());
                 }
@@ -1113,10 +1119,16 @@ mod tests {
         super::ensure_engine_main(project.path(), &src).unwrap();
         let text = std::fs::read_to_string(src.join("engine_main.rs")).unwrap();
         assert!(text.contains("game.enable_project_scripting()?;"));
-        assert!(!text.contains("CARGO_MANIFEST_DIR"), "no compile-time project path (#926)");
+        assert!(
+            !text.contains("CARGO_MANIFEST_DIR"),
+            "no compile-time project path (#926)"
+        );
         let main = super::generated_main_rs("game");
         assert!(main.contains("pulsar_game::standalone::run(engine_main::setup)"));
-        assert!(!main.contains("CARGO_MANIFEST_DIR"), "no compile-time project path (#926)");
+        assert!(
+            !main.contains("CARGO_MANIFEST_DIR"),
+            "no compile-time project path (#926)"
+        );
         assert!(!text.contains("load_project_classes"));
         assert!(!text.contains("script_runtime"));
     }
@@ -1124,7 +1136,9 @@ mod tests {
     #[test]
     fn generated_setup_normalizes_hyphens_in_script_crate_identifiers() {
         let project = tempfile::tempdir().unwrap();
-        let script_root = project.path().join("scripts/voxel-reference-project_scripts");
+        let script_root = project
+            .path()
+            .join("scripts/voxel-reference-project_scripts");
         std::fs::create_dir_all(script_root.join("src")).unwrap();
         std::fs::write(
             script_root.join("Cargo.toml"),

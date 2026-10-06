@@ -62,14 +62,20 @@ pub fn arm_render_row_subscriptions_for_entity(
 /// components were (re)inserted before the entity's subscriptions were
 /// armed (a class instance rebuilt from its class), which records no
 /// change event. Also refreshes every registered class's GPU mirror.
-pub fn mark_render_components_changed(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+pub fn mark_render_components_changed(
+    world: &mut pulsar_scenedb::World,
+    entity: pulsar_scenedb::Entity,
+) {
     if !world.is_alive(entity) {
         return;
     }
-    let classes: Vec<&'static str> = pulsar_world_registry::registered_world_component_classes().collect();
+    let classes: Vec<&'static str> =
+        pulsar_world_registry::registered_world_component_classes().collect();
     for class_name in classes {
         if pulsar_world_registry::world_component_present_for_class(class_name, world, entity) {
-            pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(class_name, world, entity);
+            pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
+                class_name, world, entity,
+            );
         }
     }
     if let Some(mut light) = world.get_mut::<helio_component::components::LightComponent>(entity) {
@@ -90,7 +96,10 @@ struct EditorMeshRow;
 /// frame stays clean. Passes read the SceneDB component, never the
 /// authored property. A mesh's value wins over a light's on the same
 /// entity: the mesh is what the caches that read it describe.
-pub(crate) fn project_movability(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+pub(crate) fn project_movability(
+    world: &mut pulsar_scenedb::World,
+    entity: pulsar_scenedb::Entity,
+) {
     let authored = world
         .get::<StaticMeshComponent>(entity)
         .map(|mesh| mesh.movability)

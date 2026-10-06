@@ -171,10 +171,7 @@ impl LevelEditorPanel {
         }
         let editor_camera = {
             let mut world = scene_db.write();
-            crate::scene_edit::level_io::load_from_file_with_editor_camera(
-                &mut world.world,
-                &path,
-            )?
+            crate::scene_edit::level_io::load_from_file_with_editor_camera(&mut world.world, &path)?
         };
         panel.apply_editor_camera_state(editor_camera.as_ref());
         {
@@ -386,11 +383,16 @@ impl LevelEditorPanel {
             }
         });
 
-
         let playback_host = Self::bind_playback_host(window, cx);
 
         let toolbar = cx.new(|cx| {
-            ToolbarView::new(window, cx, shared_state.clone(), gpu_engine.clone(), helio_mailbox.clone())
+            ToolbarView::new(
+                window,
+                cx,
+                shared_state.clone(),
+                gpu_engine.clone(),
+                helio_mailbox.clone(),
+            )
         });
         let class_updates =
             crate::core::asset_updates::subscribe_class_updates(shared_state.clone());

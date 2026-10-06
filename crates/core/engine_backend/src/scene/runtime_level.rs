@@ -923,7 +923,8 @@ mod tests {
         )
         .unwrap();
 
-        let level = RuntimeLevel::load_with_classes(&level_path, &registry).expect("old level loads");
+        let level =
+            RuntimeLevel::load_with_classes(&level_path, &registry).expect("old level loads");
         let scene = level.scene();
         let scene = scene.read();
         let world = &scene.world;
@@ -934,7 +935,11 @@ mod tests {
         assert_eq!(instance.class_name, "Lamp");
         assert!(!instance.class.is_empty(), "resolved to the class GUID");
         assert_eq!(
-            world.get::<LightComponent>(lamp).unwrap().intensity.intensity,
+            world
+                .get::<LightComponent>(lamp)
+                .unwrap()
+                .intensity
+                .intensity,
             42.0,
             "prefab component built on the placed object"
         );

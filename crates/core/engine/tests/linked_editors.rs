@@ -22,20 +22,42 @@ fn registry() -> BuiltinEditorRegistry {
 
 #[test]
 fn the_blueprint_editor_is_present_exactly_when_the_feature_is_on() {
-    assert_eq!(registry().provider_by_id(BLUEPRINT).is_some(), cfg!(feature = "blueprint"));
+    assert_eq!(
+        registry().provider_by_id(BLUEPRINT).is_some(),
+        cfg!(feature = "blueprint")
+    );
 }
 
 #[test]
 fn each_language_comes_with_its_crate_and_only_with_it() {
-    let ids: Vec<String> = registry().get_all_script_languages().iter().map(|l| l.id().to_owned()).collect();
-    assert_eq!(ids.iter().any(|i| i == "blueprint"), cfg!(feature = "blueprint"), "{ids:?}");
-    assert_eq!(ids.iter().any(|i| i == "typescript"), cfg!(feature = "typescript"), "{ids:?}");
+    let ids: Vec<String> = registry()
+        .get_all_script_languages()
+        .iter()
+        .map(|l| l.id().to_owned())
+        .collect();
+    assert_eq!(
+        ids.iter().any(|i| i == "blueprint"),
+        cfg!(feature = "blueprint"),
+        "{ids:?}"
+    );
+    assert_eq!(
+        ids.iter().any(|i| i == "typescript"),
+        cfg!(feature = "typescript"),
+        "{ids:?}"
+    );
 }
 
 #[test]
 fn the_editor_and_headless_tools_find_the_same_languages() {
-    let mut editor: Vec<String> = registry().get_all_script_languages().iter().map(|l| l.id().to_owned()).collect();
-    let mut headless: Vec<String> = linked_script_languages().iter().map(|l| l.id().to_owned()).collect();
+    let mut editor: Vec<String> = registry()
+        .get_all_script_languages()
+        .iter()
+        .map(|l| l.id().to_owned())
+        .collect();
+    let mut headless: Vec<String> = linked_script_languages()
+        .iter()
+        .map(|l| l.id().to_owned())
+        .collect();
     editor.sort();
     headless.sort();
     assert_eq!(editor, headless);
@@ -51,5 +73,8 @@ fn the_blueprint_editor_offers_its_file_type_and_editor_through_the_ordinary_reg
     registry.register_all(&mut file_types, &mut editors);
     let provider = registry.provider_by_id(BLUEPRINT).unwrap();
     assert!(provider.file_types().iter().any(|t| t.extension == "class"));
-    assert!(provider.editors().iter().any(|e| e.id.as_str() == "blueprint-editor"));
+    assert!(provider
+        .editors()
+        .iter()
+        .any(|e| e.id.as_str() == "blueprint-editor"));
 }

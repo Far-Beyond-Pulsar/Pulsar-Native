@@ -41,7 +41,10 @@ pub enum PieSessionEvent {
 
 /// The `PieSession` descriptor on the host bus.
 pub fn descriptor() -> EventDescriptor {
-    EventDescriptor::dynamic("PieSession", [("phase", FieldType::Str), ("bus", FieldType::U64)])
+    EventDescriptor::dynamic(
+        "PieSession",
+        [("phase", FieldType::Str), ("bus", FieldType::U64)],
+    )
 }
 
 fn registered(bus: &HostBus) -> Option<u64> {
@@ -58,7 +61,10 @@ fn registered(bus: &HostBus) -> Option<u64> {
 
 fn publish_on(host: &HostBus, phase: &str, bus: u64) {
     let Some(id) = registered(host) else { return };
-    let event = DynEvent::new(id, vec![DynValue::Str(phase.to_owned()), DynValue::U64(bus)]);
+    let event = DynEvent::new(
+        id,
+        vec![DynValue::Str(phase.to_owned()), DynValue::U64(bus)],
+    );
     if let Err(error) = host.publish_dyn(Channel::Global, &event) {
         tracing::error!("session bus: publish failed: {error}");
     }
@@ -85,14 +91,21 @@ pub fn announce_session_stopping() {
 
 /// Call `callback` for every session announcement until the returned
 /// subscription is dropped. See the module doc for the contract.
-pub fn subscribe_pie_sessions(callback: impl Fn(PieSessionEvent) + Send + Sync + 'static) -> HostSubscription {
+pub fn subscribe_pie_sessions(
+    callback: impl Fn(PieSessionEvent) + Send + Sync + 'static,
+) -> HostSubscription {
     subscribe_on(host_bus(), callback)
 }
 
-fn subscribe_on(host: &HostBus, callback: impl Fn(PieSessionEvent) + Send + Sync + 'static) -> HostSubscription {
+fn subscribe_on(
+    host: &HostBus,
+    callback: impl Fn(PieSessionEvent) + Send + Sync + 'static,
+) -> HostSubscription {
     let id = registered(host).unwrap_or_else(|| descriptor().id);
     host.subscribe_dyn(id, SubscribeOptions::default(), move |event| {
-        let [DynValue::Str(phase), DynValue::U64(bus)] = event.fields.as_slice() else { return };
+        let [DynValue::Str(phase), DynValue::U64(bus)] = event.fields.as_slice() else {
+            return;
+        };
         match phase.as_str() {
             "started" if *bus != 0 => {
                 // SAFETY: the announcer keeps the `RawBus` at this address
@@ -102,7 +115,9 @@ fn subscribe_on(host: &HostBus, callback: impl Fn(PieSessionEvent) + Send + Sync
                 if raw.abi_version != gamma::ffi::ABI_VERSION
                     || raw.struct_size != std::mem::size_of::<RawBus>() as u32
                 {
-                    tracing::warn!("session bus: the game's Gamma FFI version differs; not attached");
+                    tracing::warn!(
+                        "session bus: the game's Gamma FFI version differs; not attached"
+                    );
                     return;
                 }
                 unsafe { (raw.retain)(raw.ctx) };
@@ -163,15 +178,27 @@ mod tests {
         {
             let held = held.lock().unwrap();
             let bus = held.0.as_ref().unwrap();
-            bus.publish_dyn_deferred(Channel::Global, &DynEvent::new(key_down, vec![DynValue::I64(4)])).unwrap();
+            bus.publish_dyn_deferred(
+                Channel::Global,
+                &DynEvent::new(key_down, vec![DynValue::I64(4)]),
+            )
+            .unwrap();
         }
         hub.flush(FlushPoint::AfterInput);
         assert_eq!(*keys.lock().unwrap(), vec![3, 4]);
-        assert!(hub.recent_events().iter().any(|r| r.summary.starts_with("(plugin)")));
+        assert!(
+            hub.recent_events()
+                .iter()
+                .any(|r| r.summary.starts_with("(plugin)"))
+        );
 
         publish_on(&host, "stopping", 0);
         assert!(held.lock().unwrap().0.is_none(), "detached on stop");
-        assert_eq!(hub.subscriber_count(key_down, Channel::Global), 0, "no plugin subscription left");
+        assert_eq!(
+            hub.subscriber_count(key_down, Channel::Global),
+            0,
+            "no plugin subscription left"
+        );
         drop(game);
     }
 }

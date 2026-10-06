@@ -67,7 +67,10 @@ impl ComponentRuntimeState {
         let mut subscriptions = Vec::new();
         for &name in event_names {
             let Some(descriptor) = hub.descriptor_by_name(name) else {
-                tracing::warn!(event = name, "native component handler event is not registered");
+                tracing::warn!(
+                    event = name,
+                    "native component handler event is not registered"
+                );
                 continue;
             };
             let inbox = Arc::clone(&self.inbox);
@@ -79,12 +82,18 @@ impl ComponentRuntimeState {
                     pulsar_events::gamma::Channel::Entity(key.entity.bits()),
                 ),
                 move |event| {
-                    let mut inbox = inbox.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                    let mut inbox = inbox
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
                     if inbox.active.contains(&callback_key) {
-                        inbox.queued.entry(callback_key).or_default().push(QueuedComponentEvent {
-                            name: callback_name.clone(),
-                            fields: event.fields.clone(),
-                        });
+                        inbox
+                            .queued
+                            .entry(callback_key)
+                            .or_default()
+                            .push(QueuedComponentEvent {
+                                name: callback_name.clone(),
+                                fields: event.fields.clone(),
+                            });
                     }
                 },
             ));
@@ -96,7 +105,10 @@ impl ComponentRuntimeState {
     /// disable/removal/despawn teardown.
     pub fn unsubscribe_instance(&mut self, key: ComponentInstanceKey) {
         self.subscriptions.remove(&key);
-        let mut inbox = self.inbox.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut inbox = self
+            .inbox
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         inbox.active.remove(&key);
         inbox.queued.remove(&key);
     }
@@ -144,7 +156,10 @@ impl ComponentRuntimeState {
         }
         self.active.clear();
         self.subscriptions.clear();
-        *self.inbox.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = EventInbox::default();
+        *self
+            .inbox
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = EventInbox::default();
         self.scene_identity = None;
     }
 }
@@ -175,7 +190,10 @@ pub fn tick_live_components(
     scene_identity: usize,
     state: &mut ComponentRuntimeState,
 ) {
-    if state.scene_identity.is_some_and(|identity| identity != scene_identity) {
+    if state
+        .scene_identity
+        .is_some_and(|identity| identity != scene_identity)
+    {
         state.end_all(events);
     }
     state.scene_identity = Some(scene_identity);
@@ -219,7 +237,9 @@ pub fn process_component_removals(
     events: &EventHub,
     state: &mut ComponentRuntimeState,
 ) -> usize {
-    let Some(tracker) = world.change_tracker() else { return 0 };
+    let Some(tracker) = world.change_tracker() else {
+        return 0;
+    };
     let removals = tracker.drain_component_removals();
     if removals.is_empty() {
         return 0;
@@ -247,7 +267,10 @@ pub fn process_component_removals(
             if let Some(end_play) = registration.end_play {
                 end_play(entity, events);
             }
-            state.unsubscribe_instance(ComponentInstanceKey { component_type, entity });
+            state.unsubscribe_instance(ComponentInstanceKey {
+                component_type,
+                entity,
+            });
             ended += 1;
         }
     }

@@ -18,16 +18,16 @@
 use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use plugin_editor_api::{AiToolDefinition, PluginError};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tool_registry::{PluginToolRegistry, ToolContext, ToolRegistry};
 
 use super::sessions;
-use crate::LevelEditorState;
-use crate::commands::{CommandResult, SceneCommand, execute_command};
+use crate::commands::{execute_command, CommandResult, SceneCommand};
 use crate::scene_edit::{self, SceneObjectData};
+use crate::LevelEditorState;
 use engine_backend::scene::{LightType, MeshType, ObjectType, SceneWorldExt};
 use pulsar_scenedb::World;
 
@@ -130,8 +130,9 @@ fn command_json(result: &CommandResult) -> Value {
 }
 
 fn require_object(state: &LevelEditorState, id: &str) -> Result<SceneObjectData> {
-    scene_edit::objects::get_object(&state.scene.world(), id)
-        .ok_or_else(|| anyhow!("No object with id '{id}'. Use level_editor_list_objects to find ids."))
+    scene_edit::objects::get_object(&state.scene.world(), id).ok_or_else(|| {
+        anyhow!("No object with id '{id}'. Use level_editor_list_objects to find ids.")
+    })
 }
 
 // ── Object kinds ─────────────────────────────────────────────────────────────
@@ -226,7 +227,11 @@ impl ObjectFilter {
     }
 
     fn matches(&self, world: &World, object: &SceneObjectData) -> bool {
-        if self.ids.as_ref().is_some_and(|ids| !ids.contains(&object.id)) {
+        if self
+            .ids
+            .as_ref()
+            .is_some_and(|ids| !ids.contains(&object.id))
+        {
             return false;
         }
         if let Some(needle) = &self.name_contains {
@@ -234,15 +239,24 @@ impl ObjectFilter {
                 return false;
             }
         }
-        if self.kind.as_deref().is_some_and(|k| k != object_kind(&object.object_type)) {
+        if self
+            .kind
+            .as_deref()
+            .is_some_and(|k| k != object_kind(&object.object_type))
+        {
             return false;
         }
         if let Some(class) = &self.has_component {
-            if !scene_edit::components::get_component_class_names(world, &object.id).contains(class) {
+            if !scene_edit::components::get_component_class_names(world, &object.id).contains(class)
+            {
                 return false;
             }
         }
-        if self.parent_id.as_ref().is_some_and(|p| object.parent.as_ref() != Some(p)) {
+        if self
+            .parent_id
+            .as_ref()
+            .is_some_and(|p| object.parent.as_ref() != Some(p))
+        {
             return false;
         }
         if self.root_only == Some(true) && object.parent.is_some() {
@@ -283,7 +297,11 @@ fn is_descendant(world: &World, id: &str, ancestor: &str) -> bool {
 }
 
 /// Ids from an explicit list or a filter; exactly one must be given.
-fn target_ids(world: &World, ids: Option<Vec<String>>, filter: Option<Value>) -> Result<Vec<String>> {
+fn target_ids(
+    world: &World,
+    ids: Option<Vec<String>>,
+    filter: Option<Value>,
+) -> Result<Vec<String>> {
     match (ids, filter) {
         (Some(ids), None) => Ok(ids),
         (None, Some(filter)) => Ok(ObjectFilter::parse(Some(filter))?
@@ -374,7 +392,10 @@ fn apply_patch(target: &mut Value, patch: &Value) -> Result<()> {
 fn apply_at(target: &mut Value, value: &Value, key: &str, parent: &str) -> Result<()> {
     let path = join_path(parent, key);
     let Value::Object(group) = target else {
-        bail!("`{parent}` is a {}, not a group; it has no field `{key}`", json_type(target));
+        bail!(
+            "`{parent}` is a {}, not a group; it has no field `{key}`",
+            json_type(target)
+        );
     };
     if !group.contains_key(key) {
         if group.is_empty() {
@@ -382,7 +403,11 @@ fn apply_at(target: &mut Value, value: &Value, key: &str, parent: &str) -> Resul
             group.insert(key.to_string(), value.clone());
             return Ok(());
         }
-        let here = if parent.is_empty() { "top level" } else { parent };
+        let here = if parent.is_empty() {
+            "top level"
+        } else {
+            parent
+        };
         bail!(
             "Unknown field `{path}`. Fields at {here}: {}",
             describe_fields(group, parent)
@@ -438,10 +463,16 @@ mod tests {
         assert!(definitions.len() >= 30, "only {} tools", definitions.len());
         for def in &definitions {
             assert!(def.name.starts_with("level_editor_"), "{}", def.name);
-            assert!(!def.description.is_empty(), "{} has no description", def.name);
+            assert!(
+                !def.description.is_empty(),
+                "{} has no description",
+                def.name
+            );
             assert_eq!(def.parameters_json_schema["type"], "object", "{}", def.name);
             assert!(
-                def.parameters_json_schema["properties"].get("ctx").is_none(),
+                def.parameters_json_schema["properties"]
+                    .get("ctx")
+                    .is_none(),
                 "{} exposes its context",
                 def.name
             );
@@ -498,7 +529,10 @@ mod tests {
         let err = apply_patch(&mut light_like(), &json!({ "colour.color": [1, 1, 1, 1] }))
             .unwrap_err()
             .to_string();
-        assert!(err.contains("Unknown field `colour`") && err.contains("color (group)"), "{err}");
+        assert!(
+            err.contains("Unknown field `colour`") && err.contains("color (group)"),
+            "{err}"
+        );
 
         let err = apply_patch(&mut light_like(), &json!({ "color.color": [1, 0, 0] }))
             .unwrap_err()
@@ -512,10 +546,22 @@ mod tests {
     fn field_paths_list_every_leaf() {
         let paths: Vec<String> = field_paths(&light_like())
             .iter()
-            .map(|f| format!("{} {}", f["path"].as_str().unwrap(), f["type"].as_str().unwrap()))
+            .map(|f| {
+                format!(
+                    "{} {}",
+                    f["path"].as_str().unwrap(),
+                    f["type"].as_str().unwrap()
+                )
+            })
             .collect();
-        assert!(paths.contains(&"color.color array of 4 numbers".to_string()), "{paths:?}");
-        assert!(paths.contains(&"intensity.intensity number".to_string()), "{paths:?}");
+        assert!(
+            paths.contains(&"color.color array of 4 numbers".to_string()),
+            "{paths:?}"
+        );
+        assert!(
+            paths.contains(&"intensity.intensity number".to_string()),
+            "{paths:?}"
+        );
     }
 
     /// Drives the tools the way the chat does: through `execute_ai_tool`
@@ -551,7 +597,10 @@ mod tests {
 
         let components = call("level_editor_get_components", json!({ "id": id }));
         assert_eq!(components["components"][0]["class_name"], "LightComponent");
-        assert_eq!(components["components"][0]["data"]["intensity"]["intensity"], 1234.0);
+        assert_eq!(
+            components["components"][0]["data"]["intensity"]["intensity"],
+            1234.0
+        );
 
         // Edit a nested field by class name.
         let edited = call(
@@ -560,7 +609,10 @@ mod tests {
         );
         assert_eq!(edited["changed"], true);
         let components = call("level_editor_get_components", json!({ "id": id }));
-        assert_eq!(components["components"][0]["data"]["intensity"]["intensity"], 50.0);
+        assert_eq!(
+            components["components"][0]["data"]["intensity"]["intensity"],
+            50.0
+        );
 
         // Data the class can't take is rejected, not dropped.
         let bad = execute_ai_tool(
@@ -571,7 +623,10 @@ mod tests {
         assert!(bad.is_err());
 
         // Relative moves, duplication with offsets, filters.
-        call("level_editor_move_objects", json!({ "ids": [id], "translate": [0.0, 1.0, 0.0] }));
+        call(
+            "level_editor_move_objects",
+            json!({ "ids": [id], "translate": [0.0, 1.0, 0.0] }),
+        );
         let dupes = call(
             "level_editor_duplicate_object",
             json!({ "id": id, "count": 2, "offset": [5.0, 0.0, 0.0] }),
@@ -591,13 +646,19 @@ mod tests {
         assert!(state.read().scene.pending_renderer_resync);
 
         // Component structure edits.
-        call("level_editor_duplicate_component", json!({ "id": id, "component_index": 0 }));
+        call(
+            "level_editor_duplicate_component",
+            json!({ "id": id, "component_index": 0 }),
+        );
         let disabled = call(
             "level_editor_set_component_enabled",
             json!({ "id": id, "component_index": 1, "enabled": false }),
         );
         assert_eq!(disabled["components"][1]["enabled"], false);
-        call("level_editor_remove_component", json!({ "id": id, "component_index": 1 }));
+        call(
+            "level_editor_remove_component",
+            json!({ "id": id, "component_index": 1 }),
+        );
         let components = call("level_editor_get_components", json!({ "id": id }));
         assert_eq!(components["components"].as_array().unwrap().len(), 1);
 
@@ -612,8 +673,14 @@ mod tests {
             json!({ "id": spline_id, "append_points": [[0.0, 0.0, 10.0]], "closed": true }),
         );
         assert_eq!(edited["point_count"], 4);
-        call("level_editor_delete_objects", json!({ "filter": { "root_only": true } }));
-        assert_eq!(call("level_editor_query_scene", json!({}))["object_count"], 0);
+        call(
+            "level_editor_delete_objects",
+            json!({ "filter": { "root_only": true } }),
+        );
+        assert_eq!(
+            call("level_editor_query_scene", json!({}))["object_count"],
+            0
+        );
 
         sessions::unregister_editor(&state);
         let _ = std::fs::remove_dir_all(&dir);
@@ -642,21 +709,34 @@ mod tests {
         std::fs::write(&a, "{}").unwrap();
         std::fs::write(&b, "{}").unwrap();
         let spawn = |path: &Path| {
-            execute_ai_tool(path, "level_editor_spawn_object", json!({ "name": "Crate" }))
+            execute_ai_tool(
+                path,
+                "level_editor_spawn_object",
+                json!({ "name": "Crate" }),
+            )
         };
 
         // A never-saved level is reachable: no file needed.
         let unsaved = open_editor(None);
         spawn(Path::new("untitled.level")).unwrap();
-        assert_eq!(scene_edit::objects::get_all_objects(&unsaved.read().scene.world()).len(), 1);
+        assert_eq!(
+            scene_edit::objects::get_all_objects(&unsaved.read().scene.world()).len(),
+            1
+        );
         // A real level that isn't open is not silently redirected.
         assert!(spawn(&a).unwrap_err().to_string().contains("not open"));
 
         // With several open, the path picks the editor showing it.
         let editor_a = open_editor(Some(&a));
         spawn(&a).unwrap();
-        assert_eq!(scene_edit::objects::get_all_objects(&editor_a.read().scene.world()).len(), 1);
-        assert!(spawn(Path::new("untitled.level")).unwrap_err().to_string().contains("Several levels"));
+        assert_eq!(
+            scene_edit::objects::get_all_objects(&editor_a.read().scene.world()).len(),
+            1
+        );
+        assert!(spawn(Path::new("untitled.level"))
+            .unwrap_err()
+            .to_string()
+            .contains("Several levels"));
 
         // The file on disk is never written by an edit.
         assert_eq!(std::fs::read_to_string(&a).unwrap(), "{}");
@@ -672,7 +752,10 @@ mod tests {
         sessions::unregister_editor(&unsaved);
         sessions::unregister_editor(&editor_a);
         // Dropped editors are gone.
-        assert!(spawn(&b).unwrap_err().to_string().contains("No level is open"));
+        assert!(spawn(&b)
+            .unwrap_err()
+            .to_string()
+            .contains("No level is open"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

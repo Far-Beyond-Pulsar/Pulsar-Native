@@ -47,5 +47,3 @@ impl AutoClosedPairs {
         });
     }
 }
-
-

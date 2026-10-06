@@ -317,5 +317,3 @@ mod tests {
         assert_eq!(diagnostics.len(), 0);
     }
 }
-
-

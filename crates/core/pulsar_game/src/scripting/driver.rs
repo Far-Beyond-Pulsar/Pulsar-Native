@@ -430,7 +430,10 @@ impl ScriptDriver {
         let events = ScriptEvents::new(hub);
         for registration in pulsar_world_registry::component_event_registrations() {
             let declaration = (registration.declaration)();
-            if let Err(error) = events.bridge().register_event_decl(registration.class_name, &declaration) {
+            if let Err(error) = events
+                .bridge()
+                .register_event_decl(registration.class_name, &declaration)
+            {
                 tracing::warn!(event = %declaration.name, %error, "component event could not be linked to Blueprint");
             }
         }
@@ -519,7 +522,8 @@ impl ScriptDriver {
             .collect();
         for (id, class_name, guid, entity) in targets {
             // Timers and queued handler calls survive a class reload.
-            for failure in events.resubscribe(&self.runtime, &id, &class_name, &guid, entity, world) {
+            for failure in events.resubscribe(&self.runtime, &id, &class_name, &guid, entity, world)
+            {
                 tracing::warn!("{failure}");
             }
         }
@@ -682,7 +686,11 @@ impl ScriptDriver {
     ///    concurrently; the renderer's own readers are not blocked.
     /// 3. **Write lock**: every other instance, then the commands scripts
     ///    queued (spawns, destroys).
-    pub fn run_frame_shared(&mut self, scene: &engine_backend::scene::SharedScene, delta_time: f64) -> DriverReport {
+    pub fn run_frame_shared(
+        &mut self,
+        scene: &engine_backend::scene::SharedScene,
+        delta_time: f64,
+    ) -> DriverReport {
         use std::time::Instant;
         let mut report = DriverReport::default();
         let mut locks = LockTimes::default();
@@ -767,7 +775,12 @@ impl ScriptDriver {
 
     /// The last part of a frame, with exclusive access: fire hub timers and
     /// apply the commands scripts queued.
-    fn frame_finish(&mut self, world: &mut World, mut scope: CommandScope, report: &mut DriverReport) {
+    fn frame_finish(
+        &mut self,
+        world: &mut World,
+        mut scope: CommandScope,
+        report: &mut DriverReport,
+    ) {
         if let Some(events) = &self.events {
             events.bridge().fire_timers(self.runtime.time());
         }
@@ -1110,7 +1123,14 @@ impl ScriptDriver {
                     tracked.instance = Some(id.clone());
                 }
                 self.by_instance.insert(id.clone(), entity);
-                self.subscribe_instance(&id, &class, entry.id.as_str(), Some(entity), Some(world), report);
+                self.subscribe_instance(
+                    &id,
+                    &class,
+                    entry.id.as_str(),
+                    Some(entity),
+                    Some(world),
+                    report,
+                );
                 report.started.push(id);
             }
             Err(error) => {
@@ -1181,7 +1201,14 @@ impl ScriptDriver {
             match self.runtime.spawn(id.clone(), &class, None, &[]) {
                 Ok(()) => {
                     self.globals.push(id.clone());
-                    self.subscribe_instance(&id, &class, entry.id.as_str(), None, Some(world), report);
+                    self.subscribe_instance(
+                        &id,
+                        &class,
+                        entry.id.as_str(),
+                        None,
+                        Some(world),
+                        report,
+                    );
                     report.started.push(id);
                 }
                 Err(error) => {

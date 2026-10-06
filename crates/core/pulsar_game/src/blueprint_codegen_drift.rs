@@ -78,4 +78,3 @@ pub(crate) mod reference_actor {
         game.tick_once();
     }
 }
-

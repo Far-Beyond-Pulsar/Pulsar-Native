@@ -110,7 +110,10 @@ pub async fn launch_and_monitor(
         let text = stderr.trim();
         let tail = text.get(text.len().saturating_sub(600)..).unwrap_or(text);
         match &report {
-            Some(path) => format!("The game crashed.\nReport saved to {}\n\n{tail}", path.display()),
+            Some(path) => format!(
+                "The game crashed.\nReport saved to {}\n\n{tail}",
+                path.display()
+            ),
             None => format!("The game crashed:\n{tail}"),
         }
     };
@@ -161,7 +164,8 @@ fn civil_from_days(days: u64) -> (u64, u64, u64) {
     let z = days as i64 + 719_468;
     let era = z.div_euclid(146_097);
     let day_of_era = z.rem_euclid(146_097);
-    let year_of_era = (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
     let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let mp = (5 * day_of_year + 2) / 153;
     let day = (day_of_year - (153 * mp + 2) / 5 + 1) as u64;
@@ -178,7 +182,11 @@ mod tests {
     fn dates_come_out_right() {
         assert_eq!(civil_from_days(0), (1970, 1, 1));
         assert_eq!(civil_from_days(59), (1970, 3, 1), "1970 is not a leap year");
-        assert_eq!(civil_from_days(11_016), (2000, 2, 29), "2000 is a leap year");
+        assert_eq!(
+            civil_from_days(11_016),
+            (2000, 2, 29),
+            "2000 is a leap year"
+        );
         assert_eq!(civil_from_days(20_000), (2024, 10, 4));
     }
 }

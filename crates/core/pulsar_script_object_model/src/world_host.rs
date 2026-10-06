@@ -173,8 +173,16 @@ mod tests {
         assert!(world.set_instance_data(door, 1, json!({ "charges": 22 })));
 
         let records = instance_records(&world, door);
-        assert_eq!(records[0].1.data, json!({ "charges": 1 }), "record 0 untouched");
-        assert_eq!(records[1].1.data, json!({ "charges": 22 }), "record 1 replaced");
+        assert_eq!(
+            records[0].1.data,
+            json!({ "charges": 1 }),
+            "record 0 untouched"
+        );
+        assert_eq!(
+            records[1].1.data,
+            json!({ "charges": 22 }),
+            "record 1 replaced"
+        );
     }
 
     #[test]

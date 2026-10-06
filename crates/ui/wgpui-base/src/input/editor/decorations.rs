@@ -334,5 +334,3 @@ mod tests {
         assert_eq!(adjust_range_for_edit(&(2..6), &(2..6), 3), 2..5);
     }
 }
-
-

@@ -6,9 +6,8 @@
 //! refuse them first).
 
 use pulsar_reflection::{
-    ComponentMethodRegistration, EngineClass, EngineClassRegistration, MethodMetadata,
-    MethodParameter, MethodFlags, MethodReturnType, PropertyMetadata, RuntimeTypeInfo,
-    RUNTIME_TYPE_REGISTRY,
+    ComponentMethodRegistration, EngineClass, EngineClassRegistration, MethodFlags, MethodMetadata,
+    MethodParameter, MethodReturnType, PropertyMetadata, RuntimeTypeInfo, RUNTIME_TYPE_REGISTRY,
 };
 use pulsar_scenedb::{Entity, World};
 use serde_json::Value;
@@ -18,8 +17,7 @@ use serde_json::Value;
 // dependency.
 struct CountingAllocator;
 
-static ALLOCATION_CALLS: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
+static ALLOCATION_CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 unsafe impl std::alloc::GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
@@ -31,12 +29,7 @@ unsafe impl std::alloc::GlobalAlloc for CountingAllocator {
         std::alloc::System.dealloc(ptr, layout)
     }
 
-    unsafe fn realloc(
-        &self,
-        ptr: *mut u8,
-        layout: std::alloc::Layout,
-        new_size: usize,
-    ) -> *mut u8 {
+    unsafe fn realloc(&self, ptr: *mut u8, layout: std::alloc::Layout, new_size: usize) -> *mut u8 {
         ALLOCATION_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         std::alloc::System.realloc(ptr, layout, new_size)
     }
@@ -161,7 +154,10 @@ fn gizmo_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
         .map(|c| c as &dyn EngineClass)
 }
 
-fn gizmo_get_mut(world: &mut World, entity: Entity) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
+fn gizmo_get_mut(
+    world: &mut World,
+    entity: Entity,
+) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
     // Same guard as the generated shims: writes through it are reported to
     // subscriptions/GPU mirrors when it drops.
     pulsar_world_registry::EngineClassMut::of::<DispatchGizmo>(world, entity)
@@ -461,7 +457,10 @@ mod script_vm {
     fn world_components_are_script_components() {
         assert!(TypeRegistry::global().component("DispatchGizmo").is_some());
         let registry = NativeRegistry::with_engine_natives();
-        let mut names: Vec<_> = registry.methods_for(&gizmo()).map(|n| n.name.clone()).collect();
+        let mut names: Vec<_> = registry
+            .methods_for(&gizmo())
+            .map(|n| n.name.clone())
+            .collect();
         names.sort();
         assert_eq!(
             names,
@@ -474,7 +473,10 @@ mod script_vm {
             ]
         );
         let add = registry.get("DispatchGizmo::add_charges").unwrap();
-        assert_eq!(add.sig, Signature::new([Param::new(gizmo()), Param::new(Type::Int)], Type::Int));
+        assert_eq!(
+            add.sig,
+            Signature::new([Param::new(gizmo()), Param::new(Type::Int)], Type::Int)
+        );
         assert!(!add.flags.side_effect_free);
     }
 
@@ -482,12 +484,27 @@ mod script_vm {
     fn scripts_read_write_and_call_world_components() {
         let registry = NativeRegistry::with_engine_natives();
         let mut module = Module::new("gizmo_user");
-        let import = |name: &str, params: Vec<Param>, ret: Type| Import { name: name.into(), sig: Signature::new(params, ret) };
+        let import = |name: &str, params: Vec<Param>, ret: Type| Import {
+            name: name.into(),
+            sig: Signature::new(params, ret),
+        };
         module.imports = vec![
             import("DispatchGizmo::of", vec![Param::new(Type::Entity)], gizmo()),
-            import("DispatchGizmo::add_charges", vec![Param::new(gizmo()), Param::new(Type::Int)], Type::Int),
-            import("DispatchGizmo::set_charges", vec![Param::new(gizmo()), Param::new(Type::Int)], Type::Unit),
-            import("DispatchGizmo::get_charges", vec![Param::new(gizmo())], Type::Int),
+            import(
+                "DispatchGizmo::add_charges",
+                vec![Param::new(gizmo()), Param::new(Type::Int)],
+                Type::Int,
+            ),
+            import(
+                "DispatchGizmo::set_charges",
+                vec![Param::new(gizmo()), Param::new(Type::Int)],
+                Type::Unit,
+            ),
+            import(
+                "DispatchGizmo::get_charges",
+                vec![Param::new(gizmo())],
+                Type::Int,
+            ),
         ];
         // g = DispatchGizmo::of(self); g.add_charges(n); g.charges = g.charges * 2; g.charges
         module.functions = vec![Function {
@@ -498,11 +515,32 @@ mod script_vm {
             registers: vec![Type::Int, Type::Entity, gizmo(), Type::Int],
             code: vec![
                 Instr::SelfEntity { dst: 1 },
-                Instr::CallNative { import: 0, args: vec![1], dst: Some(2) },
-                Instr::CallNative { import: 1, args: vec![2, 0], dst: Some(3) },
-                Instr::Binary { op: pulsar_script_vm::BinOp::Add, dst: 3, a: 3, b: 3 },
-                Instr::CallNative { import: 2, args: vec![2, 3], dst: None },
-                Instr::CallNative { import: 3, args: vec![2], dst: Some(3) },
+                Instr::CallNative {
+                    import: 0,
+                    args: vec![1],
+                    dst: Some(2),
+                },
+                Instr::CallNative {
+                    import: 1,
+                    args: vec![2, 0],
+                    dst: Some(3),
+                },
+                Instr::Binary {
+                    op: pulsar_script_vm::BinOp::Add,
+                    dst: 3,
+                    a: 3,
+                    b: 3,
+                },
+                Instr::CallNative {
+                    import: 2,
+                    args: vec![2, 3],
+                    dst: None,
+                },
+                Instr::CallNative {
+                    import: 3,
+                    args: vec![2],
+                    dst: Some(3),
+                },
                 Instr::Return { value: Some(3) },
             ],
             debug: None,
@@ -514,7 +552,14 @@ mod script_vm {
         let func = program.entry("run").unwrap();
         let mut host = Host::new(&mut world, e);
         let out = vm
-            .call(&program, &mut instance, func, &[Value::Int(4)], &mut host, &mut Budget::new(100))
+            .call(
+                &program,
+                &mut instance,
+                func,
+                &[Value::Int(4)],
+                &mut host,
+                &mut Budget::new(100),
+            )
             .unwrap();
         assert_eq!(out, Value::Int(10));
         assert_eq!(world.get::<DispatchGizmo>(e).unwrap().charges, 10);
@@ -523,7 +568,14 @@ mod script_vm {
         world.remove::<DispatchGizmo>(e);
         let mut host = Host::new(&mut world, e);
         let err = vm
-            .call(&program, &mut instance, func, &[Value::Int(1)], &mut host, &mut Budget::new(100))
+            .call(
+                &program,
+                &mut instance,
+                func,
+                &[Value::Int(1)],
+                &mut host,
+                &mut Budget::new(100),
+            )
             .unwrap_err();
         assert!(err.to_string().contains("has no DispatchGizmo"), "{err}");
     }
@@ -621,10 +673,30 @@ fn property_access_builds_descriptors_once() {
     for i in 0..100 {
         get_component_property_boxed(&world, entity, "DispatchGizmo", 0, "charges").unwrap();
         get_component_property(&world, entity, "DispatchGizmo", 0, "charges").unwrap();
-        set_component_property_boxed(&mut world, entity, "DispatchGizmo", 0, "charges", Box::new(i as i32)).unwrap();
-        set_component_property(&mut world, entity, "DispatchGizmo", 0, "charges", serde_json::json!(i)).unwrap();
+        set_component_property_boxed(
+            &mut world,
+            entity,
+            "DispatchGizmo",
+            0,
+            "charges",
+            Box::new(i as i32),
+        )
+        .unwrap();
+        set_component_property(
+            &mut world,
+            entity,
+            "DispatchGizmo",
+            0,
+            "charges",
+            serde_json::json!(i),
+        )
+        .unwrap();
     }
-    assert_eq!(PROPERTY_TABLE_BUILDS.with(|n| n.get()), before, "a throwaway instance was built per access");
+    assert_eq!(
+        PROPERTY_TABLE_BUILDS.with(|n| n.get()),
+        before,
+        "a throwaway instance was built per access"
+    );
     assert_eq!(world.get::<DispatchGizmo>(entity).unwrap().charges, 99);
 
     // Unknown names still fail with the typed error, and are not cached as hits.

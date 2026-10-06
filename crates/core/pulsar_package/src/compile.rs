@@ -68,15 +68,19 @@ pub fn compile_project(project: &Path, settings: &ProjectSettings) -> CompileOut
     let mut output = CompileOutput::default();
     let natives_runtime = pulsar_game::scripting::new_runtime();
     #[cfg(any(feature = "blueprint", feature = "typescript"))]
-    let component_events: Vec<_> =
-        pulsar_world_registry::component_event_registrations()
-            .map(|registration| plugin_editor_api::ComponentEventMetadata {
-                component_class: registration.class_name.to_owned(),
-                event: (registration.declaration)(),
-            })
-            .collect();
+    let component_events: Vec<_> = pulsar_world_registry::component_event_registrations()
+        .map(|registration| plugin_editor_api::ComponentEventMetadata {
+            component_class: registration.class_name.to_owned(),
+            event: (registration.declaration)(),
+        })
+        .collect();
     #[cfg(any(feature = "blueprint", feature = "typescript"))]
-    run_languages(project, natives_runtime.natives(), &component_events, &mut output);
+    run_languages(
+        project,
+        natives_runtime.natives(),
+        &component_events,
+        &mut output,
+    );
     #[cfg(not(any(feature = "blueprint", feature = "typescript")))]
     run_languages(project, natives_runtime.natives(), &mut output);
 
@@ -118,22 +122,33 @@ pub fn compile_project(project: &Path, settings: &ProjectSettings) -> CompileOut
                 message: "compiled module is older than its graph; it may be stale".into(),
             });
         }
-        match std::fs::read(&json).map_err(|e| e.to_string()).and_then(|b| Module::decode(&b).map_err(|e| e.to_string())) {
+        match std::fs::read(&json)
+            .map_err(|e| e.to_string())
+            .and_then(|b| Module::decode(&b).map_err(|e| e.to_string()))
+        {
             Ok(module) => {
                 if module.name != entry.name {
                     output.problems.push(problem(
-                        format!("module is named `{}`, not after its class directory", module.name),
+                        format!(
+                            "module is named `{}`, not after its class directory",
+                            module.name
+                        ),
                         Some(json),
                     ));
                 }
                 modules.push((entry.clone(), Some(module)));
             }
-            Err(error) => output.problems.push(problem(format!("unreadable module: {error}"), Some(json))),
+            Err(error) => output
+                .problems
+                .push(problem(format!("unreadable module: {error}"), Some(json))),
         }
     }
 
     link_all(&registry, &modules, settings, &mut output);
-    output.classes = modules.into_iter().map(|(entry, module)| CompiledClass { entry, module }).collect();
+    output.classes = modules
+        .into_iter()
+        .map(|(entry, module)| CompiledClass { entry, module })
+        .collect();
     output
 }
 
@@ -153,7 +168,10 @@ fn link_all(
     }
     for registration in pulsar_world_registry::component_event_registrations() {
         let declaration = (registration.declaration)();
-        if let Err(error) = events.bridge().register_event_decl(registration.class_name, &declaration) {
+        if let Err(error) = events
+            .bridge()
+            .register_event_decl(registration.class_name, &declaration)
+        {
             output.problems.push(ScriptProblem {
                 error: true,
                 class: Some(registration.class_name.to_owned()),
@@ -212,7 +230,9 @@ fn run_languages(
 ) {
     for language in plugin_editor_api::linked_script_languages() {
         tracing::info!(language = language.display_name(), "Compiling scripts");
-        for diagnostic in language.compile_project_with_component_events(project, natives, component_events) {
+        for diagnostic in
+            language.compile_project_with_component_events(project, natives, component_events)
+        {
             output.problems.push(ScriptProblem {
                 error: diagnostic.is_error(),
                 class: diagnostic.class.clone(),

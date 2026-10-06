@@ -150,7 +150,10 @@ pub struct Damage {
 /// Every built-in event with its palette category, in a stable order.
 pub fn builtin_events() -> Vec<(EventDescriptor, EventCategory)> {
     fn d<T: Event>(category: EventCategory) -> (EventDescriptor, EventCategory) {
-        (T::descriptor().expect("built-in events are reflected"), category)
+        (
+            T::descriptor().expect("built-in events are reflected"),
+            category,
+        )
     }
     use EventCategory as C;
     vec![

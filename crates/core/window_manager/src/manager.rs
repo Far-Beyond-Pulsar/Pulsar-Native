@@ -267,13 +267,20 @@ impl WindowManager {
     pub fn focus_window_by_request(&self, request: &WindowRequest, cx: &mut App) -> bool {
         // Only windows GPUI still has count; drop any that closed without
         // telling us (see `observe_closed_windows`).
-        let live: std::collections::HashSet<gpui::WindowId> =
-            cx.windows().iter().map(|handle| handle.window_id()).collect();
+        let live: std::collections::HashSet<gpui::WindowId> = cx
+            .windows()
+            .iter()
+            .map(|handle| handle.window_id())
+            .collect();
         if self.state.retain_live(&live) > 0 {
-            self.telemetry.record_window_count(self.state.window_count());
+            self.telemetry
+                .record_window_count(self.state.window_count());
         }
         while let Some(info) = self.state.find_by_request(request) {
-            let focused = info.handle.update(cx, |_, window, _| window.activate_window()).is_ok();
+            let focused = info
+                .handle
+                .update(cx, |_, window, _| window.activate_window())
+                .is_ok();
             if focused {
                 return true;
             }
@@ -310,12 +317,20 @@ mod tests {
     }
 
     fn tool() -> WindowRequest {
-        WindowRequest::Custom { type_name: "Tool".into() }
+        WindowRequest::Custom {
+            type_name: "Tool".into(),
+        }
     }
 
     fn open(wm: &WindowManager, cx: &mut TestAppContext) {
         cx.update(|cx| {
-            wm.create_window(tool(), WindowOptions::default(), |_, cx| cx.new(|_| Tool), cx).unwrap();
+            wm.create_window(
+                tool(),
+                WindowOptions::default(),
+                |_, cx| cx.new(|_| Tool),
+                cx,
+            )
+            .unwrap();
         });
     }
 
@@ -326,15 +341,22 @@ mod tests {
     fn a_window_closed_behind_the_managers_back_can_be_reopened(cx: &mut TestAppContext) {
         let wm = WindowManager::new();
         open(&wm, cx);
-        assert!(cx.update(|cx| wm.focus_window_by_request(&tool(), cx)), "open: focused, not duplicated");
+        assert!(
+            cx.update(|cx| wm.focus_window_by_request(&tool(), cx)),
+            "open: focused, not duplicated"
+        );
         assert_eq!(wm.window_count(), 1);
 
         // The title bar's close button.
         let handle = cx.update(|cx| cx.windows()[0]);
-        cx.update_window(handle, |_, window, _| window.remove_window()).unwrap();
+        cx.update_window(handle, |_, window, _| window.remove_window())
+            .unwrap();
         cx.run_until_parked();
         assert_eq!(wm.window_count(), 0, "the closed window is forgotten");
-        assert!(!cx.update(|cx| wm.focus_window_by_request(&tool(), cx)), "nothing to focus: open a new one");
+        assert!(
+            !cx.update(|cx| wm.focus_window_by_request(&tool(), cx)),
+            "nothing to focus: open a new one"
+        );
 
         open(&wm, cx);
         assert_eq!(wm.window_count(), 1);
@@ -350,7 +372,8 @@ mod tests {
         let handle = cx.update(|cx| cx.windows()[0]);
         // Simulate a missed close notification: re-register the entry
         // after the window is gone.
-        cx.update_window(handle, |_, window, _| window.remove_window()).unwrap();
+        cx.update_window(handle, |_, window, _| window.remove_window())
+            .unwrap();
         cx.run_until_parked();
         wm.state.register_window(99, tool(), None, handle);
         assert_eq!(wm.window_count(), 1);

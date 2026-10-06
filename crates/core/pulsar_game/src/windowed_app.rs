@@ -630,9 +630,11 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                         let key = code as i64;
                         let channel = pulsar_events::gamma::Channel::Global;
                         if pressed {
-                            self.events.publish(channel, pulsar_events::builtin::KeyDown { key });
+                            self.events
+                                .publish(channel, pulsar_events::builtin::KeyDown { key });
                         } else {
-                            self.events.publish(channel, pulsar_events::builtin::KeyUp { key });
+                            self.events
+                                .publish(channel, pulsar_events::builtin::KeyUp { key });
                         }
                     }
                 }
@@ -665,12 +667,18 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 };
                 let channel = pulsar_events::gamma::Channel::Global;
                 if state == ElementState::Pressed {
-                    self.events.publish(channel, pulsar_events::builtin::MouseButtonDown { button: index });
+                    self.events.publish(
+                        channel,
+                        pulsar_events::builtin::MouseButtonDown { button: index },
+                    );
                     if button == winit::event::MouseButton::Left && !self.cursor_captured {
                         self.capture_cursor(handle);
                     }
                 } else {
-                    self.events.publish(channel, pulsar_events::builtin::MouseButtonUp { button: index });
+                    self.events.publish(
+                        channel,
+                        pulsar_events::builtin::MouseButtonUp { button: index },
+                    );
                 }
             }
 

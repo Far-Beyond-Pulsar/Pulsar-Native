@@ -126,13 +126,7 @@ impl LevelEditorPanel {
                 let path = handle.path().to_path_buf();
                 // Background save; on success the level's path becomes `path`.
                 cx.update(|window, cx| {
-                    crate::ui::save::save_level(
-                        state_arc,
-                        path,
-                        editor_camera,
-                        window,
-                        cx,
-                    )
+                    crate::ui::save::save_level(state_arc, path, editor_camera, window, cx)
                 })
                 .ok();
             }

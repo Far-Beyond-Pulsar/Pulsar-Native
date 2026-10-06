@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use gpui::{App, Window};
 use plugin_editor_api::{
-    AiToolDefinition, CompileDiagnostic, EditorId, EditorMetadata, FileTypeDefinition, NativeRegistry, PluginError, ScriptLanguage,
+    AiToolDefinition, CompileDiagnostic, EditorId, EditorMetadata, FileTypeDefinition,
+    NativeRegistry, PluginError, ScriptLanguage,
 };
 use plugin_manager::{BuiltinEditorProvider, EditorContext, LinkedEditorProvider};
 use ui::dock::PanelView;
@@ -27,7 +28,11 @@ impl ScriptLanguage for TypeScriptLanguage {
         validate_project_classes(project_root, &NativeRegistry::with_engine_natives())
     }
 
-    fn compile_project(&self, project_root: &Path, natives: &NativeRegistry) -> Vec<CompileDiagnostic> {
+    fn compile_project(
+        &self,
+        project_root: &Path,
+        natives: &NativeRegistry,
+    ) -> Vec<CompileDiagnostic> {
         compile_project_classes(project_root, natives)
     }
 }
@@ -66,8 +71,16 @@ impl BuiltinEditorProvider for TypeScriptProvider {
         vec![script_language()]
     }
 
-    fn create_editor(&self, _: PathBuf, _: &EditorContext, _: &mut Window, _: &mut App) -> Result<Arc<dyn PanelView>, PluginError> {
-        Err(PluginError::Other { message: "TypeScript has no editor panel".into() })
+    fn create_editor(
+        &self,
+        _: PathBuf,
+        _: &EditorContext,
+        _: &mut Window,
+        _: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        Err(PluginError::Other {
+            message: "TypeScript has no editor panel".into(),
+        })
     }
 }
 

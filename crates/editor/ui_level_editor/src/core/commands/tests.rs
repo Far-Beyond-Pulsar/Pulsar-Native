@@ -40,10 +40,7 @@ mod undo_redo_tests {
         );
 
         assert!(state.scene.undo());
-        assert!(
-            crate::scene_edit::objects::get_all_objects(&state.scene.world())
-                .is_empty()
-        );
+        assert!(crate::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
         assert!(!state.scene.can_undo());
         assert!(state.scene.can_redo());
     }
@@ -59,10 +56,7 @@ mod undo_redo_tests {
             },
         );
         state.scene.undo();
-        assert!(
-            crate::scene_edit::objects::get_all_objects(&state.scene.world())
-                .is_empty()
-        );
+        assert!(crate::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
 
         assert!(state.scene.redo());
 
@@ -129,10 +123,7 @@ mod undo_redo_tests {
         // Still exactly the one checkpoint from AddObject -- undoing once
         // now must remove the object, not merely revert the selection.
         assert!(state.scene.undo());
-        assert!(
-            crate::scene_edit::objects::get_all_objects(&state.scene.world())
-                .is_empty()
-        );
+        assert!(crate::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
         assert!(!state.scene.can_undo());
     }
 
@@ -331,9 +322,7 @@ mod undo_redo_tests {
     // the cached editors (Pulsar-Native#575).
     #[test]
     fn a_component_property_command_registers_a_property_change_for_the_object() {
-        use crate::scene_edit::changes::{
-            drain_property_changes, has_property_changes_for,
-        };
+        use crate::scene_edit::changes::{drain_property_changes, has_property_changes_for};
 
         let mut state = LevelEditorState::new();
         let id = execute_command(
@@ -465,7 +454,10 @@ mod undo_redo_tests {
         assert_eq!(result.affected_ids, vec![lamp.clone()]);
         assert_eq!(read(&state), Some(ObjectMovability::Static));
 
-        assert!(!execute_command(&mut state, mark_static()).changed, "already Static");
+        assert!(
+            !execute_command(&mut state, mark_static()).changed,
+            "already Static"
+        );
 
         assert!(state.scene.undo());
         assert_eq!(read(&state), Some(ObjectMovability::Movable));

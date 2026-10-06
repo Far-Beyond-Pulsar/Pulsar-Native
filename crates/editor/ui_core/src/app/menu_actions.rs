@@ -36,15 +36,15 @@ impl PulsarApp {
             .on_action(cx.listener(|this, _: &menu::ShowAgentChat, window, cx| {
                 this.toggle_agent_chat(window, cx)
             }))
-            .on_action(cx.listener(|_, _: &menu::ToggleFullscreen, window, _| {
-                window.toggle_fullscreen()
-            }))
-            .on_action(cx.listener(|_, _: &menu::ZoomIn, window, cx| {
-                Self::zoom_ui(1.0, window, cx)
-            }))
-            .on_action(cx.listener(|_, _: &menu::ZoomOut, window, cx| {
-                Self::zoom_ui(-1.0, window, cx)
-            }))
+            .on_action(
+                cx.listener(|_, _: &menu::ToggleFullscreen, window, _| window.toggle_fullscreen()),
+            )
+            .on_action(
+                cx.listener(|_, _: &menu::ZoomIn, window, cx| Self::zoom_ui(1.0, window, cx)),
+            )
+            .on_action(
+                cx.listener(|_, _: &menu::ZoomOut, window, cx| Self::zoom_ui(-1.0, window, cx)),
+            )
             .on_action(cx.listener(|_, _: &menu::ResetZoom, window, cx| {
                 Theme::global_mut(cx).font_size = px(DEFAULT_FONT);
                 window.refresh();

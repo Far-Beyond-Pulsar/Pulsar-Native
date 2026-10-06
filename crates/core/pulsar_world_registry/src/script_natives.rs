@@ -20,8 +20,8 @@ use std::sync::Arc;
 use pulsar_reflection::{MethodFlags, PropertyMetadata, REGISTRY};
 use pulsar_scenedb::Entity;
 use pulsar_script_vm::{
-    ComponentProvider, NativeFn, NativeProvider, Param, ProvidedComponent, ScriptError,
-    Signature, Type, TypeRegistry, Value,
+    ComponentProvider, NativeFn, NativeProvider, Param, ProvidedComponent, ScriptError, Signature,
+    Type, TypeRegistry, Value,
 };
 
 use crate::WorldComponentRegistration;
@@ -42,7 +42,10 @@ inventory::submit! {
 fn world_components() -> Vec<ProvidedComponent> {
     inventory::iter::<WorldComponentRegistration>
         .into_iter()
-        .map(|r| ProvidedComponent { name: r.class_name, id: r.component_type })
+        .map(|r| ProvidedComponent {
+            name: r.class_name,
+            id: r.component_type,
+        })
         .collect()
 }
 
@@ -81,7 +84,10 @@ fn property_natives(
 ) -> Vec<NativeFn> {
     let class = registration.class_name;
     let Some(binding) = TypeRegistry::global().binding(property.type_info.type_id) else {
-        tracing::debug!("script natives: skipping {class}.{}: type not script-visible", property.name);
+        tracing::debug!(
+            "script natives: skipping {class}.{}: type not script-visible",
+            property.name
+        );
         return Vec::new();
     };
     let value_ty = binding.script_type();
@@ -92,7 +98,10 @@ fn property_natives(
     let getter = Arc::clone(&property);
     let mut get = NativeFn::builder(format!("{class}::get_{name}"))
         .doc(format!("The {class}'s {}.", getter.display_name))
-        .flags(MethodFlags { side_effect_free: true, deterministic: false })
+        .flags(MethodFlags {
+            side_effect_free: true,
+            deterministic: false,
+        })
         .method_of(ty.clone())
         .params(["self"])
         .attr("property", name);
@@ -148,7 +157,10 @@ fn method_native(
     let mut params = vec![Param::new(ty.clone())];
     for param in &method.params {
         let Some(binding) = types.binding(param.type_info.type_id) else {
-            tracing::debug!("script natives: skipping {class}::{}: parameter type not script-visible", method.name);
+            tracing::debug!(
+                "script natives: skipping {class}::{}: parameter type not script-visible",
+                method.name
+            );
             return None;
         };
         params.push(Param::new(binding.script_type()));
@@ -158,7 +170,10 @@ fn method_native(
         None => (Type::Unit, None),
         Some(ret) => {
             let Some(binding) = types.binding(ret.type_info.type_id) else {
-                tracing::debug!("script natives: skipping {class}::{}: return type not script-visible", method.name);
+                tracing::debug!(
+                    "script natives: skipping {class}::{}: return type not script-visible",
+                    method.name
+                );
                 return None;
             };
             (binding.script_type(), Some(binding))
@@ -201,7 +216,9 @@ fn method_native(
             (registration.refresh_gpu_mirror)(world, entity);
             match (ret_binding, result) {
                 (Some(binding), Some(value)) => Ok(binding.to_value(&*value)),
-                (Some(_), None) => Err(ScriptError::native(format!("{class}::{name} returned nothing"))),
+                (Some(_), None) => Err(ScriptError::native(format!(
+                    "{class}::{name} returned nothing"
+                ))),
                 (None, _) => Ok(Value::Unit),
             }
         }),

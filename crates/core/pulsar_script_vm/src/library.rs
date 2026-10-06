@@ -42,8 +42,8 @@ use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
+use std::sync::Arc;
 
 use crate::native::{DuplicateNative, NativeFn, NativeRegistry, Origin};
 

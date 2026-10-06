@@ -61,7 +61,7 @@ impl Default for FreeCam {
             // facing toward the scene.  The first rendered frame will show
             // something sensible even with an empty scene.
             position: glam::Vec3::new(0.0, 3.0, 10.0),
-            yaw: 0.0,      // face -Z (into the scene)
+            yaw: 0.0,     // face -Z (into the scene)
             pitch: -0.15, // very slight downward tilt
             move_speed: 8.0,
             mouse_sensitivity: 0.002,

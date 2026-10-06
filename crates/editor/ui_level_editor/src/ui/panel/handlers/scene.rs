@@ -133,7 +133,10 @@ fn focus_camera(
         let (sp, cp) = f64::from(c.pitch).sin_cos();
         DVec3::new(sy * cp, sp, -cy * cp)
     });
-    let (position, forward) = if world.get::<helio_component::VoxelTerrainComponent>(entity).is_some() {
+    let (position, forward) = if world
+        .get::<helio_component::VoxelTerrainComponent>(entity)
+        .is_some()
+    {
         match helio_component::voxel_world::terrain_world(world, entity) {
             Ok(planet) => helio_component::voxel_world::frame_view(&planet, eye, forward, 30.0),
             Err(error) => {

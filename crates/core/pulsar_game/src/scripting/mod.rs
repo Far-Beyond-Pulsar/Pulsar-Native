@@ -33,11 +33,12 @@ pub mod export;
 mod tests;
 
 pub use commands::WorldCommand;
-pub use events::{ScriptEventBridge, ScriptEvents};
 pub use driver::{
-    global_instance_id, instance_id_for, module_file, scripting_config_path, DriverReport, LockTimes, ReloadRequests,
-    ScriptDriver, ScriptingConfig, MODULE_BINARY_FILE, MODULE_JSON_FILE, SCRIPTING_CONFIG_FILE,
+    global_instance_id, instance_id_for, module_file, scripting_config_path, DriverReport,
+    LockTimes, ReloadRequests, ScriptDriver, ScriptingConfig, MODULE_BINARY_FILE, MODULE_JSON_FILE,
+    SCRIPTING_CONFIG_FILE,
 };
+pub use events::{ScriptEventBridge, ScriptEvents};
 
 // Scene-object lookup for scripts. The result is `entity::none()` when no
 // object matches; component references built from it resolve to nothing.
@@ -100,18 +101,27 @@ pub fn new_driver(project_root: impl Into<PathBuf>) -> ScriptDriver {
 
 /// The script runtime limits `settings` ask for in their own profile
 /// (#857, #858): budgets, call depth, checked arithmetic, per-class budgets.
-pub fn script_limits(settings: &pulsar_content::ProjectSettings) -> pulsar_script_runtime::ScriptLimits {
+pub fn script_limits(
+    settings: &pulsar_content::ProjectSettings,
+) -> pulsar_script_runtime::ScriptLimits {
     let limits = settings.script_limits();
     pulsar_script_runtime::ScriptLimits {
         instruction_budget: limits.instruction_budget,
         max_call_depth: limits.max_call_depth as usize,
         checked_arithmetic: limits.checked_arithmetic,
-        class_budgets: settings.scripting.class_budgets.clone().into_iter().collect(),
+        class_budgets: settings
+            .scripting
+            .class_budgets
+            .clone()
+            .into_iter()
+            .collect(),
     }
 }
 
 /// The native capability allowlist `settings` ask for (#869).
-pub fn capability_policy(settings: &pulsar_content::ProjectSettings) -> pulsar_script_vm::CapabilityPolicy {
+pub fn capability_policy(
+    settings: &pulsar_content::ProjectSettings,
+) -> pulsar_script_vm::CapabilityPolicy {
     match &settings.scripting.allowed_capabilities {
         Some(allowed) => pulsar_script_vm::CapabilityPolicy::only(allowed.iter().cloned()),
         None => pulsar_script_vm::CapabilityPolicy::allow_all(),
@@ -161,16 +171,14 @@ pub fn bind_class_slots(
         .class_variables(&class)
         .unwrap_or_default()
         .into_iter()
-        .filter_map(|(name, ty)| {
-            match ty {
-                pulsar_script_vm::Type::Component(component)
-                    if pulsar_class::slot_of_variable(&name).is_some()
-                        || name.starts_with("__component:") =>
-                {
-                    Some((name, component))
-                }
-                _ => None,
+        .filter_map(|(name, ty)| match ty {
+            pulsar_script_vm::Type::Component(component)
+                if pulsar_class::slot_of_variable(&name).is_some()
+                    || name.starts_with("__component:") =>
+            {
+                Some((name, component))
             }
+            _ => None,
         })
         .collect();
     if component_vars.is_empty() {

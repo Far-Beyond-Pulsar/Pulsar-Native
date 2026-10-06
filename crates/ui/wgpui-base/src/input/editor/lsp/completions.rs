@@ -1,9 +1,7 @@
 use crate::input::EditorMode;
 use anyhow::Result;
 use gpui::{App, Context, EntityInputHandler, Pixels, Task, Window, px};
-use lsp_types::{
-    CompletionContext, CompletionItem, CompletionResponse, request::Completion,
-};
+use lsp_types::{CompletionContext, CompletionItem, CompletionResponse, request::Completion};
 use ropey::Rope;
 use std::{cell::RefCell, ops::Range, rc::Rc, time::Duration};
 
@@ -397,5 +395,3 @@ impl InputBaseState<EditorMode> {
         true
     }
 }
-
-

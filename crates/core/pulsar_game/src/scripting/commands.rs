@@ -64,12 +64,20 @@ pub(crate) struct CommandScope {
 impl CommandScope {
     pub(crate) fn begin() -> Self {
         let previous = QUEUE.with(|q| q.borrow_mut().replace(Vec::new()));
-        Self { previous, finished: false }
+        Self {
+            previous,
+            finished: false,
+        }
     }
 
     /// Everything queued so far; the scope keeps collecting afterwards.
     pub(crate) fn take(&mut self) -> Vec<WorldCommand> {
-        QUEUE.with(|q| q.borrow_mut().as_mut().map(std::mem::take).unwrap_or_default())
+        QUEUE.with(|q| {
+            q.borrow_mut()
+                .as_mut()
+                .map(std::mem::take)
+                .unwrap_or_default()
+        })
     }
 
     /// End the scope, returning what is still queued.
@@ -126,7 +134,12 @@ fn spawn(host: &mut Host<'_>, parent: Option<Entity>, class: String, position: [
         return Entity::DANGLING;
     };
     let entity = world.spawn();
-    queue(WorldCommand::Spawn { entity, class, parent, position });
+    queue(WorldCommand::Spawn {
+        entity,
+        class,
+        parent,
+        position,
+    });
     entity
 }
 

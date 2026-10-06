@@ -118,5 +118,3 @@ mod tests {
         assert!(cursor.read_with(cx, |cursor, _| cursor.visible()));
     }
 }
-
-

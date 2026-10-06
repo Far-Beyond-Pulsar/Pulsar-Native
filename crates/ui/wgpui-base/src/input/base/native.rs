@@ -152,5 +152,3 @@ impl NativeMenu {
         self
     }
 }
-
-

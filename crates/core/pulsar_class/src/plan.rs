@@ -323,8 +323,12 @@ mod tests {
         let mut def = def(vec![comp("uuid-a", "A", json!({"v": 1}))]);
         def.slot_aliases.insert("A_0".into(), "uuid-a".into());
         let mut instance = ClassInstance::default();
-        instance.component_overrides.insert("A_0".into(), json!({"v": 5}));
-        instance.component_overrides.insert("Gone_9".into(), json!({"v": 7}));
+        instance
+            .component_overrides
+            .insert("A_0".into(), json!({"v": 5}));
+        instance
+            .component_overrides
+            .insert("Gone_9".into(), json!({"v": 7}));
 
         assert!(migrate_slot_keys(&def, &mut instance));
         assert_eq!(instance.component_overrides["uuid-a"], json!({"v": 5}));
@@ -342,8 +346,12 @@ mod tests {
         let mut def = def(vec![comp("uuid-a", "A", json!({"v": 1}))]);
         def.slot_aliases.insert("A_0".into(), "uuid-a".into());
         let mut instance = ClassInstance::default();
-        instance.component_overrides.insert("A_0".into(), json!({"v": 5}));
-        instance.component_overrides.insert("uuid-a".into(), json!({"v": 6}));
+        instance
+            .component_overrides
+            .insert("A_0".into(), json!({"v": 5}));
+        instance
+            .component_overrides
+            .insert("uuid-a".into(), json!({"v": 6}));
         assert!(!migrate_slot_keys(&def, &mut instance));
         assert_eq!(instance.component_overrides["uuid-a"], json!({"v": 6}));
     }

@@ -23,7 +23,10 @@ static OPEN_EDITORS: LazyLock<RwLock<Vec<Weak<parking_lot::RwLock<LevelEditorSta
 pub fn register_editor(state: &EditorState) {
     let mut editors = OPEN_EDITORS.write().unwrap_or_else(|p| p.into_inner());
     editors.retain(|weak| weak.strong_count() > 0);
-    if !editors.iter().any(|weak| weak.as_ptr() == Arc::as_ptr(state)) {
+    if !editors
+        .iter()
+        .any(|weak| weak.as_ptr() == Arc::as_ptr(state))
+    {
         editors.push(Arc::downgrade(state));
     }
 }

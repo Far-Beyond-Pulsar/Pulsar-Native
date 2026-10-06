@@ -8,7 +8,10 @@ use crate::state::{SpanCache, ViewState};
 use crate::trace_data::{TraceData, TraceFrame};
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use std::sync::{atomic::{AtomicU32, Ordering}, Arc};
+use std::sync::{
+    atomic::{AtomicU32, Ordering},
+    Arc,
+};
 use ui::v_flex;
 use ui::ActiveTheme;
 use ui::PixelsExt;
@@ -388,9 +391,9 @@ impl Render for FlamegraphView {
                         let y_adj = -GRAPH_HEIGHT;
                         let y_min_world = -y_adj - view.view_state.pan_y - ROW_HEIGHT;
                         let y_max_world = (h as f32) - y_adj - view.view_state.pan_y;
-                        let vertical_tile =
-                            (crate::state::TILE_ROW_HEIGHT.max(1.0).recip() * y_min_world).floor()
-                                as i64;
+                        let vertical_tile = (crate::state::TILE_ROW_HEIGHT.max(1.0).recip()
+                            * y_min_world)
+                            .floor() as i64;
                         if view.lod_level != Some(level)
                             || view.lod_vertical_key != Some((level, vertical_tile))
                         {
@@ -441,8 +444,10 @@ impl Render for FlamegraphView {
 
                         // Frame boundary lines (thin vertical lines marking end/start
                         // of each frame, across all threads)
-                        let frame_line_rects = crate::components::flamegraph_canvas::
-                            build_frame_boundary_instances(&frame, vs, w as f32, h as f32);
+                        let frame_line_rects =
+                            crate::components::flamegraph_canvas::build_frame_boundary_instances(
+                                &frame, vs, w as f32, h as f32,
+                            );
 
                         // Cross-thread wait/block arrows for the double-clicked span
                         let arrow_rects = vs

@@ -131,5 +131,3 @@ impl InputBaseState<EditorMode> {
         .detach();
     }
 }
-
-

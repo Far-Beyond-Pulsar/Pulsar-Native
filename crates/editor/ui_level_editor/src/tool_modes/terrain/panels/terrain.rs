@@ -19,20 +19,17 @@ use helio_component::{VoxelComponent, VoxelTerrainComponent};
 use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex,
+    h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable,
 };
 
 use super::widgets::{
-    SharedState, ToolSpec, collapsible_header, info_row, panel_header, segmented_row, stepper_row,
-    swatch_color, tool_grid,
+    collapsible_header, info_row, panel_header, segmented_row, stepper_row, swatch_color,
+    tool_grid, SharedState, ToolSpec,
 };
-use crate::commands::{SceneCommand, execute_command};
+use crate::commands::{execute_command, SceneCommand};
 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
-use crate::state::terrain::{
-    BrushShape, SculptBrush, SculptMode, TerrainDomain, TerrainTarget,
-};
+use crate::state::terrain::{BrushShape, SculptBrush, SculptMode, TerrainDomain, TerrainTarget};
 use crate::tool_modes::dispatcher::ToolModeDispatcher;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -153,17 +150,13 @@ impl TerrainPanel {
             return;
         }
         self.pump_started = true;
-        crate::ui::frame_pump::spawn_frame_pump(
-            &cx.entity(),
-            window,
-            |this, _window, cx| {
-                let signature = Signature::of(&this.state);
-                if signature != this.last_signature {
-                    this.last_signature = signature;
-                    cx.notify();
-                }
-            },
-        );
+        crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, _window, cx| {
+            let signature = Signature::of(&this.state);
+            if signature != this.last_signature {
+                this.last_signature = signature;
+                cx.notify();
+            }
+        });
     }
 
     fn toggle_section(&mut self, id: &'static str) {

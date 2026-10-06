@@ -5167,6 +5167,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-snapshot"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "futures-channel",
+ "glam 0.33.5",
+ "helio",
+ "helio-asset-compat",
+ "helio-default-graphs",
+ "helio-pass-forward-lit",
+ "helio-pass-gbuffer",
+ "image",
+ "log",
+ "pollster 0.4.0",
+ "pulsar_scenedb",
+ "thiserror 2.0.20",
+ "wgpu",
+]
+
+[[package]]
 name = "helio-voxel-data"
 version = "0.1.0"
 dependencies = [
@@ -13697,6 +13717,7 @@ dependencies = [
  "engine_fs",
  "engine_state",
  "gpui-ce",
+ "helio-snapshot",
  "helio_component",
  "image",
  "plugin_editor_api",

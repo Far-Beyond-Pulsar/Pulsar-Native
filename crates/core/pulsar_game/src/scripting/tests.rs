@@ -29,32 +29,66 @@ type Log = Arc<Mutex<Vec<(String, String)>>>;
 fn function(name: &str, params: Vec<Type>, extra: Vec<Type>, code: Vec<Instr>) -> Function {
     let mut registers = params.clone();
     registers.extend(extra);
-    Function { name: name.into(), exported: true, params, ret: Type::Unit, registers, code, debug: None }
+    Function {
+        name: name.into(),
+        exported: true,
+        params,
+        ret: Type::Unit,
+        registers,
+        code,
+        debug: None,
+    }
 }
 
 fn import(name: &str, params: Vec<Type>, ret: Type) -> Import {
-    Import { name: name.into(), sig: Signature::new(params.into_iter().map(Param::new), ret) }
+    Import {
+        name: name.into(),
+        sig: Signature::new(params.into_iter().map(Param::new), ret),
+    }
 }
 
 /// `begin_play`: `me = self`, log "begin". `end_play`: log "end".
 fn minion_module() -> Module {
     let mut m = Module::new("Minion");
-    m.variables = vec![Variable { name: "me".into(), ty: Type::Entity, default: None, id: None }];
+    m.variables = vec![Variable {
+        name: "me".into(),
+        ty: Type::Entity,
+        default: None,
+        id: None,
+    }];
     m.constants = vec![Constant::Str("begin".into()), Constant::Str("end".into())];
     m.imports = vec![import("test::event", vec![Type::Str], Type::Unit)];
     m.functions = vec![
-        function("begin_play", vec![], vec![Type::Entity, Type::Str], vec![
-            Instr::SelfEntity { dst: 0 },
-            Instr::StoreVar { var: 0, src: 0 },
-            Instr::Const { dst: 1, index: 0 },
-            Instr::CallNative { import: 0, args: vec![1], dst: None },
-            Instr::Return { value: None },
-        ]),
-        function("end_play", vec![], vec![Type::Str], vec![
-            Instr::Const { dst: 0, index: 1 },
-            Instr::CallNative { import: 0, args: vec![0], dst: None },
-            Instr::Return { value: None },
-        ]),
+        function(
+            "begin_play",
+            vec![],
+            vec![Type::Entity, Type::Str],
+            vec![
+                Instr::SelfEntity { dst: 0 },
+                Instr::StoreVar { var: 0, src: 0 },
+                Instr::Const { dst: 1, index: 0 },
+                Instr::CallNative {
+                    import: 0,
+                    args: vec![1],
+                    dst: None,
+                },
+                Instr::Return { value: None },
+            ],
+        ),
+        function(
+            "end_play",
+            vec![],
+            vec![Type::Str],
+            vec![
+                Instr::Const { dst: 0, index: 1 },
+                Instr::CallNative {
+                    import: 0,
+                    args: vec![0],
+                    dst: None,
+                },
+                Instr::Return { value: None },
+            ],
+        ),
     ];
     m
 }
@@ -64,8 +98,18 @@ fn minion_module() -> Module {
 fn spawner_module() -> Module {
     let mut m = Module::new("Spawner");
     m.variables = (0..5)
-        .map(|i| Variable { name: format!("e{i}"), ty: Type::Entity, default: None, id: None })
-        .chain([Variable { name: "ticks".into(), ty: Type::Int, default: None, id: None }])
+        .map(|i| Variable {
+            name: format!("e{i}"),
+            ty: Type::Entity,
+            default: None,
+            id: None,
+        })
+        .chain([Variable {
+            name: "ticks".into(),
+            ty: Type::Int,
+            default: None,
+            id: None,
+        }])
         .collect();
     m.constants = vec![
         Constant::Str("Minion".into()),
@@ -78,18 +122,37 @@ fn spawner_module() -> Module {
         Constant::Int(2),
     ];
     m.imports = vec![
-        import("world::spawn", vec![Type::Str, Type::Float, Type::Float, Type::Float], Type::Entity),
+        import(
+            "world::spawn",
+            vec![Type::Str, Type::Float, Type::Float, Type::Float],
+            Type::Entity,
+        ),
         import("world::destroy", vec![Type::Entity], Type::Unit),
     ];
-    let mut begin = vec![Instr::Const { dst: 0, index: 0 }, Instr::Const { dst: 2, index: 1 }];
+    let mut begin = vec![
+        Instr::Const { dst: 0, index: 0 },
+        Instr::Const { dst: 2, index: 1 },
+    ];
     for i in 0..5u32 {
-        begin.push(Instr::Const { dst: 1, index: 1 + i });
-        begin.push(Instr::CallNative { import: 0, args: vec![0, 1, 2, 2], dst: Some(3) });
+        begin.push(Instr::Const {
+            dst: 1,
+            index: 1 + i,
+        });
+        begin.push(Instr::CallNative {
+            import: 0,
+            args: vec![0, 1, 2, 2],
+            dst: Some(3),
+        });
         begin.push(Instr::StoreVar { var: i, src: 3 });
     }
     begin.push(Instr::Return { value: None });
     m.functions = vec![
-        function("begin_play", vec![], vec![Type::Str, Type::Float, Type::Float, Type::Entity], begin),
+        function(
+            "begin_play",
+            vec![],
+            vec![Type::Str, Type::Float, Type::Float, Type::Entity],
+            begin,
+        ),
         function(
             "tick",
             vec![Type::Float],
@@ -97,15 +160,37 @@ fn spawner_module() -> Module {
             vec![
                 Instr::LoadVar { dst: 1, var: 5 },
                 Instr::Const { dst: 2, index: 6 },
-                Instr::Binary { op: BinOp::Add, dst: 1, a: 1, b: 2 },
+                Instr::Binary {
+                    op: BinOp::Add,
+                    dst: 1,
+                    a: 1,
+                    b: 2,
+                },
                 Instr::StoreVar { var: 5, src: 1 },
                 Instr::Const { dst: 2, index: 7 },
-                Instr::Binary { op: BinOp::Eq, dst: 3, a: 1, b: 2 },
-                Instr::Branch { cond: 3, then: 7, otherwise: 12 },
+                Instr::Binary {
+                    op: BinOp::Eq,
+                    dst: 3,
+                    a: 1,
+                    b: 2,
+                },
+                Instr::Branch {
+                    cond: 3,
+                    then: 7,
+                    otherwise: 12,
+                },
                 Instr::LoadVar { dst: 4, var: 1 },
-                Instr::CallNative { import: 1, args: vec![4], dst: None },
+                Instr::CallNative {
+                    import: 1,
+                    args: vec![4],
+                    dst: None,
+                },
                 Instr::LoadVar { dst: 4, var: 3 },
-                Instr::CallNative { import: 1, args: vec![4], dst: None },
+                Instr::CallNative {
+                    import: 1,
+                    args: vec![4],
+                    dst: None,
+                },
                 Instr::Return { value: None },
                 Instr::Return { value: None },
             ],
@@ -116,12 +201,26 @@ fn spawner_module() -> Module {
 
 // ---- project and level fixtures ---------------------------------------------
 
-fn write_class(root: &Path, name: &str, guid: &str, module: Option<Module>, prefab: Option<serde_json::Value>) {
+fn write_class(
+    root: &Path,
+    name: &str,
+    guid: &str,
+    module: Option<Module>,
+    prefab: Option<serde_json::Value>,
+) {
     let dir = root.join("src").join("classes").join(name);
     std::fs::create_dir_all(dir.join("events").join(".build")).unwrap();
-    std::fs::write(dir.join("class.json"), json!({ "class_id": guid }).to_string()).unwrap();
+    std::fs::write(
+        dir.join("class.json"),
+        json!({ "class_id": guid }).to_string(),
+    )
+    .unwrap();
     if let Some(module) = module {
-        std::fs::write(dir.join("events/.build/module.json"), module.to_json().unwrap()).unwrap();
+        std::fs::write(
+            dir.join("events/.build/module.json"),
+            module.to_json().unwrap(),
+        )
+        .unwrap();
     }
     if let Some(prefab) = prefab {
         std::fs::write(dir.join("prefab.json"), prefab.to_string()).unwrap();
@@ -176,7 +275,11 @@ fn install_log(driver: &mut ScriptDriver) -> Log {
         .runtime_mut()
         .register_native(NativeFn::builder("test::event").params(["name"]).build(
             move |host: &mut Host<'_>, name: String| {
-                let who = host.world().stable_id_of(host.entity).unwrap_or_default().to_owned();
+                let who = host
+                    .world()
+                    .stable_id_of(host.entity)
+                    .unwrap_or_default()
+                    .to_owned();
                 sink.lock().unwrap().push((name, who));
             },
         ))
@@ -226,14 +329,28 @@ fn instances(game: &TickLoop) -> Vec<(String, String)> {
         .iter()
         .map(|id| {
             let entity = driver.runtime().entity_of(id);
-            assert_eq!(entity, driver.entity_of_instance(id), "{id}: driver lookup agrees");
+            assert_eq!(
+                entity,
+                driver.entity_of_instance(id),
+                "{id}: driver lookup agrees"
+            );
             if let Some(entity) = entity {
-                assert_eq!(driver.instance_of(entity), Some(id.as_str()), "{id}: entity -> instance");
+                assert_eq!(
+                    driver.instance_of(entity),
+                    Some(id.as_str()),
+                    "{id}: entity -> instance"
+                );
             }
             if let Some(Value::Entity(me)) = driver.runtime().variable(id, "me") {
-                assert_eq!(*me, entity.unwrap_or(Entity::DANGLING), "{id}: self is its own entity");
+                assert_eq!(
+                    *me,
+                    entity.unwrap_or(Entity::DANGLING),
+                    "{id}: self is its own entity"
+                );
             }
-            let stable = entity.and_then(|e| store.world.stable_id_of(e)).unwrap_or_default();
+            let stable = entity
+                .and_then(|e| store.world.stable_id_of(e))
+                .unwrap_or_default();
             (id.clone(), stable.to_owned())
         })
         .collect()
@@ -252,7 +369,10 @@ fn minion(stable: &str) -> (String, String) {
 #[test]
 fn spawn_five_destroy_two_same_in_standalone_and_pie() {
     let project = project();
-    let level = level(project.path(), &[("spawner", None, Some((SPAWNER, "Spawner")))]);
+    let level = level(
+        project.path(),
+        &[("spawner", None, Some((SPAWNER, "Spawner")))],
+    );
 
     let mut outcomes = Vec::new();
     for start in [standalone as fn(&Path, &Path) -> (TickLoop, Log), pie] {
@@ -280,7 +400,10 @@ fn spawn_five_destroy_two_same_in_standalone_and_pie() {
         assert_eq!(
             live,
             [
-                (instance_id_for("spawner", &SPAWNER.into()), "spawner".to_owned()),
+                (
+                    instance_id_for("spawner", &SPAWNER.into()),
+                    "spawner".to_owned()
+                ),
                 minion("Minion_rt1"),
                 minion("Minion_rt3"),
                 minion("Minion_rt5"),
@@ -289,19 +412,32 @@ fn spawn_five_destroy_two_same_in_standalone_and_pie() {
         {
             let store = game.scene_store.read();
             let world = &store.world;
-            assert!(world.entity_for("Minion_rt2").is_none(), "destroyed objects are gone");
+            assert!(
+                world.entity_for("Minion_rt2").is_none(),
+                "destroyed objects are gone"
+            );
             assert!(world.entity_for("Minion_rt4").is_none());
             let rt3 = world.entity_for("Minion_rt3").unwrap();
-            assert_eq!(world.get::<ClassInstance>(rt3).unwrap().class.as_str(), MINION, "a real class instance");
             assert_eq!(
-                world.get::<engine_backend::scene::Transform>(rt3).unwrap().position,
+                world.get::<ClassInstance>(rt3).unwrap().class.as_str(),
+                MINION,
+                "a real class instance"
+            );
+            assert_eq!(
+                world
+                    .get::<engine_backend::scene::Transform>(rt3)
+                    .unwrap()
+                    .position,
                 [2.0, 0.0, 0.0],
                 "spawned at the requested position"
             );
         }
         outcomes.push((events(&log), live));
     }
-    assert_eq!(outcomes[0], outcomes[1], "standalone and PIE behave identically");
+    assert_eq!(
+        outcomes[0], outcomes[1],
+        "standalone and PIE behave identically"
+    );
 }
 
 /// An object placed while playing (the editor placing a class during PIE)
@@ -314,7 +450,11 @@ fn placing_a_class_instance_during_play_starts_it_next_tick() {
     game.tick_once();
     assert!(events(&log).is_empty());
 
-    let def = ClassRegistry::scan(project.path()).by_name("Minion").unwrap().load_definition().unwrap();
+    let def = ClassRegistry::scan(project.path())
+        .by_name("Minion")
+        .unwrap()
+        .load_definition()
+        .unwrap();
     let placed = {
         let mut store = game.scene_store.write();
         pulsar_class::world::instantiate_class(
@@ -344,7 +484,10 @@ fn placing_a_class_instance_during_play_starts_it_next_tick() {
 #[test]
 fn a_level_without_class_instances_runs_no_scripts() {
     let project = project();
-    let level = level(project.path(), &[("floor", None, None), ("wall", Some("floor"), None)]);
+    let level = level(
+        project.path(),
+        &[("floor", None, None), ("wall", Some("floor"), None)],
+    );
     for start in [standalone as fn(&Path, &Path) -> (TickLoop, Log), pie] {
         let (mut game, log) = start(project.path(), &level);
         game.tick_once();
@@ -364,16 +507,34 @@ fn level_objects_begin_by_depth_then_stable_id() {
     let class = Some((MINION, "Minion"));
     let level = level(
         project.path(),
-        &[("b", None, class), ("c", Some("b"), class), ("a", None, class), ("aa", Some("a"), class)],
+        &[
+            ("b", None, class),
+            ("c", Some("b"), class),
+            ("a", None, class),
+            ("aa", Some("a"), class),
+        ],
     );
     let (mut game, log) = standalone(project.path(), &level);
     game.tick_once();
-    assert_eq!(events(&log), [ev("begin", "a"), ev("begin", "b"), ev("begin", "aa"), ev("begin", "c")]);
+    assert_eq!(
+        events(&log),
+        [
+            ev("begin", "a"),
+            ev("begin", "b"),
+            ev("begin", "aa"),
+            ev("begin", "c")
+        ]
+    );
     // Shutdown ends them in start order.
     game.end_scripts();
     assert_eq!(
         events(&log)[4..],
-        [ev("end", "a"), ev("end", "b"), ev("end", "aa"), ev("end", "c")]
+        [
+            ev("end", "a"),
+            ev("end", "b"),
+            ev("end", "aa"),
+            ev("end", "c")
+        ]
     );
 }
 
@@ -388,14 +549,24 @@ fn global_scripts_get_one_unbound_instance() {
         json!({ "global_scripts": ["Minion", MINION] }).to_string(),
     )
     .unwrap();
-    assert_eq!(ScriptingConfig::load(project.path()).global_scripts.len(), 2);
+    assert_eq!(
+        ScriptingConfig::load(project.path()).global_scripts.len(),
+        2
+    );
     let level = level(project.path(), &[("m", None, Some((MINION, "Minion")))]);
     let (mut game, log) = standalone(project.path(), &level);
     game.tick_once();
-    assert_eq!(events(&log), [ev("begin", ""), ev("begin", "m")], "listed twice, started once, first");
+    assert_eq!(
+        events(&log),
+        [ev("begin", ""), ev("begin", "m")],
+        "listed twice, started once, first"
+    );
     assert_eq!(
         instances(&game),
-        [(global_instance_id(&MINION.into()), String::new()), minion("m")]
+        [
+            (global_instance_id(&MINION.into()), String::new()),
+            minion("m")
+        ]
     );
 }
 
@@ -407,27 +578,75 @@ fn global_scripts_get_one_unbound_instance() {
 fn spawn_and_destroy_are_applied_after_the_script_phase() {
     let project = project();
     let registry = ClassRegistry::scan(project.path());
-    let mut driver = ScriptDriver::with_parts(super::new_runtime(), project.path(), registry, Default::default());
+    let mut driver = ScriptDriver::with_parts(
+        super::new_runtime(),
+        project.path(),
+        registry,
+        Default::default(),
+    );
     let log = install_log(&mut driver);
     let mut world = World::new();
     driver.run_frame(&mut world, 0.0);
 
     // A native call outside a driver frame queues nothing.
-    let spawn = driver.runtime().natives().get("world::spawn").unwrap().clone();
-    let destroy = driver.runtime().natives().get("world::destroy").unwrap().clone();
+    let spawn = driver
+        .runtime()
+        .natives()
+        .get("world::spawn")
+        .unwrap()
+        .clone();
+    let destroy = driver
+        .runtime()
+        .natives()
+        .get("world::destroy")
+        .unwrap()
+        .clone();
     let outside = spawn
-        .call(&mut Host::new(&mut world, Entity::DANGLING), &mut [Value::from("Minion"), Value::Float(0.0), Value::Float(0.0), Value::Float(0.0)])
+        .call(
+            &mut Host::new(&mut world, Entity::DANGLING),
+            &mut [
+                Value::from("Minion"),
+                Value::Float(0.0),
+                Value::Float(0.0),
+                Value::Float(0.0),
+            ],
+        )
         .unwrap();
     assert_eq!(outside, Value::Entity(Entity::DANGLING));
 
     // Inside one: queued, applied at the end.
     let scope = super::commands::CommandScope::begin();
     let mut host = Host::new(&mut world, Entity::DANGLING);
-    let kept = spawn.call(&mut host, &mut [Value::from("Minion"), Value::Float(1.0), Value::Float(0.0), Value::Float(0.0)]).unwrap();
-    let gone = spawn.call(&mut host, &mut [Value::from(MINION), Value::Float(2.0), Value::Float(0.0), Value::Float(0.0)]).unwrap();
-    let (Value::Entity(kept), Value::Entity(gone)) = (kept, gone) else { panic!("entities") };
+    let kept = spawn
+        .call(
+            &mut host,
+            &mut [
+                Value::from("Minion"),
+                Value::Float(1.0),
+                Value::Float(0.0),
+                Value::Float(0.0),
+            ],
+        )
+        .unwrap();
+    let gone = spawn
+        .call(
+            &mut host,
+            &mut [
+                Value::from(MINION),
+                Value::Float(2.0),
+                Value::Float(0.0),
+                Value::Float(0.0),
+            ],
+        )
+        .unwrap();
+    let (Value::Entity(kept), Value::Entity(gone)) = (kept, gone) else {
+        panic!("entities")
+    };
     destroy.call(&mut host, &mut [Value::Entity(gone)]).unwrap();
-    assert!(world.stable_id_of(kept).is_none(), "reserved, not built yet");
+    assert!(
+        world.stable_id_of(kept).is_none(),
+        "reserved, not built yet"
+    );
     let commands = scope.finish();
     assert_eq!(commands.len(), 3);
     let mut report = super::DriverReport::default();
@@ -438,8 +657,15 @@ fn spawn_and_destroy_are_applied_after_the_script_phase() {
     assert!(!world.is_alive(gone));
 
     let report = driver.run_frame(&mut world, 0.0);
-    assert_eq!(report.started, [instance_id_for("Minion_rt1", &MINION.into())]);
-    assert_eq!(events(&log), [ev("begin", "Minion_rt1")], "the destroyed spawn never started");
+    assert_eq!(
+        report.started,
+        [instance_id_for("Minion_rt1", &MINION.into())]
+    );
+    assert_eq!(
+        events(&log),
+        [ev("begin", "Minion_rt1")],
+        "the destroyed spawn never started"
+    );
 }
 
 /// Unknown classes in `world::spawn` release the reserved entity.
@@ -447,13 +673,23 @@ fn spawn_and_destroy_are_applied_after_the_script_phase() {
 fn spawning_an_unknown_class_releases_the_entity() {
     let project = project();
     let registry = ClassRegistry::scan(project.path());
-    let mut driver = ScriptDriver::with_parts(super::new_runtime(), project.path(), registry, Default::default());
+    let mut driver = ScriptDriver::with_parts(
+        super::new_runtime(),
+        project.path(),
+        registry,
+        Default::default(),
+    );
     let mut world = World::new();
     let entity = world.spawn();
     let mut report = super::DriverReport::default();
     driver.apply_commands(
         &mut world,
-        vec![super::WorldCommand::Spawn { entity, class: "Nope".into(), parent: None, position: [0.0; 3] }],
+        vec![super::WorldCommand::Spawn {
+            entity,
+            class: "Nope".into(),
+            parent: None,
+            position: [0.0; 3],
+        }],
         &mut report,
     );
     assert!(!world.is_alive(entity));
@@ -482,10 +718,24 @@ fn class_reload_rebinds_slots_of_live_instances() {
     let slot_var = pulsar_class::slot_variable_name(&slot);
     let mut module = Module::new("Lamp");
     module.variables = vec![
-        Variable { name: slot_var.clone(), ty: Type::Component("LightComponent".into()), default: None, id: None },
-        Variable { name: "kept".into(), ty: Type::Int, default: None, id: None },
+        Variable {
+            name: slot_var.clone(),
+            ty: Type::Component("LightComponent".into()),
+            default: None,
+            id: None,
+        },
+        Variable {
+            name: "kept".into(),
+            ty: Type::Int,
+            default: None,
+            id: None,
+        },
     ];
-    std::fs::write(def.dir.join("events/.build/module.json"), module.to_json().unwrap()).unwrap();
+    std::fs::write(
+        def.dir.join("events/.build/module.json"),
+        module.to_json().unwrap(),
+    )
+    .unwrap();
 
     let mut scene = engine_backend::scene::new_scene();
     let world = &mut scene.world;
@@ -497,7 +747,12 @@ fn class_reload_rebinds_slots_of_live_instances() {
     )
     .unwrap()
     .root();
-    let mut driver = ScriptDriver::with_parts(super::new_runtime(), project.path(), registry, Default::default());
+    let mut driver = ScriptDriver::with_parts(
+        super::new_runtime(),
+        project.path(),
+        registry,
+        Default::default(),
+    );
     driver.run_frame(world, 0.0);
     let id = driver.instance_of(root).unwrap().to_owned();
     assert_eq!(id, "lamp::lamp-guid");
@@ -508,22 +763,41 @@ fn class_reload_rebinds_slots_of_live_instances() {
     };
     let child = handle(&driver);
     assert_ne!(child, root, "the second light lives on a generated child");
-    driver.runtime_mut().set_variable(&id, "kept", Value::Int(7)).unwrap();
+    driver
+        .runtime_mut()
+        .set_variable(&id, "kept", Value::Int(7))
+        .unwrap();
 
     // The editor rebuilds the instance from the edited class: the child is
     // a new entity now.
     pulsar_class::world::expand_class_instance(world, root, &def);
-    let rebuilt = pulsar_class::world::placement(world, root).handle(&slot).unwrap().entity;
+    let rebuilt = pulsar_class::world::placement(world, root)
+        .handle(&slot)
+        .unwrap()
+        .entity;
     assert_ne!(rebuilt, child);
 
     let mut event = pulsar_events::AssetUpdated::new(pulsar_events::AssetKind::Blueprint);
     event.id = Some("lamp-guid".into());
-    assert_eq!(driver.reload_class_for_asset(world, &event).as_deref(), Some("Lamp"));
-    assert_eq!(handle(&driver), rebuilt, "slot bound to the rebuilt component");
-    assert_eq!(driver.runtime().variable(&id, "kept"), Some(&Value::Int(7)), "state kept");
+    assert_eq!(
+        driver.reload_class_for_asset(world, &event).as_deref(),
+        Some("Lamp")
+    );
+    assert_eq!(
+        handle(&driver),
+        rebuilt,
+        "slot bound to the rebuilt component"
+    );
+    assert_eq!(
+        driver.runtime().variable(&id, "kept"),
+        Some(&Value::Int(7)),
+        "state kept"
+    );
     assert_eq!(
         driver.runtime().variable(&id, &slot_var),
-        Some(&Value::Component(pulsar_scenedb::ComponentRef::new(rebuilt, light_id)))
+        Some(&Value::Component(pulsar_scenedb::ComponentRef::new(
+            rebuilt, light_id
+        )))
     );
 }
 
@@ -533,7 +807,11 @@ fn class_reload_rebinds_slots_of_live_instances() {
 fn a_rebuilt_instance_keeps_its_script_and_rebinds_next_frame() {
     let project = project();
     let registry = ClassRegistry::scan(project.path());
-    let def = registry.by_name("Minion").unwrap().load_definition().unwrap();
+    let def = registry
+        .by_name("Minion")
+        .unwrap()
+        .load_definition()
+        .unwrap();
     let mut scene = engine_backend::scene::new_scene();
     let world = &mut scene.world;
     let root = pulsar_class::world::instantiate_class(
@@ -544,11 +822,18 @@ fn a_rebuilt_instance_keeps_its_script_and_rebinds_next_frame() {
     )
     .unwrap()
     .root();
-    let mut driver = ScriptDriver::with_parts(super::new_runtime(), project.path(), registry, Default::default());
+    let mut driver = ScriptDriver::with_parts(
+        super::new_runtime(),
+        project.path(),
+        registry,
+        Default::default(),
+    );
     let log = install_log(&mut driver);
     driver.run_frame(world, 0.0);
     let mut instance = world.get::<ClassInstance>(root).cloned().unwrap();
-    instance.variable_overrides.insert("unused".into(), json!(1));
+    instance
+        .variable_overrides
+        .insert("unused".into(), json!(1));
     pulsar_class::world::store_class_instance(world, root, &instance);
     let report = driver.run_frame(world, 0.0);
     assert!(report.started.is_empty() && report.stopped.is_empty());
@@ -568,8 +853,16 @@ fn a_rebuilt_instance_keeps_its_script_and_rebinds_next_frame() {
 #[test]
 fn component_natives_on_none_are_errors_not_panics() {
     let mut runtime = super::new_runtime();
-    let of = runtime.natives().get("LightComponent::of").expect("registered").clone();
-    let exists = runtime.natives().get("LightComponent::exists").expect("registered").clone();
+    let of = runtime
+        .natives()
+        .get("LightComponent::of")
+        .expect("registered")
+        .clone();
+    let exists = runtime
+        .natives()
+        .get("LightComponent::exists")
+        .expect("registered")
+        .clone();
     let getter = runtime
         .natives()
         .functions()
@@ -578,11 +871,25 @@ fn component_natives_on_none_are_errors_not_panics() {
         .clone();
     let component = Type::Component("LightComponent".into());
     let mut m = Module::new("Prober");
-    m.variables = vec![Variable { name: "found".into(), ty: Type::Bool, default: None, id: None }];
+    m.variables = vec![Variable {
+        name: "found".into(),
+        ty: Type::Bool,
+        default: None,
+        id: None,
+    }];
     m.imports = vec![
-        Import { name: of.name.clone(), sig: of.sig.clone() },
-        Import { name: exists.name.clone(), sig: exists.sig.clone() },
-        Import { name: getter.name.clone(), sig: getter.sig.clone() },
+        Import {
+            name: of.name.clone(),
+            sig: of.sig.clone(),
+        },
+        Import {
+            name: exists.name.clone(),
+            sig: exists.sig.clone(),
+        },
+        Import {
+            name: getter.name.clone(),
+            sig: getter.sig.clone(),
+        },
     ];
     m.functions = vec![function(
         "begin_play",
@@ -590,10 +897,22 @@ fn component_natives_on_none_are_errors_not_panics() {
         vec![Type::Entity, component, Type::Bool, getter.sig.ret.clone()],
         vec![
             Instr::SelfEntity { dst: 0 },
-            Instr::CallNative { import: 0, args: vec![0], dst: Some(1) },
-            Instr::CallNative { import: 1, args: vec![1], dst: Some(2) },
+            Instr::CallNative {
+                import: 0,
+                args: vec![0],
+                dst: Some(1),
+            },
+            Instr::CallNative {
+                import: 1,
+                args: vec![1],
+                dst: Some(2),
+            },
             Instr::StoreVar { var: 0, src: 2 },
-            Instr::CallNative { import: 2, args: vec![1], dst: Some(3) },
+            Instr::CallNative {
+                import: 2,
+                args: vec![1],
+                dst: Some(3),
+            },
             Instr::Return { value: None },
         ],
     )];
@@ -601,8 +920,15 @@ fn component_natives_on_none_are_errors_not_panics() {
     runtime.spawn("prober", "Prober", None, &[]).unwrap();
     let mut world = World::new();
     let errors = runtime.dispatch_pending_begin_play(&mut world);
-    assert_eq!(runtime.variable("prober", "found"), Some(&Value::Bool(false)));
-    assert_eq!(errors.len(), 1, "the getter on none is a script error: {errors:?}");
+    assert_eq!(
+        runtime.variable("prober", "found"),
+        Some(&Value::Bool(false))
+    );
+    assert_eq!(
+        errors.len(),
+        1,
+        "the getter on none is a script error: {errors:?}"
+    );
 }
 
 // ---- script events on the engine hub (#924) --------------------------------
@@ -628,7 +954,12 @@ mod script_events {
         if param {
             vec![
                 Instr::LoadVar { dst: 1, var },
-                Instr::Binary { op: BinOp::Add, dst: 1, a: 1, b: 0 },
+                Instr::Binary {
+                    op: BinOp::Add,
+                    dst: 1,
+                    a: 1,
+                    b: 0,
+                },
                 Instr::StoreVar { var, src: 1 },
                 Instr::Return { value: None },
             ]
@@ -636,7 +967,12 @@ mod script_events {
             vec![
                 Instr::LoadVar { dst: 0, var },
                 Instr::Const { dst: 1, index: 0 },
-                Instr::Binary { op: BinOp::Add, dst: 0, a: 0, b: 1 },
+                Instr::Binary {
+                    op: BinOp::Add,
+                    dst: 0,
+                    a: 0,
+                    b: 1,
+                },
                 Instr::StoreVar { var, src: 0 },
                 Instr::Return { value: None },
             ]
@@ -651,7 +987,11 @@ mod script_events {
             .into_iter()
             .map(|name| Variable {
                 name: name.into(),
-                ty: if name == "last_other" { Type::Entity } else { Type::Int },
+                ty: if name == "last_other" {
+                    Type::Entity
+                } else {
+                    Type::Int
+                },
                 default: None,
                 id: None,
             })
@@ -661,20 +1001,43 @@ mod script_events {
         on_hit.insert(4, Instr::StoreVar { var: 1, src: 3 });
         m.functions = vec![
             // on_hit(entity, other): registers entity, other, then scratch.
-            handler("on_hit", vec![Type::Entity, Type::Entity], vec![Type::Int, Type::Int], vec![
-                Instr::LoadVar { dst: 2, var: 0 },
-                Instr::Const { dst: 3, index: 0 },
-                Instr::Binary { op: BinOp::Add, dst: 2, a: 2, b: 3 },
-                Instr::StoreVar { var: 0, src: 2 },
-                Instr::StoreVar { var: 1, src: 1 },
-                Instr::Return { value: None },
-            ]),
-            handler("on_level_loaded", vec![], vec![Type::Int, Type::Int], add_to(2, false)),
+            handler(
+                "on_hit",
+                vec![Type::Entity, Type::Entity],
+                vec![Type::Int, Type::Int],
+                vec![
+                    Instr::LoadVar { dst: 2, var: 0 },
+                    Instr::Const { dst: 3, index: 0 },
+                    Instr::Binary {
+                        op: BinOp::Add,
+                        dst: 2,
+                        a: 2,
+                        b: 3,
+                    },
+                    Instr::StoreVar { var: 0, src: 2 },
+                    Instr::StoreVar { var: 1, src: 1 },
+                    Instr::Return { value: None },
+                ],
+            ),
+            handler(
+                "on_level_loaded",
+                vec![],
+                vec![Type::Int, Type::Int],
+                add_to(2, false),
+            ),
             handler("on_poke", vec![Type::Int], vec![Type::Int], add_to(3, true)),
-            handler("on_class_poke", vec![Type::Int], vec![Type::Int], add_to(4, true)),
+            handler(
+                "on_class_poke",
+                vec![Type::Int],
+                vec![Type::Int],
+                add_to(4, true),
+            ),
         ];
         drop(on_hit);
-        m.events = vec![EventDecl { name: "Target.Poke".into(), fields: vec![EventField::new("amount", Type::Int)] }];
+        m.events = vec![EventDecl {
+            name: "Target.Poke".into(),
+            fields: vec![EventField::new("amount", Type::Int)],
+        }];
         let sub = |event: &str, handler: u32, scope: SubscriptionScope| Subscription {
             event: EventRef::Name(event.into()),
             handler,
@@ -704,28 +1067,62 @@ mod script_events {
         ];
         m.imports = vec![
             import("world::find_by_stable_id", vec![Type::Str], Type::Entity),
-            import("event::send", vec![Type::Entity, Type::Str, Type::Int], Type::Unit),
-            import("event::emit_to_class", vec![Type::Str, Type::Str, Type::Int], Type::Unit),
+            import(
+                "event::send",
+                vec![Type::Entity, Type::Str, Type::Int],
+                Type::Unit,
+            ),
+            import(
+                "event::emit_to_class",
+                vec![Type::Str, Type::Str, Type::Int],
+                Type::Unit,
+            ),
             import("event::emit", vec![Type::Str, Type::Str], Type::Unit),
         ];
         m.functions = vec![
-            function("begin_play", vec![], vec![Type::Str, Type::Entity, Type::Str, Type::Int, Type::Str], vec![
-                Instr::Const { dst: 0, index: 0 },
-                Instr::CallNative { import: 0, args: vec![0], dst: Some(1) },
-                Instr::Const { dst: 2, index: 1 },
-                Instr::Const { dst: 3, index: 2 },
-                Instr::CallNative { import: 1, args: vec![1, 2, 3], dst: None },
-                Instr::Const { dst: 4, index: 3 },
-                Instr::Const { dst: 3, index: 4 },
-                Instr::CallNative { import: 2, args: vec![4, 2, 3], dst: None },
-                Instr::Return { value: None },
-            ]),
-            function("bad", vec![], vec![Type::Str, Type::Str], vec![
-                Instr::Const { dst: 0, index: 1 },
-                Instr::Const { dst: 1, index: 5 },
-                Instr::CallNative { import: 3, args: vec![0, 1], dst: None },
-                Instr::Return { value: None },
-            ]),
+            function(
+                "begin_play",
+                vec![],
+                vec![Type::Str, Type::Entity, Type::Str, Type::Int, Type::Str],
+                vec![
+                    Instr::Const { dst: 0, index: 0 },
+                    Instr::CallNative {
+                        import: 0,
+                        args: vec![0],
+                        dst: Some(1),
+                    },
+                    Instr::Const { dst: 2, index: 1 },
+                    Instr::Const { dst: 3, index: 2 },
+                    Instr::CallNative {
+                        import: 1,
+                        args: vec![1, 2, 3],
+                        dst: None,
+                    },
+                    Instr::Const { dst: 4, index: 3 },
+                    Instr::Const { dst: 3, index: 4 },
+                    Instr::CallNative {
+                        import: 2,
+                        args: vec![4, 2, 3],
+                        dst: None,
+                    },
+                    Instr::Return { value: None },
+                ],
+            ),
+            function(
+                "bad",
+                vec![],
+                vec![Type::Str, Type::Str],
+                vec![
+                    Instr::Const { dst: 0, index: 1 },
+                    Instr::Const { dst: 1, index: 5 },
+                    Instr::CallNative {
+                        import: 3,
+                        args: vec![0, 1],
+                        dst: None,
+                    },
+                    Instr::Return { value: None },
+                ],
+            ),
         ];
         m
     }
@@ -765,7 +1162,14 @@ mod script_events {
     }
 
     fn subscriptions_of(game: &TickLoop, instance: &str) -> usize {
-        game.scripts.as_ref().unwrap().lock().unwrap().events().unwrap().subscriptions_of(instance)
+        game.scripts
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .events()
+            .unwrap()
+            .subscriptions_of(instance)
     }
 
     /// Declared events, sends to one entity and to a class, LevelLoaded
@@ -776,36 +1180,80 @@ mod script_events {
         let level = target_level(project.path());
         let (mut game, _log) = standalone(project.path(), &level);
         let poke = game.events.descriptor_by_name("Target.Poke");
-        assert!(poke.is_some(), "the project's events are declared when scripting is enabled");
+        assert!(
+            poke.is_some(),
+            "the project's events are declared when scripting is enabled"
+        );
 
         game.tick_once(); // a and b start; Sender sends in begin_play
-        let poke = game.events.descriptor_by_name("Target.Poke").expect("declared by Target");
+        let poke = game
+            .events
+            .descriptor_by_name("Target.Poke")
+            .expect("declared by Target");
         assert_eq!(subscriptions_of(&game, &id("a")), 4);
         assert_eq!(
             game.events.subscriber_count(poke.id, class_channel(TARGET)),
             2,
             "both instances on their class channel"
         );
-        assert_eq!(int(&game, &id("b"), "pokes"), 0, "delivered, not run, until the next script phase");
+        assert_eq!(
+            int(&game, &id("b"), "pokes"),
+            0,
+            "delivered, not run, until the next script phase"
+        );
 
         game.tick_once(); // handlers run
-        assert_eq!((int(&game, &id("a"), "pokes"), int(&game, &id("b"), "pokes")), (0, 5), "only b");
-        assert_eq!((int(&game, &id("a"), "class_pokes"), int(&game, &id("b"), "class_pokes")), (2, 2));
-        assert_eq!((int(&game, &id("a"), "level_loads"), int(&game, &id("b"), "level_loads")), (1, 1));
+        assert_eq!(
+            (int(&game, &id("a"), "pokes"), int(&game, &id("b"), "pokes")),
+            (0, 5),
+            "only b"
+        );
+        assert_eq!(
+            (
+                int(&game, &id("a"), "class_pokes"),
+                int(&game, &id("b"), "class_pokes")
+            ),
+            (2, 2)
+        );
+        assert_eq!(
+            (
+                int(&game, &id("a"), "level_loads"),
+                int(&game, &id("b"), "level_loads")
+            ),
+            (1, 1)
+        );
 
         // Physics reports a hit on a (simulated: published on its entity
         // channel, as the physics step would).
         let (a, b) = (entity(&game, "a"), entity(&game, "b"));
-        game.events.publish(entity_channel(a.bits()), Hit { entity: a.bits(), other: b.bits(), impulse: 3.0 });
+        game.events.publish(
+            entity_channel(a.bits()),
+            Hit {
+                entity: a.bits(),
+                other: b.bits(),
+                impulse: 3.0,
+            },
+        );
         game.tick_once();
-        assert_eq!((int(&game, &id("a"), "hits"), int(&game, &id("b"), "hits")), (1, 0), "only a's handler");
+        assert_eq!(
+            (int(&game, &id("a"), "hits"), int(&game, &id("b"), "hits")),
+            (1, 0),
+            "only a's handler"
+        );
         {
             let driver = game.scripts.as_ref().unwrap().lock().unwrap();
-            assert_eq!(driver.runtime().variable(&id("a"), "last_other"), Some(&Value::Entity(b)));
+            assert_eq!(
+                driver.runtime().variable(&id("a"), "last_other"),
+                Some(&Value::Entity(b))
+            );
         }
 
         // An object placed later never sees LevelLoaded; the others saw it once.
-        let def = ClassRegistry::scan(project.path()).by_name("Target").unwrap().load_definition().unwrap();
+        let def = ClassRegistry::scan(project.path())
+            .by_name("Target")
+            .unwrap()
+            .load_definition()
+            .unwrap();
         pulsar_class::world::instantiate_class(
             &mut game.scene_store.write().world,
             &def,
@@ -817,15 +1265,27 @@ mod script_events {
             game.tick_once();
         }
         assert_eq!(int(&game, &id("late"), "level_loads"), 0);
-        assert_eq!((int(&game, &id("a"), "level_loads"), int(&game, &id("b"), "level_loads")), (1, 1));
+        assert_eq!(
+            (
+                int(&game, &id("a"), "level_loads"),
+                int(&game, &id("b"), "level_loads")
+            ),
+            (1, 1)
+        );
 
         // A bad event call is a script error, not a panic.
         {
             let mut driver = game.scripts.as_ref().unwrap().lock().unwrap();
             let sender = global_instance_id(&SENDER.into());
             let mut store = game.scene_store.write();
-            let err = driver.runtime_mut().send_event(&sender, "bad", &[], &mut store.world).unwrap_err();
-            assert!(err.to_string().contains("Target.Poke") && err.to_string().contains("field 0"), "{err}");
+            let err = driver
+                .runtime_mut()
+                .send_event(&sender, "bad", &[], &mut store.world)
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("Target.Poke") && err.to_string().contains("field 0"),
+                "{err}"
+            );
         }
     }
 
@@ -838,16 +1298,33 @@ mod script_events {
         game.tick_once();
         let hit = game.events.descriptor_by_name("Hit").unwrap().id;
         let b = entity(&game, "b");
-        assert_eq!(game.events.subscriber_count(hit, entity_channel(b.bits())), 1);
+        assert_eq!(
+            game.events.subscriber_count(hit, entity_channel(b.bits())),
+            1
+        );
 
         // A hit queued for b, then b is deleted before it is delivered.
-        game.events.publish(entity_channel(b.bits()), Hit { entity: b.bits(), other: 0, impulse: 1.0 });
+        game.events.publish(
+            entity_channel(b.bits()),
+            Hit {
+                entity: b.bits(),
+                other: 0,
+                impulse: 1.0,
+            },
+        );
         game.scene_store.write().world.despawn_tree(b);
         game.tick_once();
         assert_eq!(subscriptions_of(&game, &id("b")), 0);
-        assert_eq!(game.events.subscriber_count(hit, entity_channel(b.bits())), 0);
+        assert_eq!(
+            game.events.subscriber_count(hit, entity_channel(b.bits())),
+            0
+        );
         let poke = game.events.descriptor_by_name("Target.Poke").unwrap().id;
-        assert_eq!(game.events.subscriber_count(poke, class_channel(TARGET)), 1, "only a is left");
+        assert_eq!(
+            game.events.subscriber_count(poke, class_channel(TARGET)),
+            1,
+            "only a is left"
+        );
         let driver = game.scripts.as_ref().unwrap().lock().unwrap();
         assert!(driver.runtime().class_of(&id("b")).is_none());
         assert_eq!(driver.events().unwrap().pending_calls(), 0);
@@ -863,11 +1340,19 @@ mod script_events {
         let store = game.scene_store.read();
         for info in game.events.events() {
             let id = info.descriptor.id;
-            assert_eq!(game.events.subscriber_count(id, Channel::Global), 0, "{}", info.descriptor.name);
+            assert_eq!(
+                game.events.subscriber_count(id, Channel::Global),
+                0,
+                "{}",
+                info.descriptor.name
+            );
             assert_eq!(game.events.subscriber_count(id, class_channel(TARGET)), 0);
             for stable in ["a", "b"] {
                 let e = store.world.entity_for(stable).unwrap();
-                assert_eq!(game.events.subscriber_count(id, entity_channel(e.bits())), 0);
+                assert_eq!(
+                    game.events.subscriber_count(id, entity_channel(e.bits())),
+                    0
+                );
             }
         }
     }
@@ -879,7 +1364,8 @@ mod script_events {
     fn pie_play_stop_play_leaves_nothing_behind() {
         let project = events_project();
         let level = target_level(project.path());
-        let editor = RuntimeLevel::load_with_classes(&level, &ClassRegistry::scan(project.path())).unwrap();
+        let editor =
+            RuntimeLevel::load_with_classes(&level, &ClassRegistry::scan(project.path())).unwrap();
         for session in 0..2 {
             let mut game = TickLoop::with_scene_store(editor.scene(), TickMode::default(), 0);
             game.enable_scripting(project.path());
@@ -890,7 +1376,14 @@ mod script_events {
             assert_eq!(int(&game, &id("b"), "pokes"), 5, "session {session}");
             // Stop with work in flight: a queued hit and a queued script send.
             let a = entity(&game, "a");
-            game.events.publish(entity_channel(a.bits()), Hit { entity: a.bits(), other: 0, impulse: 1.0 });
+            game.events.publish(
+                entity_channel(a.bits()),
+                Hit {
+                    entity: a.bits(),
+                    other: 0,
+                    impulse: 1.0,
+                },
+            );
             game.end_scripts();
             hub_is_clean(&game);
         }
@@ -899,26 +1392,38 @@ mod script_events {
     // ---- a plugin library publishing to scripts ----------------------------
 
     fn plugin() -> &'static std::sync::Mutex<libloading::Library> {
-        static PLUGIN: std::sync::OnceLock<std::sync::Mutex<libloading::Library>> = std::sync::OnceLock::new();
+        static PLUGIN: std::sync::OnceLock<std::sync::Mutex<libloading::Library>> =
+            std::sync::OnceLock::new();
         PLUGIN.get_or_init(|| {
             let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("../pulsar_events/tests/fixtures/plugin/Cargo.toml");
             // `<target>/debug/deps/<this test>` -> `<target>/tmp`, the
             // directory pulsar_events' own plugin test builds into.
             let exe = std::env::current_exe().unwrap();
-            let target_dir = exe.ancestors().nth(3).unwrap().join("tmp").join("pulsar-events-test-plugin");
-            let status = std::process::Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
-                .args(["build", "--release", "--quiet", "--manifest-path"])
-                .arg(&manifest)
-                .arg("--target-dir")
-                .arg(&target_dir)
-                .env_remove("RUSTFLAGS")
-                .env_remove("CARGO_ENCODED_RUSTFLAGS")
-                .status()
-                .expect("cargo");
+            let target_dir = exe
+                .ancestors()
+                .nth(3)
+                .unwrap()
+                .join("tmp")
+                .join("pulsar-events-test-plugin");
+            let status = std::process::Command::new(
+                std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()),
+            )
+            .args(["build", "--release", "--quiet", "--manifest-path"])
+            .arg(&manifest)
+            .arg("--target-dir")
+            .arg(&target_dir)
+            .env_remove("RUSTFLAGS")
+            .env_remove("CARGO_ENCODED_RUSTFLAGS")
+            .status()
+            .expect("cargo");
             assert!(status.success(), "building the test plugin failed");
-            let path = target_dir.join("release").join(libloading::library_filename("pulsar_events_test_plugin"));
-            std::sync::Mutex::new(unsafe { libloading::Library::new(&path) }.expect("load the test plugin"))
+            let path = target_dir
+                .join("release")
+                .join(libloading::library_filename("pulsar_events_test_plugin"));
+            std::sync::Mutex::new(
+                unsafe { libloading::Library::new(&path) }.expect("load the test plugin"),
+            )
         })
     }
 
@@ -932,18 +1437,25 @@ mod script_events {
         let (mut game, _log) = standalone(project.path(), &level);
         game.tick_once();
         let lib = plugin().lock().unwrap();
-        let attach: libloading::Symbol<unsafe extern "C" fn(pulsar_events::gamma::ffi::RawBus) -> u32> =
-            unsafe { lib.get(b"fixture_attach_hub") }.unwrap();
+        let attach: libloading::Symbol<
+            unsafe extern "C" fn(pulsar_events::gamma::ffi::RawBus) -> u32,
+        > = unsafe { lib.get(b"fixture_attach_hub") }.unwrap();
         assert_eq!(unsafe { attach(game.events.export_raw()) }, 0);
         let publish_hit: libloading::Symbol<extern "C" fn(u64, u64, f64) -> u32> =
             unsafe { lib.get(b"fixture_publish_hit") }.unwrap();
         let (a, b) = (entity(&game, "a"), entity(&game, "b"));
         assert_eq!(publish_hit(b.bits(), a.bits(), 4.0), 0);
         game.tick_once();
-        assert_eq!((int(&game, &id("a"), "hits"), int(&game, &id("b"), "hits")), (0, 1));
+        assert_eq!(
+            (int(&game, &id("a"), "hits"), int(&game, &id("b"), "hits")),
+            (0, 1)
+        );
         {
             let driver = game.scripts.as_ref().unwrap().lock().unwrap();
-            assert_eq!(driver.runtime().variable(&id("b"), "last_other"), Some(&Value::Entity(a)));
+            assert_eq!(
+                driver.runtime().variable(&id("b"), "last_other"),
+                Some(&Value::Entity(a))
+            );
         }
         unsafe { lib.get::<extern "C" fn()>(b"fixture_shutdown").unwrap()() };
     }
@@ -966,9 +1478,24 @@ mod pie_session {
     fn counter_module(step: i64) -> Module {
         let mut m = Module::new("Counter");
         m.variables = vec![
-            Variable { name: "count".into(), ty: Type::Int, default: None, id: None },
-            Variable { name: "late".into(), ty: Type::Bool, default: None, id: None },
-            Variable { name: "timer".into(), ty: Type::Int, default: None, id: None },
+            Variable {
+                name: "count".into(),
+                ty: Type::Int,
+                default: None,
+                id: None,
+            },
+            Variable {
+                name: "late".into(),
+                ty: Type::Bool,
+                default: None,
+                id: None,
+            },
+            Variable {
+                name: "timer".into(),
+                ty: Type::Int,
+                default: None,
+                id: None,
+            },
         ];
         m.constants = vec![
             Constant::Int(step),
@@ -976,27 +1503,55 @@ mod pie_session {
             Constant::Bool(true),
             Constant::Float(100.0),
         ];
-        m.imports = vec![import("timer::set", vec![Type::Float, Type::Bool], Type::Int)];
+        m.imports = vec![import(
+            "timer::set",
+            vec![Type::Float, Type::Bool],
+            Type::Int,
+        )];
         m.functions = vec![
-            function("begin_play", vec![], vec![Type::Float, Type::Bool, Type::Int], vec![
-                Instr::Const { dst: 0, index: 3 },
-                Instr::Const { dst: 1, index: 2 },
-                Instr::CallNative { import: 0, args: vec![0, 1], dst: Some(2) },
-                Instr::StoreVar { var: 2, src: 2 },
-                Instr::Const { dst: 0, index: 1 },
-                Instr::Wait { seconds: 0 },
-                Instr::Const { dst: 1, index: 2 },
-                Instr::StoreVar { var: 1, src: 1 },
-                Instr::Return { value: None },
-            ]),
-            function("tick", vec![Type::Float], vec![Type::Int, Type::Int], vec![
-                Instr::LoadVar { dst: 1, var: 0 },
-                Instr::Const { dst: 2, index: 0 },
-                Instr::Binary { op: BinOp::Add, dst: 1, a: 1, b: 2 },
-                Instr::StoreVar { var: 0, src: 1 },
-                Instr::Return { value: None },
-            ]),
-            function("on_key", vec![Type::Int], vec![], vec![Instr::Return { value: None }]),
+            function(
+                "begin_play",
+                vec![],
+                vec![Type::Float, Type::Bool, Type::Int],
+                vec![
+                    Instr::Const { dst: 0, index: 3 },
+                    Instr::Const { dst: 1, index: 2 },
+                    Instr::CallNative {
+                        import: 0,
+                        args: vec![0, 1],
+                        dst: Some(2),
+                    },
+                    Instr::StoreVar { var: 2, src: 2 },
+                    Instr::Const { dst: 0, index: 1 },
+                    Instr::Wait { seconds: 0 },
+                    Instr::Const { dst: 1, index: 2 },
+                    Instr::StoreVar { var: 1, src: 1 },
+                    Instr::Return { value: None },
+                ],
+            ),
+            function(
+                "tick",
+                vec![Type::Float],
+                vec![Type::Int, Type::Int],
+                vec![
+                    Instr::LoadVar { dst: 1, var: 0 },
+                    Instr::Const { dst: 2, index: 0 },
+                    Instr::Binary {
+                        op: BinOp::Add,
+                        dst: 1,
+                        a: 1,
+                        b: 2,
+                    },
+                    Instr::StoreVar { var: 0, src: 1 },
+                    Instr::Return { value: None },
+                ],
+            ),
+            function(
+                "on_key",
+                vec![Type::Int],
+                vec![],
+                vec![Instr::Return { value: None }],
+            ),
         ];
         m.subscriptions = vec![Subscription {
             event: EventRef::Name("KeyDown".into()),
@@ -1021,13 +1576,21 @@ mod pie_session {
     /// What `begin_pie` + the PIE host do: the editor world already holds
     /// the level, the game adopts it, `setup()` enables scripting.
     fn start(root: &Path, store: &engine_backend::scene::SharedScene) -> (PieSession, Log) {
-        let mut game = TickLoop::with_scene_store(Arc::clone(store), TickMode::Fixed { dt: std::time::Duration::from_millis(20) }, 0);
+        let mut game = TickLoop::with_scene_store(
+            Arc::clone(store),
+            TickMode::Fixed {
+                dt: std::time::Duration::from_millis(20),
+            },
+            0,
+        );
         let log = install_log(&mut game.enable_scripting(root).lock().unwrap());
         (PieSession::new(game, Some("test.level".into())), log)
     }
 
     fn editor_world(root: &Path, level: &Path) -> engine_backend::scene::SharedScene {
-        RuntimeLevel::load_with_classes(level, &ClassRegistry::scan(root)).unwrap().scene()
+        RuntimeLevel::load_with_classes(level, &ClassRegistry::scan(root))
+            .unwrap()
+            .scene()
     }
 
     fn var(session: &PieSession, id: &str, name: &str) -> Option<Value> {
@@ -1046,7 +1609,10 @@ mod pie_session {
         let project = counter_project();
         let level = level(
             project.path(),
-            &[("c1", None, Some((COUNTER, "Counter"))), ("c2", None, Some((COUNTER, "Counter")))],
+            &[
+                ("c1", None, Some((COUNTER, "Counter"))),
+                ("c2", None, Some((COUNTER, "Counter"))),
+            ],
         );
         let store = editor_world(project.path(), &level);
         let (mut session, _log) = start(project.path(), &store);
@@ -1060,13 +1626,29 @@ mod pie_session {
                 .into_iter()
                 .map(|(entity, id)| (id, world.stable_id_of(entity).unwrap().to_owned()))
                 .collect();
-            assert_eq!(bound, [(counter_id("c1"), "c1".to_owned()), (counter_id("c2"), "c2".to_owned())]);
+            assert_eq!(
+                bound,
+                [
+                    (counter_id("c1"), "c1".to_owned()),
+                    (counter_id("c2"), "c2".to_owned())
+                ]
+            );
         }
-        assert_eq!(var(&session, &counter_id("c1"), "count"), Some(Value::Int(2)));
-        assert_eq!(var(&session, &counter_id("c2"), "count"), Some(Value::Int(2)));
+        assert_eq!(
+            var(&session, &counter_id("c1"), "count"),
+            Some(Value::Int(2))
+        );
+        assert_eq!(
+            var(&session, &counter_id("c2"), "count"),
+            Some(Value::Int(2))
+        );
 
         // The editor drops a third one while playing.
-        let def = ClassRegistry::scan(project.path()).by_name("Counter").unwrap().load_definition().unwrap();
+        let def = ClassRegistry::scan(project.path())
+            .by_name("Counter")
+            .unwrap()
+            .load_definition()
+            .unwrap();
         pulsar_class::world::instantiate_class(
             &mut store.write().world,
             &def,
@@ -1075,8 +1657,15 @@ mod pie_session {
         )
         .unwrap();
         session.tick();
-        assert_eq!(var(&session, &counter_id("c3"), "count"), Some(Value::Int(1)), "started and ticked");
-        assert_eq!(var(&session, &counter_id("c1"), "count"), Some(Value::Int(3)));
+        assert_eq!(
+            var(&session, &counter_id("c3"), "count"),
+            Some(Value::Int(1)),
+            "started and ticked"
+        );
+        assert_eq!(
+            var(&session, &counter_id("c1"), "count"),
+            Some(Value::Int(3))
+        );
         session.shutdown();
     }
 
@@ -1095,30 +1684,74 @@ mod pie_session {
         session.tick();
         let id = instance_id_for("c1", &GUID.into());
         let timers = |s: &PieSession| {
-            s.tick_loop.scripts.as_ref().unwrap().lock().unwrap().events().unwrap().bridge().timer_count()
+            s.tick_loop
+                .scripts
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .events()
+                .unwrap()
+                .bridge()
+                .timer_count()
         };
         assert_eq!(timers(&session), 1);
         assert_eq!(var(&session, &id, "count"), Some(Value::Int(2)));
-        assert_eq!(var(&session, &id, "late"), Some(Value::Bool(false)), "still waiting");
+        assert_eq!(
+            var(&session, &id, "late"),
+            Some(Value::Bool(false)),
+            "still waiting"
+        );
         let waiting = |s: &PieSession| {
-            s.tick_loop.scripts.as_ref().unwrap().lock().unwrap().runtime().waiting_calls(&id)
+            s.tick_loop
+                .scripts
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .runtime()
+                .waiting_calls(&id)
         };
         assert_eq!(waiting(&session), 1);
 
         // The graph is edited and compiled: `tick` now adds 10.
         let dir = project.path().join("src/classes/Counter");
-        std::fs::write(dir.join("events/.build/module.json"), counter_module(10).to_json().unwrap()).unwrap();
-        session.asset_updated(AssetUpdated::new(AssetKind::Blueprint).with_id(GUID).with_path(dir));
-        assert_eq!(var(&session, &id, "count"), Some(Value::Int(2)), "applied at the next frame, not now");
+        std::fs::write(
+            dir.join("events/.build/module.json"),
+            counter_module(10).to_json().unwrap(),
+        )
+        .unwrap();
+        session.asset_updated(
+            AssetUpdated::new(AssetKind::Blueprint)
+                .with_id(GUID)
+                .with_path(dir),
+        );
+        assert_eq!(
+            var(&session, &id, "count"),
+            Some(Value::Int(2)),
+            "applied at the next frame, not now"
+        );
         session.tick();
-        assert_eq!(var(&session, &id, "count"), Some(Value::Int(12)), "new code, old value");
+        assert_eq!(
+            var(&session, &id, "count"),
+            Some(Value::Int(12)),
+            "new code, old value"
+        );
         // It was due this frame: it survived the reload (a dropped call
         // never sets `late`) and finished.
         assert_eq!(waiting(&session), 0);
-        assert_eq!(var(&session, &id, "late"), Some(Value::Bool(true)), "the waiting call survived the reload");
+        assert_eq!(
+            var(&session, &id, "late"),
+            Some(Value::Bool(true)),
+            "the waiting call survived the reload"
+        );
         session.tick();
         assert_eq!(var(&session, &id, "count"), Some(Value::Int(22)));
-        assert_eq!(timers(&session), 1, "the instance's timer survived the reload");
+        assert_eq!(
+            timers(&session),
+            1,
+            "the instance's timer survived the reload"
+        );
         assert!(session.problems().is_empty(), "{:?}", session.problems());
         session.shutdown();
     }
@@ -1144,10 +1777,18 @@ mod pie_session {
         for _ in 0..3 {
             session.tick();
         }
-        assert_eq!(var(&session, &id, "count"), Some(Value::Int(3)), "two steps");
+        assert_eq!(
+            var(&session, &id, "count"),
+            Some(Value::Int(3)),
+            "two steps"
+        );
         assert_eq!(session.control(control::FRAME, 0), frame + 2);
         session.control(control::RESUME, 0);
-        assert_eq!(session.control(control::STEP, 1), 0, "steps only while paused");
+        assert_eq!(
+            session.control(control::STEP, 1),
+            0,
+            "steps only while paused"
+        );
         session.tick();
         assert_eq!(var(&session, &id, "count"), Some(Value::Int(4)));
         session.shutdown();
@@ -1160,12 +1801,22 @@ mod pie_session {
         let project = counter_project();
         let mut faulty = Module::new("Faulty");
         faulty.constants = vec![Constant::Int(1), Constant::Int(0)];
-        let mut tick = function("tick", vec![Type::Float], vec![Type::Int, Type::Int], vec![
-            Instr::Const { dst: 1, index: 0 },
-            Instr::Const { dst: 2, index: 1 },
-            Instr::Binary { op: BinOp::Div, dst: 1, a: 1, b: 2 },
-            Instr::Return { value: None },
-        ]);
+        let mut tick = function(
+            "tick",
+            vec![Type::Float],
+            vec![Type::Int, Type::Int],
+            vec![
+                Instr::Const { dst: 1, index: 0 },
+                Instr::Const { dst: 2, index: 1 },
+                Instr::Binary {
+                    op: BinOp::Div,
+                    dst: 1,
+                    a: 1,
+                    b: 2,
+                },
+                Instr::Return { value: None },
+            ],
+        );
         let mut debug = DebugInfo::default();
         debug.record(0, &SourceLoc::node("graph_save.json", "lit_1"));
         debug.record(1, &SourceLoc::node("graph_save.json", "lit_1"));
@@ -1177,10 +1828,19 @@ mod pie_session {
 
         let mut broken = Module::new("Broken");
         broken.imports = vec![import("nope::missing", vec![], Type::Unit)];
-        let mut begin = function("begin_play", vec![], vec![], vec![
-            Instr::CallNative { import: 0, args: vec![], dst: None },
-            Instr::Return { value: None },
-        ]);
+        let mut begin = function(
+            "begin_play",
+            vec![],
+            vec![],
+            vec![
+                Instr::CallNative {
+                    import: 0,
+                    args: vec![],
+                    dst: None,
+                },
+                Instr::Return { value: None },
+            ],
+        );
         let mut debug = DebugInfo::default();
         debug.record(0, &SourceLoc::node("graph_save.json", "call_3"));
         begin.debug = Some(debug);
@@ -1189,31 +1849,56 @@ mod pie_session {
 
         let level = level(
             project.path(),
-            &[("f", None, Some(("faulty-guid", "Faulty"))), ("b", None, Some(("broken-guid", "Broken")))],
+            &[
+                ("f", None, Some(("faulty-guid", "Faulty"))),
+                ("b", None, Some(("broken-guid", "Broken"))),
+            ],
         );
         let store = editor_world(project.path(), &level);
         let (mut session, _log) = start(project.path(), &store);
         session.tick();
         let problems = session.take_problems();
-        let link = problems.iter().find(|p| p.class.as_deref() == Some("Broken")).expect("link error reported");
+        let link = problems
+            .iter()
+            .find(|p| p.class.as_deref() == Some("Broken"))
+            .expect("link error reported");
         assert_eq!(link.severity, ProblemSeverity::Error);
         assert_eq!(link.function.as_deref(), Some("begin_play"));
         assert_eq!(link.node.as_deref(), Some("call_3"));
         assert!(link.message.contains("nope::missing"), "{}", link.message);
-        let runtime = problems.iter().find(|p| p.class.as_deref() == Some("Faulty")).expect("runtime error reported");
+        let runtime = problems
+            .iter()
+            .find(|p| p.class.as_deref() == Some("Faulty"))
+            .expect("runtime error reported");
         assert_eq!(runtime.function.as_deref(), Some("tick"));
         assert_eq!(runtime.node.as_deref(), Some("divide_7"));
         assert_eq!(runtime.instance.as_deref(), Some("f::faulty-guid"));
         assert_eq!(runtime.class_id.as_deref(), Some("faulty-guid"));
         assert_eq!(
             runtime.path.as_deref(),
-            Some(project.path().join("src/classes/Faulty/graph_save.json").as_path())
+            Some(
+                project
+                    .path()
+                    .join("src/classes/Faulty/graph_save.json")
+                    .as_path()
+            )
         );
-        assert!(runtime.message.contains("division by zero"), "{}", runtime.message);
-        assert_eq!(runtime.summary(), "Faulty::tick (node divide_7) [f::faulty-guid]: integer division by zero");
+        assert!(
+            runtime.message.contains("division by zero"),
+            "{}",
+            runtime.message
+        );
+        assert_eq!(
+            runtime.summary(),
+            "Faulty::tick (node divide_7) [f::faulty-guid]: integer division by zero"
+        );
         assert!(session.take_problems().is_empty(), "taken");
         session.tick();
-        assert_eq!(session.problems().len(), 1, "the failing tick reports again each frame");
+        assert_eq!(
+            session.problems().len(),
+            1,
+            "the failing tick reports again each frame"
+        );
         session.shutdown();
     }
 
@@ -1226,7 +1911,10 @@ mod pie_session {
         let project = counter_project();
         let level = level(
             project.path(),
-            &[("spawner", None, Some((SPAWNER, "Spawner"))), ("c1", None, Some((COUNTER, "Counter")))],
+            &[
+                ("spawner", None, Some((SPAWNER, "Spawner"))),
+                ("c1", None, Some((COUNTER, "Counter"))),
+            ],
         );
         let store = editor_world(project.path(), &level);
         let before: std::collections::BTreeSet<String> = store
@@ -1247,17 +1935,25 @@ mod pie_session {
             if round == 0 {
                 first_instances = started.clone();
             } else {
-                assert_eq!(started, first_instances, "the second Play starts like the first");
+                assert_eq!(
+                    started, first_instances,
+                    "the second Play starts like the first"
+                );
             }
             session.tick();
             session.tick();
             assert!(session.problems().is_empty(), "{:?}", session.problems());
-            session.tick_loop.publish_input(pulsar_events::builtin::KeyDown { key: 1 });
+            session
+                .tick_loop
+                .publish_input(pulsar_events::builtin::KeyDown { key: 1 });
             let hub = session.tick_loop.events.clone();
             {
                 let driver = session.tick_loop.scripts.as_ref().unwrap().lock().unwrap();
                 let events = driver.events().unwrap();
-                assert!(events.subscription_count() > 0, "Counter listens to KeyDown");
+                assert!(
+                    events.subscription_count() > 0,
+                    "Counter listens to KeyDown"
+                );
                 assert_eq!(events.bridge().timer_count(), 1, "Counter's looping timer");
             }
             assert!(hub.queued_len() > 0, "input waits for the next flush");
@@ -1272,7 +1968,10 @@ mod pie_session {
             }
             assert_eq!(hub.queued_len(), 0, "no queued event left");
             let key_down = hub.descriptor_by_name("KeyDown").unwrap().id;
-            assert_eq!(hub.subscriber_count(key_down, pulsar_events::gamma::Channel::Global), 0);
+            assert_eq!(
+                hub.subscriber_count(key_down, pulsar_events::gamma::Channel::Global),
+                0
+            );
             drop(session);
 
             // What the editor's restore does with objects spawned during
@@ -1284,7 +1983,10 @@ mod pie_session {
                 .map(|(e, id)| (id.0.clone(), e))
                 .filter(|(id, _)| !before.contains(id))
                 .collect();
-            assert!(!spawned.is_empty() && spawned.iter().all(|(id, _)| id.starts_with("Minion_rt")), "{spawned:?}");
+            assert!(
+                !spawned.is_empty() && spawned.iter().all(|(id, _)| id.starts_with("Minion_rt")),
+                "{spawned:?}"
+            );
             for (_, entity) in spawned {
                 scene.world.despawn_tree(entity);
             }
@@ -1298,15 +2000,27 @@ mod pie_session {
 fn a_shared_frame_reports_its_lock_times_and_releases_the_scene() {
     let project = project();
     let registry = ClassRegistry::scan(project.path());
-    let mut driver = ScriptDriver::with_parts(super::new_runtime(), project.path(), registry, Default::default());
+    let mut driver = ScriptDriver::with_parts(
+        super::new_runtime(),
+        project.path(),
+        registry,
+        Default::default(),
+    );
     let log = install_log(&mut driver);
     let scene: engine_backend::scene::SharedScene =
         std::sync::Arc::new(parking_lot::RwLock::new(engine_backend::scene::new_scene()));
 
     let report = driver.run_frame_shared(&scene, 0.016);
-    assert!(report.script_errors.is_empty(), "{:?}", report.script_errors);
+    assert!(
+        report.script_errors.is_empty(),
+        "{:?}",
+        report.script_errors
+    );
     let locks = report.locks.expect("a shared frame is timed");
-    assert!(locks.write_hold > std::time::Duration::ZERO && locks.read_hold > std::time::Duration::ZERO, "{locks:?}");
+    assert!(
+        locks.write_hold > std::time::Duration::ZERO && locks.read_hold > std::time::Duration::ZERO,
+        "{locks:?}"
+    );
     assert!(scene.try_write().is_some(), "the write lock is released");
     assert!(scene.try_read().is_some(), "and the read lock");
 }

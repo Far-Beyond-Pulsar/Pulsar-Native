@@ -177,10 +177,12 @@ mod permanent_library;
 mod registry;
 pub mod tool_bridge;
 
-pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, LinkedEditorProvider};
 /// Re-exported so a linked provider can `inventory::submit!` without its own
 /// dependency (see [`LinkedEditorProvider`]).
 pub use ::inventory;
+pub use builtin::{
+    BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, LinkedEditorProvider,
+};
 pub use permanent_library::{IntegrityError, PermanentLibrary, PermanentLibraryLoadError};
 pub use registry::{EditorRegistry, FileTypeRegistry};
 pub use tool_bridge::PluginToolBridge;
@@ -961,13 +963,12 @@ impl PluginManager {
     /// Run every scripting language's pre-Play validation on
     /// `project_root`. `Err` joins the failures.
     pub fn validate_scripts(&self, project_root: &std::path::Path) -> Result<(), String> {
-        let component_events: Vec<_> =
-            pulsar_world_registry::component_event_registrations()
-                .map(|registration| plugin_editor_api::ComponentEventMetadata {
-                    component_class: registration.class_name.to_owned(),
-                    event: (registration.declaration)(),
-                })
-                .collect();
+        let component_events: Vec<_> = pulsar_world_registry::component_event_registrations()
+            .map(|registration| plugin_editor_api::ComponentEventMetadata {
+                component_class: registration.class_name.to_owned(),
+                event: (registration.declaration)(),
+            })
+            .collect();
         let failures: Vec<String> = self
             .script_languages()
             .iter()
@@ -977,7 +978,11 @@ impl PluginManager {
                     .map(|e| format!("{}: {e}", lang.display_name()))
             })
             .collect();
-        if failures.is_empty() { Ok(()) } else { Err(failures.join("\n")) }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("\n"))
+        }
     }
 
     /// Get all component definitions registered by all plugins and built-in providers.

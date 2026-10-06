@@ -468,14 +468,23 @@ impl ScriptEvents {
     pub fn subscription_count(&self) -> usize {
         self.instances
             .values()
-            .map(|instance| instance.subscriptions.iter().filter(|s| s.handle.is_some()).count())
+            .map(|instance| {
+                instance
+                    .subscriptions
+                    .iter()
+                    .filter(|s| s.handle.is_some())
+                    .count()
+            })
             .sum()
     }
 
     /// Subscriptions of one instance.
     pub fn subscriptions_of(&self, instance: &str) -> usize {
         self.instances.get(instance).map_or(0, |i| {
-            i.subscriptions.iter().filter(|s| s.handle.is_some()).count()
+            i.subscriptions
+                .iter()
+                .filter(|s| s.handle.is_some())
+                .count()
         })
     }
 
@@ -588,7 +597,8 @@ impl ScriptEvents {
                 },
                 SubscriptionScope::Component(variable) => {
                     let target = match world {
-                        Some(world) => match resolve_component_target(runtime, id, variable, world) {
+                        Some(world) => match resolve_component_target(runtime, id, variable, world)
+                        {
                             Ok(target) => target,
                             Err(error) => {
                                 failures.push(format!("script instance '{id}': {error}"));
@@ -597,7 +607,10 @@ impl ScriptEvents {
                         },
                         None => None,
                     };
-                    (target.map(|target| entity_channel(target.entity.bits())), target)
+                    (
+                        target.map(|target| entity_channel(target.entity.bits())),
+                        target,
+                    )
                 }
             };
             let (handler, params) = (sub.handler, sub.params);
@@ -611,9 +624,8 @@ impl ScriptEvents {
                     handler,
                     params,
                     match sub.scope {
-                        SubscriptionScope::Component(variable) => component_target.map(|target| {
-                            ComponentSubscriptionSource { variable, target }
-                        }),
+                        SubscriptionScope::Component(variable) => component_target
+                            .map(|target| ComponentSubscriptionSource { variable, target }),
                         _ => None,
                     },
                     Arc::clone(&self.calls),
@@ -628,7 +640,13 @@ impl ScriptEvents {
                 handle,
             });
         }
-        self.instances.insert(id.to_owned(), InstanceSubscriptions { entity, subscriptions: installed });
+        self.instances.insert(
+            id.to_owned(),
+            InstanceSubscriptions {
+                entity,
+                subscriptions: installed,
+            },
+        );
         (failures, handlers)
     }
 
@@ -658,14 +676,21 @@ impl ScriptEvents {
             let targets: HashMap<_, _> = variables
                 .into_iter()
                 .map(|variable| {
-                    (variable, resolve_component_target(runtime, &id, variable, world))
+                    (
+                        variable,
+                        resolve_component_target(runtime, &id, variable, world),
+                    )
                 })
                 .collect();
             let mut changed_variables = HashMap::new();
             {
-                let Some(instance) = self.instances.get_mut(&id) else { continue };
+                let Some(instance) = self.instances.get_mut(&id) else {
+                    continue;
+                };
                 for subscription in &mut instance.subscriptions {
-                    let SubscriptionScope::Component(variable) = subscription.scope else { continue };
+                    let SubscriptionScope::Component(variable) = subscription.scope else {
+                        continue;
+                    };
                     let desired = targets
                         .get(&variable)
                         .and_then(|target| target.as_ref().ok().copied().flatten());
@@ -697,7 +722,9 @@ impl ScriptEvents {
                     if &*call.instance != id {
                         return true;
                     }
-                    let Some(source) = call.component_source else { return true };
+                    let Some(source) = call.component_source else {
+                        return true;
+                    };
                     changed_variables
                         .get(&source.variable)
                         .map_or(true, |target| *target == Some(source.target))
@@ -817,10 +844,8 @@ fn make_subscription(
     component_source: Option<ComponentSubscriptionSource>,
     calls: CallQueue,
 ) -> SyncSubscription {
-    hub.bus().subscribe_dyn(
-        event,
-        SubscribeOptions::channel(channel),
-        move |event| {
+    hub.bus()
+        .subscribe_dyn(event, SubscribeOptions::channel(channel), move |event| {
             calls
                 .lock()
                 .unwrap_or_else(|p| p.into_inner())
@@ -831,8 +856,7 @@ fn make_subscription(
                     event: event.clone(),
                     component_source,
                 });
-        },
-    )
+        })
 }
 
 /// Resolve a module variable index to its current live component reference.
@@ -856,7 +880,9 @@ fn resolve_component_target(
         .get(variable as usize)
         .ok_or_else(|| format!("component source variable {variable} is out of range"))?;
     let Type::Component(component_class) = ty else {
-        return Err(format!("variable `{name}` has type {ty}, expected a component reference"));
+        return Err(format!(
+            "variable `{name}` has type {ty}, expected a component reference"
+        ));
     };
     let expected = TypeRegistry::global()
         .component(component_class)

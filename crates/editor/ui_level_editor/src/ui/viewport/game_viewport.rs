@@ -23,9 +23,9 @@ use std::time::Instant;
 use engine_backend::services::{PieBlit, PieHost};
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
-use pulsar_pie_abi::{InputEvent, input_kind};
+use pulsar_pie_abi::{input_kind, InputEvent};
 use rust_i18n::t;
-use ui::{ActiveTheme as _, ContextModal as _, notification::Notification};
+use ui::{notification::Notification, ActiveTheme as _, ContextModal as _};
 
 use crate::state::LevelEditorState;
 
@@ -284,8 +284,7 @@ impl GameViewport {
         // and reload every class in it; no new library.
         let pending = match pending {
             Some(req) if req.scripts_only && self.pie_host.is_some() => {
-                let events =
-                    crate::ui::panel::pie::class_reload_events(&req.project_root);
+                let events = crate::ui::panel::pie::class_reload_events(&req.project_root);
                 tracing::info!(
                     classes = events.len(),
                     "PiE: script-only change; reloading classes in the running game"

@@ -30,7 +30,8 @@ pub fn ensure_can_move(world: &World, entity: Entity) -> Result<(), String> {
         return Err(format!("{entity:?} is not alive"));
     }
     for gate in inventory::iter::<MotionGate> {
-        (gate.check)(world, entity).map_err(|reason| format!("{} forbids moving {entity:?}: {reason}", gate.name))?;
+        (gate.check)(world, entity)
+            .map_err(|reason| format!("{} forbids moving {entity:?}: {reason}", gate.name))?;
     }
     Ok(())
 }

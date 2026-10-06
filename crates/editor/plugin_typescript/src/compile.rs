@@ -19,7 +19,13 @@ fn class_name(dir: &Path) -> Option<String> {
 /// Every `src/classes/<Class>/` of the project at `root` that has a `class.ts`.
 fn class_dirs(root: &Path) -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = std::fs::read_dir(root.join("src").join("classes"))
-        .map(|entries| entries.flatten().map(|e| e.path()).filter(|p| p.join(CLASS_FILE).is_file()).collect())
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.join(CLASS_FILE).is_file())
+                .collect()
+        })
         .unwrap_or_default();
     dirs.sort();
     dirs
@@ -48,8 +54,14 @@ fn diagnostic(class: &str, file: &Path, message: impl Into<String>) -> CompileDi
 /// Compile `dir` (a class directory). With `write`, the module, language
 /// marker and updated schema are written; without, nothing is touched
 /// (validation before Play). Problems are returned either way.
-pub fn compile_class_dir(dir: &Path, natives: &NativeRegistry, write: bool) -> Vec<CompileDiagnostic> {
-    let Some(class) = class_name(dir) else { return Vec::new() };
+pub fn compile_class_dir(
+    dir: &Path,
+    natives: &NativeRegistry,
+    write: bool,
+) -> Vec<CompileDiagnostic> {
+    let Some(class) = class_name(dir) else {
+        return Vec::new();
+    };
     let file = dir.join(CLASS_FILE);
     if let Err(message) = check_language(dir) {
         return vec![diagnostic(&class, &file, message)];
@@ -63,13 +75,24 @@ pub fn compile_class_dir(dir: &Path, natives: &NativeRegistry, write: bool) -> V
     let previous = match std::fs::read_to_string(&schema_path) {
         Ok(text) => match serde_json::from_str::<ClassSchema>(&text) {
             Ok(schema) => Some(schema),
-            Err(e) => return vec![diagnostic(&class, &schema_path, format!("`{SCHEMA_FILE}` is not valid: {e}"))],
+            Err(e) => {
+                return vec![diagnostic(
+                    &class,
+                    &schema_path,
+                    format!("`{SCHEMA_FILE}` is not valid: {e}"),
+                )]
+            }
         },
         Err(_) => None,
     };
 
     let compiled = compile_class(
-        &ClassSource { class_name: &class, file: CLASS_FILE, source: &source, schema: previous.as_ref() },
+        &ClassSource {
+            class_name: &class,
+            file: CLASS_FILE,
+            source: &source,
+            schema: previous.as_ref(),
+        },
         natives,
     );
     let mut problems: Vec<CompileDiagnostic> = compiled
@@ -97,10 +120,18 @@ pub fn compile_class_dir(dir: &Path, natives: &NativeRegistry, write: bool) -> V
     if !write {
         return problems;
     }
-    let io_error = |what: &str, path: &Path, e: std::io::Error| diagnostic(&class, path, format!("failed to write {what}: {e}"));
+    let io_error = |what: &str, path: &Path, e: std::io::Error| {
+        diagnostic(&class, path, format!("failed to write {what}: {e}"))
+    };
     let json = match module.to_json() {
         Ok(json) => json,
-        Err(e) => return vec![diagnostic(&class, &file, format!("failed to serialise the module: {e}"))],
+        Err(e) => {
+            return vec![diagnostic(
+                &class,
+                &file,
+                format!("failed to serialise the module: {e}"),
+            )]
+        }
     };
     if let Some(build) = out.parent() {
         if let Err(e) = std::fs::create_dir_all(build) {
@@ -124,7 +155,11 @@ pub fn compile_class_dir(dir: &Path, natives: &NativeRegistry, write: bool) -> V
                         problems.push(io_error("the schema", &schema_path, e));
                     }
                 }
-                Err(e) => problems.push(diagnostic(&class, &schema_path, format!("failed to serialise the schema: {e}"))),
+                Err(e) => problems.push(diagnostic(
+                    &class,
+                    &schema_path,
+                    format!("failed to serialise the schema: {e}"),
+                )),
             }
         }
     }
@@ -159,7 +194,10 @@ pub fn validate_project_classes(root: &Path, natives: &NativeRegistry) -> Result
     if errors.is_empty() {
         Ok(())
     } else {
-        Err(format!("TypeScript classes have errors:\n{}", errors.join("\n")))
+        Err(format!(
+            "TypeScript classes have errors:\n{}",
+            errors.join("\n")
+        ))
     }
 }
 

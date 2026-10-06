@@ -430,7 +430,9 @@ fn span_box_center(
 ) -> Option<(f32, f32)> {
     let span = frame.spans.get(span_idx)?;
     let y0 = *thread_offsets.get(&span.thread_id)?;
-    let y = y0 - GRAPH_HEIGHT + (span.depth as f32 * ROW_HEIGHT) + vs.pan_y
+    let y = y0 - GRAPH_HEIGHT
+        + (span.depth as f32 * ROW_HEIGHT)
+        + vs.pan_y
         + (ROW_HEIGHT - PADDING) * 0.4;
     let x1 = time_to_x(span.start_ns, frame, viewport_w, vs);
     let x2 = time_to_x(span.end_ns(), frame, viewport_w, vs);
@@ -467,7 +469,9 @@ fn push_curve_arrow(s: (f32, f32), e: (f32, f32), rects: &mut Vec<RectInstance>)
     }
 
     // Arrowhead at the destination, pointing along the final tangent.
-    let tlen = (tangent.0 * tangent.0 + tangent.1 * tangent.1).sqrt().max(1e-6);
+    let tlen = (tangent.0 * tangent.0 + tangent.1 * tangent.1)
+        .sqrt()
+        .max(1e-6);
     let dx = tangent.0 / tlen;
     let dy = tangent.1 / tlen;
     let angle = dy.atan2(dx);
@@ -513,10 +517,12 @@ pub fn build_dependency_arrows(
     let outside = |y: f32| y < -viewport_h || y > viewport_h * 2.0;
 
     // Window of spans ending at (essentially) the same instant as the target.
-    let lo =
-        sorted.partition_point(|i| frame.spans[*i as usize].end_ns() < a_end.saturating_sub(WAIT_ALIGN_TOLERANCE_NS));
-    let hi = sorted
-        .partition_point(|i| frame.spans[*i as usize].end_ns() <= a_end.saturating_add(WAIT_ALIGN_TOLERANCE_NS));
+    let lo = sorted.partition_point(|i| {
+        frame.spans[*i as usize].end_ns() < a_end.saturating_sub(WAIT_ALIGN_TOLERANCE_NS)
+    });
+    let hi = sorted.partition_point(|i| {
+        frame.spans[*i as usize].end_ns() <= a_end.saturating_add(WAIT_ALIGN_TOLERANCE_NS)
+    });
 
     // Keep the best candidate per thread (longest overlap) to limit clutter.
     let mut best: HashMap<u64, (usize, u64)> = HashMap::new();
@@ -576,8 +582,10 @@ pub fn build_dependency_arrows(
             continue;
         }
         // Cull arrows wholly outside the visible area.
-        if outside(s.1) && outside(e.1) && !((s.0 >= THREAD_LABEL_WIDTH && s.0 <= viewport_w)
-            || (e.0 >= THREAD_LABEL_WIDTH && e.0 <= viewport_w))
+        if outside(s.1)
+            && outside(e.1)
+            && !((s.0 >= THREAD_LABEL_WIDTH && s.0 <= viewport_w)
+                || (e.0 >= THREAD_LABEL_WIDTH && e.0 <= viewport_w))
         {
             continue;
         }

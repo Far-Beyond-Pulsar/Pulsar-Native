@@ -76,14 +76,21 @@ impl PieSession {
                 .subscribe_class_reloads()
         });
         if let (Some(level), Some(driver)) = (level, &tick_loop.scripts) {
-            driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).set_level_name(level);
+            driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .set_level_name(level);
         }
         // Play-in-Editor is a debugging session: record recently flushed
         // events for the editor's events panel (`pie_events_snapshot`) and
         // keep script problems for the problems panel.
         tick_loop.events.set_tap(true, PIE_EVENT_TAP_CAPACITY);
         tick_loop.collect_script_problems(true);
-        Self { tick_loop, _class_reloads: class_reloads, problems: Vec::new() }
+        Self {
+            tick_loop,
+            _class_reloads: class_reloads,
+            problems: Vec::new(),
+        }
     }
 
     /// Run one simulation frame (nothing while paused, unless a step is
@@ -94,9 +101,13 @@ impl PieSession {
         // the Blueprint editor's existing node selection/highlight path can
         // follow a live debugger stop across the PIE dylib boundary.
         if let Some(driver) = &self.tick_loop.scripts {
-            let mut driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let mut driver = driver
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             for (instance, snapshot) in driver.take_debug_events() {
-                let Some(frame) = snapshot.call_stack.last() else { continue };
+                let Some(frame) = snapshot.call_stack.last() else {
+                    continue;
+                };
                 let class = driver.runtime().class_of(&instance).map(str::to_owned);
                 let stop = match snapshot.reason {
                     pulsar_script_vm::StopReason::Breakpoint => "breakpoint",
@@ -479,17 +490,25 @@ impl EmbeddedGame {
             input_kind::KEY => {
                 let key = i64::from(ev.button_or_key);
                 if ev.pressed != 0 {
-                    self.session.tick_loop.publish_input(pulsar_events::builtin::KeyDown { key });
+                    self.session
+                        .tick_loop
+                        .publish_input(pulsar_events::builtin::KeyDown { key });
                 } else {
-                    self.session.tick_loop.publish_input(pulsar_events::builtin::KeyUp { key });
+                    self.session
+                        .tick_loop
+                        .publish_input(pulsar_events::builtin::KeyUp { key });
                 }
             }
             input_kind::MOUSE_BUTTON => {
                 let button = i64::from(ev.button_or_key);
                 if ev.pressed != 0 {
-                    self.session.tick_loop.publish_input(pulsar_events::builtin::MouseButtonDown { button });
+                    self.session
+                        .tick_loop
+                        .publish_input(pulsar_events::builtin::MouseButtonDown { button });
                 } else {
-                    self.session.tick_loop.publish_input(pulsar_events::builtin::MouseButtonUp { button });
+                    self.session
+                        .tick_loop
+                        .publish_input(pulsar_events::builtin::MouseButtonUp { button });
                 }
             }
             _ => {}
@@ -610,7 +629,11 @@ pub unsafe fn pie_asset_updated(
 /// A simulation control command ([`pulsar_pie_abi::control`]); 0 when no
 /// game runs.
 pub fn pie_control(command: u32, arg: u64) -> u64 {
-    GAME.with(|g| g.borrow_mut().as_mut().map_or(0, |game| game.session.control(command, arg)))
+    GAME.with(|g| {
+        g.borrow_mut()
+            .as_mut()
+            .map_or(0, |game| game.session.control(command, arg))
+    })
 }
 
 /// Write the script problems raised since the last call (JSON array) into
@@ -626,7 +649,9 @@ pub unsafe fn pie_take_problems(out: *mut u8, capacity: usize) -> usize {
         if game.session.problems().is_empty() {
             return 0;
         }
-        let Ok(json) = serde_json::to_vec(game.session.problems()) else { return 0 };
+        let Ok(json) = serde_json::to_vec(game.session.problems()) else {
+            return 0;
+        };
         if !out.is_null() && json.len() <= capacity {
             // SAFETY: `out` is valid for `capacity >= len` bytes (caller).
             unsafe { std::ptr::copy_nonoverlapping(json.as_ptr(), out, json.len()) };

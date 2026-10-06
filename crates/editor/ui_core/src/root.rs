@@ -8,8 +8,8 @@ use gpui::{
 use rust_i18n::t;
 use std::path::PathBuf;
 use ui::{
-    notification::Notification, h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, Root,
-    StyledExt as _,
+    h_flex, notification::Notification, v_flex, ActiveTheme as _, ContextModal as _, Icon,
+    IconName, Root, StyledExt as _,
 };
 use ui_common::menu::{
     AboutApp, AppTitleBar, AppTitleBarEvent, DevInspectEngineState, DevOpenWorkspaceRoot,

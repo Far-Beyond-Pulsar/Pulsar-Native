@@ -11,7 +11,7 @@ use gpui::{App, Window};
 use rust_i18n::t;
 use std::path::Path;
 use std::sync::Arc;
-use ui::{ContextModal as _, notification::Notification};
+use ui::{notification::Notification, ContextModal as _};
 
 use crate::state::{LevelEditorState, PieStartRequest};
 

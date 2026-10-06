@@ -101,5 +101,3 @@ mod tests {
         assert_eq!(instance.border_widths, resolved.border_widths);
     }
 }
-
-

@@ -241,20 +241,32 @@ fn set_typed(
 /// construction. Only the type-bound closures are used, never the
 /// throwaway's values. Nothing here refers to an entity or a borrowed
 /// component, so the cache can never hold a stale pointer.
-pub fn property_descriptor(class_name: &str, property: &str) -> Result<Arc<PropertyMetadata>, ScriptRefError> {
-    static CACHE: LazyLock<RwLock<HashMap<String, Arc<ClassProperties>>>> = LazyLock::new(Default::default);
+pub fn property_descriptor(
+    class_name: &str,
+    property: &str,
+) -> Result<Arc<PropertyMetadata>, ScriptRefError> {
+    static CACHE: LazyLock<RwLock<HashMap<String, Arc<ClassProperties>>>> =
+        LazyLock::new(Default::default);
 
     let unknown = || ScriptRefError::UnknownProperty {
         class_name: class_name.to_string(),
         property: property.to_string(),
     };
-    let cached = CACHE.read().unwrap_or_else(PoisonError::into_inner).get(class_name).cloned();
+    let cached = CACHE
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(class_name)
+        .cloned();
     let class = match cached {
         Some(class) => class,
         None => {
             let instance = REGISTRY.create_instance(class_name).ok_or_else(unknown)?;
             let built: Arc<ClassProperties> = Arc::new(
-                instance.get_properties().into_iter().map(|p| (p.name, Arc::new(p))).collect(),
+                instance
+                    .get_properties()
+                    .into_iter()
+                    .map(|p| (p.name, Arc::new(p)))
+                    .collect(),
             );
             let mut cache = CACHE.write().unwrap_or_else(PoisonError::into_inner);
             Arc::clone(cache.entry(class_name.to_owned()).or_insert(built))

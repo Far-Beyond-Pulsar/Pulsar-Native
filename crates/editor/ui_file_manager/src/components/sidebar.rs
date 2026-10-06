@@ -3,7 +3,7 @@ use gpui::*;
 use rust_i18n::t;
 use ui::button::{Button, ButtonVariants as _};
 use ui::input::TextInput;
-use ui::{ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt, h_flex, v_flex};
+use ui::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt};
 
 use crate::components::file_list::FileManagerDrawer;
 use crate::utils::tree::FolderNode;
@@ -175,6 +175,7 @@ pub fn render_folder_node(
     let pd = p.clone();
     let pd_for_internal = p.clone();
     let pd_for_asset = p.clone();
+    let pd_for_asset_drop = p.clone();
     let exp = node.expanded;
     let has = !node.children.is_empty();
     let indent = px(depth as f32 * 20.0 + 4.0);
@@ -243,12 +244,27 @@ pub fn render_folder_node(
                     .border_1()
                     .border_color(cx.theme().accent)
             })
+            .drag_over::<plugin_editor_api::AssetPayload>(|s, _, _, cx| {
+                s.bg(cx.theme().accent.opacity(0.2))
+                    .border_1()
+                    .border_color(cx.theme().accent)
+            })
             .on_drop(cx.listener(move |d, drag: &DraggedFile, w, cx| {
                 d.handle_drop_on_folder_new(&pi, &drag.paths, w, cx)
             }))
             .on_drop(cx.listener(move |d, ext: &gpui::ExternalPaths, w, cx| {
                 d.handle_external_drop_on_folder(&p_path, ext.paths(), w, cx)
             }))
+            .on_drop(
+                cx.listener(move |d, asset: &plugin_editor_api::AssetPayload, w, cx| {
+                    d.handle_drop_on_folder_new(
+                        &pd_for_asset_drop,
+                        &[std::path::PathBuf::from(&asset.engine_path)],
+                        w,
+                        cx,
+                    )
+                }),
+            )
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(move |d, _: &MouseDownEvent, _w, cx| {

@@ -6,17 +6,16 @@
 //! session.
 
 use engine_state::playback::{
-    MAX_PLAYERS, MultiplayerMode, MultiplayerSettings, PlaybackState, playback,
+    playback, MultiplayerMode, MultiplayerSettings, PlaybackState, MAX_PLAYERS,
 };
 use gpui::*;
 use ui::{
-    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _,
     button::{Button, ButtonVariants as _},
     h_flex,
     scroll::{Scrollbar, ScrollbarState},
     slider::{Slider, SliderEvent, SliderState},
     switch::Switch,
-    v_flex,
+    v_flex, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _,
 };
 
 const TICK_RATES: [u16; 4] = [20, 30, 60, 120];
@@ -230,7 +229,12 @@ fn section(
             h_flex()
                 .justify_between()
                 .items_baseline()
-                .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).child(title))
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(title),
+                )
                 .child(
                     div()
                         .text_xs()
@@ -238,7 +242,11 @@ fn section(
                         .child(if enabled { note } else { why }),
                 ),
         )
-        .child(div().opacity(if enabled { 1.0 } else { 0.45 }).child(content))
+        .child(
+            div()
+                .opacity(if enabled { 1.0 } else { 0.45 })
+                .child(content),
+        )
 }
 
 /// Label on the left, current value on the right.
@@ -248,7 +256,12 @@ fn value_row(label: &'static str, value: String, p: Palette) -> impl IntoElement
         .justify_between()
         .text_xs()
         .child(div().text_color(p.muted).child(label))
-        .child(div().text_color(p.fg).font_weight(FontWeight::SEMIBOLD).child(value))
+        .child(
+            div()
+                .text_color(p.fg)
+                .font_weight(FontWeight::SEMIBOLD)
+                .child(value),
+        )
 }
 
 /// A selectable card: the control the configurator uses for the Rust build mode.
@@ -261,7 +274,11 @@ fn choice(id: SharedString, selected: bool, p: Palette) -> Stateful<Div> {
         .rounded_md()
         .border_1()
         .border_color(if selected { p.primary } else { p.border })
-        .bg(if selected { p.primary.opacity(0.09) } else { p.card.opacity(0.0) })
+        .bg(if selected {
+            p.primary.opacity(0.09)
+        } else {
+            p.card.opacity(0.0)
+        })
         .cursor_pointer()
         .hover(|s| s.bg(p.hover))
 }
@@ -293,21 +310,31 @@ impl Render for MultiplayerPanel {
 
         // Net mode: a 2 x 2 grid of cards.
         let mode_card = |mode: MultiplayerMode| {
-            choice(SharedString::from(format!("net-mode-{mode:?}")), m.mode == mode, p)
-                .on_click(move |_, _, _| edit(|m| m.mode = mode))
-                .child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(Icon::new(mode_icon(mode)).size(px(14.)).text_color(p.muted))
-                        .child(
-                            div()
-                                .text_sm()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .child(mode_label(mode)),
-                        ),
-                )
-                .child(div().pt_1().text_xs().text_color(p.muted).child(mode_blurb(mode)))
+            choice(
+                SharedString::from(format!("net-mode-{mode:?}")),
+                m.mode == mode,
+                p,
+            )
+            .on_click(move |_, _, _| edit(|m| m.mode = mode))
+            .child(
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(Icon::new(mode_icon(mode)).size(px(14.)).text_color(p.muted))
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(mode_label(mode)),
+                    ),
+            )
+            .child(
+                div()
+                    .pt_1()
+                    .text_xs()
+                    .text_color(p.muted)
+                    .child(mode_blurb(mode)),
+            )
         };
         let [standalone, listen, dedicated, client] = MultiplayerMode::ALL;
         let modes = v_flex()
@@ -359,18 +386,20 @@ impl Render for MultiplayerPanel {
             );
 
         // Simulated network: presets, then the two sliders they set.
-        let presets = h_flex().gap_1().children(NETWORK_PRESETS.map(|(label, ms, loss)| {
-            Button::new(SharedString::from(format!("net-preset-{label}")))
-                .small()
-                .label(label)
-                .selected((m.latency_ms, m.packet_loss_pct) == (ms, loss))
-                .on_click(move |_, _, _| {
-                    edit(|m| {
-                        m.latency_ms = ms;
-                        m.packet_loss_pct = loss;
+        let presets = h_flex()
+            .gap_1()
+            .children(NETWORK_PRESETS.map(|(label, ms, loss)| {
+                Button::new(SharedString::from(format!("net-preset-{label}")))
+                    .small()
+                    .label(label)
+                    .selected((m.latency_ms, m.packet_loss_pct) == (ms, loss))
+                    .on_click(move |_, _, _| {
+                        edit(|m| {
+                            m.latency_ms = ms;
+                            m.packet_loss_pct = loss;
+                        })
                     })
-                })
-        }));
+            }));
         let conditions = v_flex()
             .gap_3()
             .child(presets)
@@ -383,28 +412,43 @@ impl Render for MultiplayerPanel {
             .child(
                 v_flex()
                     .gap_1()
-                    .child(value_row("Packet loss", format!("{}%", m.packet_loss_pct), p))
+                    .child(value_row(
+                        "Packet loss",
+                        format!("{}%", m.packet_loss_pct),
+                        p,
+                    ))
                     .child(Slider::new(&self.packet_loss).disabled(!networked)),
             );
 
         // Server tick rate.
         let tick = h_flex().gap_2().children(TICK_RATES.map(|hz| {
-            choice(SharedString::from(format!("tick-{hz}")), m.tick_rate_hz == hz, p)
-                .on_click(move |_, _, _| edit(|m| m.tick_rate_hz = hz))
-                .child(
-                    div()
-                        .flex()
-                        .justify_center()
-                        .text_sm()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .child(format!("{hz} Hz")),
-                )
+            choice(
+                SharedString::from(format!("tick-{hz}")),
+                m.tick_rate_hz == hz,
+                p,
+            )
+            .on_click(move |_, _, _| edit(|m| m.tick_rate_hz = hz))
+            .child(
+                div()
+                    .flex()
+                    .justify_center()
+                    .text_sm()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(format!("{hz} Hz")),
+            )
         }));
 
         let sections = v_flex()
             .gap_3()
             .p_3()
-            .child(section("Net mode", "How this session joins the network", true, "", p, modes))
+            .child(section(
+                "Net mode",
+                "How this session joins the network",
+                true,
+                "",
+                p,
+                modes,
+            ))
             .child(section(
                 "Session",
                 "Players and windows",
@@ -473,7 +517,8 @@ impl Render for MultiplayerPanel {
                             .label("Reset")
                             .tooltip("Back to Standalone with the default settings")
                             .on_click(|_, _, _| {
-                                playback().update(|s| s.multiplayer = MultiplayerSettings::default())
+                                playback()
+                                    .update(|s| s.multiplayer = MultiplayerSettings::default())
                             }),
                     ),
             )

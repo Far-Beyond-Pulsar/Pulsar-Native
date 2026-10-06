@@ -32,14 +32,14 @@ use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use helio_viewport::HelioViewport;
 use ui::Sizable;
-use ui::{ActiveTheme, v_flex};
+use ui::{v_flex, ActiveTheme};
 use ui_common::ViewportControls;
 
 use crate::state::LevelEditorState;
 use crate::ui::viewport::components::camera_selector::CameraSpeedControl;
 use components::camera_selector::render_camera_selector;
 use components::gpu_pipeline_overlay::render_gpu_pipeline_overlay;
-use components::performance_overlay::{PerformanceOverlay, render_performance_overlay};
+use components::performance_overlay::{render_performance_overlay, PerformanceOverlay};
 use components::viewport_options::render_viewport_options;
 use input_state::InputState;
 use performance::*;

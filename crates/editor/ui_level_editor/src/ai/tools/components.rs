@@ -98,7 +98,13 @@ fn validate(class_name: &str, data: &Value) -> Result<()> {
 fn field_list(data: &Value) -> String {
     field_paths(data)
         .iter()
-        .map(|f| format!("{} ({})", f["path"].as_str().unwrap_or_default(), f["type"].as_str().unwrap_or_default()))
+        .map(|f| {
+            format!(
+                "{} ({})",
+                f["path"].as_str().unwrap_or_default(),
+                f["type"].as_str().unwrap_or_default()
+            )
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -144,7 +150,11 @@ fn resolve_index(
     }
 }
 
-fn run(ctx: &ToolContext, id: &str, cmd: impl FnOnce(&World) -> Result<SceneCommand>) -> Result<Value> {
+fn run(
+    ctx: &ToolContext,
+    id: &str,
+    cmd: impl FnOnce(&World) -> Result<SceneCommand>,
+) -> Result<Value> {
     let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     require_object(&state, id)?;
@@ -230,9 +240,14 @@ pub fn level_editor_describe_component_class(class_name: String) -> Result<Value
             if example.len() >= 3 {
                 break;
             }
-            if field["type"].as_str().is_some_and(|t| t.starts_with(wanted)) {
+            if field["type"]
+                .as_str()
+                .is_some_and(|t| t.starts_with(wanted))
+            {
                 let path = field["path"].as_str().unwrap_or_default().to_string();
-                example.entry(path).or_insert_with(|| field["value"].clone());
+                example
+                    .entry(path)
+                    .or_insert_with(|| field["value"].clone());
             }
         }
     }
@@ -275,7 +290,11 @@ pub fn level_editor_add_component(
 ) -> Result<Value> {
     let data = build_component_data(&class_name, properties.as_ref())?;
     run(ctx, &id.clone(), |_| {
-        Ok(SceneCommand::AddComponent { id, class_name, data })
+        Ok(SceneCommand::AddComponent {
+            id,
+            class_name,
+            data,
+        })
     })
 }
 
@@ -340,8 +359,8 @@ pub fn level_editor_revert_component_property(
 ) -> Result<Value> {
     run(ctx, &id.clone(), |world| {
         let index = resolve_index(world, &id, component_index, class_name.as_deref())?;
-        let class_name = scene_edit::components::get_component_class_names(world, &id)
-            .swap_remove(index);
+        let class_name =
+            scene_edit::components::get_component_class_names(world, &id).swap_remove(index);
         let registry = scene_edit::classes::project_registry();
         let from_class_slot = scene_edit::classes::slot_defaults(world, &id, &registry)
             .remove(&index)
@@ -355,7 +374,8 @@ pub fn level_editor_revert_component_property(
             let slot_id = scene_edit::classes::class_instance_view(world, &root, &registry)
                 .and_then(|view| {
                     view.slots.into_iter().find(|slot| {
-                        slot.object_id.as_deref() == Some(id.as_str()) && slot.class_name == class_name
+                        slot.object_id.as_deref() == Some(id.as_str())
+                            && slot.class_name == class_name
                     })
                 })
                 .map(|slot| slot.slot_id)
@@ -371,7 +391,10 @@ pub fn level_editor_revert_component_property(
         let default = default_data(instance.as_ref());
         let pointer = format!("/{}", property.replace('.', "/"));
         let value = default.pointer(&pointer).cloned().ok_or_else(|| {
-            anyhow!("{class_name} has no field `{property}`. Fields: {}", field_list(&default))
+            anyhow!(
+                "{class_name} has no field `{property}`. Fields: {}",
+                field_list(&default)
+            )
         })?;
         let mut data = scene_edit::components::get_components(world, &id)
             .swap_remove(index)
@@ -403,7 +426,10 @@ pub fn level_editor_remove_component(
 ) -> Result<Value> {
     run(ctx, &id.clone(), |world| {
         let component_index = resolve_index(world, &id, component_index, class_name.as_deref())?;
-        Ok(SceneCommand::RemoveComponent { id, component_index })
+        Ok(SceneCommand::RemoveComponent {
+            id,
+            component_index,
+        })
     })
 }
 
@@ -447,7 +473,10 @@ pub fn level_editor_duplicate_component(
 ) -> Result<Value> {
     run(ctx, &id.clone(), |world| {
         resolve_index(world, &id, Some(component_index), None)?;
-        Ok(SceneCommand::DuplicateComponent { id, component_index })
+        Ok(SceneCommand::DuplicateComponent {
+            id,
+            component_index,
+        })
     })
 }
 

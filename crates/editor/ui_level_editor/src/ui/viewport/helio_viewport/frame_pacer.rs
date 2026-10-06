@@ -178,7 +178,7 @@ impl FramePacer {
 
 #[cfg(test)]
 mod pacer_tests {
-    use super::{FALLBACK_REFRESH_HZ, FramePacer, MIN_TARGET_HZ};
+    use super::{FramePacer, FALLBACK_REFRESH_HZ, MIN_TARGET_HZ};
 
     /// Drive `adapt` as if `n` frames in a row missed their deadline.
     fn run_late_frames(pacer: &mut FramePacer, n: u32) {
@@ -292,7 +292,10 @@ mod pacer_tests {
         assert_eq!(pacer.target_hz, 165.0);
         run_late_frames(&mut pacer, FramePacer::LATE_STREAK_TO_DROP);
         run_on_time_frames(&mut pacer, FramePacer::ON_TIME_STREAK_TO_RAISE);
-        assert_eq!(pacer.target_hz, 165.0, "recovery should use the new ceiling");
+        assert_eq!(
+            pacer.target_hz, 165.0,
+            "recovery should use the new ceiling"
+        );
     }
 
     #[test]

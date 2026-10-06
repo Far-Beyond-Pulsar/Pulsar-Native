@@ -147,7 +147,10 @@ mod actors {
 
         let entity = {
             let mut store = tick_loop.scene_store.write();
-            let e = store.world.spawn_object(engine_backend::scene::SpawnObject::new("Runtime")).unwrap();
+            let e = store
+                .world
+                .spawn_object(engine_backend::scene::SpawnObject::new("Runtime"))
+                .unwrap();
             tick_loop
                 .actors
                 .register(Counter(Arc::new(Mutex::new(Vec::new()))), &mut store.world);
@@ -159,7 +162,13 @@ mod actors {
         // Another handle-holder (what the renderer is) sees the spawned
         // object and its components.
         let store = tick_loop.scene_store.read();
-        assert_eq!(store.world.get::<engine_backend::scene::Name>(entity).map(|n| n.0.as_str()), Some("Runtime"));
+        assert_eq!(
+            store
+                .world
+                .get::<engine_backend::scene::Name>(entity)
+                .map(|n| n.0.as_str()),
+            Some("Runtime")
+        );
     }
 }
 
@@ -225,7 +234,10 @@ mod script_runtime_bindings {
         let store = level.scene();
         drop(level);
         let runtime = scripting::new_runtime();
-        let find = runtime.natives().get("world::find_by_stable_id").expect("registered");
+        let find = runtime
+            .natives()
+            .get("world::find_by_stable_id")
+            .expect("registered");
         let mut guard = store.write();
         let expected = guard.world.entity_for("lever_b").unwrap();
         let mut host = Host::new(&mut guard.world, pulsar_scenedb::Entity::DANGLING);
@@ -245,7 +257,8 @@ mod script_runtime_bindings {
     fn class_slot_handles_are_resolved_once_at_bind() {
         use helio_component::components::LightComponent;
 
-        let root = std::env::temp_dir().join(format!("pulsar_game_slot_bind_{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("pulsar_game_slot_bind_{}", std::process::id()));
         let class_dir = root.join("src/classes/Lamp");
         std::fs::create_dir_all(&class_dir).unwrap();
         let light = serde_json::to_value(LightComponent::default()).unwrap();
@@ -275,7 +288,11 @@ mod script_runtime_bindings {
         )
         .unwrap();
         let child = placement.handle(&second_slot).unwrap().entity;
-        assert_ne!(child, placement.root(), "second copy lives on a generated child");
+        assert_ne!(
+            child,
+            placement.root(),
+            "second copy lives on a generated child"
+        );
 
         let mut module = Module::new("Lamp");
         for slot in [&second_slot, &missing_slot] {
@@ -288,17 +305,32 @@ mod script_runtime_bindings {
         }
         let mut runtime = scripting::new_runtime();
         runtime.load_class(module).unwrap();
-        runtime.spawn("lamp::Lamp", "Lamp", Some(placement.root()), &[]).unwrap();
-        let unresolved = scripting::bind_class_slots(&mut runtime, "lamp::Lamp", &scene.world, placement.root());
+        runtime
+            .spawn("lamp::Lamp", "Lamp", Some(placement.root()), &[])
+            .unwrap();
+        let unresolved =
+            scripting::bind_class_slots(&mut runtime, "lamp::Lamp", &scene.world, placement.root());
         assert_eq!(unresolved, [missing_slot.clone()]);
 
         let light_id = pulsar_world_registry::component_id_for_class("LightComponent").unwrap();
         assert_eq!(
-            runtime.variable("lamp::Lamp", &pulsar_class::slot_variable_name(&second_slot)),
-            Some(&Value::Component(pulsar_scenedb::ComponentRef::new(child, light_id)))
+            runtime.variable(
+                "lamp::Lamp",
+                &pulsar_class::slot_variable_name(&second_slot)
+            ),
+            Some(&Value::Component(pulsar_scenedb::ComponentRef::new(
+                child, light_id
+            )))
         );
-        match runtime.variable("lamp::Lamp", &pulsar_class::slot_variable_name(&missing_slot)) {
-            Some(Value::Component(handle)) => assert_eq!(handle.entity, pulsar_scenedb::Entity::DANGLING, "none, not the root"),
+        match runtime.variable(
+            "lamp::Lamp",
+            &pulsar_class::slot_variable_name(&missing_slot),
+        ) {
+            Some(Value::Component(handle)) => assert_eq!(
+                handle.entity,
+                pulsar_scenedb::Entity::DANGLING,
+                "none, not the root"
+            ),
             other => panic!("unexpected {other:?}"),
         }
         let _ = std::fs::remove_dir_all(&root);
@@ -326,12 +358,20 @@ mod generated_setup_script_section {
         let mut game = TickLoop::new(TickMode::default(), 0);
         setup(&mut game).unwrap();
         assert_eq!(
-            game.scripts.as_ref().unwrap().lock().unwrap().project_root(),
+            game.scripts
+                .as_ref()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .project_root(),
             project.path()
         );
         assert!(game.scripts.is_some());
         game.tick_once();
         let driver = game.scripts.as_ref().unwrap().lock().unwrap();
-        assert!(driver.runtime().instance_ids().is_empty(), "no default instances");
+        assert!(
+            driver.runtime().instance_ids().is_empty(),
+            "no default instances"
+        );
     }
 }

@@ -14,10 +14,9 @@
 //! lands (projection fields, per-camera near/far), this module is the one
 //! place that switches over.
 
-use engine_backend::scene::SceneWorldExt;
 use crate::freecam::FreeCam;
 use crate::window::RenderCamera;
-
+use engine_backend::scene::SceneWorldExt;
 
 /// Resolve the shared-world camera, if any: the first live
 /// `ObjectType::Camera` entity's transform as a [`RenderCamera`].
@@ -58,7 +57,10 @@ mod tests {
     #[test]
     fn a_camera_typed_entity_drives_the_view_from_the_shared_world() {
         let mut store = engine_backend::scene::new_scene();
-        let cam = store.world.spawn_object(engine_backend::scene::SpawnObject::new("View").with_id("view")).unwrap();
+        let cam = store
+            .world
+            .spawn_object(engine_backend::scene::SpawnObject::new("View").with_id("view"))
+            .unwrap();
         store.world.insert(cam, ObjectType::Camera);
         store.world.insert(
             cam,
@@ -83,7 +85,10 @@ mod tests {
         let mut store = engine_backend::scene::new_scene();
         assert!(select_world_camera(&store).is_none());
 
-        let plain = store.world.spawn_object(engine_backend::scene::SpawnObject::new("Cube")).unwrap();
+        let plain = store
+            .world
+            .spawn_object(engine_backend::scene::SpawnObject::new("Cube"))
+            .unwrap();
         store.world.insert(plain, ObjectType::Mesh(MeshType::Cube));
         store.world.insert(
             plain,
@@ -104,7 +109,10 @@ mod tests {
     #[test]
     fn a_hidden_camera_still_drives_the_view() {
         let mut store = engine_backend::scene::new_scene();
-        let cam = store.world.spawn_object(engine_backend::scene::SpawnObject::new("Cam")).unwrap();
+        let cam = store
+            .world
+            .spawn_object(engine_backend::scene::SpawnObject::new("Cam"))
+            .unwrap();
         store.world.insert(cam, ObjectType::Camera);
         store.world.insert(
             cam,

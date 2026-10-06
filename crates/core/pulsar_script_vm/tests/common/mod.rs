@@ -16,7 +16,9 @@ pub struct Asm {
 
 impl Asm {
     pub fn new() -> Self {
-        Self { module: Module::new("test") }
+        Self {
+            module: Module::new("test"),
+        }
     }
 
     pub fn constant(&mut self, constant: Constant) -> u32 {
@@ -28,12 +30,20 @@ impl Asm {
     }
 
     pub fn import(&mut self, name: &str, params: Vec<Param>, ret: Type) -> u32 {
-        self.module.imports.push(Import { name: name.into(), sig: Signature::new(params, ret) });
+        self.module.imports.push(Import {
+            name: name.into(),
+            sig: Signature::new(params, ret),
+        });
         (self.module.imports.len() - 1) as u32
     }
 
     pub fn var(&mut self, name: &str, ty: Type, default: Option<Constant>) -> u32 {
-        self.module.variables.push(Variable { name: name.into(), ty, default, id: None });
+        self.module.variables.push(Variable {
+            name: name.into(),
+            ty,
+            default,
+            id: None,
+        });
         (self.module.variables.len() - 1) as u32
     }
 
@@ -77,7 +87,11 @@ impl Harness {
     pub fn new() -> Self {
         let mut world = World::new();
         let entity = world.spawn();
-        Self { world, entity, vm: Vm::new() }
+        Self {
+            world,
+            entity,
+            vm: Vm::new(),
+        }
     }
 
     pub fn call(
@@ -89,11 +103,23 @@ impl Harness {
     ) -> Result<Value, ScriptError> {
         let func = program.entry(name).expect("entry point");
         let mut host = Host::new(&mut self.world, self.entity);
-        self.vm.call(program, instance, func, args, &mut host, &mut Budget::new(1_000_000))
+        self.vm.call(
+            program,
+            instance,
+            func,
+            args,
+            &mut host,
+            &mut Budget::new(1_000_000),
+        )
     }
 
     /// Run a function once on a fresh instance.
-    pub fn run(&mut self, program: &Program, name: &str, args: &[Value]) -> Result<Value, ScriptError> {
+    pub fn run(
+        &mut self,
+        program: &Program,
+        name: &str,
+        args: &[Value],
+    ) -> Result<Value, ScriptError> {
         let mut instance = program.instantiate();
         self.call(program, &mut instance, name, args)
     }

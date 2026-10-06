@@ -14,19 +14,18 @@ use rust_i18n::t;
 use std::collections::HashSet;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme, CollapsibleSection, IconName, Sizable, StyledExt,
     button::Button,
     h_flex,
     input::{InputState, TextInput},
     scroll::ScrollbarAxis,
-    v_flex,
+    v_flex, ActiveTheme, CollapsibleSection, IconName, Sizable, StyledExt,
 };
 use ui_common::properties_inspector;
 
-use crate::SceneObjectData;
 use crate::scene_edit::{ObjectType, Transform};
 use crate::state::LevelEditorState;
 use crate::workspace::panels::PropertiesPanelWrapper;
+use crate::SceneObjectData;
 
 /// Properties Panel - Inspector showing properties of the selected object
 pub struct PropertiesPanel;
@@ -59,32 +58,35 @@ impl PropertiesPanel {
             // Professional header
             .child(self.render_header(has_selection, cx))
             // Main content area
-            .child(div().flex_1().overflow_hidden().w_full().child(
-                div().size_full().scrollable(ScrollbarAxis::Vertical).child(
-                    if has_selection {
-                        let mut flex = v_flex().w_full().p_3().gap_4().min_w_full();
+            .child(
+                div().flex_1().overflow_hidden().w_full().child(
+                    div()
+                        .size_full()
+                        .scrollable(ScrollbarAxis::Vertical)
+                        .child(if has_selection {
+                            let mut flex = v_flex().w_full().p_3().gap_4().min_w_full();
 
-                        // Render new ObjectHeaderSection if available (new binding system)
-                        if let Some(ref section) = object_header_section {
-                            flex = flex.child(Self::cached_section(section));
-                        }
+                            // Render new ObjectHeaderSection if available (new binding system)
+                            if let Some(ref section) = object_header_section {
+                                flex = flex.child(Self::cached_section(section));
+                            }
 
-                        // Render new TransformSection if available (new binding system)
-                        if let Some(ref section) = transform_section {
-                            flex = flex.child(Self::cached_section(section));
-                        }
+                            // Render new TransformSection if available (new binding system)
+                            if let Some(ref section) = transform_section {
+                                flex = flex.child(Self::cached_section(section));
+                            }
 
-                        // Reflection-backed object type properties — always present.
-                        if let Some(ref section) = object_type_fields_section {
-                            flex = flex.child(Self::cached_section(section));
-                        }
+                            // Reflection-backed object type properties — always present.
+                            if let Some(ref section) = object_type_fields_section {
+                                flex = flex.child(Self::cached_section(section));
+                            }
 
-                        flex.into_any_element()
-                    } else {
-                        Self::render_empty_state(cx).into_any_element()
-                    },
+                            flex.into_any_element()
+                        } else {
+                            Self::render_empty_state(cx).into_any_element()
+                        }),
                 ),
-            ))
+            )
     }
 
     /// A section as its own cached view whose height follows its content.

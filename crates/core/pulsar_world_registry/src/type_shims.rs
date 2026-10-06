@@ -124,4 +124,3 @@ mod tests {
         assert!(serialize_via_trait::<Vec<f32>>(&"not a vec".to_string()).is_err());
     }
 }
-

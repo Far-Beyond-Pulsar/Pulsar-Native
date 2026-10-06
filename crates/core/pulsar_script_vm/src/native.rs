@@ -18,7 +18,7 @@ use pulsar_reflection::{methods::MethodFlags, CONVERSION_REGISTRY};
 use pulsar_scenedb::{Entity, World};
 
 use crate::error::ScriptError;
-use crate::events::{EventSink, is_event_field_type};
+use crate::events::{is_event_field_type, EventSink};
 use crate::library::{LibraryId, ShadowLibrary};
 use crate::module::{Param, Signature};
 use crate::types::{ScriptValue, Type, TypeRegistry};
@@ -84,7 +84,6 @@ impl<'w> Host<'w> {
             latent: None,
         }
     }
-
 
     /// A host that can read the world but not change it. Natives that need
     /// [`world_mut`](Self::world_mut) fail the call; classes whose imports
@@ -572,9 +571,9 @@ impl GenericNative {
         param_names: &[&str],
         template: fn(&Type) -> Signature,
         call: impl Fn(&Type, &mut Host<'_>, &mut [Value]) -> Result<Value, ScriptError>
-        + Send
-        + Sync
-        + 'static,
+            + Send
+            + Sync
+            + 'static,
     ) -> Self {
         Self {
             name: name.into(),
@@ -820,11 +819,17 @@ fn register_reflected_conversions(registry: &mut NativeRegistry) {
     let types = TypeRegistry::global();
     for conversion in CONVERSION_REGISTRY.iter() {
         let Some(source) = types.binding(conversion.source_type_id()).copied() else {
-            tracing::debug!(conversion = conversion.id, "conversion source is not script-callable");
+            tracing::debug!(
+                conversion = conversion.id,
+                "conversion source is not script-callable"
+            );
             continue;
         };
         let Some(target) = types.binding(conversion.target_type_id()).copied() else {
-            tracing::debug!(conversion = conversion.id, "conversion target is not script-callable");
+            tracing::debug!(
+                conversion = conversion.id,
+                "conversion target is not script-callable"
+            );
             continue;
         };
 
@@ -838,9 +843,7 @@ fn register_reflected_conversions(registry: &mut NativeRegistry) {
             .build_raw(
                 Signature::new([Param::new(source_type)], target_type),
                 Box::new(move |_host, args| {
-                    let source_value = source
-                        .from_value(&args[0])
-                        .map_err(ScriptError::native)?;
+                    let source_value = source.from_value(&args[0]).map_err(ScriptError::native)?;
                     let target_value = conversion
                         .convert(source_value)
                         .map_err(|error| ScriptError::native(error.to_string()))?;

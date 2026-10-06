@@ -11,7 +11,9 @@
 
 use std::cmp::Ordering;
 
-use pulsar_script_vm::{GenericNative, GenericProvider, Param, ScriptError, Signature, Type, TypeRegistry, Value};
+use pulsar_script_vm::{
+    GenericNative, GenericProvider, Param, ScriptError, Signature, Type, TypeRegistry, Value,
+};
 
 fn list(element: &Type) -> Type {
     Type::list(element.clone())
@@ -23,16 +25,22 @@ fn option(element: &Type) -> Type {
 }
 
 fn items(value: &Value) -> Result<&[Value], ScriptError> {
-    value.as_list().ok_or_else(|| ScriptError::native(format!("expected a list, got {}", value.kind())))
+    value
+        .as_list()
+        .ok_or_else(|| ScriptError::native(format!("expected a list, got {}", value.kind())))
 }
 
 fn int(value: &Value) -> Result<i64, ScriptError> {
-    value.as_int().ok_or_else(|| ScriptError::native(format!("expected an int, got {}", value.kind())))
+    value
+        .as_int()
+        .ok_or_else(|| ScriptError::native(format!("expected an int, got {}", value.kind())))
 }
 
 /// The element a missing value stands in for.
 fn default_of(element: &Type) -> Value {
-    TypeRegistry::global().default_value(element).unwrap_or(Value::Unit)
+    TypeRegistry::global()
+        .default_value(element)
+        .unwrap_or(Value::Unit)
 }
 
 fn present(element: &Type, found: Option<&Value>) -> Value {
@@ -62,8 +70,13 @@ fn natives() -> Vec<GenericNative> {
     let pure = |native: GenericNative| native.side_effect_free().attr("category", "Array");
     let plain = |native: GenericNative| native.attr("category", "Array");
     vec![
-        pure(GenericNative::new("std::array_new", &[], |t| sig(&[], list(t)), |_, _, _| Ok(Value::list(Vec::new()))))
-            .doc("An empty array."),
+        pure(GenericNative::new(
+            "std::array_new",
+            &[],
+            |t| sig(&[], list(t)),
+            |_, _, _| Ok(Value::list(Vec::new())),
+        ))
+        .doc("An empty array."),
         plain(GenericNative::new(
             "std::array_push",
             &["array", "item"],
@@ -81,7 +94,10 @@ fn natives() -> Vec<GenericNative> {
             |t, _, args| {
                 let mut array = items(&args[0])?.to_vec();
                 let popped = array.pop();
-                Ok(Value::tuple(vec![Value::list(array), present(t, popped.as_ref())]))
+                Ok(Value::tuple(vec![
+                    Value::list(array),
+                    present(t, popped.as_ref()),
+                ]))
             },
         ))
         .attr("outputs", "array,popped"),
@@ -92,40 +108,65 @@ fn natives() -> Vec<GenericNative> {
             |_, _, args| {
                 let mut array = items(&args[0])?.to_vec();
                 // A bad index leaves the array as it is.
-                if let Some(slot) = usize::try_from(int(&args[1])?).ok().and_then(|i| array.get_mut(i)) {
+                if let Some(slot) = usize::try_from(int(&args[1])?)
+                    .ok()
+                    .and_then(|i| array.get_mut(i))
+                {
                     *slot = args[2].clone();
                 }
                 Ok(Value::list(array))
             },
         )),
-        plain(GenericNative::new("std::array_clear", &["array"], |t| sig(&[list(t)], list(t)), |_, _, args| {
-            items(&args[0])?;
-            Ok(Value::list(Vec::new()))
-        })),
+        plain(GenericNative::new(
+            "std::array_clear",
+            &["array"],
+            |t| sig(&[list(t)], list(t)),
+            |_, _, args| {
+                items(&args[0])?;
+                Ok(Value::list(Vec::new()))
+            },
+        )),
         pure(GenericNative::new(
             "std::array_get",
             &["array", "index"],
             |t| sig(&[list(t), Type::Int], option(t)),
             |t, _, args| {
                 let array = items(&args[0])?;
-                Ok(present(t, usize::try_from(int(&args[1])?).ok().and_then(|i| array.get(i))))
+                Ok(present(
+                    t,
+                    usize::try_from(int(&args[1])?)
+                        .ok()
+                        .and_then(|i| array.get(i)),
+                ))
             },
         ))
         .attr("outputs", "present,value"),
-        pure(GenericNative::new("std::array_first", &["array"], |t| sig(&[list(t)], option(t)), |t, _, args| {
-            Ok(present(t, items(&args[0])?.first()))
-        }))
+        pure(GenericNative::new(
+            "std::array_first",
+            &["array"],
+            |t| sig(&[list(t)], option(t)),
+            |t, _, args| Ok(present(t, items(&args[0])?.first())),
+        ))
         .attr("outputs", "present,value"),
-        pure(GenericNative::new("std::array_last", &["array"], |t| sig(&[list(t)], option(t)), |t, _, args| {
-            Ok(present(t, items(&args[0])?.last()))
-        }))
+        pure(GenericNative::new(
+            "std::array_last",
+            &["array"],
+            |t| sig(&[list(t)], option(t)),
+            |t, _, args| Ok(present(t, items(&args[0])?.last())),
+        ))
         .attr("outputs", "present,value"),
-        pure(GenericNative::new("std::array_length", &["array"], |t| sig(&[list(t)], Type::Int), |_, _, args| {
-            Ok(Value::Int(items(&args[0])?.len() as i64))
-        })),
-        pure(GenericNative::new("std::array_is_empty", &["array"], |t| sig(&[list(t)], Type::Bool), |_, _, args| {
-            Ok(Value::Bool(items(&args[0])?.is_empty()))
-        })),
+        pure(GenericNative::new(
+            "std::array_length",
+            &["array"],
+            |t| sig(&[list(t)], Type::Int),
+            |_, _, args| Ok(Value::Int(items(&args[0])?.len() as i64)),
+        )),
+        pure(GenericNative::new(
+            "std::array_is_empty",
+            &["array"],
+            |t| sig(&[list(t)], Type::Bool),
+            |_, _, args| Ok(Value::Bool(items(&args[0])?.is_empty())),
+        )),
         pure(GenericNative::new(
             "std::array_contains",
             &["array", "item"],
@@ -143,23 +184,40 @@ fn natives() -> Vec<GenericNative> {
                 let range = usize::try_from(start)
                     .ok()
                     .zip(usize::try_from(end).ok())
-                    .filter(|(start, end)| *start < array.len() && *end <= array.len() && start <= end);
-                Ok(Value::list(range.map_or_else(Vec::new, |(start, end)| array[start..end].to_vec())))
+                    .filter(|(start, end)| {
+                        *start < array.len() && *end <= array.len() && start <= end
+                    });
+                Ok(Value::list(range.map_or_else(Vec::new, |(start, end)| {
+                    array[start..end].to_vec()
+                })))
             },
         )),
-        plain(GenericNative::new("std::array_reverse", &["array"], |t| sig(&[list(t)], list(t)), |_, _, args| {
-            let mut array = items(&args[0])?.to_vec();
-            array.reverse();
-            Ok(Value::list(array))
-        })),
-        plain(GenericNative::new("std::array_sort", &["array"], |t| sig(&[list(t)], list(t)), |_, _, args| {
-            let mut array = items(&args[0])?.to_vec();
-            if array.len() > 1 && compare(&array[0], &array[0]).is_none() {
-                return Err(ScriptError::native(format!("{} elements have no order", array[0].kind())));
-            }
-            array.sort_by(|a, b| compare(a, b).unwrap_or(Ordering::Equal));
-            Ok(Value::list(array))
-        })),
+        plain(GenericNative::new(
+            "std::array_reverse",
+            &["array"],
+            |t| sig(&[list(t)], list(t)),
+            |_, _, args| {
+                let mut array = items(&args[0])?.to_vec();
+                array.reverse();
+                Ok(Value::list(array))
+            },
+        )),
+        plain(GenericNative::new(
+            "std::array_sort",
+            &["array"],
+            |t| sig(&[list(t)], list(t)),
+            |_, _, args| {
+                let mut array = items(&args[0])?.to_vec();
+                if array.len() > 1 && compare(&array[0], &array[0]).is_none() {
+                    return Err(ScriptError::native(format!(
+                        "{} elements have no order",
+                        array[0].kind()
+                    )));
+                }
+                array.sort_by(|a, b| compare(a, b).unwrap_or(Ordering::Equal));
+                Ok(Value::list(array))
+            },
+        )),
         plain(GenericNative::new(
             "std::array_concat",
             &["a", "b"],

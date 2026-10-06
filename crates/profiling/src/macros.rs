@@ -13,10 +13,12 @@ macro_rules! profile_scope {
 #[macro_export]
 macro_rules! profile_scope_with_context {
     ($name:literal, $context:expr) => {
-        let _profile_guard = $crate::scope::ProfileScope::new_with_context($name, ($context).clone());
+        let _profile_guard =
+            $crate::scope::ProfileScope::new_with_context($name, ($context).clone());
     };
     ($name:expr, $context:expr) => {
-        let _profile_guard = $crate::scope::ProfileScope::new_with_context($name, ($context).clone());
+        let _profile_guard =
+            $crate::scope::ProfileScope::new_with_context($name, ($context).clone());
     };
 }
 

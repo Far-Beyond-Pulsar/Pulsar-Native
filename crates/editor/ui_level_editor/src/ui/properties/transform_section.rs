@@ -5,10 +5,10 @@
 
 use gpui::{prelude::*, *};
 use std::sync::Arc;
-use ui::{ActiveTheme, IconName, Sizable, h_flex, v_flex};
+use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
 
 use super::bindings::bound_field::F32BoundField;
-use crate::core::commands::{SceneCommand, execute_command};
+use crate::core::commands::{execute_command, SceneCommand};
 use crate::state::LevelEditorState;
 use engine_backend::scene::SharedScene;
 
@@ -51,8 +51,7 @@ fn axis_binding(
             // component's JSON per field per bump — cost that scaled with
             // how complex the inspected object was.
             let world = db.read();
-            let transform =
-                crate::scene_edit::objects::get_object_transform(&world.world, id);
+            let transform = crate::scene_edit::objects::get_object_transform(&world.world, id);
             transform.map(|t| match axis {
                 Axis::Position => t.position[index],
                 Axis::Rotation => t.rotation[index],

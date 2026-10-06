@@ -172,5 +172,3 @@ impl LanguageConfig {
             .is_some_and(|r| r.is_match(text))
     }
 }
-
-

@@ -151,11 +151,21 @@ mod tests {
             .unwrap();
         world.insert(entity, LightComponent::default());
         sync_editor_light_rows(&mut world, true, None);
-        assert_eq!(world.get::<helio::Movability>(entity), Some(&helio::Movability::Static));
+        assert_eq!(
+            world.get::<helio::Movability>(entity),
+            Some(&helio::Movability::Static)
+        );
 
-        world.get_mut::<LightComponent>(entity).unwrap().general.movability = ObjectMovability::Movable;
+        world
+            .get_mut::<LightComponent>(entity)
+            .unwrap()
+            .general
+            .movability = ObjectMovability::Movable;
         sync_editor_light_rows(&mut world, true, None);
-        assert_eq!(world.get::<helio::Movability>(entity), Some(&helio::Movability::Movable));
+        assert_eq!(
+            world.get::<helio::Movability>(entity),
+            Some(&helio::Movability::Movable)
+        );
 
         world.remove::<LightComponent>(entity);
         sync_editor_light_rows(&mut world, true, None);

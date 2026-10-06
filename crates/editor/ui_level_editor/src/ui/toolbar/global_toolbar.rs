@@ -9,19 +9,19 @@
 //! The view re-renders when the `PlaybackState` or the build configurations
 //! change (`ResourceHandle::changed`), not on a poll.
 use engine_state::build_config::build_configurations;
-use engine_state::playback::{PlaybackState, playback};
+use engine_state::playback::{playback, PlaybackState};
 use gpui::*;
 use ui::{
-    ActiveTheme as _, Sizable as _,
     button::{Button, ButtonVariants as _},
     dock::PanelEvent,
     h_flex,
     popover::Popover,
+    ActiveTheme as _, Sizable as _,
 };
 use ui_build::BuildPicker;
 
 use super::actions::SetTimeScale;
-use super::multiplayer_panel::{MultiplayerPanel, summary, trigger_icon};
+use super::multiplayer_panel::{summary, trigger_icon, MultiplayerPanel};
 use super::playback_controls::PlaybackControls;
 use super::time_scale_dropdown::TimeScaleDropdown;
 
@@ -99,9 +99,7 @@ impl Render for GlobalToolbarView {
             .gap_2()
             .items_center()
             .bg(background)
-            .on_action(cx.listener(|this, a: &SetTimeScale, _, _| {
-                this.set(|s| s.time_scale = a.0)
-            }))
+            .on_action(cx.listener(|this, a: &SetTimeScale, _, _| this.set(|s| s.time_scale = a.0)))
             .child(PlaybackControls::render(&state))
             .child(separator(cx))
             .child(TimeScaleDropdown::render(&state, cx))
@@ -121,6 +119,11 @@ impl Render for GlobalToolbarView {
                     .content(move |_, _| panel.clone())
             })
             .child(div().flex_1())
-            .child(ui_build::build_button(&state, &configs, &self.build_picker, cx))
+            .child(ui_build::build_button(
+                &state,
+                &configs,
+                &self.build_picker,
+                cx,
+            ))
     }
 }

@@ -17,8 +17,8 @@ use super::components::{
     get_components_metadata, merge_component_props, sync_registered_component_props_to_scene_db,
 };
 use super::{
-    ComponentInstance, ObjectId, SceneObjectData, Transform, find_script_path,
-    static_mesh_component_json,
+    find_script_path, static_mesh_component_json, ComponentInstance, ObjectId, SceneObjectData,
+    Transform,
 };
 
 // ── Read model ─────────────────────────────────────────────────────────────
@@ -116,9 +116,7 @@ pub fn get_root_objects(world: &World) -> Vec<SceneObjectData> {
 /// Minimal hierarchy projection: component-backed object rows plus root ids.
 /// This is intentionally not a history snapshot and does not merge expensive
 /// component metadata; hierarchy editing reads those details on demand.
-pub fn get_hierarchy_projection(
-    world: &World,
-) -> (Vec<HierarchyObjectProjection>, Vec<ObjectId>) {
+pub fn get_hierarchy_projection(world: &World) -> (Vec<HierarchyObjectProjection>, Vec<ObjectId>) {
     profiling::profile_scope!("scene_edit::get_hierarchy_projection");
     let mut objects = Vec::new();
     fn collect(world: &World, parent: Option<Entity>, out: &mut Vec<HierarchyObjectProjection>) {
@@ -148,7 +146,10 @@ pub struct HierarchyObjectProjection {
 }
 
 pub fn entity_to_hierarchy_projection(world: &World, entity: Entity) -> HierarchyObjectProjection {
-    let visibility = world.get::<WorldVisibility>(entity).copied().unwrap_or_default();
+    let visibility = world
+        .get::<WorldVisibility>(entity)
+        .copied()
+        .unwrap_or_default();
     let icon_asset = world
         .get::<RenderProps>(entity)
         .and_then(|props| props.props.get("icon_asset"))
@@ -159,9 +160,16 @@ pub fn entity_to_hierarchy_projection(world: &World, entity: Entity) -> Hierarch
     HierarchyObjectProjection {
         id: id_of(entity).unwrap_or_default(),
         name: name_of(world, entity),
-        object_type: world.get::<ObjectType>(entity).copied().unwrap_or(ObjectType::Empty),
+        object_type: world
+            .get::<ObjectType>(entity)
+            .copied()
+            .unwrap_or(ObjectType::Empty),
         visible: visibility.visible,
-        children: world.children_of(Some(entity)).into_iter().filter_map(id_of).collect(),
+        children: world
+            .children_of(Some(entity))
+            .into_iter()
+            .filter_map(id_of)
+            .collect(),
         icon_asset,
     }
 }

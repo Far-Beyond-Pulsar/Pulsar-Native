@@ -358,5 +358,3 @@ mod tests {
         assert!(selections.active().reversed);
     }
 }
-
-

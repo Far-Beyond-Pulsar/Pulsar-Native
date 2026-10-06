@@ -511,5 +511,3 @@ impl<M: crate::input::MultiLineMode> InputBaseState<M> {
         cx.notify();
     }
 }
-
-

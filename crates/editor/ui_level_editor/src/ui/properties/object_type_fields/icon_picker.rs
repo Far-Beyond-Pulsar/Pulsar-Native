@@ -9,7 +9,7 @@ use gpui::{prelude::*, *};
 use serde_json::Value;
 use ui::button::ButtonVariants as _;
 use ui::popover::Popover;
-use ui::{ActiveTheme, Sizable, h_flex};
+use ui::{h_flex, ActiveTheme, Sizable};
 use ui_common::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 
 use super::ObjectTypeFieldsSection;
@@ -29,8 +29,7 @@ impl ObjectTypeFieldsSection {
     /// Persists an icon asset path into the object's prop map.
     pub(super) fn write_object_icon_path(&self, path: String) {
         let mut world = self.scene_db.write();
-        let Some(mut obj) =
-            crate::scene_edit::objects::get_object(&world.world, &self.object_id)
+        let Some(mut obj) = crate::scene_edit::objects::get_object(&world.world, &self.object_id)
         else {
             return;
         };

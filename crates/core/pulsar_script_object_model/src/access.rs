@@ -201,7 +201,10 @@ impl ComponentRef {
 
     /// Reflected metadata for one property, from the registry's shared
     /// descriptor cache (no instance is constructed per access).
-    fn property_metadata(&self, property: &str) -> Result<std::sync::Arc<PropertyMetadata>, ScriptRefError> {
+    fn property_metadata(
+        &self,
+        property: &str,
+    ) -> Result<std::sync::Arc<PropertyMetadata>, ScriptRefError> {
         pulsar_world_registry::property_descriptor(&self.class_name, property)
     }
 }

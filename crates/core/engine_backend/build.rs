@@ -1,10 +1,6 @@
 use std::{env, fs, path::Path, path::PathBuf};
 
-const HELIO_DEPENDENCIES: [&str; 3] = [
-    "helio",
-    "helio-asset-compat",
-    "helio-default-graphs",
-];
+const HELIO_DEPENDENCIES: [&str; 3] = ["helio", "helio-asset-compat", "helio-default-graphs"];
 
 /// Dependencies a generated game project needs, resolved from *this* engine
 /// build's `[workspace.dependencies]` so the game compiles against the exact
@@ -199,9 +195,9 @@ fn reflection_patch_spec(
     crate_name: &str,
 ) -> Option<String> {
     let patches = manifest.get("patch")?.as_table()?;
-    let (_, entries) = patches.iter().find(|(source, _)| {
-        source.contains("Pulsar-Reflection")
-    })?;
+    let (_, entries) = patches
+        .iter()
+        .find(|(source, _)| source.contains("Pulsar-Reflection"))?;
     let spec = entries.as_table()?.get(crate_name)?;
     Some(format_toml_inline(&rewrite_paths(spec, workspace_root)))
 }

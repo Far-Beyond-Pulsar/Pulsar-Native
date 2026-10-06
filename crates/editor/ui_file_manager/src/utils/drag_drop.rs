@@ -1,8 +1,8 @@
 use gpui::prelude::*;
 use gpui::*;
 use std::path::{Path, PathBuf};
-use ui::ContextModal;
 use ui::notification::Notification;
+use ui::ContextModal;
 
 use crate::components::FileManagerDrawer;
 use crate::utils::{operations::FileOperations, tree::FolderNode};

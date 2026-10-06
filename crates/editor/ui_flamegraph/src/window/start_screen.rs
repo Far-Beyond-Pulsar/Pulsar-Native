@@ -59,7 +59,10 @@ pub(super) struct SessionFile {
 /// Other profilable processes and the project's saved sessions. Does file
 /// IO; the window runs it on the background executor.
 pub(super) fn scan() -> (Vec<TargetInfo>, Vec<SessionFile>) {
-    let targets = profiling::remote::list_targets().into_iter().filter(|t| !t.is_current_process()).collect();
+    let targets = profiling::remote::list_targets()
+        .into_iter()
+        .filter(|t| !t.is_current_process())
+        .collect();
     let sessions = engine_state::get_project_path()
         .and_then(|project| profiling::database::list_profiling_sessions(&project).ok())
         .unwrap_or_default()
@@ -125,7 +128,10 @@ impl Availability {
 }
 
 fn now_unix_ms() -> u64 {
-    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 fn duration_text(secs: u64) -> String {
@@ -222,10 +228,11 @@ impl FlamegraphWindow {
             .bg(theme.sidebar)
             .child(
                 div().w(px(300.0)).child(
-                    TextInput::new(&self.search)
-                        .small()
-                        .cleanable()
-                        .prefix(Icon::new(IconName::Search).size(px(14.0)).text_color(theme.muted_foreground)),
+                    TextInput::new(&self.search).small().cleanable().prefix(
+                        Icon::new(IconName::Search)
+                            .size(px(14.0))
+                            .text_color(theme.muted_foreground),
+                    ),
                 ),
             )
             .child(h_flex().gap_1().children(filters))
@@ -257,7 +264,10 @@ impl FlamegraphWindow {
     }
 
     fn matches(query: &str, fields: &[&str]) -> bool {
-        query.is_empty() || fields.iter().any(|field| field.to_lowercase().contains(query))
+        query.is_empty()
+            || fields
+                .iter()
+                .any(|field| field.to_lowercase().contains(query))
     }
 
     fn render_target_list(&mut self, cx: &mut Context<Self>) -> AnyElement {
@@ -276,22 +286,39 @@ impl FlamegraphWindow {
             .cloned()
             .collect();
         // Recordable first, then newest.
-        others.sort_by_key(|t| (!Availability::of(t).selectable(), std::cmp::Reverse(t.started_unix_ms)));
+        others.sort_by_key(|t| {
+            (
+                !Availability::of(t).selectable(),
+                std::cmp::Reverse(t.started_unix_ms),
+            )
+        });
         let games = others.iter().filter(|t| t.kind == "game").count();
 
         let mut list = v_flex().w_full().gap_1p5();
         if show_editor {
-            list = list.child(self.render_section_header(t!("Flamegraph.SectionThisProcess").to_string(), None, cx));
+            list = list.child(self.render_section_header(
+                t!("Flamegraph.SectionThisProcess").to_string(),
+                None,
+                cx,
+            ));
             let row = self.render_editor_row(&project, cx);
             list = list.child(row);
         }
         list = list.child(self.render_section_header(
             t!("Flamegraph.SectionRunning").to_string(),
-            Some(format!("{} · {}", others.len(), t!("Flamegraph.GameCount", n => games))),
+            Some(format!(
+                "{} · {}",
+                others.len(),
+                t!("Flamegraph.GameCount", n => games)
+            )),
             cx,
         ));
         if others.is_empty() {
-            list = list.child(self.render_no_targets(!query.is_empty() || self.kind_filter != KindFilter::All, cx));
+            list =
+                list.child(self.render_no_targets(
+                    !query.is_empty() || self.kind_filter != KindFilter::All,
+                    cx,
+                ));
         }
         for target in others {
             let row = self.render_target_row(target, cx);
@@ -303,11 +330,22 @@ impl FlamegraphWindow {
             .flex_1()
             .min_w_0()
             .h_full()
-            .child(v_flex().size_full().p_3().child(list).scrollable(ScrollbarAxis::Vertical))
+            .child(
+                v_flex()
+                    .size_full()
+                    .p_3()
+                    .child(list)
+                    .scrollable(ScrollbarAxis::Vertical),
+            )
             .into_any_element()
     }
 
-    fn render_section_header(&self, title: String, detail: Option<String>, cx: &mut Context<Self>) -> AnyElement {
+    fn render_section_header(
+        &self,
+        title: String,
+        detail: Option<String>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let theme = cx.theme();
         h_flex()
             .w_full()
@@ -323,7 +361,12 @@ impl FlamegraphWindow {
                     .child(title.to_uppercase()),
             )
             .when_some(detail, |el, detail| {
-                el.child(div().text_xs().text_color(theme.muted_foreground.opacity(0.7)).child(detail))
+                el.child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground.opacity(0.7))
+                        .child(detail),
+                )
             })
             .into_any_element()
     }
@@ -359,7 +402,10 @@ impl FlamegraphWindow {
         let status_color = status.map(|s| s.color(cx));
         let theme = cx.theme();
         h_flex()
-            .id(SharedString::from(format!("profiling-target-{}", key.unwrap_or(0))))
+            .id(SharedString::from(format!(
+                "profiling-target-{}",
+                key.unwrap_or(0)
+            )))
             .w_full()
             .px_3()
             .py_2p5()
@@ -367,9 +413,17 @@ impl FlamegraphWindow {
             .items_center()
             .rounded(px(8.0))
             .border_1()
-            .when(selected, |el| el.bg(accent.opacity(0.12)).border_color(accent.opacity(0.7)))
-            .when(!selected, |el| el.bg(theme.popover).border_color(theme.border.opacity(0.7)))
-            .when(selectable && !selected, |el| el.cursor_pointer().hover(|s| s.border_color(accent.opacity(0.35))))
+            .when(selected, |el| {
+                el.bg(accent.opacity(0.12))
+                    .border_color(accent.opacity(0.7))
+            })
+            .when(!selected, |el| {
+                el.bg(theme.popover).border_color(theme.border.opacity(0.7))
+            })
+            .when(selectable && !selected, |el| {
+                el.cursor_pointer()
+                    .hover(|s| s.border_color(accent.opacity(0.35)))
+            })
             .when(!selectable, |el| el.opacity(0.6))
             .on_mouse_down(MouseButton::Left, on_down)
             .child(
@@ -411,7 +465,13 @@ impl FlamegraphWindow {
                                     .child(detail)
                             })),
                     )
-                    .child(div().text_xs().text_color(theme.muted_foreground).truncate().child(subtitle)),
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .truncate()
+                            .child(subtitle),
+                    ),
             )
             .when_some(status.zip(status_color), |el, (status, color)| {
                 el.child(
@@ -436,7 +496,11 @@ impl FlamegraphWindow {
             IconName::LayoutDashboard,
             t!("Flamegraph.ThisEditor").to_string(),
             vec![kind_label("editor"), format!("pid {}", std::process::id())],
-            if project.is_empty() { t!("Flamegraph.InProcess").to_string() } else { project.to_owned() },
+            if project.is_empty() {
+                t!("Flamegraph.InProcess").to_string()
+            } else {
+                project.to_owned()
+            },
             None,
             cx,
         )
@@ -453,7 +517,11 @@ impl FlamegraphWindow {
                 format!("pid {}", target.pid),
                 t!("Flamegraph.TargetUptime", time => uptime(target.started_unix_ms)).to_string(),
             ],
-            if target.project.is_empty() { "—".into() } else { target.project.clone() },
+            if target.project.is_empty() {
+                "—".into()
+            } else {
+                target.project.clone()
+            },
             Some(status),
             cx,
         )
@@ -540,22 +608,47 @@ impl FlamegraphWindow {
             .w_full()
             .gap_3()
             .justify_between()
-            .child(div().flex_shrink_0().text_xs().text_color(theme.muted_foreground).child(label))
-            .child(div().min_w_0().text_xs().text_color(theme.foreground).truncate().child(value))
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(label),
+            )
+            .child(
+                div()
+                    .min_w_0()
+                    .text_xs()
+                    .text_color(theme.foreground)
+                    .truncate()
+                    .child(value),
+            )
             .into_any_element()
     }
 
     fn render_details(&self, cx: &mut Context<Self>) -> AnyElement {
         let rows: Vec<(String, String)> = match self.selected_target() {
             None => vec![
-                (t!("Flamegraph.DetailName").to_string(), t!("Flamegraph.ThisEditor").to_string()),
-                (t!("Flamegraph.DetailKind").to_string(), kind_label("editor")),
-                (t!("Flamegraph.DetailPid").to_string(), std::process::id().to_string()),
+                (
+                    t!("Flamegraph.DetailName").to_string(),
+                    t!("Flamegraph.ThisEditor").to_string(),
+                ),
+                (
+                    t!("Flamegraph.DetailKind").to_string(),
+                    kind_label("editor"),
+                ),
+                (
+                    t!("Flamegraph.DetailPid").to_string(),
+                    std::process::id().to_string(),
+                ),
                 (
                     t!("Flamegraph.DetailProject").to_string(),
                     engine_state::get_project_path().unwrap_or_else(|| "—".into()),
                 ),
-                (t!("Flamegraph.DetailTransport").to_string(), t!("Flamegraph.InProcess").to_string()),
+                (
+                    t!("Flamegraph.DetailTransport").to_string(),
+                    t!("Flamegraph.InProcess").to_string(),
+                ),
             ],
             Some(target) => {
                 let heartbeat = if target.responsive() {
@@ -565,20 +658,41 @@ impl FlamegraphWindow {
                 };
                 vec![
                     (t!("Flamegraph.DetailName").to_string(), target.name.clone()),
-                    (t!("Flamegraph.DetailKind").to_string(), kind_label(&target.kind)),
-                    (t!("Flamegraph.DetailPid").to_string(), target.pid.to_string()),
+                    (
+                        t!("Flamegraph.DetailKind").to_string(),
+                        kind_label(&target.kind),
+                    ),
+                    (
+                        t!("Flamegraph.DetailPid").to_string(),
+                        target.pid.to_string(),
+                    ),
                     (
                         t!("Flamegraph.DetailProject").to_string(),
-                        if target.project.is_empty() { "—".into() } else { target.project.clone() },
+                        if target.project.is_empty() {
+                            "—".into()
+                        } else {
+                            target.project.clone()
+                        },
                     ),
-                    (t!("Flamegraph.DetailUptime").to_string(), uptime(target.started_unix_ms)),
+                    (
+                        t!("Flamegraph.DetailUptime").to_string(),
+                        uptime(target.started_unix_ms),
+                    ),
                     (t!("Flamegraph.DetailHeartbeat").to_string(), heartbeat),
-                    (t!("Flamegraph.DetailStatus").to_string(), Availability::of(target).label()),
+                    (
+                        t!("Flamegraph.DetailStatus").to_string(),
+                        Availability::of(target).label(),
+                    ),
                     (
                         t!("Flamegraph.DetailViewer").to_string(),
-                        target.viewer_pid.map_or_else(|| "—".into(), |pid| format!("pid {pid}")),
+                        target
+                            .viewer_pid
+                            .map_or_else(|| "—".into(), |pid| format!("pid {pid}")),
                     ),
-                    (t!("Flamegraph.DetailTransport").to_string(), t!("Flamegraph.SharedMemory").to_string()),
+                    (
+                        t!("Flamegraph.DetailTransport").to_string(),
+                        t!("Flamegraph.SharedMemory").to_string(),
+                    ),
                 ]
             }
         };
@@ -589,27 +703,36 @@ impl FlamegraphWindow {
             .bg(cx.theme().popover)
             .border_1()
             .border_color(cx.theme().border.opacity(0.7))
-            .children(rows.into_iter().map(|(label, value)| Self::detail_row(label, value, cx)));
+            .children(
+                rows.into_iter()
+                    .map(|(label, value)| Self::detail_row(label, value, cx)),
+            );
         Self::sidebar_section(t!("Flamegraph.SectionTarget").to_string(), body, cx)
     }
 
     fn render_recording_options(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        let can_record = self.selected_target().is_none_or(|t| Availability::of(t).selectable());
-        let record_title = t!("Flamegraph.RecordTarget", target => self.selected_label()).to_string();
+        let can_record = self
+            .selected_target()
+            .is_none_or(|t| Availability::of(t).selectable());
+        let record_title =
+            t!("Flamegraph.RecordTarget", target => self.selected_label()).to_string();
         let auto_stop = AUTO_STOP_CHOICES.map(|choice| {
             let label = match choice {
                 None => t!("Flamegraph.AutoStopOff").to_string(),
                 Some(secs) => format!("{secs}s"),
             };
-            Button::new(SharedString::from(format!("auto-stop-{}", choice.unwrap_or(0))))
-                .label(label)
-                .xsmall()
-                .ghost()
-                .selected(self.auto_stop_secs == choice)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.auto_stop_secs = choice;
-                    cx.notify();
-                }))
+            Button::new(SharedString::from(format!(
+                "auto-stop-{}",
+                choice.unwrap_or(0)
+            )))
+            .label(label)
+            .xsmall()
+            .ghost()
+            .selected(self.auto_stop_secs == choice)
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.auto_stop_secs = choice;
+                cx.notify();
+            }))
         });
         let error = self.start_error.clone();
         let theme = cx.theme().clone();
@@ -631,7 +754,12 @@ impl FlamegraphWindow {
                         v_flex()
                             .flex_1()
                             .gap_0p5()
-                            .child(div().text_sm().text_color(theme.foreground).child(t!("Flamegraph.UncapFrameRate").to_string()))
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(theme.foreground)
+                                    .child(t!("Flamegraph.UncapFrameRate").to_string()),
+                            )
                             .child(
                                 div()
                                     .text_xs()
@@ -643,7 +771,12 @@ impl FlamegraphWindow {
             .child(
                 v_flex()
                     .gap_1()
-                    .child(div().text_sm().text_color(theme.foreground).child(t!("Flamegraph.AutoStop").to_string()))
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(theme.foreground)
+                            .child(t!("Flamegraph.AutoStop").to_string()),
+                    )
                     .child(h_flex().gap_1().children(auto_stop)),
             )
             .child(
@@ -661,7 +794,9 @@ impl FlamegraphWindow {
                     .text_color(theme.muted_foreground)
                     .child(t!("Flamegraph.DoubleClickHint").to_string()),
             )
-            .when_some(error, |el, error| el.child(div().text_xs().text_color(gpui::red()).child(error)));
+            .when_some(error, |el, error| {
+                el.child(div().text_xs().text_color(gpui::red()).child(error))
+            });
         Self::sidebar_section(t!("Flamegraph.SectionRecording").to_string(), body, cx)
     }
 
@@ -695,19 +830,30 @@ impl FlamegraphWindow {
                     .rounded(px(6.0))
                     .cursor_pointer()
                     .hover(|s| s.bg(theme.accent.opacity(0.08)))
-                    .on_click(cx.listener(move |this, _, _, cx| this.load_from_database(path.clone(), cx)))
-                    .child(Icon::new(IconName::Database).size(px(14.0)).text_color(theme.muted_foreground))
+                    .on_click(
+                        cx.listener(move |this, _, _, cx| {
+                            this.load_from_database(path.clone(), cx)
+                        }),
+                    )
+                    .child(
+                        Icon::new(IconName::Database)
+                            .size(px(14.0))
+                            .text_color(theme.muted_foreground),
+                    )
                     .child(
                         v_flex()
                             .flex_1()
                             .min_w_0()
-                            .child(div().text_xs().text_color(theme.foreground).truncate().child(name))
                             .child(
                                 div()
                                     .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(format!("{} · {}", ago(session.modified), file_size(session.bytes))),
-                            ),
+                                    .text_color(theme.foreground)
+                                    .truncate()
+                                    .child(name),
+                            )
+                            .child(div().text_xs().text_color(theme.muted_foreground).child(
+                                format!("{} · {}", ago(session.modified), file_size(session.bytes)),
+                            )),
                     ),
             );
         }
@@ -718,7 +864,11 @@ impl FlamegraphWindow {
 
     fn render_status_line(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme();
-        let available = self.targets.iter().filter(|t| Availability::of(t).selectable()).count();
+        let available = self
+            .targets
+            .iter()
+            .filter(|t| Availability::of(t).selectable())
+            .count();
         h_flex()
             .w_full()
             .flex_shrink_0()

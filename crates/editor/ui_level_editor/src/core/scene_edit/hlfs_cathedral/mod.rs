@@ -16,11 +16,11 @@ mod geometry;
 use demo_data::{CANDLES, CHANDELIER_Z, COLUMN_Z, GLASS_LIGHTS};
 
 use super::{
-    LevelEditorCameraState, LightType, MeshType, ObjectType, SceneObjectData, Transform,
-    components, level_io, objects,
+    components, level_io, objects, LevelEditorCameraState, LightType, MeshType, ObjectType,
+    SceneObjectData, Transform,
 };
 use helio::{MeshUpload, PackedVertex};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
 

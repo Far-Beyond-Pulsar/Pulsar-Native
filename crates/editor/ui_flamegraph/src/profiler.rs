@@ -5,7 +5,10 @@ use parking_lot::Mutex;
 use profiling::remote::TargetConnection;
 use profiling::ProfileEvent;
 use std::collections::HashMap;
-use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use std::thread;
 use std::time::Duration;
 
@@ -28,7 +31,8 @@ impl Source {
                 // The target keeps nothing, so the session is kept here for
                 // saving (bounded like the local profiler's retention).
                 let mut session = session.lock();
-                let room = profiling::profiler::DEFAULT_RETAINED_EVENT_CAPACITY.saturating_sub(session.len());
+                let room = profiling::profiler::DEFAULT_RETAINED_EVENT_CAPACITY
+                    .saturating_sub(session.len());
                 session.extend(events.iter().take(room).cloned());
                 events
             }
@@ -129,7 +133,10 @@ impl InstrumentationCollector {
                     *self.source.lock() = Some(source);
                     return Err(error);
                 }
-                tracing::info!(pid = connection.pid(), "[PROFILER] Recording another process");
+                tracing::info!(
+                    pid = connection.pid(),
+                    "[PROFILER] Recording another process"
+                );
             }
         }
         self.running.store(true, Ordering::Release);
@@ -302,7 +309,6 @@ fn lane_name(event: &profiling::ProfileEvent) -> String {
         .unwrap_or_else(|| format!("Thread {}", event.thread_id))
 }
 
-
 #[derive(Default)]
 struct TraceAccumulator {
     spans: Vec<TraceSpan>,
@@ -472,7 +478,11 @@ mod tests {
     fn a_remote_collector_records_a_published_target() {
         let dir = std::env::temp_dir().join(format!("flamegraph-remote-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let description = TargetDescription { kind: "game".into(), name: "g".into(), project: String::new() };
+        let description = TargetDescription {
+            kind: "game".into(),
+            name: "g".into(),
+            project: String::new(),
+        };
         let publisher = remote::serve_in(&dir, description, 1 << 20).unwrap();
         let target = remote::list_targets_in(&dir).pop().expect("listed");
         assert!(target.is_current_process());
@@ -484,7 +494,13 @@ mod tests {
         collector.start().unwrap();
 
         let deadline = Instant::now() + Duration::from_secs(20);
-        while collector.session_events().iter().filter(|e| e.name == "remote_frame").count() < 20 {
+        while collector
+            .session_events()
+            .iter()
+            .filter(|e| e.name == "remote_frame")
+            .count()
+            < 20
+        {
             assert!(Instant::now() < deadline, "no events arrived");
             {
                 profiling::profile_scope!("remote_frame");
@@ -499,9 +515,21 @@ mod tests {
         collector.stop();
 
         let frame = trace.get_frame();
-        assert!(frame.spans.iter().any(|s| s.name == "remote_work" && s.depth == 1), "spans reached the trace");
-        assert!(!frame.frame_times_ms.is_empty(), "frame markers reached the frame-time graph");
-        assert!(collector.session_events().iter().any(|e| e.name == "remote_work"));
+        assert!(
+            frame
+                .spans
+                .iter()
+                .any(|s| s.name == "remote_work" && s.depth == 1),
+            "spans reached the trace"
+        );
+        assert!(
+            !frame.frame_times_ms.is_empty(),
+            "frame markers reached the frame-time graph"
+        );
+        assert!(collector
+            .session_events()
+            .iter()
+            .any(|e| e.name == "remote_work"));
         drop(publisher);
         let _ = std::fs::remove_dir_all(&dir);
     }
