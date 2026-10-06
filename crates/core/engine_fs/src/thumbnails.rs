@@ -29,6 +29,8 @@ use std::time::{Duration, Instant};
 
 /// Thumbnail output size in pixels (square).
 const THUMB_PX: u32 = 128;
+/// Bump when thumbnail output changes so stale cache entries regenerate.
+const THUMBNAIL_RENDER_VERSION: u32 = 2;
 /// Maximum number of decoded images held in the memory cache.
 const MEM_CACHE_MAX: usize = 512;
 /// How long an entry can go un-accessed before the eviction thread removes it.
@@ -355,6 +357,7 @@ fn compute_cache_key(path: &Path) -> String {
 
     let mut hasher = DefaultHasher::new();
 
+    THUMBNAIL_RENDER_VERSION.hash(&mut hasher);
     path.hash(&mut hasher);
 
     // Modification time prevents stale previews when an asset is overwritten
