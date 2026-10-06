@@ -102,9 +102,24 @@ the voxel components know nothing about them.
 remove / add / paint, material, centre in world metres). It is the single
 source of truth for destruction and construction: the sculpt tool, scripts
 and the legacy sample methods all append to it, and saving the level saves
-it (as a plain list). Internally it is chunked and prefix-hashed, so copying
-it is nearly free and "equal" / "only grew" are O(1) checks. That matters
-because the projection copies it every frame.
+it (`{"terrain": .., "edits": [..]}`). Internally it is chunked and
+prefix-hashed, so copying it is nearly free and "equal" / "only grew" are
+O(1) checks. That matters because the projection copies it every frame.
+
+Edits belong to the ground they were made on: the journal records that
+terrain's fingerprint (`PlanetRecipe::fingerprint`: form, voxel size,
+generator, seed and settings). When any of these change, the projection
+shows none of the old edits and the scene step (`sync_edit_journals`) drops
+them from the journal, so they are not saved either. A journal with no
+terrain yet adopts the first one.
+
+**Sculpting.** A brush sample asks the renderer for the terrain hit under
+the pointer (`request_pick`); when the answer arrives (a few frames later)
+the exact edit is found by walking the base grid only a few cells around it,
+wherever the terrain is. The walk used to start at the eye: aimed at a
+mountain 20 km away it took seconds per sample, near the horizon tens of
+seconds (the editor froze while sculpting). Without a renderer hit the walk
+reaches at most 500 m.
 
 ## Flow of a frame
 

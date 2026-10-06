@@ -118,7 +118,10 @@
           ],
           "editable": true,
           "source_revision": 0,
-          "edits": []
+          "edits": {
+            "terrain": 0,
+            "edits": []
+          }
         }
       },
       {

@@ -196,6 +196,88 @@ pub(super) fn apply_voxel_brush_commit(
     true
 }
 
+/// A brush sample: the pointer ray when it was taken, and the pick that
+/// asked the renderer for the terrain hit under it.
+struct PendingBrush {
+    pick: Option<u64>,
+    origin: DVec3,
+    direction: DVec3,
+    request: VoxelBrushRequest,
+}
+
+/// Scripted sculpting through the editor's own brush queue: after 12 s to
+/// load, it looks down (`=1`) or keeps the view and strokes the distant
+/// terrain at the view's centre (`=far`), dragging a dig r1, a dig r4 and a
+/// build r1 stroke for 8 s each, logging `VOXEL_NATIVE_SCULPT`.
+struct NativeSculpt {
+    armed_at: Instant,
+    stage: Option<usize>,
+    far: bool,
+}
+
+impl NativeSculpt {
+    const LOAD_SECONDS: f32 = 12.0;
+    const STAGE_SECONDS: f32 = 8.0;
+
+    fn new(far: bool) -> Self {
+        Self { armed_at: Instant::now(), stage: None, far }
+    }
+
+    /// The brush event for this frame and whether a stroke starts.
+    fn next(&mut self, now: Instant) -> Option<(PendingPointerEvent, bool)> {
+        use helio_voxel_data::{VoxelBrushOp, VoxelBrushShape};
+        let t = now.duration_since(self.armed_at).as_secs_f32() - Self::LOAD_SECONDS;
+        if t < 0.0 {
+            return None;
+        }
+        let stages = [
+            ("dig_r1", VoxelBrushOp::Remove, VoxelBrushShape::Sphere, 1.0, 0),
+            ("dig_r4", VoxelBrushOp::Remove, VoxelBrushShape::Sphere, 4.0, 0),
+            ("build_r1", VoxelBrushOp::Add, VoxelBrushShape::Cube, 1.0, helio_pass_voxel_planet::terrain::material::BRICK),
+        ];
+        let index = (t / Self::STAGE_SECONDS) as usize;
+        if index >= stages.len() {
+            if self.stage.take().is_some() {
+                tracing::info!("VOXEL_NATIVE_SCULPT complete");
+            }
+            return None;
+        }
+        let started = self.stage != Some(index);
+        let (name, op, shape, radius, material) = stages[index];
+        if started {
+            tracing::info!("VOXEL_NATIVE_SCULPT stage={name}");
+            self.stage = Some(index);
+        }
+        let a = t * 1.3;
+        let request = VoxelBrushRequest { op, shape, radius, material, single_block: false };
+        let (x, y) = if self.far { (0.5 + 0.3 * a.cos(), 0.5 + 0.02 * a.sin()) } else { (0.5 + 0.18 * a.cos(), 0.55 + 0.12 * a.sin()) };
+        Some((PendingPointerEvent::VoxelBrush { norm_x: x, norm_y: y, request }, started && !self.far))
+    }
+}
+
+/// Where a frame's time went: milliseconds between successive marks, logged
+/// for slow frames (`VOXEL_FRAME_PHASES`).
+struct FramePhases {
+    last: Instant,
+    list: Vec<(&'static str, f32)>,
+}
+
+impl FramePhases {
+    fn new(start: Instant) -> Self {
+        Self { last: start, list: Vec::with_capacity(16) }
+    }
+
+    fn mark(&mut self, name: &'static str) {
+        let now = Instant::now();
+        self.list.push((name, now.duration_since(self.last).as_secs_f32() * 1000.0));
+        self.last = now;
+    }
+
+    fn describe(&self) -> String {
+        self.list.iter().filter(|(_, ms)| *ms >= 0.5).map(|(name, ms)| format!("{name}={ms:.1}")).collect::<Vec<_>>().join(" ")
+    }
+}
+
 // ── Compatibility types retained for existing UI wiring ───────────────────────
 
 #[derive(Debug, Clone)]
@@ -464,6 +546,8 @@ pub struct HelioRenderer {
     voxel_backends: VoxelBackendRegistry,
     /// Last applied stamp of the sculpt stroke in progress (cleared on release).
     voxel_stroke_last: Option<VoxelBrushCommit>,
+    /// Brush samples waiting for the renderer's hit under them, in order.
+    voxel_brush_picks: std::collections::VecDeque<PendingBrush>,
     /// Camera height above the voxel ground below it, from the last frame.
     voxel_altitude: Option<f64>,
     last_voxel_errors: Vec<String>,
@@ -471,6 +555,8 @@ pub struct HelioRenderer {
     voxel_stats_log: bool,
     last_voxel_stats_log: Instant,
     native_voxel_flight: super::native_voxel_flight::NativeVoxelFlight,
+    /// `PULSAR_VOXEL_NATIVE_SCULPT=1`: scripted sculpt strokes (diagnostic).
+    native_sculpt: Option<NativeSculpt>,
 }
 
 struct HelioInner {
@@ -529,11 +615,13 @@ impl HelioRenderer {
             render_row_subscriptions_armed: false,
             voxel_backends,
             voxel_stroke_last: None,
+            voxel_brush_picks: Default::default(),
             voxel_altitude: None,
             last_voxel_errors: Vec::new(),
             voxel_stats_log: std::env::var_os("PULSAR_VOXEL_STATS").is_some(),
             last_voxel_stats_log: Instant::now(),
             native_voxel_flight: super::native_voxel_flight::NativeVoxelFlight::new(),
+            native_sculpt: std::env::var("PULSAR_VOXEL_NATIVE_SCULPT").ok().filter(|v| v == "1" || v == "far").map(|v| NativeSculpt::new(v == "far")),
         }
     }
 
@@ -619,6 +707,7 @@ impl HelioRenderer {
         gpui::flamegraph_span!("pulsar: HelioRenderer::render_frame");
         profiling::profile_scope!("helio_frame");
         let frame_start = Instant::now();
+        let mut phases = FramePhases::new(frame_start);
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
@@ -764,6 +853,19 @@ impl HelioRenderer {
         // `handle_left_release` already set `self.gizmo_dirty = true`
         // internally, so processing them here needs no extra plumbing to keep
         // this frame from idling out on a drag-release commit.
+        if self.inner.as_ref().is_some_and(|inner| inner.has_rendered_frame) {
+            if let Some(sculpt) = self.native_sculpt.as_mut() {
+                if let Some((event, look_down)) = sculpt.next(now) {
+                    if look_down {
+                        self.cam_pitch = -0.75;
+                        self.voxel_stroke_last = None;
+                    }
+                    if let Ok(mut events) = self.pending_pointer_events.lock() {
+                        events.push(event);
+                    }
+                }
+            }
+        }
         let pending_pointer_events = {
             profiling::profile_scope!("helio_take_pending_pointer_events");
             self.pending_pointer_events
@@ -801,6 +903,8 @@ impl HelioRenderer {
                 }
             }
         }
+        self.resolve_voxel_brushes();
+        phases.mark("pointer");
 
         // ── Detect input activity BEFORE consuming ──────────────────────────────
         let (had_input, needs_resize) = {
@@ -832,6 +936,7 @@ impl HelioRenderer {
             profiling::profile_scope!("helio_camera_input");
             self.apply_camera_input(dt);
         }
+        phases.mark("camera");
         self.configure_gizmo_view();
         self.viewport_size = previous_viewport_size;
 
@@ -1007,12 +1112,17 @@ impl HelioRenderer {
                 inner.renderer.debug_set_editor_lines("splines", lines);
             }
             {
+                profiling::profile_scope!("helio_sync_edit_journals");
+                crate::scene::voxel_frame::sync_edit_journals(&mut scene_store.world);
+            }
+            {
                 profiling::profile_scope!("helio_scene_store_step");
                 scene_store.step();
             }
             sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
             inner.last_scene_revision = scene_store.world.revision();
         }
+        phases.mark("scene");
 
         // SceneDB Inspector bridge: throttled inside SceneDB, and a no-op unless
         // an inspector launched this process. After the GPU flush above.
@@ -1020,6 +1130,7 @@ impl HelioRenderer {
             profiling::profile_scope!("helio_publish_inspector_snapshot");
             self.scene_store.read().world.publish_inspector_snapshot();
         }
+        phases.mark("inspector");
 
         // ── Camera / gizmo / render ─────────────────────────────────────────────
         let (voxel_entries, mut voxel_errors, authored_sky, authored_meshes, sun) = {
@@ -1044,12 +1155,14 @@ impl HelioRenderer {
                 });
             (entries, errors, authored_sky, authored_meshes, sun)
         };
+        phases.mark("project");
         let outdoor_sky = self.voxel_backends.uses_outdoor_sky(&voxel_entries);
         let camera_relative = outdoor_sky && {
             let store = self.scene_store.read();
             self.relative_camera_gate.compatible(&store.world)
         };
         self.voxel_altitude = self.voxel_backends.altitude(&voxel_entries, self.cam_pos);
+        phases.mark("altitude");
         if self.native_voxel_flight.force_frames() {
             let flight_ready = inner.has_rendered_frame
                 && !self.voxel_backends.needs_frame(&inner.renderer)
@@ -1065,7 +1178,9 @@ impl HelioRenderer {
                 self.voxel_altitude = self.voxel_backends.altitude(&voxel_entries, self.cam_pos);
             }
         }
+        phases.mark("flight");
         self.voxel_up = self.voxel_backends.ambient_up(&voxel_entries, self.cam_pos);
+        phases.mark("up");
         let target = self.voxel_up.map_or(Vec3::Y, |up| up.as_vec3()).normalize_or(Vec3::Y);
         match self.pending_view_direction.take() {
             // A pose set from outside: its view direction within the frame at it.
@@ -1080,6 +1195,7 @@ impl HelioRenderer {
         // A terrain's empty-space certificate says nothing about authored
         // meshes. Preserve their close clipping plane in mixed scenes.
         let near = if authored_meshes { terrain_near.min(0.1) } else { terrain_near };
+        phases.mark("clip");
         inner.renderer.set_tsr_quality(
             self.voxel_backends
                 .temporal_quality(&voxel_entries, [width, height]),
@@ -1164,7 +1280,9 @@ impl HelioRenderer {
             }
         }
         let (forward, right, up) = basis(self.cam_frame, self.cam_yaw, self.cam_pitch);
+        phases.mark("prepare");
         voxel_errors.extend(self.voxel_backends.configure_appearance(&mut inner.renderer, &voxel_entries));
+        phases.mark("appearance");
         voxel_errors.extend(self.voxel_backends.publish_frame(
             &voxel_entries,
             VoxelView {
@@ -1179,6 +1297,7 @@ impl HelioRenderer {
                 sun,
             },
         ));
+        phases.mark("publish");
         if voxel_errors != self.last_voxel_errors {
             for error in &voxel_errors {
                 tracing::warn!("Voxel terrain: {error}");
@@ -1243,8 +1362,10 @@ impl HelioRenderer {
         self.gizmo_dirty = false;
         inner.has_rendered_frame = true;
         let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
+        phases.mark("render");
         let frame_ms = frame_start.elapsed().as_secs_f32() * 1_000.0;
         if frame_ms >= 50.0 {
+            tracing::warn!("VOXEL_FRAME_PHASES frame_ms={frame_ms:.1} {}", phases.describe());
             tracing::warn!(
                 target: "flamegraph.workload",
                 frame_ms,
@@ -1493,6 +1614,9 @@ impl HelioRenderer {
         }
     }
 
+    /// A brush sample under the pointer: it asks the renderer for the
+    /// terrain hit there and is applied when the answer arrives (a few
+    /// frames later), with an exact walk of a few cells around it.
     fn handle_voxel_brush(&mut self, norm_x: f32, norm_y: f32, request: VoxelBrushRequest) {
         profiling::profile_scope!("voxel_brush");
         let (width, height) = self.viewport_size;
@@ -1507,13 +1631,42 @@ impl HelioRenderer {
         if direction == DVec3::ZERO {
             return;
         }
+        let brush = PendingBrush { pick: None, origin: self.cam_pos, direction, request };
+        match self.voxel_backends.request_pick([norm_x, norm_y]) {
+            Some(id) => {
+                // A drag samples every frame; never let answers fall behind.
+                while self.voxel_brush_picks.len() >= 8 {
+                    self.voxel_brush_picks.pop_front();
+                }
+                self.voxel_brush_picks.push_back(PendingBrush { pick: Some(id), ..brush });
+            }
+            // Nothing drawn to pick yet: a bounded exact walk.
+            None => self.apply_voxel_brush(&brush, None),
+        }
+    }
+
+    /// Apply the brush samples whose renderer hits arrived, in order.
+    fn resolve_voxel_brushes(&mut self) {
+        if self.voxel_brush_picks.is_empty() {
+            return;
+        }
+        for pick in self.voxel_backends.take_picks() {
+            let Some(at) = self.voxel_brush_picks.iter().position(|b| b.pick == Some(pick.id)) else { continue };
+            let brush = self.voxel_brush_picks.remove(at).expect("found above");
+            if let Some(near) = pick.hit {
+                self.apply_voxel_brush(&brush, Some(near));
+            }
+        }
+    }
+
+    fn apply_voxel_brush(&mut self, brush: &PendingBrush, near: Option<(f64, f64)>) {
         let entries = {
             let scene = self.scene_store.read();
             crate::scene::voxel_frame::project_voxel_entries(&scene.world).0
         };
         match self
             .voxel_backends
-            .edit_ray(&entries, self.cam_pos, direction, request)
+            .edit_ray(&entries, brush.origin, brush.direction, near, brush.request)
         {
             Ok(Some(commit)) => {
                 // Fill the gap from the stroke's previous stamp, so fast drags
