@@ -7,6 +7,7 @@
 //! watched. While anything here is running, `PlaybackState::build_running` is
 //! set; [`cancel_build`] stops it.
 
+mod audio;
 pub mod cargo;
 pub mod failure;
 pub mod game;
@@ -19,10 +20,14 @@ use std::time::Duration;
 
 use engine_state::build_config::{BuildConfiguration, TargetPlatform, build_cancel};
 use engine_state::playback::playback;
-use gpui::{App, AppContext as _, AsyncApp, Window};
+use gpui::{
+    Animation, AnimationExt as _, App, AppContext as _, AsyncApp, IntoElement, ParentElement as _,
+    Styled as _, Window, radians,
+};
 use parking_lot::Mutex;
 use ui::ContextModal as _;
 use ui::notification::Notification;
+use ui::{Icon, IconName, Sizable as _, h_flex};
 
 use cargo::{Progress, StepError};
 use plan::{Plan, Step, progress_ranges};
@@ -95,6 +100,26 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
             .id::<BuildNotification>()
             .title(name.clone())
             .progress(0.0)
+            .content(|_, _| {
+                h_flex()
+                    .w_full()
+                    .h(gpui::px(28.))
+                    .justify_end()
+                    .items_center()
+                    .child(
+                        Icon::new(IconName::Hammer)
+                            .with_size(ui::Size::Large)
+                            .with_animation(
+                                "build-hammer-swing",
+                                Animation::new(Duration::from_millis(700)).repeat(),
+                                |this, phase| {
+                                    let swing = (phase * std::f32::consts::TAU).sin() * 0.38;
+                                    this.rotate(radians(swing))
+                                },
+                            ),
+                    )
+                    .into_any_element()
+            })
             .autohide(false),
         cx,
     );
@@ -121,7 +146,10 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
                     window.update_notification::<BuildNotification>(message, fraction, cx);
                 });
             }
-            async_app.background_executor().timer(Duration::from_millis(250)).await;
+            async_app
+                .background_executor()
+                .timer(Duration::from_millis(250))
+                .await;
         };
 
         // The build is over whatever happened; free the button first.
@@ -129,6 +157,7 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
 
         match result {
             Some(Ok(())) => {
+                audio::play_build_success();
                 let _ = async_app.update_window(window_handle, |_, window, cx| {
                     window.push_notification(
                         Notification::success("Build succeeded")
@@ -155,7 +184,14 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
                 }
             }
             Some(Err(StepError::Failed(message))) => {
+                audio::play_build_error();
                 let _ = async_app.update_window(window_handle, |_, window, cx| {
+                    window.push_notification(
+                        Notification::error("Build failed")
+                            .id::<BuildNotification>()
+                            .title(name.clone()),
+                        cx,
+                    );
                     failure::show(message, name.clone(), window, cx);
                 });
             }
@@ -191,7 +227,11 @@ fn execute(
     // The flag `cancel_build` raises; each cargo command watches it too.
     let cancel = build_cancel().read().0.clone();
     let ranges = progress_ranges(plan);
-    let total = plan.steps.iter().filter(|s| !matches!(s, Step::Run { .. })).count();
+    let total = plan
+        .steps
+        .iter()
+        .filter(|s| !matches!(s, Step::Run { .. }))
+        .count();
 
     for (ix, (step, range)) in plan.steps.iter().zip(ranges).enumerate() {
         if cancel.load(Ordering::Acquire) {
@@ -227,7 +267,10 @@ mod tests {
 
     #[test]
     fn progress_text_includes_the_detail_when_there_is_one() {
-        assert_eq!(progress_message("Building (2/3)", "", 40), "Building (2/3) (40%)");
+        assert_eq!(
+            progress_message("Building (2/3)", "", 40),
+            "Building (2/3) (40%)"
+        );
         assert_eq!(
             progress_message("Building (2/3)", "Compiling serde", 40),
             "Building (2/3): Compiling serde (40%)"
