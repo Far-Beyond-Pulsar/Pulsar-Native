@@ -666,6 +666,7 @@ impl Render for PulsarApp {
         let drawer_open = self.state.drawer_open;
         let drawer_docked = self.state.drawer_docked;
         let resize_handle_blue = Hsla::from(rgb(0x1684ff));
+        let resize_handle_black = Hsla::from(rgb(0x000000));
 
         v_flex()
             .size_full()
@@ -758,22 +759,37 @@ impl Render for PulsarApp {
                                             // Resize handle at top
                                             div()
                                                 .id("drawer-resize-handle")
+                                                .group("file-drawer-resize-handle")
+                                                .relative()
                                                 .w_full()
-                                                .h(px(6.))
+                                                .h(px(3.))
                                                 .cursor_ns_resize()
-                                                .bg(if self.state.drawer_resizing {
-                                                    resize_handle_blue
-                                                } else {
-                                                    resize_handle_blue.opacity(0.)
-                                                })
-                                                .hover({
-                                                    let hover_color = if self.state.drawer_resizing {
-                                                        resize_handle_blue
-                                                    } else {
-                                                        resize_handle_blue.opacity(0.45)
-                                                    };
-                                                    move |style| style.bg(hover_color)
-                                                })
+                                                .child(
+                                                    div()
+                                                        .absolute()
+                                                        .top_0()
+                                                        .left_0()
+                                                        .right_0()
+                                                        .h(px(3.))
+                                                        .rounded_tl(px(8.))
+                                                        .rounded_tr(px(8.))
+                                                        .bg(if self.state.drawer_resizing {
+                                                            resize_handle_blue
+                                                        } else {
+                                                            resize_handle_black
+                                                        })
+                                                        .when(!self.state.drawer_resizing, |this| {
+                                                            this.group_hover(
+                                                                "file-drawer-resize-handle",
+                                                                |style| {
+                                                                    style.bg(
+                                                                        resize_handle_blue
+                                                                            .opacity(0.45),
+                                                                    )
+                                                                },
+                                                            )
+                                                        }),
+                                                )
                                                 .on_mouse_down(
                                                     MouseButton::Left,
                                                     cx.listener(|this, event: &MouseDownEvent, _window, cx| {
@@ -839,23 +855,37 @@ impl Render for PulsarApp {
                                 .child(
                                     div()
                                         .id("docked-drawer-resize-handle")
+                                        .group("docked-file-drawer-resize-handle")
+                                        .relative()
                                         .w_full()
-                                        .h(px(6.))
+                                        .h(px(3.))
                                         .flex_shrink_0()
                                         .cursor_ns_resize()
-                                        .bg(if self.state.drawer_resizing {
-                                            resize_handle_blue
-                                        } else {
-                                            resize_handle_blue.opacity(0.)
-                                        })
-                                        .hover({
-                                            let hover_color = if self.state.drawer_resizing {
-                                                resize_handle_blue
-                                            } else {
-                                                resize_handle_blue.opacity(0.45)
-                                            };
-                                            move |style| style.bg(hover_color)
-                                        })
+                                        .child(
+                                            div()
+                                                .absolute()
+                                                .top_0()
+                                                .left_0()
+                                                .right_0()
+                                                .h(px(3.))
+                                                .rounded_tl(px(8.))
+                                                .rounded_tr(px(8.))
+                                                .bg(if self.state.drawer_resizing {
+                                                    resize_handle_blue
+                                                } else {
+                                                    resize_handle_black
+                                                })
+                                                .when(!self.state.drawer_resizing, |this| {
+                                                    this.group_hover(
+                                                        "docked-file-drawer-resize-handle",
+                                                        |style| {
+                                                            style.bg(
+                                                                resize_handle_blue.opacity(0.45),
+                                                            )
+                                                        },
+                                                    )
+                                                }),
+                                        )
                                         .on_mouse_down(
                                             MouseButton::Left,
                                             cx.listener(|this, event: &MouseDownEvent, _window, cx| {
