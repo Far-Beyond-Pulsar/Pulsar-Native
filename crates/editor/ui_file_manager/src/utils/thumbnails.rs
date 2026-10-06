@@ -1,5 +1,9 @@
 use crate::components::FileManagerDrawer;
 
+// Headless rendering initializes its own wgpu device. Serialize these renders
+// so opening a folder with several models doesn't race multiple GPU startups.
+static MESH_THUMBNAIL_RENDER_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 impl FileManagerDrawer {
     fn is_mesh_thumbable_ext(ext: &str) -> bool {
         matches!(ext, "fbx" | "gltf" | "glb" | "obj" | "usd" | "usda")
@@ -63,6 +67,9 @@ impl FileManagerDrawer {
                                 .map(|image| std::sync::Arc::new(image.into_rgba8()))
                         })
                         .or_else(|| {
+                            let _render_guard = MESH_THUMBNAIL_RENDER_LOCK
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner);
                             let result = helio_snapshot::render_snapshot(
                                 &mesh_path,
                                 helio_snapshot::SnapshotConfig {
