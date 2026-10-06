@@ -264,6 +264,7 @@ fn terrain_layers_component_is_the_generator_settings() {
         (VoxelTerrainLayersComponent::earth(), TerrainLayers::earth()),
         (VoxelTerrainLayersComponent::moon(), TerrainLayers::moon()),
         (VoxelTerrainLayersComponent::flat(2.0), TerrainLayers::flat_at(2.0)),
+        (VoxelTerrainLayersComponent::desert(), TerrainLayers::desert()),
     ] {
         let json = serde_json::to_value(&component).unwrap();
         let parsed: TerrainLayers = serde_json::from_value(json.clone()).unwrap();
@@ -274,5 +275,7 @@ fn terrain_layers_component_is_the_generator_settings() {
     // Empty settings are the Earth preset, like the generator's.
     let empty: VoxelTerrainLayersComponent = serde_json::from_str("{}").unwrap();
     assert_eq!(serde_json::to_value(empty).unwrap(), serde_json::to_value(VoxelTerrainLayersComponent::earth()).unwrap());
-    assert!(VoxelTerrainLayersComponent::default().get_properties().iter().any(|property| property.name == "layers"));
+    // One property: the whole stack, edited (and undone) as one value.
+    let properties = VoxelTerrainLayersComponent::default().get_properties();
+    assert_eq!(properties.iter().map(|p| p.name).collect::<Vec<_>>(), ["stack"]);
 }

@@ -9127,6 +9127,8 @@ dependencies = [
 name = "pulsar_game"
 version = "0.1.0"
 dependencies = [
+ "blueprint_compiler",
+ "blueprint_graph",
  "engine_backend",
  "engine_class_derive",
  "engine_fs",

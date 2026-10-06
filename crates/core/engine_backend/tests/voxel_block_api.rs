@@ -98,7 +98,7 @@ fn the_cached_world_follows_the_journal_and_the_settings() {
     set(&mut world, entity, [1.0, 2.05, 1.0], material::SAND).unwrap();
     let edited = terrain_world(&world, entity).unwrap();
     assert!(!std::sync::Arc::ptr_eq(&first, &edited));
-    world.get_mut::<VoxelTerrainLayersComponent>(entity).unwrap().layers[0].height_m = 5.0;
+    world.get_mut::<VoxelTerrainLayersComponent>(entity).unwrap().stack.layers[0].height_m = 5.0;
     let raised = terrain_world(&world, entity).unwrap();
     let (cell, _) = raised.grid().locate(DVec3::new(9.0, 4.95, 9.0));
     assert_eq!(raised.material(cell), material::GRASS);
@@ -152,11 +152,11 @@ fn scripts_shape_the_layer_stack() {
     let count = call_layers(&mut world, entity, "layer_count", vec![]).unwrap().unwrap();
     assert_eq!(*count.downcast::<u32>().unwrap(), 2);
     call_layers(&mut world, entity, "set_layer_enabled", vec![Box::new(1u32), Box::new(false)]).unwrap();
-    assert!(!world.get::<VoxelTerrainLayersComponent>(entity).unwrap().layers[1].enabled);
+    assert!(!world.get::<VoxelTerrainLayersComponent>(entity).unwrap().stack.layers[1].enabled);
     call_layers(&mut world, entity, "remove_layer", vec![Box::new(1u32)]).unwrap();
     assert!(call_layers(&mut world, entity, "remove_layer", vec![Box::new(5u32)]).is_err());
     assert!(call_layers(&mut world, entity, "add_layer", vec![Box::new(String::from("Volcano"))]).is_err());
     call_layers(&mut world, entity, "use_preset", vec![Box::new(String::from("moon"))]).unwrap();
-    assert_eq!(world.get::<VoxelTerrainLayersComponent>(entity).unwrap().layers.len(), 3);
+    assert_eq!(world.get::<VoxelTerrainLayersComponent>(entity).unwrap().stack.layers.len(), 3);
     assert!(call_layers(&mut world, entity, "use_preset", vec![Box::new(String::from("mars"))]).is_err());
 }

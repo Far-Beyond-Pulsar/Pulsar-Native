@@ -1,0 +1,1676 @@
+{
+  "format_version": 1,
+  "main_graph": {
+    "nodes": {
+      "begin": {
+        "id": "begin",
+        "node_type": "begin_play",
+        "position": {
+          "x": 260.0,
+          "y": 0.0
+        },
+        "properties": {},
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "Body",
+            "name": "Body",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "seq.exec"
+            ]
+          }
+        ]
+      },
+      "seed": {
+        "id": "seed",
+        "node_type": "get_seed",
+        "position": {
+          "x": 520.0,
+          "y": 480.0
+        },
+        "properties": {},
+        "inputs": [],
+        "outputs": [
+          {
+            "id": "value",
+            "name": "value",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "kind.seed",
+              "crater_size.seed",
+              "crater_share.seed",
+              "hill_height.seed",
+              "hill_size.seed"
+            ]
+          }
+        ]
+      },
+      "seq": {
+        "id": "seq",
+        "node_type": "sequence",
+        "position": {
+          "x": 780.0,
+          "y": 0.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "begin.Body"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "Then0",
+            "name": "Then0",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "moon_or.exec"
+            ]
+          },
+          {
+            "id": "Then1",
+            "name": "Then1",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "craters.exec"
+            ]
+          },
+          {
+            "id": "Then2",
+            "name": "Then2",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "hills.exec"
+            ]
+          },
+          {
+            "id": "Then3",
+            "name": "Then3",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "kind": {
+        "id": "kind",
+        "node_type": "seeded_random_int",
+        "position": {
+          "x": 1040.0,
+          "y": 160.0
+        },
+        "properties": {
+          "index": 0,
+          "min": 0,
+          "max": 99
+        },
+        "inputs": [
+          {
+            "id": "seed",
+            "name": "seed",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "seed.value"
+            ]
+          },
+          {
+            "id": "index",
+            "name": "index",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "min",
+            "name": "min",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "max",
+            "name": "max",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "is_moon.a",
+              "is_desert.a"
+            ]
+          }
+        ]
+      },
+      "is_moon": {
+        "id": "is_moon",
+        "node_type": "less_than",
+        "position": {
+          "x": 1300.0,
+          "y": 160.0
+        },
+        "properties": {
+          "b": 35
+        },
+        "inputs": [
+          {
+            "id": "a",
+            "name": "a",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "kind.result"
+            ]
+          },
+          {
+            "id": "b",
+            "name": "b",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "bool",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "moon_or.condition"
+            ]
+          }
+        ]
+      },
+      "is_desert": {
+        "id": "is_desert",
+        "node_type": "less_than",
+        "position": {
+          "x": 1560.0,
+          "y": 160.0
+        },
+        "properties": {
+          "b": 60
+        },
+        "inputs": [
+          {
+            "id": "a",
+            "name": "a",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "kind.result"
+            ]
+          },
+          {
+            "id": "b",
+            "name": "b",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "bool",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "desert_or.condition"
+            ]
+          }
+        ]
+      },
+      "moon_or": {
+        "id": "moon_or",
+        "node_type": "branch",
+        "position": {
+          "x": 1820.0,
+          "y": 0.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "seq.Then0"
+            ]
+          },
+          {
+            "id": "condition",
+            "name": "condition",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "bool",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "is_moon.result"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "True",
+            "name": "True",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "moon.exec"
+            ]
+          },
+          {
+            "id": "False",
+            "name": "False",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "desert_or.exec"
+            ]
+          }
+        ]
+      },
+      "desert_or": {
+        "id": "desert_or",
+        "node_type": "branch",
+        "position": {
+          "x": 2080.0,
+          "y": 0.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "moon_or.False"
+            ]
+          },
+          {
+            "id": "condition",
+            "name": "condition",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "bool",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "is_desert.result"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "True",
+            "name": "True",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "desert.exec"
+            ]
+          },
+          {
+            "id": "False",
+            "name": "False",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "earth.exec"
+            ]
+          }
+        ]
+      },
+      "moon": {
+        "id": "moon",
+        "node_type": "native::VoxelTerrainLayersComponent::use_preset",
+        "position": {
+          "x": 2340.0,
+          "y": 0.0
+        },
+        "properties": {
+          "name": "moon"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "moon_or.True"
+            ]
+          },
+          {
+            "id": "self",
+            "name": "self",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "VoxelTerrainLayersComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "name",
+            "name": "name",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "desert": {
+        "id": "desert",
+        "node_type": "native::VoxelTerrainLayersComponent::use_preset",
+        "position": {
+          "x": 2600.0,
+          "y": 0.0
+        },
+        "properties": {
+          "name": "desert"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "desert_or.True"
+            ]
+          },
+          {
+            "id": "self",
+            "name": "self",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "VoxelTerrainLayersComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "name",
+            "name": "name",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "earth": {
+        "id": "earth",
+        "node_type": "native::VoxelTerrainLayersComponent::use_preset",
+        "position": {
+          "x": 2860.0,
+          "y": 0.0
+        },
+        "properties": {
+          "name": "earth"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "desert_or.False"
+            ]
+          },
+          {
+            "id": "self",
+            "name": "self",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "VoxelTerrainLayersComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "name",
+            "name": "name",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "craters": {
+        "id": "craters",
+        "node_type": "native::VoxelTerrainLayersComponent::add_layer",
+        "position": {
+          "x": 3120.0,
+          "y": 320.0
+        },
+        "properties": {
+          "kind": "Craters"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "seq.Then1"
+            ]
+          },
+          {
+            "id": "self",
+            "name": "self",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "VoxelTerrainLayersComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "kind",
+            "name": "kind",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "crater_scale.exec"
+            ]
+          },
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "u32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "crater_scale.index",
+              "crater_coverage.index"
+            ]
+          }
+        ]
+      },
+      "crater_size": {
+        "id": "crater_size",
+        "node_type": "seeded_random_range",
+        "position": {
+          "x": 3380.0,
+          "y": 320.0
+        },
+        "properties": {
+          "index": 1,
+          "min": 5.0,
+          "max": 60.0
+        },
+        "inputs": [
+          {
+            "id": "seed",
+            "name": "seed",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "seed.value"
+            ]
+          },
+          {
+            "id": "index",
+            "name": "index",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "min",
+            "name": "min",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "max",
+            "name": "max",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "crater_scale.scale_km"
+            ]
+          }
+        ]
+      },
+      "crater_scale": {
+        "id": "crater_scale",
+        "node_type": "native::VoxelTerrainLayersComponent::set_layer_scale",
+        "position": {
+          "x": 3640.0,
+          "y": 320.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "craters.exec_out"
+            ]
+          },
+          {
+            "id": "self",
+            "name": "self",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "VoxelTerrainLayersComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "index",
+            "name": "index",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "u32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "craters.result"
+            ]
+          },
+          {
+            "id": "scale_km",
+            "name": "scale_km",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "crater_size.result"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "crater_coverage.exec"
+            ]
+          }
+        ]
+      },
+      "crater_share": {
+        "id": "crater_share",
+        "node_type": "seeded_random_range",
+        "position": {
+          "x": 3900.0,
+          "y": 320.0
+        },
+        "properties": {
+          "index": 2,
+          "min": 0.05,
+          "max": 0.5
+        },
+        "inputs": [
+          {
+            "id": "seed",
+            "name": "seed",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "seed.value"
+            ]
+          },
+          {
+            "id": "index",
+            "name": "index",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "min",
+            "name": "min",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "max",
+            "name": "max",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "crater_coverage.coverage"
+            ]
+          }
+        ]
+      },
+      "crater_coverage": {
+        "id": "crater_coverage",
+        "node_type": "native::VoxelTerrainLayersComponent::set_layer_coverage",
+        "position": {
+          "x": 4160.0,
+          "y": 320.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "crater_scale.exec_out"
+            ]
+          },
+          {
+            "id": "self",
+            "name": "self",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "VoxelTerrainLayersComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "index",
+            "name": "index",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "u32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "craters.result"
+            ]
+          },
+          {
+            "id": "coverage",
+            "name": "coverage",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "crater_share.result"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      },
+      "hills": {
+        "id": "hills",
+        "node_type": "native::VoxelTerrainLayersComponent::add_layer",
+        "position": {
+          "x": 4420.0,
+          "y": 480.0
+        },
+        "properties": {
+          "kind": "Hills"
+        },
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "seq.Then2"
+            ]
+          },
+          {
+            "id": "self",
+            "name": "self",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "VoxelTerrainLayersComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "kind",
+            "name": "kind",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "String",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "hill_height_set.exec"
+            ]
+          },
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "u32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "hill_height_set.index",
+              "hill_scale_set.index"
+            ]
+          }
+        ]
+      },
+      "hill_height": {
+        "id": "hill_height",
+        "node_type": "seeded_random_range",
+        "position": {
+          "x": 4680.0,
+          "y": 480.0
+        },
+        "properties": {
+          "index": 3,
+          "min": 50.0,
+          "max": 800.0
+        },
+        "inputs": [
+          {
+            "id": "seed",
+            "name": "seed",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "seed.value"
+            ]
+          },
+          {
+            "id": "index",
+            "name": "index",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "min",
+            "name": "min",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "max",
+            "name": "max",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "hill_height_set.height_m"
+            ]
+          }
+        ]
+      },
+      "hill_height_set": {
+        "id": "hill_height_set",
+        "node_type": "native::VoxelTerrainLayersComponent::set_layer_height",
+        "position": {
+          "x": 4940.0,
+          "y": 480.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "hills.exec_out"
+            ]
+          },
+          {
+            "id": "self",
+            "name": "self",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "VoxelTerrainLayersComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "index",
+            "name": "index",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "u32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "hills.result"
+            ]
+          },
+          {
+            "id": "height_m",
+            "name": "height_m",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "hill_height.result"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": [
+              "hill_scale_set.exec"
+            ]
+          }
+        ]
+      },
+      "hill_size": {
+        "id": "hill_size",
+        "node_type": "seeded_random_range",
+        "position": {
+          "x": 5200.0,
+          "y": 480.0
+        },
+        "properties": {
+          "index": 4,
+          "min": 2.0,
+          "max": 40.0
+        },
+        "inputs": [
+          {
+            "id": "seed",
+            "name": "seed",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "seed.value"
+            ]
+          },
+          {
+            "id": "index",
+            "name": "index",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "i64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "min",
+            "name": "min",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "max",
+            "name": "max",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          }
+        ],
+        "outputs": [
+          {
+            "id": "result",
+            "name": "result",
+            "pin_type": "Output",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "hill_scale_set.scale_km"
+            ]
+          }
+        ]
+      },
+      "hill_scale_set": {
+        "id": "hill_scale_set",
+        "node_type": "native::VoxelTerrainLayersComponent::set_layer_scale",
+        "position": {
+          "x": 5460.0,
+          "y": 480.0
+        },
+        "properties": {},
+        "inputs": [
+          {
+            "id": "exec",
+            "name": "exec",
+            "pin_type": "Input",
+            "data_type": "Execution",
+            "connected_to": [
+              "hill_height_set.exec_out"
+            ]
+          },
+          {
+            "id": "self",
+            "name": "self",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "VoxelTerrainLayersComponent",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": []
+          },
+          {
+            "id": "index",
+            "name": "index",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "u32",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "hills.result"
+            ]
+          },
+          {
+            "id": "scale_km",
+            "name": "scale_km",
+            "pin_type": "Input",
+            "data_type": {
+              "Data": {
+                "base_type": "f64",
+                "wrappers": [],
+                "is_wildcard": false
+              }
+            },
+            "connected_to": [
+              "hill_size.result"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "id": "exec_out",
+            "name": "exec_out",
+            "pin_type": "Output",
+            "data_type": "Execution",
+            "connected_to": []
+          }
+        ]
+      }
+    },
+    "connections": [
+      {
+        "id": "c0",
+        "source_node": "begin",
+        "source_pin": "Body",
+        "target_node": "seq",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c1",
+        "source_node": "seed",
+        "source_pin": "value",
+        "target_node": "kind",
+        "target_pin": "seed",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c2",
+        "source_node": "kind",
+        "source_pin": "result",
+        "target_node": "is_moon",
+        "target_pin": "a",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c3",
+        "source_node": "kind",
+        "source_pin": "result",
+        "target_node": "is_desert",
+        "target_pin": "a",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c4",
+        "source_node": "is_moon",
+        "source_pin": "result",
+        "target_node": "moon_or",
+        "target_pin": "condition",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c5",
+        "source_node": "is_desert",
+        "source_pin": "result",
+        "target_node": "desert_or",
+        "target_pin": "condition",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c6",
+        "source_node": "seq",
+        "source_pin": "Then0",
+        "target_node": "moon_or",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c7",
+        "source_node": "moon_or",
+        "source_pin": "False",
+        "target_node": "desert_or",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c8",
+        "source_node": "moon_or",
+        "source_pin": "True",
+        "target_node": "moon",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c9",
+        "source_node": "desert_or",
+        "source_pin": "True",
+        "target_node": "desert",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c10",
+        "source_node": "desert_or",
+        "source_pin": "False",
+        "target_node": "earth",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c11",
+        "source_node": "seq",
+        "source_pin": "Then1",
+        "target_node": "craters",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c12",
+        "source_node": "seed",
+        "source_pin": "value",
+        "target_node": "crater_size",
+        "target_pin": "seed",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c13",
+        "source_node": "craters",
+        "source_pin": "result",
+        "target_node": "crater_scale",
+        "target_pin": "index",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c14",
+        "source_node": "crater_size",
+        "source_pin": "result",
+        "target_node": "crater_scale",
+        "target_pin": "scale_km",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c15",
+        "source_node": "craters",
+        "source_pin": "exec_out",
+        "target_node": "crater_scale",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c16",
+        "source_node": "seed",
+        "source_pin": "value",
+        "target_node": "crater_share",
+        "target_pin": "seed",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c17",
+        "source_node": "craters",
+        "source_pin": "result",
+        "target_node": "crater_coverage",
+        "target_pin": "index",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c18",
+        "source_node": "crater_share",
+        "source_pin": "result",
+        "target_node": "crater_coverage",
+        "target_pin": "coverage",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c19",
+        "source_node": "crater_scale",
+        "source_pin": "exec_out",
+        "target_node": "crater_coverage",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c20",
+        "source_node": "seq",
+        "source_pin": "Then2",
+        "target_node": "hills",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c21",
+        "source_node": "seed",
+        "source_pin": "value",
+        "target_node": "hill_height",
+        "target_pin": "seed",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c22",
+        "source_node": "hills",
+        "source_pin": "result",
+        "target_node": "hill_height_set",
+        "target_pin": "index",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c23",
+        "source_node": "hill_height",
+        "source_pin": "result",
+        "target_node": "hill_height_set",
+        "target_pin": "height_m",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c24",
+        "source_node": "hills",
+        "source_pin": "exec_out",
+        "target_node": "hill_height_set",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      },
+      {
+        "id": "c25",
+        "source_node": "seed",
+        "source_pin": "value",
+        "target_node": "hill_size",
+        "target_pin": "seed",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c26",
+        "source_node": "hills",
+        "source_pin": "result",
+        "target_node": "hill_scale_set",
+        "target_pin": "index",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c27",
+        "source_node": "hill_size",
+        "source_pin": "result",
+        "target_node": "hill_scale_set",
+        "target_pin": "scale_km",
+        "connection_type": "Data"
+      },
+      {
+        "id": "c28",
+        "source_node": "hill_height_set",
+        "source_pin": "exec_out",
+        "target_node": "hill_scale_set",
+        "target_pin": "exec",
+        "connection_type": "Execution"
+      }
+    ],
+    "metadata": {
+      "name": "EventGraph",
+      "description": "A random world from a seed",
+      "version": "1.0.0",
+      "created_at": "2026-10-06T00:00:00Z",
+      "modified_at": "2026-10-06T00:00:00Z"
+    },
+    "comments": [
+      {
+        "id": "comment-1",
+        "text": "Same seed, same world: every roll is seeded_random(seed, index)",
+        "position": [
+          0.0,
+          -120.0
+        ],
+        "size": [
+          600.0,
+          100.0
+        ],
+        "color": [
+          0.25,
+          0.5,
+          0.75,
+          1.0
+        ],
+        "contained_node_ids": []
+      }
+    ],
+    "custom_event_defs": {}
+  },
+  "local_macros": [],
+  "local_events": [],
+  "variables": [
+    {
+      "id": "var_seed",
+      "name": "seed",
+      "data_type": {
+        "Data": {
+          "base_type": "i64",
+          "wrappers": [],
+          "is_wildcard": false
+        }
+      },
+      "default_value": "7",
+      "description": "The world's seed: equal seeds build equal worlds"
+    }
+  ],
+  "blueprint_metadata": {
+    "blueprint_type": "Generic",
+    "parent_class": null,
+    "description": "Builds a random planet, moon or desert world from a seed (No Man's Sky style) by shaping the entity's terrain layer stack through its natives.",
+    "category": "Examples",
+    "tags": [
+      "voxel",
+      "terrain",
+      "procedural"
+    ]
+  }
+}

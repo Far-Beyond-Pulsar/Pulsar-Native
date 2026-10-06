@@ -296,3 +296,73 @@ pub fn coin_flip() -> bool {
     std::time::SystemTime::now().hash(&mut hasher);
     (hasher.finish() & 1) == 1
 }
+
+// ── Seeded (deterministic) random ───────────────────────────────────────────
+
+/// The `index`-th number of the sequence of `seed`: SplitMix64, so equal
+/// inputs give equal numbers on every machine and every run.
+fn seeded_bits(seed: i64, index: i64) -> u64 {
+    let mut z = (seed as u64) ^ (index as u64).wrapping_mul(0xD1B5_4A32_D192_ED03);
+    z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^ (z >> 31)
+}
+
+/// Deterministic random number in [0, 1) for a seed and an index.
+///
+/// # Inputs
+/// - `seed`: The sequence (a world's seed, say)
+/// - `index`: Which number of the sequence (one per decision)
+///
+/// # Returns
+/// The same number for the same seed and index, on every run and machine:
+/// procedural worlds, replays and multiplayer agree.
+///
+/// # Seeded Random
+/// A deterministic random number in [0, 1) for a seed and an index.
+#[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
+pub fn seeded_random(seed: i64, index: i64) -> f64 {
+    (seeded_bits(seed, index) >> 11) as f64 / (1u64 << 53) as f64
+}
+
+/// Deterministic random number in [min, max) for a seed and an index.
+///
+/// # Inputs
+/// - `seed`: The sequence
+/// - `index`: Which number of the sequence
+/// - `min`: Lower bound (inclusive)
+/// - `max`: Upper bound (exclusive)
+///
+/// # Returns
+/// The same number for the same inputs, on every run and machine.
+///
+/// # Seeded Random Range
+/// A deterministic random number in [min, max) for a seed and an index.
+#[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
+pub fn seeded_random_range(seed: i64, index: i64, min: f64, max: f64) -> f64 {
+    min + (max - min) * seeded_random(seed, index)
+}
+
+/// Deterministic random integer in [min, max] for a seed and an index.
+///
+/// # Inputs
+/// - `seed`: The sequence
+/// - `index`: Which number of the sequence
+/// - `min`: Lower bound (inclusive)
+/// - `max`: Upper bound (inclusive)
+///
+/// # Returns
+/// The same integer for the same inputs, on every run and machine; `min`
+/// when `max < min`.
+///
+/// # Seeded Random Int
+/// A deterministic random integer in [min, max] for a seed and an index.
+#[blueprint(type: crate::NodeTypes::pure, category: "Random", color: "#E74C3C")]
+pub fn seeded_random_int(seed: i64, index: i64, min: i64, max: i64) -> i64 {
+    if max <= min {
+        return min;
+    }
+    let span = (max as i128 - min as i128 + 1) as u128;
+    (min as i128 + (u128::from(seeded_bits(seed, index)) % span) as i128) as i64
+}

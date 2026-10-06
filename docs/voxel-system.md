@@ -69,6 +69,20 @@ its own stacks. Blueprints call `use_preset`, `add_layer`, `remove_layer`,
 `layer_count` and `set_layer_enabled` / `height` / `scale` / `coverage` on
 the component; the world rebuilds from the new settings.
 
+In the inspector the whole stack is one property with its own editor: a
+preset picker, the layers and material rules as ordered lists (move, remove,
+add), the caves, overhangs and materials, and the generator's validation
+inline ("Not generated: ..."), so a preset or a reorder is one undoable edit.
+
+**Random worlds.** `assets/examples/random_world.blueprint.json` is a
+Blueprint that builds a planet, a moon or a desert world from its `seed`
+variable, No Man's Sky style: it rolls with the deterministic `Seeded
+Random` nodes (`seeded_random`, `seeded_random_range`, `seeded_random_int`:
+equal seed and index, equal number, on every run and machine), applies a
+preset, then adds a crater layer and hills of random size through the
+component's natives. `pulsar_game`'s `random_world_blueprint` test compiles
+the saved graph and runs it against a real terrain entity.
+
 **Composition.** Game-specific worlds are classes whose prefab combines these
 components with others (a planet with water and foliage components, say);
 the voxel components know nothing about them.

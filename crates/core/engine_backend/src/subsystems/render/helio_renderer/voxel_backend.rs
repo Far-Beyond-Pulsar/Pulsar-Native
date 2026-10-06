@@ -696,7 +696,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         let pass = renderer.find_pass::<PlanetPass>()?;
         let s = pass.stats()?;
         let mut line = format!(
-            "planet ready={} resident={} pending={} jobs={} budget={} us_per_job={:.3} failed={} overflow={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={} evictions={} free_pages={}/{} free_units={} recycles={} lod_pressure={:.2} table_refused={} late_plans={} reranked={}",
+            "planet ready={} resident={} pending={} jobs={} budget={} us_per_job={:.3} failed={} scratch_retries={} clipped={} levels={} finest={} plan={:.2}ms upload={:.2}ms encode={:.2}ms windows={:.2}ms needs_frame={} evictions={} free_pages={}/{} free_units={} recycles={} lod_pressure={:.2} table_refused={} late_plans={} reranked={}",
             s.ready,
             s.resident_columns,
             s.pending_columns,
@@ -704,7 +704,8 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             s.job_budget,
             s.us_per_job,
             s.failed_jobs,
-            s.overflow_columns,
+            s.scratch_retries,
+            s.clipped_columns,
             s.active_levels,
             s.finest_level,
             s.plan_cpu_ms,
@@ -1111,8 +1112,8 @@ mod tests {
         terrain.seed = 99;
         scene.insert(entity, terrain);
         let mut layers = helio_component::VoxelTerrainLayersComponent::default();
-        layers.snowline_m = 1_234.0;
-        layers.layers[2].scale_km = 55.0;
+        layers.stack.snowline_m = 1_234.0;
+        layers.stack.layers[2].scale_km = 55.0;
         scene.insert(entity, layers);
         let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty(), "{errors:?}");
@@ -1139,7 +1140,7 @@ mod tests {
         let entity = scene.spawn();
         scene.insert(entity, VoxelTerrainComponent::plane(1_024.0));
         let mut flat = helio_component::VoxelTerrainLayersComponent::flat(12.0);
-        flat.surface = helio_component::VoxelTerrainMaterial::Sand;
+        flat.stack.surface = helio_component::VoxelTerrainMaterial::Sand;
         scene.insert(entity, flat);
         let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty(), "{errors:?}");
