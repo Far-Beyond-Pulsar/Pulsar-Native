@@ -8,12 +8,22 @@ use crate::utils::types::*;
 use plugin_editor_api::FileStructure;
 
 impl FileManagerDrawer {
-    pub fn start_new_file(&mut self, cx: &mut gpui::Context<Self>) {
+    pub fn start_new_file(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
         let Some(ref f) = self.selected_folder else {
             return;
         };
-        let np = cloud_join(f, "untitled.txt");
-        let r = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(f) {
+        let remote = engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(f);
+        let mut name = "untitled.txt".to_string();
+        let mut suffix = 1;
+        let mut np = cloud_join(f, &name);
+        while (remote && engine_fs::virtual_fs::exists(&np).unwrap_or(false))
+            || (!remote && np.exists())
+        {
+            name = format!("untitled ({suffix}).txt");
+            suffix += 1;
+            np = cloud_join(f, &name);
+        }
+        let r = if remote {
             engine_fs::virtual_fs::write_file(&np, b"")
         } else {
             std::fs::write(&np, "").map_err(Into::into)
@@ -22,17 +32,26 @@ impl FileManagerDrawer {
             tracing::error!("Failed to create file: {}", e);
             return;
         }
-        self.renaming_item = Some(np);
+        crate::utils::start_rename(self, np, window, cx);
         self.mark_directory_cache_dirty();
-        cx.notify();
     }
 
-    pub fn start_new_folder(&mut self, cx: &mut gpui::Context<Self>) {
+    pub fn start_new_folder(&mut self, window: &mut gpui::Window, cx: &mut gpui::Context<Self>) {
         let Some(ref f) = self.selected_folder else {
             return;
         };
-        let np = cloud_join(f, "New Folder");
-        let r = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(f) {
+        let remote = engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(f);
+        let mut name = "New Folder".to_string();
+        let mut suffix = 1;
+        let mut np = cloud_join(f, &name);
+        while (remote && engine_fs::virtual_fs::exists(&np).unwrap_or(false))
+            || (!remote && np.exists())
+        {
+            name = format!("New Folder ({suffix})");
+            suffix += 1;
+            np = cloud_join(f, &name);
+        }
+        let r = if remote {
             engine_fs::virtual_fs::create_dir_all(&np)
         } else {
             std::fs::create_dir(&np).map_err(Into::into)
@@ -41,9 +60,8 @@ impl FileManagerDrawer {
             tracing::error!("Failed to create folder: {}", e);
             return;
         }
-        self.renaming_item = Some(np);
+        crate::utils::start_rename(self, np, window, cx);
         self.mark_directory_cache_dirty();
-        cx.notify();
     }
 
     pub fn get_filtered_items(&mut self) -> Vec<FileItem> {

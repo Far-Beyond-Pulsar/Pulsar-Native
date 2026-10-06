@@ -3,7 +3,7 @@ use gpui::*;
 use rust_i18n::t;
 use ui::button::{Button, ButtonVariants as _};
 use ui::input::TextInput;
-use ui::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt};
+use ui::{ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt, h_flex, v_flex};
 
 use crate::components::file_list::FileManagerDrawer;
 use crate::utils::tree::FolderNode;
@@ -173,6 +173,8 @@ pub fn render_folder_node(
     let pi = p.clone();
     let p_path = p.clone();
     let pd = p.clone();
+    let pd_for_internal = p.clone();
+    let pd_for_asset = p.clone();
     let exp = node.expanded;
     let has = !node.children.is_empty();
     let indent = px(depth as f32 * 20.0 + 4.0);
@@ -217,7 +219,18 @@ pub fn render_folder_node(
                 move |d, _: &DragMoveEvent<gpui::ExternalPaths>, _w, cx| {
                     d.hovered_drop_folder = Some(pd.clone());
                     d.show_drop_hint = true;
+                    d.start_breadcrumb_hover_timer(&pd, cx);
                     cx.notify();
+                },
+            ))
+            .on_drag_move(
+                cx.listener(move |d, _: &DragMoveEvent<DraggedFile>, _w, cx| {
+                    d.start_breadcrumb_hover_timer(&pd_for_internal, cx);
+                }),
+            )
+            .on_drag_move(cx.listener(
+                move |d, _: &DragMoveEvent<plugin_editor_api::AssetPayload>, _w, cx| {
+                    d.start_breadcrumb_hover_timer(&pd_for_asset, cx);
                 },
             ))
             .drag_over::<DraggedFile>(|s, _, _, cx| {

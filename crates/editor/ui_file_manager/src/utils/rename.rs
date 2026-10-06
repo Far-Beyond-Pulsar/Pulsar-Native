@@ -7,7 +7,7 @@ use crate::utils::tree::FolderNode;
 
 impl FileManagerDrawer {
     pub fn commit_rename(&mut self, cx: &mut Context<Self>) {
-        let Some(old) = self.renaming_item.take() else {
+        let Some(old) = self.renaming_item.clone() else {
             return;
         };
         let name = self
@@ -18,21 +18,25 @@ impl FileManagerDrawer {
             .trim()
             .to_string();
         if name.is_empty() {
+            self.renaming_item = Some(old);
             cx.notify();
             return;
         }
         let on = old.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if name == on {
+            self.renaming_item = None;
             cx.notify();
             return;
         }
         if name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
             tracing::error!("Invalid filename");
+            self.renaming_item = Some(old);
             cx.notify();
             return;
         }
         match self.operations.rename_item(&old, &name) {
             Ok(new) => {
+                self.renaming_item = None;
                 if let Err(e) = self.fs_metadata.rename_file(&old, &new) {
                     tracing::error!("rename_file: {}", e);
                 }
@@ -47,7 +51,10 @@ impl FileManagerDrawer {
                 }
                 self.mark_directory_cache_dirty();
             }
-            Err(e) => tracing::error!("Rename failed: {}", e),
+            Err(e) => {
+                tracing::error!("Rename failed: {}", e);
+                self.renaming_item = Some(old);
+            }
         }
         cx.notify();
     }
@@ -84,6 +91,8 @@ pub fn start_rename(
             s.replace_text_in_range(Some(0..len), "", w, cx);
         }
         s.replace_text_in_range(Some(0..0), &name, w, cx);
+        s.focus(w, cx);
     });
+    w.dispatch_action(Box::new(ui::input::SelectAll), cx);
     cx.notify();
 }

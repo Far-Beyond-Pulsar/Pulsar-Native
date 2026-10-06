@@ -1,8 +1,8 @@
 use gpui::prelude::*;
 use gpui::*;
 use std::path::{Path, PathBuf};
-use ui::notification::Notification;
 use ui::ContextModal;
+use ui::notification::Notification;
 
 use crate::components::FileManagerDrawer;
 use crate::utils::{operations::FileOperations, tree::FolderNode};
@@ -15,6 +15,8 @@ impl FileManagerDrawer {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.breadcrumb_hover_timer = None;
+        self.breadcrumb_hover_path = None;
         let t = target.to_path_buf();
         let s = paths.to_vec();
         if s.contains(&t) || s.iter().any(|p| t.starts_with(p)) {
@@ -56,6 +58,8 @@ impl FileManagerDrawer {
         w: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.breadcrumb_hover_timer = None;
+        self.breadcrumb_hover_path = None;
         let t = target.to_path_buf();
         let s = paths.to_vec();
         if s.is_empty() {
@@ -162,6 +166,8 @@ impl FileManagerDrawer {
             let _ = cx.update(|cx| {
                 d.update(cx, |d, cx| {
                     if !cx.has_active_drag() {
+                        d.breadcrumb_hover_timer = None;
+                        d.breadcrumb_hover_path = None;
                         return;
                     }
                     d.selected_folder = Some(p);

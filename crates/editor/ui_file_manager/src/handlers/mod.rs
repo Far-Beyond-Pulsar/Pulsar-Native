@@ -206,9 +206,22 @@ pub fn handle_create_asset(
     }
 }
 
+pub fn handle_new_file(
+    d: &mut FileManagerDrawer,
+    action: &NewFile,
+    w: &mut Window,
+    cx: &mut Context<FileManagerDrawer>,
+) {
+    if !action.folder_path.is_empty() {
+        d.selected_folder = Some(PathBuf::from(&action.folder_path));
+    }
+    d.start_new_file(w, cx);
+}
+
 pub fn handle_new_folder(
     d: &mut FileManagerDrawer,
     action: &NewFolder,
+    w: &mut Window,
     cx: &mut Context<FileManagerDrawer>,
 ) {
     let base = if !action.folder_path.is_empty() {
@@ -238,9 +251,8 @@ pub fn handle_new_folder(
     } {
         tracing::error!("new_folder: {}", e);
     } else {
-        d.renaming_item = Some(fp);
+        crate::utils::start_rename(d, fp, w, cx);
         d.mark_directory_cache_dirty();
-        cx.notify();
     }
 }
 

@@ -5,15 +5,16 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use ui::{
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt,
+    VirtualListScrollHandle,
     button::{Button, ButtonGroup, ButtonVariants as _},
     h_flex,
     input::{InputState, TextInput},
     menu::context_menu::ContextMenuExt,
     popup_menu::PopupMenuExt as _,
-    resizable::{h_resizable, resizable_panel, ResizableState},
+    resizable::{ResizableState, h_resizable, resizable_panel},
     scroll::{Scrollbar, ScrollbarState},
-    v_flex, v_virtual_list, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _,
-    StyledExt, VirtualListScrollHandle,
+    v_flex, v_virtual_list,
 };
 
 use crate::components::commit_picker::{CommitPicker, CommitSelected};
@@ -79,7 +80,8 @@ impl FileManagerDrawer {
         let resizable_state = ResizableState::new(cx);
         let rename_input_state = cx.new(|cx| InputState::new(window, cx));
         let folder_search_state = cx.new(|cx| InputState::new(window, cx));
-        let file_filter_state = cx.new(|cx| InputState::new(window, cx));
+        let file_filter_state =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Filter files…"));
 
         cx.subscribe(
             &rename_input_state,
@@ -260,11 +262,29 @@ impl Render for FileManagerDrawer {
                 this.mark_directory_cache_dirty();
                 cx.notify();
             }))
+            .on_action(cx.listener(|this, _: &ToggleHiddenFiles, _w, cx| {
+                this.show_hidden_files = !this.show_hidden_files;
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &ToggleDeletedFiles, _w, cx| {
+                crate::handlers::handle_toggle_deleted_files(this, cx)
+            }))
+            .on_action(cx.listener(|this, _: &PopoutFileManager, w, cx| {
+                cx.emit(PopoutFileManagerEvent {
+                    position: w.mouse_position(),
+                });
+            }))
+            .on_action(cx.listener(|_, _: &DockFileManager, _w, cx| {
+                cx.emit(DockFileManagerEvent);
+            }))
             .on_action(cx.listener(|this, a: &CreateAsset, _w, cx| {
                 crate::handlers::handle_create_asset(this, a, cx)
             }))
-            .on_action(cx.listener(|this, a: &NewFolder, _w, cx| {
-                crate::handlers::handle_new_folder(this, a, cx)
+            .on_action(cx.listener(|this, a: &NewFile, w, cx| {
+                crate::handlers::handle_new_file(this, a, w, cx)
+            }))
+            .on_action(cx.listener(|this, a: &NewFolder, w, cx| {
+                crate::handlers::handle_new_folder(this, a, w, cx)
             }))
             .on_action(cx.listener(|this, _: &DeleteItem, _w, cx| {
                 crate::handlers::handle_delete_item(this, cx)
@@ -511,7 +531,7 @@ pub fn render_grid_view(
             (vp - 250.0).max(100.0)
         });
     const CW: f32 = 100.0;
-    const CH: f32 = 110.0;
+    const CH: f32 = 144.0;
     const G: f32 = 12.0;
     const HP: f32 = 16.0;
     let aw = (pw - HP).max(CW);
@@ -620,10 +640,8 @@ pub fn render_grid_item(
         .id(SharedString::from(format!("grid-item-{}", item.name)))
         .w_full()
         .h_full()
-        .p_3()
-        .gap_2()
-        .items_center()
-        .justify_center();
+        .items_stretch()
+        .justify_start();
     if fld {
         inner = inner.on_drag(dd, move |d, pos, _, cx| {
             let mut x = d.clone();
@@ -648,7 +666,8 @@ pub fn render_grid_item(
         });
     }
     if fld {
-        let (d1, d2, d3, d4) = (
+        let (d1, d2, d3, d4, d5) = (
+            ifd.path.clone(),
             ifd.path.clone(),
             ifd.path.clone(),
             ifd.path.clone(),
@@ -659,9 +678,15 @@ pub fn render_grid_item(
                 cx.listener(move |d, _: &DragMoveEvent<ExternalPaths>, _w, cx| {
                     d.hovered_drop_folder = Some(d1.clone());
                     d.show_drop_hint = true;
+                    d.start_breadcrumb_hover_timer(&d1, cx);
                     cx.notify();
                 }),
             )
+            .on_drag_move(cx.listener(
+                move |d, _: &DragMoveEvent<plugin_editor_api::AssetPayload>, _w, cx| {
+                    d.start_breadcrumb_hover_timer(&d5, cx);
+                },
+            ))
             .drag_over::<DraggedFile>(|s, _, _, cx| {
                 s.bg(cx.theme().accent.opacity(0.2))
                     .border_2()
@@ -702,8 +727,9 @@ pub fn render_grid_item(
     }
     div()
         .w(px(cw))
-        .h(px(110.0))
+        .h(px(144.0))
         .rounded_lg()
+        .overflow_hidden()
         .border_1()
         .when(ghost, |e| e.opacity(0.45))
         .when(sel, |e| {
@@ -725,30 +751,32 @@ pub fn render_grid_item(
             inner
                 .child(
                     div()
-                        .w(px(48.0))
-                        .h(px(48.0))
-                        .rounded_lg()
+                        .w_full()
+                        .flex_1()
+                        .min_h_0()
                         .bg(ic.opacity(0.15))
-                        .border_1()
-                        .border_color(ic.opacity(0.3))
                         .flex()
                         .items_center()
                         .justify_center()
-                        .shadow_sm()
                         .overflow_hidden()
                         .map(|e| match thumb {
                             Some(ref img) => e.child(
                                 gpui::img(gpui::ImageSource::Render(img.clone()))
-                                    .w(px(48.0))
-                                    .h(px(48.0))
+                                    .w_full()
+                                    .h_full()
                                     .object_fit(gpui::ObjectFit::Cover),
                             ),
-                            None => e.child(Icon::new(icon).size(px(24.0)).text_color(ic)),
+                            None => e.child(Icon::new(icon).size(px(48.0)).text_color(ic)),
                         }),
                 )
                 .child(if ren {
                     div()
                         .w_full()
+                        .h(px(30.0))
+                        .px_2()
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
                         .text_xs()
                         .text_center()
                         .child(TextInput::new(&d.rename_input_state).xsmall())
@@ -756,6 +784,13 @@ pub fn render_grid_item(
                 } else {
                     div()
                         .w_full()
+                        .h(px(30.0))
+                        .px_2()
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(cx.theme().background.opacity(0.9))
                         .text_xs()
                         .text_center()
                         .font_weight(gpui::FontWeight::MEDIUM)
@@ -799,6 +834,9 @@ pub fn render_grid_item(
                     cx.listener(move |d, _: &DragMoveEvent<DraggedFile>, _w, cx| {
                         d.hovered_drop_folder = if fld { Some(ihp.clone()) } else { None };
                         d.show_drop_hint = fld;
+                        if fld {
+                            d.start_breadcrumb_hover_timer(&ihp, cx);
+                        }
                         cx.notify();
                     }),
                 )
@@ -936,7 +974,8 @@ pub fn render_list_item(
         });
     }
     if fld {
-        let (d1, d2, d3, d4) = (
+        let (d1, d2, d3, d4, d5) = (
+            ifd.path.clone(),
             ifd.path.clone(),
             ifd.path.clone(),
             ifd.path.clone(),
@@ -947,9 +986,15 @@ pub fn render_list_item(
                 cx.listener(move |d, _: &DragMoveEvent<ExternalPaths>, _w, cx| {
                     d.hovered_drop_folder = Some(d1.clone());
                     d.show_drop_hint = true;
+                    d.start_breadcrumb_hover_timer(&d1, cx);
                     cx.notify();
                 }),
             )
+            .on_drag_move(cx.listener(
+                move |d, _: &DragMoveEvent<plugin_editor_api::AssetPayload>, _w, cx| {
+                    d.start_breadcrumb_hover_timer(&d5, cx);
+                },
+            ))
             .drag_over::<DraggedFile>(|s, _, _, cx| {
                 s.bg(cx.theme().accent.opacity(0.2))
                     .border_2()
@@ -1060,6 +1105,9 @@ pub fn render_list_item(
         cx.listener(move |d, _: &DragMoveEvent<DraggedFile>, _w, cx| {
             d.hovered_drop_folder = if fld { Some(ihp.clone()) } else { None };
             d.show_drop_hint = fld;
+            if fld {
+                d.start_breadcrumb_hover_timer(&ihp, cx);
+            }
             cx.notify();
         }),
     )
@@ -1083,6 +1131,9 @@ pub fn render_combined_toolbar(
         .selected_deleted_commit
         .clone()
         .unwrap_or_else(|| "HEAD".to_string());
+    let create_menu_focus = d.focus_handle.clone();
+    let more_menu_focus = d.focus_handle.clone();
+    let show_hidden_files = d.show_hidden_files;
     h_flex()
         .w_full()
         .h(px(56.))
@@ -1093,6 +1144,27 @@ pub fn render_combined_toolbar(
         .border_color(cx.theme().border)
         .bg(cx.theme().background)
         .child(render_clickable_breadcrumb(d, items, w, cx))
+        .child(
+            h_flex()
+                .w(px(180.))
+                .h(px(32.))
+                .px_2()
+                .rounded(px(6.))
+                .border_1()
+                .border_color(cx.theme().border)
+                .bg(cx.theme().sidebar.opacity(0.5))
+                .child(
+                    TextInput::new(&d.file_filter_state)
+                        .w_full()
+                        .xsmall()
+                        .appearance(false)
+                        .prefix(
+                            Icon::new(IconName::Search)
+                                .size_3()
+                                .text_color(cx.theme().muted_foreground),
+                        ),
+                ),
+        )
         .child(
             div()
                 .px_2()
@@ -1146,95 +1218,66 @@ pub fn render_combined_toolbar(
                     cx.notify();
                 })),
         )
-        .child(ui::divider::Divider::vertical().h(px(24.)))
         .child(
-            h_flex()
-                .gap_1()
-                .child(
-                    Button::new("new-file")
-                        .icon(IconName::PagePlus)
-                        .ghost()
-                        .tooltip(t!("FileManager.NewFile").to_string())
-                        .on_click(cx.listener(|d, _e, _w, cx| d.start_new_file(cx))),
-                )
-                .child(
-                    Button::new("new-folder")
-                        .icon(IconName::FolderPlus)
-                        .ghost()
-                        .tooltip(t!("FileManager.NewFolder").to_string())
-                        .on_click(cx.listener(|d, _e, _w, cx| d.start_new_folder(cx))),
-                ),
+            Button::new("create-item")
+                .icon(IconName::Plus)
+                .ghost()
+                .tooltip("Create file or folder")
+                .popup_menu(move |menu, _, _| {
+                    menu.action_context(create_menu_focus.clone())
+                        .menu_with_icon(
+                            t!("FileManager.NewFile").to_string(),
+                            Icon::new(IconName::PagePlus),
+                            Box::new(NewFile::default()),
+                        )
+                        .menu_with_icon(
+                            t!("FileManager.NewFolder").to_string(),
+                            Icon::new(IconName::FolderPlus),
+                            Box::new(NewFolder::default()),
+                        )
+                })
+                .anchor(Corner::BottomRight),
         )
-        .child(ui::divider::Divider::vertical().h(px(24.)))
         .child(
-            h_flex()
-                .gap_1()
-                .child(
-                    Button::new("toggle-hidden")
-                        .icon(if d.show_hidden_files {
-                            IconName::EyeOff
-                        } else {
-                            IconName::Eye
-                        })
-                        .ghost()
-                        .tooltip(if d.show_hidden_files {
-                            t!("FileManager.HideHidden").to_string()
-                        } else {
-                            t!("FileManager.ShowHidden").to_string()
-                        })
-                        .on_click(cx.listener(|d, _e, _w, cx| {
-                            d.show_hidden_files = !d.show_hidden_files;
-                            cx.notify();
-                        })),
-                )
-                .child(
-                    Button::new("refresh")
-                        .icon(IconName::Refresh)
-                        .ghost()
-                        .tooltip(t!("FileManager.Refresh").to_string())
-                        .on_click(cx.listener(|d, _e, _w, cx| d.refresh(cx))),
-                ),
-        )
-        .child(ui::divider::Divider::vertical().h(px(24.)))
-        .child(
-            h_flex()
-                .gap_1()
-                .child(
-                    Button::new("external")
-                        .icon(IconName::ExternalLink)
-                        .ghost()
-                        .tooltip(t!("FileManager.OpenInFileManager").to_string())
-                        .on_click(cx.listener(|d, _e, _w, _cx| {
-                            if let Some(ref f) = d.selected_folder {
-                                #[cfg(target_os = "windows")]
-                                let _ = std::process::Command::new("explorer").arg(f).spawn();
-                                #[cfg(target_os = "macos")]
-                                let _ = std::process::Command::new("open").arg(f).spawn();
-                                #[cfg(target_os = "linux")]
-                                let _ = std::process::Command::new("xdg-open").arg(f).spawn();
-                            }
-                        })),
-                )
-                .child(
-                    Button::new("popout")
-                        .icon(IconName::ArrowUpRightSquare)
-                        .ghost()
-                        .tooltip("Pop Out to New Window")
-                        .on_click(cx.listener(|_d, _e, w: &mut Window, cx| {
-                            cx.emit(PopoutFileManagerEvent {
-                                position: w.mouse_position(),
-                            })
-                        })),
-                )
-                .child(
-                    Button::new("dock")
-                        .icon(IconName::PanelBottom)
-                        .ghost()
-                        .tooltip("Dock File Manager at Bottom")
-                        .on_click(cx.listener(|_d, _e, _w, cx| {
-                            cx.emit(DockFileManagerEvent);
-                        })),
-                ),
+            Button::new("file-manager-more")
+                .icon(IconName::Ellipsis)
+                .ghost()
+                .tooltip("More file options")
+                .popup_menu(move |menu, _, _| {
+                    menu.action_context(more_menu_focus.clone())
+                        .menu_with_check(
+                            if show_hidden_files {
+                                "Hide hidden files"
+                            } else {
+                                "Show hidden files"
+                            },
+                            show_hidden_files,
+                            Box::new(ToggleHiddenFiles),
+                        )
+                        .separator()
+                        .menu_with_icon(
+                            t!("FileManager.Refresh").to_string(),
+                            Icon::new(IconName::Refresh),
+                            Box::new(RefreshFileManager),
+                        )
+                        .menu_with_icon(
+                            t!("FileManager.OpenInFileManager").to_string(),
+                            Icon::new(IconName::ExternalLink),
+                            Box::new(OpenInFileManager::default()),
+                        )
+                        .separator()
+                        .menu_with_icon(
+                            "Pop out to new window",
+                            Icon::new(IconName::ArrowUpRightSquare),
+                            Box::new(PopoutFileManager),
+                        )
+                        .menu_with_icon(
+                            "Dock at bottom",
+                            Icon::new(IconName::PanelBottom),
+                            Box::new(DockFileManager),
+                        )
+                })
+                .anchor(Corner::BottomRight),
         )
         .when_some(d.project_path.as_ref(), |el, _| {
             el.child(ui::divider::Divider::vertical().h(px(24.)))
