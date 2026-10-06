@@ -222,12 +222,11 @@ impl ThumbnailService {
 
     /// Queue a thumbnail request.  Returns immediately (never blocks the caller).
     ///
-    /// - If the asset is already queued/in-flight the call is a no-op.
-    /// - If the worker queue is full the pending flag is cleared so the caller
-    ///   can retry on the next interaction.
-    /// - `on_done` is invoked on the worker thread with the decoded
-    ///   `Arc<RgbaImage>`, or `None` if the type is unsupported / generation
-    ///   failed.
+    /// - Callers for the same queued/in-flight path share one generation job
+    ///   and each receive the resulting callback.
+    /// - If the worker queue is full, every waiting callback receives `None`.
+    /// - `on_done` receives the decoded `Arc<RgbaImage>`, or `None` if the type
+    ///   is unsupported / generation failed. Queue-full callbacks run inline.
     pub fn request(
         &self,
         abs_path: PathBuf,
@@ -255,6 +254,7 @@ impl ThumbnailService {
         };
 
         if self.sender.try_send(job).is_err() {
+            tracing::warn!("thumbnail worker queue is full for {:?}", key);
             complete_thumbnail(&pending_arc, &key, None);
         }
     }
@@ -300,7 +300,11 @@ fn get_or_generate_thumbnail_sync(abs_asset_path: &Path, cache_root: &Path) -> O
 
     // Fast path: already cached.
     if cache_file.exists() {
-        return Some(cache_file);
+        if image::open(&cache_file).is_ok() {
+            return Some(cache_file);
+        }
+        tracing::warn!("thumbnail cache entry is corrupt; regenerating {:?}", cache_file);
+        let _ = std::fs::remove_file(&cache_file);
     }
 
     // Slow path: generate then persist.
