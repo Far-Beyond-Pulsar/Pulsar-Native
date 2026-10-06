@@ -4,6 +4,7 @@ use rust_i18n::t;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use engine_state::{ConfigValue, GlobalSettings};
 use ui::{
     button::{Button, ButtonGroup, ButtonVariants as _},
     h_flex,
@@ -75,6 +76,29 @@ pub struct FileManagerDrawer {
 }
 
 impl FileManagerDrawer {
+    fn persisted_choice(key: &str, fallback: &str) -> String {
+        engine_state::settings::global_config()
+            .get(engine_state::settings::NS_EDITOR, "file_manager", key)
+            .ok()
+            .and_then(|value| value.as_str().ok().map(str::to_owned))
+            .unwrap_or_else(|| fallback.to_owned())
+    }
+
+    pub(crate) fn persist_preference(&self, key: &str, value: ConfigValue) {
+        let Some(handle) = engine_state::settings::global_config()
+            .owner_handle(engine_state::settings::NS_EDITOR, "file_manager")
+        else {
+            return;
+        };
+        if let Err(error) = handle.set(key, value) {
+            tracing::warn!(%error, key, "Could not update file manager preference");
+            return;
+        }
+        if let Err(error) = GlobalSettings::new().save_owner_keys("file_manager", &[key]) {
+            tracing::warn!(%error, key, "Could not persist file manager preference");
+        }
+    }
+
     pub fn new(project_path: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
         let rename_input_state = cx.new(|cx| InputState::new(window, cx));
@@ -137,6 +161,26 @@ impl FileManagerDrawer {
         let folder_tree = crate::preload::take_preloaded_tree()
             .or_else(|| project_path.as_ref().and_then(|p| FolderNode::from_path(p)));
 
+        let view_mode = match Self::persisted_choice("view_mode", "grid").as_str() {
+            "list" => ViewMode::List,
+            _ => ViewMode::Grid,
+        };
+        let sort_by = match Self::persisted_choice("sort_by", "name").as_str() {
+            "modified" => SortBy::Modified,
+            "size" => SortBy::Size,
+            "type" => SortBy::Type,
+            _ => SortBy::Name,
+        };
+        let sort_order = match Self::persisted_choice("sort_order", "ascending").as_str() {
+            "descending" => SortOrder::Descending,
+            _ => SortOrder::Ascending,
+        };
+        let show_hidden_files = engine_state::settings::global_config()
+            .get(engine_state::settings::NS_EDITOR, "file_manager", "show_hidden_files")
+            .ok()
+            .and_then(|value| value.as_bool().ok())
+            .unwrap_or(false);
+
         let mut this = Self {
             folder_tree,
             project_path: project_path.clone(),
@@ -155,9 +199,9 @@ impl FileManagerDrawer {
             resizable_state,
             renaming_item: None,
             rename_input_state,
-            view_mode: ViewMode::Grid,
-            sort_by: SortBy::Name,
-            sort_order: SortOrder::Ascending,
+            view_mode,
+            sort_by,
+            sort_order,
             search_query: String::new(),
             folder_search_state,
             file_filter_query: String::new(),
@@ -165,7 +209,7 @@ impl FileManagerDrawer {
             directory_cache: None,
             directory_cache_dirty: true,
             fs_event_listener: None,
-            show_hidden_files: false,
+            show_hidden_files,
             clipboard: None,
             registered_file_types: Vec::new(),
             grid_scroll_handle: VirtualListScrollHandle::new(),
@@ -1239,8 +1283,10 @@ pub fn render_combined_toolbar(
                 .on_click(cx.listener(|d, s: &Vec<usize>, _w, cx| {
                     if s.contains(&0) {
                         d.view_mode = ViewMode::Grid;
+                        d.persist_preference("view_mode", ConfigValue::String("grid".into()));
                     } else if s.contains(&1) {
                         d.view_mode = ViewMode::List;
+                        d.persist_preference("view_mode", ConfigValue::String("list".into()));
                     }
                     cx.notify();
                 })),

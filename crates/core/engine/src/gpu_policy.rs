@@ -109,6 +109,16 @@ pub fn enforce_discrete_gpu_policy_or_exit() {
         return;
     }
 
+    let preference = engine_state::settings::global_config()
+        .get(engine_state::settings::NS_EDITOR, "renderer", "gpu_preference")
+        .ok()
+        .and_then(|value| value.as_str().ok().map(str::to_owned))
+        .unwrap_or_else(|| "high_performance".to_owned());
+    if preference == "low_power" || preference == "auto" {
+        tracing::info!(%preference, "GPU policy uses the configured non-discrete preference");
+        return;
+    }
+
     let probe = probe_gpu_policy();
 
     if probe.has_discrete_gpu {

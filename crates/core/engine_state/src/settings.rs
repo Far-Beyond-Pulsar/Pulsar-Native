@@ -238,6 +238,17 @@ impl GlobalSettings {
             })
             .and_then(|h| h.set(key, value.into()))
     }
+
+    /// Update and immediately persist one editor preference.
+    pub fn set_and_save(
+        &self,
+        owner: &str,
+        key: &str,
+        value: impl Into<ConfigValue>,
+    ) -> anyhow::Result<()> {
+        self.set(owner, key, value)?;
+        self.save_owner_keys(owner, &[key])
+    }
 }
 
 fn editor_owner_handle(owner: &str) -> Result<OwnerHandle, ConfigError> {

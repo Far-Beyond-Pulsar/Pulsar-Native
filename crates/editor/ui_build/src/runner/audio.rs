@@ -17,11 +17,34 @@ const BUILD_ERROR_SOUND: &[u8] = include_bytes!(concat!(
 static OUTPUT_STREAM: OnceLock<Option<OutputStream>> = OnceLock::new();
 
 pub fn play_build_success() {
+    if !enabled("play_success_sound") {
+        return;
+    }
     play(BUILD_SUCCESS_SOUND);
 }
 
 pub fn play_build_error() {
+    if !enabled("play_error_sound") {
+        return;
+    }
     play(BUILD_ERROR_SOUND);
+}
+
+fn enabled(key: &str) -> bool {
+    engine_state::global_config()
+        .get(engine_state::settings::NS_EDITOR, "build_notifications", key)
+        .ok()
+        .and_then(|value| value.as_bool().ok())
+        .unwrap_or(true)
+}
+
+fn volume() -> f32 {
+    engine_state::global_config()
+        .get(engine_state::settings::NS_EDITOR, "build_notifications", "volume")
+        .ok()
+        .and_then(|value| value.as_float().ok())
+        .unwrap_or(1.0)
+        .clamp(0.0, 1.0) as f32
 }
 
 fn play(sound: &'static [u8]) {
@@ -44,6 +67,7 @@ fn play(sound: &'static [u8]) {
         };
 
         let sink = Sink::connect_new(stream.mixer());
+        sink.set_volume(volume());
         sink.append(decoder);
         sink.detach();
     });

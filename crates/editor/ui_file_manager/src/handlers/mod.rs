@@ -459,11 +459,17 @@ pub fn handle_toggle_favorite(
     tracing::info!("favorite not impl");
 }
 pub fn handle_toggle_hidden(
-    _: &mut FileManagerDrawer,
+    drawer: &mut FileManagerDrawer,
     _: &ToggleHidden,
-    _: &mut Context<FileManagerDrawer>,
+    cx: &mut Context<FileManagerDrawer>,
 ) {
-    tracing::info!("hidden not impl");
+    drawer.show_hidden_files = !drawer.show_hidden_files;
+    drawer.persist_preference(
+        "show_hidden_files",
+        engine_state::ConfigValue::Bool(drawer.show_hidden_files),
+    );
+    drawer.directory_cache_dirty = true;
+    cx.notify();
 }
 pub fn handle_show_history(
     _: &mut FileManagerDrawer,

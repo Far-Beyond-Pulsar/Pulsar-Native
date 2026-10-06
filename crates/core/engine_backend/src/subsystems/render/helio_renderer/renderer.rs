@@ -490,7 +490,61 @@ impl HelioRenderer {
                 self.voxel_backends
                     .temporal_quality(&entries, [width, height])
             };
-            let mut config = RendererConfig::new(width, height, format);
+            let project_setting = |key: &str| {
+                engine_state::settings::global_config()
+                    .get(engine_state::settings::NS_PROJECT, "rendering", key)
+                    .ok()
+            };
+            let project_string = |key: &str, default: &str| {
+                project_setting(key)
+                    .and_then(|value| value.as_str().ok().map(str::to_owned))
+                    .unwrap_or_else(|| default.to_owned())
+            };
+            let project_bool = |key: &str, default: bool| {
+                project_setting(key)
+                    .and_then(|value| value.as_bool().ok())
+                    .unwrap_or(default)
+            };
+            let project_float = |key: &str, default: f32| {
+                project_setting(key)
+                    .and_then(|value| value.as_float().ok())
+                    .filter(|value| value.is_finite())
+                    .unwrap_or(default as f64) as f32
+            };
+            let mut config = RendererConfig::new(width, height, format)
+                .with_render_scale(project_float("render_scale", 0.75).clamp(0.25, 1.0))
+                .with_ssr(project_bool("screen_space_reflections", false))
+                .with_planar_reflections(project_bool("planar_reflections", false));
+            let shadow_quality = match project_string("shadow_quality", "medium").as_str() {
+                "low" => helio::ShadowQuality::Low,
+                "high" => helio::ShadowQuality::High,
+                "ultra" => helio::ShadowQuality::Ultra,
+                _ => helio::ShadowQuality::Medium,
+            };
+            config = config.with_shadow_quality(shadow_quality);
+            config.shadow_atlas_size = project_setting("shadow_atlas_size")
+                .and_then(|value| value.as_str().ok().and_then(|value| value.parse::<u32>().ok()).or_else(|| value.as_int().ok().and_then(|value| u32::try_from(value).ok())))
+                .filter(|size| matches!(size, 512 | 1024 | 2048 | 4096))
+                .unwrap_or(1024);
+            config = match project_string("tsr_quality", "off").as_str() {
+                "performance" => config.with_tsr_quality(helio::TsrQuality::Performance),
+                "balanced" => config.with_tsr_quality(helio::TsrQuality::Balanced),
+                "quality" => config.with_tsr_quality(helio::TsrQuality::Quality),
+                "native" => config.with_tsr_quality(helio::TsrQuality::Native),
+                _ => config.without_tsr(),
+            };
+            config = match project_string("render_mode", "deferred").as_str() {
+                "forward_opaque" => config.with_render_mode(helio::RenderMode::ForwardOpaque),
+                "forward_only" => config.with_render_mode(helio::RenderMode::ForwardOnly),
+                _ => config.with_render_mode(helio::RenderMode::Deferred),
+            };
+            config = match project_string("hdr_output_mode", "ldr").as_str() {
+                "hdr10" => config.with_hdr_output_mode(helio::HdrOutputMode::Hdr10),
+                "scrgb" => config.with_hdr_output_mode(helio::HdrOutputMode::ScRgb),
+                _ => config.with_hdr_output_mode(helio::HdrOutputMode::Ldr),
+            };
+            // Voxel scenes have a workload-specific temporal preset and take
+            // precedence over the project's general TSR preference.
             if let Some(quality) = voxel_quality {
                 config = config.with_tsr_quality(quality);
             }
@@ -521,9 +575,15 @@ impl HelioRenderer {
                 .unwrap_or(512)
                 .clamp(64, 16384) as u32;
             let tile_px = streaming_int("virtual_texture_tile_size")
+                .or_else(|| {
+                    engine_state::settings::global_config()
+                        .get(engine_state::settings::NS_PROJECT, "streaming", "virtual_texture_tile_size")
+                        .ok()
+                        .and_then(|value| value.as_str().ok()?.parse::<i64>().ok())
+                })
                 .and_then(|s| u32::try_from(s).ok())
-                .unwrap_or(128)
-                .max(16);
+                .filter(|size| matches!(size, 64 | 128 | 256 | 512))
+                .unwrap_or(128);
             // Streaming stays OFF unless the canonical toggle says otherwise:
             // defaults must preserve today's behavior exactly.
             //

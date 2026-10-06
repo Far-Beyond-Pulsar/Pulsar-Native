@@ -281,9 +281,44 @@ fn main() {
     profiling::profile_scope!("Engine::EventLoop");
 
     // create and run GPUI application
+    let renderer_settings = engine_state::settings::global_config();
+    let renderer_string = |key: &str, default: &str| {
+        renderer_settings
+            .get(engine_state::settings::NS_EDITOR, "renderer", key)
+            .ok()
+            .and_then(|value| value.as_str().ok().map(str::to_owned))
+            .unwrap_or_else(|| default.to_owned())
+    };
+    let renderer_backends = match renderer_string("backend_preference", "auto").as_str() {
+        "vulkan" => wgpu::Backends::VULKAN,
+        "dx12" => wgpu::Backends::DX12,
+        "metal" => wgpu::Backends::METAL,
+        "gl" => wgpu::Backends::GL,
+        _ => wgpu::Backends::all(),
+    };
+    let power_preference = match renderer_string("gpu_preference", "high_performance").as_str() {
+        "low_power" => wgpu::PowerPreference::LowPower,
+        "auto" => wgpu::PowerPreference::None,
+        _ => wgpu::PowerPreference::HighPerformance,
+    };
+    let max_frame_latency = renderer_settings
+        .get(engine_state::settings::NS_EDITOR, "renderer", "max_frame_latency")
+        .ok()
+        .and_then(|value| value.as_int().ok())
+        .unwrap_or(2)
+        .clamp(1, 4) as u32;
+    let hardware_ray_queries = renderer_settings
+        .get(engine_state::settings::NS_EDITOR, "renderer", "hardware_ray_queries")
+        .ok()
+        .and_then(|value| value.as_bool().ok())
+        .unwrap_or(false);
+
     let gpui_app = gpui::Application::with_wgpu_options(gpui::WgpuOptions {
         additional_features: wgpu::Features::VERTEX_WRITABLE_STORAGE,
-        ..Default::default()
+        desired_maximum_frame_latency: max_frame_latency,
+        backends: renderer_backends,
+        power_preference,
+        hardware_ray_queries,
     })
     .with_assets(Assets);
 
@@ -308,6 +343,29 @@ fn main() {
 
         let t = std::time::Instant::now();
         ui::themes::init(cx);
+        let config = engine_state::settings::global_config();
+        if let Ok(engine_state::settings::ConfigValue::Int(font_size)) =
+            config.get(engine_state::settings::NS_EDITOR, "appearance", "font_size")
+        {
+            ui::Theme::global_mut(cx).font_size = gpui::px(font_size.clamp(10, 24) as f32);
+        }
+        if let Ok(engine_state::settings::ConfigValue::Int(radius)) =
+            config.get(engine_state::settings::NS_EDITOR, "appearance", "radius")
+        {
+            ui::Theme::global_mut(cx).radius = gpui::px(match radius {
+                0 | 4 | 8 => radius as f32,
+                _ => 6.0,
+            });
+        }
+        if let Ok(engine_state::settings::ConfigValue::String(scrollbar)) =
+            config.get(engine_state::settings::NS_EDITOR, "appearance", "scrollbar_show")
+        {
+            ui::Theme::global_mut(cx).scrollbar_show = match scrollbar.as_str() {
+                "hover" => ui::scroll::ScrollbarShow::Hover,
+                "always" => ui::scroll::ScrollbarShow::Always,
+                _ => ui::scroll::ScrollbarShow::Scrolling,
+            };
+        }
         tracing::info!(
             "[GPUI startup] ui::themes::init {}ms",
             t.elapsed().as_millis()

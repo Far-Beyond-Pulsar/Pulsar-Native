@@ -47,6 +47,13 @@ impl PulsarApp {
             )
             .on_action(cx.listener(|_, _: &menu::ResetZoom, window, cx| {
                 Theme::global_mut(cx).font_size = px(DEFAULT_FONT);
+                if let Err(error) = engine_state::GlobalSettings::new().set_and_save(
+                    "appearance",
+                    "font_size",
+                    engine_state::ConfigValue::Int(DEFAULT_FONT as i64),
+                ) {
+                    tracing::warn!(%error, "Could not persist appearance font size");
+                }
                 window.refresh();
             }))
             // View / Go / Search: one palette serves them all
@@ -94,7 +101,15 @@ impl PulsarApp {
     /// Change the UI font size by `delta` px, within sensible limits.
     fn zoom_ui(delta: f32, window: &mut Window, cx: &mut Context<Self>) {
         let current = f32::from(cx.theme().font_size);
-        Theme::global_mut(cx).font_size = px((current + delta).clamp(MIN_FONT, MAX_FONT));
+        let next = (current + delta).clamp(MIN_FONT, MAX_FONT);
+        Theme::global_mut(cx).font_size = px(next);
+        if let Err(error) = engine_state::GlobalSettings::new().set_and_save(
+            "appearance",
+            "font_size",
+            engine_state::ConfigValue::Int(next.round() as i64),
+        ) {
+            tracing::warn!(%error, "Could not persist appearance font size");
+        }
         window.refresh();
     }
 }

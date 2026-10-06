@@ -90,6 +90,18 @@ impl SnapPanel {
                 state.editor.scale_snap,
             )
         };
+        let (key, persisted_value) = match self.kind {
+            SnapKind::Location => ("location_snap", location),
+            SnapKind::Rotation => ("rotation_snap", rotation),
+            SnapKind::Scale => ("scale_snap", scale),
+        };
+        if let Err(error) = engine_state::GlobalSettings::new().set_and_save(
+            "viewport",
+            key,
+            engine_state::ConfigValue::Float(persisted_value as f64),
+        ) {
+            tracing::warn!(%error, "Could not persist viewport snap setting");
+        }
         if let Some(mailbox) = &self.mailbox {
             mailbox.set_gizmo_snap_settings(location, rotation, scale);
         }
