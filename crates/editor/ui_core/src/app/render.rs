@@ -744,6 +744,7 @@ impl Render for PulsarApp {
                                 .left_4()
                                 .right_4()
                                 .h(px(self.state.drawer_height))
+                                .bg(Hsla::black())
                                 .rounded_tl(px(8.))
                                 .rounded_tr(px(8.))
                                 .border_1()
@@ -767,7 +768,7 @@ impl Render for PulsarApp {
                                                 .child(
                                                     div()
                                                         .absolute()
-                                                        .bottom_0()
+                                                        .top(px(1.5))
                                                         .left_0()
                                                         .right_0()
                                                         .h(px(3.))
@@ -845,6 +846,7 @@ impl Render for PulsarApp {
                         .w_full()
                         .h(px(self.state.drawer_height))
                         .flex_shrink_0()
+                        .bg(Hsla::black())
                         .border_t_1()
                         .border_color(cx.theme().border)
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -864,7 +866,7 @@ impl Render for PulsarApp {
                                         .child(
                                             div()
                                                 .absolute()
-                                                .bottom_0()
+                                                .top(px(1.5))
                                                 .left_0()
                                                 .right_0()
                                                 .h(px(3.))
