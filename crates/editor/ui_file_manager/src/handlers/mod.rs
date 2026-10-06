@@ -233,13 +233,13 @@ pub fn handle_new_folder(
         return;
     };
     let mut c = 1;
-    let mut name = "NewFolder".to_string();
+    let mut name = "New Folder".to_string();
     let mut fp = crate::utils::cloud_join(&folder, &name);
     while (engine_fs::virtual_fs::is_remote()
         && engine_fs::virtual_fs::exists(&fp).unwrap_or(false))
         || (!engine_fs::virtual_fs::is_remote() && fp.exists())
     {
-        name = format!("NewFolder_{}", c);
+        name = format!("New Folder ({})", c);
         fp = crate::utils::cloud_join(&folder, &name);
         c += 1;
     }

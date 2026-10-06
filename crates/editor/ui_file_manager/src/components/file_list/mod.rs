@@ -269,7 +269,7 @@ impl Render for FileManagerDrawer {
             .on_action(cx.listener(|this, _: &ToggleDeletedFiles, _w, cx| {
                 crate::handlers::handle_toggle_deleted_files(this, cx)
             }))
-            .on_action(cx.listener(|this, _: &PopoutFileManager, w, cx| {
+            .on_action(cx.listener(|_this, _: &PopoutFileManager, w, cx| {
                 cx.emit(PopoutFileManagerEvent {
                     position: w.mouse_position(),
                 });
