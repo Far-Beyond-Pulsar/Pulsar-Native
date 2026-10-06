@@ -279,3 +279,29 @@ fn terrain_layers_component_is_the_generator_settings() {
     let properties = VoxelTerrainLayersComponent::default().get_properties();
     assert_eq!(properties.iter().map(|p| p.name).collect::<Vec<_>>(), ["stack"]);
 }
+
+/// A layer added, or switched to another kind, in the inspector starts from
+/// that kind's defaults (the generator's table), keeping its toggle and mask.
+#[test]
+fn layers_take_their_kinds_defaults() {
+    use helio_component::components::voxel_stack_editor::set_layer;
+    use helio_component::{VoxelLayerKind, VoxelLayerMask, VoxelTerrainLayer};
+    use helio_pass_voxel_planet::layers::{Layer, LayerKind};
+    for kind in ["Hills", "Warp", "Continents", "Mountains", "Roughness", "Erosion", "Craters", "Basins", "Plateau"] {
+        let ours: VoxelLayerKind = serde_json::from_value(kind.into()).unwrap();
+        let theirs: LayerKind = serde_json::from_value(kind.into()).unwrap();
+        assert_eq!(serde_json::to_value(VoxelTerrainLayer::new(ours)).unwrap(), serde_json::to_value(Layer::new(theirs)).unwrap(), "{kind}");
+    }
+    let craters = VoxelTerrainLayer::new(VoxelLayerKind::Craters);
+    assert!(craters.ratio > 0.0 && craters.octaves > 4, "craters have depth: {craters:?}");
+
+    let mut layer = VoxelTerrainLayer { mask: VoxelLayerMask::Land, enabled: false, ..VoxelTerrainLayer::new(VoxelLayerKind::Hills) };
+    // A field edit keeps the kind and just stores the value.
+    let edited = VoxelTerrainLayer { height_m: 7.0, ..layer.clone() };
+    assert!(!set_layer(&mut layer, edited));
+    assert_eq!(layer.height_m, 7.0);
+    // A kind edit brings the new kind's numbers, not the old ones.
+    let edited = VoxelTerrainLayer { kind: VoxelLayerKind::Craters, ..layer.clone() };
+    assert!(set_layer(&mut layer, edited));
+    assert_eq!(layer, VoxelTerrainLayer { mask: VoxelLayerMask::Land, enabled: false, ..craters });
+}

@@ -451,6 +451,9 @@ struct CachedPlanet {
 pub struct PlanetVoxelBackend {
     frame: SharedPlanetFrame,
     cached: Option<CachedPlanet>,
+    /// The last source that failed to build and why: it is not rebuilt
+    /// every frame, and the last good world stays on screen meanwhile.
+    rejected: Option<(VoxelEntryId, u64, VoxelGeneratorConfig, String)>,
 }
 
 impl PlanetVoxelBackend {
@@ -458,11 +461,13 @@ impl PlanetVoxelBackend {
         Self {
             frame: Arc::new(Mutex::new(None)),
             cached: None,
+            rejected: None,
         }
     }
 
     fn clear(&mut self) -> Result<(), String> {
         self.cached = None;
+        self.rejected = None;
         *self
             .frame
             .lock()
@@ -506,8 +511,13 @@ impl PlanetVoxelBackend {
                 return Ok(Arc::clone(&cached.planet));
             }
         }
+        if let Some((id, revision, rejected, error)) = &self.rejected {
+            if *id == entry.id && *revision == entry.source_revision && *rejected == generator {
+                return Err(error.clone());
+            }
+        }
         profiling::profile_scope!("voxel_world_update");
-        let planet = match &self.cached {
+        let built = match &self.cached {
             // A sculpt stroke appends brushes to an otherwise equal source.
             Some(cached)
                 if cached.id == entry.id
@@ -517,14 +527,18 @@ impl PlanetVoxelBackend {
                     && entry.edits.starts_with(&cached.edits) =>
             {
                 let mut planet = (*cached.planet).clone();
-                for edit in entry.edits.iter_from(cached.edits.len()) {
-                    planet.apply(planet_brush(edit))?;
-                }
-                planet
+                entry.edits.iter_from(cached.edits.len()).try_for_each(|edit| planet.apply(planet_brush(edit)).map(|_| ())).map(|_| planet)
             }
-            _ => build_planet(entry, &generator)?,
+            _ => build_planet(entry, &generator),
         };
-        let planet = Arc::new(planet);
+        let planet = match built {
+            Ok(planet) => Arc::new(planet),
+            Err(error) => {
+                self.rejected = Some((entry.id, entry.source_revision, generator, error.clone()));
+                return Err(error);
+            }
+        };
+        self.rejected = None;
         self.cached = Some(CachedPlanet {
             id: entry.id,
             revision: entry.source_revision,
@@ -537,10 +551,20 @@ impl PlanetVoxelBackend {
         Ok(planet)
     }
 
+    /// The world on screen for `entry`: its current one, or while a change
+    /// to it is rejected, its last good one.
     fn cached_planet(&self, entry: &VoxelSceneEntry) -> Option<&Arc<Planet>> {
+        let rejected = self
+            .rejected
+            .as_ref()
+            .is_some_and(|(id, revision, generator, _)| *id == entry.id && *revision == entry.source_revision && entry.generator.as_ref() == Some(generator));
         self.cached
             .as_ref()
-            .filter(|c| c.id == entry.id && c.revision == entry.source_revision && c.world == entry.world && c.edits == entry.edits && entry.generator.as_ref() == Some(&c.generator))
+            .filter(|c| {
+                c.id == entry.id
+                    && (rejected
+                        || (c.revision == entry.source_revision && c.world == entry.world && c.edits == entry.edits && entry.generator.as_ref() == Some(&c.generator)))
+            })
             .map(|c| &c.planet)
     }
 }
@@ -782,12 +806,18 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
                 return Err("voxel source payload store was poisoned".into());
             }
         }
-        let planet = match self.planet_for(entry) {
-            Ok(planet) => planet,
-            Err(error) => {
-                self.clear()?;
-                return Err(error);
-            }
+        let (planet, error) = match self.planet_for(entry) {
+            Ok(planet) => (planet, None),
+            // An invalid change (a layer stack mid-edit, a brush off the
+            // grid) keeps this entity's last good world on screen; the
+            // error says what to fix.
+            Err(error) => match self.cached.as_ref().filter(|c| c.id == entry.id) {
+                Some(cached) => (Arc::clone(&cached.planet), Some(error)),
+                None => {
+                    self.clear()?;
+                    return Err(error);
+                }
+            },
         };
         let eye = DVec3::from_array(view.position);
         // Traced sunlight must match the scene's directional light, which
@@ -806,7 +836,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             sun,
             shadows: view.sun.is_some(),
         });
-        Ok(())
+        error.map_or(Ok(()), Err)
     }
 }
 
@@ -928,11 +958,17 @@ mod tests {
         let (near, far) = backend.camera_clip_range(&revised, orbit).unwrap();
         assert!(near > 1_000.0 && far > orbit.length() as f32);
 
+        // An invalid change (settings mid-edit) keeps the last good world on
+        // screen and in the queries; the error says what to fix.
         let mut invalid = revised.clone();
+        invalid.source_revision += 1;
         invalid.generator.as_mut().unwrap().parameters = "{".into();
         assert!(backend.publish_frame(&[&invalid], view(eye)).is_err());
-        assert!(backend.frame.lock().unwrap().is_none(), "invalid recipes must not retain stale terrain");
+        assert!(Arc::ptr_eq(&coarse, &frame_planet(&backend)), "the last good world stays");
+        assert!(backend.camera_clip_range(&invalid, orbit).is_some());
+        assert!(backend.publish_frame(&[&invalid], view(eye)).is_err(), "still rejected, without a rebuild");
         backend.publish_frame(&[&revised], view(eye)).unwrap();
+        assert!(Arc::ptr_eq(&coarse, &frame_planet(&backend)));
 
         revised
             .store

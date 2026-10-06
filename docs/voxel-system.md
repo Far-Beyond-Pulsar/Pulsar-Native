@@ -73,6 +73,17 @@ In the inspector the whole stack is one property with its own editor: a
 preset picker, the layers and material rules as ordered lists (move, remove,
 add), the caves, overhangs and materials, and the generator's validation
 inline ("Not generated: ..."), so a preset or a reorder is one undoable edit.
+A layer added, or switched to another kind, starts from that kind's
+defaults (the generator's `Layer::new`), keeping only whether it is on and
+its mask. While the stack is invalid the viewport keeps the last world that
+built (the error says what to fix); it is not rebuilt every frame.
+
+**The Earth example.** `assets/examples/voxel_planet.level` is the Earth
+preset with seed 75: the editor spawns 60 m over foothills at the north
+pole, facing a range 23 km away, under a sun 32 degrees high (an overhead
+sun lights terrain flat). An unbound `PostProcessVolumeComponent` gives it
+an outdoor look: ACES tone map, exposure 1.1, contrast 1.15, saturation
+0.85 and a light vignette. Without tone mapping, grass and sky clip flat.
 
 **Random worlds.** `assets/examples/random_world.blueprint.json` is a
 Blueprint that builds a planet, a moon or a desert world from its `seed`
@@ -188,8 +199,11 @@ and gameplay agree on every block. On generated terrain the older
   basis. Saved and focus poses keep world-space yaw/pitch.
 - **Speed** is the viewport speed x `clamp(altitude / 20 m, 1, 1e6)`: walking
   speed near the ground, orbit in seconds.
-- **Ground collision.** After moving, an eye inside solid voxels is lifted
-  0.5 m above the surface (dug tunnels are air and can be entered).
+- **Ground collision.** A move that would end inside solid voxels keeps
+  only the axes of the move that stay in air, so the camera slides along
+  cave walls, dug tunnels and the ground. Only an eye that is already buried
+  (spawned or teleported into rock) is lifted 0.5 m above the surface:
+  lifting on contact threw the camera out of caves.
 
 ## Decisions and pitfalls
 

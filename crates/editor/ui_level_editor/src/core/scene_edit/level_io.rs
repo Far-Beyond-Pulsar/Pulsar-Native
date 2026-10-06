@@ -319,12 +319,20 @@ mod voxel_example_tests {
         let camera = load_from_file_with_editor_camera(&mut world, path)
             .expect("example level loads")
             .expect("example camera is present");
-        assert_eq!(camera.position, [0.0, 6_371_758.7, 0.0]);
+        // Over the foothills at the north pole, facing a range.
+        assert_eq!(camera.position, [0.0, 6_371_631.0, 0.0]);
 
         let (entries, errors) = engine_backend::scene::voxel_frame::project_voxel_entries(&world);
         assert!(errors.is_empty(), "{errors:?}");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].renderer_id, "helio.voxel-terrain");
         assert_eq!(entries[0].generator.as_ref().unwrap().version, 1);
+        // The Earth preset (seed 75: foothills at the pole, a range 23 km away).
+        let stacks: Vec<_> = world.query::<&helio_component::VoxelTerrainLayersComponent>().map(|(_, c)| c.stack.clone()).collect();
+        assert_eq!(stacks, [helio_component::VoxelTerrainStack::earth()]);
+        // Graded like an outdoor scene: one unbound volume tone maps it.
+        let volumes: Vec<_> = world.query::<&helio_component::PostProcessVolumeComponent>().map(|(_, v)| v.clone()).collect();
+        assert_eq!(volumes.len(), 1);
+        assert!(volumes[0].unbound && volumes[0].settings.tonemap_operator == helio_component::TonemapOperator::Aces);
     }
 }

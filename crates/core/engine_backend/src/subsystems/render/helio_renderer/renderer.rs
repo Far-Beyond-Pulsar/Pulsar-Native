@@ -1390,12 +1390,30 @@ impl HelioRenderer {
         // instant velocity step produces no visible jump.
         self.cam_local_velocity = target_velocity;
 
-        self.cam_pos += (right * self.cam_local_velocity.x * dt).as_dvec3();
-        self.cam_pos += (frame_up * self.cam_local_velocity.y * dt).as_dvec3();
-        self.cam_pos += (fwd * self.cam_local_velocity.z * dt).as_dvec3();
-        // The editor camera never enters solid voxel terrain.
-        if let Some(lifted) = self.voxel_backends.lift_out_of_ground(self.cam_pos) {
-            self.cam_pos = lifted;
+        let before = self.cam_pos;
+        let steps = [
+            (right * self.cam_local_velocity.x * dt).as_dvec3(),
+            (frame_up * self.cam_local_velocity.y * dt).as_dvec3(),
+            (fwd * self.cam_local_velocity.z * dt).as_dvec3(),
+        ];
+        self.cam_pos += steps[0] + steps[1] + steps[2];
+        // The editor camera never enters solid voxel terrain. From air (a
+        // cave, a dig, above ground) it slides along what it touches: each
+        // axis of the move is kept only if it stays in air. Lifting to the
+        // surface is only for a camera already buried (spawned or teleported
+        // into rock): lifting on contact threw it out of caves.
+        if self.voxel_backends.lift_out_of_ground(self.cam_pos).is_some() {
+            if self.voxel_backends.lift_out_of_ground(before).is_none() {
+                let mut pos = before;
+                for step in steps {
+                    if self.voxel_backends.lift_out_of_ground(pos + step).is_none() {
+                        pos += step;
+                    }
+                }
+                self.cam_pos = pos;
+            } else if let Some(lifted) = self.voxel_backends.lift_out_of_ground(self.cam_pos) {
+                self.cam_pos = lifted;
+            }
         }
 
         // Middle-mouse (or right-click + Shift) view-plane pan: translate the camera
