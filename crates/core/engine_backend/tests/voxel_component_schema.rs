@@ -1,4 +1,4 @@
-use helio_component::{VoxelComponent, VoxelTerrainComponent};
+use helio_component::{VoxelComponent, VoxelTerrainComponent, VoxelTerrainLayersComponent};
 use pulsar_reflection::EngineClass;
 
 #[test]
@@ -253,4 +253,26 @@ fn live_batch_publish_snapshot_and_import_round_trip_through_scenedb_rows() {
         })
     ));
     assert_eq!(writer.snapshot().unwrap().revision(), 1);
+}
+
+/// The layer stack component serializes to the generator's settings JSON:
+/// each preset is the generator's preset, and its layers are reflected.
+#[test]
+fn terrain_layers_component_is_the_generator_settings() {
+    use helio_pass_voxel_planet::layers::TerrainLayers;
+    for (component, stack) in [
+        (VoxelTerrainLayersComponent::earth(), TerrainLayers::earth()),
+        (VoxelTerrainLayersComponent::moon(), TerrainLayers::moon()),
+        (VoxelTerrainLayersComponent::flat(2.0), TerrainLayers::flat_at(2.0)),
+    ] {
+        let json = serde_json::to_value(&component).unwrap();
+        let parsed: TerrainLayers = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(parsed, stack, "{json}");
+        let restored: VoxelTerrainLayersComponent = serde_json::from_value(serde_json::to_value(&stack).unwrap()).unwrap();
+        assert_eq!(serde_json::to_value(&restored).unwrap(), json);
+    }
+    // Empty settings are the Earth preset, like the generator's.
+    let empty: VoxelTerrainLayersComponent = serde_json::from_str("{}").unwrap();
+    assert_eq!(serde_json::to_value(empty).unwrap(), serde_json::to_value(VoxelTerrainLayersComponent::earth()).unwrap());
+    assert!(VoxelTerrainLayersComponent::default().get_properties().iter().any(|property| property.name == "layers"));
 }

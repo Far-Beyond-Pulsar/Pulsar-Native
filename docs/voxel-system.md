@@ -54,11 +54,20 @@ is `[patch contrast, pigment variation, edge shading, 0]`. Omitted fields
 inherit defaults; an empty value restores them. The viewport resets colour history on changes.
 
 **Generator settings** live in a separate component on the same entity, named
-by the generator (`VoxelLandformComponent` for `helio.landform`,
-`VoxelFlatTerrainComponent` for `helio.flat`). The projection serializes it
-into the generator's parameters. Choosing a generator in the inspector
-attaches its settings component. Settings changes rebuild the world without
-recompiling shaders.
+by the generator (`VoxelTerrainLayersComponent` for Helio's `helio.terrain`).
+The projection serializes it into the generator's parameters. Choosing a
+generator in the inspector attaches its settings component. Settings changes
+rebuild the world without recompiling shaders.
+
+**Layer stacks.** `helio.terrain` builds every world from an ordered list of
+layers: Warp, Continents, Mountains, Hills, Roughness, Erosion, Craters,
+Basins and Plateau, each with a mask (everywhere, land, above deep sea), plus
+caves, overhangs and a material style (Earthlike, Lunar, Layered). Whether a
+sphere is a planet or a moon is the game's choice: the component's presets
+(`earth`, `moon`, `flat`) are just data, and a game can build or randomize
+its own stacks. Blueprints call `use_preset`, `add_layer`, `remove_layer`,
+`layer_count` and `set_layer_enabled` / `height` / `scale` / `coverage` on
+the component; the world rebuilds from the new settings.
 
 **Composition.** Game-specific worlds are classes whose prefab combines these
 components with others (a planet with water and foliage components, say);

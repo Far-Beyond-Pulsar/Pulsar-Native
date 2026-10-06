@@ -1104,44 +1104,41 @@ mod tests {
     }
 
     #[test]
-    fn a_landform_component_configures_the_generator() {
+    fn a_layers_component_configures_the_generator() {
         let mut scene = World::new();
         let entity = scene.spawn();
         let mut terrain = planet_terrain();
         terrain.seed = 99;
         scene.insert(entity, terrain);
-        let mut landform = helio_component::VoxelLandformComponent::default();
-        landform.snowline_m = 1_234.0;
-        landform.mountain_km = 55.0;
-        scene.insert(entity, landform);
+        let mut layers = helio_component::VoxelTerrainLayersComponent::default();
+        layers.snowline_m = 1_234.0;
+        layers.layers[2].scale_km = 55.0;
+        scene.insert(entity, layers);
         let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty(), "{errors:?}");
         let mut backend = PlanetVoxelBackend::new();
         backend.publish_frame(&[&entries[0]], view(DVec3::new(0.0, 6_371_000.0 + 3_000.0, 0.0))).unwrap();
         let recipe = frame_planet(&backend).recipe().clone();
-        assert_eq!(recipe.terrain.generator, helio_pass_voxel_planet::landform::ID);
+        assert_eq!(recipe.terrain.generator, helio_pass_voxel_planet::layers::ID);
         assert_eq!(recipe.terrain.seed, 99);
-        let settings: helio_pass_voxel_planet::landform::Landform = serde_json::from_str(&recipe.terrain.settings).unwrap();
+        let settings: helio_pass_voxel_planet::layers::TerrainLayers = serde_json::from_str(&recipe.terrain.settings).unwrap();
         assert_eq!(settings.snowline_m, 1_234.0);
-        assert_eq!(settings.mountain_km, 55.0);
+        assert_eq!(settings.layers[2].kind, helio_pass_voxel_planet::layers::LayerKind::Mountains);
+        assert_eq!(settings.layers[2].scale_km, 55.0);
     }
 
     #[test]
-    fn shared_ids_name_the_registered_landform_generator() {
-        assert_eq!(VOXEL_TERRAIN_GENERATOR, helio_pass_voxel_planet::landform::ID);
-        assert_eq!(VOXEL_TERRAIN_GENERATOR_VERSION, helio_pass_voxel_planet::landform::VERSION);
+    fn shared_ids_name_the_registered_terrain_generator() {
+        assert_eq!(VOXEL_TERRAIN_GENERATOR, helio_pass_voxel_planet::layers::ID);
+        assert_eq!(VOXEL_TERRAIN_GENERATOR_VERSION, helio_pass_voxel_planet::layers::VERSION);
     }
 
     #[test]
     fn a_flat_terrain_uses_its_settings_component() {
         let mut scene = World::new();
         let entity = scene.spawn();
-        let mut terrain = VoxelTerrainComponent::plane(1_024.0);
-        terrain.generator.id = helio_pass_voxel_planet::landform::FLAT_ID.into();
-        terrain.generator.version = helio_pass_voxel_planet::landform::FLAT_VERSION;
-        scene.insert(entity, terrain);
-        let mut flat = helio_component::VoxelFlatTerrainComponent::default();
-        flat.height = 12.0;
+        scene.insert(entity, VoxelTerrainComponent::plane(1_024.0));
+        let mut flat = helio_component::VoxelTerrainLayersComponent::flat(12.0);
         flat.surface = helio_component::VoxelTerrainMaterial::Sand;
         scene.insert(entity, flat);
         let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
@@ -1163,7 +1160,7 @@ mod tests {
         scene.insert(entity, terrain);
         let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         let error = PlanetVoxelBackend::validate_source(&entries[0]).unwrap_err();
-        assert!(error.contains("helio.landform") && error.contains("helio.flat"), "{error}");
+        assert!(error.contains("helio.terrain"), "{error}");
     }
 
     #[test]

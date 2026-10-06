@@ -6,7 +6,7 @@ use std::any::Any;
 use glam::DVec3;
 use helio_component::voxel_generator_editor::generator_items;
 use helio_component::voxel_world::terrain_world;
-use helio_component::{VoxelFlatTerrainComponent, VoxelGeneratorRef, VoxelTerrainComponent};
+use helio_component::{VoxelGeneratorRef, VoxelTerrainComponent, VoxelTerrainLayersComponent};
 use helio_pass_voxel_planet::terrain::{generators, material, GeneratorInfo};
 use pulsar_scene_model::components::Transform;
 use pulsar_scenedb::{component_id, Entity, World};
@@ -14,10 +14,8 @@ use pulsar_scenedb::{component_id, Entity, World};
 fn flat_world() -> (World, Entity) {
     let mut world = World::new();
     let entity = world.spawn();
-    let mut terrain = VoxelTerrainComponent::plane(512.0);
-    terrain.generator = VoxelGeneratorRef::new(helio_pass_voxel_planet::landform::FLAT_ID, 1);
-    world.insert(entity, terrain);
-    world.insert(entity, VoxelFlatTerrainComponent { height: 2.0, ..Default::default() });
+    world.insert(entity, VoxelTerrainComponent::plane(512.0));
+    world.insert(entity, VoxelTerrainLayersComponent::flat(2.0));
     (world, entity)
 }
 
@@ -100,7 +98,7 @@ fn the_cached_world_follows_the_journal_and_the_settings() {
     set(&mut world, entity, [1.0, 2.05, 1.0], material::SAND).unwrap();
     let edited = terrain_world(&world, entity).unwrap();
     assert!(!std::sync::Arc::ptr_eq(&first, &edited));
-    world.get_mut::<VoxelFlatTerrainComponent>(entity).unwrap().height = 5.0;
+    world.get_mut::<VoxelTerrainLayersComponent>(entity).unwrap().layers[0].height_m = 5.0;
     let raised = terrain_world(&world, entity).unwrap();
     let (cell, _) = raised.grid().locate(DVec3::new(9.0, 4.95, 9.0));
     assert_eq!(raised.material(cell), material::GRASS);
@@ -124,9 +122,9 @@ fn the_generator_picker_lists_registered_generators_and_searches_them() {
         items.iter().map(|i| i.title().to_string()).collect::<Vec<_>>()
     };
     let items = generator_items(&VoxelGeneratorRef::default(), &generators());
-    assert_eq!(titles(&items), ["Flat", "Landform"]);
-    assert!(items[1].matches("LAND") && items[1].matches("helio.landform") && items[1].matches("mountain"));
-    assert!(!items[0].matches("mountain"));
+    assert_eq!(titles(&items), ["Terrain layers"]);
+    assert!(items[0].matches("LAYERS") && items[0].matches("helio.terrain") && items[0].matches("crater"));
+    assert!(!items[0].matches("volcano"));
 
     // A generator from a plugin that is not loaded stays selected; versions
     // of one generator are told apart.
@@ -134,4 +132,31 @@ fn the_generator_picker_lists_registered_generators_and_searches_them() {
     let items = generator_items(&current, &[choice("x.caves", 1, "Caves"), choice("x.caves", 2, "Caves")]);
     assert_eq!(titles(&items), ["x.moon v3 (not loaded)", "Caves (v1)", "Caves (v2)"]);
     assert_eq!(items[0].value(), &current);
+}
+
+fn call_layers(world: &mut World, entity: Entity, name: &str, args: Vec<Box<dyn Any>>) -> Result<Option<Box<dyn Any>>, String> {
+    let mut args = args;
+    world
+        .call_component_method(entity, component_id::<VoxelTerrainLayersComponent>(), name, &mut args)
+        .map_err(|e| format!("{e:?}"))
+}
+
+/// Blueprints shape the layer stack; the world rebuilds from it.
+#[test]
+fn scripts_shape_the_layer_stack() {
+    let (mut world, entity) = flat_world();
+    call_layers(&mut world, entity, "set_layer_height", vec![Box::new(0u32), Box::new(4.0f64)]).unwrap();
+    assert_eq!(get(&mut world, entity, [3.0, 3.95, 4.0]), material::GRASS, "the plateau rose to 4 m");
+    let index = call_layers(&mut world, entity, "add_layer", vec![Box::new(String::from("Craters"))]).unwrap().unwrap();
+    assert_eq!(*index.downcast::<u32>().unwrap(), 1);
+    let count = call_layers(&mut world, entity, "layer_count", vec![]).unwrap().unwrap();
+    assert_eq!(*count.downcast::<u32>().unwrap(), 2);
+    call_layers(&mut world, entity, "set_layer_enabled", vec![Box::new(1u32), Box::new(false)]).unwrap();
+    assert!(!world.get::<VoxelTerrainLayersComponent>(entity).unwrap().layers[1].enabled);
+    call_layers(&mut world, entity, "remove_layer", vec![Box::new(1u32)]).unwrap();
+    assert!(call_layers(&mut world, entity, "remove_layer", vec![Box::new(5u32)]).is_err());
+    assert!(call_layers(&mut world, entity, "add_layer", vec![Box::new(String::from("Volcano"))]).is_err());
+    call_layers(&mut world, entity, "use_preset", vec![Box::new(String::from("moon"))]).unwrap();
+    assert_eq!(world.get::<VoxelTerrainLayersComponent>(entity).unwrap().layers.len(), 3);
+    assert!(call_layers(&mut world, entity, "use_preset", vec![Box::new(String::from("mars"))]).is_err());
 }

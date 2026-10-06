@@ -111,8 +111,7 @@ fn relative_camera_world_compatible(world: &pulsar_scenedb::World) -> bool {
         component_id::<Visibility>(), component_id::<ObjectType>(), component_id::<RenderProps>(),
         component_id::<ComponentAttachments>(), component_id::<helio::Movability>(),
         component_id::<helio_component::VoxelComponent>(), component_id::<helio_component::VoxelTerrainComponent>(),
-        component_id::<helio_component::VoxelLandformComponent>(), component_id::<helio_component::VoxelFlatTerrainComponent>(),
-        component_id::<helio_component::VoxelMoonComponent>(),
+        component_id::<helio_component::VoxelTerrainLayersComponent>(),
         component_id::<helio_component::components::LightComponent>(),
         component_id::<helio_component::components::LightComponentGpuMirror>(),
         component_id::<helio_pass_forward_lit::LightComponent>(),
@@ -1899,7 +1898,7 @@ mod native_relative_camera_tests {
             "version":"2.1", "objects":[
                 object("voxel_planet",serde_json::json!("Empty"),serde_json::json!([
                     component("VoxelTerrainComponent",serde_json::to_value(helio_component::VoxelTerrainComponent::default()).unwrap()),
-                    component("VoxelLandformComponent",serde_json::to_value(helio_component::VoxelLandformComponent::default()).unwrap())
+                    component("VoxelTerrainLayersComponent",serde_json::to_value(helio_component::VoxelTerrainLayersComponent::default()).unwrap())
                 ])),
                 object("sun",serde_json::json!({"Light":"Directional"}),serde_json::json!([
                     component("LightComponent",serde_json::to_value(sun).unwrap())
@@ -1911,7 +1910,7 @@ mod native_relative_camera_tests {
         let mut scene = shared.write();
         crate::scene::editor_rows::sync_editor_light_rows(&mut scene.world,true,None);
         assert_eq!(scene.world.query::<&helio_component::VoxelTerrainComponent>().count(),1);
-        assert_eq!(scene.world.query::<&helio_component::VoxelLandformComponent>().count(),1);
+        assert_eq!(scene.world.query::<&helio_component::VoxelTerrainLayersComponent>().count(),1);
         assert_eq!(scene.world.query::<&helio_pass_billboard::BillboardComponent>().count(),1);
         assert!(relative_camera_world_compatible(&scene.world));
         // A new, unreviewed world-space consumer fails closed even before its
