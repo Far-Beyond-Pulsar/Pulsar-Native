@@ -47,10 +47,10 @@ world_registered = true
 own_gpu_columns = false
 runtime_behavior = true
 owner = "pulsar_class::component"
-disposition = "non-render: class placement provenance (not offered in Add component); typed defaults and overrides keyed by slot ID"
+disposition = "non-render: class placement provenance (not offered in Add component). Phase 3: slot defaults are typed in a cached ClassTemplate (decoded once per class definition); overrides stay persisted as JSON diffs keyed by slot ID and are applied through reflected setters"
 target_contract = "Phase 3; 05-persistence-and-undo.md"
-test = "none: class place/override/revert without JSON"
-status = "unverified"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/classes.rs instances_are_built_from_the_typed_template"
+status = "verified"
 
 [[class]]
 name = "FoliageComponent"
@@ -1046,10 +1046,10 @@ pattern = "record-attach"
 file = "crates/core/pulsar_class/src/world.rs"
 count = 1
 owner = "core::pulsar_class::world"
-disposition = "class instantiation attaches prefab component records as instance entities, decoding each once (an unusable payload stays an explicit UnresolvedComponent); Phase 3 keeps typed defaults/overrides internally"
+disposition = "Phase 3: instantiation no longer decodes records; it clones the class template's typed slot values (overrides applied through reflection). attach_components remains only as a record boundary helper (level-load tests)"
 target_contract = "Phase 3; 05-persistence-and-undo.md"
-test = "crates/core/pulsar_class/tests/instances.rs"
-status = "unverified"
+test = "crates/core/pulsar_class/tests/instances.rs; crates/editor/ui_level_editor/src/core/scene_edit/tests/classes.rs"
+status = "verified"
 
 [[site]]
 pattern = "mirror-replay"

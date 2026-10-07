@@ -436,7 +436,7 @@ impl ObjectTypeFieldsSection {
             return Some(Arc::clone(values));
         }
         let default = self.slot_defaults.get(&idx)?;
-        let instance = default.instance.as_deref()?;
+        let instance = default.instance()?;
         let getters = instance.get_properties();
         let values: Vec<Option<Box<dyn Any>>> = properties
             .iter()

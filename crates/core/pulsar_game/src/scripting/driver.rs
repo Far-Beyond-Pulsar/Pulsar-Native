@@ -363,6 +363,9 @@ pub struct ScriptDriver {
     by_instance: HashMap<String, Entity>,
     /// Class GUID → the runtime's class name (the module name).
     loaded: HashMap<ClassId, String>,
+    /// Class GUID → its template (slot defaults decoded once), for
+    /// `world::spawn`. Dropped on a class reload or registry rescan.
+    templates: HashMap<ClassId, Arc<pulsar_class::ClassTemplate>>,
     globals: Vec<String>,
     globals_started: bool,
     spawn_serial: u64,
@@ -409,6 +412,7 @@ impl ScriptDriver {
             holders: HashMap::new(),
             by_instance: HashMap::new(),
             loaded: HashMap::new(),
+            templates: HashMap::new(),
             globals: Vec::new(),
             globals_started: false,
             spawn_serial: 0,
@@ -946,6 +950,10 @@ impl ScriptDriver {
 
     fn reconcile_into(&mut self, world: &mut World, report: &mut DriverReport) {
         let reloads = std::mem::take(&mut *self.reloads.lock().unwrap_or_else(|p| p.into_inner()));
+        if !reloads.is_empty() {
+            // A class asset changed: spawn from its new definition.
+            self.templates.clear();
+        }
         for event in reloads {
             if let Some(class) = self.reload_class_for_asset_into(world, &event, report) {
                 tracing::info!(class = %class, "Reloaded script class after an asset update");
@@ -1247,6 +1255,7 @@ impl ScriptDriver {
     fn refresh_registry(&mut self) {
         if self.rescan_registry {
             self.registry = ClassRegistry::scan(&self.project_root);
+            self.templates.clear();
             if let Some(events) = &self.events {
                 for entry in self.registry.entries() {
                     events.bridge().add_class(&entry.name, entry.id.as_str());
@@ -1554,16 +1563,23 @@ impl ScriptDriver {
         if !world.is_alive(entity) {
             return;
         }
-        let def = self
-            .resolve_class_ref(class)
-            .and_then(|entry| match entry.load_definition() {
-                Ok(def) => Some(def),
+        let template = self.resolve_class_ref(class).and_then(|entry| {
+            if let Some(template) = self.templates.get(&entry.id) {
+                return Some(Arc::clone(template));
+            }
+            match entry.load_definition() {
+                Ok(def) => {
+                    let template = pulsar_class::template(&def);
+                    self.templates.insert(entry.id.clone(), Arc::clone(&template));
+                    Some(template)
+                }
                 Err(error) => {
                     tracing::warn!(class = %entry.name, "Class definition unreadable: {error}");
                     None
                 }
-            });
-        let Some(def) = def else {
+            }
+        });
+        let Some(template) = template else {
             let message = format!("world::spawn: class '{class}' is not in this project");
             tracing::warn!("{message}");
             report.failures.push(message);
@@ -1585,6 +1601,7 @@ impl ScriptDriver {
                 ..Transform::default()
             },
         };
+        let def = &template.def;
         let stable_id = self.next_spawn_id(world, &def.name);
         let spec = SpawnObject {
             stable_id: Some(stable_id),
@@ -1594,9 +1611,9 @@ impl ScriptDriver {
             visibility: Default::default(),
             object_type: ObjectType::Blueprint,
         };
-        match pulsar_class::world::instantiate_class_into(
+        match pulsar_class::world::instantiate_template_into(
             world,
-            &def,
+            &template,
             ClassInstance::default(),
             spec,
             entity,

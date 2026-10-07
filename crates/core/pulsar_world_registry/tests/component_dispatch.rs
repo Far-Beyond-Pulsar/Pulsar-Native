@@ -169,6 +169,8 @@ pulsar_world_registry::inventory::submit! {
         default_value: pulsar_world_registry::values::erased::default_value::<DispatchGizmo>,
         decode: pulsar_world_registry::values::erased::decode_json::<DispatchGizmo>,
         clone_value: pulsar_world_registry::values::erased::clone_value::<DispatchGizmo>,
+        value_as_engine_class: pulsar_world_registry::values::erased::as_engine_class::<DispatchGizmo>,
+        value_as_engine_class_mut: pulsar_world_registry::values::erased::as_engine_class_mut::<DispatchGizmo>,
         register_erased: pulsar_scenedb::register_component::<DispatchGizmo>,
         remove: gizmo_remove,
         dispatch: |world, entity, _owner, _index, _ctx| world.get::<DispatchGizmo>(entity).is_some(),

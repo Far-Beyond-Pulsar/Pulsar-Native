@@ -10,6 +10,7 @@
 
 use std::any::Any;
 
+use pulsar_reflection::EngineClass;
 use pulsar_scenedb::{ComponentId, Entity, InsertDynError, World};
 use serde_json::Value;
 
@@ -123,13 +124,53 @@ pub fn set_world_component_property(
     Ok(())
 }
 
+/// A clone of an owned `class_name` value (`None` if the class is not
+/// registered or `value` is not of it).
+pub fn clone_value(class_name: &str, value: &dyn Any) -> Option<Box<dyn Any + Send + Sync>> {
+    (crate::find(class_name)?.clone_value)(value)
+}
+
+/// An owned `class_name` value (not in a `World`) as `&dyn EngineClass`.
+pub fn value_engine_class<'v>(class_name: &str, value: &'v dyn Any) -> Option<&'v dyn EngineClass> {
+    (crate::find(class_name)?.value_as_engine_class)(value)
+}
+
+/// Set reflected `property` on an owned `class_name` value (not in a
+/// `World`), then run the class's `property_written` for it, as a live
+/// write would. Hands `new_value` back if the class, the value or the
+/// property does not exist.
+pub fn set_value_property(
+    class_name: &str,
+    value: &mut dyn Any,
+    property: &str,
+    new_value: Box<dyn Any>,
+) -> Result<(), Box<dyn Any>> {
+    let Some(registration) = crate::find(class_name) else {
+        return Err(new_value);
+    };
+    let Some(instance) = (registration.value_as_engine_class_mut)(value) else {
+        return Err(new_value);
+    };
+    let Some(metadata) = instance
+        .get_properties()
+        .into_iter()
+        .find(|candidate| candidate.name == property)
+    else {
+        return Err(new_value);
+    };
+    (metadata.setter)(&mut *instance, new_value);
+    (registration.property_written)(instance, Some(property));
+    Ok(())
+}
+
 /// Generic implementations of a registration's erased operations, for
 /// hand-written [`crate::WorldComponentRegistration`]s (the macro generates
 /// the same).
 pub mod erased {
     use std::any::Any;
 
-    use pulsar_reflection::EngineClass;
+    use super::EngineClass;
+
     use serde_json::Value;
 
     /// `default_value` for `T`.
@@ -153,6 +194,22 @@ pub mod erased {
         value
             .downcast_ref::<T>()
             .map(|value| Box::new(value.clone()) as Box<dyn Any + Send + Sync>)
+    }
+
+    /// `value_as_engine_class` for `T`.
+    pub fn as_engine_class<T: EngineClass + Any>(value: &dyn Any) -> Option<&dyn EngineClass> {
+        value
+            .downcast_ref::<T>()
+            .map(|value| value as &dyn EngineClass)
+    }
+
+    /// `value_as_engine_class_mut` for `T`.
+    pub fn as_engine_class_mut<T: EngineClass + Any>(
+        value: &mut dyn Any,
+    ) -> Option<&mut dyn EngineClass> {
+        value
+            .downcast_mut::<T>()
+            .map(|value| value as &mut dyn EngineClass)
     }
 
     /// `property_written` for a class that derives nothing from its fields.

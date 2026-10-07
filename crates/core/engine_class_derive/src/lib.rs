@@ -1896,6 +1896,8 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
                 default_value: #default_fn_name,
                 decode: #decode_fn_name,
                 clone_value: #clone_fn_name,
+                value_as_engine_class: pulsar_world_registry::values::erased::as_engine_class::<#self_ty>,
+                value_as_engine_class_mut: pulsar_world_registry::values::erased::as_engine_class_mut::<#self_ty>,
                 register_erased: pulsar_scenedb::register_component::<#self_ty>,
                 remove: #remove_fn_ref,
                 dispatch: #dispatch_fn_name,

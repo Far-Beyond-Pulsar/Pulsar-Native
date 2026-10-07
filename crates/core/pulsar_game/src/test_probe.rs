@@ -117,6 +117,8 @@ pulsar_world_registry::inventory::submit! {
         default_value: pulsar_world_registry::values::erased::default_value::<VmProbe>,
         decode: pulsar_world_registry::values::erased::decode_json::<VmProbe>,
         clone_value: pulsar_world_registry::values::erased::clone_value::<VmProbe>,
+        value_as_engine_class: pulsar_world_registry::values::erased::as_engine_class::<VmProbe>,
+        value_as_engine_class_mut: pulsar_world_registry::values::erased::as_engine_class_mut::<VmProbe>,
         register_erased: pulsar_scenedb::register_component::<VmProbe>,
         remove: vm_probe_remove,
         dispatch: |world, entity, _: _, _: usize, _: _| world.get::<VmProbe>(entity).is_some(),
