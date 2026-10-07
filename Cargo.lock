@@ -3089,6 +3089,7 @@ dependencies = [
  "helio-pass-postprocess",
  "helio-pass-sky",
  "helio-pass-tsr",
+ "helio-pass-volumetric-fog",
  "helio-pass-voxel-planet",
  "helio-pass-water-sim",
  "helio-voxel-data",
