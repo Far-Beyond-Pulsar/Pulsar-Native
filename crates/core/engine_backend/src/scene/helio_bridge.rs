@@ -153,26 +153,137 @@ fn retire_section_draw_entities(world: &mut pulsar_scenedb::World, owner: pulsar
     }
 }
 
+#[derive(Clone)]
+struct ResolvedSlotMaterial {
+    surface: helio_component::mesh_cache::ImportedSurfaceMaterial,
+    material_class: u32,
+    graph_hash: u64,
+}
+
+fn graph_material_cache() -> &'static std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (u64, Result<(u64, String), String>)>> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (u64, Result<(u64, String), String>)>>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn graph_material_source(path: &std::path::Path) -> Result<(u64, String), String> {
+    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    use std::hash::{Hash, Hasher};
+    bytes.hash(&mut hasher);
+    let fingerprint = hasher.finish();
+    if let Ok(cache) = graph_material_cache().lock() {
+        if let Some((cached_fingerprint, result)) = cache.get(path) {
+            if *cached_fingerprint == fingerprint {
+                return result.clone();
+            }
+        }
+    }
+
+    let result = (|| {
+        let text = std::str::from_utf8(&bytes).map_err(|error| error.to_string())?;
+        // Shader graph saves may carry a line comment before their JSON body.
+        let json_start = text.find('{').ok_or_else(|| "shader graph JSON object is missing".to_string())?;
+        let document: serde_json::Value = serde_json::from_str(&text[json_start..])
+            .map_err(|error| format!("invalid shader graph JSON: {error}"))?;
+        let graph_value = document.get("main_graph")
+            .ok_or_else(|| "shader graph asset has no main_graph".to_string())?;
+        let graph: psgc::GraphDescription = serde_json::from_value(graph_value.clone())
+            .map_err(|error| format!("invalid main_graph: {error}"))?;
+        let generated = psgc::compile_shader(&graph)
+            .map_err(|error| format!("shader graph compile failed: {error}"))?;
+        let snippet = adapt_graph_wgsl(&generated)?;
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        snippet.hash(&mut hasher);
+        let hash = hasher.finish().max(1);
+        Ok((hash, snippet))
+    })();
+    if let Ok(mut cache) = graph_material_cache().lock() {
+        cache.insert(path.to_path_buf(), (fingerprint, result.clone()));
+    }
+    result
+}
+
+fn adapt_graph_wgsl(generated: &str) -> Result<String, String> {
+    if generated.contains("textureSample(") || generated.contains("textureSampleLevel(") || generated.contains("textureSampleGrad(") {
+        return Err("this material graph references textures, but runtime graph-texture bindings are not connected yet".to_string());
+    }
+    let mut source = generated.to_string();
+    if let Some(start) = source.find("struct Uniforms {") {
+        let end = source[start..].find("};").map(|offset| start + offset + 2)
+            .ok_or_else(|| "malformed PSGC Uniforms declaration".to_string())?;
+        source.replace_range(start..end, "");
+    }
+    source = source.replace("@group(0) @binding(0) var<uniform> uniforms: Uniforms;", "");
+    source = source.replace("uniforms.time", "0.0");
+    source = source.replace("FragmentOutput", "PulsarGraphOutput");
+
+    let entry = source.find("@fragment\nfn fragment_main(")
+        .or_else(|| source.find("@fragment\r\nfn fragment_main("))
+        .ok_or_else(|| "PSGC output is not a fragment shader".to_string())?;
+    let open = source[entry..].find('{').map(|offset| entry + offset)
+        .ok_or_else(|| "malformed PSGC fragment entry point".to_string())?;
+    let replacement = "fn pulsar_material_graph(input: VertexOutput) -> PulsarGraphOutput {\n    let frag_coord = input.clip_position;\n    let uv = input.tex_coords;\n    let normal = input.world_normal;\n    let world_pos = input.world_position;";
+    source.replace_range(entry..=open, replacement);
+
+    let body = r#"let graph_surface = pulsar_material_graph(input);
+albedo = graph_surface.base_color;
+alpha = clamp(graph_surface.opacity, 0.0, 1.0) * graph_surface.base_color.a;
+albedo.a = alpha;
+roughness = clamp(graph_surface.roughness, 0.045, 1.0);
+metallic = clamp(graph_surface.metallic, 0.0, 1.0);
+ao = clamp(graph_surface.ambient_occlusion, 0.0, 1.0);
+emissive = graph_surface.emissive_color.rgb * graph_surface.emissive_color.a;
+let graph_normal_length = length(graph_surface.normal);
+if graph_normal_length > 0.0001 { N = graph_surface.normal / graph_normal_length; }
+specular_f0 = clamp(mix(vec3<f32>(0.04), albedo.rgb, metallic), vec3<f32>(0.0), vec3<f32>(0.999));"#;
+    Ok(format!("/*RADIANT_GRAPH_DECLARATIONS*/\n{source}\n/*RADIANT_GRAPH_BODY*/\n{body}"))
+}
+
 fn material_surface_for_slot(
     slot: Option<&helio_component::components::StaticMeshMaterialSlot>,
     entity: pulsar_scenedb::Entity,
-) -> helio_component::mesh_cache::ImportedSurfaceMaterial {
+) -> ResolvedSlotMaterial {
+    let imported = || ResolvedSlotMaterial {
+        surface: slot.map_or_else(Default::default, |slot| slot.surface_override.unwrap_or(slot.imported_surface)),
+        material_class: helio_mats::MATERIAL_CLASS_DEFAULT,
+        graph_hash: 0,
+    };
     let Some(slot) = slot else {
-        return helio_component::mesh_cache::ImportedSurfaceMaterial::default();
+        return imported();
     };
     if let Some(override_surface) = slot.surface_override {
-        return override_surface;
+        return ResolvedSlotMaterial { surface: override_surface, material_class: helio_mats::MATERIAL_CLASS_DEFAULT, graph_hash: 0 };
     }
     if slot.material_asset.trim().is_empty() {
-        return slot.imported_surface;
+        return imported();
     }
     let Some(project_root) = engine_state::get_project_path() else {
-        return slot.imported_surface;
+        return imported();
     };
     let path = helio_component::subsystems::resolve_asset_path(
         std::path::Path::new(&project_root),
         &slot.material_asset,
     );
+    let graph_file = if path.is_dir() {
+        Some(path.join("shader_graph_save.json"))
+    } else if path.file_name().is_some_and(|name| name == "shader_graph_save.json") {
+        Some(path.clone())
+    } else {
+        None
+    };
+    if let Some(graph_file) = graph_file.filter(|file| file.is_file()) {
+        match graph_material_source(&graph_file) {
+            Ok((hash, source)) => {
+                helio_mats::register_graph_source(hash, source);
+                return ResolvedSlotMaterial {
+                    surface: slot.imported_surface,
+                    material_class: helio_mats::MATERIAL_CLASS_CUSTOM,
+                    graph_hash: hash,
+                };
+            }
+            Err(error) => tracing::warn!(entity = entity.index(), path = %graph_file.display(), %error, "could not compile Blueprint material graph; using imported FBX material"),
+        }
+    }
     let loaded = std::fs::read(&path)
         .ok()
         .and_then(|bytes| {
@@ -181,14 +292,14 @@ fn material_surface_for_slot(
         });
     match loaded {
         Some(material) if material.version == 1 => {
-            helio_component::mesh_cache::ImportedSurfaceMaterial {
+            ResolvedSlotMaterial { surface: helio_component::mesh_cache::ImportedSurfaceMaterial {
                 base_color: material.base_color,
                 roughness: material.roughness,
                 metallic: material.metallic,
                 emissive: material.emissive_color,
                 emissive_intensity: material.emissive_intensity,
                 alpha: material.alpha,
-            }
+            }, material_class: helio_mats::MATERIAL_CLASS_DEFAULT, graph_hash: 0 }
         }
         _ => {
             tracing::warn!(
@@ -196,7 +307,7 @@ fn material_surface_for_slot(
                 path = %path.display(),
                 "static mesh material asset could not be loaded; using the imported FBX material"
             );
-            slot.imported_surface
+            imported()
         }
     }
 }
@@ -422,12 +533,12 @@ pub fn sync_static_mesh_rows(
                 entity,
             );
             let material_row = helio_pass_gbuffer::MaterialComponent::from_surface(
-                [material.base_color[0], material.base_color[1], material.base_color[2]],
-                material.alpha,
-                material.roughness,
-                material.metallic,
-                material.emissive,
-                material.emissive_intensity,
+                [material.surface.base_color[0], material.surface.base_color[1], material.surface.base_color[2]],
+                material.surface.alpha,
+                material.surface.roughness,
+                material.surface.metallic,
+                material.surface.emissive,
+                material.surface.emissive_intensity,
             );
             if scene_db
                 .world
@@ -447,8 +558,8 @@ pub fn sync_static_mesh_rows(
                 section.index_count,
                 indices.offset.saturating_add(section.first_index),
                 vertices.offset as i32,
-                0,
-                0,
+                material.material_class,
+                material.graph_hash,
                 flags,
             );
             // Write only on change. Every `insert` bumps the SceneDB revision.
