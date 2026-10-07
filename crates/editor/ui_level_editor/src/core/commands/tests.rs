@@ -467,4 +467,96 @@ mod undo_redo_tests {
         assert!(state.scene.undo());
         assert_eq!(read(&state), Some(ObjectMovability::Movable));
     }
+
+    // Pulsar-Native#1035, Phase 3: undo restores typed snapshots in place.
+    // Surviving instances keep their entity and id (nothing is respawned or
+    // decoded), a removed one comes back with its id, and an unresolved
+    // payload is kept as it was.
+    #[test]
+    fn undo_restores_component_instances_in_place() {
+        use engine_backend::scene::{attachments, SceneWorldExt};
+        let mut state = LevelEditorState::new();
+        let id = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: object("Lamp"),
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone();
+        let (light, unresolved) = {
+            let mut world = state.scene.world_mut();
+            let owner = world.entity_for(&id).unwrap();
+            let light = pulsar_world_registry::attach_value(
+                &mut world,
+                owner,
+                helio_component::LightComponent::default(),
+            )
+            .unwrap();
+            let unresolved = pulsar_world_registry::attach_unresolved(
+                &mut world,
+                owner,
+                attachments::NewInstance::new("NotInThisBuild"),
+                serde_json::json!({ "kept": [1, 2, 3] }),
+                "not registered".to_string(),
+            )
+            .unwrap();
+            (light, unresolved)
+        };
+        let ids = |state: &LevelEditorState| {
+            let world = state.scene.world();
+            let owner = world.entity_for(&id).unwrap();
+            attachments::instances(&world, owner)
+                .into_iter()
+                .map(|instance| (instance, attachments::meta(&world, instance).unwrap().id))
+                .collect::<Vec<_>>()
+        };
+        let before = ids(&state);
+        let intensity = |state: &LevelEditorState| {
+            let world = state.scene.world();
+            world
+                .get::<helio_component::LightComponent>(light)
+                .map(|light| light.intensity.intensity)
+        };
+
+        let result = execute_command(
+            &mut state,
+            SceneCommand::SetComponentProperty {
+                id: id.clone(),
+                class_name: "LightComponent".to_string(),
+                component_index: 0,
+                prop_name: "intensity".to_string(),
+                value: Box::new(7.0_f32),
+            },
+        );
+        assert!(result.changed);
+        assert_eq!(intensity(&state), Some(7.0));
+        assert!(state.scene.undo());
+        assert_eq!(ids(&state), before, "same entities, ids and order");
+        assert_eq!(intensity(&state), Some(1000.0), "value restored in place");
+        assert!(state.scene.redo());
+        assert_eq!(ids(&state), before);
+        assert_eq!(intensity(&state), Some(7.0));
+
+        let result = execute_command(
+            &mut state,
+            SceneCommand::RemoveComponent {
+                id: id.clone(),
+                component_index: 1,
+            },
+        );
+        assert!(result.changed);
+        assert_eq!(ids(&state).len(), 1);
+        assert!(state.scene.undo());
+        let after = ids(&state);
+        assert_eq!(after[0], before[0], "the light kept its entity");
+        assert_eq!(after[1].1, before[1].1, "the removed instance kept its id");
+        let world = state.scene.world();
+        let payload = world
+            .get::<attachments::UnresolvedComponent>(after[1].0)
+            .expect("still unresolved");
+        assert_eq!(payload.data, serde_json::json!({ "kept": [1, 2, 3] }));
+        assert_ne!(after[1].0, unresolved, "re-attached as a new entity");
+    }
 }
