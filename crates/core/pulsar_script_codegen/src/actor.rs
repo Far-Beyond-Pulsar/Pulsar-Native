@@ -158,14 +158,14 @@ pub fn generate_actor(
                 .replace('"', "\\\"");
             let _ = write!(
                 init_body,
-                r#"        if !pulsar_world_registry::world_component_present_for_class("{class}", world, entity) {{
-            if let Err(__e) = pulsar_world_registry::hydrate_world_component_for_class(
-                "{class}",
-                world,
-                entity,
-                &serde_json::from_str::<serde_json::Value>("{json}").unwrap_or_else(|_| serde_json::json!({{}})),
-            ) {{
-                tracing::error!("blueprint `{ident}`: hydrating {class} failed: {{__e}}");
+                r#"        if pulsar_world_registry::instances::resolve_instance(world, entity, "{class}", 0).is_none() {{
+            let record = pulsar_world_registry::pulsar_scene_model::ComponentInstance {{
+                class_name: "{class}".to_owned(),
+                enabled: true,
+                data: serde_json::from_str::<serde_json::Value>("{json}").unwrap_or_else(|_| serde_json::json!({{}})),
+            }};
+            if let Err(__e) = pulsar_world_registry::attach_record(world, entity, &record, None) {{
+                tracing::error!("blueprint `{ident}`: attaching {class} failed: {{__e}}");
             }}
         }}
 "#
@@ -191,13 +191,15 @@ pub fn generate_actor(
             component_helpers,
             r#"
 impl {ty} {{
-    /// Ensure every enabled prefab component exists on the actor's scene
-    /// entity in the LIVE world (#651).
+    /// Ensure every enabled prefab component is attached to the actor's
+    /// scene object in the LIVE world (#651), as a component instance
+    /// (Pulsar-Native#1035).
     ///
-    /// Idempotent and scene-respecting: hydration fires only when the class
-    /// is absent, so per-instance values the scene already hydrated win over
-    /// the defaults baked in at compile time. Failures log and continue:
-    /// one bad component never blocks the actor.
+    /// Idempotent and scene-respecting: a component is attached only when
+    /// the object has no instance of its class, so per-instance values the
+    /// scene already attached win over the defaults baked in at compile
+    /// time. Failures log and continue: one bad component never blocks the
+    /// actor.
     pub fn __init_components(entity: Entity, world: &mut World) {{
 {init_body}    }}
 

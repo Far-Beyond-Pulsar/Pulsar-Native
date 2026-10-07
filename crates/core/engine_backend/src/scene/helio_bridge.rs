@@ -9,49 +9,90 @@ use std::{collections::HashSet, sync::Arc};
 
 use helio_component::components::StaticMeshComponent;
 use pulsar_scenedb::gpu::{
-    BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
+    EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
 
 use crate::scene::{Transform, Visibility};
+use pulsar_scene_model::attachments::{self, ComponentOwner};
+
+/// The mesh and light component instances the render-row projection
+/// follows for `entity`: the entity itself when it is such an instance,
+/// otherwise every such instance attached to it (Pulsar-Native#1035, D1).
+pub(crate) fn render_instances(
+    world: &pulsar_scenedb::World,
+    entity: pulsar_scenedb::Entity,
+) -> Vec<pulsar_scenedb::Entity> {
+    let is_render = |instance: pulsar_scenedb::Entity| {
+        world.get::<StaticMeshComponent>(instance).is_some()
+            || world
+                .get::<helio_component::components::LightComponent>(instance)
+                .is_some()
+    };
+    if attachments::owner_of(world, entity).is_some() {
+        return if is_render(entity) {
+            vec![entity]
+        } else {
+            Vec::new()
+        };
+    }
+    attachments::instances(world, entity)
+        .into_iter()
+        .filter(|instance| is_render(*instance))
+        .collect()
+}
 
 /// Arm the change-time projection once for the currently live scene. Future
 /// transform/material/visibility edits are delivered as entity-specific
 /// events, so the renderer can update only the affected derived row.
 pub fn arm_render_row_subscriptions(world: &mut pulsar_scenedb::World) {
-    let mesh_entities: Vec<_> = world
-        .query::<&StaticMeshComponent>()
+    let mut instances: Vec<_> = world
+        .query::<(&StaticMeshComponent, &ComponentOwner)>()
         .map(|(entity, _)| entity)
         .collect();
-    for entity in mesh_entities {
-        arm_render_row_subscriptions_for_entity(world, entity);
-    }
-    let light_entities: Vec<_> = world
-        .query::<&helio_component::components::LightComponent>()
-        .map(|(entity, _)| entity)
-        .collect();
-    for entity in light_entities {
-        arm_render_row_subscriptions_for_entity(world, entity);
+    instances.extend(
+        world
+            .query::<(
+                &helio_component::components::LightComponent,
+                &ComponentOwner,
+            )>()
+            .map(|(entity, _)| entity),
+    );
+    for instance in instances {
+        arm_render_row_subscriptions_for_instance(world, instance);
     }
 }
 
-/// Arm subscriptions for one newly-created entity without revisiting the rest
-/// of the scene. Structural editor commands call this immediately after spawn.
+/// Arm subscriptions for one newly-created object (or component instance)
+/// without revisiting the rest of the scene. Structural editor commands call
+/// this immediately after spawn.
 pub fn arm_render_row_subscriptions_for_entity(
     world: &mut pulsar_scenedb::World,
     entity: pulsar_scenedb::Entity,
 ) {
-    if world.get::<StaticMeshComponent>(entity).is_some() {
-        let _ = world.subscribe::<StaticMeshComponent>(entity);
-        let _ = world.subscribe::<Transform>(entity);
-        let _ = world.subscribe::<Visibility>(entity);
+    for instance in render_instances(world, entity) {
+        arm_render_row_subscriptions_for_instance(world, instance);
+    }
+}
+
+/// A mesh or light instance's rows depend on its own value and enabled flag,
+/// and on its owner object's transform and visibility.
+fn arm_render_row_subscriptions_for_instance(
+    world: &mut pulsar_scenedb::World,
+    instance: pulsar_scenedb::Entity,
+) {
+    if world.get::<StaticMeshComponent>(instance).is_some() {
+        let _ = world.subscribe::<StaticMeshComponent>(instance);
     }
     if world
-        .get::<helio_component::components::LightComponent>(entity)
+        .get::<helio_component::components::LightComponent>(instance)
         .is_some()
     {
-        let _ = world.subscribe::<helio_component::components::LightComponent>(entity);
-        let _ = world.subscribe::<Transform>(entity);
-        let _ = world.subscribe::<Visibility>(entity);
+        let _ = world.subscribe::<helio_component::components::LightComponent>(instance);
+    }
+    let _ = world.subscribe::<ComponentOwner>(instance);
+    if let Some(owner) = attachments::owner_of(world, instance) {
+        let _ = world.subscribe::<Transform>(owner);
+        let _ = world.subscribe::<Visibility>(owner);
     }
 }
 
@@ -69,15 +110,66 @@ pub fn mark_render_components_changed(
     if !world.is_alive(entity) {
         return;
     }
-    if let Some(mut light) = world.get_mut::<helio_component::components::LightComponent>(entity) {
-        std::ops::DerefMut::deref_mut(&mut light);
-    }
-    if let Some(mut mesh) = world.get_mut::<StaticMeshComponent>(entity) {
-        std::ops::DerefMut::deref_mut(&mut mesh);
+    for instance in render_instances(world, entity) {
+        if let Some(mut light) =
+            world.get_mut::<helio_component::components::LightComponent>(instance)
+        {
+            std::ops::DerefMut::deref_mut(&mut light);
+        }
+        if let Some(mut mesh) = world.get_mut::<StaticMeshComponent>(instance) {
+            std::ops::DerefMut::deref_mut(&mut mesh);
+        }
     }
     if let Some(mut transform) = world.get_mut::<Transform>(entity) {
         std::ops::DerefMut::deref_mut(&mut transform);
     }
+}
+
+/// The mesh and light instances whose render rows `events` invalidate,
+/// as `(meshes, lights)`. A mesh or light event names its instance; a
+/// [`ComponentOwner`] event (enable, disable, detach) names an instance
+/// whose rows of either kind may need to appear or go; an owner object's
+/// `Transform`/`Visibility` event dirties every render instance attached to
+/// it. The sync functions treat a named instance that no longer holds the
+/// component as a removal.
+pub fn dirty_render_instances(
+    world: &pulsar_scenedb::World,
+    events: &[pulsar_scenedb::ComponentChangeEvent],
+) -> (
+    HashSet<pulsar_scenedb::Entity>,
+    HashSet<pulsar_scenedb::Entity>,
+) {
+    let mesh = pulsar_scenedb::component_id::<StaticMeshComponent>();
+    let light = pulsar_scenedb::component_id::<helio_component::components::LightComponent>();
+    let link = pulsar_scenedb::component_id::<ComponentOwner>();
+    let placement = [
+        pulsar_scenedb::component_id::<Transform>(),
+        pulsar_scenedb::component_id::<Visibility>(),
+    ];
+    let mut meshes = HashSet::new();
+    let mut lights = HashSet::new();
+    for event in events {
+        if event.component == mesh || event.component == link {
+            meshes.insert(event.entity);
+        }
+        if event.component == light || event.component == link {
+            lights.insert(event.entity);
+        }
+        if placement.contains(&event.component) {
+            for instance in attachments::instances(world, event.entity) {
+                if world.get::<StaticMeshComponent>(instance).is_some() {
+                    meshes.insert(instance);
+                }
+                if world
+                    .get::<helio_component::components::LightComponent>(instance)
+                    .is_some()
+                {
+                    lights.insert(instance);
+                }
+            }
+        }
+    }
+    (meshes, lights)
 }
 
 struct EditorMeshRow;
@@ -528,7 +620,8 @@ pub fn retire_gpu_rows_for_entity(
     retire_static_object_row(world, entity);
 }
 
-/// Author the GPU draw rows directly in SceneDB from the live mesh entities.
+/// Author the GPU draw rows directly in SceneDB from the live mesh component
+/// instances; each instance's rows live on the instance entity.
 /// The object-batch pass reads these rows and the mesh ranges from the same
 /// SceneDB mirror; no renderer object table or CPU frame cache is involved.
 pub fn sync_static_mesh_rows(
@@ -601,15 +694,18 @@ pub fn sync_static_mesh_rows(
             entity = entity.index(),
             "[SceneDB render diagnostics] evaluating StaticMeshComponent"
         );
-        let Some(transform) = scene_db.world.get::<Transform>(entity).copied() else {
+        // A mesh instance draws with its owner object's transform and
+        // visibility, and only while the instance is enabled.
+        let Some(transform) =
+            attachments::owner_component::<Transform>(&scene_db.world, entity).copied()
+        else {
             retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);
             continue;
         };
-        if scene_db
-            .world
-            .get::<Visibility>(entity)
-            .is_some_and(|v| !v.visible)
+        if !attachments::is_enabled(&scene_db.world, entity)
+            || attachments::owner_component::<Visibility>(&scene_db.world, entity)
+                .is_some_and(|v| !v.visible)
         {
             retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);

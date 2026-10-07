@@ -21,7 +21,7 @@ use pulsar_reflection::methods::{
 };
 use pulsar_reflection::{FieldInfo, TypeStructure, RUNTIME_TYPE_REGISTRY};
 use pulsar_scenedb::component_methods::component_methods_of_type;
-use pulsar_scenedb::{ComponentId, ComponentMethod, ComponentRef, Entity};
+use pulsar_scenedb::{ComponentMethod, ComponentRef, Entity, World};
 
 use crate::error::ScriptError;
 use crate::module::{Param, Signature};
@@ -36,9 +36,8 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
     for component in types.components() {
         let ty = Type::Component(component.name.to_owned());
         accessors(component, &ty, &mut natives);
-        let cid = component.component_id();
         for method in component_methods_of_type(component.type_id) {
-            natives.extend(component_method(component.name, &ty, cid, *method));
+            natives.extend(component_method(*component, &ty, *method));
         }
         for method in methods_of(component.type_id) {
             if method.receiver == ReceiverKind::None {
@@ -46,7 +45,7 @@ pub(crate) fn register(registry: &mut NativeRegistry) {
             }
         }
         for field in struct_fields(component.type_id) {
-            natives.extend(component_field(component.name, &ty, cid, field));
+            natives.extend(component_field(*component, &ty, field));
         }
     }
 
@@ -212,11 +211,12 @@ fn reflected(
 }
 
 fn component_method(
-    owner: &str,
+    component: ComponentBinding,
     ty: &Type,
-    cid: ComponentId,
     method: ComponentMethod,
 ) -> Option<NativeFn> {
+    let owner = component.name;
+    let cid = component.component_id();
     let info = method.info();
     let (Some((mut sig_params, bindings)), Some((ret_ty, ret_binding))) = (params(info), ret(info))
     else {
@@ -229,7 +229,7 @@ fn component_method(
         .build_raw(
             Signature::new(sig_params, ret_ty),
             Box::new(move |host, args| {
-                let entity = component_entity(&args[0])?;
+                let entity = component_target(host.world(), &component, &args[0])?;
                 let rest = &mut args[1..];
                 let mut boxed = box_args(&bindings, rest)?;
                 let result = host
@@ -250,9 +250,22 @@ fn component_entity(value: &Value) -> Result<Entity, ScriptError> {
         .ok_or_else(|| ScriptError::native("expected a component reference"))
 }
 
+/// The entity holding the value the component reference `value` names.
+fn component_target(
+    world: &World,
+    component: &ComponentBinding,
+    value: &Value,
+) -> Result<Entity, ScriptError> {
+    let entity = component_entity(value)?;
+    component
+        .resolve(world, entity)
+        .ok_or_else(|| missing(entity, component.name))
+}
+
 fn accessors(component: &ComponentBinding, ty: &Type, natives: &mut Vec<NativeFn>) {
     let name = component.name;
     let cid = component.component_id();
+    let binding = *component;
     let sig = |params: Vec<Param>, ret: Type| Signature::new(params, ret);
 
     natives.push(
@@ -273,9 +286,7 @@ fn accessors(component: &ComponentBinding, ty: &Type, natives: &mut Vec<NativeFn
     );
     natives.push(
         NativeFn::builder(format!("{name}::exists"))
-            .doc(format!(
-                "Whether the referenced entity is alive and has a {name}."
-            ))
+            .doc(format!("Whether the reference resolves to a live {name}."))
             .flags(pulsar_reflection::MethodFlags {
                 side_effect_free: true,
                 deterministic: false,
@@ -286,20 +297,26 @@ fn accessors(component: &ComponentBinding, ty: &Type, natives: &mut Vec<NativeFn
                 sig(vec![Param::new(ty.clone())], Type::Bool),
                 Box::new(move |host, args| {
                     let entity = component_entity(&args[0])?;
-                    Ok(Value::Bool(host.world().has_component(entity, cid)))
+                    Ok(Value::Bool(binding.resolve(host.world(), entity).is_some()))
                 }),
             ),
     );
     natives.push(
         NativeFn::builder(format!("{name}::entity"))
-            .doc("The entity this reference points at.")
-            .pure()
+            .doc("The object this component belongs to.")
+            .flags(pulsar_reflection::MethodFlags {
+                side_effect_free: true,
+                deterministic: false,
+            })
             .attr("display_name", "To Entity")
             .method_of(ty.clone())
             .params(["self"])
             .build_raw(
                 sig(vec![Param::new(ty.clone())], Type::Entity),
-                Box::new(move |_host, args| Ok(Value::Entity(component_entity(&args[0])?))),
+                Box::new(move |host, args| {
+                    let entity = component_entity(&args[0])?;
+                    Ok(Value::Entity(binding.object(host.world(), entity)))
+                }),
             ),
     );
 }
@@ -329,11 +346,12 @@ fn field_binding(owner: &str, field: &FieldInfo) -> Option<&'static TypeBinding>
 }
 
 fn component_field(
-    owner: &str,
+    component: ComponentBinding,
     ty: &Type,
-    cid: ComponentId,
     field: &'static FieldInfo,
 ) -> Vec<NativeFn> {
+    let owner = component.name;
+    let cid = component.component_id();
     let Some(binding) = field_binding(owner, field) else {
         return Vec::new();
     };
@@ -353,7 +371,7 @@ fn component_field(
         .build_raw(
             Signature::new([Param::new(ty.clone())], field_ty.clone()),
             Box::new(move |host, args| {
-                let entity = component_entity(&args[0])?;
+                let entity = component_target(host.world(), &component, &args[0])?;
                 let value = host
                     .world()
                     .get_dyn(entity, cid)
@@ -373,7 +391,7 @@ fn component_field(
         .build_raw(
             Signature::new([Param::new(ty.clone()), Param::new(field_ty)], Type::Unit),
             Box::new(move |host, args| {
-                let entity = component_entity(&args[0])?;
+                let entity = component_target(host.world(), &component, &args[0])?;
                 let mut guard = host
                     .world_mut()?
                     .get_dyn_mut(entity, cid)

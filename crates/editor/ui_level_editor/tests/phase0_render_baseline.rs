@@ -53,7 +53,10 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 /// draw-count readback and temporal filters settle. `PHASE0_SETTLE_FRAMES`
 /// overrides it.
 fn settle_frames() -> usize {
-    std::env::var("PHASE0_SETTLE_FRAMES").ok().and_then(|v| v.parse().ok()).unwrap_or(8)
+    std::env::var("PHASE0_SETTLE_FRAMES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(8)
 }
 /// A pixel counts as changed when its RGB channels differ by this much in sum.
 const PIXEL_THRESHOLD: u32 = 48;
@@ -80,7 +83,9 @@ fn mesh_asset() -> String {
         .expect("SM_Cube.fbx is checked in");
     // Windows canonical paths carry a `\\?\` prefix the asset resolver rejects.
     let path = path.to_string_lossy();
-    path.strip_prefix(r"\\?\").unwrap_or(&path).replace('\\', "/")
+    path.strip_prefix(r"\\?\")
+        .unwrap_or(&path)
+        .replace('\\', "/")
 }
 
 /// One observed frame: final color and Helio's scene depth.
@@ -102,7 +107,9 @@ impl Frame {
             .color
             .chunks_exact(4)
             .zip(self.color.chunks_exact(4))
-            .filter(|(a, b)| (0..3).map(|i| a[i].abs_diff(b[i]) as u32).sum::<u32>() > PIXEL_THRESHOLD)
+            .filter(|(a, b)| {
+                (0..3).map(|i| a[i].abs_diff(b[i]) as u32).sum::<u32>() > PIXEL_THRESHOLD
+            })
             .count();
         let depth_texels = reference
             .depth
@@ -198,10 +205,14 @@ impl Harness {
             encoded |= renderer
                 .render_frame(&self.device, &self.queue, &view, SIZE, SIZE, FORMAT)
                 .is_some();
-            self.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+            self.device
+                .poll(wgpu::PollType::wait_indefinitely())
+                .unwrap();
         }
         assert!(encoded, "no frame was encoded");
-        let depth = renderer.debug_depth_texture().expect("renderer initialized");
+        let depth = renderer
+            .debug_depth_texture()
+            .expect("renderer initialized");
         Frame {
             color: self.read_texture(&self.texture, wgpu::TextureAspect::All),
             depth: bytemuck_f32(&self.read_texture(depth, wgpu::TextureAspect::DepthOnly)),
@@ -212,7 +223,8 @@ impl Harness {
     fn read_texture(&self, texture: &wgpu::Texture, aspect: wgpu::TextureAspect) -> Vec<u8> {
         let size = texture.size();
         let row = size.width * 4;
-        let padded = row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+        let padded =
+            row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("phase0-baseline-readback"),
             size: (padded * size.height) as u64,
@@ -242,7 +254,9 @@ impl Harness {
         self.queue.submit([encoder.finish()]);
         let slice = buffer.slice(..);
         slice.map_async(wgpu::MapMode::Read, |r| r.expect("map readback"));
-        self.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        self.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
         let mapped = slice.get_mapped_range().expect("mapped range");
         let data = mapped
             .chunks_exact(padded as usize)
@@ -281,7 +295,11 @@ fn add_object(state: &mut LevelEditorState, name: &str, object_type: ObjectType)
             parent_id: None,
         },
     );
-    result.affected_ids.first().cloned().expect("AddObject creates an object")
+    result
+        .affected_ids
+        .first()
+        .cloned()
+        .expect("AddObject creates an object")
 }
 
 /// Viewport asset drop: `AddObject`, then `add_component` with the asset
@@ -316,7 +334,9 @@ fn drop_mesh(state: &mut LevelEditorState) -> String {
 /// The properties panel's "Add component" payload: one JSON entry per
 /// reflected property of a default instance.
 fn panel_defaults(class_name: &str) -> Value {
-    let instance = REGISTRY.create_instance(class_name).expect("registered class");
+    let instance = REGISTRY
+        .create_instance(class_name)
+        .expect("registered class");
     let mut map = serde_json::Map::new();
     for prop in instance.get_properties() {
         let value = (prop.getter)(instance.as_ref());
@@ -356,8 +376,15 @@ fn set_mesh_movability(state: &LevelEditorState, id: &str, movability: ObjectMov
     assert!(result.is_ok(), "movability edit was refused");
 }
 
+/// The object's mesh: its `StaticMeshComponent` instance, which holds the
+/// value and its GPU rows (Pulsar-Native#1035).
 fn entity(state: &LevelEditorState, id: &str) -> Entity {
-    state.scene.world().entity_for(id).expect("object has an entity")
+    let world = state.scene.world();
+    let object = world.entity_for(id).expect("object has an entity");
+    engine_backend::scene::attachments::instances(&world, object)
+        .into_iter()
+        .find(|instance| world.get::<StaticMeshComponent>(*instance).is_some())
+        .expect("object has a mesh instance")
 }
 
 /// Short type names of every component on `entity`.
@@ -393,7 +420,8 @@ fn mesh_stages(state: &LevelEditorState, entity: Entity, on_screen: Difference) 
         .map(|mirror| {
             let row = entity.index();
             (
-                StaticMeshComponent::vertices_gpu_handle(mirror.store(), row).map_or(0, |h| h.count),
+                StaticMeshComponent::vertices_gpu_handle(mirror.store(), row)
+                    .map_or(0, |h| h.count),
                 StaticMeshComponent::indices_gpu_handle(mirror.store(), row).map_or(0, |h| h.count),
             )
         })
@@ -444,7 +472,11 @@ fn phase0_mesh_and_light_baseline() {
 
     for nudge in [false, true] {
         harness.nudge_camera.set(nudge);
-        let mode = if nudge { "camera nudging" } else { "camera at rest" };
+        let mode = if nudge {
+            "camera nudging"
+        } else {
+            "camera at rest"
+        };
         let reference = {
             let state = LevelEditorState::new();
             let mut renderer = harness.renderer(&state);
@@ -467,15 +499,24 @@ fn phase0_mesh_and_light_baseline() {
             let id = drop_mesh(&mut state);
             let mut renderer = harness.renderer(&state);
             let frame = harness.frames(&mut renderer, || {});
-            let stages = mesh_stages(&state, entity(&state, &id), observe("before_first_frame", frame));
+            let stages = mesh_stages(
+                &state,
+                entity(&state, &id),
+                observe("before_first_frame", frame),
+            );
             println!("PHASE0 [{mode}] mesh added before the first frame: {stages:#?}");
-            assert!(stages.typed && stages.gpu_indices > 0, "mesh did not hydrate: {stages:#?}");
+            assert!(
+                stages.typed && stages.gpu_indices > 0,
+                "mesh did not hydrate: {stages:#?}"
+            );
             // Positive control: with Hi-Z rebuilt by a moving camera, a mesh
             // that has its draw row reaches the image, so a zero elsewhere
             // means "not drawn", not "probe blind".
             if nudge {
                 assert!(
-                    stages.draw_row && stages.on_screen.color_pixels > 0 && stages.on_screen.depth_texels > 0,
+                    stages.draw_row
+                        && stages.on_screen.color_pixels > 0
+                        && stages.on_screen.depth_texels > 0,
                     "a projected mesh did not reach the image with the camera moving: {stages:#?}"
                 );
             }
@@ -508,8 +549,12 @@ fn phase0_mesh_and_light_baseline() {
             harness.frames(&mut renderer, || {});
             let id = drop_mesh(&mut state);
             let e = entity(&state, &id);
-            let _card =
-                components::subscribe_component(&mut state.scene.world_mut(), &id, "StaticMeshComponent");
+            let _card = components::subscribe_component(
+                &mut state.scene.world_mut(),
+                &id,
+                "StaticMeshComponent",
+                0,
+            );
             let (label, tag) = if panel_drains_first {
                 ("panel open, panel drains first", "panel_drains")
             } else {
@@ -555,20 +600,32 @@ fn phase0_mesh_and_light_baseline() {
                     scale: None,
                 },
             );
-            components::add_component(&mut state.scene.world_mut(), &id, "LightComponent".to_string(), data);
+            components::add_component(
+                &mut state.scene.world_mut(),
+                &id,
+                "LightComponent".to_string(),
+                data,
+            );
             let lit = harness.frames(&mut renderer, || {});
             let tag = format!("light_{}", label.replace(' ', "_"));
             lit.dump(&format!("{mode}_{tag}"));
             let world = state.scene.world();
-            let e = world.entity_for(&id).unwrap();
-            let attachments: Vec<(String, bool, bool)> = components::get_components_metadata(&world, &id)
+            // A payload that does not decode is refused: no instance.
+            let e = components::instance_at(&world, &id, 0);
+            let attachments: Vec<(String, bool, bool)> = components::get_components(&world, &id)
                 .into_iter()
-                .map(|c| (c.class_name, c.enabled, !c.data.is_null() && c.data != json!({})))
+                .map(|c| {
+                    let class_data = c
+                        .data
+                        .as_object()
+                        .is_some_and(|map| map.keys().any(|key| !key.starts_with("__")));
+                    (c.class_name, c.enabled, class_data)
+                })
                 .collect();
             println!(
-                "PHASE0 [{mode}] light added after the first frame ({label}): typed = {}, attachments (class, enabled, keeps JSON) = {attachments:?}, components = {:?}, vs unlit = {:?}",
-                world.get::<helio_component::components::LightComponent>(e).is_some(),
-                component_names(&world, e),
+                "PHASE0 [{mode}] light added after the first frame ({label}): typed = {}, attachments (class, enabled, has class data) = {attachments:?}, components = {:?}, vs unlit = {:?}",
+                e.is_some_and(|e| world.get::<helio_component::components::LightComponent>(e).is_some()),
+                e.map(|e| component_names(&world, e)),
                 lit.difference(&unlit),
             );
         }

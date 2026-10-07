@@ -16,11 +16,12 @@ use pulsar_scenedb::{ComponentChangeEvent, SubscriptionId, World};
 use crate::refs::ComponentRef;
 
 /// Watch one referenced component for changes. Returns `None` when the
-/// actor is already dead or the class isn't registered for live World
+/// actor is already dead, has no such instance, or the class isn't registered for live World
 /// residency -- never panics (#641).
 pub fn subscribe_component(world: &mut World, r: &ComponentRef) -> Option<SubscriptionId> {
     let cid = pulsar_world_registry::component_id_for_class(&r.class_name)?;
-    world.subscribe_id(r.entity, cid)
+    let instance = r.instance(world)?;
+    world.subscribe_id(instance, cid)
 }
 
 /// Drain this world's queued change events, keeping only those belonging to

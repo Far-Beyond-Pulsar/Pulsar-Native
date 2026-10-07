@@ -106,7 +106,6 @@ fn vm_probe_get_mut(
     pulsar_world_registry::EngineClassMut::of::<VmProbe>(world, entity)
 }
 
-
 fn vm_probe_remove(world: &mut World, entity: Entity) {
     let _ = world.remove::<VmProbe>(entity);
 }

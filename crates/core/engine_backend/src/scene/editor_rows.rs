@@ -6,6 +6,7 @@ use pulsar_world_registry::GpuMirrored;
 use std::collections::HashSet;
 
 use super::{Transform, Visibility};
+use pulsar_scene_model::attachments;
 
 /// Marks rows owned by this projection, so removing a light also removes
 /// its draw data without touching independently authored pass components.
@@ -50,9 +51,13 @@ pub fn sync_editor_light_rows(
         }
         super::helio_bridge::project_movability(world, entity);
         let light = world.get::<LightComponent>(entity).expect("queried light");
-        let transform = world.get::<Transform>(entity).copied();
-        let visible = world.get::<Visibility>(entity).is_none_or(|v| v.visible);
-        if !light.general.enabled || !visible || transform.is_none() {
+        // A light instance shines from its owner object, while the instance
+        // is enabled and the owner visible.
+        let transform = attachments::owner_component::<Transform>(world, entity).copied();
+        let visible =
+            attachments::owner_component::<Visibility>(world, entity).is_none_or(|v| v.visible);
+        let enabled = light.general.enabled && attachments::is_enabled(world, entity);
+        if !enabled || !visible || transform.is_none() {
             world.remove::<LightRow>(entity);
             world.remove::<BillboardComponent>(entity);
             continue;
@@ -107,68 +112,85 @@ mod tests {
     use super::*;
     use crate::scene::SceneWorldExt;
 
+    /// An object with one light component instance.
+    fn light_object(
+        world: &mut pulsar_scenedb::World,
+        light: LightComponent,
+    ) -> (pulsar_scenedb::Entity, pulsar_scenedb::Entity) {
+        let object = world
+            .spawn_object(crate::scene::SpawnObject::new("light").with_id("light"))
+            .unwrap();
+        let instance = attachments::spawn_instance(
+            world,
+            object,
+            pulsar_scene_model::NewInstance::new("LightComponent"),
+        )
+        .unwrap();
+        world.insert(instance, light);
+        (object, instance)
+    }
+
     #[test]
     fn light_rows_follow_world_edits_and_are_removed_with_the_source() {
         let mut world = pulsar_scenedb::World::new();
-        let entity = world
-            .spawn_object(crate::scene::SpawnObject::new("light").with_id("light"))
-            .unwrap();
         let mut light = LightComponent::default();
         light.general.enabled = true;
-        world.insert(entity, light);
+        let (object, instance) = light_object(&mut world, light);
         sync_editor_light_rows(&mut world, true, None);
-        assert!(world.get::<LightRow>(entity).is_some());
-        assert!(world.get::<BillboardComponent>(entity).is_some());
-        world.get_mut::<Transform>(entity).unwrap().position = [2.0, 3.0, 4.0];
+        assert!(world.get::<LightRow>(instance).is_some());
+        assert!(world.get::<BillboardComponent>(instance).is_some());
+        world.get_mut::<Transform>(object).unwrap().position = [2.0, 3.0, 4.0];
         sync_editor_light_rows(&mut world, true, None);
         assert_eq!(
-            world.get::<LightRow>(entity).unwrap().position_range[..3],
+            world.get::<LightRow>(instance).unwrap().position_range[..3],
             [2.0, 3.0, 4.0]
         );
         assert_eq!(
-            world.get::<BillboardComponent>(entity).unwrap().world_pos[..3],
+            world.get::<BillboardComponent>(instance).unwrap().world_pos[..3],
             [2.0, 3.0, 4.0]
         );
-        world.get_mut::<Visibility>(entity).unwrap().visible = false;
+        world.get_mut::<Visibility>(object).unwrap().visible = false;
         sync_editor_light_rows(&mut world, true, None);
-        assert!(world.get::<LightRow>(entity).is_none());
-        assert!(world.get::<BillboardComponent>(entity).is_none());
-        world.get_mut::<Visibility>(entity).unwrap().visible = true;
+        assert!(world.get::<LightRow>(instance).is_none());
+        assert!(world.get::<BillboardComponent>(instance).is_none());
+        world.get_mut::<Visibility>(object).unwrap().visible = true;
         sync_editor_light_rows(&mut world, false, None);
-        assert!(world.get::<LightRow>(entity).is_some());
-        assert!(world.get::<BillboardComponent>(entity).is_none());
-        world.remove::<LightComponent>(entity);
+        assert!(world.get::<LightRow>(instance).is_some());
+        assert!(world.get::<BillboardComponent>(instance).is_none());
+        // A disabled instance keeps its value but casts no light.
+        attachments::set_enabled(&mut world, instance, false);
         sync_editor_light_rows(&mut world, true, None);
-        assert!(world.get::<LightRow>(entity).is_none());
+        assert!(world.get::<LightRow>(instance).is_none());
+        assert!(world.get::<LightComponent>(instance).is_some());
+        attachments::detach(&mut world, instance);
+        sync_editor_light_rows(&mut world, true, None);
+        assert!(world.get::<LightRow>(instance).is_none());
     }
 
     #[test]
     fn authored_movability_is_projected_into_scenedb() {
         use helio_component::components::ObjectMovability;
         let mut world = pulsar_scenedb::World::new();
-        let entity = world
-            .spawn_object(crate::scene::SpawnObject::new("light").with_id("light"))
-            .unwrap();
-        world.insert(entity, LightComponent::default());
+        let (_object, instance) = light_object(&mut world, LightComponent::default());
         sync_editor_light_rows(&mut world, true, None);
         assert_eq!(
-            world.get::<helio::Movability>(entity),
+            world.get::<helio::Movability>(instance),
             Some(&helio::Movability::Static)
         );
 
         world
-            .get_mut::<LightComponent>(entity)
+            .get_mut::<LightComponent>(instance)
             .unwrap()
             .general
             .movability = ObjectMovability::Movable;
         sync_editor_light_rows(&mut world, true, None);
         assert_eq!(
-            world.get::<helio::Movability>(entity),
+            world.get::<helio::Movability>(instance),
             Some(&helio::Movability::Movable)
         );
 
-        world.remove::<LightComponent>(entity);
+        world.remove::<LightComponent>(instance);
         sync_editor_light_rows(&mut world, true, None);
-        assert!(world.get::<helio::Movability>(entity).is_none());
+        assert!(world.get::<helio::Movability>(instance).is_none());
     }
 }

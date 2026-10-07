@@ -151,7 +151,8 @@ pub fn new_content_driver(content: &pulsar_content::ContentRoot) -> ScriptDriver
 
 /// Fill hidden component handles of instance `instance_id`: prefab slots
 /// (`__slot:<uuid>`) resolve through the class placement, while implicit
-/// component event sources (`__component:<class>`) resolve on `root`.
+/// component event sources (`__component:<class>`) resolve to `root`'s
+/// first instance of the class.
 ///
 /// This is the one place slot UUIDs are resolved: each becomes a handle to
 /// the instance's real component, and the script only ever uses the
@@ -197,9 +198,10 @@ pub fn bind_class_slots(
                     Some(pulsar_scenedb::ComponentRef::new(h.entity, id))
                 })
         } else {
-            pulsar_world_registry::component_id_for_class(&component_class)
-                .filter(|id| world.has_component(root, *id))
-                .map(|id| pulsar_scenedb::ComponentRef::new(root, id))
+            pulsar_world_registry::component_id_for_class(&component_class).and_then(|id| {
+                pulsar_world_registry::pulsar_scene_model::attachments::holder_of(world, root, id)
+                    .map(|holder| pulsar_scenedb::ComponentRef::new(holder, id))
+            })
         };
         match handle {
             Some(handle) => {

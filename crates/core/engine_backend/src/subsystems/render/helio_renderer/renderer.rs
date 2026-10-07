@@ -1,8 +1,7 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer backed by SceneDB.
 
 use glam::{DVec3, Mat4, Vec3};
-use std::collections::HashSet;
-use std::sync::{Arc, Mutex, mpsc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 
 use helio::{Camera, Renderer, RendererConfig};
@@ -913,26 +912,9 @@ impl HelioRenderer {
                 profiling::profile_scope!("helio_scene_store_write_lock_wait");
                 self.scene_store.write()
             };
-            let mut dirty_meshes = HashSet::new();
-            let mut dirty_lights = HashSet::new();
-            let mesh_components = [
-                pulsar_scenedb::component_id::<helio_component::components::StaticMeshComponent>(),
-                pulsar_scenedb::component_id::<crate::scene::Transform>(),
-                pulsar_scenedb::component_id::<crate::scene::Visibility>(),
-            ];
-            let light_components = [
-                pulsar_scenedb::component_id::<helio_component::components::LightComponent>(),
-                pulsar_scenedb::component_id::<crate::scene::Transform>(),
-                pulsar_scenedb::component_id::<crate::scene::Visibility>(),
-            ];
-            for event in scene_store.world.take_component_change_events() {
-                if mesh_components.contains(&event.component) {
-                    dirty_meshes.insert(event.entity);
-                }
-                if light_components.contains(&event.component) {
-                    dirty_lights.insert(event.entity);
-                }
-            }
+            let events = scene_store.world.take_component_change_events();
+            let (dirty_meshes, dirty_lights) =
+                crate::scene::dirty_render_instances(&scene_store.world, &events);
             let full_projection = !self.render_row_subscriptions_armed || !inner.has_rendered_frame;
             let mesh_dirty = (!full_projection).then_some(&dirty_meshes);
             let light_dirty = (!full_projection).then_some(&dirty_lights);
@@ -1429,7 +1411,9 @@ impl HelioRenderer {
     /// test tell geometry that rasterized but shaded black from geometry
     /// that was never drawn (the SceneDB Phase 0 render baseline).
     pub fn debug_depth_texture(&self) -> Option<&wgpu::Texture> {
-        self.inner.as_ref().map(|inner| inner.renderer.debug_depth_texture())
+        self.inner
+            .as_ref()
+            .map(|inner| inner.renderer.debug_depth_texture())
     }
 
     // ── SceneDB-backed editor integration ───────────────────────────────────

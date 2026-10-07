@@ -4,6 +4,7 @@ pub mod panels;
 
 use std::sync::Arc;
 
+use engine_backend::scene::attachments;
 use engine_backend::{
     scene::{
         voxel_source::{VoxelSourceKind, VoxelSourceSession},
@@ -79,14 +80,16 @@ impl TerrainMode {
     fn sources(state: &LevelEditorState) -> Vec<SourceBounds> {
         let world = state.scene.world();
         let mut sources = Vec::new();
-        for (entity, component) in world.query::<&VoxelComponent>() {
+        for (entity, _, component) in attachments::enabled_components::<VoxelComponent>(&world) {
             if component.enabled && component.editable {
                 if let Some(source) = object_bounds(&world, entity, component) {
                     sources.push(source);
                 }
             }
         }
-        for (entity, component) in world.query::<&VoxelTerrainComponent>() {
+        for (entity, _, component) in
+            attachments::enabled_components::<VoxelTerrainComponent>(&world)
+        {
             if component.enabled && component.editable {
                 if let Some(source) = terrain_bounds(&world, entity, component) {
                     sources.push(source);
@@ -415,7 +418,10 @@ fn object_bounds(
     entity: Entity,
     component: &VoxelComponent,
 ) -> Option<SourceBounds> {
-    let transform = world.get::<Transform>(entity).copied().unwrap_or_default();
+    // A voxel source instance is placed by its object's transform.
+    let transform = attachments::owner_component::<Transform>(world, entity)
+        .copied()
+        .unwrap_or_default();
     if transform
         .rotation
         .iter()
@@ -461,7 +467,10 @@ fn terrain_bounds(
     if component.chunk_edge_voxels != 8 || !matches!(component.domain_mode, 0 | 1) {
         return None;
     }
-    let transform = world.get::<Transform>(entity).copied().unwrap_or_default();
+    // A voxel source instance is placed by its object's transform.
+    let transform = attachments::owner_component::<Transform>(world, entity)
+        .copied()
+        .unwrap_or_default();
     if transform
         .rotation
         .iter()

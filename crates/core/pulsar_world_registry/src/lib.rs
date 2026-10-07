@@ -74,6 +74,9 @@
 // crate without that crate needing its own direct `inventory` dependency --
 // same pattern `pulsar_reflection` already uses for `RuntimeBehaviorRegistration`.
 pub use inventory;
+/// Re-exported so generated component code can name the instance types
+/// (`ComponentOwner`) without its own dependency.
+pub use pulsar_scene_model;
 /// VM declarations/codecs referenced by generated component event metadata.
 pub use pulsar_script_vm;
 
@@ -95,17 +98,20 @@ pub struct ComponentTickRegistration {
     /// these are subscribed for each active component instance.
     pub handler_events: &'static [&'static str],
     pub component_type: fn() -> ComponentId,
-    /// Runs callbacks on live rows, reporting the active set. The previous
-    /// set lets generated shims invoke `begin_play` only on activation.
+    /// Runs callbacks on every enabled instance of the class, reporting the
+    /// active set: instance entity -> owner object (the actor whose event
+    /// channel the instance uses). The previous set lets generated shims
+    /// invoke `begin_play` only on activation.
     pub tick: fn(
         &mut World,
         &pulsar_events::EventHub,
         f32,
-        &std::collections::HashSet<Entity>,
-        &mut std::collections::HashSet<Entity>,
+        &std::collections::HashMap<Entity, Entity>,
+        &mut std::collections::HashMap<Entity, Entity>,
         &mut ComponentRuntimeState,
     ),
-    /// Owner-only teardown after the row has already been removed/disabled.
+    /// Owner-only teardown after the instance has already been
+    /// removed/disabled; called with its owner object.
     pub end_play: Option<fn(Entity, &pulsar_events::EventHub)>,
 }
 
@@ -191,18 +197,32 @@ pub fn flush_component_events(world: &mut World, hub: &pulsar_events::EventHub) 
         let Some(mut outbox) = world.remove::<ComponentEventOutbox>(entity) else {
             continue;
         };
+        // A component instance's events are addressed to the instance (for
+        // subscriptions to that component) and to its owning object (for
+        // subscriptions to the object), as they were when both were one
+        // entity (Pulsar-Native#1035).
+        let owner = pulsar_scene_model::attachments::owner_of(world, entity);
+        let channels: Vec<Entity> = std::iter::once(entity).chain(owner).collect();
         let mut pending = Vec::new();
         for event in outbox.events.drain(..) {
-            match hub.publish_named(
-                pulsar_events::gamma::Channel::Entity(entity.bits()),
-                &event.name,
-                event.fields.clone(),
-            ) {
-                Ok(()) => delivered += 1,
-                Err(error) => {
-                    tracing::warn!(event = %event.name, %error, "component event was not registered; keeping it queued");
-                    pending.push(event);
+            let mut published = 0;
+            for channel in &channels {
+                match hub.publish_named(
+                    pulsar_events::gamma::Channel::Entity(channel.bits()),
+                    &event.name,
+                    event.fields.clone(),
+                ) {
+                    Ok(()) => published += 1,
+                    Err(error) => {
+                        tracing::warn!(event = %event.name, %error, "component event was not registered; keeping it queued");
+                        break;
+                    }
                 }
+            }
+            if published == 0 {
+                pending.push(event);
+            } else {
+                delivered += 1;
             }
         }
         if !pending.is_empty() {
@@ -277,6 +297,7 @@ pub mod audit;
 pub mod dispatch;
 mod engine_class_mut;
 pub mod errors;
+pub mod instances;
 pub mod marshal;
 pub mod type_shims;
 pub mod values;
@@ -299,6 +320,12 @@ pub use dispatch::{
 pub use engine_class_mut::EngineClassMut;
 pub use errors::ScriptRefError;
 // Marshalling (#644): JSON ⇄ Box<dyn Any>.
+pub use instances::{
+    attach_component, attach_record, attach_record_or_unresolved, attach_records,
+    attach_unresolved, attach_value, component_metadata_records, component_records,
+    duplicate_instance, duplicate_instances, instance_engine_class, instance_metadata_record,
+    instance_record, replace_records, set_instance_data, AttachError, ComponentPayload,
+};
 pub use marshal::{any_to_json, json_to_any};
 pub use values::{
     clone_world_component_value, decode_world_component_value, insert_world_component_value,

@@ -3,9 +3,7 @@
 //! A placed class is a root object with a `ClassInstance` component, the
 //! class's prefab components, and generated child objects for components
 //! that need their own entity (see `pulsar_class::plan`). This module wraps
-//! `pulsar_class::world` with the editor's component bookkeeping (component
-//! records are normalized through
-//! [`sync_registered_component_props_to_scene_db`]) and provides the data
+//! `pulsar_class::world` with the editor's object ids and provides the data
 //! side of the details panel: which values an instance overrides, and
 //! reverting them to the class default.
 
@@ -17,7 +15,6 @@ use pulsar_class::{ClassDefinition, ClassInstance, ClassRegistry};
 use pulsar_scenedb::{Entity, World};
 use serde_json::Value;
 
-use super::components::sync_registered_component_props_to_scene_db;
 use super::objects::remove_object;
 use super::{ObjectId, ObjectType, Transform};
 
@@ -114,16 +111,12 @@ fn id_of(world: &World, entity: Entity) -> Option<ObjectId> {
     world.stable_id_of(entity).map(str::to_string)
 }
 
-/// Normalize the component records of `root` and its generated children.
-fn sync_instance(world: &mut World, root: Entity) -> Vec<ObjectId> {
-    let mut ids = Vec::new();
-    for e in std::iter::once(root).chain(class_world::generated_children(world, root)) {
-        if let Some(id) = id_of(world, e) {
-            sync_registered_component_props_to_scene_db(world, &id);
-            ids.push(id);
-        }
-    }
-    ids
+/// The ids of `root` and its generated children.
+fn instance_object_ids(world: &World, root: Entity) -> Vec<ObjectId> {
+    std::iter::once(root)
+        .chain(class_world::generated_children(world, root))
+        .filter_map(|e| id_of(world, e))
+        .collect()
 }
 
 // ── Placement ──────────────────────────────────────────────────────────────
@@ -161,7 +154,7 @@ pub fn instantiate_class(
             return None;
         }
     };
-    Some(sync_instance(world, root))
+    Some(instance_object_ids(world, root))
 }
 
 /// Place an instance of the class in `class_dir` (a content-browser or
@@ -206,13 +199,7 @@ pub fn duplicate_instance_with(
     let source = super::objects::get_object(world, id)?;
     let instance = current_overrides(world, id, registry)?;
     let def = registry.definition_for(&instance)?;
-    let extra: Vec<super::ComponentInstance> = super::components::get_components(world, id)
-        .into_iter()
-        .filter(|c| {
-            c.class_name != pulsar_class::CLASS_INSTANCE
-                && c.data.get(pulsar_class::SLOT_ID_KEY).is_none()
-        })
-        .collect();
+    let source_root = entity(world, id)?;
     let ids = instantiate_class(
         world,
         &def,
@@ -222,8 +209,18 @@ pub fn duplicate_instance_with(
         source.parent.as_deref(),
     )?;
     let root_id = ids.first()?.clone();
-    for component in extra {
-        super::components::add_component_instance(world, &root_id, component);
+    // The components the user added to the source (not built from the
+    // class): copies of their values.
+    let root = entity(world, &root_id)?;
+    let added = |world: &World, instance: Entity| {
+        engine_backend::scene::attachments::meta(world, instance).is_some_and(|meta| {
+            meta.class_name != pulsar_class::CLASS_INSTANCE && meta.class_slot.is_none()
+        })
+    };
+    if let Err(error) =
+        pulsar_world_registry::duplicate_instances(world, source_root, root, added, false)
+    {
+        tracing::error!("Could not copy the added components of '{id}': {error}");
     }
     Some(root_id)
 }
@@ -255,7 +252,7 @@ pub fn rebuild_instance(
     }
     class_world::expand_class_instance(world, root, &def);
     remember_built_definition(&def);
-    Some(sync_instance(world, root))
+    Some(instance_object_ids(world, root))
 }
 
 /// Rebuild every class instance in the world (after a level load). Returns
@@ -493,7 +490,6 @@ pub fn set_variable(
         );
     }
     class_world::store_class_instance(world, root, &instance);
-    sync_registered_component_props_to_scene_db(world, id);
     super::changes::record_property_change(id, pulsar_class::CLASS_INSTANCE, name);
     true
 }
@@ -510,7 +506,6 @@ pub fn revert_variable(world: &mut World, id: &str, name: &str) -> bool {
         return false;
     }
     class_world::store_class_instance(world, root, &instance);
-    sync_registered_component_props_to_scene_db(world, id);
     super::changes::record_property_change(id, pulsar_class::CLASS_INSTANCE, name);
     true
 }

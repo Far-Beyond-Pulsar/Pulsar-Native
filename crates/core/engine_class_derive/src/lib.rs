@@ -1223,20 +1223,27 @@ pub fn register_component_runtime(attr: TokenStream, item: TokenStream) -> Token
             world: &mut pulsar_scenedb::World,
             events: &pulsar_events::EventHub,
             delta_seconds: f32,
-            previous: &std::collections::HashSet<pulsar_scenedb::Entity>,
-            current: &mut std::collections::HashSet<pulsar_scenedb::Entity>,
+            previous: &std::collections::HashMap<pulsar_scenedb::Entity, pulsar_scenedb::Entity>,
+            current: &mut std::collections::HashMap<pulsar_scenedb::Entity, pulsar_scenedb::Entity>,
             runtime: &mut pulsar_world_registry::ComponentRuntimeState,
         ) {
-            for (entity, mut component) in world.query::<&mut #self_ty>() {
+            // Every enabled instance ticks on its own; its owner object is the
+            // actor whose event channel it uses.
+            for (entity, (mut component, link)) in world.query::<(
+                &mut #self_ty,
+                &pulsar_world_registry::pulsar_scene_model::ComponentOwner,
+            )>() {
+                if !link.is_enabled() { continue; }
                 #activation_check
-                let first_frame = !previous.contains(&entity);
-                current.insert(entity);
+                let owner = link.entity();
+                let first_frame = !previous.contains_key(&entity);
+                current.insert(entity, owner);
                 let instance = pulsar_world_registry::ComponentInstanceKey {
                     component_type: pulsar_scenedb::component_id::<#self_ty>(),
                     entity,
                 };
-                runtime.subscribe_instance(instance, events, &[#(#handler_event_names),*]);
-                let mut context = pulsar_world_registry::ComponentContext::new(entity, events);
+                runtime.subscribe_instance(instance, owner, events, &[#(#handler_event_names),*]);
+                let mut context = pulsar_world_registry::ComponentContext::new(owner, events);
                 if first_frame { #begin_call }
                 for queued_event in runtime.take_events(instance) {
                     match queued_event.name.as_str() {

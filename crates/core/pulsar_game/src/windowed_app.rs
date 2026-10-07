@@ -19,9 +19,9 @@ use winit::{
 };
 
 use engine_backend::scene::{
-    RuntimeLevel, ensure_gpu_mirror, sync_editor_light_rows, sync_static_mesh_rows,
+    ensure_gpu_mirror, sync_editor_light_rows, sync_static_mesh_rows, RuntimeLevel,
 };
-use helio::{Camera, Renderer, RendererConfig, required_wgpu_features, required_wgpu_limits};
+use helio::{required_wgpu_features, required_wgpu_limits, Camera, Renderer, RendererConfig};
 use parking_lot::RwLock;
 
 use crate::camera_selection::select_world_camera;

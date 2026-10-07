@@ -40,12 +40,13 @@ fn read_property_from_world(
     world: &World,
     object_id: &crate::scene_edit::ObjectId,
     class_name: &str,
+    index: usize,
     prop: &PropertyMetadata,
     component: &ComponentInstance,
     default_instance: &dyn pulsar_reflection::EngineClass,
 ) -> Box<dyn Any> {
     crate::scene_edit::components::read_live_component_property(
-        world, object_id, class_name, prop.name,
+        world, object_id, class_name, index, prop.name,
     )
     .or_else(|| {
         component
@@ -61,12 +62,9 @@ fn read_property_from_world(
     .unwrap_or_else(|| (prop.getter)(default_instance))
 }
 
-/// Pull a card's value snapshot from its OWN metadata JSON blob (falling
-/// back to the default instance for absent/null fields) -- the source of
-/// truth for every NON-live-typed instance card. A duplicate instance has no
-/// `World` presence (`World` holds one typed value per `(entity, type)`), so
-/// reading "the" live value here would silently show another instance's
-/// fields -- exactly Pulsar-Native#519's bug, on the read side.
+/// Pull a card's value snapshot from its OWN record JSON (falling back to
+/// the default instance for absent/null fields) -- for an unresolved
+/// instance, whose payload is the only copy of its values.
 fn read_card_values_from_metadata(
     component: &ComponentInstance,
     properties: &[PropertyMetadata],
@@ -98,6 +96,7 @@ fn read_card_values_fresh(
     world: &World,
     object_id: &crate::scene_edit::ObjectId,
     class_name: &str,
+    index: usize,
     properties: &[PropertyMetadata],
     component: &ComponentInstance,
     default_instance: &dyn pulsar_reflection::EngineClass,
@@ -106,6 +105,7 @@ fn read_card_values_fresh(
         world,
         object_id,
         class_name,
+        index,
         |instance| {
             properties
                 .iter()
@@ -122,6 +122,7 @@ fn read_card_values_fresh(
                     world,
                     object_id,
                     class_name,
+                    index,
                     prop,
                     component,
                     default_instance,
@@ -224,17 +225,17 @@ impl ObjectTypeFieldsSection {
                 let card_key = (class_name.clone(), idx);
                 let editor_key = format!("{class_name}#{idx}");
 
-                // Which instance of this class is the live-typed one? Only
-                // that card reads (and subscribes to) `World`; every OTHER
-                // instance reads and writes its own metadata JSON blob --
-                // `World` physically holds one typed value per
-                // `(entity, ComponentId)`, so duplicates cannot share it.
-                let live_idx = {
+                // Every instance holds its own typed value in `World`
+                // (Pulsar-Native#1035); a live card reads and subscribes to
+                // it. Only an unresolved payload (a class this build does
+                // not register) reads its own JSON.
+                let live = {
                     let world = scene_db.read();
-                    crate::scene_edit::components::live_typed_component_index(
+                    crate::scene_edit::components::is_live_instance(
                         &world.world,
                         &object_id,
                         class_name,
+                        idx,
                     )
                 };
 
@@ -255,7 +256,7 @@ impl ObjectTypeFieldsSection {
                     self.world_value_cache.remove(&card_key)
                 };
                 if values.is_none() {
-                    if live_idx == Some(idx)
+                    if live
                         && !self.world_subs.contains_key(&card_key)
                         && !self.unsubscribable_classes.contains(class_name.as_str())
                     {
@@ -267,16 +268,18 @@ impl ObjectTypeFieldsSection {
                                 &mut world.world,
                                 &object_id,
                                 class_name,
+                                idx,
                             )
                         } {
                             self.world_subs.insert(card_key.clone(), sub);
                         }
                     }
-                    values = Some(if live_idx == Some(idx) {
+                    values = Some(if live {
                         read_card_values_fresh(
                             &scene_db.read().world,
                             &object_id,
                             class_name,
+                            idx,
                             &properties,
                             component,
                             default_inst,

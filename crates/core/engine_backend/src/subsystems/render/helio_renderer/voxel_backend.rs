@@ -759,7 +759,16 @@ mod tests {
     use crate::scene::Visibility;
     use helio_component::VoxelTerrainComponent;
     use helio_voxel_data::VoxelStoredPayload;
-    use pulsar_scenedb::World;
+    use pulsar_scenedb::{Entity, World};
+
+    /// Attach `value` to `owner` as a component instance; returns it.
+    fn attach<T: pulsar_reflection::EngineClass>(
+        scene: &mut World,
+        owner: Entity,
+        value: T,
+    ) -> Entity {
+        pulsar_world_registry::attach_value(scene, owner, value).expect("attach test component")
+    }
 
     fn planet_terrain() -> VoxelTerrainComponent {
         let mut terrain = VoxelTerrainComponent::default();
@@ -820,8 +829,8 @@ mod tests {
     #[test]
     fn renderer_selection_preserves_the_planet_snapshot_between_camera_frames() {
         let mut scene = World::new();
-        let entity = scene.spawn();
-        scene.insert(entity, planet_terrain());
+        let owner = scene.spawn();
+        let entity = attach(&mut scene, owner, planet_terrain());
         let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty(), "{errors:?}");
         let eye = DVec3::new(0.0, 6_371_000.0 + 3_000.0, 0.0);
@@ -874,10 +883,10 @@ mod tests {
     #[test]
     fn empty_renderer_id_selects_a_unique_compatible_backend() {
         let mut scene = World::new();
-        let entity = scene.spawn();
+        let owner = scene.spawn();
         let mut terrain = planet_terrain();
         terrain.renderer_id.clear();
-        scene.insert(entity, terrain);
+        let entity = attach(&mut scene, owner, terrain);
         let (entries, projection_errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(projection_errors.is_empty());
 
@@ -890,7 +899,7 @@ mod tests {
         assert!(frame.lock().unwrap().is_some());
 
         scene.insert(
-            entity,
+            owner,
             Visibility {
                 visible: false,
                 locked: false,
@@ -907,8 +916,8 @@ mod tests {
     #[test]
     fn exact_brush_edits_round_trip_through_the_terrain_journal() {
         let mut scene = World::new();
-        let entity = scene.spawn();
-        scene.insert(entity, planet_terrain());
+        let owner = scene.spawn();
+        let entity = attach(&mut scene, owner, planet_terrain());
         let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty());
         let original = Planet::new(PlanetRecipe::default()).unwrap();
@@ -1005,8 +1014,8 @@ mod tests {
     #[test]
     fn altitude_is_height_above_the_ground_below() {
         let mut scene = World::new();
-        let entity = scene.spawn();
-        scene.insert(entity, planet_terrain());
+        let owner = scene.spawn();
+        let entity = attach(&mut scene, owner, planet_terrain());
         let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         let mut registry = VoxelBackendRegistry::new();
         registry
@@ -1031,8 +1040,8 @@ mod tests {
     #[test]
     fn an_eye_inside_the_ground_is_lifted_but_dug_air_is_kept() {
         let mut scene = World::new();
-        let entity = scene.spawn();
-        scene.insert(entity, planet_terrain());
+        let owner = scene.spawn();
+        let entity = attach(&mut scene, owner, planet_terrain());
         let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         let mut registry = VoxelBackendRegistry::new();
         registry
@@ -1127,14 +1136,14 @@ mod tests {
     #[test]
     fn a_landform_component_configures_the_generator() {
         let mut scene = World::new();
-        let entity = scene.spawn();
+        let owner = scene.spawn();
         let mut terrain = planet_terrain();
         terrain.seed = 99;
-        scene.insert(entity, terrain);
+        let entity = attach(&mut scene, owner, terrain);
         let mut landform = helio_component::VoxelLandformComponent::default();
         landform.snowline_m = 1_234.0;
         landform.mountain_km = 55.0;
-        scene.insert(entity, landform);
+        attach(&mut scene, owner, landform);
         let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty(), "{errors:?}");
         let mut backend = PlanetVoxelBackend::new();
@@ -1171,15 +1180,15 @@ mod tests {
     #[test]
     fn a_flat_terrain_uses_its_settings_component() {
         let mut scene = World::new();
-        let entity = scene.spawn();
+        let owner = scene.spawn();
         let mut terrain = VoxelTerrainComponent::plane(1_024.0);
         terrain.generator.id = helio_pass_voxel_planet::landform::FLAT_ID.into();
         terrain.generator.version = helio_pass_voxel_planet::landform::FLAT_VERSION;
-        scene.insert(entity, terrain);
+        let entity = attach(&mut scene, owner, terrain);
         let mut flat = helio_component::VoxelFlatTerrainComponent::default();
         flat.height = 12.0;
         flat.surface = helio_component::VoxelTerrainMaterial::Sand;
-        scene.insert(entity, flat);
+        attach(&mut scene, owner, flat);
         let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty(), "{errors:?}");
         let mut backend = PlanetVoxelBackend::new();
@@ -1200,10 +1209,10 @@ mod tests {
     #[test]
     fn unknown_generators_are_rejected_with_the_registered_list() {
         let mut scene = World::new();
-        let entity = scene.spawn();
+        let owner = scene.spawn();
         let mut terrain = planet_terrain();
         terrain.generator.id = "example.none".into();
-        scene.insert(entity, terrain);
+        let entity = attach(&mut scene, owner, terrain);
         let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         let error = PlanetVoxelBackend::validate_source(&entries[0]).unwrap_err();
         assert!(
@@ -1216,11 +1225,11 @@ mod tests {
     fn plane_worlds_follow_the_component_shape_and_size() {
         for shape in [VoxelWorldShape::Plane, VoxelWorldShape::InfinitePlane] {
             let mut scene = World::new();
-            let entity = scene.spawn();
+            let owner = scene.spawn();
             let mut terrain = planet_terrain();
             terrain.shape = shape;
             terrain.plane_size = 2_048.0;
-            scene.insert(entity, terrain);
+            let entity = attach(&mut scene, owner, terrain);
             let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
             assert!(errors.is_empty(), "{errors:?}");
             let mut registry = VoxelBackendRegistry::new();

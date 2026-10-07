@@ -11,8 +11,11 @@
 //!
 //! for every property and method whose types scripts can represent. They
 //! read and write the live component through the same bridge the
-//! properties panel uses, so writes reach SceneDB's change hooks, and
-//! re-sync the component's GPU mirror after every write, as the panel does.
+//! properties panel uses, so writes reach SceneDB's change hooks (and with
+//! them the component's GPU row) and the class's `property_written`
+//! normalization runs, as it does for the panel. A reference names a
+//! component instance, or an object whose first instance of the class it
+//! means (Pulsar-Native#1035).
 
 use std::any::Any;
 use std::sync::Arc;
@@ -20,8 +23,8 @@ use std::sync::Arc;
 use pulsar_reflection::{MethodFlags, PropertyMetadata, REGISTRY};
 use pulsar_scenedb::Entity;
 use pulsar_script_vm::{
-    ComponentProvider, NativeFn, NativeProvider, Param, ProvidedComponent, ScriptError, Signature,
-    Type, TypeRegistry, Value,
+    ComponentAddressing, ComponentProvider, NativeFn, NativeProvider, Param, ProvidedComponent,
+    ScriptError, Signature, Type, TypeRegistry, Value,
 };
 
 use crate::WorldComponentRegistration;
@@ -45,6 +48,12 @@ fn world_components() -> Vec<ProvidedComponent> {
         .map(|r| ProvidedComponent {
             name: r.class_name,
             id: r.component_type,
+            // A reference names a component instance, or an object whose
+            // first instance of the class it means (Pulsar-Native#1035).
+            addressing: ComponentAddressing {
+                resolve: pulsar_scene_model::attachments::holder_of,
+                object: pulsar_scene_model::attachments::object_of,
+            },
         })
         .collect()
 }
@@ -66,11 +75,19 @@ fn world_component_natives() -> Vec<NativeFn> {
     natives
 }
 
-fn entity_of(value: &Value) -> Result<Entity, ScriptError> {
-    value
+/// The component-instance entity a script component reference names: the
+/// instance itself, or its owner object's first instance of `class`.
+fn instance_of(
+    world: &pulsar_scenedb::World,
+    value: &Value,
+    class: &str,
+) -> Result<Entity, ScriptError> {
+    let entity = value
         .as_component()
         .map(|c| c.entity)
-        .ok_or_else(|| ScriptError::native("expected a component reference"))
+        .ok_or_else(|| ScriptError::native("expected a component reference"))?;
+    crate::instances::resolve_instance(world, entity, class, 0)
+        .ok_or_else(|| missing(entity, class))
 }
 
 fn missing(entity: Entity, class: &str) -> ScriptError {
@@ -118,7 +135,7 @@ fn property_natives(
     let get = get.build_raw(
         Signature::new([Param::new(ty.clone())], value_ty.clone()),
         Box::new(move |host, args| {
-            let entity = entity_of(&args[0])?;
+            let entity = instance_of(host.world(), &args[0], class)?;
             let instance = (registration.get_as_engine_class)(host.world(), entity)
                 .ok_or_else(|| missing(entity, class))?;
             let value = (getter.getter)(instance);
@@ -128,7 +145,7 @@ fn property_natives(
     let set = set.build_raw(
         Signature::new([Param::new(ty.clone()), Param::new(value_ty)], Type::Unit),
         Box::new(move |host, args| {
-            let entity = entity_of(&args[0])?;
+            let entity = instance_of(host.world(), &args[0], class)?;
             let value = binding.from_value(&args[1]).map_err(ScriptError::native)?;
             let world = host.world_mut()?;
             {
@@ -197,7 +214,7 @@ fn method_native(
     Some(builder.build_raw(
         Signature::new(params, ret_ty),
         Box::new(move |host, args| {
-            let entity = entity_of(&args[0])?;
+            let entity = instance_of(host.world(), &args[0], class)?;
             // Built from each parameter's own binding, so every argument has
             // exactly the type the generated caller downcasts to.
             let boxed: Vec<Box<dyn Any>> = bindings

@@ -123,7 +123,8 @@ pub trait SceneWorldExt {
     /// gives a new one). Lets a caller hand out an entity id first and fill
     /// it later, e.g. a script spawn applied at the end of the script phase.
     fn spawn_object_into(&mut self, entity: Entity, spec: SpawnObject) -> Result<(), SceneError>;
-    /// Despawn `entity` and, recursively, its children.
+    /// Despawn `entity` and, recursively, its children, each together with
+    /// its attached component instances.
     fn despawn_tree(&mut self, entity: Entity);
 
     // ── Selection ───────────────────────────────────────────────────────
@@ -275,6 +276,7 @@ impl SceneWorldExt for World {
         for child in self.children_of(Some(entity)) {
             self.despawn_tree(child);
         }
+        crate::attachments::detach_all(self, entity);
         self.despawn(entity);
     }
 

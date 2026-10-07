@@ -62,10 +62,18 @@ fn slot(dir: &Path, index: usize) -> String {
         .to_string()
 }
 
+/// The object's first enabled light instance.
+fn light_instance(world: &World, id: &str) -> pulsar_scenedb::Entity {
+    let owner = world.entity_for(id).unwrap();
+    engine_backend::scene::attachments::enabled_components_of::<LightComponent>(world, owner)
+        .first()
+        .expect("LightComponent")
+        .0
+}
+
 fn light(world: &World, id: &str) -> LightComponent {
-    let entity = world.entity_for(id).unwrap();
     world
-        .get::<LightComponent>(entity)
+        .get::<LightComponent>(light_instance(world, id))
         .cloned()
         .expect("LightComponent")
 }
@@ -122,7 +130,7 @@ fn save_writes_only_overrides_and_load_follows_class_edits() {
     let b = place(world, &dir, 1.0);
 
     // Override one value on a, and a variable.
-    let entity = world.entity_for(&a).unwrap();
+    let entity = light_instance(&world, &a);
     world
         .get_mut::<LightComponent>(entity)
         .unwrap()
@@ -249,7 +257,7 @@ fn duplicate_and_history_keep_the_class_link() {
     let mut scene = new_scene();
     let world = &mut scene.world;
     let a = place(world, &dir, 0.0);
-    let entity = world.entity_for(&a).unwrap();
+    let entity = light_instance(&world, &a);
     world
         .get_mut::<LightComponent>(entity)
         .unwrap()
@@ -288,7 +296,7 @@ fn details_view_marks_overrides_and_reverts_them() {
     let mut scene = new_scene();
     let world = &mut scene.world;
     let a = place(world, &dir, 0.0);
-    let entity = world.entity_for(&a).unwrap();
+    let entity = light_instance(&world, &a);
     world
         .get_mut::<LightComponent>(entity)
         .unwrap()
@@ -341,7 +349,7 @@ fn class_asset_updates_rebuild_placed_instances() {
         let a = place(&mut world, &dir, 0.0);
         let b = place(&mut world, &dir, 1.0);
         // An unsaved edit on a.
-        let entity = world.entity_for(&a).unwrap();
+        let entity = light_instance(&world, &a);
         world
             .get_mut::<LightComponent>(entity)
             .unwrap()
@@ -464,7 +472,7 @@ fn reverts_and_variable_edits_are_undoable_commands() {
     let a = {
         let mut world = state.scene.world_mut();
         let a = place(&mut world, &dir, 0.0);
-        let entity = world.entity_for(&a).unwrap();
+        let entity = light_instance(&world, &a);
         world
             .get_mut::<LightComponent>(entity)
             .unwrap()
@@ -550,7 +558,12 @@ fn placed_classes_are_class_objects_with_owned_children() {
     assert!(pulsar_class::is_slot_uuid(&slot0));
     let root = world.entity_for(&a).unwrap();
     let placement = pulsar_class::world::placement(world, root);
-    assert_eq!(placement.handle(&slot0).unwrap().entity, root);
+    let handle = placement.handle(&slot0).unwrap().entity;
+    assert_eq!(
+        engine_backend::scene::attachments::owner_of(world, handle),
+        Some(root),
+        "a root slot is a component instance on the root"
+    );
 }
 
 /// #925: Stop restores the editor world exactly as it was before the first
@@ -591,7 +604,7 @@ fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
         let mut world = state.scene.world_mut();
         // Gameplay moves the lamp and dims it.
         objects::set_transform(&mut world, &a, Some([5.0, 0.0, 0.0]), None, None);
-        let entity = world.entity_for(&a).unwrap();
+        let entity = light_instance(&world, &a);
         world
             .get_mut::<LightComponent>(entity)
             .unwrap()

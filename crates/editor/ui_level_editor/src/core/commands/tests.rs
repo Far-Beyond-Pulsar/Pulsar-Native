@@ -208,6 +208,7 @@ mod undo_redo_tests {
                 &world,
                 &id,
                 "LightComponent",
+                0,
                 "intensity",
             )
         }
@@ -224,6 +225,7 @@ mod undo_redo_tests {
                 &world,
                 &id,
                 "LightComponent",
+                0,
                 "intensity",
             )
         }
@@ -295,6 +297,7 @@ mod undo_redo_tests {
                 &world,
                 &id,
                 "LightComponent",
+                0,
                 "enabled",
             )
         }
@@ -309,6 +312,7 @@ mod undo_redo_tests {
                 &world,
                 &id,
                 "LightComponent",
+                0,
                 "enabled",
             )
         }
@@ -439,6 +443,7 @@ mod undo_redo_tests {
                 &world,
                 &lamp,
                 "LightComponent",
+                0,
                 "movability",
             )
             .and_then(|v| v.downcast_ref::<ObjectMovability>().copied())

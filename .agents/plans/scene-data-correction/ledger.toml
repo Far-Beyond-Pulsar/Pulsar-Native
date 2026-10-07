@@ -275,6 +275,20 @@ status = "at-risk"
 # production code registers its columns (unregistered writes are dropped).
 
 [[schema]]
+type = "ComponentOwner"
+path = "pulsar_scene_model::attachments::ComponentOwner"
+buffers = ["component_owners"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "pulsar_scene_model::attachments (spawn_instance, set_enabled); written through SceneDB's typed insert like any component"
+owner = "pulsar_scene_model::attachments"
+disposition = "keep: the instance-to-object link of D1 (Phase 1); Phase 2 registers its buffer for the render-row consumers"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_class_derive/tests/component_instances.rs"
+status = "unverified"
+
+[[schema]]
 type = "CameraPostProcessComponentGpuMirror"
 path = "helio_component::components::camera_post_process_component::CameraPostProcessComponentGpuMirror"
 buffers = []
@@ -955,7 +969,7 @@ status = "at-risk"
 [[site]]
 pattern = "subscribe"
 file = "crates/core/engine_backend/src/scene/helio_bridge.rs"
-count = 6
+count = 5
 owner = "core::engine_backend::scene::helio_bridge"
 disposition = "remove: render-row subscriptions"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -963,14 +977,14 @@ test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
 status = "at-risk"
 
 [[site]]
-pattern = "json-hydrate"
+pattern = "record-attach"
 file = "crates/core/engine_backend/src/scene/runtime_level.rs"
 count = 1
 owner = "core::engine_backend::scene::runtime_level"
-disposition = "keep at the level-file boundary as a versioned decode into typed inserts; remove the per-component JSON callback contract"
+disposition = "keep at the level-file boundary: each record is decoded once into a component-instance entity (Phase 1, D1); a registered class whose data does not decode fails the load; Phase 3 adds the versioned archive decode"
 target_contract = "Phase 3; 05-persistence-and-undo.md"
-test = "none: typed insert path equivalence"
-status = "at-risk"
+test = "crates/core/engine_backend/src/scene/runtime_level.rs (registered_component_classes_hydrate_to_typed_values, persisted_component_order_and_enabled_state_are_kept_on_the_instances)"
+status = "unverified"
 
 [[site]]
 pattern = "force-resync"
@@ -1034,14 +1048,14 @@ test = "none: typed insert path equivalence"
 status = "unverified"
 
 [[site]]
-pattern = "json-hydrate"
+pattern = "record-attach"
 file = "crates/core/pulsar_class/src/world.rs"
-count = 3
+count = 1
 owner = "core::pulsar_class::world"
-disposition = "class instantiation hydrates prefab components from JSON; keep typed defaults/overrides internally"
+disposition = "class instantiation attaches prefab component records as instance entities, decoding each once (an unusable payload stays an explicit UnresolvedComponent); Phase 3 keeps typed defaults/overrides internally"
 target_contract = "Phase 3; 05-persistence-and-undo.md"
-test = "none: typed insert path equivalence"
-status = "at-risk"
+test = "crates/core/pulsar_class/tests/instances.rs"
+status = "unverified"
 
 [[site]]
 pattern = "cpu-projection"
@@ -1094,24 +1108,24 @@ test = "SceneDB crates/pulsar_scenedb/tests/world_gpu_mirror_replay.rs"
 status = "verified"
 
 [[site]]
-pattern = "json-hydrate"
+pattern = "record-attach"
 file = "crates/core/pulsar_script_codegen/src/actor.rs"
 count = 1
 owner = "core::pulsar_script_codegen::actor"
-disposition = "generated actor code hydrates components from JSON; generate typed construction"
+disposition = "generated actor code attaches absent prefab components as instances from baked JSON defaults; generate typed construction"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
 test = "none: typed insert path equivalence"
 status = "at-risk"
 
 [[site]]
-pattern = "json-hydrate"
-file = "crates/core/pulsar_script_object_model/src/routing.rs"
-count = 1
-owner = "core::pulsar_script_object_model::routing"
-disposition = "script routing mutates dormant instances through JSON hydrate; use typed instance identity"
-target_contract = "Phase 3; 01-authority-and-identity.md"
-test = "none: typed insert path equivalence"
-status = "at-risk"
+pattern = "record-attach"
+file = "crates/core/pulsar_world_registry/src/instances.rs"
+count = 3
+owner = "core::pulsar_world_registry::instances"
+disposition = "keep: the one JSON record boundary for component instances (attach_records, replace_records over attach_record); callers are loaders, history and tools"
+target_contract = "Phase 3; 05-persistence-and-undo.md"
+test = "crates/core/engine_class_derive/tests/component_instances.rs"
+status = "unverified"
 
 [[site]]
 pattern = "destructive-drain"
@@ -1205,26 +1219,6 @@ status = "broken"
 notes = "AddObject arms an entity before its mesh exists, so the asset-drop mesh is never subscribed."
 
 [[site]]
-pattern = "add-component"
-file = "crates/editor/ui_level_editor/src/core/scene_edit/classes.rs"
-count = 1
-owner = "editor::ui_level_editor::core::scene_edit::classes"
-disposition = "convert to a typed factory and one validated transaction; JSON only at an external boundary"
-target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: typed add produces the same state as a direct insert"
-status = "at-risk"
-
-[[site]]
-pattern = "render-props-sync"
-file = "crates/editor/ui_level_editor/src/core/scene_edit/classes.rs"
-count = 3
-owner = "editor::ui_level_editor::core::scene_edit::classes"
-disposition = "remove: RenderProps/attachment JSON stops being live component authority"
-target_contract = "Phase 1/3; 01-authority-and-identity.md"
-test = "none: no JSON round trip on edit (architecture check)"
-status = "at-risk"
-
-[[site]]
 pattern = "destructive-drain"
 file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
 count = 1
@@ -1235,34 +1229,24 @@ test = "none: two-subscriber fan-out test (acceptance: Observer fanout)"
 status = "at-risk"
 
 [[site]]
-pattern = "json-hydrate"
+pattern = "record-attach"
 file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
-count = 5
+count = 3
 owner = "editor::ui_level_editor::core::scene_edit::components"
-disposition = "live editor attach/enable/replace paths serialize and re-hydrate; JSON is retained on failure, so a failed insert still looks attached"
-target_contract = "Phase 1/3; 02-typed-reflection-and-writes.md, 05-persistence-and-undo.md"
+disposition = "editor add / restore / data-replace decode a record once into the instance's typed value; an interactive add or data edit that does not decode is refused with nothing written, history and level restore keep unusable payloads as UnresolvedComponent; enable/disable, reorder, parent and duplicate never touch JSON (Phase 1, D1)"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md, 05-persistence-and-undo.md"
 test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "broken"
-notes = "A failed hydrate keeps the JSON on an enabled attachment, so the component appears attached."
+status = "unverified"
+notes = "Phase 0's failure (a failed hydrate kept enabled JSON, so the component looked attached) is gone: the baseline's legacy flat light payload is now refused and nothing is attached."
 
 [[site]]
 pattern = "property-edit"
 file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
-count = 4
+count = 1
 owner = "editor::ui_level_editor::core::scene_edit::components"
 disposition = "convert to typed reflected patches with intrinsic SceneDB write hooks"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
 test = "none: mutation-equivalence test"
-status = "at-risk"
-
-[[site]]
-pattern = "render-props-sync"
-file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
-count = 8
-owner = "editor::ui_level_editor::core::scene_edit::components"
-disposition = "remove: RenderProps/attachment JSON stops being live component authority"
-target_contract = "Phase 1/3; 01-authority-and-identity.md"
-test = "none: no JSON round trip on edit (architecture check)"
 status = "at-risk"
 
 [[site]]
@@ -1283,16 +1267,6 @@ owner = "editor::ui_level_editor::core::scene_edit::hlfs_cathedral"
 disposition = "generated demo-scene builder; typed writes"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
 test = "none: typed add produces the same state as a direct insert"
-status = "at-risk"
-
-[[site]]
-pattern = "render-props-sync"
-file = "crates/editor/ui_level_editor/src/core/scene_edit/objects.rs"
-count = 3
-owner = "editor::ui_level_editor::core::scene_edit::objects"
-disposition = "remove: RenderProps/attachment JSON stops being live component authority"
-target_contract = "Phase 1/3; 01-authority-and-identity.md"
-test = "none: no JSON round trip on edit (architecture check)"
 status = "at-risk"
 
 [[site]]
@@ -1685,6 +1659,16 @@ disposition = "inert: engine_class_derive registers a dispatch for every struct 
 target_contract = "Phase 1; 02-typed-reflection-and-writes.md"
 test = "none: never inserted, so the registration never runs"
 status = "out-of-scope"
+
+[[buffer]]
+key = "component_owners"
+producers = ["ComponentOwner"]
+consumers = []
+owner = "pulsar_scene_model::attachments"
+disposition = "keep: each component instance's owner object and enabled flag as a GPU row (Phase 1, D1), the join a GPU consumer uses from an instance's row to its object; Phase 2 consumes it for render rows"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_class_derive/tests/component_instances.rs (mirror replay writes ComponentOwner rows, lavapipe)"
+status = "unverified"
 
 [[buffer]]
 key = "PortalChainComponent::portals"

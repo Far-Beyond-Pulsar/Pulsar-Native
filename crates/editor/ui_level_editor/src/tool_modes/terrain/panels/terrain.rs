@@ -13,6 +13,7 @@
 
 use std::collections::HashSet;
 
+use engine_backend::scene::attachments;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use helio_component::{VoxelComponent, VoxelTerrainComponent};
@@ -97,7 +98,7 @@ impl Signature {
 fn body_rows(state: &crate::state::LevelEditorState) -> Vec<BodyRow> {
     let world = state.scene.world();
     let mut rows = Vec::new();
-    for (entity, component) in world.query::<&VoxelTerrainComponent>() {
+    for (entity, _, component) in attachments::enabled_components::<VoxelTerrainComponent>(&world) {
         if component.enabled {
             rows.push(BodyRow {
                 hex: format!("{:016x}", entity.bits()),
@@ -108,7 +109,7 @@ fn body_rows(state: &crate::state::LevelEditorState) -> Vec<BodyRow> {
             });
         }
     }
-    for (entity, component) in world.query::<&VoxelComponent>() {
+    for (entity, _, component) in attachments::enabled_components::<VoxelComponent>(&world) {
         if component.enabled {
             rows.push(BodyRow {
                 hex: format!("{:016x}", entity.bits()),

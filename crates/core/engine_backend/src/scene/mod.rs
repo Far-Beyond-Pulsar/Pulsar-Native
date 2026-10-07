@@ -6,15 +6,6 @@
 //! components on demand. The editor, the renderer and the play-mode runtime
 //! all share one [`SharedScene`].
 
-// Resolved per-light GPU frames (Pulsar-Native#636) -- transform-folded
-// light state maintained at change time from World subscriptions, replacing
-// rebuild_light_frame's per-frame CPU combine.
-pub mod light_frame;
-
-// Resolved per-instance mesh frames (Pulsar-Native#638) -- the transform-
-// derived half of each static-mesh instance, same subscription-maintained
-// pattern as light_frame.
-pub mod mesh_frame;
 #[cfg(feature = "render")]
 pub mod voxel_frame;
 #[cfg(feature = "render")]
@@ -50,8 +41,9 @@ pub mod helio_bridge;
 pub use editor_rows::sync_editor_light_rows;
 #[cfg(feature = "render")]
 pub use helio_bridge::{
-    arm_render_row_subscriptions, arm_render_row_subscriptions_for_entity, ensure_gpu_mirror,
-    mark_render_components_changed, retire_gpu_rows_for_entity, sync_static_mesh_rows,
+    arm_render_row_subscriptions, arm_render_row_subscriptions_for_entity, dirty_render_instances,
+    ensure_gpu_mirror, mark_render_components_changed, retire_gpu_rows_for_entity,
+    sync_static_mesh_rows,
 };
 #[cfg(feature = "render")]
 pub mod editor_postprocess;
@@ -72,8 +64,6 @@ pub fn install_scenedb_inspector(world: &mut pulsar_scenedb::World) -> bool {
 pub fn install_scenedb_inspector(_world: &mut pulsar_scenedb::World) -> bool {
     false
 }
-pub use light_frame::{LightFrameMaintainer, ResolvedLightFrame};
-pub use mesh_frame::{MeshFrameMaintainer, ResolvedMeshFrame};
 pub use pulsar_scene_model::{
     attachments, components, instance, world_ext, ComponentAttachments, ComponentInstance,
     EditorObjectId, LightType, MeshType, Name, ObjectId, ObjectType, Parent, RenderProps,
@@ -123,8 +113,6 @@ pub fn end_change_window(world: &pulsar_scenedb::World) {
         tracker.end_frame();
     }
 }
-
-use glam::Mat4;
 
 // ─── Gizmo state ─────────────────────────────────────────────────────────────
 

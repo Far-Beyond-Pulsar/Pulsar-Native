@@ -79,12 +79,11 @@ impl Default for Visibility {
     }
 }
 
-/// Renderer-facing JSON projection of an object's component data: free-form
-/// scene props plus the serialized component-instance list. Dormant and
-/// unregistered component payloads live here; live registered components are
-/// typed World components.
+/// Free-form scene props of an object (file-format `props`, plus the scene
+/// props registered component classes project from their values). Component
+/// values themselves live on component-instance entities
+/// ([`crate::attachments`]); this holds no component list.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RenderProps {
     pub props: std::collections::HashMap<String, serde_json::Value>,
-    pub component_instances: Option<serde_json::Value>,
 }

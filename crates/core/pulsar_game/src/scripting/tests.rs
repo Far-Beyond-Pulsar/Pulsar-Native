@@ -419,7 +419,10 @@ fn spawn_five_destroy_two_same_in_standalone_and_pie() {
             assert!(world.entity_for("Minion_rt4").is_none());
             let rt3 = world.entity_for("Minion_rt3").unwrap();
             assert_eq!(
-                world.get::<ClassInstance>(rt3).unwrap().class.as_str(),
+                pulsar_class::world::class_instance_of(world, rt3)
+                    .unwrap()
+                    .class
+                    .as_str(),
                 MINION,
                 "a real class instance"
             );
@@ -653,7 +656,7 @@ fn spawn_and_destroy_are_applied_after_the_script_phase() {
     driver.apply_commands(&mut world, commands, &mut report);
     assert_eq!(report.spawned, [kept, gone]);
     assert_eq!(report.destroyed, [gone]);
-    assert!(world.get::<ClassInstance>(kept).is_some());
+    assert!(pulsar_class::world::class_instance_of(&world, kept).is_some());
     assert!(!world.is_alive(gone));
 
     let report = driver.run_frame(&mut world, 0.0);
@@ -830,7 +833,7 @@ fn a_rebuilt_instance_keeps_its_script_and_rebinds_next_frame() {
     );
     let log = install_log(&mut driver);
     driver.run_frame(world, 0.0);
-    let mut instance = world.get::<ClassInstance>(root).cloned().unwrap();
+    let mut instance = pulsar_class::world::class_instance_of(world, root).unwrap();
     instance
         .variable_overrides
         .insert("unused".into(), json!(1));

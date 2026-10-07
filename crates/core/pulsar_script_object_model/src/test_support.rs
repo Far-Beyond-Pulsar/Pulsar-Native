@@ -15,8 +15,6 @@ use pulsar_reflection::{
 use pulsar_scenedb::{Entity, World};
 use serde_json::Value;
 
-use crate::instances::{ComponentInstanceStore, InstanceRecord};
-
 /// Test component: one reflected `i32` property and one blueprint-callable
 /// method, registered into BOTH registries the real classes register into.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -116,7 +114,6 @@ fn test_gizmo_get_mut(
     pulsar_world_registry::EngineClassMut::of::<TestGizmo>(world, entity)
 }
 
-
 fn test_gizmo_remove(world: &mut World, entity: Entity) {
     let _ = world.remove::<TestGizmo>(entity);
 }
@@ -136,7 +133,6 @@ fn test_gizmo_dispatch(
 ) -> bool {
     world.get::<TestGizmo>(entity).is_some()
 }
-
 
 fn test_gizmo_test_methods() -> Vec<pulsar_reflection::MethodMetadata> {
     <TestGizmo as EngineClass>::get_methods()
@@ -178,57 +174,5 @@ pulsar_reflection::inventory::submit! {
     ComponentMethodRegistration {
         class_name: "TestGizmo",
         methods: test_gizmo_test_methods,
-    }
-}
-
-/// In-memory [`ComponentInstanceStore`] mirroring the editor's persisted
-/// component list shape -- records attached positionally to one entity.
-#[derive(Default)]
-pub(crate) struct FakeInstanceStore {
-    entity: Option<Entity>,
-    records: Vec<InstanceRecord>,
-}
-
-impl FakeInstanceStore {
-    /// Attach records to one entity, in list order.
-    pub fn attach(&mut self, entity: Entity, records: &[InstanceRecord]) {
-        self.entity = Some(entity);
-        self.records = records.to_vec();
-    }
-
-    pub fn record_data(&self, index: u32) -> Option<&Value> {
-        self.records.get(index as usize).map(|r| &r.data)
-    }
-}
-
-impl ComponentInstanceStore for FakeInstanceStore {
-    fn live_component_index(&self, entity: Entity, class_name: &str) -> Option<u32> {
-        if self.entity != Some(entity) {
-            return None;
-        }
-        self.records
-            .iter()
-            .position(|r| r.enabled && r.class_name == class_name)
-            .map(|i| i as u32)
-    }
-
-    fn instance_record(&self, entity: Entity, index: u32) -> Option<InstanceRecord> {
-        if self.entity != Some(entity) {
-            return None;
-        }
-        self.records.get(index as usize).cloned()
-    }
-
-    fn set_instance_data(&mut self, entity: Entity, index: u32, data: Value) -> bool {
-        if self.entity != Some(entity) {
-            return false;
-        }
-        match self.records.get_mut(index as usize) {
-            Some(record) => {
-                record.data = data;
-                true
-            }
-            None => false,
-        }
     }
 }

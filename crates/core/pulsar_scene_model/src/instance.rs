@@ -8,9 +8,13 @@ use serde::{Deserialize, Serialize};
 /// organizational constructs that don't exist in Helio.
 pub type EditorObjectId = String;
 
-/// Component instance attached to a scene object
+/// The JSON record of one component instance attached to a scene object.
 ///
-/// Uses the reflection system for property inspection and editing.
+/// A boundary format only -- level files, history snapshots, external tools.
+/// The live instance is its own entity ([`crate::attachments`]) holding the
+/// typed value; `pulsar_world_registry::instances` converts between the two.
+/// `data` is the class's JSON plus `__`-prefixed attachment metadata
+/// (`__instance_id`, `__slot_id`, `__transform`, `__parent_index`).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ComponentInstance {
     /// Class name from the component registry (e.g., "PhysicsComponent")
@@ -18,16 +22,11 @@ pub struct ComponentInstance {
 
     /// Whether the component is active.
     ///
-    /// Disabled components remain serialized but are ignored by scene-property
-    /// projection and behave as if they were absent.
+    /// A disabled instance keeps its typed value; runtime consumers skip it.
     #[serde(default = "default_component_enabled")]
     pub enabled: bool,
 
-    /// Serialized component data
-    ///
-    /// NOTE: In the full implementation, this would be Box<dyn EngineClass>,
-    /// but that's not directly serializable. For now, we store serialized JSON
-    /// and reconstruct via the registry on load.
+    /// The class's JSON representation plus attachment metadata keys.
     pub data: serde_json::Value,
 }
 

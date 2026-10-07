@@ -1,0 +1,513 @@
+//! Attaching registered component classes as component-instance entities
+//! (Pulsar-Native#1035, D1), and their JSON records at boundaries.
+//!
+//! [`pulsar_scene_model::attachments`] owns the structure (instance
+//! entities, owner links, order, ids). This module adds what needs the class
+//! registry: producing the instance's typed value -- the class factory, a
+//! caller-supplied owned value, or a boundary decode -- and inserting it
+//! through SceneDB's erased insert, so every write hook runs.
+//!
+//! Attaching validates everything before writing anything: a refused attach
+//! leaves the world untouched, and never leaves an instance that looks
+//! attached without its value. A payload this build cannot turn into a live
+//! value is attached only when the caller asks for that explicitly
+//! ([`attach_record_or_unresolved`]), as an [`UnresolvedComponent`].
+//!
+//! JSON appears only in [`ComponentRecord`] conversions, for files, history
+//! snapshots and external tools.
+
+use std::any::Any;
+
+use pulsar_reflection::EngineClass;
+use pulsar_scene_model::attachments::{
+    self, ComponentInstanceId, ComponentMeta, InstanceError, NewInstance, UnresolvedComponent,
+};
+use pulsar_scene_model::{ClassSlot, ComponentInstance as ComponentRecord, Transform};
+use pulsar_scenedb::{Entity, World};
+use serde_json::{Map, Value};
+
+use crate::values::{insert_world_component_value, ComponentValueError};
+
+/// Record metadata key: the class-prefab slot an instance was placed from.
+pub const SLOT_ID_KEY: &str = "__slot_id";
+/// Record metadata key: a slot component's local transform.
+pub const TRANSFORM_KEY: &str = "__transform";
+/// Record metadata key: the parent instance's position in the record list.
+pub const PARENT_INDEX_KEY: &str = "__parent_index";
+/// Record metadata key: the instance's stable [`ComponentInstanceId`].
+pub const INSTANCE_ID_KEY: &str = "__instance_id";
+
+/// Where an attached instance's value comes from.
+pub enum ComponentPayload {
+    /// The class's default value (its factory).
+    Default,
+    /// An owned value of the class, e.g. a clone.
+    Value(Box<dyn Any + Send + Sync>),
+    /// The class's JSON representation, decoded once at this boundary.
+    Json(Value),
+}
+
+/// Why an attach was refused. Nothing was written.
+#[derive(Debug, thiserror::Error)]
+pub enum AttachError {
+    #[error(transparent)]
+    Instance(#[from] InstanceError),
+    #[error("`{0}` is not a registered component class")]
+    UnknownClass(String),
+    #[error("`{class}` data does not decode: {error}")]
+    Decode { class: String, error: String },
+    #[error(transparent)]
+    Value(#[from] ComponentValueError),
+}
+
+/// Attach a new instance of the registered class `spec.class_name` to
+/// `owner`, with its value from `payload`. Returns the instance entity.
+pub fn attach_component(
+    world: &mut World,
+    owner: Entity,
+    spec: NewInstance,
+    payload: ComponentPayload,
+) -> Result<Entity, AttachError> {
+    let class = spec.class_name.clone();
+    let Some(registration) = crate::find(&class) else {
+        return Err(AttachError::UnknownClass(class));
+    };
+    let value = match payload {
+        ComponentPayload::Default => (registration.default_value)(),
+        ComponentPayload::Value(value) => value,
+        ComponentPayload::Json(data) => {
+            (registration.decode)(&data).map_err(|error| AttachError::Decode {
+                class: class.clone(),
+                error,
+            })?
+        }
+    };
+    let expected = (registration.register_erased)();
+    if pulsar_scenedb::component::try_resolve_id((*value).type_id()) != Some(expected) {
+        return Err(ComponentValueError::TypeMismatch { class, value }.into());
+    }
+    let instance = attachments::spawn_instance(world, owner, spec)?;
+    // Cannot fail now: the instance is alive and the value's type was checked.
+    insert_world_component_value(&class, world, instance, value)
+        .expect("a freshly spawned instance takes a value of its own class");
+    Ok(instance)
+}
+
+/// Attach typed `value` to `owner` as a new instance of its class `T`.
+/// The typed convenience over [`attach_component`].
+pub fn attach_value<T: EngineClass>(
+    world: &mut World,
+    owner: Entity,
+    value: T,
+) -> Result<Entity, AttachError> {
+    attach_component(
+        world,
+        owner,
+        NewInstance::new(T::class_name()),
+        ComponentPayload::Value(Box::new(value)),
+    )
+}
+
+/// Attach a payload this build cannot use as a live component -- an
+/// unregistered class, or data that does not decode -- as an explicit
+/// [`UnresolvedComponent`] that keeps the payload for lossless saving.
+pub fn attach_unresolved(
+    world: &mut World,
+    owner: Entity,
+    spec: NewInstance,
+    data: Value,
+    reason: String,
+) -> Result<Entity, InstanceError> {
+    let instance = attachments::spawn_instance(world, owner, spec)?;
+    world.insert(instance, UnresolvedComponent { data, reason });
+    Ok(instance)
+}
+
+/// The instance's class value as `&dyn EngineClass` (reads), or `None` if it
+/// is unresolved or not an instance.
+pub fn instance_engine_class(world: &World, instance: Entity) -> Option<&dyn EngineClass> {
+    let class = attachments::meta(world, instance)?.class_name.as_str();
+    crate::get_world_component_as_engine_class(class, world, instance)
+}
+
+/// A clone of the instance's value, for duplication.
+pub fn clone_instance_value(world: &World, instance: Entity) -> Option<Box<dyn Any + Send + Sync>> {
+    let class = attachments::meta(world, instance)?.class_name.as_str();
+    crate::clone_world_component_value(class, world, instance)
+}
+
+/// Duplicate `instance` onto `owner` (the same object or another): a clone
+/// of its value (or of its unresolved payload) with a fresh id, inserted at
+/// `index`. Class-slot provenance and parent links are not copied.
+pub fn duplicate_instance(
+    world: &mut World,
+    instance: Entity,
+    owner: Entity,
+    index: Option<usize>,
+) -> Result<Entity, AttachError> {
+    let Some(meta) = attachments::meta(world, instance).cloned() else {
+        return Err(AttachError::Instance(InstanceError::DeadOwner(instance)));
+    };
+    let mut spec = NewInstance::new(meta.class_name.clone());
+    spec.enabled = attachments::is_enabled(world, instance);
+    spec.index = index;
+    if let Some(unresolved) = world.get::<UnresolvedComponent>(instance).cloned() {
+        return Ok(attach_unresolved(
+            world,
+            owner,
+            spec,
+            unresolved.data,
+            unresolved.reason,
+        )?);
+    }
+    let value = clone_instance_value(world, instance)
+        .ok_or_else(|| AttachError::UnknownClass(meta.class_name.clone()))?;
+    attach_component(world, owner, spec, ComponentPayload::Value(value))
+}
+
+/// Duplicate the instances of `from` that `keep` selects onto `to`, in
+/// order: clones of their values with fresh ids, the parent links among the
+/// copies restored, and class-slot provenance copied only when `keep_slots`.
+/// Returns the new instance entities.
+pub fn duplicate_instances(
+    world: &mut World,
+    from: Entity,
+    to: Entity,
+    keep: impl Fn(&World, Entity) -> bool,
+    keep_slots: bool,
+) -> Result<Vec<Entity>, AttachError> {
+    let sources: Vec<Entity> = attachments::instances(world, from)
+        .into_iter()
+        .filter(|instance| keep(world, *instance))
+        .collect();
+    let mut copies = Vec::with_capacity(sources.len());
+    for &source in &sources {
+        let copy = duplicate_instance(world, source, to, None)?;
+        if keep_slots {
+            let slot = attachments::meta(world, source).and_then(|meta| meta.class_slot.clone());
+            if let Some(mut meta) = world.get_mut::<ComponentMeta>(copy) {
+                meta.class_slot = slot;
+            }
+        }
+        copies.push(copy);
+    }
+    let new_id = |world: &World, source: Entity| {
+        let index = sources.iter().position(|s| *s == source)?;
+        attachments::meta(world, copies[index]).map(|meta| meta.id)
+    };
+    for (source, copy) in sources.iter().zip(&copies) {
+        let Some(parent) = attachments::meta(world, *source).and_then(|meta| meta.parent) else {
+            continue;
+        };
+        let parent_copy = attachments::instance_by_id(world, parent)
+            .and_then(|parent_source| new_id(world, parent_source));
+        if let Some(parent_copy) = parent_copy {
+            attachments::set_parent(world, *copy, Some(parent_copy));
+        }
+    }
+    Ok(copies)
+}
+
+// ── Records (file, history and tool boundaries) ───────────────────────────
+
+/// The record of `instance`: its class, id, enabled flag and data -- the
+/// live value encoded once here, or the unresolved payload as kept -- with
+/// slot metadata. `parent_index` is the position of its parent in the
+/// record list being built, which only the caller knows.
+pub fn instance_record(
+    world: &World,
+    instance: Entity,
+    parent_index: Option<usize>,
+) -> Option<ComponentRecord> {
+    let data = match world.get::<UnresolvedComponent>(instance) {
+        Some(unresolved) => unresolved.data.clone(),
+        None => instance_engine_class(world, instance)?.to_json().ok()?,
+    };
+    record_with_metadata(world, instance, data, parent_index)
+}
+
+/// [`instance_record`] without the class's data: only the record metadata
+/// keys, and no encoding. For callers that need the structure of an
+/// object's component list (class names, order, enabled flags, parents).
+pub fn instance_metadata_record(
+    world: &World,
+    instance: Entity,
+    parent_index: Option<usize>,
+) -> Option<ComponentRecord> {
+    record_with_metadata(world, instance, Value::Object(Map::new()), parent_index)
+}
+
+fn record_with_metadata(
+    world: &World,
+    instance: Entity,
+    mut data: Value,
+    parent_index: Option<usize>,
+) -> Option<ComponentRecord> {
+    let meta = attachments::meta(world, instance)?;
+    if let Some(map) = data.as_object_mut() {
+        map.insert(INSTANCE_ID_KEY.into(), Value::String(meta.id.to_string()));
+        if let Some(slot) = &meta.class_slot {
+            map.insert(SLOT_ID_KEY.into(), Value::String(slot.slot_id.clone()));
+            if let Some(local) = &slot.local_transform {
+                map.insert(
+                    TRANSFORM_KEY.into(),
+                    serde_json::json!({
+                        "position": local.position,
+                        "rotation": local.rotation,
+                        "scale": local.scale,
+                    }),
+                );
+            }
+        }
+        if let Some(parent) = parent_index {
+            map.insert(PARENT_INDEX_KEY.into(), serde_json::json!(parent));
+        }
+    }
+    Some(ComponentRecord {
+        class_name: meta.class_name.clone(),
+        enabled: attachments::is_enabled(world, instance),
+        data,
+    })
+}
+
+/// The records of all of `owner`'s instances, in order.
+pub fn component_records(world: &World, owner: Entity) -> Vec<ComponentRecord> {
+    records_with(world, owner, instance_record)
+}
+
+/// [`component_records`] without the classes' data (see
+/// [`instance_metadata_record`]).
+pub fn component_metadata_records(world: &World, owner: Entity) -> Vec<ComponentRecord> {
+    records_with(world, owner, instance_metadata_record)
+}
+
+fn records_with(
+    world: &World,
+    owner: Entity,
+    record: fn(&World, Entity, Option<usize>) -> Option<ComponentRecord>,
+) -> Vec<ComponentRecord> {
+    let list = attachments::instances(world, owner);
+    let ids: Vec<Option<ComponentInstanceId>> = list
+        .iter()
+        .map(|i| attachments::meta(world, *i).map(|m| m.id))
+        .collect();
+    list.iter()
+        .filter_map(|instance| {
+            let parent = attachments::meta(world, *instance)?.parent;
+            let parent_index = parent.and_then(|p| ids.iter().position(|id| *id == Some(p)));
+            record(world, *instance, parent_index)
+        })
+        .collect()
+}
+
+/// Replace `instance`'s value with `data` (a record's data; its metadata
+/// keys are ignored): decoded once here for a registered class, which also
+/// resolves an instance that was unresolved; kept as the payload of an
+/// unresolved instance of a class this build does not register. Nothing is
+/// written when the data does not decode.
+pub fn set_instance_data(
+    world: &mut World,
+    instance: Entity,
+    data: &Value,
+) -> Result<(), AttachError> {
+    let Some(class) = attachments::meta(world, instance).map(|meta| meta.class_name.clone()) else {
+        return Err(AttachError::Instance(InstanceError::DeadOwner(instance)));
+    };
+    let body = split_record(data).body;
+    let Some(registration) = crate::find(&class) else {
+        if let Some(mut unresolved) = world.get_mut::<UnresolvedComponent>(instance) {
+            unresolved.data = body;
+            return Ok(());
+        }
+        return Err(AttachError::UnknownClass(class));
+    };
+    let value = (registration.decode)(&body).map_err(|error| AttachError::Decode {
+        class: class.clone(),
+        error,
+    })?;
+    insert_world_component_value(&class, world, instance, value)?;
+    world.remove::<UnresolvedComponent>(instance);
+    Ok(())
+}
+
+/// Split a record's data into the class's own data and its metadata.
+struct SplitRecord {
+    body: Value,
+    id: Option<ComponentInstanceId>,
+    class_slot: Option<ClassSlot>,
+    parent_index: Option<usize>,
+}
+
+fn split_record(data: &Value) -> SplitRecord {
+    let Some(map) = data.as_object() else {
+        return SplitRecord {
+            body: data.clone(),
+            id: None,
+            class_slot: None,
+            parent_index: None,
+        };
+    };
+    let mut body = Map::new();
+    let mut slot_id = None;
+    let mut local_transform = None;
+    let mut parent_index = None;
+    let mut id = None;
+    for (key, value) in map {
+        match key.as_str() {
+            INSTANCE_ID_KEY => id = value.as_str().and_then(|text| text.parse().ok()),
+            SLOT_ID_KEY => slot_id = value.as_str().map(str::to_string),
+            TRANSFORM_KEY => local_transform = Some(transform_of(value)),
+            PARENT_INDEX_KEY => parent_index = value.as_u64().map(|i| i as usize),
+            _ if key.starts_with("__") => {
+                tracing::warn!("dropping unknown component record metadata `{key}`");
+            }
+            _ => {
+                body.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    SplitRecord {
+        body: Value::Object(body),
+        id,
+        class_slot: slot_id.map(|slot_id| ClassSlot {
+            slot_id,
+            local_transform,
+        }),
+        parent_index,
+    }
+}
+
+fn transform_of(value: &Value) -> Transform {
+    let vec3 = |key: &str, default: [f32; 3]| {
+        value
+            .get(key)
+            .and_then(|v| serde_json::from_value::<[f32; 3]>(v.clone()).ok())
+            .unwrap_or(default)
+    };
+    Transform {
+        position: vec3("position", [0.0; 3]),
+        rotation: vec3("rotation", [0.0; 3]),
+        scale: vec3("scale", [1.0; 3]),
+    }
+}
+
+fn spec_of(record: &ComponentRecord, split: &SplitRecord, index: Option<usize>) -> NewInstance {
+    NewInstance {
+        id: split.id.unwrap_or_default(),
+        class_name: record.class_name.clone(),
+        enabled: record.enabled,
+        parent: None,
+        class_slot: split.class_slot.clone(),
+        index,
+    }
+}
+
+/// Attach one record as a live instance: the registered class decodes its
+/// data. Refused (nothing written) for an unregistered class or data that
+/// does not decode. The record's parent index is ignored here; see
+/// [`attach_records`].
+pub fn attach_record(
+    world: &mut World,
+    owner: Entity,
+    record: &ComponentRecord,
+    index: Option<usize>,
+) -> Result<Entity, AttachError> {
+    let split = split_record(&record.data);
+    let spec = spec_of(record, &split, index);
+    attach_component(world, owner, spec, ComponentPayload::Json(split.body))
+}
+
+/// Attach one record, keeping a payload this build cannot use as an
+/// explicit [`UnresolvedComponent`] instead of refusing it -- for loaders,
+/// which must not lose data. `Err` only for a structural problem (dead
+/// owner, duplicate id).
+pub fn attach_record_or_unresolved(
+    world: &mut World,
+    owner: Entity,
+    record: &ComponentRecord,
+    index: Option<usize>,
+) -> Result<Entity, InstanceError> {
+    match attach_record(world, owner, record, index) {
+        Ok(instance) => Ok(instance),
+        Err(AttachError::Instance(error)) => Err(error),
+        Err(error) => {
+            let split = split_record(&record.data);
+            let spec = spec_of(record, &split, index);
+            attach_unresolved(world, owner, spec, split.body, error.to_string())
+        }
+    }
+}
+
+/// Attach `records` to `owner` in order (lossless: see
+/// [`attach_record_or_unresolved`]), then restore their parent links from
+/// the records' parent indices. Returns the instance entities.
+pub fn attach_records(
+    world: &mut World,
+    owner: Entity,
+    records: &[ComponentRecord],
+) -> Result<Vec<Entity>, InstanceError> {
+    let mut attached = Vec::with_capacity(records.len());
+    for record in records {
+        attached.push(attach_record_or_unresolved(world, owner, record, None)?);
+    }
+    for (record, instance) in records.iter().zip(&attached) {
+        let Some(parent_index) = split_record(&record.data).parent_index else {
+            continue;
+        };
+        let Some(parent) = attached.get(parent_index).copied() else {
+            continue;
+        };
+        if let Some(parent_id) = attachments::meta(world, parent).map(|meta| meta.id) {
+            attachments::set_parent(world, *instance, Some(parent_id));
+        }
+    }
+    Ok(attached)
+}
+
+/// Replace all of `owner`'s instances with `records` (history restore,
+/// class rebuild). Ids in the records are kept.
+pub fn replace_records(
+    world: &mut World,
+    owner: Entity,
+    records: &[ComponentRecord],
+) -> Result<Vec<Entity>, InstanceError> {
+    attachments::detach_all(world, owner);
+    attach_records(world, owner, records)
+}
+
+/// `owner`'s instance holding stable id `id`.
+pub fn instance_of(world: &World, owner: Entity, id: ComponentInstanceId) -> Option<Entity> {
+    attachments::instances(world, owner)
+        .into_iter()
+        .find(|instance| {
+            attachments::meta(world, *instance).is_some_and(|m: &ComponentMeta| m.id == id)
+        })
+}
+
+/// The entity holding `class_name`'s value for an address that is either
+/// that entity itself (a component instance, or any entity a caller put the
+/// value on directly) or an owner object. An owner resolves to its
+/// `ordinal`-th instance of the class, in list order (enabled or not);
+/// `None` if there is no such instance.
+pub fn resolve_instance(
+    world: &World,
+    entity: Entity,
+    class_name: &str,
+    ordinal: u32,
+) -> Option<Entity> {
+    if let Some(meta) = attachments::meta(world, entity) {
+        return (meta.class_name == class_name && ordinal == 0).then_some(entity);
+    }
+    if ordinal == 0
+        && crate::component_id_for_class(class_name)
+            .is_some_and(|id| world.has_component(entity, id))
+    {
+        return Some(entity);
+    }
+    attachments::instances(world, entity)
+        .into_iter()
+        .filter(|instance| {
+            attachments::meta(world, *instance).is_some_and(|m| m.class_name == class_name)
+        })
+        .nth(ordinal as usize)
+}

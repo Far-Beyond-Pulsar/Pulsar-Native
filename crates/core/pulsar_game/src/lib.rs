@@ -58,6 +58,10 @@ pub mod script_refs;
 pub mod scene {
     pub use engine_backend::scene::{Name, Transform, Visibility};
     pub use helio_component::components::{LightComponent, MeshAssetPath, StaticMeshComponent};
+    /// Components attach to objects as instance entities (Pulsar-Native#1035):
+    /// `attach_value` adds one, `attachments` finds and edits them.
+    pub use pulsar_world_registry::pulsar_scene_model::attachments;
+    pub use pulsar_world_registry::{attach_value, AttachError};
 }
 
 // Exported (generated) actors name this crate as `pulsar_game`; inside it,
