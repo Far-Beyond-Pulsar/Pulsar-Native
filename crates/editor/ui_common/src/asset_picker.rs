@@ -31,6 +31,17 @@ impl AssetQuery {
     pub fn file_type(id: impl Into<String>) -> Self {
         Self::FileType(id.into())
     }
+
+    /// Common raster and GPU texture formats offered by the texture picker.
+    pub fn texture_images() -> Vec<Self> {
+        [
+            "png", "jpg", "jpeg", "webp", "tga", "bmp", "gif", "tif", "tiff", "hdr", "exr", "dds",
+            "ktx", "ktx2",
+        ]
+        .into_iter()
+        .map(Self::extension)
+        .collect()
+    }
 }
 
 pub struct MeshAssetPicker {

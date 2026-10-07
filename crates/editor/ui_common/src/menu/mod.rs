@@ -3,21 +3,20 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui::{
-    AnyElement, App, AppContext, ClickEvent, Context, Corner, Entity, FocusHandle,
-    InteractiveElement as _, IntoElement, Menu, MenuItem, MouseButton, ParentElement as _, Render,
-    SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window, actions, div,
-    prelude::FluentBuilder as _, px,
+    actions, div, prelude::FluentBuilder as _, px, AnyElement, App, AppContext, ClickEvent,
+    Context, Corner, Entity, FocusHandle, InteractiveElement as _, IntoElement, Menu, MenuItem,
+    MouseButton, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _,
+    Styled as _, Subscription, Window,
 };
 use ui::{
-    ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _, Theme, ThemeMode,
-    TitleBar,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     h_flex, locale,
     menu::AppMenuBar,
     popup_menu::PopupMenuExt as _,
     scroll::ScrollbarShow,
-    v_flex,
+    v_flex, ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _, Theme,
+    ThemeMode, TitleBar,
 };
 
 mod dev_popover;

@@ -39,6 +39,7 @@ pub mod radial_menu;
 pub mod reflected_properties_panel;
 pub mod shared;
 pub mod shared_state;
+mod texture_asset_editor;
 pub mod theme_dropdown;
 
 pub use asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
