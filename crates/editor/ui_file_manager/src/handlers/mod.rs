@@ -119,11 +119,17 @@ pub fn handle_create_asset(
                 )
             })
         {
-            tracing::error!(directory, "Asset creation directory must be project-relative");
+            tracing::error!(
+                directory,
+                "Asset creation directory must be project-relative"
+            );
             return;
         }
         let Some(project_root) = d.project_path.as_ref() else {
-            tracing::error!(directory, "Cannot create this asset without an open project");
+            tracing::error!(
+                directory,
+                "Cannot create this asset without an open project"
+            );
             return;
         };
         crate::utils::cloud_join(project_root, directory)
@@ -140,10 +146,8 @@ pub fn handle_create_asset(
         .as_ref()
         .map(|x| x.extension.as_str())
         .unwrap_or(action.extension.as_str());
-    let mut fp = crate::utils::cloud_join(
-        &folder,
-        &format!("New{}.{}", display.replace(" ", ""), ext),
-    );
+    let mut fp =
+        crate::utils::cloud_join(&folder, &format!("New{}.{}", display.replace(" ", ""), ext));
     let mut c = 1;
     while (engine_fs::virtual_fs::is_remote()
         && engine_fs::virtual_fs::exists(&fp).unwrap_or(false))
