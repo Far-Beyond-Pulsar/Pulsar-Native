@@ -653,3 +653,73 @@ fn stop_restores_the_pre_play_world_and_removes_runtime_spawns() {
         "entities spawned without a StableId are gone"
     );
 }
+
+/// Pulsar-Native#1035, Phase 3: instances are built from the class's typed
+/// template. An override diff in the nested (`#[sub_props]`) shape lands on
+/// the reflected property without a decode, every instance shares one
+/// template, and a placed instance carries the override.
+#[test]
+fn instances_are_built_from_the_typed_template() {
+    let (_project, dir) = project_with_lamp(1.0);
+    let registry = classes::registry_for_class_dir(&dir);
+    let def = registry.by_name("Lamp").unwrap().load_definition().unwrap();
+    let template = pulsar_class::template(&def);
+    assert!(std::sync::Arc::ptr_eq(
+        &template,
+        &pulsar_class::template(&def)
+    ));
+
+    let mut value: Box<dyn std::any::Any + Send + Sync> = Box::new(LightComponent::default());
+    assert!(pulsar_class::template::apply_diff(
+        "LightComponent",
+        value.as_mut(),
+        &json!({ "intensity": { "intensity": 5.0 } }),
+    ));
+    assert_eq!(
+        value
+            .downcast_ref::<LightComponent>()
+            .unwrap()
+            .intensity
+            .intensity,
+        5.0
+    );
+    assert!(
+        !pulsar_class::template::apply_diff(
+            "LightComponent",
+            value.as_mut(),
+            &json!({ "no_such_field": 1 }),
+        ),
+        "a diff reflection cannot place falls back to a decode"
+    );
+
+    let first = slot(&dir, 0);
+    match template.slot_value(&first, Some(&json!({ "intensity": { "intensity": 7.0 } }))) {
+        Some(pulsar_world_registry::InstanceValue::Value(value)) => assert_eq!(
+            value
+                .downcast_ref::<LightComponent>()
+                .unwrap()
+                .intensity
+                .intensity,
+            7.0
+        ),
+        _ => panic!("a typed value"),
+    }
+    assert_eq!(
+        template
+            .default_property(&first, "intensity")
+            .and_then(|v| v.downcast_ref::<f32>().copied()),
+        Some(1.0)
+    );
+
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let id = place(world, &dir, 0.0);
+    let root = world.entity_for(&id).unwrap();
+    let mut instance = pulsar_class::world::class_instance_of(world, root).unwrap();
+    instance
+        .component_overrides
+        .insert(first, json!({ "intensity": { "intensity": 9.0 } }));
+    pulsar_class::world::store_class_instance(world, root, &instance);
+    classes::rebuild_instance(world, &id, &registry).unwrap();
+    assert_eq!(light(world, &id).intensity.intensity, 9.0);
+}

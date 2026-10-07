@@ -103,6 +103,8 @@ pulsar_world_registry::inventory::submit! {
         default_value: pulsar_world_registry::values::erased::default_value::<BridgeGizmo>,
         decode: pulsar_world_registry::values::erased::decode_json::<BridgeGizmo>,
         clone_value: pulsar_world_registry::values::erased::clone_value::<BridgeGizmo>,
+        value_as_engine_class: pulsar_world_registry::values::erased::as_engine_class::<BridgeGizmo>,
+        value_as_engine_class_mut: pulsar_world_registry::values::erased::as_engine_class_mut::<BridgeGizmo>,
         register_erased: pulsar_scenedb::register_component::<BridgeGizmo>,
         remove: bridge_gizmo_remove,
         dispatch: |world, entity, _owner, _idx, _ctx| world.get::<BridgeGizmo>(entity).is_some(),

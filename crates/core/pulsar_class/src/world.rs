@@ -30,7 +30,9 @@ use crate::plan::{
     PlannedComponent,
 };
 use crate::registry::{ClassDefinition, ClassRegistry};
+use crate::template::{template, ClassTemplate};
 use crate::{child_stable_id, CLASS_INSTANCE, REMOVED_KEY, SLOT_ID_KEY};
+use pulsar_world_registry::InstanceValue;
 
 // ── Component records ─────────────────────────────────────────────────────
 
@@ -298,11 +300,54 @@ pub fn relayout_generated_children(world: &mut World, root: Entity) -> Vec<Entit
 
 // ── Instantiation ─────────────────────────────────────────────────────────
 
-fn planned_record(component: PlannedComponent) -> ComponentInstance {
-    ComponentInstance {
-        class_name: component.class_name,
+/// Attach planned `component` to `owner`: its slot's template value with
+/// the instance's overrides applied (nothing decoded), slot provenance
+/// recorded. A slot with no typed default is kept as an unresolved payload
+/// (and reported), never dropped.
+fn attach_planned(
+    world: &mut World,
+    owner: Entity,
+    template: &ClassTemplate,
+    component: &PlannedComponent,
+    local: Option<&LocalTransform>,
+) {
+    let Some(value) = template.slot_value(&component.slot_id, component.overrides.as_ref()) else {
+        tracing::warn!(slot = %component.slot_id, "Planned class slot missing from its template");
+        return;
+    };
+    let spec = NewInstance {
         enabled: component.enabled,
-        data: component.data,
+        class_slot: Some(pulsar_scene_model::ClassSlot {
+            slot_id: component.slot_id.clone(),
+            local_transform: local.map(|local| Transform {
+                position: local.position,
+                rotation: local.rotation,
+                scale: local.scale,
+            }),
+        }),
+        ..NewInstance::new(component.class_name.clone())
+    };
+    let attached = match value {
+        InstanceValue::Value(value) => pulsar_world_registry::attach_component(
+            world,
+            owner,
+            spec,
+            pulsar_world_registry::ComponentPayload::Value(value),
+        ),
+        InstanceValue::Unresolved(unresolved) => {
+            tracing::warn!(class = %component.class_name, "Class component kept unresolved: {}", unresolved.reason);
+            pulsar_world_registry::attach_unresolved(
+                world,
+                owner,
+                spec,
+                unresolved.data,
+                unresolved.reason,
+            )
+            .map_err(Into::into)
+        }
+    };
+    if let Err(error) = attached {
+        tracing::warn!(class = %component.class_name, "Class component could not be attached: {error}");
     }
 }
 
@@ -326,12 +371,23 @@ pub fn clear_generated(world: &mut World, root: Entity) {
 /// Build the class components of the instance at `root` from `def`, the
 /// current class definition, applying the root's `ClassInstance` overrides.
 /// Anything a previous expansion created is replaced. Returns the placement
-/// (a handle per slot, and the generated children).
+/// (a handle per slot, and the generated children). Values come from the
+/// class's cached [`template`](crate::template::template).
 pub fn expand_class_instance(
     world: &mut World,
     root: Entity,
     def: &ClassDefinition,
 ) -> ClassPlacement {
+    expand_from_template(world, root, &template(def))
+}
+
+/// [`expand_class_instance`] from an already built template.
+pub fn expand_from_template(
+    world: &mut World,
+    root: Entity,
+    template: &ClassTemplate,
+) -> ClassPlacement {
+    let def = &template.def;
     clear_generated(world, root);
     let mut instance = class_instance_of(world, root).unwrap_or_default();
     // Overrides saved under slot ids the class has since replaced move to the
@@ -341,11 +397,9 @@ pub fn expand_class_instance(
     }
     let plan = plan_instance(def, &instance);
 
-    attach_components(
-        world,
-        root,
-        plan.root.into_iter().map(planned_record).collect(),
-    );
+    for component in &plan.root {
+        attach_planned(world, root, template, component, None);
+    }
 
     let root_id = world.stable_id_of(root).unwrap_or_default().to_string();
     let mut spawned: Vec<(String, Entity)> = Vec::new();
@@ -375,7 +429,13 @@ pub fn expand_class_instance(
                 continue;
             }
         };
-        attach_components(world, entity, vec![planned_record(child.component)]);
+        attach_planned(
+            world,
+            entity,
+            template,
+            &child.component,
+            Some(&child.local),
+        );
         spawned.push((slot_id, entity));
     }
     placement(world, root)
@@ -387,13 +447,23 @@ pub fn expand_class_instance(
 pub fn instantiate_class(
     world: &mut World,
     def: &ClassDefinition,
+    instance: ClassInstance,
+    spawn: SpawnObject,
+) -> Result<ClassPlacement, SceneError> {
+    instantiate_template(world, &template(def), instance, spawn)
+}
+
+/// [`instantiate_class`] from an already built template.
+pub fn instantiate_template(
+    world: &mut World,
+    template: &ClassTemplate,
     mut instance: ClassInstance,
     spawn: SpawnObject,
 ) -> Result<ClassPlacement, SceneError> {
     let root = world.spawn_object(spawn)?;
-    instance.class = def.id.clone();
-    instance.class_name = def.name.clone();
-    Ok(build_instance_root(world, def, instance, root))
+    instance.class = template.def.id.clone();
+    instance.class_name = template.def.name.clone();
+    Ok(build_instance_root(world, template, instance, root))
 }
 
 /// [`instantiate_class`] onto `entity`, an already spawned but still bare
@@ -402,24 +472,35 @@ pub fn instantiate_class(
 pub fn instantiate_class_into(
     world: &mut World,
     def: &ClassDefinition,
+    instance: ClassInstance,
+    spawn: SpawnObject,
+    entity: Entity,
+) -> Result<ClassPlacement, SceneError> {
+    instantiate_template_into(world, &template(def), instance, spawn, entity)
+}
+
+/// [`instantiate_class_into`] from an already built template.
+pub fn instantiate_template_into(
+    world: &mut World,
+    template: &ClassTemplate,
     mut instance: ClassInstance,
     spawn: SpawnObject,
     entity: Entity,
 ) -> Result<ClassPlacement, SceneError> {
     world.spawn_object_into(entity, spawn)?;
-    instance.class = def.id.clone();
-    instance.class_name = def.name.clone();
-    Ok(build_instance_root(world, def, instance, entity))
+    instance.class = template.def.id.clone();
+    instance.class_name = template.def.name.clone();
+    Ok(build_instance_root(world, template, instance, entity))
 }
 
 fn build_instance_root(
     world: &mut World,
-    def: &ClassDefinition,
+    template: &ClassTemplate,
     instance: ClassInstance,
     root: Entity,
 ) -> ClassPlacement {
     store_class_instance(world, root, &instance);
-    expand_class_instance(world, root, def)
+    expand_from_template(world, root, template)
 }
 
 /// Expand every class instance root in `world` from `registry`. Instances
@@ -446,13 +527,29 @@ pub fn expand_roots(
         .filter(|&entity| world.is_alive(entity) && is_class_root(world, entity))
         .collect();
     let mut report = ExpandReport::default();
+    // Each class is read and its template built once for the whole call,
+    // however many instances it has.
+    let mut templates: std::collections::HashMap<
+        std::path::PathBuf,
+        std::sync::Arc<ClassTemplate>,
+    > = std::collections::HashMap::new();
     for root in roots {
         let Some(instance) = class_instance_of(world, root) else {
             continue;
         };
         let id = world.stable_id_of(root).unwrap_or_default().to_string();
-        match registry.definition_for(&instance) {
-            Some(def) => {
+        let resolved = registry.resolve(&instance).and_then(|entry| {
+            if let Some(template) = templates.get(&entry.dir) {
+                return Some(std::sync::Arc::clone(template));
+            }
+            let def = registry.definition_for(&instance)?;
+            let template = template(&def);
+            templates.insert(entry.dir.clone(), std::sync::Arc::clone(&template));
+            Some(template)
+        });
+        match resolved {
+            Some(template) => {
+                let def = &template.def;
                 // Refresh the GUID when the instance was matched by name.
                 if instance.class != def.id {
                     let mut fixed = instance.clone();
@@ -460,7 +557,7 @@ pub fn expand_roots(
                     fixed.class_name = def.name.clone();
                     store_class_instance(world, root, &fixed);
                 }
-                let placement = expand_class_instance(world, root, &def);
+                let placement = expand_from_template(world, root, &template);
                 report.expanded.push((id, placement));
             }
             None => {
