@@ -47,3 +47,7 @@ Tests:
 - `engine_backend/tests/editor_bloom_toggle.rs` checks that the toolbar toggle changes the resolver baseline and writes no scene row.
 
 Deviation from decision 1: the one-time unsupported log fires when a component is attached, not in the renderer. Logging from the renderer would mean scanning the scene every frame.
+
+Sweep (`helio_component`, `engine_backend`, `pulsar_game`, `ui_level_editor`, run with `--no-fail-fast`):
+- Everything passes except the four failures Phase 3 already recorded: the gizmo hover test, the light mapping intensity test and the two `toggle_button` doctests.
+- `voxel_block_api::the_cached_world_follows_the_journal_and_the_settings` fails intermittently when tests run in parallel. Helio's voxel world cache is process-global and keyed by entity bits alone. The test passes when run serially. This predates Phase 4 and is tracked separately.
