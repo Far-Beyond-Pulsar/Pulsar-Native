@@ -46,6 +46,24 @@ impl RelativeCameraGate {
     }
 }
 
+/// GPU-mirror buffers that keep a frame out of camera-relative coordinates
+/// (diagnostics).
+fn relative_camera_incompatible_sources(world: &pulsar_scenedb::World) -> Vec<String> {
+    let Some(mirror) = world.gpu_mirror() else { return vec!["<no gpu mirror>".into()] };
+    let store = mirror.store();
+    store
+        .buffer_registry()
+        .telemetry_entries()
+        .into_iter()
+        .filter(|(key, kind, _, access, mode, _, _)| {
+            !(*access == pulsar_scenedb::gpu::BufferAccess::ReadOnly
+                && relative_camera_source_compatible(key.as_str(), *kind, *mode)
+                && relative_camera_source_schema_compatible(store, *key))
+        })
+        .map(|(key, ..)| key.as_str().to_string())
+        .collect()
+}
+
 fn relative_camera_source_schema_compatible(store: &pulsar_scenedb::gpu::SceneGpuStore, key: pulsar_scenedb::gpu::BufferKey) -> bool {
     use pulsar_scenedb::component::type_of;
     // Authenticate packed row identity as well as its public key/mirror mode.
@@ -553,6 +571,8 @@ pub struct HelioRenderer {
     voxel_brush_picks: std::collections::VecDeque<PendingBrush>,
     /// Camera height above the voxel ground below it, from the last frame.
     voxel_altitude: Option<f64>,
+    /// Coordinate space of the last frame (camera-relative or world).
+    last_camera_relative: Option<bool>,
     /// Log why the viewport is not idle (`PULSAR_VOXEL_ACTIVITY`).
     activity_log: bool,
     last_activity_log: Instant,
@@ -625,6 +645,7 @@ impl HelioRenderer {
             voxel_altitude: None,
             last_voxel_errors: Vec::new(),
             voxel_stats_log: std::env::var_os("PULSAR_VOXEL_STATS").is_some(),
+            last_camera_relative: None,
             activity_log: std::env::var_os("PULSAR_VOXEL_ACTIVITY").is_some(),
             last_activity_log: Instant::now(),
             last_voxel_stats_log: Instant::now(),
@@ -1201,6 +1222,21 @@ impl HelioRenderer {
             let store = self.scene_store.read();
             self.relative_camera_gate.compatible(&store.world)
         };
+        if self.last_camera_relative != Some(camera_relative) {
+            if self.last_camera_relative.is_some() {
+                // A switch of coordinate space discards temporal history and
+                // changes how the planet and sky are placed: visible as a
+                // flash. It must only follow a real scene change.
+                let store = self.scene_store.read();
+                tracing::warn!(
+                    camera_relative,
+                    world = relative_camera_world_compatible(&store.world),
+                    incompatible = ?relative_camera_incompatible_sources(&store.world),
+                    "VOXEL_CAMERA_SPACE changed"
+                );
+            }
+            self.last_camera_relative = Some(camera_relative);
+        }
         self.voxel_altitude = self.voxel_backends.altitude(&voxel_entries, self.cam_pos);
         phases.mark("altitude");
         if self.native_voxel_flight.force_frames() {
