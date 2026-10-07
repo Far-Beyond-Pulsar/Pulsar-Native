@@ -470,6 +470,17 @@ fn hash_base_color_sidecar(path: &Path, hasher: &mut DefaultHasher) {
 }
 
 fn generate_rgba(abs_path: &Path, ext: &str) -> Option<image::RgbaImage> {
+    if let Some(renderer) = FORMAT_RENDERERS
+        .get()
+        .and_then(|renderers| renderers.lock().get(ext).copied())
+    {
+        return std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| renderer(abs_path)))
+            .unwrap_or_else(|_| {
+                tracing::error!("thumbnail renderer panicked for {:?}", abs_path);
+                None
+            });
+    }
+
     match ext {
         "png" | "jpg" | "jpeg" | "webp" | "tga" | "bmp" | "gif" => {
             let img = image::open(abs_path)
@@ -481,22 +492,30 @@ fn generate_rgba(abs_path: &Path, ext: &str) -> Option<image::RgbaImage> {
             )
         }
         _ => {
-            let renderer = FORMAT_RENDERERS
-                .get()
-                .and_then(|renderers| renderers.lock().get(ext).copied());
-            match renderer {
-                Some(renderer) => {
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| renderer(abs_path)))
-                        .unwrap_or_else(|_| {
-                            tracing::error!("thumbnail renderer panicked for {:?}", abs_path);
-                            None
-                        })
-                }
-                None => {
-                    tracing::warn!("no thumbnail renderer registered for {:?}", abs_path);
-                    None
-                }
-            }
+            tracing::warn!("no thumbnail renderer registered for {:?}", abs_path);
+            None
         }
+    }
+}
+
+#[cfg(test)]
+mod renderer_registration_tests {
+    use super::{generate_rgba, register_thumbnail_renderer};
+    use std::path::Path;
+
+    fn test_renderer(_: &Path) -> Option<image::RgbaImage> {
+        Some(image::RgbaImage::from_pixel(
+            2,
+            2,
+            image::Rgba([12, 34, 56, 255]),
+        ))
+    }
+
+    #[test]
+    fn registered_extension_renderer_is_used_before_builtin_fallbacks() {
+        register_thumbnail_renderer(".thumbnail-test", test_renderer);
+        let image = generate_rgba(Path::new("asset.thumbnail-test"), "thumbnail-test")
+            .expect("registered format renderer should produce an image");
+        assert_eq!(image.get_pixel(0, 0).0, [12, 34, 56, 255]);
     }
 }
