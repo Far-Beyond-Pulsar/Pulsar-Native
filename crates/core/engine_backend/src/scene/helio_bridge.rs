@@ -7,12 +7,16 @@
 /// assembly.
 use std::{collections::HashSet, sync::Arc};
 
+use crate::scene::material_textures::register_graph_texture;
 use helio_component::components::StaticMeshComponent;
 use pulsar_scenedb::gpu::{
     BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
 
-use crate::scene::{Transform, Visibility};
+use crate::scene::{
+    material_graph::{compile_material_graph, texture_assets},
+    Transform, Visibility,
+};
 
 /// Arm the change-time projection once for the currently live scene. Future
 /// transform/material/visibility edits are delivered as entity-specific
@@ -171,66 +175,6 @@ fn graph_material_cache() -> &'static std::sync::Mutex<
     CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
-fn graph_texture_cache(
-) -> &'static std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (u64, u32)>> {
-    static CACHE: std::sync::OnceLock<
-        std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (u64, u32)>>,
-    > = std::sync::OnceLock::new();
-    CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
-}
-
-fn register_graph_texture(path: &std::path::Path, mirror: &GpuMirrorHandle) -> Result<u32, String> {
-    use std::hash::{Hash, Hasher};
-    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    bytes.hash(&mut hasher);
-    let fingerprint = hasher.finish();
-    let mut cache = graph_texture_cache()
-        .lock()
-        .map_err(|_| "graph texture cache lock poisoned".to_string())?;
-    if let Some((cached_fingerprint, slot)) = cache.get(path) {
-        if *cached_fingerprint == fingerprint {
-            return Ok(*slot);
-        }
-    }
-    let texture_store = mirror
-        .texture_store()
-        .ok_or_else(|| "SceneDB has no material texture store".to_string())?;
-    let mut store = texture_store
-        .write()
-        .map_err(|_| "SceneDB texture store lock poisoned".to_string())?;
-    if let Some((_, old_slot)) = cache.get(path) {
-        let _ = store.unregister(*old_slot);
-    }
-    let decoded = image::load_from_memory(&bytes)
-        .map_err(|error| format!("could not decode texture image: {error}"))?
-        .to_rgba8();
-    let (width, height) = decoded.dimensions();
-    if width == 0 || height == 0 {
-        return Err("texture image has empty dimensions".to_string());
-    }
-    let device = mirror.store().device_arc();
-    let descriptor = wgpu::TextureDescriptor {
-        label: Some("Blueprint Material Texture"),
-        size: wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    };
-    let slot = store
-        .register(&device, mirror.queue(), &descriptor, decoded.as_raw())
-        .map_err(|error| format!("could not register texture in SceneDB: {error:?}"))?;
-    cache.insert(path.to_path_buf(), (fingerprint, slot));
-    Ok(slot)
-}
-
 fn graph_material_source(
     path: &std::path::Path,
     project_root: &std::path::Path,
@@ -240,7 +184,7 @@ fn graph_material_source(
     use std::hash::{Hash, Hasher};
     let mut fingerprint_hasher = std::collections::hash_map::DefaultHasher::new();
     bytes.hash(&mut fingerprint_hasher);
-    let fingerprint = fingerprint_hasher.finish();
+    let mut fingerprint = fingerprint_hasher.finish();
     let result = (|| {
         let text = std::str::from_utf8(&bytes).map_err(|error| error.to_string())?;
         // Shader graph saves may carry a line comment before their JSON body.
@@ -252,34 +196,23 @@ fn graph_material_source(
         let graph_value = document
             .get("main_graph")
             .ok_or_else(|| "shader graph asset has no main_graph".to_string())?;
+        let graph: psgc::GraphDescription = serde_json::from_value(graph_value.clone())
+            .map_err(|error| format!("invalid main_graph: {error}"))?;
         let mut texture_bindings = std::collections::HashMap::new();
-        if let Some(nodes) = graph_value
-            .get("nodes")
-            .and_then(serde_json::Value::as_object)
-        {
-            for node in nodes.values().filter(|node| {
-                matches!(
-                    node.get("node_type").and_then(serde_json::Value::as_str),
-                    Some("sample_texture" | "sample_texture_level" | "sample_texture_grad")
-                )
-            }) {
-                let Some(asset) = node
-                    .get("properties")
-                    .and_then(|props| props.get("texture"))
-                    .and_then(serde_json::Value::as_str)
-                else {
-                    continue;
-                };
-                let texture_path = if std::path::Path::new(asset).is_absolute() {
-                    std::path::PathBuf::from(asset)
-                } else {
-                    project_root.join(asset)
-                };
-                let slot = register_graph_texture(&texture_path, mirror)
-                    .map_err(|error| format!("texture '{}': {error}", texture_path.display()))?;
-                texture_bindings.insert(asset.to_string(), slot);
-            }
+        for asset in texture_assets(&graph)? {
+            let texture_path = if std::path::Path::new(&asset).is_absolute() {
+                std::path::PathBuf::from(&asset)
+            } else {
+                project_root.join(&asset)
+            };
+            let slot = register_graph_texture(&texture_path, mirror)
+                .map_err(|error| format!("texture '{}': {error}", texture_path.display()))?;
+            // Scene-local slots are part of the compiled shader identity.
+            asset.hash(&mut fingerprint_hasher);
+            slot.hash(&mut fingerprint_hasher);
+            texture_bindings.insert(asset, slot);
         }
+        fingerprint = fingerprint_hasher.finish();
         if let Ok(cache) = graph_material_cache().lock() {
             if let Some((cached_fingerprint, cached_result)) = cache.get(path) {
                 if *cached_fingerprint == fingerprint {
@@ -287,11 +220,7 @@ fn graph_material_source(
                 }
             }
         }
-        let graph: psgc::GraphDescription = serde_json::from_value(graph_value.clone())
-            .map_err(|error| format!("invalid main_graph: {error}"))?;
-        let generated = psgc::compile_shader(&graph)
-            .map_err(|error| format!("shader graph compile failed: {error}"))?;
-        let snippet = adapt_graph_wgsl(&generated, &texture_bindings)?;
+        let snippet = compile_material_graph(&graph, &texture_bindings)?;
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         snippet.hash(&mut hasher);
         let hash = hasher.finish().max(1);
@@ -301,96 +230,6 @@ fn graph_material_source(
         cache.insert(path.to_path_buf(), (fingerprint, result.clone()));
     }
     result
-}
-
-fn adapt_graph_wgsl(
-    generated: &str,
-    texture_bindings: &std::collections::HashMap<String, u32>,
-) -> Result<String, String> {
-    let mut source = generated.to_string();
-    for (asset, slot) in texture_bindings {
-        source = source.replace(asset, &format!("scene_textures[{slot}u]"));
-    }
-    bind_graph_texture_samplers(&mut source);
-    if let Some(start) = source.find("struct Uniforms {") {
-        let end = source[start..]
-            .find("};")
-            .map(|offset| start + offset + 2)
-            .ok_or_else(|| "malformed PSGC Uniforms declaration".to_string())?;
-        source.replace_range(start..end, "");
-    }
-    source = source.replace("@group(0) @binding(0) var<uniform> uniforms: Uniforms;", "");
-    source = source.replace("uniforms.time", "0.0");
-    source = source.replace("FragmentOutput", "PulsarGraphOutput");
-    for location in 0..8 {
-        source = source.replace(&format!("@location({location}) "), "");
-    }
-
-    let entry = source
-        .find("@fragment\nfn fragment_main(")
-        .or_else(|| source.find("@fragment\r\nfn fragment_main("))
-        .ok_or_else(|| "PSGC output is not a fragment shader".to_string())?;
-    let open = source[entry..]
-        .find('{')
-        .map(|offset| entry + offset)
-        .ok_or_else(|| "malformed PSGC fragment entry point".to_string())?;
-    let replacement = "fn pulsar_material_graph(input: VertexOutput) -> PulsarGraphOutput {\n    let frag_coord = input.clip_position;\n    let uv = input.tex_coords;\n    let normal = input.world_normal;\n    let world_pos = input.world_position;";
-    source.replace_range(entry..=open, replacement);
-
-    let body = r#"let graph_surface = pulsar_material_graph(input);
-albedo = graph_surface.base_color;
-// Preserve the connected RGBA color's alpha. The separate opacity input
-// modulates coverage and defaults to 1 when it is not connected.
-alpha = clamp(graph_surface.base_color.a, 0.0, 1.0) * clamp(graph_surface.opacity, 0.0, 1.0);
-albedo.a = alpha;
-roughness = clamp(graph_surface.roughness, 0.045, 1.0);
-metallic = clamp(graph_surface.metallic, 0.0, 1.0);
-ao = clamp(graph_surface.ambient_occlusion, 0.0, 1.0);
-emissive = graph_surface.emissive_color.rgb * graph_surface.emissive_color.a;
-let graph_normal_length = length(graph_surface.normal);
-if graph_normal_length > 0.0001 { N = graph_surface.normal / graph_normal_length; }
-specular_f0 = clamp(mix(vec3<f32>(0.04), albedo.rgb, metallic), vec3<f32>(0.0), vec3<f32>(0.999));"#;
-    Ok(format!(
-        "/*RADIANT_GRAPH_DECLARATIONS*/\n{source}\n/*RADIANT_GRAPH_BODY*/\n{body}"
-    ))
-}
-
-fn bind_graph_texture_samplers(source: &mut String) {
-    for function in [
-        "textureSample(",
-        "textureSampleLevel(",
-        "textureSampleGrad(",
-    ] {
-        let mut search_from = 0;
-        while let Some(relative) = source[search_from..].find(function) {
-            let call_start = search_from + relative;
-            let args_start = call_start + function.len();
-            let Some(first_comma_rel) = source[args_start..].find(',') else {
-                break;
-            };
-            let first_comma = args_start + first_comma_rel;
-            let first_arg = source[args_start..first_comma]
-                .trim()
-                .trim_matches(['(', ')'])
-                .trim();
-            let Some(slot_text) = first_arg
-                .strip_prefix("scene_textures[")
-                .and_then(|value| value.strip_suffix(']'))
-            else {
-                search_from = first_comma + 1;
-                continue;
-            };
-            let Some(second_comma_rel) = source[first_comma + 1..].find(',') else {
-                break;
-            };
-            let second_comma = first_comma + 1 + second_comma_rel;
-            source.replace_range(
-                first_comma + 1..second_comma,
-                &format!(" scene_samplers[{slot_text}]"),
-            );
-            search_from = second_comma + 1;
-        }
-    }
 }
 
 fn material_surface_for_slot(
