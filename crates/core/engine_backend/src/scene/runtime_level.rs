@@ -181,7 +181,7 @@ impl RuntimeLevel {
             let Some(entity) = world.entity_for(&obj.id) else {
                 continue;
             };
-            let (instances, has_component_source) = match persisted.get(&obj.id) {
+            let (mut instances, has_component_source) = match persisted.get(&obj.id) {
                 // A persisted entry is authoritative, including an explicit empty
                 // array, which means all registered components are removed.
                 Some(records) => (records.clone(), true),

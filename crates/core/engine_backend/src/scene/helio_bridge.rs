@@ -361,6 +361,7 @@ pub fn sync_static_mesh_rows(
             StaticMeshComponent::vertices_gpu_handle(mirror.store(), entity.index())
                 .filter(|r| r.count != 0)
         else {
+            retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);
             continue;
         };
@@ -373,6 +374,7 @@ pub fn sync_static_mesh_rows(
         let Some(indices) = StaticMeshComponent::indices_gpu_handle(mirror.store(), entity.index())
             .filter(|r| r.count != 0)
         else {
+            retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);
             continue;
         };
