@@ -285,9 +285,12 @@ fn add_object(state: &mut LevelEditorState, name: &str, object_type: ObjectType)
 }
 
 /// Viewport asset drop: `AddObject`, then `add_component` with the asset
-/// path. A `MaterialOverrideComponent` with a bright emissive color follows,
-/// so the mesh shows against the empty scene's black background without
-/// depending on the light path, which is itself under test.
+/// path. Every material slot of the mesh gets a bright, opaque, emissive
+/// surface so the mesh shows against the empty scene's black background
+/// without depending on the light path, which is itself under test. The
+/// standalone `MaterialOverrideComponent` is gone (Helio `f9631fd`); its
+/// load-time migration field is the one producer that sets every slot's
+/// surface without knowing the asset's slot names.
 fn drop_mesh(state: &mut LevelEditorState) -> String {
     let id = add_object(state, "SM_Cube", ObjectType::Mesh(MeshType::Custom));
     let mut world = state.scene.world_mut();
@@ -295,16 +298,18 @@ fn drop_mesh(state: &mut LevelEditorState) -> String {
         &mut world,
         &id,
         "StaticMeshComponent".to_string(),
-        json!({ "mesh_asset": mesh_asset() }),
+        json!({
+            "mesh_asset": mesh_asset(),
+            "legacy_material_override": {
+                "base_color": [1.0, 0.5, 0.1, 1.0],
+                "metallic": 0.0,
+                "roughness": 0.7,
+                "emissive_color": [1.0, 0.5, 0.1],
+                "emissive_intensity": 4.0,
+                "alpha": 1.0,
+            },
+        }),
     );
-    let mut material = class_json("MaterialOverrideComponent");
-    material["base_color"] = json!([1.0, 0.5, 0.1, 1.0]);
-    material["emissive_color"] = json!([1.0, 0.5, 0.1]);
-    material["emissive_intensity"] = json!(4.0);
-    // A default override has `alpha: 0.0`, which makes it a fully transparent
-    // material (see the ledger's MaterialOverrideComponent row).
-    material["alpha"] = json!(1.0);
-    components::add_component(&mut world, &id, "MaterialOverrideComponent".to_string(), material);
     id
 }
 

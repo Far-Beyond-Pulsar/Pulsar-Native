@@ -1,6 +1,6 @@
 # Phase 0 closure: inventory, decisions and failure baseline
 
-Status: **Phase 0 deliverables for review** (Pulsar-Native#1035). Baseline: Pulsar-Native `6593c311e`, Helio `05c2f7d7`, SceneDB `e74df984`, Pulsar-Reflection `2dab12bf`.
+Status: **Phase 0 deliverables for review** (Pulsar-Native#1035). Baseline: Pulsar-Native `6593c311e`, Helio `05c2f7d7`, SceneDB `e74df984`, Pulsar-Reflection `2dab12bf`. Ledger re-synced with `main` at `7b6796323` (Helio `caf8bdfd`, Pulsar-Reflection submodule `2761936b`); see [Sync with main](#sync-with-main).
 
 Phase 0 changes no runtime behavior. It adds an executable ledger, a read-only reproduction, a workspace fix that makes existing tests runnable, and written decisions. Nothing here installs a subscription, refresh, resync or other repair path. Every existing workaround is recorded in the ledger for removal by the structural phases.
 
@@ -29,7 +29,7 @@ Status vocabulary: `broken` (reproduced, named test), `at-risk` (source defect a
 
 Scanner limits: buffer consumers are literal `BufferKey::of("…")` lookups, so a consumer that builds the key from a constant or `T::buffer_key()` shows as none (those rows say "consumer not identified", not "unused"). Plugin components loaded from DLLs at runtime are not linked into the test and are covered by the plugin row in the open items below.
 
-Current ledger: 21 classes, 46 GPU schemas, 31 buffers, 49 pass crates, 60 call sites. Status counts are kept in the ledger; at this commit 13 rows are `broken` (reproduced).
+Current ledger: 20 classes, 46 GPU schemas, 31 buffers, 49 pass crates, 60 call sites. Status counts are kept in the ledger; at this commit 12 rows are `broken` (reproduced).
 
 Headline facts the ledger now enforces:
 
@@ -87,7 +87,7 @@ Classification of every exposed class (detail and status per row in the ledger):
 
 | Class | Capability today |
 |---|---|
-| StaticMeshComponent, MaterialOverrideComponent, LightComponent | Phase 2 vertical slice; reached only through CPU projection |
+| StaticMeshComponent (with its per-slot materials), LightComponent | Phase 2 vertical slice; reached only through CPU projection |
 | CameraPostProcess, GlobalFog, LocalFogVolume, Foliage, Portal, PostProcessVolume, ReflectionCapture, WaterVolume | Phase 4; stranded behind `PendingWorldWrites` and/or unregistered buffers |
 | LODComponent | unsupported: no consumer |
 | SplineComponent | editor debug lines from a CPU scan |
@@ -114,7 +114,7 @@ Hosted CI runners have no GPU adapter, and four `helio_component` test binaries 
 
 ## Failure baseline
 
-From `phase0_render_baseline` on Windows, Vulkan, RTX 3060, against the pinned Helio. The editor producers are `AddObject` + `add_component`; the properties panel's subscribe and drain functions are called directly. The probe mesh carries an opaque, emissive `MaterialOverrideComponent`, so it shows without lights.
+From `phase0_render_baseline` on Windows, Vulkan, RTX 3060, against the pinned Helio. The editor producers are `AddObject` + `add_component`; the properties panel's subscribe and drain functions are called directly. The probe mesh carries an opaque, emissive material (a `MaterialOverrideComponent` at the baseline commit; its mesh-slot replacement after the sync), so it shows without lights.
 
 Every case runs with the editor camera at rest and again with it nudged, because a moving camera rebuilds Helio's Hi-Z pyramid (see cause 2). Pixel columns: color pixels / depth texels changed versus an empty scene; the cube covers 13,108 / 5,902.
 
@@ -137,7 +137,7 @@ The positive control (a projected mesh with the camera moving) is asserted, so a
 
 1. **No draw row (SceneDB/editor; the structural phases).** The draw row is built by the CPU projection in `helio_bridge`. It only runs for entities with an armed render subscription, or on a full projection. A mesh added later through the panel or by asset drop is never subscribed, so no row exists. If the panel is open and drains the shared queue first, it consumes the event the renderer needed. Phase 2 removes this whole mechanism; nothing here patches it.
 2. **Helio Hi-Z regression.** Helio's own `crates/examples/tests/object_batch_skip.rs` fails at the pinned `05c2f7d7` on this machine ("object not drawn at the centre"). Bisecting 20edf449..05c2f7d7 gives first bad commit **`0e01e9fd` "Fix camera-based Hi-Z cache invalidation"** (parent `49b02e92` passes). Since then the max pyramid is reused while `(unjittered camera generation, scene content signature)` holds. A camera at rest therefore keeps a pyramid built before anything drew, and occlusion culling hides every mesh until the camera moves or a scene buffer changes. Forcing a rebuild every frame (local experiment, not committed) makes Helio's test pass and the editor control visible at rest. This is a Helio fix, independent of the SceneDB plan.
-3. **`MaterialOverrideComponent` default alpha is 0.** A default instance makes `helio_bridge` emit a fully transparent, transparent-only material, so adding the component from the editor hides its mesh.
+3. **`MaterialOverrideComponent` default alpha is 0.** A default instance makes `helio_bridge` emit a fully transparent, transparent-only material, so adding the component from the editor hides its mesh. *Resolved upstream after the baseline:* Helio `f9631fd` removed the component; materials are per-slot assignments on `StaticMeshComponent`, whose imported default surface has `alpha = 1.0`.
 
 Also found: the DX12 backend cannot run the default graph on this machine. FXC fails to compile the lens-response shader (`error X3511: unable to unroll loop`), so Vulkan is the only working backend here.
 
@@ -148,3 +148,15 @@ Also found: the DX12 backend cannot run the default graph on this machine. FXC f
 - Plugin components loaded from DLLs are not linked into the inventory.
 - Pass-dependency boundary manifest ledger (audit section 4) is not machine-checked.
 - D1/D2 `REVIEW:` answers need maintainer approval.
+
+## Sync with main
+
+Merging `main` at `7b6796323` into the Phase 0 branch moved Helio from `05c2f7d7` to `caf8bdfd` and turned Pulsar-Reflection into a submodule (`2761936b`). `cargo test -p scene_inventory` then reported exactly the drift the ledger exists to catch, and the rows were updated rather than the checks relaxed:
+
+- `MaterialOverrideComponent` is no longer a registered class (Helio `f9631fd` folded it into `StaticMeshComponent`'s material slots). Its class row is removed; the gbuffer `MaterialComponent` schema and `materials` buffer rows now name the mesh slots as their future source.
+- The `hlfs_cathedral` demo builder adds one component fewer (2 sites), and `helio_bridge` subscribes to one type fewer (6 sites), both because that component is gone.
+- `phase0_render_baseline` gives its probe an emissive surface through the slot migration field instead of the removed component.
+
+The Hi-Z pass is unchanged between the two Helio pins, so cause 2 still stands.
+
+Re-run after the sync on Linux with Mesa lavapipe (llvmpipe, Vulkan 1.4, no hardware GPU): `cargo test -p ui_level_editor --test phase0_render_baseline -- --nocapture` passes and reproduces the mesh table above case for case (visible cube 13,110 / 5,902; every "added later" case has no draw row and 0 / 0 until the renderer-drains-then-edit case). The light cases with the camera nudging match (0 / 0, legacy flat intensity still fails to hydrate while staying attached). With the camera at rest the three light cases each report 13,110 / 5,902 against the unlit frame; that difference is the probe cube becoming visible between the two captures, not light output, so it is not counted as a light effect.

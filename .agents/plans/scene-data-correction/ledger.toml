@@ -19,10 +19,10 @@
 # See 11-phase-0-closure.md for the decisions and the failure baseline.
 
 [meta]
-pulsar_native = "6593c311e"
-helio = "05c2f7d7"
+pulsar_native = "7b6796323"
+helio = "caf8bdfd"
 scenedb = "e74df984"
-reflection = "2dab12bf"
+reflection = "2761936b"
 
 # ── Exposed component classes ───────────────────────────────────────────
 # Every REGISTRY class (the editor's Add component list); flags are checked
@@ -112,19 +112,6 @@ disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrite
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: fog volume changes volumetric fog"
 status = "at-risk"
-
-[[class]]
-name = "MaterialOverrideComponent"
-category = "Rendering"
-world_registered = true
-own_gpu_columns = false
-runtime_behavior = true
-owner = "helio_component::components::material_override"
-disposition = "render, Phase 2. No GPU schema of its own; helio_bridge projects it into gbuffer MaterialComponent and invents a default material otherwise"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "broken"
-notes = "Phase 0 baseline: a default instance has alpha 0.0 (derived Default), which helio_bridge turns into a fully transparent, transparent-only material, so adding the component from the editor makes its mesh disappear. The baseline sets alpha 1.0 explicitly for its probe."
 
 [[class]]
 name = "NativeScriptComponent"
@@ -221,7 +208,7 @@ disposition = "render, Phase 2 vertical slice. Its own vertex/index pools mirror
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
 test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
 status = "broken"
-notes = "Phase 0 baseline: added after the renderer's first frame (asset drop or panel), the mesh hydrates and its pools reach the GPU but it never gets a draw or material row, panel open or closed. A row appears only if the panel is open, the renderer drains the queue first, and a later edit fires."
+notes = "Phase 0 baseline: added after the renderer's first frame (asset drop or panel), the mesh hydrates and its pools reach the GPU but it never gets a draw or material row, panel open or closed. A row appears only if the panel is open, the renderer drains the queue first, and a later edit fires. Since Helio f9631fd the component also owns per-slot material assignments (the standalone MaterialOverrideComponent and its alpha-0 default are gone); helio_bridge still projects them into gbuffer material rows on the CPU."
 
 [[class]]
 name = "VoxelComponent"
@@ -618,7 +605,7 @@ releases_var_len = false
 registered = true
 writer = "engine_backend::scene::helio_bridge::sync_static_mesh_rows (CPU projection, default material)"
 owner = "helio_pass_gbuffer::components"
-disposition = "replace: derive from MaterialOverrideComponent's schema (Phase 2)"
+disposition = "replace: derive from StaticMeshComponent's per-slot material assignments (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
 test = "none: schema written, registered and consumed"
 status = "at-risk"
@@ -978,7 +965,7 @@ status = "at-risk"
 [[site]]
 pattern = "subscribe"
 file = "crates/core/engine_backend/src/scene/helio_bridge.rs"
-count = 7
+count = 6
 owner = "core::engine_backend::scene::helio_bridge"
 disposition = "remove: render-row subscriptions"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -1331,7 +1318,7 @@ status = "at-risk"
 [[site]]
 pattern = "add-component"
 file = "crates/editor/ui_level_editor/src/core/scene_edit/hlfs_cathedral/mod.rs"
-count = 3
+count = 2
 owner = "editor::ui_level_editor::core::scene_edit::hlfs_cathedral"
 disposition = "generated demo-scene builder; typed writes"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
@@ -1688,7 +1675,7 @@ key = "materials"
 producers = ["MaterialComponent"]
 consumers = ["helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-object-batch", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
 owner = "engine_backend::scene::helio_bridge (CPU projection, default brown material)"
-disposition = "replace: material rows derive from MaterialOverrideComponent's schema; the default material is defined once by that schema"
+disposition = "replace: material rows derive from StaticMeshComponent's material slots; the default material is defined once, by the slot's imported surface"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
 test = "none: material override reaches gbuffer"
 status = "at-risk"
