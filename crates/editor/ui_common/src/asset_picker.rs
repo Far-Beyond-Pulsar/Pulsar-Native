@@ -35,8 +35,7 @@ impl AssetQuery {
     /// Common raster and GPU texture formats offered by the texture picker.
     pub fn texture_images() -> Vec<Self> {
         [
-            "png", "jpg", "jpeg", "webp", "tga", "bmp", "gif", "tif", "tiff", "hdr", "exr", "dds",
-            "ktx", "ktx2",
+            "png", "jpg", "jpeg", "webp", "tga", "bmp", "gif", "tif", "tiff",
         ]
         .into_iter()
         .map(Self::extension)
