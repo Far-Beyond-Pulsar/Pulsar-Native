@@ -33,7 +33,7 @@ Found and fixed on the way (pre-existing, blocking the editor test suite): `exec
 Pre-existing failures left as found (not caused by this work, reported for their owners):
 
 - `helio_component` unit test `mapping::tests::mirror_carries_color_and_intensity_with_a_zeroed_position_placeholder` expects raw intensity 42 while the mapping applies the lumens conversion added in Helio `0cb21676`.
-- `helio_component` test binary `static_mesh_component_gpu_mirror` does not compile (it uses `helio::Scene`, removed in Helio `c9eb57b1`, and predates the material-slot fields). It is one of the GPU-only binaries the CI nextest profile excludes.
+- `helio_component` test binary `static_mesh_component_gpu_mirror` did not compile (it used `helio::Scene`, removed in Helio `c9eb57b1`, and predated the material-slot fields). Since Phase 0 made `helio_component` a workspace member, CI's `cargo check --all-targets` reached it; ported in Stage 2 (its two World-level cases pass on lavapipe, the `helio::Scene` case is removed with that API).
 
 ## Stage 2: component instances as entities (landed)
 
