@@ -95,9 +95,11 @@ All on Linux; GPU cases on Mesa lavapipe:
 - `ui_level_editor --test render_acceptance` passes. Its light case now adds the light through the panel's real path: `AddComponent`, then the intensity edit.
 - `pulsar_class`: template, planner, record migration and instance tests.
 - `pulsar_world_registry`, `pulsar_script_object_model`, `pulsar_script_codegen`, `pulsar_game`, `engine_backend`, `level_migrate`, `scene_inventory`.
-- Known failures that predate this work: the `engine_backend` gizmo hover test and the `helio_component` light-mapping intensity test (both recorded in Phase 2).
-
-The sweep's results are recorded in the PR.
+- Sweep: `ui_level_editor`, `pulsar_game`, `engine_class_derive`, `pulsar_scene_model`, `pulsar_world_registry`, `pulsar_class`, `pulsar_script_object_model`, `pulsar_script_codegen`, `engine_backend`, `helio_component`, `level_migrate` and `scene_inventory` all pass. The four failures that predate this work remain, the same set Phase 2 recorded:
+  - the `engine_backend` gizmo hover test;
+  - the `helio_component` light-mapping intensity test;
+  - two `toggle_button.rs` doctests.
+- `render_acceptance` frames match Phase 2's numbers exactly. The light added through the panel's real path lights 22,492 pixels; the legacy flat payload added interactively is still refused (0). At load, that payload is now migrated instead.
 
 ## Branches
 
