@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use engine_backend::scene::{ensure_gpu_mirror, scene_join};
+use engine_backend::scene::{ensure_gpu_mirror, environment_join, scene_join};
 use helio::{Camera, Renderer, RendererBuilder, RendererConfig};
 use parking_lot::RwLock;
 use pulsar_pie_abi::{
@@ -380,6 +380,7 @@ impl EmbeddedGame {
             .with_external_device()
             .with_editor_mode(false)
             .with_scene_derivation(scene_join(&device, false))
+            .with_scene_derivation(environment_join(&device))
             .with_ambient([0.0, 0.0, 0.0], 0.0)
             .with_pass_build_context(Box::new(
                 helio_default_graphs::build_default_graph_external_with_context,

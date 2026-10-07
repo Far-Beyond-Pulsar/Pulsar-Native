@@ -768,3 +768,118 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
         }
     }
 }
+
+/// Pulsar-Native#1035, Phase 4: fog media, post-process volumes and a
+/// camera's post-process baseline, added through the editor's command path
+/// as component instances, change the rendered frame through the full
+/// default graph, and stop changing it when their instance is disabled.
+#[test]
+fn environment_components_reach_the_frame() {
+    use helio_component::components::{
+        CameraPostProcessComponent, GlobalFogComponent, LocalFogVolumeComponent,
+        PostProcessVolumeComponent,
+    };
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    let mut fog = GlobalFogComponent::default();
+    fog.medium.extinction = 0.02;
+    fog.medium.emission = [0.5, 0.5, 0.5];
+    let mut local = LocalFogVolumeComponent::default();
+    // A dense box around the mesh only; the camera stays outside it.
+    local.size = [radius * 3.0; 3];
+    local.medium.extinction = 2.0;
+    local.medium.emission = [4.0, 4.0, 4.0];
+    let mut volume = PostProcessVolumeComponent::default();
+    volume.unbound = true;
+    volume.blend_weight = 1.0;
+    volume.overrides.override_exposure = true;
+    volume.settings.exposure_compensation = 3.0;
+    let mut camera = CameraPostProcessComponent::default();
+    camera.view_id = 0;
+    camera.settings.exposure_compensation = -3.0;
+
+    let cases: Vec<(&str, TypedComponent)> = vec![
+        ("global fog", TypedComponent::new(fog)),
+        ("local fog volume", TypedComponent::new(local)),
+        ("post-process volume", TypedComponent::new(volume)),
+        ("camera post-process", TypedComponent::new(camera)),
+    ];
+    for (label, component) in cases {
+        let mut state = LevelEditorState::new();
+        drop_mesh(&mut state);
+        let mut renderer = harness.renderer(&state);
+        let before = harness.frames(&mut renderer, || {});
+        let added = execute_command(
+            &mut state,
+            SceneCommand::AddObjectWithComponents {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: label.to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+                components: vec![component],
+            },
+        );
+        let id = added.affected_ids[0].clone();
+        let with = harness.frames(&mut renderer, || {});
+        let tag = label.replace(' ', "_");
+        with.dump(&format!("environment_{tag}"));
+        let change = with.difference(&before);
+        println!("PHASE4 {label} vs without: {change:?}");
+        assert!(
+            change.color_pixels > (SIZE * SIZE / 20) as usize,
+            "{label} did not change the frame: {change:?}"
+        );
+        assert_eq!(change.depth_texels, 0, "{label} moved geometry");
+
+        if label == "local fog volume" {
+            // A local volume follows its owner: moved far off-screen, the
+            // frame is the frame without it.
+            move_to(&mut state, &id, [radius * 100.0, 0.0, 0.0]);
+            let away = harness.frames(&mut renderer, || {});
+            let change = away.difference(&before);
+            println!("PHASE4   {label} moved away vs without: {change:?}");
+            assert!(
+                change.color_pixels < (SIZE * SIZE / 100) as usize,
+                "{label} still fogs the view after its owner moved away: {change:?}"
+            );
+            move_to(&mut state, &id, [0.0; 3]);
+        }
+
+        assert!(components::set_component_enabled(
+            &mut state.scene.world_mut(),
+            &id,
+            0,
+            false
+        ));
+        let disabled = harness.frames(&mut renderer, || {});
+        let change = disabled.difference(&before);
+        println!("PHASE4   {label} disabled vs without: {change:?}");
+        assert!(
+            change.color_pixels < (SIZE * SIZE / 100) as usize,
+            "{label} still changes the frame when disabled: {change:?}"
+        );
+    }
+}

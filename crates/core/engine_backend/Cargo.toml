@@ -12,6 +12,8 @@ serde_json = { workspace = true }
 # Transform GPU-mirror test (scene/world_store.rs), same pinned version
 # `helio-component` already uses for the identical purpose.
 pollster = "=0.4.0"
+# The environment join test reads the volumetric fog pass rows.
+helio-pass-volumetric-fog = { workspace = true }
 
 [build-dependencies]
 toml = { workspace = true }

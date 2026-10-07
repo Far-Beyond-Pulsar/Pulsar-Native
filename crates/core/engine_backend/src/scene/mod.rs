@@ -35,13 +35,13 @@ pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 pub mod helio_bridge;
 
 #[cfg(feature = "render")]
-pub use helio_bridge::{ensure_gpu_mirror, scene_join, scene_join_keys};
+pub use helio_bridge::{
+    ensure_gpu_mirror, environment_join, environment_join_keys, scene_join, scene_join_keys,
+};
 #[cfg(feature = "render")]
 pub mod editor_postprocess;
 #[cfg(feature = "render")]
-pub use editor_postprocess::{
-    apply_editor_postprocess, editor_postprocess_is_current, EditorPostProcess,
-};
+pub use editor_postprocess::EditorPostProcess;
 
 /// Hook a `World` up to the SceneDB Inspector (CPU + GPU live view). Inert
 /// unless this process was launched by `scenedb_inspector`; safe to call for
