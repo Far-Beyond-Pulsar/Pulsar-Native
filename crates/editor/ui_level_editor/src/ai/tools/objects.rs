@@ -43,16 +43,21 @@ struct SpawnSpec {
     components: Vec<ComponentSpec>,
 }
 
-/// The object an `AddObject` for `spec` needs. Components ride along inline,
-/// so the object and its components are one undo step.
-fn spawn_data(spec: SpawnSpec) -> Result<(SceneObjectData, Option<String>)> {
+/// The object and typed components an `AddObjectWithComponents` for `spec`
+/// needs, so the object and its components are one undo step. Component
+/// data is decoded here, at the tool boundary.
+fn spawn_data(spec: SpawnSpec) -> Result<(SceneObjectData, Option<String>, Vec<TypedComponent>)> {
     let object_type = object_type_from_kind(spec.kind.as_deref().unwrap_or("empty"))?;
     let components = spec
         .components
         .into_iter()
         .map(|c| {
             let data = components::build_component_data(&c.class_name, c.properties.as_ref())?;
-            Ok(json!({ "class_name": c.class_name, "enabled": c.enabled, "data": data }))
+            Ok(TypedComponent {
+                value: components::decode_component(&c.class_name, &data)?,
+                class_name: c.class_name,
+                enabled: c.enabled,
+            })
         })
         .collect::<Result<Vec<_>>>()?;
     let defaults = Transform::default();
@@ -71,17 +76,24 @@ fn spawn_data(spec: SpawnSpec) -> Result<(SceneObjectData, Option<String>)> {
         children: vec![],
         scene_path: String::new(),
         props: Default::default(),
-        component_instances: (!components.is_empty()).then(|| Value::Array(components)),
+        component_instances: None,
     };
-    Ok((data, spec.parent_id))
+    Ok((data, spec.parent_id, components))
 }
 
 fn spawn(state: &mut LevelEditorState, spec: SpawnSpec) -> Result<String> {
     if let Some(parent) = &spec.parent_id {
         require_object(state, parent)?;
     }
-    let (data, parent_id) = spawn_data(spec)?;
-    let result = execute_command(state, SceneCommand::AddObject { data, parent_id });
+    let (data, parent_id, components) = spawn_data(spec)?;
+    let result = execute_command(
+        state,
+        SceneCommand::AddObjectWithComponents {
+            data,
+            parent_id,
+            components,
+        },
+    );
     result
         .affected_ids
         .into_iter()

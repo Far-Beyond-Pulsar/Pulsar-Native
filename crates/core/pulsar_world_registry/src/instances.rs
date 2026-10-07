@@ -348,7 +348,7 @@ pub fn restore_instances(
         };
         let instance = match attachments::instance_by_id(world, snapshot.meta.id) {
             Some(instance) => {
-                set_instance_value(world, instance, class, value)?;
+                set_instance_value(world, instance, value)?;
                 attachments::set_enabled(world, instance, snapshot.enabled);
                 if let Some(mut meta) = world.get::<ComponentMeta>(instance).cloned() {
                     if meta.class_slot != snapshot.meta.class_slot {
@@ -393,23 +393,28 @@ pub fn restore_instances(
     Ok(restored)
 }
 
-/// Put `value` on the attached `instance` of class `class`, resolving or
-/// unresolving it as the value says.
-fn set_instance_value(
+/// Replace the attached `instance`'s value: a typed value of its class
+/// (written through the class's insert, so every write hook runs; an
+/// unresolved instance becomes live) or an unresolved payload (the typed
+/// value, if any, is removed). Nothing is decoded; a value of another class
+/// is refused before anything is written.
+pub fn set_instance_value(
     world: &mut World,
     instance: Entity,
-    class: &str,
     value: InstanceValue,
 ) -> Result<(), AttachError> {
+    let Some(class) = attachments::meta(world, instance).map(|meta| meta.class_name.clone()) else {
+        return Err(AttachError::Instance(InstanceError::DeadOwner(instance)));
+    };
     match value {
         InstanceValue::Value(value) => {
-            insert_world_component_value(class, world, instance, value)?;
+            insert_world_component_value(&class, world, instance, value)?;
             if world.get::<UnresolvedComponent>(instance).is_some() {
                 world.remove::<UnresolvedComponent>(instance);
             }
         }
         InstanceValue::Unresolved(unresolved) => {
-            if let Some(registration) = crate::find(class) {
+            if let Some(registration) = crate::find(&class) {
                 (registration.remove)(world, instance);
             }
             if world.get::<UnresolvedComponent>(instance) != Some(&unresolved) {

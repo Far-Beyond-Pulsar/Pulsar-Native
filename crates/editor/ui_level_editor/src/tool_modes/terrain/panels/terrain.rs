@@ -28,7 +28,7 @@ use super::widgets::{
     collapsible_header, info_row, panel_header, segmented_row, stepper_row, swatch_color,
     tool_grid, SharedState, ToolSpec,
 };
-use crate::commands::{execute_command, SceneCommand};
+use crate::commands::{execute_command, SceneCommand, TypedComponent};
 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
 use crate::state::terrain::{BrushShape, SculptBrush, SculptMode, TerrainDomain, TerrainTarget};
 use crate::tool_modes::dispatcher::ToolModeDispatcher;
@@ -316,13 +316,16 @@ impl TerrainPanel {
                     children: Vec::new(),
                     scene_path: String::new(),
                     props: Default::default(),
-                    component_instances: Some(serde_json::json!([{
-                        "class_name": "VoxelTerrainComponent",
-                        "enabled": true,
-                        "data": serde_json::to_value(VoxelTerrainComponent::default()).unwrap_or_default(),
-                    }])),
+                    component_instances: None,
                 };
-                execute_command(&mut st, SceneCommand::AddObject { data, parent_id: None });
+                execute_command(
+                    &mut st,
+                    SceneCommand::AddObjectWithComponents {
+                        data,
+                        parent_id: None,
+                        components: vec![TypedComponent::new(VoxelTerrainComponent::default())],
+                    },
+                );
             })
             .into_any_element();
 

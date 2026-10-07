@@ -24,7 +24,7 @@ use helio_component::components::{
     MeshAssetPath, ObjectMovability, StaticMeshComponent, StaticMeshMaterialSlot,
     StaticMeshMaterialSlots,
 };
-use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
+use pulsar_reflection::REGISTRY;
 use pulsar_scenedb::Entity;
 use serde_json::{json, Value};
 use ui_level_editor::commands::{execute_command, SceneCommand};
@@ -339,23 +339,6 @@ fn drop_mesh_with(state: &mut LevelEditorState, surface: Value) -> String {
     id
 }
 
-/// The properties panel's "Add component" payload: one JSON entry per
-/// reflected property of a default instance.
-fn panel_defaults(class_name: &str) -> Value {
-    let instance = REGISTRY
-        .create_instance(class_name)
-        .expect("registered class");
-    let mut map = serde_json::Map::new();
-    for prop in instance.get_properties() {
-        let value = (prop.getter)(instance.as_ref());
-        let json_value = RUNTIME_TYPE_REGISTRY
-            .serialize_json_for_any(value.as_ref())
-            .unwrap_or(Value::Null);
-        map.insert(prop.name.to_string(), json_value);
-    }
-    Value::Object(map)
-}
-
 fn class_json(class_name: &str) -> Value {
     REGISTRY
         .create_instance(class_name)
@@ -367,13 +350,13 @@ fn class_json(class_name: &str) -> Value {
 /// scale: the cube is ~86 units across and the light ~2.5 radii away, where
 /// the default 1000 lm adds a fraction of a lux.
 fn bright(mut light: Value) -> Value {
-    // The nested class shape, or the panel's flat one.
-    match light.pointer_mut("/intensity/intensity") {
-        Some(value) => *value = json!(5.0e7),
-        None => light["intensity"] = json!(5.0e7),
-    }
+    *light
+        .pointer_mut("/intensity/intensity")
+        .expect("the class shape") = json!(BRIGHT);
     light
 }
+
+const BRIGHT: f32 = 5.0e7;
 
 /// The shape of the light that failed to hydrate in the 2026-10-04 editor
 /// log: `intensity` stored as a bare number instead of `IntensityLightProps`.
@@ -707,13 +690,14 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
 
         // ── Lights added after the first frame, next to a mesh ─────────────
         for (label, data, accepted) in [
+            // The properties panel: Add Component, then the intensity edit.
+            ("panel add", None, true),
             (
-                "panel payload",
-                bright(panel_defaults("LightComponent")),
+                "class to_json",
+                Some(bright(class_json("LightComponent"))),
                 true,
             ),
-            ("class to_json", bright(class_json("LightComponent")), true),
-            ("legacy flat intensity", legacy_flat_light(), false),
+            ("legacy flat intensity", Some(legacy_flat_light()), false),
         ] {
             let mut state = LevelEditorState::new();
             drop_matte_mesh(&mut state);
@@ -722,12 +706,34 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             let id = add_object(&mut state, "Light", ObjectType::Light(LightType::Point));
             // Above and in front of the mesh, between it and the camera.
             move_to(&mut state, &id, [0.0, radius * 1.5, radius * 2.0]);
-            components::add_component(
-                &mut state.scene.world_mut(),
-                &id,
-                "LightComponent".to_string(),
-                data,
-            );
+            match data {
+                Some(data) => {
+                    components::add_component(
+                        &mut state.scene.world_mut(),
+                        &id,
+                        "LightComponent".to_string(),
+                        data,
+                    );
+                }
+                None => {
+                    for command in [
+                        SceneCommand::AddComponent {
+                            id: id.clone(),
+                            class_name: "LightComponent".into(),
+                            value: None,
+                        },
+                        SceneCommand::SetComponentProperty {
+                            id: id.clone(),
+                            class_name: "LightComponent".into(),
+                            component_index: 0,
+                            prop_name: "intensity".into(),
+                            value: Box::new(BRIGHT),
+                        },
+                    ] {
+                        assert!(execute_command(&mut state, command).changed);
+                    }
+                }
+            }
             let attached = components::instance_at(&state.scene.world(), &id, 0).is_some();
             assert_eq!(attached, accepted, "[{mode}] light ({label}): attached");
             let lit = harness.frames(&mut renderer, || {});

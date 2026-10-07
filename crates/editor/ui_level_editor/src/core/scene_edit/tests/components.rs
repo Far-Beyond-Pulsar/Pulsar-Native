@@ -221,3 +221,66 @@ fn disabling_and_reenabling_physics_preserves_the_canonical_value() {
         &components::get_components_metadata(world, &id)[0].data
     ));
 }
+
+/// Pulsar-Native#1035, Phase 3: an object's `props` are its own render
+/// props. Component values are not copied into them, so an object edit
+/// written back (`update_object`) and a save carry no stale copies.
+#[test]
+fn object_props_carry_no_component_copies() {
+    use helio_component::components::LightComponent;
+
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let mut data = object("light");
+    data.props
+        .insert("icon_asset".into(), json!("icons/lamp.png"));
+    let id = objects::add_object(world, data, None);
+    let mut light = LightComponent::default();
+    light.intensity.intensity = 42.0;
+    components::add_component_value(world, &id, "LightComponent", Some(Box::new(light)));
+
+    let read = objects::get_object(world, &id).unwrap();
+    assert_eq!(
+        read.props.len(),
+        1,
+        "only the object's own prop: {:?}",
+        read.props
+    );
+    assert!(objects::update_object(world, read));
+    let entity = world.entity_for(&id).unwrap();
+    assert_eq!(
+        world
+            .get::<engine_backend::scene::RenderProps>(entity)
+            .unwrap()
+            .props
+            .len(),
+        1
+    );
+    assert!(objects::get_all_objects(world)
+        .iter()
+        .all(|object| !object.props.contains_key("intensity")));
+}
+
+/// An unresolved instance's payload is readable (the properties card shows
+/// it rather than the class defaults).
+#[test]
+fn an_unresolved_payload_is_readable() {
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let id = objects::add_object(world, object("o"), None);
+    let owner = world.entity_for(&id).unwrap();
+    pulsar_world_registry::attach_unresolved(
+        world,
+        owner,
+        engine_backend::scene::attachments::NewInstance::new("NotInThisBuild"),
+        json!({ "speed": 3 }),
+        "not registered".into(),
+    )
+    .unwrap();
+    assert_eq!(
+        components::unresolved_payload(world, &id, 0),
+        Some(json!({ "speed": 3 }))
+    );
+    components::add_component_value(world, &id, "LightComponent", None);
+    assert_eq!(components::unresolved_payload(world, &id, 1), None, "live");
+}

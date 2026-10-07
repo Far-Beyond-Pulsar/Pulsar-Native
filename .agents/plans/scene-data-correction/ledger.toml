@@ -1144,22 +1144,22 @@ status = "at-risk"
 [[site]]
 pattern = "add-component"
 file = "crates/editor/ui_level_editor/src/core/commands/executor.rs"
-count = 3
+count = 2
 owner = "editor::ui_level_editor::core::commands::executor"
-disposition = "convert to a typed factory and one validated transaction; JSON only at an external boundary"
+disposition = "converted (Phase 3): AddComponent and AddObjectWithComponents carry typed values (class default when none); nothing is decoded in the command layer"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: typed add produces the same state as a direct insert"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/src/core/commands/tests.rs typed_component_commands_are_undoable_and_report_no_ops"
+status = "verified"
 
 [[site]]
 pattern = "property-edit"
 file = "crates/editor/ui_level_editor/src/core/commands/executor.rs"
-count = 8
+count = 7
 owner = "editor::ui_level_editor::core::commands::executor"
-disposition = "convert to typed reflected patches with intrinsic SceneDB write hooks"
+disposition = "converted (Phase 3): SetComponentProperty and SetMovability use typed reflected setters; SetComponentData writes a typed value in place (or an unresolved payload to an unresolved instance); change detection is reported by each edit, no JSON fingerprint"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: mutation-equivalence test"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/src/core/commands/tests.rs"
+status = "verified"
 
 [[site]]
 pattern = "destructive-drain"
@@ -1255,12 +1255,12 @@ status = "at-risk"
 [[site]]
 pattern = "add-component"
 file = "crates/editor/ui_level_editor/src/ui/properties/object_type_fields/mod.rs"
-count = 2
+count = 1
 owner = "editor::ui_level_editor::ui::properties::object_type_fields"
-disposition = "properties-panel Add component: builds a flat JSON map from a default instance; insert the typed instance directly"
-target_contract = "Phase 2; 02-typed-reflection-and-writes.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
-status = "broken"
+disposition = "converted (Phase 3): Add Component issues AddComponent with the class default (one undo step); the flat JSON map is gone"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (panel add)"
+status = "verified"
 
 [[site]]
 pattern = "panel-drain"
@@ -1282,16 +1282,6 @@ disposition = "remove as a rendering prerequisite; observer subscriptions move t
 target_contract = "Phase 2 (render rows), Phase 5 (observers); 04-state-notifications.md"
 test = "none: rendering with zero subscribers"
 status = "at-risk"
-
-[[site]]
-pattern = "add-component"
-file = "crates/editor/ui_level_editor/src/ui/viewport/helio_viewport/assets.rs"
-count = 1
-owner = "editor::ui_level_editor::ui::viewport::helio_viewport::assets"
-disposition = "viewport asset drop: AddObject plus a JSON add_component outside the undo command; make one typed transaction"
-target_contract = "Phase 2; 02-typed-reflection-and-writes.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
-status = "broken"
 
 [[site]]
 pattern = "pending-world-writes"
