@@ -244,7 +244,10 @@ fn normalize_relative_path(path: &str) -> Option<String> {
 }
 
 fn is_trait_asset(path: &str) -> bool {
-    path.starts_with("types/traits/") && path.ends_with(".trait.json")
+    // Trait definitions are project assets and may be stored anywhere in the
+    // project. `types/traits/` is the default creation location, not a validity
+    // constraint; older projects may already have root-level trait files.
+    path.ends_with(".trait.json")
 }
 
 fn is_blueprint_asset(path: &str) -> bool {

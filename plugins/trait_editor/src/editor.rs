@@ -619,13 +619,29 @@ fn non_empty(value: String) -> Option<String> {
 fn load_type_index_for_asset(
     file_path: &std::path::Path,
 ) -> Result<ui_types_common::TypeIndex, String> {
-    let project_root = file_path
+    let parent = file_path
         .parent()
-        .and_then(std::path::Path::parent)
-        .and_then(std::path::Path::parent)
-        .ok_or_else(|| {
-            "Trait asset must be inside the project's types/traits directory".to_owned()
-        })?;
+        .ok_or_else(|| "Trait asset must be inside a project directory".to_owned())?;
+    // Trait assets can live anywhere in the project. Preserve the conventional
+    // types/traits layout while also supporting root-level and custom-folder
+    // assets created by earlier editor versions.
+    let project_root = if parent.ends_with(std::path::Path::new("types").join("traits")) {
+        parent
+            .parent()
+            .and_then(std::path::Path::parent)
+            .ok_or_else(|| "Could not resolve the project root for this trait".to_owned())?
+    } else {
+        parent
+            .ancestors()
+            .find(|candidate| {
+                engine_fs::virtual_fs::exists(&candidate.join(".pulsar")).unwrap_or(false)
+                    || engine_fs::virtual_fs::exists(
+                        &candidate.join("type-index").join("index.json"),
+                    )
+                    .unwrap_or(false)
+            })
+            .unwrap_or(parent)
+    };
     let index_path = project_root.join("type-index").join("index.json");
     match engine_fs::virtual_fs::exists(&index_path) {
         Ok(false) => Ok(ui_types_common::TypeIndex::default()),
