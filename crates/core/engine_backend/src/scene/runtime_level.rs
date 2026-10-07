@@ -201,6 +201,22 @@ impl RuntimeLevel {
                     (records, component_source_present(obj))
                 }
             };
+            let legacy = instances
+                .iter()
+                .find(|record| record.class_name == "MaterialOverrideComponent")
+                .map(|record| record.data.clone());
+            if let Some(legacy) = legacy {
+                if let Some(mesh) = instances
+                    .iter_mut()
+                    .find(|record| record.class_name == "StaticMeshComponent")
+                {
+                    if let Some(data) = mesh.data.as_object_mut() {
+                        data.entry("legacy_material_override")
+                            .or_insert(legacy);
+                    }
+                }
+                instances.retain(|record| record.class_name != "MaterialOverrideComponent");
+            }
 
             // SceneDB keeps the ordered compatibility projection as well as the
             // typed registered component values. Older consumers can therefore

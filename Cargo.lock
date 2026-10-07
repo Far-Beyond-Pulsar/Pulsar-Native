@@ -3127,6 +3127,7 @@ dependencies = [
  "pulsar_reflection",
  "serde",
  "serde_json",
+ "smol",
  "tempfile",
  "tokio",
  "toml 1.1.4+spec-1.1.0",

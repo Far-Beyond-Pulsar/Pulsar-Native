@@ -919,9 +919,6 @@ impl HelioRenderer {
                 pulsar_scenedb::component_id::<helio_component::components::StaticMeshComponent>(),
                 pulsar_scenedb::component_id::<crate::scene::Transform>(),
                 pulsar_scenedb::component_id::<crate::scene::Visibility>(),
-                pulsar_scenedb::component_id::<
-                    helio_component::components::MaterialOverrideComponent,
-                >(),
             ];
             let light_components = [
                 pulsar_scenedb::component_id::<helio_component::components::LightComponent>(),

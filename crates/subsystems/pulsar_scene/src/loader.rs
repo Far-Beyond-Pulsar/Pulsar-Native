@@ -200,7 +200,8 @@ pub fn component_instances_from_props(
     let Some(arr) = arr else {
         return Vec::new();
     };
-    arr.iter()
+    let mut records: Vec<_> = arr
+        .iter()
         .enumerate()
         .filter_map(|(fi, entry)| {
             let o = entry.as_object()?;
@@ -216,7 +217,37 @@ pub fn component_instances_from_props(
             let dat = o.get("data").cloned().unwrap_or(Value::Null);
             Some((idx, cls, dat))
         })
-        .collect()
+        .collect();
+    migrate_legacy_material_override_records(&mut records);
+    records
+}
+
+/// Fold the retired single-material override into StaticMeshComponent's
+/// hidden one-load migration field. This keeps old scene archives readable
+/// while ensuring newly saved components use only mesh-owned material slots.
+pub fn migrate_legacy_material_override_records(records: &mut Vec<(usize, String, Value)>) {
+    let Some(override_index) = records
+        .iter()
+        .position(|(_, class_name, _)| class_name == "MaterialOverrideComponent")
+    else {
+        return;
+    };
+    let legacy_data = records[override_index].2.clone();
+    let Some((_, _, mesh_data)) = records
+        .iter_mut()
+        .find(|(_, class_name, _)| class_name == "StaticMeshComponent")
+    else {
+        records.remove(override_index);
+        return;
+    };
+    let Some(mesh_object) = mesh_data.as_object_mut() else {
+        records.remove(override_index);
+        return;
+    };
+    mesh_object
+        .entry("legacy_material_override")
+        .or_insert(legacy_data);
+    records.remove(override_index);
 }
 
 /// Build transform from position / rotation (degrees YXZ) / scale.

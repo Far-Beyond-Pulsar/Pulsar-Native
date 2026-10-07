@@ -43,4 +43,7 @@ pub use format::{
     BlueprintBinding, BlueprintBindings, LightType, MeshType, ObjectType, SceneFile,
     SceneLoadError, SceneObject,
 };
-pub use loader::{build_transform_parts, component_instances_from_props, SceneLoader};
+pub use loader::{
+    build_transform_parts, component_instances_from_props,
+    migrate_legacy_material_override_records, SceneLoader,
+};

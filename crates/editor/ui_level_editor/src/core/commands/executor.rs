@@ -397,7 +397,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 // storage slot per `(entity, type)`), so that instance takes the
                 // typed path and every OTHER instance -- plus classes with no
                 // World registration at all (`LODComponent`/
-                // `MaterialOverrideComponent`) -- is handled inside as an
+                // non-world metadata-only component) -- is handled inside as an
                 // indexed metadata_db JSON write, so each duplicate keeps its
                 // own field values instead of every edit landing in instance 0.
                 let update_result = crate::scene_edit::components::update_live_component_property(

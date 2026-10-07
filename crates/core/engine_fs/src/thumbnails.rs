@@ -195,7 +195,8 @@ impl ThumbnailService {
 
     /// Queue a thumbnail request.  Returns immediately (never blocks the caller).
     ///
-    /// - Callers for the same queued/in-flight path share one generation job
+    /// - Cached thumbnails are loaded without creating a task-queue entry.
+    /// - Callers for the same uncached/in-flight path share one generation job
     ///   and each receive the resulting callback.
     /// - `on_done` receives the decoded `Arc<RgbaImage>`, or `None` if the type
     ///   is unsupported / generation failed.
@@ -217,70 +218,80 @@ impl ThumbnailService {
 
         let pending = Arc::clone(&self.pending);
         let mem_cache = Arc::clone(&self.mem_cache);
-        let task_path = abs_path.clone();
-        let title = format!(
-            "Generate thumbnail: {}",
-            abs_path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or("asset")
-        );
-        editor_task_queue::global().submit(
-            editor_task_queue::TaskDescription::new(
-                title,
-                "Thumbnails",
-                editor_task_queue::TaskDuration::Long,
-            ),
-            move |task| {
-                task.report_progress(0.05, "Checking thumbnail cache");
-                let generated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let cache_key = compute_cache_key(&task_path);
-                    if let Some(cached) = mem_cache.lock().get(&cache_key) {
-                        return Some(cached);
-                    }
+        let probe_mem_cache = Arc::clone(&mem_cache);
+        let probe_path = abs_path.clone();
+        let probe_root = cache_root.clone();
+        smol::spawn(async move {
+            let (cache_key, cached) = smol::unblock(move || {
+                load_cached_thumbnail(&probe_path, &probe_root, &probe_mem_cache)
+            })
+            .await;
+            if let Some(cached) = cached {
+                complete_thumbnail(&pending, &abs_path, Some(cached));
+                return;
+            }
 
-                    if task.is_cancelled() {
-                        return None;
-                    }
+            let task_path = abs_path;
+            let task_root = cache_root;
+            let task_pending = Arc::clone(&pending);
+            let task_mem_cache = Arc::clone(&mem_cache);
+            let title = format!(
+                "Generate thumbnail: {}",
+                task_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("asset")
+            );
+            editor_task_queue::global().submit(
+                editor_task_queue::TaskDescription::new(
+                    title,
+                    "Thumbnails",
+                    editor_task_queue::TaskDuration::Long,
+                ),
+                move |task| {
+                    let generated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        if task.is_cancelled() {
+                            return None;
+                        }
 
-                    tracing::info!("generating thumbnail for {:?}", task_path);
-                    task.report_progress(0.2, "Rendering thumbnail");
-                    let disk_path = get_or_generate_thumbnail_sync(&task_path, &cache_root);
-                    let rgba = disk_path.and_then(|path| {
-                        image::open(&path)
-                            .map_err(|error| {
-                                tracing::debug!("thumbnail decode failed {:?}: {}", path, error)
-                            })
-                            .ok()
-                            .map(|image| Arc::new(image.into_rgba8()))
+                        tracing::info!("generating thumbnail for {:?}", task_path);
+                        task.report_progress(0.1, "Rendering thumbnail");
+                        let disk_path =
+                            get_or_generate_thumbnail_sync(&task_path, &task_root, &cache_key);
+                        let rgba = disk_path.and_then(|path| {
+                            image::open(&path)
+                                .map_err(|error| {
+                                    tracing::debug!("thumbnail decode failed {:?}: {}", path, error)
+                                })
+                                .ok()
+                                .map(|image| Arc::new(image.into_rgba8()))
+                        });
+                        if let Some(ref image) = rgba {
+                            task_mem_cache.lock().insert(cache_key, Arc::clone(image));
+                        }
+                        rgba
+                    }))
+                    .unwrap_or_else(|_| {
+                        tracing::error!("thumbnail task panicked for {:?}", task_path);
+                        None
                     });
-                    if let Some(ref image) = rgba {
-                        mem_cache.lock().insert(cache_key, Arc::clone(image));
-                    }
-                    rgba
-                }))
-                .unwrap_or_else(|_| {
-                    tracing::error!("thumbnail task panicked for {:?}", task_path);
-                    None
-                });
 
-                if generated.is_none() {
-                    tracing::warn!("thumbnail generation failed for {:?}", task_path);
-                }
-                complete_thumbnail(&pending, &task_path, generated);
-                if task.is_cancelled() {
-                    Err("Thumbnail generation cancelled".into())
-                } else if mem_cache
-                    .lock()
-                    .get(&compute_cache_key(&task_path))
-                    .is_some()
-                {
-                    Ok(())
-                } else {
-                    Err("Thumbnail generation failed".into())
-                }
-            },
-        );
+                    if generated.is_none() {
+                        tracing::warn!("thumbnail generation failed for {:?}", task_path);
+                    }
+                    let succeeded = generated.is_some();
+                    complete_thumbnail(&task_pending, &task_path, generated);
+                    if task.is_cancelled() {
+                        Err("Thumbnail generation cancelled".into())
+                    } else if succeeded {
+                        Ok(())
+                    } else {
+                        Err("Thumbnail generation failed".into())
+                    }
+                },
+            );
+        })
+        .detach();
     }
 
     /// Returns the current number of entries in the memory cache.
@@ -301,6 +312,44 @@ fn complete_thumbnail(
     }
 }
 
+fn load_cached_thumbnail(
+    asset_path: &Path,
+    cache_root: &Path,
+    mem_cache: &Mutex<MemCache>,
+) -> (String, Option<Arc<image::RgbaImage>>) {
+    let cache_key = compute_cache_key(asset_path);
+    if let Some(image) = mem_cache.lock().get(&cache_key) {
+        return (cache_key, Some(image));
+    }
+
+    let cache_file = cache_root
+        .join(".pulsar")
+        .join("thumbnails")
+        .join(format!("{cache_key}.png"));
+    if !cache_file.exists() {
+        return (cache_key, None);
+    }
+
+    match image::open(&cache_file) {
+        Ok(image) => {
+            let image = Arc::new(image.into_rgba8());
+            mem_cache
+                .lock()
+                .insert(cache_key.clone(), Arc::clone(&image));
+            (cache_key, Some(image))
+        }
+        Err(error) => {
+            tracing::warn!(
+                "thumbnail cache entry is corrupt; regenerating {:?}: {}",
+                cache_file,
+                error
+            );
+            let _ = std::fs::remove_file(cache_file);
+            (cache_key, None)
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Sync cache logic (runs only on the worker thread)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -308,7 +357,11 @@ fn complete_thumbnail(
 /// Return a path to a cached thumbnail PNG for `abs_asset_path`, generating it
 /// if necessary.  This is the blocking implementation — call only from the
 /// worker thread, never from the main / UI thread.
-fn get_or_generate_thumbnail_sync(abs_asset_path: &Path, cache_root: &Path) -> Option<PathBuf> {
+fn get_or_generate_thumbnail_sync(
+    abs_asset_path: &Path,
+    cache_root: &Path,
+    cache_key: &str,
+) -> Option<PathBuf> {
     let ext = abs_asset_path
         .extension()
         .and_then(|e| e.to_str())
@@ -319,7 +372,6 @@ fn get_or_generate_thumbnail_sync(abs_asset_path: &Path, cache_root: &Path) -> O
     }
 
     let cache_dir = cache_root.join(".pulsar").join("thumbnails");
-    let cache_key = compute_cache_key(abs_asset_path);
     let cache_file = cache_dir.join(format!("{cache_key}.png"));
 
     // Fast path: already cached.

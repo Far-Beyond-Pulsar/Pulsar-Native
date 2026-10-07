@@ -174,17 +174,13 @@ fn build_world(batches: &[Batch]) -> pulsar_scenedb::World {
             ),
             Some(architecture.clone()),
         );
+        let mut mesh_data = super::static_mesh_component_json(&batch.file);
+        mesh_data["legacy_material_override"] = batch.material.clone();
         components::add_component(
             &mut world,
             &id,
             "StaticMeshComponent".to_string(),
-            super::static_mesh_component_json(&batch.file),
-        );
-        components::add_component(
-            &mut world,
-            &id,
-            "MaterialOverrideComponent".to_string(),
-            batch.material.clone(),
+            mesh_data,
         );
     }
 

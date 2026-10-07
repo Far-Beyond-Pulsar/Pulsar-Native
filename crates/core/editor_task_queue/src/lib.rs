@@ -13,8 +13,9 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::time::SystemTime;
 
-const SHORT_WORKERS: usize = 3;
-const LONG_WORKERS: usize = 2;
+const DEFAULT_ON_DEMAND_WORKERS: usize = 3;
+const DEFAULT_DEDICATED_WORKERS: usize = 2;
+const MAX_WORKERS_PER_POOL: usize = 16;
 
 static GLOBAL: OnceLock<TaskQueue> = OnceLock::new();
 
@@ -99,6 +100,8 @@ struct TaskRecord {
 struct QueueState {
     records: BTreeMap<TaskId, TaskRecord>,
     pending: Vec<QueuedWork>,
+    on_demand_workers: usize,
+    dedicated_workers: usize,
 }
 
 struct QueueInner {
@@ -106,6 +109,14 @@ struct QueueInner {
     ready: Condvar,
     next_id: AtomicU64,
     revision: AtomicU64,
+    spawned_workers: Mutex<(usize, usize)>,
+}
+
+/// Current configured concurrency for the two editor-only worker pools.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WorkerCounts {
+    pub on_demand: usize,
+    pub dedicated: usize,
 }
 
 /// Cloneable task submitter and task-list reader.
@@ -117,18 +128,46 @@ pub struct TaskQueue {
 impl TaskQueue {
     pub fn new() -> Self {
         let inner = Arc::new(QueueInner {
-            state: Mutex::new(QueueState::default()),
+            state: Mutex::new(QueueState {
+                on_demand_workers: DEFAULT_ON_DEMAND_WORKERS,
+                dedicated_workers: DEFAULT_DEDICATED_WORKERS,
+                ..QueueState::default()
+            }),
             ready: Condvar::new(),
             next_id: AtomicU64::new(1),
             revision: AtomicU64::new(0),
+            spawned_workers: Mutex::new((0, 0)),
         });
-        for ix in 0..SHORT_WORKERS {
-            spawn_worker(Arc::clone(&inner), TaskDuration::Short, ix);
-        }
-        for ix in 0..LONG_WORKERS {
-            spawn_worker(Arc::clone(&inner), TaskDuration::Long, ix);
-        }
+        ensure_worker_threads(&inner, TaskDuration::Short, DEFAULT_ON_DEMAND_WORKERS);
+        ensure_worker_threads(&inner, TaskDuration::Long, DEFAULT_DEDICATED_WORKERS);
         Self { inner }
+    }
+
+    pub fn worker_counts(&self) -> WorkerCounts {
+        let state = self.inner.state.lock();
+        WorkerCounts {
+            on_demand: state.on_demand_workers,
+            dedicated: state.dedicated_workers,
+        }
+    }
+
+    /// Change pool concurrency. Reducing a pool lets its already-running work
+    /// finish, then the excess workers become idle until the count grows again.
+    pub fn set_worker_counts(&self, on_demand: usize, dedicated: usize) -> WorkerCounts {
+        let counts = WorkerCounts {
+            on_demand: on_demand.clamp(1, MAX_WORKERS_PER_POOL),
+            dedicated: dedicated.clamp(1, MAX_WORKERS_PER_POOL),
+        };
+        {
+            let mut state = self.inner.state.lock();
+            state.on_demand_workers = counts.on_demand;
+            state.dedicated_workers = counts.dedicated;
+        }
+        ensure_worker_threads(&self.inner, TaskDuration::Short, counts.on_demand);
+        ensure_worker_threads(&self.inner, TaskDuration::Long, counts.dedicated);
+        self.changed();
+        self.inner.ready.notify_all();
+        counts
     }
 
     /// Submit editor work. The returned task remains in the list after it
@@ -275,6 +314,19 @@ impl TaskContext {
     }
 }
 
+fn ensure_worker_threads(inner: &Arc<QueueInner>, duration: TaskDuration, target: usize) {
+    let mut spawned = inner.spawned_workers.lock();
+    let count = match duration {
+        TaskDuration::Short => &mut spawned.0,
+        TaskDuration::Long => &mut spawned.1,
+    };
+    while *count < target {
+        let index = *count;
+        *count += 1;
+        spawn_worker(Arc::clone(inner), duration, index);
+    }
+}
+
 fn spawn_worker(inner: Arc<QueueInner>, duration: TaskDuration, index: usize) {
     let pool = match duration {
         TaskDuration::Short => "short",
@@ -282,15 +334,23 @@ fn spawn_worker(inner: Arc<QueueInner>, duration: TaskDuration, index: usize) {
     };
     std::thread::Builder::new()
         .name(format!("editor-task-{pool}-{index}"))
-        .spawn(move || worker_loop(inner, duration))
+        .spawn(move || worker_loop(inner, duration, index))
         .expect("failed to spawn editor task worker");
 }
 
-fn worker_loop(inner: Arc<QueueInner>, duration: TaskDuration) {
+fn worker_loop(inner: Arc<QueueInner>, duration: TaskDuration, worker_index: usize) {
     loop {
         let work = {
             let mut state = inner.state.lock();
             loop {
+                let active_workers = match duration {
+                    TaskDuration::Short => state.on_demand_workers,
+                    TaskDuration::Long => state.dedicated_workers,
+                };
+                if worker_index >= active_workers {
+                    inner.ready.wait(&mut state);
+                    continue;
+                }
                 let next = state
                     .pending
                     .iter()

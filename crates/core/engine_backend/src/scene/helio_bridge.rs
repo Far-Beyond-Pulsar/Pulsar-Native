@@ -44,7 +44,6 @@ pub fn arm_render_row_subscriptions_for_entity(
         let _ = world.subscribe::<StaticMeshComponent>(entity);
         let _ = world.subscribe::<Transform>(entity);
         let _ = world.subscribe::<Visibility>(entity);
-        let _ = world.subscribe::<helio_component::components::MaterialOverrideComponent>(entity);
     }
     if world
         .get::<helio_component::components::LightComponent>(entity)
@@ -90,6 +89,117 @@ pub fn mark_render_components_changed(
 }
 
 struct EditorMeshRow;
+
+/// Renderer-only draw row for a non-first material section. It lives in the
+/// SceneDB world so the existing GPU object-batch path can consume the same
+/// reflected `StaticObjectComponent` schema for every section.
+#[derive(Clone, Copy)]
+struct MeshSectionDraw {
+    owner: pulsar_scenedb::Entity,
+    section_index: usize,
+}
+
+fn section_draw_entities(
+    world: &pulsar_scenedb::World,
+    owner: pulsar_scenedb::Entity,
+) -> Vec<(pulsar_scenedb::Entity, usize)> {
+    let mut draws: Vec<_> = world
+        .query::<&MeshSectionDraw>()
+        .filter(|(_, draw)| draw.owner == owner)
+        .map(|(entity, draw)| (entity, draw.section_index))
+        .collect();
+    draws.sort_by_key(|(_, index)| *index);
+    draws
+}
+
+fn sync_section_draw_entities(
+    world: &mut pulsar_scenedb::World,
+    owner: pulsar_scenedb::Entity,
+    section_count: usize,
+) -> Vec<pulsar_scenedb::Entity> {
+    let draws = section_draw_entities(world, owner);
+    let wanted = section_count.saturating_sub(1);
+    let mut entities = Vec::with_capacity(wanted);
+    for section_index in 1..section_count {
+        if let Some((entity, _)) = draws
+            .iter()
+            .find(|(_, existing_index)| *existing_index == section_index)
+        {
+            entities.push(*entity);
+        } else {
+            let entity = world.spawn();
+            world.insert(
+                entity,
+                MeshSectionDraw {
+                    owner,
+                    section_index,
+                },
+            );
+            entities.push(entity);
+        }
+    }
+    for (entity, _) in draws {
+        if !entities.contains(&entity) {
+            world.despawn(entity);
+        }
+    }
+    debug_assert_eq!(entities.len(), wanted);
+    entities
+}
+
+fn retire_section_draw_entities(world: &mut pulsar_scenedb::World, owner: pulsar_scenedb::Entity) {
+    for (entity, _) in section_draw_entities(world, owner) {
+        world.despawn(entity);
+    }
+}
+
+fn material_surface_for_slot(
+    slot: Option<&helio_component::components::StaticMeshMaterialSlot>,
+    entity: pulsar_scenedb::Entity,
+) -> helio_component::mesh_cache::ImportedSurfaceMaterial {
+    let Some(slot) = slot else {
+        return helio_component::mesh_cache::ImportedSurfaceMaterial::default();
+    };
+    if let Some(override_surface) = slot.surface_override {
+        return override_surface;
+    }
+    if slot.material_asset.trim().is_empty() {
+        return slot.imported_surface;
+    }
+    let Some(project_root) = engine_state::get_project_path() else {
+        return slot.imported_surface;
+    };
+    let path = helio_component::subsystems::resolve_asset_path(
+        std::path::Path::new(&project_root),
+        &slot.material_asset,
+    );
+    let loaded = std::fs::read(&path)
+        .ok()
+        .and_then(|bytes| {
+            serde_json::from_slice::<helio_component::components::SurfaceMaterialAsset>(&bytes)
+                .ok()
+        });
+    match loaded {
+        Some(material) if material.version == 1 => {
+            helio_component::mesh_cache::ImportedSurfaceMaterial {
+                base_color: material.base_color,
+                roughness: material.roughness,
+                metallic: material.metallic,
+                emissive: material.emissive_color,
+                emissive_intensity: material.emissive_intensity,
+                alpha: material.alpha,
+            }
+        }
+        _ => {
+            tracing::warn!(
+                entity = entity.index(),
+                path = %path.display(),
+                "static mesh material asset could not be loaded; using the imported FBX material"
+            );
+            slot.imported_surface
+        }
+    }
+}
 
 /// Keep SceneDB's `helio::Movability` on `entity` equal to its authored
 /// `movability` (Pulsar-Native#837), written only on change so an idle
@@ -166,9 +276,22 @@ pub fn sync_static_mesh_rows(
             .map(|(entity, _)| entity)
             .collect();
         for entity in stale {
+            retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);
             scene_db.world.remove::<EditorMeshRow>(entity);
             project_movability(&mut scene_db.world, entity);
+        }
+        let stale_sections: Vec<_> = scene_db
+            .world
+            .query::<&MeshSectionDraw>()
+            .filter(|(_, draw)| {
+                !scene_db.world.is_alive(draw.owner)
+                    || scene_db.world.get::<StaticMeshComponent>(draw.owner).is_none()
+            })
+            .map(|(entity, _)| entity)
+            .collect();
+        for entity in stale_sections {
+            scene_db.world.despawn(entity);
         }
     }
     tracing::debug!(
@@ -194,6 +317,7 @@ pub fn sync_static_mesh_rows(
     );
     for entity in entities {
         if scene_db.world.get::<StaticMeshComponent>(entity).is_none() {
+            retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);
             if scene_db.world.get::<EditorMeshRow>(entity).is_some() {
                 scene_db.world.remove::<EditorMeshRow>(entity);
@@ -207,6 +331,7 @@ pub fn sync_static_mesh_rows(
             "[SceneDB render diagnostics] evaluating StaticMeshComponent"
         );
         let Some(transform) = scene_db.world.get::<Transform>(entity).copied() else {
+            retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);
             continue;
         };
@@ -215,17 +340,23 @@ pub fn sync_static_mesh_rows(
             .get::<Visibility>(entity)
             .is_some_and(|v| !v.visible)
         {
+            retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);
             continue;
         }
         // Real, geometry-derived local bounds (see `bounds_local`'s doc) --
         // computed once at hydrate time from the mesh's actual vertex
         // positions, not guessed from the transform's scale.
-        let (bounds_local, flags) = scene_db
+        let (bounds_local, flags, mesh_sections, material_slots) = scene_db
             .world
             .get::<StaticMeshComponent>(entity)
-            .map(|c| (c.bounds_local, object_row_flags(c)))
-            .unwrap_or(([0.0, 0.0, 0.0, 0.5], 0));
+            .map(|c| (
+                c.bounds_local,
+                object_row_flags(c),
+                c.mesh_sections.clone(),
+                c.material_slots.slots.clone(),
+            ))
+            .unwrap_or(([0.0, 0.0, 0.0, 0.5], 0, Vec::new(), Vec::new()));
         let Some(vertices) =
             StaticMeshComponent::vertices_gpu_handle(mirror.store(), entity.index())
                 .filter(|r| r.count != 0)
@@ -245,46 +376,6 @@ pub fn sync_static_mesh_rows(
             retire_static_object_row(&mut scene_db.world, entity);
             continue;
         };
-        // A level-authored `MaterialOverrideComponent` defines the surface;
-        // otherwise fall back to a default brown material that is only
-        // inserted once. Rewrites are guarded so unchanged rows stay clean.
-        let desired = match scene_db
-            .world
-            .get::<helio_component::components::MaterialOverrideComponent>(entity)
-        {
-            Some(o) => Some(helio_pass_gbuffer::MaterialComponent::from_surface(
-                [o.base_color[0], o.base_color[1], o.base_color[2]],
-                o.alpha,
-                o.roughness,
-                o.metallic,
-                o.emissive_color,
-                o.emissive_intensity,
-            )),
-            None => None,
-        };
-        let existing = scene_db
-            .world
-            .get::<helio_pass_gbuffer::MaterialComponent>(entity)
-            .copied();
-        match (desired, existing) {
-            (Some(d), Some(e)) if d == e => {}
-            (Some(d), _) => {
-                scene_db.world.insert(entity, d);
-            }
-            (None, None) => {
-                scene_db.world.insert(
-                    entity,
-                    helio_pass_gbuffer::MaterialComponent::new(
-                        [0.22, 0.15, 0.08, 1.0],
-                        0.7,
-                        0.0,
-                        [0.0; 3],
-                        0.0,
-                    ),
-                );
-            }
-            (None, Some(_)) => {}
-        }
         let model = glam::Mat4::from_scale_rotation_translation(
             glam::Vec3::from_array(transform.scale),
             glam::Quat::from_euler(
@@ -307,34 +398,65 @@ pub fn sync_static_mesh_rows(
         let world_radius =
             bounds_local[3] * glam::Vec3::from_array(transform.scale).abs().max_element();
         let world_radius = world_radius.max(0.0);
-        let world_extents = glam::Vec3::splat(world_radius);
-        let world_center_vec = glam::Vec3::new(world_center.x, world_center.y, world_center.z);
-
-        let object_row = helio_pass_gbuffer::StaticObjectComponent::new(
-            entity.index(),
-            entity.generation().wrapping_add(1),
-            entity.index(),
-            entity.generation().wrapping_add(1),
-            model,
-            [world_center.x, world_center.y, world_center.z, world_radius],
-            indices.count,
-            indices.offset,
-            vertices.offset as i32,
-            0,
-            0,
-            flags,
+        let sections = if mesh_sections.is_empty() {
+            vec![helio_component::mesh_cache::MeshSection {
+                first_index: 0,
+                index_count: indices.count,
+                material_slot: 0,
+            }]
+        } else {
+            mesh_sections
+        };
+        let section_entities = sync_section_draw_entities(
+            &mut scene_db.world,
+            entity,
+            sections.len(),
         );
-        // Write only on change. Every `insert` bumps the SceneDB revision, and
-        // that revision is what the status bar / hierarchy / properties panels
-        // and the renderer's own idle check poll: an unconditional write here
-        // made the world look edited on every render frame, dirtying those
-        // panels and defeating idle detection.
-        if scene_db
-            .world
-            .get::<helio_pass_gbuffer::StaticObjectComponent>(entity)
-            != Some(&object_row)
-        {
-            scene_db.world.insert(entity, object_row);
+        let render_entities = std::iter::once(entity).chain(section_entities);
+        for (section_index, render_entity) in render_entities.enumerate() {
+            let Some(section) = sections.get(section_index) else { continue };
+            let material = material_surface_for_slot(
+                material_slots.get(section.material_slot as usize),
+                entity,
+            );
+            let material_row = helio_pass_gbuffer::MaterialComponent::from_surface(
+                [material.base_color[0], material.base_color[1], material.base_color[2]],
+                material.alpha,
+                material.roughness,
+                material.metallic,
+                material.emissive,
+                material.emissive_intensity,
+            );
+            if scene_db
+                .world
+                .get::<helio_pass_gbuffer::MaterialComponent>(render_entity)
+                != Some(&material_row)
+            {
+                scene_db.world.insert(render_entity, material_row);
+            }
+
+            let object_row = helio_pass_gbuffer::StaticObjectComponent::new(
+                entity.index(),
+                entity.generation().wrapping_add(1),
+                render_entity.index(),
+                render_entity.generation().wrapping_add(1),
+                model,
+                [world_center.x, world_center.y, world_center.z, world_radius],
+                section.index_count,
+                indices.offset.saturating_add(section.first_index),
+                vertices.offset as i32,
+                0,
+                0,
+                flags,
+            );
+            // Write only on change. Every `insert` bumps the SceneDB revision.
+            if scene_db
+                .world
+                .get::<helio_pass_gbuffer::StaticObjectComponent>(render_entity)
+                != Some(&object_row)
+            {
+                scene_db.world.insert(render_entity, object_row);
+            }
         }
         if scene_db.world.get::<EditorMeshRow>(entity).is_none() {
             scene_db.world.insert(entity, EditorMeshRow);

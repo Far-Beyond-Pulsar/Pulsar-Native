@@ -89,6 +89,7 @@ impl Render for TaskQueuePanel {
                 .filter(|task| tab.includes(task.status))
                 .count()
         });
+        let worker_counts = editor_task_queue::global().worker_counts();
         self.visible = snapshots
             .into_iter()
             .filter(|task| self.selected_tab.includes(task.status))
@@ -145,6 +146,31 @@ impl Render for TaskQueuePanel {
                             )
                             .child(TextInput::new(&self.search).w(px(320.0))),
                     )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .gap_4()
+                            .child(worker_count_control(
+                                "On-demand",
+                                worker_counts.on_demand,
+                                true,
+                                cx,
+                            ))
+                            .child(worker_count_control(
+                                "Dedicated",
+                                worker_counts.dedicated,
+                                false,
+                                cx,
+                            ))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Worker counts apply to editor tasks only"),
+                            ),
+                    )
                     .child(h_flex().w_full().gap_2().children(
                         TaskTab::ALL.into_iter().enumerate().map(|(index, tab)| {
                             let selected = self.selected_tab == tab;
@@ -189,6 +215,10 @@ impl Render for TaskQueuePanel {
                                 let id = task.id;
                                 let starred = task.starred;
                                 let active = task.status == TaskStatus::Running;
+                                let worker_pool = match task.duration {
+                                    editor_task_queue::TaskDuration::Short => "On-demand worker",
+                                    editor_task_queue::TaskDuration::Long => "Dedicated worker",
+                                };
                                 let status_color = match task.status {
                                     TaskStatus::Queued => cx.theme().muted_foreground,
                                     TaskStatus::Running => cx.theme().primary,
@@ -260,7 +290,22 @@ impl Render for TaskQueuePanel {
                                                             .text_xs()
                                                             .text_color(status_color)
                                                             .child(status_label(task.status)),
-                                                    ),
+                                                    )
+                                                    .when(active, |header| {
+                                                        header.child(
+                                                            div()
+                                                                .rounded(px(4.0))
+                                                                .px_2()
+                                                                .py_1()
+                                                                .text_xs()
+                                                                .text_color(cx.theme().primary)
+                                                                .bg(cx
+                                                                    .theme()
+                                                                    .primary
+                                                                    .opacity(0.12))
+                                                                .child(worker_pool),
+                                                        )
+                                                    }),
                                             )
                                             .child(
                                                 h_flex()
@@ -324,6 +369,73 @@ impl Render for TaskQueuePanel {
                 .into_any_element()
             })
     }
+}
+
+fn worker_count_control(
+    label: &'static str,
+    value: usize,
+    on_demand: bool,
+    cx: &mut Context<TaskQueuePanel>,
+) -> impl IntoElement {
+    h_flex()
+        .items_center()
+        .gap_1()
+        .child(
+            div()
+                .mr_1()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(format!("{label} workers")),
+        )
+        .child(
+            Button::new(if on_demand {
+                "task-worker-minus-on-demand"
+            } else {
+                "task-worker-minus-dedicated"
+            })
+            .ghost()
+            .xsmall()
+            .label("−")
+            .tooltip(format!("Reduce {label} workers"))
+            .on_click(cx.listener(move |_, _, _, cx| {
+                let queue = editor_task_queue::global();
+                let current = queue.worker_counts();
+                if on_demand {
+                    queue.set_worker_counts(current.on_demand.saturating_sub(1), current.dedicated);
+                } else {
+                    queue.set_worker_counts(current.on_demand, current.dedicated.saturating_sub(1));
+                }
+                cx.notify();
+            })),
+        )
+        .child(
+            div()
+                .min_w(px(20.0))
+                .text_center()
+                .text_sm()
+                .child(value.to_string()),
+        )
+        .child(
+            Button::new(if on_demand {
+                "task-worker-plus-on-demand"
+            } else {
+                "task-worker-plus-dedicated"
+            })
+            .ghost()
+            .xsmall()
+            .label("+")
+            .tooltip(format!("Increase {label} workers"))
+            .on_click(cx.listener(move |_, _, _, cx| {
+                let queue = editor_task_queue::global();
+                let current = queue.worker_counts();
+                if on_demand {
+                    queue.set_worker_counts(current.on_demand + 1, current.dedicated);
+                } else {
+                    queue.set_worker_counts(current.on_demand, current.dedicated + 1);
+                }
+                cx.notify();
+            })),
+        )
 }
 
 #[window_manager::register_window]
