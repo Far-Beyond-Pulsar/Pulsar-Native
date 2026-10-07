@@ -274,7 +274,7 @@ fn reflection_properties_are_unaffected_by_gpu_mirroring() {
 }
 
 #[test]
-fn gpu_mirror_lands_on_the_real_gpu_through_sync_gpu_mirror() {
+fn gpu_mirror_row_follows_a_plain_insert_and_removal() {
     let ctx = test_context();
     let store = Arc::new(SceneGpuStore::new(&ctx, scene_cfg()));
 
@@ -294,25 +294,18 @@ fn gpu_mirror_lands_on_the_real_gpu_through_sync_gpu_mirror() {
         },
         intensity: 42.0,
     };
-    // `sync_gpu_mirror` is `GpuMirrored`'s own trait-default -- not
-    // something `#[engine_class]` had to generate a per-type override of
-    // (see that trait's doc). This is the exact call `#[register_world_
-    // component(gpu_mirror)]`'s generated hydrate makes.
-    value.sync_gpu_mirror(&mut world, entity);
+    // The only call: an ordinary insert of the authored component. Its own
+    // generated SceneDB dispatch derives and writes the companion row.
+    world.insert(entity, value);
     world
         .flush_gpu_mirror(ctx.queue())
         .expect("mirror attached");
 
     // Decoded at MANUALLY computed offsets, not via a whole-struct
-    // readback_row::<Mirror>() reinterpret -- same reasoning
-    // `gpu_packed_layout.rs`'s own upstream test uses: the packed buffer's
+    // readback_row::<Mirror>() reinterpret -- the packed buffer's
     // per-#[gpu]-field byte offsets are assigned by the derive (in
     // generated-field declaration order: `intensity` leaf field first, then
-    // the composed `sub` field), which Rust's own (unspecified, no
-    // `#[repr(C)]`) struct layout for `Mirror` has no obligation to match
-    // byte-for-byte -- a raw reinterpret cast is only safe when the two
-    // happen to agree, which isn't guaranteed here the way it trivially is
-    // for a single-field wrapper.
+    // the composed `sub` field).
     type Mirror = <ThrowawayMirroredComponent as GpuMirrored>::GpuMirror;
     const INTENSITY_OFFSET: u64 = 0;
     const SUB_ENABLED_OFFSET: u64 = 4;
@@ -322,43 +315,49 @@ fn gpu_mirror_lands_on_the_real_gpu_through_sync_gpu_mirror() {
 
     let id = Mirror::packed_gpu_component_id();
     let handle = store
-        .resolve_buffer_handle(store.buffer_key_for(id).expect("registered"))
+        .resolve_buffer_handle(store.buffer_key_for(id).expect("the insert auto-registers it"))
         .expect("resolvable");
     let row_start = (entity.index() as u64) * PACKED_ROW_BYTES;
     let bytes = readback(&ctx, &handle.buffer, row_start, PACKED_ROW_BYTES);
 
     let f32_at =
-        |off: u64| f32::from_ne_bytes(bytes[off as usize..off as usize + 4].try_into().unwrap());
+        |bytes: &[u8], off: u64| f32::from_ne_bytes(bytes[off as usize..off as usize + 4].try_into().unwrap());
     // `enabled` (bool, 1 byte, itself) still occupies a 4-byte-aligned slot
-    // in the packed struct (repr(C) pads a lone leading bool up to the next
-    // field's 4-byte alignment) -- only byte 0 of that slot is meaningful.
-    let bool_at = |off: u64| bytes[off as usize] != 0;
+    // in the packed struct -- only byte 0 of that slot is meaningful.
+    let bool_at = |bytes: &[u8], off: u64| bytes[off as usize] != 0;
     let u32_at =
-        |off: u64| u32::from_ne_bytes(bytes[off as usize..off as usize + 4].try_into().unwrap());
+        |bytes: &[u8], off: u64| u32::from_ne_bytes(bytes[off as usize..off as usize + 4].try_into().unwrap());
 
-    assert_eq!(f32_at(INTENSITY_OFFSET), 42.0);
-    assert!(bool_at(SUB_ENABLED_OFFSET));
+    assert_eq!(f32_at(&bytes, INTENSITY_OFFSET), 42.0);
+    assert!(bool_at(&bytes, SUB_ENABLED_OFFSET));
     assert_eq!(
-        u32_at(SUB_KIND_OFFSET),
+        u32_at(&bytes, SUB_KIND_OFFSET),
         ThrowawayKind::Beta as u32,
         "the enum's own #[repr(u32)] byte layout, read raw -- not a semantic cast"
     );
-    let color: [f32; 4] = std::array::from_fn(|i| f32_at(SUB_COLOR_OFFSET + i as u64 * 4));
+    let color: [f32; 4] = std::array::from_fn(|i| f32_at(&bytes, SUB_COLOR_OFFSET + i as u64 * 4));
     assert_eq!(color, [5.0, 6.0, 7.0, 8.0]);
+    assert!(
+        world.get::<Mirror>(entity).is_none(),
+        "the companion is GPU-only; nothing inserts it as a component"
+    );
 
-    // Removal must drop it (GpuMirrored::remove_gpu_mirror -- the other
-    // trait default, and what #[register_world_component(gpu_mirror)]'s
-    // generated `remove` calls).
-    ThrowawayMirroredComponent::remove_gpu_mirror(&mut world, entity);
-    assert!(world.get::<Mirror>(entity).is_none());
+    // A write through the guard reaches the row with no refresh call.
+    world.get_mut::<ThrowawayMirroredComponent>(entity).unwrap().intensity = 3.0;
+    world.flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+    let bytes = readback(&ctx, &handle.buffer, row_start, PACKED_ROW_BYTES);
+    assert_eq!(f32_at(&bytes, INTENSITY_OFFSET), 3.0);
+
+    // Removal clears it.
+    world.remove::<ThrowawayMirroredComponent>(entity);
+    world.flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+    let bytes = readback(&ctx, &handle.buffer, row_start, PACKED_ROW_BYTES);
+    assert!(bytes.iter().all(|b| *b == 0), "a removed component's row must be cleared");
 }
 
-/// A real `#[register_world_component(gpu_mirror)]` class -- unlike the
-/// tests above (which call `GpuMirrored`'s methods directly), this proves
-/// the full pipeline the flag actually wires up: `hydrate_world_component_
-/// for_class` (JSON in) auto-inserts the mirror, `remove_world_component_
-/// for_class` auto-drops it, with zero hand-written hydrate/remove
-/// anywhere in this component's own definition.
+/// A registered class with no hand-written storage code at all: proves the
+/// generated factory, decoder and erased insert land the same GPU row a
+/// typed insert does, and that a reflected property write reaches it.
 #[engine_class(
     category = "Test",
     default,
@@ -374,7 +373,7 @@ pub struct ThrowawayRegisteredComponent {
     pub value: f32,
 }
 
-#[register_world_component(gpu_mirror)]
+#[register_world_component]
 #[register_runtime_behavior]
 impl ComponentRuntimeBehavior for ThrowawayRegisteredComponent {
     const CLASS_NAME: &'static str = "ThrowawayRegisteredComponent";
@@ -388,8 +387,16 @@ impl ComponentRuntimeBehavior for ThrowawayRegisteredComponent {
     }
 }
 
+fn single_f32_row(ctx: &EngineGpuContext, store: &SceneGpuStore, id: pulsar_scenedb::ComponentId, row: u32) -> f32 {
+    let handle = store
+        .resolve_buffer_handle(store.buffer_key_for(id).expect("registered"))
+        .expect("resolvable");
+    let bytes = readback(ctx, &handle.buffer, row as u64 * 4, 4);
+    f32::from_ne_bytes(bytes[..4].try_into().unwrap())
+}
+
 #[test]
-fn register_world_component_gpu_mirror_flag_auto_syncs_through_hydrate_and_remove() {
+fn erased_factory_decode_and_property_writes_reach_the_gpu_row() {
     let ctx = test_context();
     let store = Arc::new(SceneGpuStore::new(&ctx, scene_cfg()));
 
@@ -398,102 +405,88 @@ fn register_world_component_gpu_mirror_flag_auto_syncs_through_hydrate_and_remov
         Arc::clone(&store),
         Arc::clone(ctx.queue()),
     ));
-    let entity = world.spawn();
+    type Mirror = <ThrowawayRegisteredComponent as GpuMirrored>::GpuMirror;
+    let id = Mirror::packed_gpu_component_id();
 
-    pulsar_world_registry::hydrate_world_component_for_class(
+    // Typed reference.
+    let typed = world.spawn();
+    world.insert(typed, ThrowawayRegisteredComponent { value: 13.0 });
+
+    // The same value through the boundary decoder + erased insert.
+    let decoded = world.spawn();
+    assert!(pulsar_world_registry::hydrate_world_component_for_class(
         "ThrowawayRegisteredComponent",
         &mut world,
-        entity,
+        decoded,
         &serde_json::json!({ "value": 13.0 }),
     )
-    .unwrap();
+    .unwrap());
 
-    type Mirror = <ThrowawayRegisteredComponent as GpuMirrored>::GpuMirror;
+    // The generic factory, then a reflected property write.
+    let factory = world.spawn();
+    let value = pulsar_world_registry::new_world_component_value("ThrowawayRegisteredComponent")
+        .expect("registered class has a factory");
+    pulsar_world_registry::insert_world_component_value(
+        "ThrowawayRegisteredComponent",
+        &mut world,
+        factory,
+        value,
+    )
+    .unwrap();
+    pulsar_world_registry::set_world_component_property(
+        "ThrowawayRegisteredComponent",
+        &mut world,
+        factory,
+        "value",
+        Box::new(13.0_f32),
+    )
+    .unwrap();
+    world.flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+
+    for entity in [typed, decoded, factory] {
+        assert_eq!(
+            world.get::<ThrowawayRegisteredComponent>(entity).map(|c| c.value),
+            Some(13.0)
+        );
+        assert_eq!(single_f32_row(&ctx, &store, id, entity.index()), 13.0);
+    }
+
+    // An erased clone is an independent value of the same class.
+    let clone = pulsar_world_registry::clone_world_component_value(
+        "ThrowawayRegisteredComponent",
+        &world,
+        typed,
+    )
+    .expect("live value");
     assert_eq!(
-        world.get::<Mirror>(entity).map(|m| m.value),
-        Some(GpuRepr(13.0)),
-        "hydrate must have auto-inserted the mirror with no hand-written hydrate fn"
+        clone.downcast_ref::<ThrowawayRegisteredComponent>().map(|c| c.value),
+        Some(13.0)
     );
 
+    // A value of another class is refused, untouched.
+    let refused = pulsar_world_registry::insert_world_component_value(
+        "ThrowawayRegisteredComponent",
+        &mut world,
+        typed,
+        Box::new(ThrowawayNormalizedComponent::default()),
+    );
+    assert!(matches!(
+        refused,
+        Err(pulsar_world_registry::ComponentValueError::TypeMismatch { .. })
+    ));
+
+    // Removal through the registry clears the row.
     assert!(pulsar_world_registry::remove_world_component_for_class(
         "ThrowawayRegisteredComponent",
         &mut world,
-        entity,
+        factory,
     ));
-    assert!(
-        world.get::<Mirror>(entity).is_none(),
-        "remove must have auto-dropped the mirror too, with no hand-written remove fn"
-    );
+    world.flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+    assert_eq!(single_f32_row(&ctx, &store, id, factory.index()), 0.0);
 }
 
-/// Pulsar-Native#561 (properties-panel live-edit bug): `hydrate` only ever
-/// runs once, at JSON-hydrate time -- a live edit through `get_mut`/
-/// `get_world_component_as_engine_class_mut` (the properties panel's real
-/// write path, no re-hydrate involved) must still reach the mirror when
-/// `refresh_world_component_gpu_mirror_for_class` is called, with zero
-/// hand-written sync code anywhere in `ThrowawayRegisteredComponent`'s own
-/// definition -- the bare `gpu_mirror` flag's default `refresh_gpu_mirror`
-/// body is what's under test here.
-#[test]
-fn refresh_gpu_mirror_for_class_picks_up_a_live_edit_hydrate_never_saw() {
-    let ctx = test_context();
-    let store = Arc::new(SceneGpuStore::new(&ctx, scene_cfg()));
-
-    let mut world = World::new();
-    world.attach_gpu_mirror(GpuMirrorHandle::new(
-        Arc::clone(&store),
-        Arc::clone(ctx.queue()),
-    ));
-    let entity = world.spawn();
-
-    pulsar_world_registry::hydrate_world_component_for_class(
-        "ThrowawayRegisteredComponent",
-        &mut world,
-        entity,
-        &serde_json::json!({ "value": 13.0 }),
-    )
-    .unwrap();
-
-    type Mirror = <ThrowawayRegisteredComponent as GpuMirrored>::GpuMirror;
-    assert_eq!(
-        world.get::<Mirror>(entity).map(|m| m.value),
-        Some(GpuRepr(13.0))
-    );
-
-    // The live-edit path: mutate the real `World`-resident value directly,
-    // no JSON, no re-hydrate -- exactly what `update_live_component_property`
-    // (the actual properties-panel write path, `ui_level_editor`) does.
-    world
-        .get_mut::<ThrowawayRegisteredComponent>(entity)
-        .unwrap()
-        .value = 42.0;
-
-    // Before the refresh call: this is the bug as originally reported --
-    // the live value changed, but the mirror is still whatever hydrate saw.
-    assert_eq!(
-        world.get::<Mirror>(entity).map(|m| m.value),
-        Some(GpuRepr(13.0)),
-        "sanity: a plain live edit must NOT auto-propagate to the mirror by itself"
-    );
-
-    assert!(
-        pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
-            "ThrowawayRegisteredComponent",
-            &mut world,
-            entity,
-        )
-    );
-    assert_eq!(
-        world.get::<Mirror>(entity).map(|m| m.value),
-        Some(GpuRepr(42.0)),
-        "refresh_world_component_gpu_mirror_for_class must re-derive the mirror from the CURRENT live value"
-    );
-}
-
-/// A class whose mirror's presence is conditional on its own data (the
-/// `LightComponent` "disabled means absent" shape) -- proves `refresh_
-/// gpu_mirror = path` overrides the bare flag's unconditional default, and
-/// that the override sees live edits the same way the default does.
+/// A class that derives one field from another: `property_written` keeps
+/// `doubled` in step under the same write guard as the edit.
 #[engine_class(
     category = "Test",
     default,
@@ -503,40 +496,24 @@ fn refresh_gpu_mirror_for_class_picks_up_a_live_edit_hydrate_never_saw() {
     deserialize,
     no_register
 )]
-pub struct ThrowawayConditionalMirrorComponent {
+pub struct ThrowawayNormalizedComponent {
     #[property]
-    pub enabled: bool,
+    pub value: f32,
     #[property]
     #[gpu]
-    pub value: f32,
+    pub doubled: f32,
 }
 
-fn throwaway_conditional_refresh(
-    world: &mut pulsar_scenedb::World,
-    entity: pulsar_scenedb::Entity,
-) {
-    let Some(enabled) = world
-        .get::<ThrowawayConditionalMirrorComponent>(entity)
-        .map(|c| c.enabled)
-    else {
-        return;
-    };
-    if enabled {
-        let mirror = world
-            .get::<ThrowawayConditionalMirrorComponent>(entity)
-            .map(GpuMirrored::to_gpu_mirror);
-        if let Some(mirror) = mirror {
-            world.insert(entity, mirror);
-        }
-    } else {
-        ThrowawayConditionalMirrorComponent::remove_gpu_mirror(world, entity);
+fn throwaway_property_written(component: &mut ThrowawayNormalizedComponent, property: Option<&str>) {
+    if matches!(property, None | Some("value")) {
+        component.doubled = component.value * 2.0;
     }
 }
 
-#[register_world_component(refresh_gpu_mirror = throwaway_conditional_refresh)]
+#[register_world_component(property_written = throwaway_property_written)]
 #[register_runtime_behavior]
-impl ComponentRuntimeBehavior for ThrowawayConditionalMirrorComponent {
-    const CLASS_NAME: &'static str = "ThrowawayConditionalMirrorComponent";
+impl ComponentRuntimeBehavior for ThrowawayNormalizedComponent {
+    const CLASS_NAME: &'static str = "ThrowawayNormalizedComponent";
 
     fn sync_component(
         _owner: &RuntimeComponentOwner,
@@ -548,7 +525,7 @@ impl ComponentRuntimeBehavior for ThrowawayConditionalMirrorComponent {
 }
 
 #[test]
-fn refresh_gpu_mirror_override_replaces_the_default_and_still_sees_live_edits() {
+fn property_written_runs_under_the_same_write_and_reaches_the_gpu_row() {
     let ctx = test_context();
     let store = Arc::new(SceneGpuStore::new(&ctx, scene_cfg()));
 
@@ -558,61 +535,31 @@ fn refresh_gpu_mirror_override_replaces_the_default_and_still_sees_live_edits() 
         Arc::clone(ctx.queue()),
     ));
     let entity = world.spawn();
-    world.insert(
-        entity,
-        ThrowawayConditionalMirrorComponent {
-            enabled: true,
-            value: 7.0,
-        },
-    );
+    world.insert(entity, ThrowawayNormalizedComponent::default());
+    world.subscribe::<ThrowawayNormalizedComponent>(entity).unwrap();
 
-    type Mirror = <ThrowawayConditionalMirrorComponent as GpuMirrored>::GpuMirror;
-    assert!(
-        world.get::<Mirror>(entity).is_none(),
-        "a plain World::insert (no hydrate) must not have a mirror yet"
-    );
-
-    assert!(
-        pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
-            "ThrowawayConditionalMirrorComponent",
-            &mut world,
-            entity,
-        )
-    );
-    assert_eq!(
-        world.get::<Mirror>(entity).map(|m| m.value),
-        Some(GpuRepr(7.0))
-    );
-
-    // Live edit, then refresh again -- the override must see it, same as the default.
-    world
-        .get_mut::<ThrowawayConditionalMirrorComponent>(entity)
-        .unwrap()
-        .value = 99.0;
-    pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
-        "ThrowawayConditionalMirrorComponent",
+    pulsar_world_registry::set_world_component_property(
+        "ThrowawayNormalizedComponent",
         &mut world,
         entity,
+        "value",
+        Box::new(21.0_f32),
+    )
+    .unwrap();
+    world.flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+
+    assert_eq!(
+        world.get::<ThrowawayNormalizedComponent>(entity).map(|c| c.doubled),
+        Some(42.0)
     );
     assert_eq!(
-        world.get::<Mirror>(entity).map(|m| m.value),
-        Some(GpuRepr(99.0))
+        world.take_component_change_events().len(),
+        1,
+        "the edit and its normalization are one write"
     );
-
-    // Disabling and refreshing must remove the mirror, not leave a stale one --
-    // this is exactly the behavior the bare `gpu_mirror` flag's unconditional
-    // default CANNOT express, which is why this override exists.
-    world
-        .get_mut::<ThrowawayConditionalMirrorComponent>(entity)
-        .unwrap()
-        .enabled = false;
-    pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
-        "ThrowawayConditionalMirrorComponent",
-        &mut world,
-        entity,
-    );
-    assert!(
-        world.get::<Mirror>(entity).is_none(),
-        "disabling must remove the mirror, not leave the last-synced value behind"
+    type Mirror = <ThrowawayNormalizedComponent as GpuMirrored>::GpuMirror;
+    assert_eq!(
+        single_f32_row(&ctx, &store, Mirror::packed_gpu_component_id(), entity.index()),
+        42.0
     );
 }

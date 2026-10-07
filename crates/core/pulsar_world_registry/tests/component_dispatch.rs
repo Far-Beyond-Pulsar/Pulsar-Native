@@ -138,11 +138,6 @@ impl EngineClass for DispatchGizmo {
     }
 }
 
-fn gizmo_hydrate(world: &mut World, entity: Entity, data: &Value) -> Result<(), String> {
-    let parsed: DispatchGizmo = serde_json::from_value(data.clone()).map_err(|e| e.to_string())?;
-    world.insert(entity, parsed);
-    Ok(())
-}
 
 fn gizmo_remove(world: &mut World, entity: Entity) {
     let _ = world.remove::<DispatchGizmo>(entity);
@@ -171,13 +166,16 @@ pulsar_world_registry::inventory::submit! {
     pulsar_world_registry::WorldComponentRegistration {
         class_name: "DispatchGizmo",
         component_type: pulsar_scenedb::component_id::<DispatchGizmo>,
-        hydrate: gizmo_hydrate,
+        default_value: pulsar_world_registry::values::erased::default_value::<DispatchGizmo>,
+        decode: pulsar_world_registry::values::erased::decode_json::<DispatchGizmo>,
+        clone_value: pulsar_world_registry::values::erased::clone_value::<DispatchGizmo>,
+        register_erased: pulsar_scenedb::register_component::<DispatchGizmo>,
         remove: gizmo_remove,
         dispatch: |world, entity, _owner, _index, _ctx| world.get::<DispatchGizmo>(entity).is_some(),
         get_as_engine_class: gizmo_get,
         get_as_engine_class_mut: gizmo_get_mut,
         on_removed: |_owner, _context| {},
-        refresh_gpu_mirror: |_world, _entity| {},
+        property_written: pulsar_world_registry::values::erased::no_property_written,
     }
 }
 

@@ -142,8 +142,8 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "e74df984b95ffe5235a67653a5b95a07e579df47", features = ["gpu"] }
-pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "e74df984b95ffe5235a67653a5b95a07e579df47" }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "358ec86e4bac3fe2323baa7af5710c105486d01b", features = ["gpu"] }
+pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "358ec86e4bac3fe2323baa7af5710c105486d01b" }
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
@@ -479,5 +479,11 @@ pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/p
 # SCRIPT VM support (SceneDB#72) merged to main at
 # e74df984b95ffe5235a67653a5b95a07e579df47: component methods,
 # ComponentRef/ComponentHandle, and erased component access.
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "e74df984b95ffe5235a67653a5b95a07e579df47" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "e74df984b95ffe5235a67653a5b95a07e579df47" }
+#
+# SCENEDB CORRECTIVE PLAN PHASE 1 (Pulsar-Native#1035): 358ec86 on SceneDB
+# branch `claude/cool-hypatia-ict23g` (main + erased insert/remove through the
+# normal write path, generic mirror replay on attach, derived GPU rows). NOT
+# YET MERGED upstream: merge that branch and repin to the merged rev before
+# this lands.
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "358ec86e4bac3fe2323baa7af5710c105486d01b" }
+pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "358ec86e4bac3fe2323baa7af5710c105486d01b" }

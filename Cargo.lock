@@ -9543,7 +9543,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=e74df984b95ffe5235a67653a5b95a07e579df47#e74df984b95ffe5235a67653a5b95a07e579df47"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=358ec86e4bac3fe2323baa7af5710c105486d01b#358ec86e4bac3fe2323baa7af5710c105486d01b"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9559,7 +9559,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=e74df984b95ffe5235a67653a5b95a07e579df47#e74df984b95ffe5235a67653a5b95a07e579df47"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=358ec86e4bac3fe2323baa7af5710c105486d01b#358ec86e4bac3fe2323baa7af5710c105486d01b"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection_codegen",

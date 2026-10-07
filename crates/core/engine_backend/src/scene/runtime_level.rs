@@ -691,8 +691,8 @@ mod tests {
         assert!(
             world
                 .get::<helio_component::components::LightComponentGpuMirror>(sun)
-                .is_some(),
-            "an enabled light carries its GPU mirror"
+                .is_none(),
+            "the GPU companion is the light's own GPU row, never a component"
         );
     }
 

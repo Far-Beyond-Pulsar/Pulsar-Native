@@ -84,15 +84,6 @@ fn bridge_gizmo_get_mut(
     pulsar_world_registry::EngineClassMut::of::<BridgeGizmo>(world, entity)
 }
 
-fn bridge_gizmo_hydrate(
-    world: &mut World,
-    entity: pulsar_scenedb::Entity,
-    data: &serde_json::Value,
-) -> Result<(), String> {
-    let parsed: BridgeGizmo = serde_json::from_value(data.clone()).map_err(|e| e.to_string())?;
-    world.insert(entity, parsed);
-    Ok(())
-}
 
 fn bridge_gizmo_remove(world: &mut World, entity: pulsar_scenedb::Entity) {
     let _ = world.remove::<BridgeGizmo>(entity);
@@ -104,19 +95,21 @@ fn noop_on_removed(
 ) {
 }
 
-fn noop_refresh(_world: &mut World, _entity: pulsar_scenedb::Entity) {}
 
 pulsar_world_registry::inventory::submit! {
     pulsar_world_registry::WorldComponentRegistration {
         class_name: "BridgeGizmo",
         component_type: pulsar_scenedb::component_id::<BridgeGizmo>,
-        hydrate: bridge_gizmo_hydrate,
+        default_value: pulsar_world_registry::values::erased::default_value::<BridgeGizmo>,
+        decode: pulsar_world_registry::values::erased::decode_json::<BridgeGizmo>,
+        clone_value: pulsar_world_registry::values::erased::clone_value::<BridgeGizmo>,
+        register_erased: pulsar_scenedb::register_component::<BridgeGizmo>,
         remove: bridge_gizmo_remove,
         dispatch: |world, entity, _owner, _idx, _ctx| world.get::<BridgeGizmo>(entity).is_some(),
         get_as_engine_class: bridge_gizmo_get,
         get_as_engine_class_mut: bridge_gizmo_get_mut,
         on_removed: noop_on_removed,
-        refresh_gpu_mirror: noop_refresh,
+        property_written: pulsar_world_registry::values::erased::no_property_written,
     }
 }
 

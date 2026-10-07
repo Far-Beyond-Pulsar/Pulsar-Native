@@ -60,22 +60,14 @@ pub fn arm_render_row_subscriptions_for_entity(
 /// and mesh rows are re-derived at the renderer's next sync. Use after
 /// components were (re)inserted before the entity's subscriptions were
 /// armed (a class instance rebuilt from its class), which records no
-/// change event. Also refreshes every registered class's GPU mirror.
+/// change event. GPU mirrors need nothing here: SceneDB wrote them when the
+/// components were inserted.
 pub fn mark_render_components_changed(
     world: &mut pulsar_scenedb::World,
     entity: pulsar_scenedb::Entity,
 ) {
     if !world.is_alive(entity) {
         return;
-    }
-    let classes: Vec<&'static str> =
-        pulsar_world_registry::registered_world_component_classes().collect();
-    for class_name in classes {
-        if pulsar_world_registry::world_component_present_for_class(class_name, world, entity) {
-            pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
-                class_name, world, entity,
-            );
-        }
     }
     if let Some(mut light) = world.get_mut::<helio_component::components::LightComponent>(entity) {
         std::ops::DerefMut::deref_mut(&mut light);
@@ -762,10 +754,10 @@ pub fn sync_static_mesh_rows(
 /// replacing its device, queue, pools, or residency state. This is required
 /// when multiple renderer views share one SceneDB world.
 ///
-/// A world populated before GPU initialization must be re-dispatched once
-/// after attachment because SceneDB intentionally does not replay historical
-/// writes into a mirror that did not exist yet. The values are copied only for
-/// that one-time re-dispatch; they are never retained by the bridge.
+/// A world populated before GPU initialization needs nothing further: SceneDB
+/// writes every existing GPU-bearing component into the mirror when it is
+/// attached, for every schema, so this helper keeps no list of types to
+/// re-insert.
 pub fn ensure_gpu_mirror(
     scene_db: &mut pulsar_scenedb::SceneDb,
     device: Arc<wgpu::Device>,
@@ -774,63 +766,6 @@ pub fn ensure_gpu_mirror(
     if let Some(existing) = scene_db.world.gpu_mirror() {
         return existing.clone();
     }
-
-    let existing_lights: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_forward_lit::LightComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_billboards: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_billboard::BillboardComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_transforms: Vec<_> = scene_db
-        .world
-        .query::<&Transform>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_materials: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_gbuffer::MaterialComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-
-    let existing_static_meshes: Vec<_> = scene_db
-        .world
-        .query::<&StaticMeshComponent>()
-        .map(|(entity, component)| (entity, component.clone()))
-        .collect();
-    let existing_decals: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_decal::DecalComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_water_volumes: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_water_sim::WaterVolumeComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_water_hitboxes: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_water_sim::WaterHitboxComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_groups: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_gbuffer::RenderGroupComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_sublevels: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_gbuffer::SublevelComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
-    let existing_sectioned_objects: Vec<_> = scene_db
-        .world
-        .query::<&helio_pass_gbuffer::SectionedObjectComponent>()
-        .map(|(entity, component)| (entity, *component))
-        .collect();
 
     let ctx = EngineGpuContext::new(device.clone(), queue.clone());
     let gpu_cfg = SceneGpuConfig {
@@ -944,44 +879,6 @@ pub fn ensure_gpu_mirror(
         .expect("register SceneDB material texture store");
     scene_db.world.attach_gpu_mirror(mirror.clone());
     crate::scene::install_scenedb_inspector(&mut scene_db.world);
-
-    for (entity, component) in existing_lights {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_billboards {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_transforms {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_materials {
-        scene_db.world.insert(entity, component);
-    }
-
-    // Re-dispatch existing typed rows exactly once so the newly attached
-    // mirror receives their component data. No row is retained after
-    // insertion, and no Helio-side copy is created.
-    for (entity, component) in existing_static_meshes {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_decals {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_water_volumes {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_water_hitboxes {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_groups {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_sublevels {
-        scene_db.world.insert(entity, component);
-    }
-    for (entity, component) in existing_sectioned_objects {
-        scene_db.world.insert(entity, component);
-    }
 
     tracing::info!("SceneDB GPU mirror attached for Helio 3.0");
     mirror

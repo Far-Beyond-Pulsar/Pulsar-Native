@@ -116,11 +116,6 @@ fn test_gizmo_get_mut(
     pulsar_world_registry::EngineClassMut::of::<TestGizmo>(world, entity)
 }
 
-fn test_gizmo_hydrate(world: &mut World, entity: Entity, data: &Value) -> Result<(), String> {
-    let parsed: TestGizmo = serde_json::from_value(data.clone()).map_err(|e| e.to_string())?;
-    world.insert(entity, parsed);
-    Ok(())
-}
 
 fn test_gizmo_remove(world: &mut World, entity: Entity) {
     let _ = world.remove::<TestGizmo>(entity);
@@ -142,7 +137,6 @@ fn test_gizmo_dispatch(
     world.get::<TestGizmo>(entity).is_some()
 }
 
-fn test_gizmo_refresh_gpu_mirror(_world: &mut World, _entity: Entity) {}
 
 fn test_gizmo_test_methods() -> Vec<pulsar_reflection::MethodMetadata> {
     <TestGizmo as EngineClass>::get_methods()
@@ -158,13 +152,16 @@ pulsar_world_registry::inventory::submit! {
     pulsar_world_registry::WorldComponentRegistration {
         class_name: "TestGizmo",
         component_type: pulsar_scenedb::component_id::<TestGizmo>,
-        hydrate: test_gizmo_hydrate,
+        default_value: pulsar_world_registry::values::erased::default_value::<TestGizmo>,
+        decode: pulsar_world_registry::values::erased::decode_json::<TestGizmo>,
+        clone_value: pulsar_world_registry::values::erased::clone_value::<TestGizmo>,
+        register_erased: pulsar_scenedb::register_component::<TestGizmo>,
         remove: test_gizmo_remove,
         dispatch: test_gizmo_dispatch,
         get_as_engine_class: test_gizmo_get,
         get_as_engine_class_mut: test_gizmo_get_mut,
         on_removed: test_gizmo_on_removed,
-        refresh_gpu_mirror: test_gizmo_refresh_gpu_mirror,
+        property_written: pulsar_world_registry::values::erased::no_property_written,
     }
 }
 

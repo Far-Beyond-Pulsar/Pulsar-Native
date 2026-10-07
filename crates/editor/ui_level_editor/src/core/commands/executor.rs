@@ -277,16 +277,21 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                         .map(|o| o.transform.position);
                 let mut created = Vec::new();
                 for i in 0..count {
-                    if let Some(new_id) = crate::scene_edit::objects::duplicate_object(
+                    // Results are bound before each `if let`: a scene guard
+                    // taken in its scrutinee would live through the block,
+                    // which locks the scene again.
+                    let duplicated = crate::scene_edit::objects::duplicate_object(
                         &mut state.scene.world_mut(),
                         source_id,
-                    ) {
+                    );
+                    if let Some(new_id) = duplicated {
                         if let (Some(off), Some(src)) = (position_offset, src_pos) {
                             let n = (i + 1) as f32;
-                            if let Some(mut copy) = crate::scene_edit::objects::get_object(
+                            let copy = crate::scene_edit::objects::get_object(
                                 &state.scene.world(),
                                 &new_id,
-                            ) {
+                            );
+                            if let Some(mut copy) = copy {
                                 copy.transform.position = [
                                     src[0] + off[0] * n,
                                     src[1] + off[1] * n,

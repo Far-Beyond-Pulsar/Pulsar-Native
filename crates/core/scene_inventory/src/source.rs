@@ -88,7 +88,7 @@ pub const SITE_PATTERNS: &[SitePattern] = &[
         id: "mirror-replay",
         needles: &["ensure_gpu_mirror"],
         regex: r"\bensure_gpu_mirror\s*\(",
-        meaning: "Attaches the GPU mirror and replays a fixed list of types",
+        meaning: "Attaches the shared GPU mirror (SceneDB replays existing rows on attach)",
     },
     SitePattern {
         id: "json-hydrate",

@@ -135,11 +135,10 @@ fn property_natives(
                 let mut instance = (registration.get_as_engine_class_mut)(world, entity)
                     .ok_or_else(|| missing(entity, class))?;
                 (property.setter)(&mut *instance, value);
-                // The guard reports the write to SceneDB as it drops, here.
+                (registration.property_written)(&mut *instance, Some(name));
+                // The guard reports the write to SceneDB as it drops, here;
+                // GPU rows follow through SceneDB's own mirror dispatch.
             }
-            // A companion GPU mirror is a derived component, not a field; the
-            // guard does not rebuild it, so re-sync it after, as the panel does.
-            (registration.refresh_gpu_mirror)(world, entity);
             Ok(Value::Unit)
         }),
     );
@@ -210,10 +209,11 @@ fn method_native(
             let result = {
                 let mut instance = (registration.get_as_engine_class_mut)(world, entity)
                     .ok_or_else(|| missing(entity, class))?;
-                caller(&mut *instance, boxed)
+                let result = caller(&mut *instance, boxed);
+                // The method may have written any field.
+                (registration.property_written)(&mut *instance, None);
+                result
             };
-            // As for property setters: the method may have written.
-            (registration.refresh_gpu_mirror)(world, entity);
             match (ret_binding, result) {
                 (Some(binding), Some(value)) => Ok(binding.to_value(&*value)),
                 (Some(_), None) => Err(ScriptError::native(format!(

@@ -617,21 +617,6 @@ pub fn update_live_component_property(
         return Err(new_value);
     }
 
-    let Some(prop_meta) = pulsar_reflection::REGISTRY
-        .create_instance(class_name)
-        .and_then(|instance| {
-            instance
-                .get_properties()
-                .into_iter()
-                .find(|p| p.name == prop_name)
-        })
-    else {
-        tracing::warn!(
-            "[LIVE_PROPERTY_EDIT] no reflected property '{prop_name}' on '{class_name}'"
-        );
-        return Err(new_value);
-    };
-
     let is_live = live_typed_component_index(world, object_id, class_name) == Some(component_index);
     if !is_live {
         let mut scratch = World::new();
@@ -642,22 +627,25 @@ pub fn update_live_component_property(
             scratch_entity,
             &target.data,
         );
-        if hydrated.is_err() {
-            // This instance's stored JSON doesn't deserialize for its own class --
-            // refuse the edit rather than guess.
+        if !matches!(hydrated, Ok(true)) {
+            // This instance's stored JSON doesn't decode for its own class, or
+            // the class has no world bridge (plugin-only): refuse the edit
+            // rather than guess.
             return Err(new_value);
         }
-        let Some(mut instance) = pulsar_world_registry::get_world_component_as_engine_class_mut(
+        pulsar_world_registry::set_world_component_property(
             class_name,
             &mut scratch,
             scratch_entity,
-        ) else {
-            // Hydrate was a no-op: this class has no world bridge at all
-            // (plugin-only). Hand the value back untouched.
-            return Err(new_value);
-        };
-        (prop_meta.setter)(&mut *instance, new_value);
-        let Ok(value_json) = instance.to_json() else {
+            prop_name,
+            new_value,
+        )?;
+        let Some(Ok(value_json)) = pulsar_world_registry::get_world_component_as_engine_class(
+            class_name,
+            &scratch,
+            scratch_entity,
+        )
+        .map(|instance| instance.to_json()) else {
             return Err(Box::new(()));
         };
         if let Some(entity) = world.entity_for(object_id) {
@@ -667,39 +655,17 @@ pub fn update_live_component_property(
         return Ok(());
     }
 
-    let setter = prop_meta.setter;
     let Some(entity) = world.entity_for(object_id) else {
         return Err(new_value);
     };
-    // The guard reports the write to SceneDB when it drops, so scope it: the
-    // edit must be finished before anything else touches `world`.
-    let persisted_json = {
-        let Some(mut instance) = pulsar_world_registry::get_world_component_as_engine_class_mut(
-            class_name, world, entity,
-        ) else {
-            return Err(new_value);
-        };
-        (setter)(&mut *instance, new_value);
-        // Capture the component's full current shape while `instance` is still borrowed.
-        instance.to_json().ok()
-    };
+    // One write: the setter, then whatever the class derives from that
+    // property, under a single SceneDB guard. The world is this class's
+    // authority; the attachment keeps only the order/enabled record. GPU rows
+    // follow through SceneDB's own mirror dispatch.
+    pulsar_world_registry::set_world_component_property(
+        class_name, world, entity, prop_name, new_value,
+    )?;
     record_property_change(object_id, class_name, prop_name);
-
-    // A live migrated class is deliberately not written back: the world is its
-    // authority, the attachment keeps only the order/enabled record.
-    if is_live && is_scenedb_authority_class(class_name) {
-        // The setter above only touched the one reflected field. Some classes
-        // derive other, non-reflected state from their fields (StaticMeshComponent
-        // reloading `vertices`/`indices` from `mesh_asset`; LightComponent's GPU
-        // mirror) that a raw field write never re-derives -- generically re-run
-        // whatever this class registered for exactly that (a no-op for classes
-        // with nothing to refresh).
-        pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
-            class_name, world, entity,
-        );
-    } else if let Some(json) = persisted_json {
-        attach::update_component(world, entity, component_index, json);
-    }
     Ok(())
 }
 
