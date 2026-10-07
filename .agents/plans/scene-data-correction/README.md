@@ -22,6 +22,7 @@ This packet turns the confirmed SceneDB/rendering failures into a set of archite
 | [11-phase-0-closure.md](11-phase-0-closure.md) | Phase 0 exit: decisions D1–D4, validation targets, failure baseline |
 | [12-phase-1.md](12-phase-1.md) | Phase 1: SceneDB erased writes and mirror replay, intrinsic GPU companions, component-instance entities |
 | [13-phase-2.md](13-phase-2.md) | Phase 2: the GPU scene join for meshes and lights; the CPU projection and render subscriptions removed |
+| [14-phase-3.md](14-phase-3.md) | Phase 3: typed history, commands, class templates and script producers; explicit load migrations |
 | [ledger.toml](ledger.toml) | Closure ledger checked by `cargo test -p scene_inventory` |
 
 ## How to review

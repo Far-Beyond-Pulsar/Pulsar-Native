@@ -291,3 +291,56 @@ fn an_unresolved_payload_is_readable() {
     components::add_component_value(world, &id, "LightComponent", None);
     assert_eq!(components::unresolved_payload(world, &id, 1), None, "live");
 }
+
+/// A non-render component's whole editor lifecycle is typed: attached
+/// from its default, edited through its reflected (`#[sub_props]`) setter,
+/// restored by history in place, and encoded only by the save record.
+#[test]
+fn rigidbody_add_edit_undo_and_save_are_typed() {
+    use pulsar_physics::RigidbodyComponent;
+
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let id = objects::add_object(world, object("Crate"), None);
+    components::add_component_value(world, &id, "RigidbodyComponent", None);
+    let instance = components::instance_at(world, &id, 0).unwrap();
+    let before = history::capture_history_subset(world, &[id.clone()]);
+
+    components::update_live_component_property(
+        world,
+        &id,
+        "RigidbodyComponent",
+        0,
+        "mass",
+        Box::new(12.5f32),
+    )
+    .unwrap();
+    assert_eq!(
+        world
+            .get::<RigidbodyComponent>(instance)
+            .unwrap()
+            .general
+            .mass,
+        12.5
+    );
+    assert_eq!(
+        components::get_components(world, &id)[0].data["general"]["mass"],
+        json!(12.5),
+        "the save record carries the typed value in the class shape"
+    );
+
+    history::restore_history_delta(world, &before, &[id.clone()]).unwrap();
+    assert_eq!(
+        components::instance_at(world, &id, 0),
+        Some(instance),
+        "restored in place"
+    );
+    assert_eq!(
+        world
+            .get::<RigidbodyComponent>(instance)
+            .unwrap()
+            .general
+            .mass,
+        RigidbodyComponent::default().general.mass
+    );
+}

@@ -28,8 +28,7 @@
 #[allow(unused_imports)]
 use helio_component::{
     FoliageComponent as _ForceLink_FoliageComponent, LODComponent as _ForceLink_LODComponent,
-    LightComponent as _ForceLink_LightComponent,
-    PortalComponent as _ForceLink_PortalComponent,
+    LightComponent as _ForceLink_LightComponent, PortalComponent as _ForceLink_PortalComponent,
     PostProcessVolumeComponent as _ForceLink_PostProcessVolumeComponent,
     ReflectionCaptureComponent as _ForceLink_ReflectionCaptureComponent,
     StaticMeshComponent as _ForceLink_StaticMeshComponent,
@@ -168,6 +167,24 @@ impl MigrationReport {
     }
 }
 
+/// What the load-time component-record migrations
+/// (`pulsar_class::records`, the same ones the editor and runtime run)
+/// changed.
+fn print_record_migrations(records: &pulsar_class::records::RecordMigrations) {
+    for object in &records.material_overrides {
+        println!("  MaterialOverrideComponent folded into the mesh: {object}");
+    }
+    for (object, class) in &records.nested {
+        println!("  flat data rewritten to the class shape: {object} ({class})");
+    }
+    for object in &records.mesh_asset_props {
+        println!("  props.mesh_asset -> StaticMeshComponent: {object}");
+    }
+    for (object, keys) in &records.stripped_props {
+        println!("  component copies removed from props: {object} {keys:?}");
+    }
+}
+
 /// The project a level belongs to: the first ancestor with `src/classes`.
 fn find_project_root(level: &Path) -> Option<PathBuf> {
     level
@@ -183,10 +200,14 @@ fn find_project_root(level: &Path) -> Option<PathBuf> {
 fn migrate_classes(root: &mut Value, project: Option<&Path>) -> bool {
     let Some(project) = project else {
         println!("  no project with src/classes found -- class references left as they are");
-        return false;
+        // The component-record migrations need no project.
+        let records = pulsar_class::records::migrate_component_records(root);
+        print_record_migrations(&records);
+        return records.changed();
     };
     let registry = pulsar_class::ClassRegistry::scan(project);
     let report = pulsar_class::migrate::migrate_level_value(root, &registry);
+    print_record_migrations(&report.records);
     for (object, class) in &report.script_components {
         println!("  ScriptComponent -> ClassInstance: {object} ({class})");
     }

@@ -124,6 +124,7 @@ disposition = "non-render: native script attachment; typed VM adapters"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
 test = "none: script attach and property access are typed"
 status = "unverified"
+notes = "Phase 3: no runtime consumer exists yet (pulsar_game does not read it); the editor's record builders in core/native_scripts.rs are dead-code helpers at the file boundary. Stays unverified until a consumer lands."
 
 [[class]]
 name = "PhysicsComponent"
@@ -134,8 +135,8 @@ runtime_behavior = true
 owner = "pulsar_physics::components::physics_component"
 disposition = "non-render: physics subsystem data; typed lifecycle only. Its generated GPU companion is unregistered and has no consumer"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: typed add/edit/persist without a renderer"
-status = "unverified"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs physics_world_edits_survive_object_updates_and_save_projection, disabling_and_reenabling_physics_preserves_the_canonical_value"
+status = "verified"
 
 [[class]]
 name = "PortalComponent"
@@ -182,8 +183,8 @@ runtime_behavior = true
 owner = "pulsar_physics::components::rigidbody_component"
 disposition = "non-render: physics subsystem data; typed lifecycle only. Its generated GPU companion is unregistered and has no consumer"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: typed add/edit/persist without a renderer"
-status = "unverified"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs rigidbody_add_edit_undo_and_save_are_typed"
+status = "verified"
 
 [[class]]
 name = "SplineComponent"
@@ -1036,10 +1037,10 @@ pattern = "json-hydrate"
 file = "crates/core/level_migrate/src/main.rs"
 count = 2
 owner = "core::level_migrate::main"
-disposition = "keep-boundary: offline .level repair tool; must call the Phase 3 archive migrations instead of live hydrate"
+disposition = "keep-boundary: offline .level repair tool. Runs the same load migrations as the editor and runtime (pulsar_class::records via migrate_level_value, with or without a project), then verifies each repaired record by decoding it into a scratch world before writing it"
 target_contract = "Phase 3; 05-persistence-and-undo.md"
-test = "none: typed insert path equivalence"
-status = "unverified"
+test = "crates/core/level_migrate/src/main.rs tests; crates/core/pulsar_class/src/records.rs tests"
+status = "verified"
 
 [[site]]
 pattern = "record-attach"
@@ -1185,22 +1186,22 @@ status = "at-risk"
 [[site]]
 pattern = "add-component"
 file = "crates/editor/ui_level_editor/src/core/scene_edit/hlfs_cathedral/mod.rs"
-count = 2
+count = 1
 owner = "editor::ui_level_editor::core::scene_edit::hlfs_cathedral"
-disposition = "generated demo-scene builder; typed writes"
+disposition = "keep-boundary: test-only generator of committed level data. Lights are attached as typed values; the mesh record (with its legacy material override, folded at load) is decoded exactly as the load path decodes it"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: typed add produces the same state as a direct insert"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/hlfs_cathedral/mod.rs tests"
+status = "verified"
 
 [[site]]
 pattern = "add-component"
 file = "crates/editor/ui_level_editor/src/core/splines.rs"
 count = 1
 owner = "editor::ui_level_editor::core::splines"
-disposition = "convert to a typed factory and one validated transaction; JSON only at an external boundary"
+disposition = "converted (Phase 3): AddComponent / AddObjectWithComponents with a typed SplineComponent"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: typed add produces the same state as a direct insert"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/src/core/splines.rs curves_are_scene_objects_and_edits_are_undoable"
+status = "verified"
 
 [[site]]
 pattern = "property-edit"
