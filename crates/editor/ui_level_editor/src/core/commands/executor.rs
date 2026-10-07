@@ -93,12 +93,6 @@ pub(crate) fn authored_movability(
 /// this whole function before the checkpoint-commit step below runs.
 pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> CommandResult {
     let is_undoable = !matches!(cmd, SceneCommand::SelectObject { .. });
-    let arms_new_render_rows = matches!(
-        &cmd,
-        SceneCommand::AddObject { .. }
-            | SceneCommand::DuplicateObject { .. }
-            | SceneCommand::InstantiateClass { .. }
-    );
     let scope = command_scope(&cmd);
     let pre_state = is_undoable.then(|| capture_history_subset(&state.scene.world(), &scope));
 
@@ -637,26 +631,6 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
     })();
 
     if result.changed {
-        if arms_new_render_rows {
-            let mut world = state.scene.world_mut();
-            // Include descendants: a duplicated class instance brings
-            // generated child objects along with its root.
-            let mut entities = Vec::new();
-            for id in &result.affected_ids {
-                if let Some(entity) = world.entity_for(id) {
-                    let mut stack = vec![entity];
-                    while let Some(e) = stack.pop() {
-                        if !entities.contains(&e) {
-                            entities.push(e);
-                            stack.extend(world.children_of(Some(e)));
-                        }
-                    }
-                }
-            }
-            for entity in entities {
-                engine_backend::scene::arm_render_row_subscriptions_for_entity(&mut world, entity);
-            }
-        }
         if let Some(pre) = pre_state {
             let mut post_scope = scope;
             for id in &result.affected_ids {

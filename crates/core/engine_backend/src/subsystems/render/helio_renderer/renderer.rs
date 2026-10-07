@@ -129,8 +129,8 @@ pub struct HelioEditorMailbox {
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
 }
 
-/// A gizmo drag started on an object whose SceneDB `helio::Movability`
-/// promises a fixed transform (Pulsar-Native#837). Moving it anyway leaves
+/// A gizmo drag started on an object whose authored movability promises a
+/// fixed transform (Pulsar-Native#837). Moving it anyway leaves
 /// cached data (the static shadow atlas) describing its old place.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StaticDragWarning {
@@ -300,10 +300,6 @@ pub struct HelioRenderer {
     /// Frame counter used to throttle GPU profiler reads to once every
     /// N frames so a fast idle loop doesn't hammer the timing API.
     profiler_frame_counter: u32,
-    /// SceneDB subscriptions identify exactly which derived render rows need
-    /// projection after a mutation. This stays armed for the lifetime of the
-    /// shared scene and avoids scanning every mesh during a drag.
-    render_row_subscriptions_armed: bool,
     voxel_backends: VoxelBackendRegistry,
     /// Last applied stamp of the sculpt stroke in progress (cleared on release).
     voxel_stroke_last: Option<VoxelBrushCommit>,
@@ -423,7 +419,6 @@ impl HelioRenderer {
             had_camera_input: false,
             gizmo_dirty: true,
             profiler_frame_counter: 0,
-            render_row_subscriptions_armed: false,
             voxel_backends,
             voxel_stroke_last: None,
             voxel_altitude: None,
@@ -668,6 +663,8 @@ impl HelioRenderer {
             let mut builder = helio::RendererBuilder::new(config, scene_db_handle.clone())
                 .with_external_device()
                 .with_editor_mode(true)
+                // Meshes and lights: Helio joins the authored rows on the GPU.
+                .with_scene_derivation(crate::scene::scene_join(&device_arc, true))
                 .with_clear_color([0.15, 0.18, 0.25, 1.0])
                 .with_ambient([0.0, 0.0, 0.0], 0.0)
                 .with_vt_tile_size(tile_px);
@@ -878,7 +875,6 @@ impl HelioRenderer {
         if force_scene_sync {
             inner.last_scene_revision = 0;
             inner.has_rendered_frame = false;
-            self.render_row_subscriptions_armed = false;
         }
 
         // ── Early out when idle ─────────────────────────────────────────────────
@@ -912,28 +908,6 @@ impl HelioRenderer {
                 profiling::profile_scope!("helio_scene_store_write_lock_wait");
                 self.scene_store.write()
             };
-            let events = scene_store.world.take_component_change_events();
-            let (dirty_meshes, dirty_lights) =
-                crate::scene::dirty_render_instances(&scene_store.world, &events);
-            let full_projection = !self.render_row_subscriptions_armed || !inner.has_rendered_frame;
-            let mesh_dirty = (!full_projection).then_some(&dirty_meshes);
-            let light_dirty = (!full_projection).then_some(&dirty_lights);
-            {
-                profiling::profile_scope!("helio_sync_editor_light_rows");
-                crate::scene::editor_rows::sync_editor_light_rows(
-                    &mut scene_store.world,
-                    true,
-                    light_dirty,
-                );
-            }
-            {
-                profiling::profile_scope!("helio_sync_static_mesh_rows");
-                crate::scene::sync_static_mesh_rows(&mut scene_store, mesh_dirty);
-            }
-            if full_projection {
-                crate::scene::arm_render_row_subscriptions(&mut scene_store.world);
-                self.render_row_subscriptions_armed = true;
-            }
             {
                 // Splines are SceneDB components drawn by Helio's editor debug
                 // pass in world space, so they follow the camera like the grid.
@@ -967,18 +941,41 @@ impl HelioRenderer {
                 .is_some();
             let authored_meshes = store
                 .world
-                .query::<&helio_pass_gbuffer::StaticObjectComponent>()
-                .next()
-                .is_some();
+                .query::<(
+                    &helio_component::components::StaticMeshComponent,
+                    &pulsar_scene_model::attachments::ComponentOwner,
+                )>()
+                .any(|(_, (_, owner))| owner.is_enabled());
             // Voxel terrain traces sunlight towards the scene's directional
-            // light (its row stores the direction the light travels).
+            // light: the opposite of the direction it travels, its owner's
+            // rotation of -Y.
             let sun = store
                 .world
-                .query::<&helio_pass_forward_lit::LightComponent>()
-                .find(|(_, light)| light.light_type == helio::LightType::Directional as u32)
-                .map(|(_, light)| {
-                    let d = light.direction_outer;
-                    [-d[0], -d[1], -d[2]]
+                .query::<(
+                    &helio_component::components::LightComponent,
+                    &pulsar_scene_model::attachments::ComponentOwner,
+                )>()
+                .filter(|(_, (light, owner))| {
+                    owner.is_enabled()
+                        && light.general.enabled
+                        && light.general.light_type
+                            == helio_component::components::LightType::Directional
+                })
+                .find_map(|(instance, _)| {
+                    pulsar_scene_model::attachments::owner_component::<crate::scene::Transform>(
+                        &store.world,
+                        instance,
+                    )
+                    .copied()
+                })
+                .map(|transform| {
+                    let rotation = glam::Quat::from_euler(
+                        glam::EulerRot::YXZ,
+                        transform.rotation[1].to_radians(),
+                        transform.rotation[0].to_radians(),
+                        transform.rotation[2].to_radians(),
+                    );
+                    (rotation * Vec3::Y).to_array()
                 });
             (entries, errors, authored_sky, authored_meshes, sun)
         };
@@ -1609,10 +1606,11 @@ impl HelioRenderer {
             ray_direction,
             self.cam_pos.as_vec3(),
         ) {
-            // SceneDB's projected promise, not the authored property: it is
-            // what the caches the drag would invalidate actually read.
+            // What the object's mesh and light instances author: the flag
+            // the caches the drag would invalidate key on.
             let fixed = store.world.selected_entity().and_then(|entity| {
-                let movability = *store.world.get::<helio::Movability>(entity)?;
+                let movability =
+                    helio_component::components::object_movability(&store.world, entity)?;
                 (!movability.can_move()).then(|| StaticDragWarning {
                     object_id: store
                         .world

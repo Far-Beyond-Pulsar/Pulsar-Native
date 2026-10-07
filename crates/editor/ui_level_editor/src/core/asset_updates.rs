@@ -12,7 +12,6 @@
 
 use std::sync::Arc;
 
-use engine_backend::scene::SceneWorldExt;
 use parking_lot::RwLock;
 use plugin_editor_api::{AssetKind, AssetSubscription, AssetUpdated};
 
@@ -43,21 +42,10 @@ pub fn handle_asset_update(
     let touched = {
         let state = state.read();
         let mut world = state.scene.world_mut();
-        let touched = classes::apply_class_asset_update(&mut world, event);
-        // #935: rebuilt generated children are new entities, and their
-        // components were inserted before anything watched them, so the
-        // renderer saw no change for them. Arm their render-row
-        // subscriptions, then report every rebuilt component as changed
-        // (GPU mirror refresh + a `Mut` write, what a property edit does),
-        // so each instance's light / mesh rows are re-derived at the next
-        // frame, not when the object is next touched.
-        for id in &touched {
-            if let Some(entity) = world.entity_for(id) {
-                engine_backend::scene::arm_render_row_subscriptions_for_entity(&mut world, entity);
-                engine_backend::scene::mark_render_components_changed(&mut world, entity);
-            }
-        }
-        touched
+        // Rebuilt instances are ordinary component writes: their GPU rows
+        // follow through SceneDB's own write path, and the renderer's scene
+        // join picks them up with nothing armed or marked here (#935).
+        classes::apply_class_asset_update(&mut world, event)
     };
     let mut state = state.write();
     if !touched.is_empty() {

@@ -389,11 +389,11 @@ fn class_asset_updates_rebuild_placed_instances() {
     );
 }
 
-/// #935: a class edit reaches every placed instance's LIVE components and
-/// the renderer hears about it: after `AssetUpdated`, both instances' lights
-/// (root and generated child) have the new color, and each light entity is
-/// in the change events the renderer drains to re-derive its light rows,
-/// without touching any instance.
+/// #935: a class edit reaches every placed instance's LIVE components: after
+/// `AssetUpdated`, both instances' lights (root and generated child) have
+/// the new color, and so does the light row each one uploads for the
+/// renderer's scene join (`LightSourceRow`, derived on every write), with
+/// nothing armed, marked or drained.
 #[test]
 fn class_color_edit_reaches_live_lights_and_their_render_rows() {
     use crate::core::asset_updates;
@@ -407,9 +407,6 @@ fn class_color_edit_reaches_live_lights_and_their_render_rows() {
         let mut world = st.scene.world_mut();
         let a = place(&mut world, &dir, 0.0);
         let b = place(&mut world, &dir, 4.0);
-        // The renderer armed its row subscriptions and drained its events.
-        engine_backend::scene::arm_render_row_subscriptions(&mut world);
-        world.take_component_change_events();
         (a, b)
     };
     let classes_before = state.read().scene.class_updates;
@@ -433,30 +430,21 @@ fn class_color_edit_reaches_live_lights_and_their_render_rows() {
     );
 
     let st = state.read();
-    let mut world = st.scene.world_mut();
-    let dirty: std::collections::HashSet<_> = world
-        .take_component_change_events()
-        .into_iter()
-        .map(|e| e.entity)
-        .collect();
+    let world = st.scene.world();
     for id in [&a, &b] {
         let kids = children(&world, id);
         assert_eq!(kids.len(), 1);
         for object in [id, &kids[0]] {
+            let live = light(&world, object);
+            assert_eq!(live.color.color, [1.0, 0.0, 0.0, 1.0], "{object}: live light");
+            let row = helio_component::components::LightSourceRow::of(&live);
             assert_eq!(
-                light(&world, object).color.color,
-                [1.0, 0.0, 0.0, 1.0],
-                "{object}: live light"
-            );
-            let entity = world.entity_for(object).unwrap();
-            assert!(
-                dirty.contains(&entity),
-                "{object}: the renderer re-derives its light row"
+                row.color_intensity[..3],
+                [1.0, 0.0, 0.0],
+                "{object}: the uploaded light row"
             );
         }
     }
-    // What the renderer does with them: rows follow the live lights.
-    engine_backend::scene::sync_editor_light_rows(&mut world, true, Some(&dirty));
 }
 
 /// Reverting a class-slot property and setting/reverting a class variable

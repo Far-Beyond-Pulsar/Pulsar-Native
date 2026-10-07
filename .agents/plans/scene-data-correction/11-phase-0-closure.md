@@ -9,7 +9,7 @@ Exit criteria from the plan, and where each is met:
 | Exit criterion | Where |
 |---|---|
 | Every exposed component has a disposition | [`ledger.toml`](ledger.toml) `[[class]]` rows, enforced by `cargo test -p scene_inventory` |
-| Reproduction demonstrates the broken stage | [Failure baseline](#failure-baseline), `crates/editor/ui_level_editor/tests/phase0_render_baseline.rs` |
+| Reproduction demonstrates the broken stage | [Failure baseline](#failure-baseline), `crates/editor/ui_level_editor/tests/phase0_render_baseline.rs` (Phase 2 replaced it with the assertions in `render_acceptance.rs`; see [13-phase-2.md](13-phase-2.md)) |
 | Instance identity and layout ownership are written down | [Decisions](#decisions) D1, D2 |
 | Runnable validation targets are known | [Validation targets](#validation-targets) |
 
@@ -44,7 +44,7 @@ These record the Phase 0 resolution of the decisions the plan requires before do
 
 ### D1. Component instance model
 
-**Decision (proposed for approval): one SceneDB entity per attached component instance**, as [01-authority-and-identity.md](01-authority-and-identity.md) proposes. The component entity holds the registered component value plus typed attachment metadata: stable `ComponentInstanceId`, owner object, order, enabled state, parent instance (presentation only), class-slot provenance. GPU rows are keyed by the component entity and join the owner's transform/visibility through an explicit owner key.
+**Decision (approved; implemented in Phase 1, [12-phase-1.md](12-phase-1.md)): one SceneDB entity per attached component instance**, as [01-authority-and-identity.md](01-authority-and-identity.md) proposes. The component entity holds the registered component value plus typed attachment metadata: stable `ComponentInstanceId`, owner object, order, enabled state, parent instance (presentation only), class-slot provenance. GPU rows are keyed by the component entity and join the owner's transform/visibility through an explicit owner key.
 
 Phase 0 evidence that the current model cannot be kept:
 
@@ -67,7 +67,7 @@ Open `REVIEW:` questions to answer before Phase 1 exits (recommendations in brac
 
 ### D2. Layout ownership
 
-**Decision (proposed for approval):**
+**Decision (approved 2026-10-07; Phase 2 implements it for meshes and lights, [13-phase-2.md](13-phase-2.md)):**
 
 - The **component feature crate** owns the authored struct and its GPU-upload declaration (`#[gpu]` fields through `SceneStore`). It names no pass.
 - **SceneDB** owns packing, buffers, generations, dirty ranges and mirror lifecycle, generically for every schema.

@@ -19,7 +19,7 @@ use winit::{
 };
 
 use engine_backend::scene::{
-    ensure_gpu_mirror, sync_editor_light_rows, sync_static_mesh_rows, RuntimeLevel,
+    ensure_gpu_mirror, scene_join, RuntimeLevel,
 };
 use helio::{required_wgpu_features, required_wgpu_limits, Camera, Renderer, RendererConfig};
 use parking_lot::RwLock;
@@ -169,6 +169,7 @@ impl GameWindow {
         };
         let renderer = helio::RendererBuilder::new(render_config, scene_db_handle)
             .with_editor_mode(desc.editor_mode)
+            .with_scene_derivation(scene_join(&device, desc.editor_mode))
             // Kill the default helio ambient ([0.05, 0.05, 0.08] @ 1.0).
             // All illumination comes from lights in the scene file — same as editor.
             .with_ambient([0.0, 0.0, 0.0], 0.0)
@@ -815,20 +816,11 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                     profiling::record_frame_time(now.duration_since(last).as_secs_f32() * 1000.0);
                 }
                 // Advance the shared world's authoritative SceneDB state and
-                // flush its GPU mirror. World content is read by Helio passes
-                // directly from that mirror -- there is no renderer-owned
-                // frame projection or CPU object cache to rebuild here (same
-                // zero-copy seam the editor viewport renderer uses).
-                {
-                    let mut store = self.scene_store.write();
-                    // Runtime uses Helio directly, so it does not pass through
-                    // HelioRenderer's editor-row projection. Hydrated
-                    // LightComponents therefore need the same derived light
-                    // rows authored before SceneDB flushes the GPU mirror.
-                    sync_editor_light_rows(&mut store.world, false, None);
-                    sync_static_mesh_rows(&mut store, None);
-                    store.step();
-                }
+                // flush its GPU mirror. Helio's scene join reads the mirrored
+                // rows directly -- there is no renderer-owned frame projection
+                // or CPU object cache to rebuild here (same seam the editor
+                // viewport renderer uses).
+                self.scene_store.write().step();
 
                 // Camera precedence: a gameplay-pushed bridge camera wins,
                 // then a Camera-typed entity in the SHARED world (#637 --

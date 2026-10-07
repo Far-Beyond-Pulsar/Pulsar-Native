@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use engine_backend::scene::{ensure_gpu_mirror, sync_static_mesh_rows};
+use engine_backend::scene::{ensure_gpu_mirror, scene_join};
 use helio::{Camera, Renderer, RendererBuilder, RendererConfig};
 use parking_lot::RwLock;
 use pulsar_pie_abi::{
@@ -379,6 +379,7 @@ impl EmbeddedGame {
         let renderer = RendererBuilder::new(config, scene_db_handle)
             .with_external_device()
             .with_editor_mode(false)
+            .with_scene_derivation(scene_join(&device, false))
             .with_ambient([0.0, 0.0, 0.0], 0.0)
             .with_pass_build_context(Box::new(
                 helio_default_graphs::build_default_graph_external_with_context,
@@ -426,16 +427,12 @@ impl EmbeddedGame {
         self.session.tick();
 
         // 2. Advance the shared world's authoritative SceneDB state and flush
-        //    its GPU mirror. World content is read by Helio passes directly
-        //    from that mirror -- there is no renderer-owned frame projection
-        //    or CPU object cache to rebuild here (same zero-copy seam the
-        //    editor viewport renderer uses). A runtime-spawned entity or a
-        //    moved object therefore shows up on the very next frame.
-        {
-            let mut store = self.scene_store.write();
-            sync_static_mesh_rows(&mut store, None);
-            store.step();
-        }
+        //    its GPU mirror. Helio's scene join reads the mirrored rows
+        //    directly -- there is no renderer-owned frame projection or CPU
+        //    object cache to rebuild here (same seam the editor viewport
+        //    renderer uses). A runtime-spawned entity or a moved object
+        //    therefore shows up on the very next frame.
+        self.scene_store.write().step();
 
         // 3. Camera. A Camera-typed entity in the shared world drives the
         //    view when present (#637 -- no more unconditional freecam); the

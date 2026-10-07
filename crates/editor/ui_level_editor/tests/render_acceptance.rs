@@ -1,46 +1,31 @@
-//! SceneDB corrective plan, Phase 0 failure baseline (Pulsar-Native#1035).
+//! SceneDB corrective plan, Phase 2 acceptance (Pulsar-Native#1035): meshes
+//! and lights reach the rendered frame through the actual pass path, from
+//! every producer, with no subscription, refresh, resync or inspector.
 //!
-//! Drives the editor's real producers (`execute_command(AddObject)` followed
-//! by `scene_edit::components::add_component`, as viewport asset drop and the
-//! properties panel's "Add component" do) against a headless
-//! `HelioRenderer`, then records each stage a mesh or light passes on its
-//! way to the screen:
+//! Drives the editor's real producers (`execute_command`, the
+//! `scene_edit::components` functions the properties panel and viewport
+//! asset drop call) and direct typed inserts against a headless
+//! `HelioRenderer`, and compares scene depth and final color with an empty
+//! scene seen from the same camera. Depth separates "drawn" from "shaded
+//! black"; color proves the material path. Every case runs with the camera
+//! at rest and with it nudging (which rebuilds Hi-Z).
 //!
-//! 1. typed value in `World`;
-//! 2. GPU mirror of the mesh's vertex/index pools;
-//! 3. the draw row the object-batch pass consumes (`StaticObjectComponent`,
-//!    currently written by the CPU projection in `helio_bridge`) and the
-//!    material row next to it;
-//! 4. scene depth texels and color pixels that differ from an empty scene
-//!    seen from the same camera. Depth separates "rasterized but shaded
-//!    black" from "never drawn".
-//!
-//! The properties panel's influence is reproduced by calling the same
-//! functions it calls: `subscribe_component` when a card is shown and
-//! `take_world_component_events` once per UI frame.
-//!
-//! Every case runs twice: with the editor camera at rest, and with it nudged
-//! on alternate frames. A camera change rebuilds Helio's Hi-Z pyramid; at
-//! the pinned Helio a camera at rest keeps culling meshes that are present
-//! before the first frame (regression from Helio `0e01e9fd`).
-//!
-//! This test only reads state. It installs no subscription, refresh or resync
-//! to make anything visible, so it prints the current behavior as the baseline
-//! that Phase 2 turns into assertions. It asserts only what the probes need
-//! to be meaningful: the meshes hydrate, the reference frame shows the editor
-//! grid, and with the camera moving a mesh that has its draw row changes
-//! depth and color (positive control). Run with
-//! `cargo test -p ui_level_editor --test phase0_render_baseline -- --nocapture`;
-//! set `PHASE0_DUMP_DIR` to also write every observed frame as a PNG.
+//! This replaces Phase 0's read-only baseline (`11-phase-0-closure.md`
+//! records its table): the cases it printed are assertions here. Run with
+//! `cargo test -p ui_level_editor --test render_acceptance -- --nocapture`;
+//! set `RENDER_ACCEPTANCE_DUMP_DIR` to also write every observed frame as a
+//! PNG.
 
 use std::collections::HashMap;
 
 use engine_backend::scene::SceneWorldExt;
 use engine_backend::subsystems::render::{EditorCameraState, HelioRenderer};
-use helio_component::components::{ObjectMovability, StaticMeshComponent};
+use helio_component::components::{
+    MeshAssetPath, ObjectMovability, StaticMeshComponent, StaticMeshMaterialSlot,
+    StaticMeshMaterialSlots,
+};
 use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
-use pulsar_scenedb::component::type_name;
-use pulsar_scenedb::{Entity, World};
+use pulsar_scenedb::Entity;
 use serde_json::{json, Value};
 use ui_level_editor::commands::{execute_command, SceneCommand};
 use ui_level_editor::scene_edit::components;
@@ -50,10 +35,10 @@ use ui_level_editor::{LevelEditorState, SceneObjectData};
 const SIZE: u32 = 256;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 /// Frames rendered per observation, so uploads, the object batch's async
-/// draw-count readback and temporal filters settle. `PHASE0_SETTLE_FRAMES`
+/// draw-count readback and temporal filters settle. `RENDER_ACCEPTANCE_SETTLE_FRAMES`
 /// overrides it.
 fn settle_frames() -> usize {
-    std::env::var("PHASE0_SETTLE_FRAMES")
+    std::env::var("RENDER_ACCEPTANCE_SETTLE_FRAMES")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(8)
@@ -123,9 +108,9 @@ impl Frame {
         }
     }
 
-    /// With `PHASE0_DUMP_DIR` set, writes the color image as `<name>.png`.
+    /// With `RENDER_ACCEPTANCE_DUMP_DIR` set, writes the color image as `<name>.png`.
     fn dump(&self, name: &str) {
-        let Some(dir) = std::env::var_os("PHASE0_DUMP_DIR") else {
+        let Some(dir) = std::env::var_os("RENDER_ACCEPTANCE_DUMP_DIR") else {
             return;
         };
         let path = std::path::Path::new(&dir).join(format!("{name}.png"));
@@ -140,16 +125,16 @@ struct Harness {
     texture: wgpu::Texture,
     camera: EditorCameraState,
     /// Nudge the camera on alternate frames (ending at the base pose). A
-    /// camera change rebuilds Helio's Hi-Z pyramid; at Helio `05c2f7d7` a
-    /// camera at rest keeps a pyramid built before anything drew, which
-    /// culls every object (regression from Helio `0e01e9fd`).
+    /// camera change rebuilds Helio's Hi-Z pyramid; Phase 0 found a camera
+    /// at rest culling everything (Helio `0e01e9fd`, fixed by Helio#317),
+    /// so every case runs both ways.
     nudge_camera: std::cell::Cell<bool>,
 }
 
 impl Harness {
     fn new(device: wgpu::Device, queue: wgpu::Queue, mesh_radius: f32) -> Self {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("phase0-baseline-target"),
+            label: Some("render-acceptance-target"),
             size: wgpu::Extent3d {
                 width: SIZE,
                 height: SIZE,
@@ -226,7 +211,7 @@ impl Harness {
         let padded =
             row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("phase0-baseline-readback"),
+            label: Some("render-acceptance-readback"),
             size: (padded * size.height) as u64,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -310,6 +295,36 @@ fn add_object(state: &mut LevelEditorState, name: &str, object_type: ObjectType)
 /// load-time migration field is the one producer that sets every slot's
 /// surface without knowing the asset's slot names.
 fn drop_mesh(state: &mut LevelEditorState) -> String {
+    drop_mesh_with(
+        state,
+        json!({
+            "base_color": [1.0, 0.5, 0.1, 1.0],
+            "metallic": 0.0,
+            "roughness": 0.7,
+            "emissive_color": [1.0, 0.5, 0.1],
+            "emissive_intensity": 4.0,
+            "alpha": 1.0,
+        }),
+    )
+}
+
+/// [`drop_mesh`] with a matte white, non-emissive surface: black without a
+/// light, so a light's contribution shows.
+fn drop_matte_mesh(state: &mut LevelEditorState) -> String {
+    drop_mesh_with(
+        state,
+        json!({
+            "base_color": [0.8, 0.8, 0.8, 1.0],
+            "metallic": 0.0,
+            "roughness": 0.8,
+            "emissive_color": [0.0, 0.0, 0.0],
+            "emissive_intensity": 0.0,
+            "alpha": 1.0,
+        }),
+    )
+}
+
+fn drop_mesh_with(state: &mut LevelEditorState, surface: Value) -> String {
     let id = add_object(state, "SM_Cube", ObjectType::Mesh(MeshType::Custom));
     let mut world = state.scene.world_mut();
     components::add_component(
@@ -318,14 +333,7 @@ fn drop_mesh(state: &mut LevelEditorState) -> String {
         "StaticMeshComponent".to_string(),
         json!({
             "mesh_asset": mesh_asset(),
-            "legacy_material_override": {
-                "base_color": [1.0, 0.5, 0.1, 1.0],
-                "metallic": 0.0,
-                "roughness": 0.7,
-                "emissive_color": [1.0, 0.5, 0.1],
-                "emissive_intensity": 4.0,
-                "alpha": 1.0,
-            },
+            "legacy_material_override": surface,
         }),
     );
     id
@@ -355,6 +363,18 @@ fn class_json(class_name: &str) -> Value {
         .expect("class serializes")
 }
 
+/// `light` (a light payload) bright enough to show at the test scene's
+/// scale: the cube is ~86 units across and the light ~2.5 radii away, where
+/// the default 1000 lm adds a fraction of a lux.
+fn bright(mut light: Value) -> Value {
+    // The nested class shape, or the panel's flat one.
+    match light.pointer_mut("/intensity/intensity") {
+        Some(value) => *value = json!(5.0e7),
+        None => light["intensity"] = json!(5.0e7),
+    }
+    light
+}
+
 /// The shape of the light that failed to hydrate in the 2026-10-04 editor
 /// log: `intensity` stored as a bare number instead of `IntensityLightProps`.
 fn legacy_flat_light() -> Value {
@@ -376,85 +396,111 @@ fn set_mesh_movability(state: &LevelEditorState, id: &str, movability: ObjectMov
     assert!(result.is_ok(), "movability edit was refused");
 }
 
-/// The object's mesh: its `StaticMeshComponent` instance, which holds the
-/// value and its GPU rows (Pulsar-Native#1035).
-fn entity(state: &LevelEditorState, id: &str) -> Entity {
-    let world = state.scene.world();
-    let object = world.entity_for(id).expect("object has an entity");
-    engine_backend::scene::attachments::instances(&world, object)
-        .into_iter()
-        .find(|instance| world.get::<StaticMeshComponent>(*instance).is_some())
-        .expect("object has a mesh instance")
-}
 
-/// Short type names of every component on `entity`.
-fn component_names(world: &World, entity: Entity) -> Vec<String> {
-    let mut names: Vec<String> = world
-        .component_ids(entity)
-        .map(|id| {
-            let path = type_name(id);
-            let base = path.split('<').next().unwrap_or(path);
-            base.rsplit("::").next().unwrap_or(base).to_string()
-        })
-        .collect();
-    names.sort();
-    names
-}
 
-#[derive(Debug)]
-#[allow(dead_code)] // read through `Debug` in the printed baseline
-struct MeshStages {
-    typed: bool,
-    gpu_vertices: u32,
-    gpu_indices: u32,
-    draw_row: bool,
-    material_row: bool,
-    on_screen: Difference,
-    components: Vec<String>,
-}
-
-fn mesh_stages(state: &LevelEditorState, entity: Entity, on_screen: Difference) -> MeshStages {
-    let world = state.scene.world();
-    let (gpu_vertices, gpu_indices) = world
-        .gpu_mirror()
-        .map(|mirror| {
-            let row = entity.index();
-            (
-                StaticMeshComponent::vertices_gpu_handle(mirror.store(), row)
-                    .map_or(0, |h| h.count),
-                StaticMeshComponent::indices_gpu_handle(mirror.store(), row).map_or(0, |h| h.count),
-            )
-        })
-        .unwrap_or((0, 0));
-    let paths: Vec<&str> = world.component_ids(entity).map(type_name).collect();
-    MeshStages {
-        typed: world.get::<StaticMeshComponent>(entity).is_some(),
-        gpu_vertices,
-        gpu_indices,
-        draw_row: paths.iter().any(|p| p.ends_with("::StaticObjectComponent")),
-        material_row: paths.iter().any(|p| p.ends_with("::MaterialComponent")),
-        on_screen,
-        components: component_names(&world, entity),
+/// The bright, opaque, emissive surface every acceptance mesh draws with, so
+/// it shows against the empty scene without depending on lights.
+fn emissive_surface() -> helio_component::mesh_cache::ImportedSurfaceMaterial {
+    helio_component::mesh_cache::ImportedSurfaceMaterial {
+        base_color: [1.0, 0.5, 0.1, 1.0],
+        roughness: 0.7,
+        metallic: 0.0,
+        emissive: [1.0, 0.5, 0.1],
+        emissive_intensity: 4.0,
+        alpha: 1.0,
     }
 }
 
-fn mesh_radius() -> f32 {
-    let mut world = World::new();
-    let entity = world.spawn();
-    pulsar_world_registry::hydrate_world_component_for_class(
-        "StaticMeshComponent",
-        &mut world,
-        entity,
-        &json!({ "mesh_asset": mesh_asset() }),
-    )
-    .expect("SM_Cube hydrates");
-    let mesh = world.get::<StaticMeshComponent>(entity).unwrap();
-    assert!(!mesh.indices.is_empty(), "SM_Cube.fbx loaded no geometry");
-    mesh.bounds_local[3]
+/// A mesh built in code and inserted as a typed value: the cube's geometry,
+/// sections and bounds, every slot overridden with [`emissive_surface`].
+fn typed_mesh() -> StaticMeshComponent {
+    let upload = helio_component::subsystems::load_mesh_asset_upload(std::path::Path::new(
+        &mesh_asset(),
+    ))
+    .expect("SM_Cube.fbx loads");
+    let radius = upload
+        .geometry
+        .vertices
+        .iter()
+        .map(|v| glam::Vec3::from(v.position).length())
+        .fold(0.0f32, f32::max);
+    let slots = upload
+        .material_slots
+        .iter()
+        .map(|slot| StaticMeshMaterialSlot {
+            source_material: slot.source_material,
+            name: slot.name.clone(),
+            imported_surface: slot.surface,
+            surface_override: Some(emissive_surface()),
+            ..Default::default()
+        })
+        .collect();
+    StaticMeshComponent {
+        mesh_asset: MeshAssetPath::new(mesh_asset()),
+        material_slots: StaticMeshMaterialSlots { slots },
+        vertices: upload.geometry.vertices,
+        indices: upload.geometry.indices,
+        mesh_sections: upload.sections,
+        bounds_local: [0.0, 0.0, 0.0, radius],
+        ..Default::default()
+    }
+}
+
+/// The object's first component instance (`drop_mesh` attaches the mesh
+/// first).
+fn first_instance(state: &LevelEditorState, id: &str) -> Entity {
+    components::instance_at(&state.scene.world(), id, 0).expect("object has a component")
+}
+
+fn set_visible(state: &mut LevelEditorState, id: &str, visible: bool) {
+    let result = execute_command(
+        state,
+        SceneCommand::SetVisibility {
+            id: id.to_string(),
+            visible: Some(visible),
+            locked: None,
+        },
+    );
+    assert!(result.changed, "visibility edit was refused");
+}
+
+fn move_to(state: &mut LevelEditorState, id: &str, position: [f32; 3]) {
+    let result = execute_command(
+        state,
+        SceneCommand::SetTransform {
+            id: id.to_string(),
+            position: Some(position),
+            rotation: None,
+            scale: None,
+        },
+    );
+    assert!(result.changed, "transform edit was refused");
+}
+
+/// Drawn: the scene depth and the final color both differ from the empty
+/// scene.
+#[track_caller]
+fn assert_drawn(what: &str, d: Difference) {
+    println!("PHASE2 {what}: {d:?}");
+    assert!(
+        d.depth_texels > 0 && d.color_pixels > 0,
+        "{what}: not drawn ({d:?})"
+    );
+}
+
+/// Not drawn: the scene depth equals the empty scene's, and at most a
+/// residue of temporally filtered color remains.
+#[track_caller]
+fn assert_not_drawn(what: &str, d: Difference) {
+    println!("PHASE2 {what}: {d:?}");
+    assert!(
+        d.depth_texels == 0 && d.color_pixels < (SIZE * SIZE / 100) as usize,
+        "{what}: still drawn ({d:?})"
+    );
 }
 
 #[test]
-fn phase0_mesh_and_light_baseline() {
+fn meshes_and_lights_reach_the_frame_from_every_producer() {
     // Renderer errors and asset failures are reported only through `tracing`.
     let _ = tracing_subscriber::fmt()
         .with_max_level(tracing::Level::WARN)
@@ -468,15 +514,12 @@ fn phase0_mesh_and_light_baseline() {
     // as-is), and the project path lives on the global engine context.
     engine_state::EngineContext::new().set_global();
     engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
-    let harness = Harness::new(device, queue, mesh_radius());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
 
     for nudge in [false, true] {
         harness.nudge_camera.set(nudge);
-        let mode = if nudge {
-            "camera nudging"
-        } else {
-            "camera at rest"
-        };
+        let mode = if nudge { "camera nudging" } else { "camera at rest" };
         let reference = {
             let state = LevelEditorState::new();
             let mut renderer = harness.renderer(&state);
@@ -493,141 +536,158 @@ fn phase0_mesh_and_light_baseline() {
             frame.difference(&reference)
         };
 
-        // ── Mesh present before the renderer's first frame ──────────────────────
+        // ── Editor insertion before the renderer's first frame ─────────────
         {
             let mut state = LevelEditorState::new();
-            let id = drop_mesh(&mut state);
+            drop_mesh(&mut state);
             let mut renderer = harness.renderer(&state);
             let frame = harness.frames(&mut renderer, || {});
-            let stages = mesh_stages(
-                &state,
-                entity(&state, &id),
-                observe("before_first_frame", frame),
-            );
-            println!("PHASE0 [{mode}] mesh added before the first frame: {stages:#?}");
-            assert!(
-                stages.typed && stages.gpu_indices > 0,
-                "mesh did not hydrate: {stages:#?}"
-            );
-            // Positive control: with Hi-Z rebuilt by a moving camera, a mesh
-            // that has its draw row reaches the image, so a zero elsewhere
-            // means "not drawn", not "probe blind".
-            if nudge {
-                assert!(
-                    stages.draw_row
-                        && stages.on_screen.color_pixels > 0
-                        && stages.on_screen.depth_texels > 0,
-                    "a projected mesh did not reach the image with the camera moving: {stages:#?}"
-                );
-            }
+            assert_drawn(&format!("[{mode}] editor mesh, before the first frame"), observe("before_first_frame", frame));
         }
 
-        // ── Mesh dropped after the first frame, panel closed, then edited ───────
+        // ── Editor insertion after the first frame, then edits ─────────────
         {
             let mut state = LevelEditorState::new();
             let mut renderer = harness.renderer(&state);
             harness.frames(&mut renderer, || {});
             let id = drop_mesh(&mut state);
-            let e = entity(&state, &id);
-            let frame = harness.frames(&mut renderer, || {});
-            println!(
-                "PHASE0 [{mode}] mesh added after the first frame, panel closed: {:#?}",
-                mesh_stages(&state, e, observe("after_first_frame_closed", frame))
-            );
+            let placed = harness.frames(&mut renderer, || {});
+            let at_origin = Frame {
+                color: placed.color.clone(),
+                depth: placed.depth.clone(),
+            };
+            assert_drawn(&format!("[{mode}] editor mesh, after the first frame"), observe("after_first_frame", placed));
+
             set_mesh_movability(&state, &id, ObjectMovability::Movable);
             let frame = harness.frames(&mut renderer, || {});
-            println!(
-                "PHASE0 [{mode}]   ...after a movability edit: {:#?}",
-                mesh_stages(&state, e, observe("after_first_frame_closed_edit", frame))
+            assert_drawn(&format!("[{mode}]   made Movable"), observe("movable", frame));
+            set_mesh_movability(&state, &id, ObjectMovability::Static);
+            let frame = harness.frames(&mut renderer, || {});
+            assert_drawn(&format!("[{mode}]   made Static again"), observe("static_again", frame));
+
+            move_to(&mut state, &id, [radius * 1.5, 0.0, 0.0]);
+            let moved = harness.frames(&mut renderer, || {});
+            let shift = moved.difference(&at_origin);
+            assert_drawn(&format!("[{mode}]   moved"), observe("moved", moved));
+            assert!(
+                shift.depth_texels > 0,
+                "[{mode}] moving the object did not move the mesh ({shift:?})"
             );
+
+            set_visible(&mut state, &id, false);
+            let frame = harness.frames(&mut renderer, || {});
+            assert_not_drawn(&format!("[{mode}]   object hidden"), observe("hidden", frame));
+            set_visible(&mut state, &id, true);
+            let frame = harness.frames(&mut renderer, || {});
+            assert_drawn(&format!("[{mode}]   object shown"), observe("shown", frame));
+
+            assert!(components::set_component_enabled(&mut state.scene.world_mut(), &id, 0, false));
+            let frame = harness.frames(&mut renderer, || {});
+            assert_not_drawn(&format!("[{mode}]   mesh disabled"), observe("disabled", frame));
+            assert!(components::set_component_enabled(&mut state.scene.world_mut(), &id, 0, true));
+            let frame = harness.frames(&mut renderer, || {});
+            assert_drawn(&format!("[{mode}]   mesh re-enabled"), observe("enabled", frame));
+
+            components::remove_component(&mut state.scene.world_mut(), &id, 0);
+            let frame = harness.frames(&mut renderer, || {});
+            assert_not_drawn(&format!("[{mode}]   mesh removed"), observe("removed", frame));
         }
 
-        // ── Panel open: the card subscribes; who drains the shared queue first ──
-        for panel_drains_first in [true, false] {
+        // ── The properties panel open and draining the shared queue first ──
+        {
             let mut state = LevelEditorState::new();
             let mut renderer = harness.renderer(&state);
             harness.frames(&mut renderer, || {});
             let id = drop_mesh(&mut state);
-            let e = entity(&state, &id);
             let _card = components::subscribe_component(
                 &mut state.scene.world_mut(),
                 &id,
                 "StaticMeshComponent",
                 0,
             );
-            let (label, tag) = if panel_drains_first {
-                ("panel open, panel drains first", "panel_drains")
-            } else {
-                ("panel open, renderer drains", "renderer_drains")
-            };
-            let ui_frame = || {
-                if panel_drains_first {
-                    components::take_world_component_events(&mut state.scene.world_mut());
-                }
-            };
-            let frame = harness.frames(&mut renderer, ui_frame);
-            println!(
-                "PHASE0 [{mode}] mesh added after the first frame, {label}: {:#?}",
-                mesh_stages(&state, e, observe(tag, frame))
-            );
-            set_mesh_movability(&state, &id, ObjectMovability::Movable);
-            let frame = harness.frames(&mut renderer, ui_frame);
-            println!(
-                "PHASE0 [{mode}]   ...after a movability edit: {:#?}",
-                mesh_stages(&state, e, observe(&format!("{tag}_edit"), frame))
-            );
+            let frame = harness.frames(&mut renderer, || {
+                components::take_world_component_events(&mut state.scene.world_mut());
+            });
+            assert_drawn(&format!("[{mode}] editor mesh, panel draining first"), observe("panel_drains", frame));
         }
 
-        // ── Light added after the first frame, next to a mesh ───────────────────
-        for (label, data) in [
-            ("panel payload", panel_defaults("LightComponent")),
-            ("class to_json", class_json("LightComponent")),
-            ("legacy flat intensity", legacy_flat_light()),
+        // ── Direct typed insertion after the first frame ───────────────────
+        {
+            let state = LevelEditorState::new();
+            let mut renderer = harness.renderer(&state);
+            harness.frames(&mut renderer, || {});
+            {
+                let mut world = state.scene.world_mut();
+                let object = world
+                    .spawn_object(engine_backend::scene::SpawnObject::new("typed mesh"))
+                    .expect("spawn object");
+                pulsar_world_registry::attach_value(&mut world, object, typed_mesh())
+                    .expect("attach typed mesh");
+            }
+            let frame = harness.frames(&mut renderer, || {});
+            assert_drawn(&format!("[{mode}] typed mesh, inserted directly"), observe("typed", frame));
+        }
+
+        // ── Asset completion: geometry arrives after the instance ──────────
+        {
+            let mut state = LevelEditorState::new();
+            let mut renderer = harness.renderer(&state);
+            harness.frames(&mut renderer, || {});
+            let id = add_object(&mut state, "pending mesh", ObjectType::Mesh(MeshType::Custom));
+            components::add_component(
+                &mut state.scene.world_mut(),
+                &id,
+                "StaticMeshComponent".to_string(),
+                json!({ "mesh_asset": "" }),
+            );
+            let frame = harness.frames(&mut renderer, || {});
+            assert_not_drawn(&format!("[{mode}] mesh without geometry yet"), observe("pending", frame));
+            let instance = first_instance(&state, &id);
+            {
+                // The asset completes: the instance receives its geometry
+                // and material, as an asset load writes them.
+                let mut world = state.scene.world_mut();
+                let completed = typed_mesh();
+                world.insert(instance, completed);
+            }
+            let frame = harness.frames(&mut renderer, || {});
+            assert_drawn(&format!("[{mode}]   geometry arrived"), observe("completed", frame));
+        }
+
+        // ── Lights added after the first frame, next to a mesh ─────────────
+        for (label, data, accepted) in [
+            ("panel payload", bright(panel_defaults("LightComponent")), true),
+            ("class to_json", bright(class_json("LightComponent")), true),
+            ("legacy flat intensity", legacy_flat_light(), false),
         ] {
             let mut state = LevelEditorState::new();
-            drop_mesh(&mut state);
+            drop_matte_mesh(&mut state);
             let mut renderer = harness.renderer(&state);
             let unlit = harness.frames(&mut renderer, || {});
             let id = add_object(&mut state, "Light", ObjectType::Light(LightType::Point));
             // Above and in front of the mesh, between it and the camera.
-            let [_, y, z] = harness.camera.position;
-            execute_command(
-                &mut state,
-                SceneCommand::SetTransform {
-                    id: id.clone(),
-                    position: Some([0.0, y as f32 * 2.0, z as f32 * 0.5]),
-                    rotation: None,
-                    scale: None,
-                },
-            );
-            components::add_component(
-                &mut state.scene.world_mut(),
-                &id,
-                "LightComponent".to_string(),
-                data,
-            );
+            move_to(&mut state, &id, [0.0, radius * 1.5, radius * 2.0]);
+            components::add_component(&mut state.scene.world_mut(), &id, "LightComponent".to_string(), data);
+            let attached = components::instance_at(&state.scene.world(), &id, 0).is_some();
+            assert_eq!(attached, accepted, "[{mode}] light ({label}): attached");
             let lit = harness.frames(&mut renderer, || {});
             let tag = format!("light_{}", label.replace(' ', "_"));
             lit.dump(&format!("{mode}_{tag}"));
-            let world = state.scene.world();
-            // A payload that does not decode is refused: no instance.
-            let e = components::instance_at(&world, &id, 0);
-            let attachments: Vec<(String, bool, bool)> = components::get_components(&world, &id)
-                .into_iter()
-                .map(|c| {
-                    let class_data = c
-                        .data
-                        .as_object()
-                        .is_some_and(|map| map.keys().any(|key| !key.starts_with("__")));
-                    (c.class_name, c.enabled, class_data)
-                })
-                .collect();
-            println!(
-                "PHASE0 [{mode}] light added after the first frame ({label}): typed = {}, attachments (class, enabled, has class data) = {attachments:?}, components = {:?}, vs unlit = {:?}",
-                e.is_some_and(|e| world.get::<helio_component::components::LightComponent>(e).is_some()),
-                e.map(|e| component_names(&world, e)),
-                lit.difference(&unlit),
-            );
+            let change = lit.difference(&unlit);
+            println!("PHASE2 [{mode}] light ({label}) vs unlit: {change:?}");
+            if accepted {
+                assert!(change.color_pixels > 0, "[{mode}] light ({label}) did not light the scene");
+                assert!(components::set_component_enabled(&mut state.scene.world_mut(), &id, 0, false));
+                let dark = harness.frames(&mut renderer, || {});
+                let change = dark.difference(&unlit);
+                println!("PHASE2 [{mode}]   light disabled vs unlit: {change:?}");
+                assert!(
+                    change.color_pixels < (SIZE * SIZE / 100) as usize,
+                    "[{mode}] a disabled light still lights the scene"
+                );
+            } else {
+                assert_eq!(change.color_pixels, 0, "[{mode}] a refused light changed the frame");
+            }
         }
     }
 }

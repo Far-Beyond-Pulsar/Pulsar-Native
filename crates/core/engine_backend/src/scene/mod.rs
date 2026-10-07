@@ -30,21 +30,12 @@ pub mod script_ref_bridge;
 pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 
 #[cfg(feature = "render")]
-pub mod editor_rows;
-#[cfg(feature = "render")]
-// Shared WorldSceneStore <-> helio::Renderer operations (#637): GPU seam
-// attach + per-frame static-mesh/light frame assembly.
+// Shared WorldSceneStore <-> helio::Renderer seam (#637): GPU mirror attach
+// and Helio's scene join over the authored rows.
 pub mod helio_bridge;
 
-// Re-export new system types for convenience
 #[cfg(feature = "render")]
-pub use editor_rows::sync_editor_light_rows;
-#[cfg(feature = "render")]
-pub use helio_bridge::{
-    arm_render_row_subscriptions, arm_render_row_subscriptions_for_entity, dirty_render_instances,
-    ensure_gpu_mirror, mark_render_components_changed, retire_gpu_rows_for_entity,
-    sync_static_mesh_rows,
-};
+pub use helio_bridge::{ensure_gpu_mirror, scene_join, scene_join_keys};
 #[cfg(feature = "render")]
 pub mod editor_postprocess;
 #[cfg(feature = "render")]
