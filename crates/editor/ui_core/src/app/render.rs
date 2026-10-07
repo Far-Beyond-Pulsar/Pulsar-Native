@@ -159,7 +159,6 @@ impl PulsarApp {
                                                 .absolute()
                                                 .bottom(px(30.))
                                                 .left_0()
-                                                .z_index(100)
                                                 .child(self.state.task_queue_panel.clone()),
                                         )
                                     }),

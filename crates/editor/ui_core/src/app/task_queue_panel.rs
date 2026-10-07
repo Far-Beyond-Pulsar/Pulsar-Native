@@ -5,7 +5,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
     input::{InputState, TextInput},
-    v_flex, v_virtual_list, ActiveTheme as _, Icon, IconName, StyledExt,
+    v_flex, v_virtual_list, ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt,
 };
 
 pub struct TaskQueuePanel {
