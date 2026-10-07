@@ -318,6 +318,8 @@ struct HelioInner {
     /// Frame-pacing revision; never used as a renderer-side world mirror.
     last_scene_revision: u64,
     has_rendered_frame: bool,
+    /// The post-process baseline last set on this graph's resolver.
+    applied_postprocess: Option<crate::scene::EditorPostProcess>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -665,6 +667,7 @@ impl HelioRenderer {
                 .with_editor_mode(true)
                 // Meshes and lights: Helio joins the authored rows on the GPU.
                 .with_scene_derivation(crate::scene::scene_join(&device_arc, true))
+                .with_scene_derivation(crate::scene::environment_join(&device_arc))
                 .with_clear_color([0.15, 0.18, 0.25, 1.0])
                 .with_ambient([0.0, 0.0, 0.0], 0.0)
                 .with_vt_tile_size(tile_px);
@@ -687,6 +690,7 @@ impl HelioRenderer {
                 interaction: SceneInteraction::default(),
                 last_scene_revision: 0,
                 has_rendered_frame: false,
+                applied_postprocess: None,
             };
             self.inner = Some(inner);
             self.applied_graph_settings = Some(graph_settings.clone());
@@ -796,12 +800,11 @@ impl HelioRenderer {
         self.configure_gizmo_view();
         self.viewport_size = previous_viewport_size;
 
-        // Before idle detection: a changed camera row bumps the scene
-        // revision, so this frame steps SceneDB and uploads it.
-        {
-            profiling::profile_scope!("helio_sync_editor_postprocess");
-            self.sync_editor_postprocess();
-        }
+        // Before idle detection: a changed baseline renders this frame.
+        let postprocess_changed = {
+            profiling::profile_scope!("helio_apply_postprocess_baseline");
+            self.apply_postprocess_baseline()
+        };
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
@@ -839,6 +842,7 @@ impl HelioRenderer {
             && !self.voxel_backends.needs_frame(&inner.renderer)
             && !self.gizmo_dirty
             && !viewport_resized
+            && !postprocess_changed
             && !self.reset_taa_next_frame;
 
         // Clear the sticky input flag when camera actually stopped.
@@ -1365,10 +1369,12 @@ impl HelioRenderer {
         }
     }
 
-    /// Keep the editor camera's post-process row in step with the toolbar's
-    /// Bloom toggle and the project's graphics settings. Also drains the
-    /// legacy feature commands, which carry no state.
-    fn sync_editor_postprocess(&mut self) {
+    /// Keep the post-process resolver's baseline in step with the toolbar's
+    /// Bloom toggle and the project's graphics settings: a renderer setting
+    /// ([`crate::scene::EditorPostProcess`]), so nothing is written into the
+    /// scene. Returns whether it changed this frame. Also drains the legacy
+    /// feature commands, which carry no state.
+    fn apply_postprocess_baseline(&mut self) -> bool {
         while let Ok(command) = self.command_receiver.try_recv() {
             match command {
                 RendererCommand::ToggleFeature(feature) => {
@@ -1379,16 +1385,37 @@ impl HelioRenderer {
         let desired = crate::scene::EditorPostProcess::from_project_settings(
             self.viewport_bloom.load(Ordering::Acquire),
         );
-        let current =
-            crate::scene::editor_postprocess_is_current(&self.scene_store.read().world, desired);
-        if !current {
-            crate::scene::apply_editor_postprocess(&mut self.scene_store.write().world, desired);
-            tracing::info!(
-                bloom = desired.bloom_enabled,
-                intensity = desired.bloom_intensity,
-                "Editor viewport post-process updated"
-            );
+        let Some(inner) = self.inner.as_mut() else {
+            return false;
+        };
+        if inner.applied_postprocess == Some(desired) {
+            return false;
         }
+        let queue = inner.queue.clone();
+        let Some(resolver) = inner
+            .renderer
+            .find_pass_mut::<helio_pass_postprocess::PostProcessVolumeBlendPass>()
+        else {
+            return false;
+        };
+        resolver.set_defaults(&queue, &desired.settings());
+        inner.applied_postprocess = Some(desired);
+        tracing::info!(
+            bloom = desired.bloom_enabled,
+            intensity = desired.bloom_intensity,
+            "Editor viewport post-process updated"
+        );
+        true
+    }
+
+    /// The post-process baseline the editor viewport's resolver holds, once
+    /// the renderer is initialized.
+    pub fn postprocess_defaults(&mut self) -> Option<helio_pass_postprocess::PostProcessSettings> {
+        let inner = self.inner.as_mut()?;
+        inner
+            .renderer
+            .find_pass_mut::<helio_pass_postprocess::PostProcessVolumeBlendPass>()
+            .map(|resolver| resolver.defaults().clone())
     }
 
     pub fn is_initialized(&self) -> bool {

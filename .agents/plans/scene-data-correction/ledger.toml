@@ -35,10 +35,10 @@ world_registered = true
 own_gpu_columns = true
 runtime_behavior = true
 owner = "helio_component::components::camera_post_process_component"
-disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; its generated GPU companion is unregistered; the editor camera row comes from editor_postprocess instead"
+disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into camera_postprocess, which post-processing reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: component settings change post-processing"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 [[class]]
 name = "ClassInstance"
@@ -71,10 +71,10 @@ world_registered = true
 own_gpu_columns = true
 runtime_behavior = true
 owner = "helio_component::components::fog_component"
-disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; the global_fog_media buffer and the generated companion are not registered in production"
+disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into global_fog_media, which volumetric fog reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: fog component changes volumetric fog"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 [[class]]
 name = "LODComponent"
@@ -108,10 +108,10 @@ world_registered = true
 own_gpu_columns = true
 runtime_behavior = true
 owner = "helio_component::components::fog_component"
-disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; the local_fog_media buffer and the generated companion are not registered in production"
+disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into local_fog_media, which volumetric fog reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: fog volume changes volumetric fog"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 [[class]]
 name = "NativeScriptComponent"
@@ -157,10 +157,10 @@ world_registered = true
 own_gpu_columns = true
 runtime_behavior = true
 owner = "helio_component::components::post_process_volume_component"
-disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; post_process_volumes is not registered in production, so the pass reads its fallback"
+disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into post_process_volumes, which post-processing reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: volume changes post-processing"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 [[class]]
 name = "ReflectionCaptureComponent"
@@ -827,13 +827,13 @@ path = "helio_pass_postprocess::components::CameraPostProcessComponent"
 buffers = ["camera_postprocess"]
 clears_on_remove = true
 releases_var_len = true
-registered = true
-writer = "engine_backend::scene::editor_postprocess (editor camera) and CameraPostProcessComponent behavior through PendingWorldWrites"
+registered = false
+writer = "helio-default-graphs environment join from CameraPostProcessComponent's source rows (Phase 4); the editor no longer writes a row"
 owner = "helio_pass_postprocess::components"
-disposition = "replace with the authored camera component's columns (Phase 4)"
+disposition = "keep as the pass row layout of camera_postprocess; produced by the join, no longer registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 [[schema]]
 type = "PostProcessVolumeComponent"
@@ -842,12 +842,12 @@ buffers = ["post_process_volumes"]
 clears_on_remove = true
 releases_var_len = true
 registered = false
-writer = "PostProcessVolumeComponent behavior through PendingWorldWrites (no production drain)"
+writer = "helio-default-graphs environment join from PostProcessVolumeComponent's source rows (Phase 4); no component is inserted"
 owner = "helio_pass_postprocess::components"
-disposition = "replace with authored volume columns; not registered in production, so the pass reads its fallback"
+disposition = "keep as the pass row layout of post_process_volumes; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 [[schema]]
 type = "SkyComponent"
@@ -884,12 +884,12 @@ buffers = ["global_fog_media"]
 clears_on_remove = true
 releases_var_len = true
 registered = false
-writer = "GlobalFogComponent behavior through PendingWorldWrites (no production drain)"
+writer = "helio-default-graphs environment join from GlobalFogComponent's source rows (Phase 4); no component is inserted"
 owner = "helio_pass_volumetric_fog::components"
-disposition = "replace with authored fog columns; not registered in production"
+disposition = "keep as the pass row layout of global_fog_media; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 [[schema]]
 type = "LocalFogVolumeComponent"
@@ -898,12 +898,12 @@ buffers = ["local_fog_media"]
 clears_on_remove = true
 releases_var_len = true
 registered = false
-writer = "LocalFogVolumeComponent behavior through PendingWorldWrites (no production drain)"
+writer = "helio-default-graphs environment join from LocalFogVolumeComponent's source rows (Phase 4); no component is inserted"
 owner = "helio_pass_volumetric_fog::components"
-disposition = "replace with authored fog columns; not registered in production"
+disposition = "keep as the pass row layout of local_fog_media; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 [[schema]]
 type = "VolumetricFogSettingsComponent"
@@ -1010,16 +1010,6 @@ owner = "core::engine_backend::services::gpu_renderer"
 disposition = "remove: no repair path may be required for missing scene rows"
 target_contract = "Phase 5; 07-assets-and-runtime-lifecycle.md"
 test = "none: idle wake-up / level replacement without resync"
-status = "at-risk"
-
-[[site]]
-pattern = "cpu-projection"
-file = "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs"
-count = 1
-owner = "core::engine_backend::subsystems::render::helio_renderer::renderer"
-disposition = "the remaining site is sync_editor_postprocess (the editor camera post-process baseline row); meshes and lights are joined on the GPU (Phase 2). Phase 4 replaces the post-process row with the camera component"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: camera post-process settings reach the frame"
 status = "at-risk"
 
 [[site]]
@@ -1266,26 +1256,6 @@ status = "at-risk"
 
 [[site]]
 pattern = "pending-world-writes"
-file = "crates/renderer/helio/crates/helio-component/src/components/camera_post_process_component.rs"
-count = 2
-owner = "helio::helio-component::components::camera_post_process_component"
-disposition = "replace with a direct authored-data contract; the queue has no production drain"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: component reaches its consumer without the queue"
-status = "at-risk"
-
-[[site]]
-pattern = "pending-world-writes"
-file = "crates/renderer/helio/crates/helio-component/src/components/fog_component.rs"
-count = 3
-owner = "helio::helio-component::components::fog_component"
-disposition = "replace with a direct authored-data contract; the queue has no production drain"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: component reaches its consumer without the queue"
-status = "at-risk"
-
-[[site]]
-pattern = "pending-world-writes"
 file = "crates/renderer/helio/crates/helio-component/src/components/foliage_component/runtime.rs"
 count = 2
 owner = "helio::helio-component::components::foliage_component::runtime"
@@ -1299,16 +1269,6 @@ pattern = "pending-world-writes"
 file = "crates/renderer/helio/crates/helio-component/src/components/portal_component.rs"
 count = 2
 owner = "helio::helio-component::components::portal_component"
-disposition = "replace with a direct authored-data contract; the queue has no production drain"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: component reaches its consumer without the queue"
-status = "at-risk"
-
-[[site]]
-pattern = "pending-world-writes"
-file = "crates/renderer/helio/crates/helio-component/src/components/post_process_volume_component.rs"
-count = 2
-owner = "helio::helio-component::components::post_process_volume_component"
 disposition = "replace with a direct authored-data contract; the queue has no production drain"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: component reaches its consumer without the queue"
@@ -1574,6 +1534,62 @@ target_contract = "Phase 1; 02-typed-reflection-and-writes.md"
 test = "none: never inserted, so the registration never runs"
 status = "out-of-scope"
 
+[[schema]]
+type = "GlobalFogSourceRow"
+path = "helio_component::components::environment_rows::GlobalFogSourceRow"
+buffers = ["global_fog_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "GlobalFogComponent's derived GPU registration (the pass GlobalFogComponent medium, enabled from the authored flag), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's global_fog_media input (Phase 4)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
+
+[[schema]]
+type = "LocalFogSourceRow"
+path = "helio_component::components::environment_rows::LocalFogSourceRow"
+buffers = ["local_fog_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "LocalFogVolumeComponent's derived GPU registration (the local box size, then the medium and edge fade; placed from the owner's transform by the join), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's local_fog_media input (Phase 4)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
+
+[[schema]]
+type = "PostProcessVolumeSourceRow"
+path = "helio_component::components::environment_rows::PostProcessVolumeSourceRow"
+buffers = ["post_process_volume_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "PostProcessVolumeComponent's derived GPU registration (the volume size, then the pass row after its bounds (zeroed params when disabled); placed by the join), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's post_process_volumes input (Phase 4)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
+
+[[schema]]
+type = "CameraPostProcessSourceRow"
+path = "helio_component::components::environment_rows::CameraPostProcessSourceRow"
+buffers = ["camera_postprocess_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "CameraPostProcessComponent's derived GPU registration (the pass camera row, enabled from the authored flag), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's camera_postprocess input (Phase 4)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
+
 [[buffer]]
 key = "Transform::packed"
 producers = []
@@ -1727,12 +1743,12 @@ status = "unverified"
 [[buffer]]
 key = "camera_postprocess"
 producers = ["CameraPostProcessComponent"]
-consumers = ["helio-pass-postprocess"]
-owner = "engine_backend::scene::editor_postprocess and PendingWorldWrites (CameraPostProcessComponent behavior)"
-disposition = "replace queued and CPU-built writes with a direct authored contract"
+consumers = ["helio-default-graphs", "helio-pass-postprocess"]
+owner = "helio-default-graphs environment join (execution output, one row per component instance)"
+disposition = "keep: the join copies each placed, enabled CameraPostProcessComponent row; the editor baseline is the resolver's defaults (EditorPostProcess), not a scene row"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/editor_bloom_toggle.rs"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); crates/core/engine_backend/tests/editor_bloom_toggle.rs"
+status = "verified"
 
 [[buffer]]
 key = "corona_emitters"
@@ -1807,22 +1823,22 @@ status = "at-risk"
 [[buffer]]
 key = "global_fog_media"
 producers = ["GlobalFogComponent"]
-consumers = []
-owner = "PendingWorldWrites (GlobalFogComponent behavior)"
-disposition = "audit: no literal BufferKey consumer; map to volumetric-fog inputs or mark unsupported"
+consumers = ["helio-default-graphs"]
+owner = "helio-default-graphs environment join (execution output, one row per component instance)"
+disposition = "keep: helio-pass-volumetric-fog and helio-pass-postprocess (fog composite) read it through key-string helpers the source scan does not list as consumers; the join gates on owner, generation and visibility"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: consumer not identified"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 [[buffer]]
 key = "local_fog_media"
 producers = ["LocalFogVolumeComponent"]
-consumers = []
-owner = "PendingWorldWrites (LocalFogVolumeComponent behavior)"
-disposition = "audit: no literal BufferKey consumer; map or mark unsupported"
+consumers = ["helio-default-graphs"]
+owner = "helio-default-graphs environment join (execution output, one row per component instance)"
+disposition = "keep: helio-pass-volumetric-fog and helio-pass-postprocess (fog composite) read it through key-string helpers the source scan does not list as consumers; the join places the box from the owner's transform"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: consumer not identified"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 [[buffer]]
 key = "materials"
@@ -1867,12 +1883,12 @@ status = "at-risk"
 [[buffer]]
 key = "post_process_volumes"
 producers = ["PostProcessVolumeComponent"]
-consumers = ["helio-pass-postprocess", "helio-pass-volumetric-fog"]
-owner = "PendingWorldWrites (PostProcessVolumeComponent behavior)"
-disposition = "replace the undrained queue with a direct authored contract"
+consumers = ["helio-default-graphs", "helio-pass-postprocess", "helio-pass-volumetric-fog"]
+owner = "helio-default-graphs environment join (execution output, one row per component instance)"
+disposition = "keep: the join places each volume from its owner's transform; the post-process resolver and volumetric fog read it"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: volume edit changes post-process output"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 [[buffer]]
 key = "reflection_captures"
@@ -1997,6 +2013,46 @@ status = "at-risk"
 # ── Render pass crates ───────────────────────────────────────────────────
 # in_default_graph: listed in helio-default-graphs' [dependencies]; reads:
 # buffer keys the crate looks up. Both are checked against source.
+
+[[buffer]]
+key = "global_fog_sources"
+producers = ["GlobalFogSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: GlobalFogComponent in its owner's space, derived on every write; the environment join reads it into global_fog_media"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "local_fog_sources"
+producers = ["LocalFogSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: LocalFogVolumeComponent in its owner's space, derived on every write; the environment join reads it into local_fog_media"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "post_process_volume_sources"
+producers = ["PostProcessVolumeSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: PostProcessVolumeComponent in its owner's space, derived on every write; the environment join reads it into post_process_volumes"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "camera_postprocess_sources"
+producers = ["CameraPostProcessSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: CameraPostProcessComponent in its owner's space, derived on every write; the environment join reads it into camera_postprocess"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-radiance-cascades-2d"

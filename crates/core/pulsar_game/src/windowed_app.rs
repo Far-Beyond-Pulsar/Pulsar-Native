@@ -18,7 +18,7 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-use engine_backend::scene::{ensure_gpu_mirror, scene_join, RuntimeLevel};
+use engine_backend::scene::{ensure_gpu_mirror, environment_join, scene_join, RuntimeLevel};
 use helio::{required_wgpu_features, required_wgpu_limits, Camera, Renderer, RendererConfig};
 use parking_lot::RwLock;
 
@@ -168,6 +168,7 @@ impl GameWindow {
         let renderer = helio::RendererBuilder::new(render_config, scene_db_handle)
             .with_editor_mode(desc.editor_mode)
             .with_scene_derivation(scene_join(&device, desc.editor_mode))
+            .with_scene_derivation(environment_join(&device))
             // Kill the default helio ambient ([0.05, 0.05, 0.08] @ 1.0).
             // All illumination comes from lights in the scene file — same as editor.
             .with_ambient([0.0, 0.0, 0.0], 0.0)
