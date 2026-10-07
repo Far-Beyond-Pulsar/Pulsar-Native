@@ -69,7 +69,7 @@ impl BuiltinEditorProvider for TraitEditorBuiltinProvider {
     }
 }
 
-plugin_editor_api::inventory::submit! {
+plugin_manager::inventory::submit! {
     LinkedEditorProvider { create: || Arc::new(TraitEditorBuiltinProvider) }
 }
 
