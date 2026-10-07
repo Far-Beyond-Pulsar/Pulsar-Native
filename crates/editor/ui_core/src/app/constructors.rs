@@ -207,6 +207,7 @@ impl PulsarApp {
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
         let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
         let mission_control = cx.new(MissionControlPanel::new);
+        let task_queue_panel = cx.new(|cx| super::task_queue_panel::TaskQueuePanel::new(window, cx));
         tracing::info!("[PulsarApp] drawers: {}ms", t.elapsed().as_millis());
 
         // Register entity-capturing openers so the registry can open these windows
@@ -450,6 +451,9 @@ impl PulsarApp {
                 mission_control,
                 mission_control_open: false,
                 git_manager_open: false,
+                task_queue_open: false,
+                task_queue_panel,
+                task_queue_refresh_task: None,
                 center_tabs,
                 // script_editor: None, // Migrated to plugins
                 // daw_editors: Vec::new(),
@@ -485,6 +489,25 @@ impl PulsarApp {
                 radial: super::radial_menu::RadialHost::new(cx),
             },
         };
+
+        // Repaint the task button and visible task list when queue state changes.
+        // The queue is editor-only; game/runtime work is never routed through it.
+        let task_queue = editor_task_queue::global().clone();
+        let task_queue_refresh_task = cx.spawn(async move |this, cx| {
+            let mut revision = task_queue.revision();
+            loop {
+                smol::Timer::after(std::time::Duration::from_millis(250)).await;
+                let next_revision = task_queue.revision();
+                if next_revision != revision {
+                    revision = next_revision;
+                    this.update(cx, |app, cx| {
+                        app.state.task_queue_panel.update(cx, |_, cx| cx.notify());
+                        cx.notify();
+                    });
+                }
+            }
+        });
+        app.state.task_queue_refresh_task = Some(task_queue_refresh_task);
 
         // Update file manager drawer with registered file types from plugin manager
         let file_types: Vec<plugin_editor_api::FileTypeDefinition> =

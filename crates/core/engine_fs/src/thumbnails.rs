@@ -2,9 +2,8 @@
 //!
 //! ## Architecture
 //!
-//! A single OS thread (`thumbnail-worker`) drains a bounded job queue.  This
-//! serialises GPU renders (helio-snapshot is wgpu-heavy) and ensures no two
-//! callers accidentally kick off parallel renders for the same asset.
+//! Each requested asset is represented as an editor task. Requests for the
+//! same path are coalesced so callers share the same task and result.
 //!
 //! Consumers call [`service().request()`] which returns immediately.  When the
 //! thumbnail is ready, the `on_done` callback receives the decoded
@@ -151,10 +150,9 @@ pub fn service() -> &'static ThumbnailService {
     GLOBAL_SERVICE.get_or_init(ThumbnailService::new)
 }
 
-/// A non-blocking thumbnail request queue backed by a single worker thread
-/// and a layered memory + disk cache.
+/// Non-blocking thumbnail requests backed by the editor task queue and a
+/// layered memory + disk cache.
 pub struct ThumbnailService {
-    sender: std::sync::mpsc::SyncSender<ThumbnailJob>,
     /// Paths currently queued or being processed, with every caller waiting
     /// for the shared result.
     pending: Arc<Mutex<HashMap<PathBuf, Vec<ThumbnailCallback>>>>,
@@ -163,59 +161,12 @@ pub struct ThumbnailService {
     mem_cache: Arc<Mutex<MemCache>>,
 }
 
-struct ThumbnailJob {
-    abs_path: PathBuf,
-    cache_root: PathBuf,
-    pending: Arc<Mutex<HashMap<PathBuf, Vec<ThumbnailCallback>>>>,
-    mem_cache: Arc<Mutex<MemCache>>,
-}
-
 type ThumbnailCallback = Box<dyn FnOnce(Option<Arc<image::RgbaImage>>) + Send + 'static>;
 
 impl ThumbnailService {
     fn new() -> Self {
-        let (tx, rx) = std::sync::mpsc::sync_channel::<ThumbnailJob>(128);
         let pending = Arc::new(Mutex::new(HashMap::<PathBuf, Vec<ThumbnailCallback>>::new()));
         let mem_cache = Arc::new(Mutex::new(MemCache::new()));
-
-        // ── Worker thread ────────────────────────────────────────────────────
-        std::thread::Builder::new()
-            .name("thumbnail-worker".into())
-            .spawn(move || {
-                while let Ok(job) = rx.recv() {
-                    let cache_key = compute_cache_key(&job.abs_path);
-
-                    // 1. Memory cache hit — no disk I/O needed.
-                    let cached = job.mem_cache.lock().get(&cache_key);
-                    if let Some(img) = cached {
-                        complete_thumbnail(&job.pending, &job.abs_path, Some(img));
-                        continue;
-                    }
-
-                    // 2. Disk cache hit or generate.
-                    tracing::info!("generating thumbnail for {:?}", job.abs_path);
-                    let disk_path = get_or_generate_thumbnail_sync(&job.abs_path, &job.cache_root);
-
-                    // 3. Decode once, cache in memory.
-                    let rgba = disk_path.and_then(|p| {
-                        image::open(&p)
-                            .map_err(|e| tracing::debug!("thumbnail decode failed {:?}: {}", p, e))
-                            .ok()
-                            .map(|i| Arc::new(i.into_rgba8()))
-                    });
-
-                    if let Some(ref img) = rgba {
-                        job.mem_cache.lock().insert(cache_key, Arc::clone(img));
-                    }
-
-                    if rgba.is_none() {
-                        tracing::warn!("thumbnail generation failed for {:?}", job.abs_path);
-                    }
-                    complete_thumbnail(&job.pending, &job.abs_path, rgba);
-                }
-            })
-            .expect("failed to spawn thumbnail-worker thread");
-
         // ── Background eviction thread ───────────────────────────────────────
         let evict_cache = Arc::clone(&mem_cache);
         std::thread::Builder::new()
@@ -240,7 +191,6 @@ impl ThumbnailService {
             .expect("failed to spawn thumbnail-evictor thread");
 
         Self {
-            sender: tx,
             pending,
             mem_cache,
         }
@@ -250,9 +200,8 @@ impl ThumbnailService {
     ///
     /// - Callers for the same queued/in-flight path share one generation job
     ///   and each receive the resulting callback.
-    /// - If the worker queue is full, every waiting callback receives `None`.
     /// - `on_done` receives the decoded `Arc<RgbaImage>`, or `None` if the type
-    ///   is unsupported / generation failed. Queue-full callbacks run inline.
+    ///   is unsupported / generation failed.
     pub fn request(
         &self,
         abs_path: PathBuf,
@@ -269,20 +218,68 @@ impl ThumbnailService {
             pending.insert(abs_path.clone(), vec![Box::new(on_done)]);
         }
 
-        let key = abs_path.clone();
-        let pending_arc = Arc::clone(&self.pending);
+        let pending = Arc::clone(&self.pending);
+        let mem_cache = Arc::clone(&self.mem_cache);
+        let task_path = abs_path.clone();
+        let title = format!(
+            "Generate thumbnail: {}",
+            abs_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("asset")
+        );
+        editor_task_queue::global().submit(
+            editor_task_queue::TaskDescription::new(
+                title,
+                "Thumbnails",
+                editor_task_queue::TaskDuration::Long,
+            ),
+            move |task| {
+                task.report_progress(0.05, "Checking thumbnail cache");
+                let generated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let cache_key = compute_cache_key(&task_path);
+                    if let Some(cached) = mem_cache.lock().get(&cache_key) {
+                        return Some(cached);
+                    }
 
-        let job = ThumbnailJob {
-            abs_path,
-            cache_root,
-            pending: Arc::clone(&self.pending),
-            mem_cache: Arc::clone(&self.mem_cache),
-        };
+                    if task.is_cancelled() {
+                        return None;
+                    }
 
-        if self.sender.try_send(job).is_err() {
-            tracing::warn!("thumbnail worker queue is full for {:?}", key);
-            complete_thumbnail(&pending_arc, &key, None);
-        }
+                    tracing::info!("generating thumbnail for {:?}", task_path);
+                    task.report_progress(0.2, "Rendering thumbnail");
+                    let disk_path = get_or_generate_thumbnail_sync(&task_path, &cache_root);
+                    let rgba = disk_path.and_then(|path| {
+                        image::open(&path)
+                            .map_err(|error| {
+                                tracing::debug!("thumbnail decode failed {:?}: {}", path, error)
+                            })
+                            .ok()
+                            .map(|image| Arc::new(image.into_rgba8()))
+                    });
+                    if let Some(ref image) = rgba {
+                        mem_cache.lock().insert(cache_key, Arc::clone(image));
+                    }
+                    rgba
+                }))
+                .unwrap_or_else(|_| {
+                    tracing::error!("thumbnail task panicked for {:?}", task_path);
+                    None
+                });
+
+                if generated.is_none() {
+                    tracing::warn!("thumbnail generation failed for {:?}", task_path);
+                }
+                complete_thumbnail(&pending, &task_path, generated);
+                if task.is_cancelled() {
+                    Err("Thumbnail generation cancelled".into())
+                } else if mem_cache.lock().get(&compute_cache_key(&task_path)).is_some() {
+                    Ok(())
+                } else {
+                    Err("Thumbnail generation failed".into())
+                }
+            },
+        );
     }
 
     /// Returns the current number of entries in the memory cache.

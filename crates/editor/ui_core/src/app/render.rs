@@ -43,6 +43,16 @@ impl PulsarApp {
             .count_by_severity(ui_problems::DiagnosticSeverity::Warning);
 
         let type_count = self.state.type_debugger_drawer.read(cx).total_count();
+        let active_task_count = editor_task_queue::global()
+            .snapshots()
+            .iter()
+            .filter(|task| {
+                matches!(
+                    task.status,
+                    editor_task_queue::TaskStatus::Queued | editor_task_queue::TaskStatus::Running
+                )
+            })
+            .count();
         let is_agent_chat_open = self
             .state
             .dock_area
@@ -110,6 +120,49 @@ impl PulsarApp {
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_drawer(window, cx);
                                     })),
+                            )
+                            .child(
+                                div()
+                                    .relative()
+                                    .child(
+                                        Button::new("toggle-editor-tasks")
+                                            .ghost()
+                                            .label(if active_task_count > 0 {
+                                                format!("Tasks {active_task_count}")
+                                            } else {
+                                                "Tasks".to_string()
+                                            })
+                                            .icon(
+                                                Icon::new(IconName::TaskList)
+                                                    .size(px(16.))
+                                                    .text_color(if self.state.task_queue_open {
+                                                        cx.theme().primary
+                                                    } else {
+                                                        cx.theme().muted_foreground
+                                                    }),
+                                            )
+                                            .px_2()
+                                            .py_1()
+                                            .rounded(px(4.))
+                                            .when(self.state.task_queue_open, |button| {
+                                                button.bg(cx.theme().primary.opacity(0.15))
+                                            })
+                                            .tooltip("View editor tasks")
+                                            .on_click(cx.listener(|app, _, _, cx| {
+                                                app.state.task_queue_open = !app.state.task_queue_open;
+                                                cx.notify();
+                                            })),
+                                    )
+                                    .when(self.state.task_queue_open, |container| {
+                                        container.child(
+                                            div()
+                                                .absolute()
+                                                .bottom(px(30.))
+                                                .left_0()
+                                                .z_index(100)
+                                                .child(self.state.task_queue_panel.clone()),
+                                        )
+                                    }),
                             )
                             .child(
                                 Button::new("toggle-problems")

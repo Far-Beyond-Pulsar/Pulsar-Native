@@ -14,6 +14,7 @@ mod radial_menu;
 mod render;
 mod script_problems;
 mod state;
+mod task_queue_panel;
 mod tab_management;
 mod window_management;
 
