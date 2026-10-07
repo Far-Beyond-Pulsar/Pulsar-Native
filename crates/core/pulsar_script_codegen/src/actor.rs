@@ -159,12 +159,12 @@ pub fn generate_actor(
             let _ = write!(
                 init_body,
                 r#"        if pulsar_world_registry::instances::resolve_instance(world, entity, "{class}", 0).is_none() {{
-            let record = pulsar_world_registry::pulsar_scene_model::ComponentInstance {{
-                class_name: "{class}".to_owned(),
-                enabled: true,
-                data: serde_json::from_str::<serde_json::Value>("{json}").unwrap_or_else(|_| serde_json::json!({{}})),
-            }};
-            if let Err(__e) = pulsar_world_registry::attach_record(world, entity, &record, None) {{
+            // The class default, decoded once for every actor of this class.
+            static __DEFAULT: pulsar_world_registry::instances::DefaultCache =
+                pulsar_world_registry::instances::DefaultCache::new();
+            if let Err(__e) = pulsar_world_registry::instances::attach_cached_default(
+                world, entity, "{class}", "{json}", &__DEFAULT,
+            ) {{
                 tracing::error!("blueprint `{ident}`: attaching {class} failed: {{__e}}");
             }}
         }}

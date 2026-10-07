@@ -143,8 +143,7 @@ pub enum SceneCommand {
     ///
     /// The single, unified write path for every component-property edit in
     /// the properties panel -- replaces calling
-    /// `SceneDatabase::update_live_component_property`/
-    /// `update_component_property` directly from UI code, so every such
+    /// `update_live_component_property` directly from UI code, so every such
     /// edit is undo-tracked and goes through exactly one code path.
     ///
     /// `component_index` identifies WHICH instance of `class_name` is being

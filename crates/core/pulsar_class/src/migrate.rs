@@ -39,6 +39,8 @@ pub struct MigrationReport {
     pub unresolved: Vec<(String, String)>,
     /// `(object id, class name)` bindings left in `blueprint_bindings`.
     pub kept_bindings: Vec<(String, String)>,
+    /// The component-record migrations ([`crate::records`]).
+    pub records: crate::records::RecordMigrations,
 }
 
 impl MigrationReport {
@@ -46,19 +48,23 @@ impl MigrationReport {
         !self.script_components.is_empty()
             || !self.bindings.is_empty()
             || !self.native_scripts.is_empty()
+            || self.records.changed()
     }
 }
 
 /// Which component list of an object is authoritative: the level's
 /// top-level `components[<id>]` entry when present, else the object's own
 /// `component_instances` (or the legacy `props.__component_instances`).
-enum ListRef {
+pub(crate) enum ListRef {
     TopLevel(String),
     Inline(usize),
     LegacyProps(usize),
 }
 
-fn component_list<'a>(root: &'a mut Value, list: &ListRef) -> Option<&'a mut Vec<Value>> {
+pub(crate) fn component_list_mut<'a>(
+    root: &'a mut Value,
+    list: &ListRef,
+) -> Option<&'a mut Vec<Value>> {
     match list {
         ListRef::TopLevel(id) => root.get_mut("components")?.get_mut(id)?.as_array_mut(),
         ListRef::Inline(i) => root
@@ -77,7 +83,7 @@ fn component_list<'a>(root: &'a mut Value, list: &ListRef) -> Option<&'a mut Vec
 
 /// Every component list of object `index` (all of them get converted, so a
 /// stale copy never resurrects a `ScriptComponent`), authoritative first.
-fn lists_of(root: &Value, index: usize, id: &str) -> Vec<ListRef> {
+pub(crate) fn component_lists_of(root: &Value, index: usize, id: &str) -> Vec<ListRef> {
     let mut lists = Vec::new();
     if root
         .get("components")
@@ -109,9 +115,9 @@ fn lists_of(root: &Value, index: usize, id: &str) -> Vec<ListRef> {
 /// The authoritative list of object `index`, created (as the object's
 /// `component_instances`) when it has none.
 fn authoritative_list<'a>(root: &'a mut Value, index: usize, id: &str) -> &'a mut Vec<Value> {
-    let list = lists_of(root, index, id).into_iter().next();
+    let list = component_lists_of(root, index, id).into_iter().next();
     match list {
-        Some(list) => component_list(root, &list).expect("list exists"),
+        Some(list) => component_list_mut(root, &list).expect("list exists"),
         None => {
             let object = root["objects"][index].as_object_mut().expect("object");
             object.insert("component_instances".into(), Value::Array(Vec::new()));
@@ -173,10 +179,10 @@ pub fn migrate_level_value(root: &mut Value, registry: &ClassRegistry) -> Migrat
 
     // ── ScriptComponent → ClassInstance ────────────────────────────────
     for (index, id) in object_ids.iter().enumerate() {
-        let lists = lists_of(root, index, id);
+        let lists = component_lists_of(root, index, id);
         let mut converted_class: Option<String> = None;
         for list in &lists {
-            let Some(entries) = component_list(root, list) else {
+            let Some(entries) = component_list_mut(root, list) else {
                 continue;
             };
             let has_instance = entries
@@ -374,6 +380,9 @@ pub fn migrate_level_value(root: &mut Value, registry: &ClassRegistry) -> Migrat
             map.insert("blueprint_bindings".into(), Value::Object(kept));
         }
     }
+
+    // ── Component records (Pulsar-Native#1035, Phase 3) ──────────────
+    report.records = crate::records::migrate_component_records(root);
     report
 }
 

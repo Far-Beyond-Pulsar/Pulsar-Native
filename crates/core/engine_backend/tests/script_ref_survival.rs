@@ -84,7 +84,6 @@ fn bridge_gizmo_get_mut(
     pulsar_world_registry::EngineClassMut::of::<BridgeGizmo>(world, entity)
 }
 
-
 fn bridge_gizmo_remove(world: &mut World, entity: pulsar_scenedb::Entity) {
     let _ = world.remove::<BridgeGizmo>(entity);
 }
@@ -94,7 +93,6 @@ fn noop_on_removed(
     _context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
 ) {
 }
-
 
 pulsar_world_registry::inventory::submit! {
     pulsar_world_registry::WorldComponentRegistration {
@@ -204,7 +202,7 @@ fn reference_survives_save_load_and_still_targets_the_intended_component() {
     assert_eq!(resolved.component_index, 0);
 
     resolved
-        .set_property(&mut world, "charge", serde_json::json!(42))
+        .set_property(&mut world, "charge", Box::new(42i32))
         .expect("writes");
 
     let door = world.entity_for("door").unwrap();
@@ -223,8 +221,12 @@ fn reference_survives_save_load_and_still_targets_the_intended_component() {
     let shared: SharedScene = Arc::new(RwLock::new(scene));
     let again = saved.resolve(&shared.read().world).unwrap();
     assert_eq!(
-        again.get_property(&shared.read().world, "charge").unwrap(),
-        serde_json::json!(42)
+        again
+            .get_property(&shared.read().world, "charge")
+            .unwrap()
+            .downcast_ref::<i32>()
+            .copied(),
+        Some(42)
     );
 }
 

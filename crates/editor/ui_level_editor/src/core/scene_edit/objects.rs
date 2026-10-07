@@ -13,10 +13,7 @@ use engine_backend::scene::{
 use pulsar_scenedb::{Entity, World};
 
 use super::components::{clear_components, get_component_class_names, replace_components};
-use super::{
-    find_script_path, static_mesh_component_json, ComponentInstance, ObjectId, SceneObjectData,
-    Transform,
-};
+use super::{find_script_path, ComponentInstance, ObjectId, SceneObjectData, Transform};
 
 // ── Read model ─────────────────────────────────────────────────────────────
 
@@ -263,7 +260,7 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
     // v2 scene objects may carry component instances inline. Preserve those
     // instances before the normal hydration pass; otherwise World-registered
     // components (notably StaticMeshComponent) never reach the live world.
-    let mut inline_components = obj
+    let inline_components = obj
         .component_instances
         .as_ref()
         .and_then(serde_json::Value::as_array)
@@ -287,23 +284,8 @@ pub fn add_object(world: &mut World, obj: SceneObjectData, parent: Option<Object
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    // A few older scene files projected StaticMeshComponent's asset path into
-    // `props` without a component-instances entry. Treat that as a load-time
-    // compatibility form so those scenes also get a typed component.
-    if inline_components.is_empty() {
-        if let Some(mesh_asset) = obj
-            .props
-            .get("mesh_asset")
-            .and_then(serde_json::Value::as_str)
-            .filter(|path| !path.trim().is_empty())
-        {
-            inline_components.push(ComponentInstance {
-                class_name: "StaticMeshComponent".to_string(),
-                enabled: true,
-                data: static_mesh_component_json(mesh_asset),
-            });
-        }
-    }
+    // (A bare `props.mesh_asset` in an older level becomes a mesh component
+    // in the load migration, `pulsar_class::records`, not here.)
     let blueprint_script_path = (obj.object_type == ObjectType::Blueprint)
         .then(|| find_script_path(&obj.props, obj.component_instances.as_ref()))
         .filter(|path| !path.trim().is_empty());

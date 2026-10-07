@@ -16,6 +16,7 @@
 //! | [`template`] | a class's slot defaults decoded once; instances clone them |
 //! | [`world`] | [`world::instantiate_class`] and friends, on a SceneDB `World` |
 //! | [`migrate`] | level-file migration from `ScriptComponent`/`blueprint_bindings` |
+//! | [`records`] | component-record migrations at load (legacy shapes, projected props) |
 //! | [`native_script`] | [`NativeScriptComponent`]: binds an object to a Rust script actor |
 //!
 //! Placed instances *reference* their class: a level stores the class GUID
@@ -32,6 +33,7 @@ pub mod native_script;
 pub mod overrides;
 pub mod plan;
 pub mod prefab;
+pub mod records;
 pub mod registry;
 pub mod template;
 pub mod world;

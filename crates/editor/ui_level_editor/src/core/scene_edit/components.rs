@@ -7,8 +7,8 @@
 //! the object keeps the ordered list (see
 //! [`engine_backend::scene::attachments`]). The editor addresses an instance
 //! by its position in that list. JSON appears only at boundaries: the
-//! records [`get_components`] returns (files, history, tools) and the data
-//! an attach or [`update_component`] decodes once. A class this build does
+//! records [`get_components`] returns (files, tools), the data
+//! [`add_component`] decodes once, and unresolved payloads. A class this build does
 //! not register is attached as an explicit unresolved instance that keeps
 //! its payload. Every function takes the `World` to work on.
 
@@ -488,53 +488,37 @@ pub fn set_component_parent(
 
 // ── Edits ──────────────────────────────────────────────────────────────────
 
-/// Replace the value of the component at `component_index` with `data`,
-/// decoded once. Nothing is written when it does not decode.
-pub fn update_component(world: &mut World, object_id: &str, component_index: usize, data: Value) {
-    profiling::profile_scope!("scene_edit::update_component");
-    let Some(instance) = instance_at(world, object_id, component_index) else {
-        return;
-    };
-    let class_name = attach::meta(world, instance).map(|meta| meta.class_name.clone());
-    match pulsar_world_registry::set_instance_data(world, instance, &data) {
-        Ok(()) => {
-            if let Some(class_name) = class_name {
-                record_structural_change(object_id, &class_name);
-            }
-        }
-        Err(error) => tracing::warn!(
-            "[UPDATE_COMPONENT] {object_id} idx={component_index} not updated: {error}"
-        ),
-    }
-}
-
-/// Set one top-level field of the data of the `class_name` instance at
-/// `component_index`.
-///
-/// For classes with no reflected setter here (plugin-only classes, whose
-/// value is an unresolved payload): a typed class is edited through
-/// [`update_live_component_property`], which handles `#[sub_props]`
-/// nesting. See Pulsar-Native#561.
-pub fn update_component_property(
+/// Set one top-level field of the payload of the unresolved `class_name`
+/// instance at `component_index` (a class this build does not register, or
+/// data that did not decode): the payload is the only copy of its values.
+/// Nothing is decoded; a live instance is edited through
+/// [`update_live_component_property`]. Returns whether the payload changed.
+pub fn set_unresolved_property(
     world: &mut World,
     object_id: &str,
     class_name: &str,
     component_index: usize,
     prop_name: &str,
     new_value: Value,
-) {
-    let Some(record) = instance_at(world, object_id, component_index)
-        .and_then(|instance| pulsar_world_registry::instance_record(world, instance, None))
-        .filter(|record| record.class_name == class_name)
-    else {
-        return;
+) -> bool {
+    let Some(instance) = instance_at(world, object_id, component_index).filter(|instance| {
+        attach::meta(world, *instance).is_some_and(|m| m.class_name == class_name)
+    }) else {
+        return false;
     };
-    let mut data = record.data;
-    if let Some(obj) = data.as_object_mut() {
-        obj.insert(prop_name.to_string(), new_value);
+    let Some(mut unresolved) = world.get::<attach::UnresolvedComponent>(instance).cloned() else {
+        return false;
+    };
+    let Some(map) = unresolved.data.as_object_mut() else {
+        return false;
+    };
+    if map.get(prop_name) == Some(&new_value) {
+        return false;
     }
-    update_component(world, object_id, component_index, data);
+    map.insert(prop_name.to_string(), new_value);
+    world.insert(instance, unresolved);
     record_property_change(object_id, class_name, prop_name);
+    true
 }
 
 /// Edit a single property on ONE specific component instance, correctly handling

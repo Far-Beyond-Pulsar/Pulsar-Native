@@ -10,6 +10,8 @@ use pulsar_scenedb::World;
 use super::classes::{self, project_registry};
 use super::{ComponentInstance, ObjectId, SceneObjectData};
 
+use engine_backend::scene::SceneWorldExt;
+
 use super::components::{get_components, replace_components};
 use super::objects::{add_object, clear, get_all_objects};
 use super::{LevelEditorCameraState, LevelEditorFileState, LevelFile, LevelMetadata};
@@ -225,6 +227,51 @@ fn unmigrated_bindings(
     bindings
 }
 
+/// Report component data of a registered class that does not decode even
+/// after the load migrations. The editor keeps it as an unresolved payload
+/// (so saving loses nothing and it can be fixed by hand); the runtime
+/// refuses such a level, so it is a warning here, never silent.
+fn report_invalid_known_data(world: &World, path: &Path) {
+    for (instance, (meta, unresolved)) in world.query::<(
+        &engine_backend::scene::attachments::ComponentMeta,
+        &engine_backend::scene::attachments::UnresolvedComponent,
+    )>() {
+        if pulsar_world_registry::component_id_for_class(&meta.class_name).is_none() {
+            continue;
+        }
+        let object = engine_backend::scene::attachments::owner_of(world, instance)
+            .and_then(|owner| world.stable_id_of(owner))
+            .map(|id| id.to_string())
+            .unwrap_or_default();
+        tracing::warn!(
+            object = %object,
+            class = %meta.class_name,
+            path = %path.display(),
+            "Component data is invalid for its class and was kept unresolved (the runtime will refuse this level): {}",
+            unresolved.reason
+        );
+    }
+}
+
+/// Say what the load-time record migrations changed (`pulsar_class::records`).
+pub(crate) fn log_record_migrations(
+    records: &pulsar_class::records::RecordMigrations,
+    path: &Path,
+) {
+    for id in &records.material_overrides {
+        tracing::info!(object = %id, path = %path.display(), "Folded MaterialOverrideComponent into the mesh's material slots");
+    }
+    for (id, class) in &records.nested {
+        tracing::info!(object = %id, class = %class, path = %path.display(), "Rewrote flat component data to the class's shape");
+    }
+    for id in &records.mesh_asset_props {
+        tracing::info!(object = %id, path = %path.display(), "Turned props.mesh_asset into a StaticMeshComponent");
+    }
+    for (id, keys) in &records.stripped_props {
+        tracing::info!(object = %id, path = %path.display(), ?keys, "Removed component copies from object props");
+    }
+}
+
 /// Load a scene from a JSON level file (replaces the current scene).
 pub fn load_from_file<P: AsRef<Path>>(world: &mut World, path: P) -> Result<(), String> {
     load_from_file_with_editor_camera(world, path).map(|_| ())
@@ -263,6 +310,7 @@ pub(crate) fn load_with_classes<P: AsRef<Path>>(
             path.as_ref().display()
         );
     }
+    log_record_migrations(&report.records, path.as_ref());
     let level_file: LevelFile =
         serde_json::from_value(value).map_err(|e| format!("Failed to parse JSON: {e}"))?;
     if !level_file.version.starts_with("2.") && !level_file.version.starts_with("1.") {
@@ -285,6 +333,8 @@ pub(crate) fn load_with_classes<P: AsRef<Path>>(
             replace_components(world, &object_id, &components);
         }
     }
+
+    report_invalid_known_data(world, path.as_ref());
 
     let unresolved = classes::rebuild_all_instances(world, registry);
     if !unresolved.is_empty() {
