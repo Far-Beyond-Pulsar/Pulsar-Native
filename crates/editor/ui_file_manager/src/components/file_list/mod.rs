@@ -6,16 +6,15 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use ui::{
-    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt,
-    VirtualListScrollHandle,
     button::{Button, ButtonGroup, ButtonVariants as _},
     h_flex,
     input::{InputState, TextInput},
     menu::context_menu::ContextMenuExt,
     popup_menu::PopupMenuExt as _,
-    resizable::{ResizableState, h_resizable, resizable_panel},
+    resizable::{h_resizable, resizable_panel, ResizableState},
     scroll::{Scrollbar, ScrollbarState},
-    v_flex, v_virtual_list,
+    v_flex, v_virtual_list, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _,
+    StyledExt, VirtualListScrollHandle,
 };
 
 use crate::components::commit_picker::{CommitPicker, CommitSelected};
@@ -432,6 +431,16 @@ pub fn render_file_content(
     w: &mut Window,
     cx: &mut Context<FileManagerDrawer>,
 ) -> impl IntoElement {
+    // Queue thumbnails for every asset in the opened folder before applying
+    // the UI filter or virtualizing rows. This keeps offscreen and filtered
+    // items from being skipped by the editor task queue.
+    if let Some(folder) = d.selected_folder.clone() {
+        for item in d.cached_items_for_folder(&folder) {
+            if !item.is_folder && !item.is_ghost {
+                d.ensure_thumbnail(&item.path, cx);
+            }
+        }
+    }
     let items = d.get_filtered_items();
     let hc = d.clipboard.is_some();
     let sf = d.selected_folder.clone();

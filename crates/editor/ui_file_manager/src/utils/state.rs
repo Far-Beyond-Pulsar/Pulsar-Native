@@ -127,7 +127,7 @@ impl FileManagerDrawer {
         self.directory_cache_dirty = true;
     }
 
-    fn cached_items_for_folder(&mut self, f: &Path) -> Vec<FileItem> {
+    pub(crate) fn cached_items_for_folder(&mut self, f: &Path) -> Vec<FileItem> {
         let dirty = self
             .directory_cache
             .as_ref()
