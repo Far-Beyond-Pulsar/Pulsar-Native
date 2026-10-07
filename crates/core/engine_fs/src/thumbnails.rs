@@ -29,7 +29,7 @@ use std::time::{Duration, Instant};
 /// Thumbnail output size in pixels (square).
 const THUMB_PX: u32 = 128;
 /// Bump when thumbnail output changes so stale cache entries regenerate.
-const THUMBNAIL_RENDER_VERSION: u32 = 5;
+const THUMBNAIL_RENDER_VERSION: u32 = 6;
 /// Maximum number of decoded images held in the memory cache.
 const MEM_CACHE_MAX: usize = 512;
 /// How long an entry can go un-accessed before the eviction thread removes it.
@@ -496,32 +496,43 @@ fn hash_base_color_sidecar(path: &Path, hasher: &mut DefaultHasher) {
 }
 
 fn generate_rgba(abs_path: &Path, ext: &str) -> Option<image::RgbaImage> {
-    if let Some(renderer) = FORMAT_RENDERERS
+    let mut rendered = if let Some(renderer) = FORMAT_RENDERERS
         .get()
         .and_then(|renderers| renderers.lock().get(ext).copied())
     {
-        return std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| renderer(abs_path)))
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| renderer(abs_path)))
             .unwrap_or_else(|_| {
                 tracing::error!("thumbnail renderer panicked for {:?}", abs_path);
                 None
-            });
-    }
+            })
+    } else {
+        match ext {
+            "png" | "jpg" | "jpeg" | "webp" | "tga" | "bmp" | "gif" => {
+                let img = image::open(abs_path)
+                    .map_err(|e| tracing::debug!("image load failed for {:?}: {}", abs_path, e))
+                    .ok()?;
+                Some(
+                    img.resize(THUMB_PX, THUMB_PX, image::imageops::FilterType::Triangle)
+                        .into_rgba8(),
+                )
+            }
+            _ => {
+                tracing::warn!("no thumbnail renderer registered for {:?}", abs_path);
+                None
+            }
+        }
+    }?;
 
-    match ext {
-        "png" | "jpg" | "jpeg" | "webp" | "tga" | "bmp" | "gif" => {
-            let img = image::open(abs_path)
-                .map_err(|e| tracing::debug!("image load failed for {:?}: {}", abs_path, e))
-                .ok()?;
-            Some(
-                img.resize(THUMB_PX, THUMB_PX, image::imageops::FilterType::Triangle)
-                    .into_rgba8(),
-            )
-        }
-        _ => {
-            tracing::warn!("no thumbnail renderer registered for {:?}", abs_path);
-            None
-        }
+    // Thumbnails are displayed over a uniform black canvas. Flatten alpha here
+    // so transparent source images and renderer outputs use that same matte.
+    for pixel in rendered.pixels_mut() {
+        let alpha = u16::from(pixel[3]);
+        pixel[0] = ((u16::from(pixel[0]) * alpha + 127) / 255) as u8;
+        pixel[1] = ((u16::from(pixel[1]) * alpha + 127) / 255) as u8;
+        pixel[2] = ((u16::from(pixel[2]) * alpha + 127) / 255) as u8;
+        pixel[3] = 255;
     }
+    Some(rendered)
 }
 
 #[cfg(test)]
