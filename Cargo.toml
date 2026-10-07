@@ -169,6 +169,7 @@ agent_provider_cohere              = { path = "crates/agent-providers/agent_prov
 # ---------- Subsystem Crates ----------
 pulsar_physics        = { path = "crates/subsystems/pulsar_physics" }
 helio_component       = { path = "crates/renderer/helio/crates/helio-component" }
+helio-mats            = { path = "crates/renderer/helio/crates/helio-mats" }
 
 
 # ---------- Editor Crates ----------

@@ -2126,6 +2126,32 @@ dependencies = [
 
 [[package]]
 name = "criterion"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2b12d017a929603d80db1831cd3a24082f8137ce19c69e6447f54f5fc8d692f"
+dependencies = [
+ "anes",
+ "cast",
+ "ciborium",
+ "clap",
+ "criterion-plot 0.5.0",
+ "is-terminal",
+ "itertools 0.10.5",
+ "num-traits",
+ "once_cell",
+ "oorandom",
+ "plotters",
+ "rayon",
+ "regex",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "tinytemplate",
+ "walkdir",
+]
+
+[[package]]
+name = "criterion"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "950046b2aa2492f9a536f5f4f9a3de7b9e2476e575e05bd6c333371add4d98f3"
@@ -2135,7 +2161,7 @@ dependencies = [
  "cast",
  "ciborium",
  "clap",
- "criterion-plot",
+ "criterion-plot 0.8.2",
  "itertools 0.13.0",
  "num-traits",
  "oorandom",
@@ -2148,6 +2174,16 @@ dependencies = [
  "tinytemplate",
  "tokio",
  "walkdir",
+]
+
+[[package]]
+name = "criterion-plot"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1"
+dependencies = [
+ "cast",
+ "itertools 0.10.5",
 ]
 
 [[package]]
@@ -3041,6 +3077,7 @@ dependencies = [
  "helio",
  "helio-asset-compat",
  "helio-default-graphs",
+ "helio-mats",
  "helio-pass-billboard",
  "helio-pass-decal",
  "helio-pass-forward-lit",
@@ -3057,6 +3094,7 @@ dependencies = [
  "parking_lot",
  "pollster 0.4.0",
  "profiling 0.1.0",
+ "psgc",
  "pulsar_class",
  "pulsar_events",
  "pulsar_lsp",
@@ -4426,6 +4464,7 @@ dependencies = [
 name = "graphy"
 version = "0.1.0"
 dependencies = [
+ "criterion 0.5.1",
  "quote",
  "rayon",
  "rustc-hash 2.1.3",
@@ -4435,6 +4474,7 @@ dependencies = [
  "syn 2.0.119",
  "thiserror 1.0.69",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -5813,6 +5853,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "is-terminal"
+version = "0.4.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
+dependencies = [
+ "hermit-abi",
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "is-wsl"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5827,6 +5878,15 @@ name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
+
+[[package]]
+name = "itertools"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
+dependencies = [
+ "either",
+]
 
 [[package]]
 name = "itertools"
@@ -9050,6 +9110,7 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tracing",
+ "tracing-subscriber",
  "wgsl_std",
 ]
 
@@ -9121,7 +9182,7 @@ dependencies = [
  "clap",
  "colored 3.1.1",
  "config",
- "criterion",
+ "criterion 0.8.2",
  "dashmap",
  "ed25519-dalek 3.0.0",
  "futures-util",
@@ -14860,6 +14921,7 @@ dependencies = [
  "linkme",
  "serde",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
