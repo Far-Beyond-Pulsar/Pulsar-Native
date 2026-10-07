@@ -23,7 +23,7 @@ pub struct VoxelSculptDomain {
     /// Edit exactly one block per click.
     pub single_block: bool,
     /// Material palette favorites, retained across mode switches in this editor.
-    favorite_materials: u16,
+    favorite_materials: u32,
 }
 
 impl Default for VoxelSculptDomain {
@@ -34,17 +34,18 @@ impl Default for VoxelSculptDomain {
 
 pub const MIN_RADIUS_M: f32 = 0.1;
 pub const MAX_RADIUS_M: f32 = 32.0;
-/// Solid terrain material ids (see `helio_component::voxel_world::material`).
-pub const MATERIALS: std::ops::RangeInclusive<u32> = 1..=15;
+/// Solid terrain material ids (see `helio_component::voxel_world::material`):
+/// every built-in material, shared by all terrain programs.
+pub const MATERIALS: std::ops::RangeInclusive<u32> = 1..=helio_component::voxel_world::material::COUNT - 1;
 
 impl VoxelSculptDomain {
     pub fn is_favorite(&self, material: u32) -> bool {
-        MATERIALS.contains(&material) && self.favorite_materials & (1u16 << material) != 0
+        MATERIALS.contains(&material) && self.favorite_materials & (1u32 << material) != 0
     }
 
     pub fn toggle_favorite(&mut self, material: u32) {
         if MATERIALS.contains(&material) {
-            self.favorite_materials ^= 1u16 << material;
+            self.favorite_materials ^= 1u32 << material;
         }
     }
 

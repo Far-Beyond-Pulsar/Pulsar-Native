@@ -553,6 +553,9 @@ pub struct HelioRenderer {
     voxel_brush_picks: std::collections::VecDeque<PendingBrush>,
     /// Camera height above the voxel ground below it, from the last frame.
     voxel_altitude: Option<f64>,
+    /// Log why the viewport is not idle (`PULSAR_VOXEL_ACTIVITY`).
+    activity_log: bool,
+    last_activity_log: Instant,
     last_voxel_errors: Vec<String>,
     /// `PULSAR_VOXEL_STATS`: log voxel streaming diagnostics twice a second.
     voxel_stats_log: bool,
@@ -622,6 +625,8 @@ impl HelioRenderer {
             voxel_altitude: None,
             last_voxel_errors: Vec::new(),
             voxel_stats_log: std::env::var_os("PULSAR_VOXEL_STATS").is_some(),
+            activity_log: std::env::var_os("PULSAR_VOXEL_ACTIVITY").is_some(),
+            last_activity_log: Instant::now(),
             last_voxel_stats_log: Instant::now(),
             native_voxel_flight: super::native_voxel_flight::NativeVoxelFlight::new(),
             native_sculpt: std::env::var("PULSAR_VOXEL_NATIVE_SCULPT").ok().filter(|v| v == "1" || v == "far").map(|v| NativeSculpt::new(v == "far")),
@@ -669,6 +674,17 @@ impl HelioRenderer {
     }
 
     /// World-space forward, right and up of the editor camera.
+    /// Height of the camera above the voxel ground below it, when a voxel
+    /// terrain is shown (what the camera's speed scales with).
+    pub fn voxel_altitude(&self) -> Option<f64> {
+        self.voxel_altitude
+    }
+
+    /// The camera's view direction in world space.
+    pub fn camera_forward(&self) -> Vec3 {
+        self.camera_basis().0
+    }
+
     fn camera_basis(&self) -> (Vec3, Vec3, Vec3) {
         basis(self.cam_frame, self.cam_yaw, self.cam_pitch)
     }
@@ -986,9 +1002,30 @@ impl HelioRenderer {
             || has_pending_scene
             || has_pending_editor
             || self.voxel_backends.needs_frame(&inner.renderer)
+            // Brush samples wait for GPU picks, which only rendered frames
+            // answer: idling mid-drag stalled the stroke (no edits until
+            // something else rendered).
+            || !self.voxel_brush_picks.is_empty()
             || self.gizmo_dirty
             || viewport_resized
             || self.reset_taa_next_frame;
+        if self.activity_log && temporal_activity && now.duration_since(self.last_activity_log).as_secs_f64() >= 1.0 {
+            // Why the viewport keeps rendering (PULSAR_VOXEL_ACTIVITY=1).
+            self.last_activity_log = now;
+            tracing::info!(
+                camera_moving = !camera_stopped,
+                flight = self.native_voxel_flight.force_frames(),
+                scene = has_pending_scene,
+                scene_revision,
+                editor = has_pending_editor,
+                voxel = self.voxel_backends.needs_frame(&inner.renderer),
+                brush_picks = self.voxel_brush_picks.len(),
+                gizmo = self.gizmo_dirty,
+                resized = viewport_resized,
+                reset_taa = self.reset_taa_next_frame,
+                "VOXEL_ACTIVITY"
+            );
+        }
         self.temporal_settling.observe_activity(
             inner.renderer.find_pass::<helio_pass_tsr::TsrPass>().is_some(),
             temporal_activity,
