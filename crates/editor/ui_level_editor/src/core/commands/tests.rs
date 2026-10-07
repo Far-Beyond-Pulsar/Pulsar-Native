@@ -559,4 +559,145 @@ mod undo_redo_tests {
         assert_eq!(payload.data, serde_json::json!({ "kept": [1, 2, 3] }));
         assert_ne!(after[1].0, unresolved, "re-attached as a new entity");
     }
+
+    // Pulsar-Native#1035, Phase 3: component commands carry typed values
+    // and report a change only when one happened.
+    #[test]
+    fn typed_component_commands_are_undoable_and_report_no_ops() {
+        use engine_backend::scene::{attachments, SceneWorldExt};
+        let mut state = LevelEditorState::new();
+        let mut light = helio_component::LightComponent::default();
+        light.intensity.intensity = 25.0;
+        let added = execute_command(
+            &mut state,
+            SceneCommand::AddObjectWithComponents {
+                data: object("Lamp"),
+                parent_id: None,
+                components: vec![
+                    super::super::TypedComponent::new(light.clone()),
+                    super::super::TypedComponent {
+                        enabled: false,
+                        ..super::super::TypedComponent::new(light)
+                    },
+                ],
+            },
+        );
+        let id = added.affected_ids[0].clone();
+        let instances = |state: &LevelEditorState| {
+            let world = state.scene.world();
+            let owner = world.entity_for(&id).unwrap();
+            attachments::instances(&world, owner)
+                .into_iter()
+                .map(|instance| {
+                    (
+                        attachments::is_enabled(&world, instance),
+                        world
+                            .get::<helio_component::LightComponent>(instance)
+                            .map(|light| light.intensity.intensity),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            instances(&state),
+            vec![(true, Some(25.0)), (false, Some(25.0))],
+            "attached typed, in order, enabled as asked"
+        );
+
+        // Class default when no value is given.
+        assert!(
+            execute_command(
+                &mut state,
+                SceneCommand::AddComponent {
+                    id: id.clone(),
+                    class_name: "LightComponent".into(),
+                    value: None,
+                },
+            )
+            .changed
+        );
+        assert_eq!(instances(&state)[2], (true, Some(1000.0)));
+
+        // A whole-value replacement keeps the instance and is undoable.
+        let mut brighter = helio_component::LightComponent::default();
+        brighter.intensity.intensity = 50.0;
+        assert!(
+            execute_command(
+                &mut state,
+                SceneCommand::SetComponentData {
+                    id: id.clone(),
+                    component_index: 0,
+                    data: super::super::ComponentData::Value(Box::new(brighter)),
+                },
+            )
+            .changed
+        );
+        assert_eq!(instances(&state)[0], (true, Some(50.0)));
+        assert!(state.scene.undo());
+        assert_eq!(instances(&state)[0], (true, Some(25.0)));
+
+        // A value of another class is refused; so is an unresolved payload
+        // for a live instance.
+        for data in [
+            super::super::ComponentData::Value(Box::new(7_u32)),
+            super::super::ComponentData::Unresolved(serde_json::json!({})),
+        ] {
+            assert!(
+                !execute_command(
+                    &mut state,
+                    SceneCommand::SetComponentData {
+                        id: id.clone(),
+                        component_index: 0,
+                        data,
+                    },
+                )
+                .changed
+            );
+        }
+
+        // No-ops push nothing.
+        for no_op in [
+            SceneCommand::SetComponentEnabled {
+                id: id.clone(),
+                component_index: 1,
+                enabled: false,
+            },
+            SceneCommand::ReorderComponent {
+                id: id.clone(),
+                from_index: 1,
+                to_index: 1,
+            },
+            SceneCommand::SetComponentParent {
+                id: id.clone(),
+                component_index: 1,
+                parent_index: None,
+            },
+            SceneCommand::RemoveComponent {
+                id: id.clone(),
+                component_index: 9,
+            },
+        ] {
+            assert!(!execute_command(&mut state, no_op).changed);
+        }
+        assert!(
+            execute_command(
+                &mut state,
+                SceneCommand::SetComponentParent {
+                    id: id.clone(),
+                    component_index: 1,
+                    parent_index: Some(0),
+                },
+            )
+            .changed
+        );
+
+        // Undo the parent link and the added default, then the object with
+        // both of its components in one step.
+        assert!(state.scene.undo());
+        assert!(state.scene.undo());
+        assert_eq!(instances(&state).len(), 2);
+        assert!(state.scene.undo());
+        assert!(crate::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
+        assert!(!state.scene.can_undo());
+    }
 }

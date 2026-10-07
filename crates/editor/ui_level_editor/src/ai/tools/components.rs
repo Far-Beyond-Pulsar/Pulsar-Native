@@ -3,7 +3,8 @@
 //! Component data is the class's whole-instance JSON -- the shape
 //! `EngineClass::to_json` produces, `#[sub_props]` groups included as nested
 //! objects. Edits are JSON merge patches over that shape, validated against
-//! the class before they are written.
+//! the class and decoded here, at the tool boundary: the commands these
+//! tools issue carry typed values.
 
 use super::*;
 use pulsar_reflection::{EngineClass, REGISTRY, RUNTIME_TYPE_REGISTRY};
@@ -125,6 +126,50 @@ pub(super) fn build_component_data(class_name: &str, properties: Option<&Value>)
         None => validate(class_name, &data)?,
     }
     Ok(data)
+}
+
+/// Decode `data` as a value of the world component class `class_name`, at
+/// this boundary.
+pub(super) fn decode_component(
+    class_name: &str,
+    data: &Value,
+) -> Result<Box<dyn std::any::Any + Send + Sync>> {
+    match pulsar_world_registry::decode_world_component_value(class_name, data) {
+        Some(Ok(value)) => Ok(value),
+        Some(Err(error)) => bail!(
+            "Data does not fit {class_name}: {error}. Its fields (path, type): {}",
+            field_list(data)
+        ),
+        None => bail!("{class_name} cannot be attached to scene objects in this build"),
+    }
+}
+
+/// The data of the component at `index` (without record metadata), and
+/// whether it is an unresolved payload rather than a live value.
+fn component_data(world: &World, id: &str, index: usize) -> Result<(String, Value, bool)> {
+    use engine_backend::scene::attachments;
+    let instance = scene_edit::components::instance_at(world, id, index)
+        .ok_or_else(|| anyhow!("Component {index} vanished"))?;
+    let class_name = attachments::meta(world, instance)
+        .map(|meta| meta.class_name.clone())
+        .ok_or_else(|| anyhow!("Component {index} vanished"))?;
+    if let Some(unresolved) = world.get::<attachments::UnresolvedComponent>(instance) {
+        return Ok((class_name, unresolved.data.clone(), true));
+    }
+    let data = pulsar_world_registry::instance_engine_class(world, instance)
+        .ok_or_else(|| anyhow!("Component {index} has no value"))?
+        .to_json()
+        .map_err(|error| anyhow!("{class_name} does not encode: {error}"))?;
+    Ok((class_name, data, false))
+}
+
+/// The `SetComponentData` payload for patched `data`.
+fn component_payload(class_name: &str, data: Value, unresolved: bool) -> Result<ComponentData> {
+    Ok(if unresolved {
+        ComponentData::Unresolved(data)
+    } else {
+        ComponentData::Value(decode_component(class_name, &data)?)
+    })
 }
 
 /// Index of the addressed component: `component_index` wins, otherwise the
@@ -289,11 +334,12 @@ pub fn level_editor_add_component(
     properties: Option<Value>,
 ) -> Result<Value> {
     let data = build_component_data(&class_name, properties.as_ref())?;
+    let value = decode_component(&class_name, &data)?;
     run(ctx, &id.clone(), |_| {
         Ok(SceneCommand::AddComponent {
             id,
             class_name,
-            data,
+            value: Some(value),
         })
     })
 }
@@ -326,16 +372,12 @@ pub fn level_editor_set_component_properties(
     }
     run(ctx, &id.clone(), |world| {
         let index = resolve_index(world, &id, component_index, class_name.as_deref())?;
-        let component = scene_edit::components::get_components(world, &id)
-            .into_iter()
-            .nth(index)
-            .ok_or_else(|| anyhow!("Component {index} vanished"))?;
-        let mut data = component.data;
-        patch_component(&component.class_name, &mut data, &properties)?;
+        let (class_name, mut data, unresolved) = component_data(world, &id, index)?;
+        patch_component(&class_name, &mut data, &properties)?;
         Ok(SceneCommand::SetComponentData {
             id,
             component_index: index,
-            data,
+            data: component_payload(&class_name, data, unresolved)?,
         })
     })
 }
@@ -396,9 +438,7 @@ pub fn level_editor_revert_component_property(
                 field_list(&default)
             )
         })?;
-        let mut data = scene_edit::components::get_components(world, &id)
-            .swap_remove(index)
-            .data;
+        let (_, mut data, unresolved) = component_data(world, &id, index)?;
         let slot = data
             .pointer_mut(&pointer)
             .ok_or_else(|| anyhow!("Component data has no field `{property}`"))?;
@@ -406,7 +446,7 @@ pub fn level_editor_revert_component_property(
         Ok(SceneCommand::SetComponentData {
             id,
             component_index: index,
-            data,
+            data: component_payload(&class_name, data, unresolved)?,
         })
     })
 }

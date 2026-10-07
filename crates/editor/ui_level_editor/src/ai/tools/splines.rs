@@ -127,13 +127,14 @@ pub fn level_editor_create_spline(
         children: vec![],
         scene_path: String::new(),
         props: Default::default(),
-        component_instances: splines::component_instances(&curve),
+        component_instances: None,
     };
     let result = execute_command(
         &mut state,
-        SceneCommand::AddObject {
+        SceneCommand::AddObjectWithComponents {
             data: object,
             parent_id,
+            components: vec![TypedComponent::new(curve.clone())],
         },
     );
     let id = result

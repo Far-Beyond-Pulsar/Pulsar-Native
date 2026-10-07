@@ -86,31 +86,33 @@ impl HelioViewport {
                     component_instances: None,
                 };
 
+                // The object and its component are one undo step.
+                let components = component_for_asset(&kind)
+                    .filter(|registration| REGISTRY.has_class(registration.class_name))
+                    .map(|registration| TypedComponent {
+                        class_name: registration.class_name.to_string(),
+                        enabled: true,
+                        value: (registration.value_for)(&asset_path),
+                    })
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                let has_component = !components.is_empty();
                 let add_result = execute_command(
                     &mut state,
-                    SceneCommand::AddObject {
+                    SceneCommand::AddObjectWithComponents {
                         data: mesh_object,
                         parent_id: None,
+                        components,
                     },
                 );
 
-                if let Some(id) = add_result.affected_ids.first() {
-                    if let Some((class_name, data_field)) = component_class_for_asset(&kind) {
-                        if REGISTRY.has_class(class_name) {
-                            crate::scene_edit::components::add_component(
-                                &mut state.scene.world_mut(),
-                                id,
-                                class_name.to_string(),
-                                serde_json::json!({ data_field: asset_path }),
-                            );
-                            let _ = execute_command(
-                                &mut state,
-                                SceneCommand::SelectObject {
-                                    id: Some(id.clone()),
-                                },
-                            );
-                        }
-                    }
+                if let (Some(id), true) = (add_result.affected_ids.first(), has_component) {
+                    let _ = execute_command(
+                        &mut state,
+                        SceneCommand::SelectObject {
+                            id: Some(id.clone()),
+                        },
+                    );
                 }
             }
             AssetKind::Blueprint => {

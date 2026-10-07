@@ -324,8 +324,9 @@ pub use instances::{
     attach_component, attach_record, attach_record_or_unresolved, attach_records,
     attach_unresolved, attach_value, component_metadata_records, component_records,
     duplicate_instance, duplicate_instances, instance_engine_class, instance_metadata_record,
-    instance_record, replace_records, restore_instances, set_instance_data, snapshot_instance,
-    snapshot_instances, AttachError, ComponentPayload, InstanceSnapshot, InstanceValue,
+    instance_record, replace_records, restore_instances, set_instance_data, set_instance_value,
+    snapshot_instance, snapshot_instances, AttachError, ComponentPayload, InstanceSnapshot,
+    InstanceValue,
 };
 pub use marshal::{any_to_json, json_to_any};
 pub use values::{
