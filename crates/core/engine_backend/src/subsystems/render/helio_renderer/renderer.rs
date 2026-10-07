@@ -142,7 +142,10 @@ fn native_frame_camera(eye: DVec3, forward: Vec3, up: Vec3, aspect: f32, near: f
 const CAMERA_IDLE_EPSILON: f32 = 0.001;
 
 /// Finish temporal reconstruction after activity stops, then return to idle.
-const TEMPORAL_SETTLING_FRAMES: u8 = 32;
+/// TSR accumulates history at ~4 % a frame: three time constants (~75
+/// frames) bring a moving view's softer history to its still sharpness.
+/// After 32 frames the editor held a half-converged, blurred frame.
+const TEMPORAL_SETTLING_FRAMES: u8 = 90;
 
 #[derive(Default)]
 struct TemporalSettling {
@@ -1340,6 +1343,9 @@ impl HelioRenderer {
                 store.world.flush_gpu_mirror(&inner.queue);
                 crate::scene::end_change_window(&store.world);
             }
+            // Separates a wait on the scene lock (the UI thread editing)
+            // from the graph's own work in VOXEL_FRAME_PHASES.
+            phases.mark("flush");
             {
                 profiling::profile_scope!("helio_renderer_render");
                 match inner.renderer.render(&camera, &view) {
