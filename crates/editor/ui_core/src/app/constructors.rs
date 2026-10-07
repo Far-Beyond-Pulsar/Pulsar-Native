@@ -207,7 +207,6 @@ impl PulsarApp {
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
         let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
         let mission_control = cx.new(MissionControlPanel::new);
-        let task_queue_panel = cx.new(|cx| super::task_queue_panel::TaskQueuePanel::new(window, cx));
         tracing::info!("[PulsarApp] drawers: {}ms", t.elapsed().as_millis());
 
         // Register entity-capturing openers so the registry can open these windows
@@ -451,8 +450,6 @@ impl PulsarApp {
                 mission_control,
                 mission_control_open: false,
                 git_manager_open: false,
-                task_queue_open: false,
-                task_queue_panel,
                 task_queue_refresh_task: None,
                 center_tabs,
                 // script_editor: None, // Migrated to plugins
@@ -490,7 +487,8 @@ impl PulsarApp {
             },
         };
 
-        // Repaint the task button and visible task list when queue state changes.
+        // Repaint the task button when queue state changes. The task window owns
+        // its own refresh task while it is open.
         // The queue is editor-only; game/runtime work is never routed through it.
         let task_queue = editor_task_queue::global().clone();
         let task_queue_refresh_task = cx.spawn(async move |this, cx| {
@@ -501,7 +499,6 @@ impl PulsarApp {
                 if next_revision != revision {
                     revision = next_revision;
                     this.update(cx, |app, cx| {
-                        app.state.task_queue_panel.update(cx, |_, cx| cx.notify());
                         cx.notify();
                     });
                 }

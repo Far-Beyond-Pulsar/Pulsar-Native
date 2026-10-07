@@ -39,8 +39,6 @@ pub struct AppState {
     pub mission_control: Entity<MissionControlPanel>,
     pub mission_control_open: bool,
     pub git_manager_open: bool,
-    pub task_queue_open: bool,
-    pub task_queue_panel: Entity<super::task_queue_panel::TaskQueuePanel>,
     pub task_queue_refresh_task: Option<Task<()>>,
 
     // Editor tracking - commented out as these editors have been migrated to plugins

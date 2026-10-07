@@ -55,7 +55,11 @@ pub struct TaskDescription {
 }
 
 impl TaskDescription {
-    pub fn new(title: impl Into<String>, category: impl Into<String>, duration: TaskDuration) -> Self {
+    pub fn new(
+        title: impl Into<String>,
+        category: impl Into<String>,
+        duration: TaskDuration,
+    ) -> Self {
         Self {
             title: title.into(),
             category: category.into(),
@@ -150,7 +154,13 @@ impl TaskQueue {
         };
         {
             let mut state = self.inner.state.lock();
-            state.records.insert(id, TaskRecord { snapshot, cancelled });
+            state.records.insert(
+                id,
+                TaskRecord {
+                    snapshot,
+                    cancelled,
+                },
+            );
             state.pending.push(QueuedWork {
                 id,
                 duration: description.duration,
@@ -245,6 +255,13 @@ impl TaskContext {
         self.cancelled.load(Ordering::Acquire)
     }
 
+    /// Mark this task cancelled after its work observes a cancellation request
+    /// from its own domain-specific control (for example the build Cancel
+    /// button).
+    pub fn mark_cancelled(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+
     /// Set progress from 0.0 to 1.0 and an optional human-readable stage.
     pub fn report_progress(&self, progress: f32, detail: impl Into<String>) {
         let detail = detail.into();
@@ -281,7 +298,10 @@ fn worker_loop(inner: Arc<QueueInner>, duration: TaskDuration) {
                     .filter(|(_, work)| work.duration == duration)
                     .max_by_key(|(_, work)| {
                         let record = state.records.get(&work.id).expect("queued task record");
-                        (record.snapshot.starred, std::cmp::Reverse(record.snapshot.submitted_at))
+                        (
+                            record.snapshot.starred,
+                            std::cmp::Reverse(record.snapshot.submitted_at),
+                        )
                     })
                     .map(|(ix, _)| ix);
                 if let Some(ix) = next {

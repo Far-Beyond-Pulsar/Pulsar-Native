@@ -13576,6 +13576,7 @@ dependencies = [
 name = "ui_build"
 version = "0.1.0"
 dependencies = [
+ "editor_task_queue",
  "engine_backend",
  "engine_state",
  "gpui-ce",

@@ -90,9 +90,39 @@ pub fn run_configuration(config: &BuildConfiguration, window: &mut Window, cx: &
         let plan = plan.clone();
         let root = project_root.clone();
         let step_title = Arc::clone(&step_title);
-        std::thread::spawn(move || {
-            let _ = result_tx.send_blocking(execute(&plan, &root, &progress, &step_title));
-        });
+        let progress = progress.clone();
+        let task_title = name.clone();
+        editor_task_queue::global().submit(
+            editor_task_queue::TaskDescription::new(
+                format!("Build: {}", task_title),
+                "Build",
+                editor_task_queue::TaskDuration::Long,
+            ),
+            move |task| {
+                task.report_progress(0.0, "Starting build");
+                let result = execute(
+                    &plan,
+                    &root,
+                    &progress.with_task_context(task.clone()),
+                    &step_title,
+                );
+                match result {
+                    Ok(()) => {
+                        let _ = result_tx.send_blocking(Ok(()));
+                        Ok(())
+                    }
+                    Err(StepError::Failed(error)) => {
+                        let _ = result_tx.send_blocking(Err(StepError::Failed(error.clone())));
+                        Err(error)
+                    }
+                    Err(StepError::Cancelled) => {
+                        task.mark_cancelled();
+                        let _ = result_tx.send_blocking(Err(StepError::Cancelled));
+                        Err("Build cancelled".into())
+                    }
+                }
+            },
+        );
     }
 
     window.push_notification(

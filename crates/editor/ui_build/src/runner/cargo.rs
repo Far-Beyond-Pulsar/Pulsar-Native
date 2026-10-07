@@ -3,10 +3,11 @@
 use std::io::{BufRead as _, BufReader};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
+use editor_task_queue::TaskContext;
 use parking_lot::Mutex;
 
 use super::plan::Invocation;
@@ -30,6 +31,7 @@ pub struct Progress {
     status: Arc<Mutex<String>>,
     from: u32,
     to: u32,
+    task: Option<TaskContext>,
 }
 
 impl Progress {
@@ -39,7 +41,13 @@ impl Progress {
             status,
             from: 0,
             to: 100,
+            task: None,
         }
+    }
+
+    pub fn with_task_context(mut self, task: TaskContext) -> Self {
+        self.task = Some(task);
+        self
     }
 
     /// The same bar, restricted to `from..to` percent.
@@ -53,14 +61,19 @@ impl Progress {
 
     pub fn set(&self, internal: u32) {
         let span = self.to.saturating_sub(self.from);
-        self.pct.store(
-            self.from + internal.min(100) * span / 100,
-            Ordering::Relaxed,
-        );
+        let pct = self.from + internal.min(100) * span / 100;
+        self.pct.store(pct, Ordering::Relaxed);
+        if let Some(task) = &self.task {
+            task.report_progress(pct as f32 / 100.0, self.status.lock().clone());
+        }
     }
 
     pub fn status(&self, text: impl Into<String>) {
-        *self.status.lock() = text.into();
+        let text = text.into();
+        *self.status.lock() = text.clone();
+        if let Some(task) = &self.task {
+            task.report_progress(self.pct.load(Ordering::Relaxed) as f32 / 100.0, text);
+        }
     }
 }
 

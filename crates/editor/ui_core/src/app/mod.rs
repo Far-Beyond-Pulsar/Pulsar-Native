@@ -14,8 +14,8 @@ mod radial_menu;
 mod render;
 mod script_problems;
 mod state;
-mod task_queue_panel;
 mod tab_management;
+mod task_queue_panel;
 mod window_management;
 
 use gpui::{App, AppContext, Context, DismissEvent, Focusable, Window};
@@ -24,7 +24,7 @@ use ui_common::menu;
 use crate::actions::*;
 
 pub(crate) fn refresh_plugin_editor_settings(manager: &mut plugin_manager::PluginManager) {
-    use engine_state::settings::{ConfigValue, NS_EDITOR, global_config};
+    use engine_state::settings::{global_config, ConfigValue, NS_EDITOR};
     use plugin_editor_api::{EditorSettingValue, EditorSettingsSnapshot};
 
     let settings = global_config()

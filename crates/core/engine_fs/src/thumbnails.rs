@@ -29,7 +29,7 @@ use std::time::{Duration, Instant};
 /// Thumbnail output size in pixels (square).
 const THUMB_PX: u32 = 128;
 /// Bump when thumbnail output changes so stale cache entries regenerate.
-const THUMBNAIL_RENDER_VERSION: u32 = 4;
+const THUMBNAIL_RENDER_VERSION: u32 = 5;
 /// Maximum number of decoded images held in the memory cache.
 const MEM_CACHE_MAX: usize = 512;
 /// How long an entry can go un-accessed before the eviction thread removes it.
@@ -190,10 +190,7 @@ impl ThumbnailService {
             })
             .expect("failed to spawn thumbnail-evictor thread");
 
-        Self {
-            pending,
-            mem_cache,
-        }
+        Self { pending, mem_cache }
     }
 
     /// Queue a thumbnail request.  Returns immediately (never blocks the caller).
@@ -273,7 +270,11 @@ impl ThumbnailService {
                 complete_thumbnail(&pending, &task_path, generated);
                 if task.is_cancelled() {
                     Err("Thumbnail generation cancelled".into())
-                } else if mem_cache.lock().get(&compute_cache_key(&task_path)).is_some() {
+                } else if mem_cache
+                    .lock()
+                    .get(&compute_cache_key(&task_path))
+                    .is_some()
+                {
                     Ok(())
                 } else {
                     Err("Thumbnail generation failed".into())
@@ -378,8 +379,6 @@ fn is_supported_ext(ext: &str) -> bool {
 }
 
 fn compute_cache_key(path: &Path) -> String {
-    use std::io::Read;
-
     let mut hasher = DefaultHasher::new();
 
     THUMBNAIL_RENDER_VERSION.hash(&mut hasher);
@@ -394,13 +393,32 @@ fn compute_cache_key(path: &Path) -> String {
         }
     }
 
-    // Hash the first 8 KiB of content — fast fingerprint that is identical for
-    // byte-for-byte duplicate files regardless of their name or location.
-    if let Ok(mut f) = std::fs::File::open(path) {
-        let mut buf = [0u8; 8192];
-        if let Ok(n) = f.read(&mut buf) {
-            buf[..n].hash(&mut hasher);
+    // Folder-backed formats (for example `.material`) give their registered
+    // renderer the asset directory. Fingerprint its direct files so edits to
+    // the marker/manifest invalidate the cached preview.
+    if path.is_dir() {
+        let mut entries = std::fs::read_dir(path)
+            .ok()
+            .into_iter()
+            .flatten()
+            .filter_map(std::result::Result::ok)
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        entries.sort();
+        for entry in entries {
+            entry.file_name().hash(&mut hasher);
+            if let Ok(metadata) = std::fs::metadata(&entry) {
+                metadata.len().hash(&mut hasher);
+                if let Ok(modified) = metadata.modified() {
+                    modified.hash(&mut hasher);
+                }
+            }
+            hash_file_prefix(&entry, &mut hasher);
         }
+    } else {
+        // Hash the first 8 KiB of content — fast fingerprint that is identical
+        // for byte-for-byte duplicate files regardless of name or location.
+        hash_file_prefix(path, &mut hasher);
     }
 
     // Model previews may use an adjacent BaseColor/Albedo/Diffuse map when an
@@ -409,6 +427,17 @@ fn compute_cache_key(path: &Path) -> String {
     hash_base_color_sidecar(path, &mut hasher);
 
     format!("{:016x}", hasher.finish())
+}
+
+fn hash_file_prefix(path: &Path, hasher: &mut DefaultHasher) {
+    use std::io::Read;
+
+    if let Ok(mut file) = std::fs::File::open(path) {
+        let mut buffer = [0u8; 8192];
+        if let Ok(length) = file.read(&mut buffer) {
+            buffer[..length].hash(hasher);
+        }
+    }
 }
 
 fn hash_base_color_sidecar(path: &Path, hasher: &mut DefaultHasher) {

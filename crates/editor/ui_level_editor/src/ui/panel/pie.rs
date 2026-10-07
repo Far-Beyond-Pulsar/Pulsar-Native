@@ -109,13 +109,8 @@ pub(crate) fn begin_pie(
         ),
         move |task| {
             task.report_progress(0.02, "Preparing project build");
-            let result = build_pie_dylib(
-                &root,
-                &scene_path,
-                reload,
-                loaded_artifact.as_ref(),
-                &task,
-            );
+            let result =
+                build_pie_dylib(&root, &scene_path, reload, loaded_artifact.as_ref(), &task);
             let mut st = shared.write();
             st.play.pie.building = false;
             match result {

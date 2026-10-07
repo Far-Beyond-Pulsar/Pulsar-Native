@@ -1,10 +1,11 @@
 //! Rendering implementation for PulsarApp
 
 use engine_backend::services::AnalyzerStatus;
+use gpui::UpdateGlobal as _;
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, Context, FocusHandle, Focusable, Hsla,
-    IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, Render, Window, div, prelude::*, px,
-    relative, rgb,
+    div, prelude::*, px, relative, rgb, Animation, AnimationExt as _, AnyElement, App, Context,
+    FocusHandle, Focusable, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, Render,
+    Window,
 };
 use plugin_editor_api::{StatusbarAction, StatusbarPosition};
 use rust_i18n::t;
@@ -12,10 +13,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 use ui::notification::Notification;
 use ui::{
-    ActiveTheme as _, ContextModal as _, Icon, IconName, StyledExt as _,
     button::{Button, ButtonVariants as _},
     dock::DockPlacement,
-    h_flex, v_flex,
+    h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, StyledExt as _,
 };
 use ui_multiuser_status::render_status_bar_indicator;
 
@@ -122,45 +122,27 @@ impl PulsarApp {
                                     })),
                             )
                             .child(
-                                div()
-                                    .relative()
-                                    .child(
-                                        Button::new("toggle-editor-tasks")
-                                            .ghost()
-                                            .label(if active_task_count > 0 {
-                                                format!("Tasks {active_task_count}")
-                                            } else {
-                                                "Tasks".to_string()
-                                            })
-                                            .icon(
-                                                Icon::new(IconName::TaskList)
-                                                    .size(px(16.))
-                                                    .text_color(if self.state.task_queue_open {
-                                                        cx.theme().primary
-                                                    } else {
-                                                        cx.theme().muted_foreground
-                                                    }),
-                                            )
-                                            .px_2()
-                                            .py_1()
-                                            .rounded(px(4.))
-                                            .when(self.state.task_queue_open, |button| {
-                                                button.bg(cx.theme().primary.opacity(0.15))
-                                            })
-                                            .tooltip("View editor tasks")
-                                            .on_click(cx.listener(|app, _, _, cx| {
-                                                app.state.task_queue_open = !app.state.task_queue_open;
-                                                cx.notify();
-                                            })),
+                                Button::new("open-editor-tasks")
+                                    .ghost()
+                                    .label(if active_task_count > 0 {
+                                        format!("Tasks {active_task_count}")
+                                    } else {
+                                        "Tasks".to_string()
+                                    })
+                                    .icon(
+                                        Icon::new(IconName::TaskList)
+                                            .size(px(16.))
+                                            .text_color(cx.theme().muted_foreground),
                                     )
-                                    .when(self.state.task_queue_open, |container| {
-                                        container.child(
-                                            div()
-                                                .absolute()
-                                                .bottom(px(30.))
-                                                .left_0()
-                                                .child(self.state.task_queue_panel.clone()),
-                                        )
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .tooltip("Open editor tasks")
+                                    .on_click(|_, _, cx| {
+                                        window_manager::WindowRegistry::update_global(
+                                            cx,
+                                            |reg, cx| reg.open("EditorTasksWindow", cx),
+                                        );
                                     }),
                             )
                             .child(
