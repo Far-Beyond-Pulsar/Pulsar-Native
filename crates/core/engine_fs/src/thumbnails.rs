@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 /// Thumbnail output size in pixels (square).
 const THUMB_PX: u32 = 128;
 /// Bump when thumbnail output changes so stale cache entries regenerate.
-const THUMBNAIL_RENDER_VERSION: u32 = 3;
+const THUMBNAIL_RENDER_VERSION: u32 = 4;
 /// Maximum number of decoded images held in the memory cache.
 const MEM_CACHE_MAX: usize = 512;
 /// How long an entry can go un-accessed before the eviction thread removes it.
@@ -113,13 +113,37 @@ impl MemCache {
 
 /// Global singleton worker.  Lazily started on first access.
 static GLOBAL_SERVICE: OnceLock<ThumbnailService> = OnceLock::new();
-pub type MeshThumbnailRenderer = fn(&Path) -> Option<image::RgbaImage>;
-static MESH_RENDERER: OnceLock<Mutex<Option<MeshThumbnailRenderer>>> = OnceLock::new();
+pub type AssetThumbnailRenderer = fn(&Path) -> Option<image::RgbaImage>;
+/// Backwards-compatible alias for existing mesh thumbnail providers.
+pub type MeshThumbnailRenderer = AssetThumbnailRenderer;
+static FORMAT_RENDERERS: OnceLock<Mutex<HashMap<String, AssetThumbnailRenderer>>> = OnceLock::new();
 
-/// Register the editor's mesh renderer. Kept as a function pointer so this
-/// low-level filesystem crate does not depend on the renderer crate.
+/// Register a renderer for a file extension (with or without a leading dot).
+/// Plugin renderers run on the thumbnail worker thread and return a decoded
+/// image; the shared service handles resizing and disk/memory caching.
+pub fn register_thumbnail_renderer(extension: impl AsRef<str>, renderer: AssetThumbnailRenderer) {
+    let extension = extension
+        .as_ref()
+        .trim_start_matches('.')
+        .to_ascii_lowercase();
+    if extension.is_empty() {
+        return;
+    }
+    FORMAT_RENDERERS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .insert(extension, renderer);
+}
+
+/// Register the editor's shared mesh renderer for common model formats.
+/// Kept as a function pointer so this low-level filesystem crate does not
+/// depend on the renderer crate.
 pub fn register_mesh_thumbnail_renderer(renderer: MeshThumbnailRenderer) {
-    *MESH_RENDERER.get_or_init(|| Mutex::new(None)).lock() = Some(renderer);
+    for extension in [
+        "fbx", "gltf", "glb", "obj", "usd", "usda", "usdc", "usdz", "uasset", "umap",
+    ] {
+        register_thumbnail_renderer(extension, renderer);
+    }
 }
 
 /// Access the process-wide thumbnail service.
@@ -305,7 +329,10 @@ fn get_or_generate_thumbnail_sync(abs_asset_path: &Path, cache_root: &Path) -> O
         if image::open(&cache_file).is_ok() {
             return Some(cache_file);
         }
-        tracing::warn!("thumbnail cache entry is corrupt; regenerating {:?}", cache_file);
+        tracing::warn!(
+            "thumbnail cache entry is corrupt; regenerating {:?}",
+            cache_file
+        );
         let _ = std::fs::remove_file(&cache_file);
     }
 
@@ -349,6 +376,7 @@ fn is_supported_ext(ext: &str) -> bool {
             | "tga"
             | "bmp"
             | "gif"
+            | "material"
     )
 }
 
@@ -453,13 +481,19 @@ fn generate_rgba(abs_path: &Path, ext: &str) -> Option<image::RgbaImage> {
             )
         }
         _ => {
-            let renderer = MESH_RENDERER
+            let renderer = FORMAT_RENDERERS
                 .get()
-                .and_then(|renderer| *renderer.lock());
+                .and_then(|renderers| renderers.lock().get(ext).copied());
             match renderer {
-                Some(renderer) => renderer(abs_path),
+                Some(renderer) => {
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| renderer(abs_path)))
+                        .unwrap_or_else(|_| {
+                            tracing::error!("thumbnail renderer panicked for {:?}", abs_path);
+                            None
+                        })
+                }
                 None => {
-                    tracing::warn!("no mesh thumbnail renderer is registered for {:?}", abs_path);
+                    tracing::warn!("no thumbnail renderer registered for {:?}", abs_path);
                     None
                 }
             }

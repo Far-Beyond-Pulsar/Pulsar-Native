@@ -11197,6 +11197,7 @@ dependencies = [
  "blueprint_graph",
  "bytemuck",
  "chrono",
+ "engine_fs",
  "engine_state",
  "fontdue",
  "futures",

@@ -21,6 +21,7 @@ impl FileManagerDrawer {
                 | "tga"
                 | "bmp"
                 | "gif"
+                | "material"
         )
     }
 
