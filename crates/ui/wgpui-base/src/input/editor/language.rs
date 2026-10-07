@@ -153,5 +153,3 @@ impl EditorLanguage {
         })
     }
 }
-
-

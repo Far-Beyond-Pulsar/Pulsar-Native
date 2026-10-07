@@ -565,5 +565,3 @@ mod tests {
         assert!(manager.undo().is_none());
     }
 }
-
-

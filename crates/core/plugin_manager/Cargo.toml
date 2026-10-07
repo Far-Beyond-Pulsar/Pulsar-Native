@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 plugin_editor_api = { workspace = true }
+pulsar_world_registry = { workspace = true }
 # Hands each loaded plugin the host's Gamma event bus (#930).
 pulsar_events = { workspace = true }
 engine_subsystems = { workspace = true }

@@ -157,7 +157,10 @@ impl SceneWorldExt for World {
             .map(|(entity, _)| entity)
             .filter(|entity| self.parent_of(*entity) == parent)
             .map(|entity| {
-                let order = self.get::<SiblingIndex>(entity).copied().unwrap_or_default();
+                let order = self
+                    .get::<SiblingIndex>(entity)
+                    .copied()
+                    .unwrap_or_default();
                 (order, entity)
             })
             .collect();

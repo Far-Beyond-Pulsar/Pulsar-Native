@@ -148,8 +148,7 @@ pub fn level_editor_spawn_object(
     let mut state = state_arc.write();
     let id = spawn(&mut state, spec)?;
     let world = state.scene.world();
-    let object = scene_edit::objects::get_object(&world, &id)
-        .map(|o| object_summary(&world, &o));
+    let object = scene_edit::objects::get_object(&world, &id).map(|o| object_summary(&world, &o));
     Ok(json!({ "created_id": id, "object": object }))
 }
 
@@ -173,7 +172,8 @@ pub fn level_editor_spawn_objects(ctx: &ToolContext, objects: Vec<Value>) -> Res
         let outcome = serde_json::from_value::<SpawnSpec>(entry)
             .map_err(|e| anyhow!("{e}"))
             .and_then(|mut spec| {
-                if let Some(reference) = spec.parent_id.as_deref().and_then(|p| p.strip_prefix('$')) {
+                if let Some(reference) = spec.parent_id.as_deref().and_then(|p| p.strip_prefix('$'))
+                {
                     let parent = reference
                         .parse::<usize>()
                         .ok()
@@ -403,7 +403,10 @@ pub fn level_editor_rename_object(ctx: &ToolContext, id: String, name: String) -
     let state_arc = edit_scene(ctx)?;
     let mut state = state_arc.write();
     require_object(&state, &id)?;
-    Ok(command_json(&execute_command(&mut state, SceneCommand::SetName { id, name })))
+    Ok(command_json(&execute_command(
+        &mut state,
+        SceneCommand::SetName { id, name },
+    )))
 }
 
 /// Show/hide and lock/unlock objects.
@@ -541,7 +544,10 @@ pub fn level_editor_reparent_object(
             bail!("Can't move '{id}' under '{parent}': that would create a cycle");
         }
     }
-    let result = execute_command(&mut state, SceneCommand::ReparentObject { id, new_parent_id });
+    let result = execute_command(
+        &mut state,
+        SceneCommand::ReparentObject { id, new_parent_id },
+    );
     Ok(command_json(&result))
 }
 
@@ -586,9 +592,13 @@ pub fn level_editor_reorder_object(
         state.scene.bump_revision(true);
     }
     let world = state.scene.world();
-    let siblings: Vec<String> = match scene_edit::objects::get_object(&world, &id).and_then(|o| o.parent) {
-        Some(parent) => scene_edit::objects::get_children(&world, &parent),
-        None => scene_edit::objects::get_root_objects(&world).into_iter().map(|o| o.id).collect(),
-    };
+    let siblings: Vec<String> =
+        match scene_edit::objects::get_object(&world, &id).and_then(|o| o.parent) {
+            Some(parent) => scene_edit::objects::get_children(&world, &parent),
+            None => scene_edit::objects::get_root_objects(&world)
+                .into_iter()
+                .map(|o| o.id)
+                .collect(),
+        };
     Ok(json!({ "changed": changed, "sibling_order": siblings }))
 }

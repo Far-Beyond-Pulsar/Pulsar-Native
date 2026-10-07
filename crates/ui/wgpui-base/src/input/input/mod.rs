@@ -31,5 +31,3 @@ impl RenderOnce for Input {
         self.state
     }
 }
-
-

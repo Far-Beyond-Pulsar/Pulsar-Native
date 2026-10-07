@@ -44,24 +44,34 @@ pub struct DeclaredField {
 impl ClassSchema {
     /// The schema after `declared`, given the `previous` one. `Err` carries
     /// a message per problem (an unknown or doubly claimed `renamedFrom`).
-    pub fn reconcile(previous: Option<&ClassSchema>, declared: &[DeclaredField]) -> Result<ClassSchema, Vec<String>> {
+    pub fn reconcile(
+        previous: Option<&ClassSchema>,
+        declared: &[DeclaredField],
+    ) -> Result<ClassSchema, Vec<String>> {
         let mut errors = Vec::new();
         let mut claimed: Vec<&str> = Vec::new();
         let mut fields = Vec::with_capacity(declared.len());
         for field in declared {
             let inherited = match (&field.renamed_from, previous) {
-                (Some(old), Some(previous)) => match previous.fields.iter().find(|f| f.name == *old) {
-                    Some(found) => Some(found),
-                    None => {
-                        errors.push(format!("`{}` says it was renamed from `{old}`, which the class never had", field.name));
-                        None
+                (Some(old), Some(previous)) => {
+                    match previous.fields.iter().find(|f| f.name == *old) {
+                        Some(found) => Some(found),
+                        None => {
+                            errors.push(format!(
+                                "`{}` says it was renamed from `{old}`, which the class never had",
+                                field.name
+                            ));
+                            None
+                        }
                     }
-                },
+                }
                 (Some(old), None) => {
                     errors.push(format!("`{}` says it was renamed from `{old}`, but the class has no earlier schema", field.name));
                     None
                 }
-                (None, previous) => previous.and_then(|p| p.fields.iter().find(|f| f.name == field.name)),
+                (None, previous) => {
+                    previous.and_then(|p| p.fields.iter().find(|f| f.name == field.name))
+                }
             };
             let id = match inherited {
                 Some(found) => {
@@ -73,7 +83,11 @@ impl ClassSchema {
                 }
                 None => uuid::Uuid::new_v4().to_string(),
             };
-            fields.push(SchemaField { id, name: field.name.clone(), ty: field.ty.clone() });
+            fields.push(SchemaField {
+                id,
+                name: field.name.clone(),
+                ty: field.ty.clone(),
+            });
         }
         if !errors.is_empty() {
             return Err(errors);
@@ -87,13 +101,17 @@ impl ClassSchema {
     }
 
     pub fn id_of(&self, name: &str) -> Option<&str> {
-        self.fields.iter().find(|f| f.name == name).map(|f| f.id.as_str())
+        self.fields
+            .iter()
+            .find(|f| f.name == name)
+            .map(|f| f.id.as_str())
     }
 }
 
 fn same_fields(a: &[SchemaField], b: &[SchemaField]) -> bool {
     let key = |f: &SchemaField| (f.id.clone(), f.name.clone(), f.ty.clone());
-    let (mut a, mut b): (Vec<_>, Vec<_>) = (a.iter().map(key).collect(), b.iter().map(key).collect());
+    let (mut a, mut b): (Vec<_>, Vec<_>) =
+        (a.iter().map(key).collect(), b.iter().map(key).collect());
     a.sort();
     b.sort();
     a == b

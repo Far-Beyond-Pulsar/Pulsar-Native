@@ -1,17 +1,14 @@
 //! Properties dock panel.
 
 use crate::state::LevelEditorState;
-use crate::ui::{
-    ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel, TransformSection,
-};
+use crate::ui::{ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel, TransformSection};
 use gpui::*;
 use std::collections::HashSet;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme,
     dock::{Panel, PanelEvent},
     input::InputState,
-    v_flex,
+    v_flex, ActiveTheme,
 };
 
 /// Properties Panel
@@ -210,7 +207,7 @@ impl PropertiesPanelWrapper {
     }
 
     fn update_transform_property(&self, property_path: &str, value: f32) {
-        use crate::commands::{SceneCommand, execute_command};
+        use crate::commands::{execute_command, SceneCommand};
         let selected = self.state.read().scene.selected_object();
         if let Some(object_id) = selected {
             let obj_opt = {

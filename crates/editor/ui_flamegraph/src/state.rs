@@ -157,7 +157,10 @@ pub fn build_thread_rows(frame: &TraceFrame) -> (Vec<ThreadRowLayout>, BTreeMap<
         if span.depth > *depth {
             *depth = span.depth;
         }
-        span_lists.entry(span.thread_id).or_default().push(index as u32);
+        span_lists
+            .entry(span.thread_id)
+            .or_default()
+            .push(index as u32);
     }
 
     // Display order: custom-named threads first, then unnamed threads by id.
@@ -198,10 +201,7 @@ pub fn build_thread_rows(frame: &TraceFrame) -> (Vec<ThreadRowLayout>, BTreeMap<
         current_y += height;
     }
 
-    (
-        rows,
-        offsets,
-    )
+    (rows, offsets)
 }
 
 pub const TILE_TIME_NS: u64 = 8_000_000;

@@ -81,7 +81,9 @@ fn scene_cfg() -> SceneGpuConfig {
 /// A plain, fieldless enum. `#[repr(u32)]` isn't required for `GpuRepr<T>`
 /// to work (it only needs `T: Copy`), but pins this enum's own byte size/
 /// layout to something this test can assert on deterministically.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Reflectable)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Reflectable,
+)]
 #[repr(u32)]
 pub enum ThrowawayKind {
     #[default]

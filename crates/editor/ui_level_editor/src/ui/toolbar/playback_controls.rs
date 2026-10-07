@@ -1,10 +1,10 @@
 use engine_state::playback::{PlayPhase, PlaybackState};
-use pulsar_events::{PlaybackCommand, publish_playback_command};
 use gpui::*;
+use pulsar_events::{publish_playback_command, PlaybackCommand};
 use rust_i18n::t;
 use ui::{
-    IconName, Selectable,
     button::{Button, ButtonVariants as _},
+    IconName, Selectable,
 };
 
 /// Play / Pause / Step / Stop for the engine's play session.

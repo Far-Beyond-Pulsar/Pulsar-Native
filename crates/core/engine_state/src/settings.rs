@@ -238,6 +238,26 @@ impl GlobalSettings {
             })
             .and_then(|h| h.set(key, value.into()))
     }
+
+    /// Update and immediately persist one editor preference.
+    pub fn set_and_save(
+        &self,
+        owner: &str,
+        key: &str,
+        value: impl Into<ConfigValue>,
+    ) -> anyhow::Result<()> {
+        self.set(owner, key, value)?;
+        self.save_owner_keys(owner, &[key])
+    }
+
+    /// Check whether an editor preference was explicitly persisted.
+    pub fn has_saved_key(&self, owner: &str, key: &str) -> anyhow::Result<bool> {
+        let handle = editor_owner_handle(owner)?;
+        let provider = self.local_provider()?;
+        Ok(self
+            .read_owner_table(&provider, &handle)?
+            .is_some_and(|table| table.contains_key(key)))
+    }
 }
 
 fn editor_owner_handle(owner: &str) -> Result<OwnerHandle, ConfigError> {
@@ -346,8 +366,8 @@ mod tests {
     use std::{
         fs,
         sync::{
-            atomic::{AtomicU64, Ordering},
             Arc, Barrier,
+            atomic::{AtomicU64, Ordering},
         },
         thread,
     };
@@ -439,14 +459,18 @@ mod tests {
         fs::write(&path, damaged).expect("write damaged settings");
         fixture.handle.set("selected", 2_i64).expect("set selected");
 
-        assert!(fixture
-            .settings
-            .validate_owner_file(&fixture.owner)
-            .is_err());
-        assert!(fixture
-            .settings
-            .save_owner_keys(&fixture.owner, &["selected"])
-            .is_err());
+        assert!(
+            fixture
+                .settings
+                .validate_owner_file(&fixture.owner)
+                .is_err()
+        );
+        assert!(
+            fixture
+                .settings
+                .save_owner_keys(&fixture.owner, &["selected"])
+                .is_err()
+        );
         assert_eq!(fs::read(&path).expect("read damaged settings"), damaged);
     }
 
@@ -509,10 +533,12 @@ mod tests {
         fs::write(&path, "selected = 5\n").expect("write settings");
         fixture.handle.set("selected", 9_i64).expect("set selected");
 
-        assert!(fixture
-            .settings
-            .validate_owner_file(&fixture.owner)
-            .expect("validate settings"));
+        assert!(
+            fixture
+                .settings
+                .validate_owner_file(&fixture.owner)
+                .expect("validate settings")
+        );
         assert_eq!(fixture.handle.get_int("selected"), Ok(9));
     }
 
@@ -520,14 +546,18 @@ mod tests {
     fn save_owner_keys_validates_requested_keys_before_writing() {
         let fixture = SettingsFixture::new("invalid_keys");
 
-        assert!(fixture
-            .settings
-            .save_owner_keys(&fixture.owner, &["missing"])
-            .is_err());
-        assert!(fixture
-            .settings
-            .save_owner_keys(&fixture.owner, &["read_only"])
-            .is_err());
+        assert!(
+            fixture
+                .settings
+                .save_owner_keys(&fixture.owner, &["missing"])
+                .is_err()
+        );
+        assert!(
+            fixture
+                .settings
+                .save_owner_keys(&fixture.owner, &["read_only"])
+                .is_err()
+        );
         assert!(!fixture.path().exists());
     }
 

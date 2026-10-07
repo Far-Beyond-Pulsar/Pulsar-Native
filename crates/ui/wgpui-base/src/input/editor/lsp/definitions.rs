@@ -231,5 +231,3 @@ impl InputBaseState<EditorMode> {
         Some(window.insert_hitbox(bounds, gpui::HitboxBehavior::Normal))
     }
 }
-
-

@@ -82,6 +82,7 @@ pub mod actions;
 pub mod ai;
 pub mod asset_events;
 pub mod asset_payload;
+pub mod component_events;
 pub mod components;
 pub mod editor_element;
 pub mod error;
@@ -92,8 +93,8 @@ pub mod metadata;
 pub mod plugin;
 pub mod scripting;
 pub mod statusbar;
-pub mod surface_animation;
 pub mod subsystems;
+pub mod surface_animation;
 pub mod version;
 
 // ── Re-exports for plugin convenience ────────────────────────────────────────
@@ -108,6 +109,7 @@ pub use actions::*;
 pub use ai::*;
 pub use asset_events::*;
 pub use asset_payload::*;
+pub use component_events::*;
 pub use components::*;
 pub use editor_element::*;
 pub use error::*;

@@ -512,7 +512,10 @@ mod tests {
         let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
         let descriptor = entry.generator_descriptor().unwrap();
         assert_eq!(descriptor.id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
-        assert_eq!(descriptor.version, helio_voxel_data::VOXEL_TERRAIN_GENERATOR_VERSION);
+        assert_eq!(
+            descriptor.version,
+            helio_voxel_data::VOXEL_TERRAIN_GENERATOR_VERSION
+        );
         assert_eq!(entry.world.shape, VoxelWorldShape::Plane);
         assert_eq!(entry.voxel_size, 0.1);
     }
@@ -521,15 +524,24 @@ mod tests {
     fn presets_set_the_world_form() {
         let mut world = World::new();
         for (terrain, shape) in [
-            (VoxelTerrainComponent::planet(1_000.0), VoxelWorldShape::Sphere),
+            (
+                VoxelTerrainComponent::planet(1_000.0),
+                VoxelWorldShape::Sphere,
+            ),
             (VoxelTerrainComponent::plane(512.0), VoxelWorldShape::Plane),
-            (VoxelTerrainComponent::infinite_plane(), VoxelWorldShape::InfinitePlane),
+            (
+                VoxelTerrainComponent::infinite_plane(),
+                VoxelWorldShape::InfinitePlane,
+            ),
         ] {
             let entity = world.spawn();
             world.insert(entity, terrain);
             let entry = terrain_entry(&world, entity, world.get(entity).unwrap()).unwrap();
             assert_eq!(entry.world.shape, shape);
-            assert_eq!(entry.generator_descriptor().unwrap().id, helio_voxel_data::VOXEL_TERRAIN_GENERATOR);
+            assert_eq!(
+                entry.generator_descriptor().unwrap().id,
+                helio_voxel_data::VOXEL_TERRAIN_GENERATOR
+            );
         }
     }
 }

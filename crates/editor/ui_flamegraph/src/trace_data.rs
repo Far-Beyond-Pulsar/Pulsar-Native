@@ -1,8 +1,11 @@
-use crossbeam_queue::SegQueue;
 use arc_swap::ArcSwap;
+use crossbeam_queue::SegQueue;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{atomic::{AtomicU64, Ordering}, Arc};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 use std::time::Instant;
 
 static FLUSH_COUNT: AtomicU64 = AtomicU64::new(0);

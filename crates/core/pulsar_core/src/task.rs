@@ -27,7 +27,9 @@ impl TaskPool {
                     .spawn(move || {
                         smol::block_on(async {
                             ex.try_tick();
-                            ready.send(()).expect("task pool constructor must wait for workers");
+                            ready
+                                .send(())
+                                .expect("task pool constructor must wait for workers");
                             drop(ready);
                             loop {
                                 if stop.load(std::sync::atomic::Ordering::Relaxed) {
@@ -45,7 +47,9 @@ impl TaskPool {
 
         drop(ready_tx);
         for _ in 0..thread_count.max(1) {
-            ready_rx.recv().expect("task pool worker failed during initialization");
+            ready_rx
+                .recv()
+                .expect("task pool worker failed during initialization");
         }
 
         Self {

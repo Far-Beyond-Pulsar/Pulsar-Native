@@ -15,12 +15,39 @@ mod render;
 mod script_problems;
 mod state;
 mod tab_management;
+mod task_queue_panel;
 mod window_management;
 
 use gpui::{App, AppContext, Context, DismissEvent, Focusable, Window};
 use ui_common::menu;
 
 use crate::actions::*;
+
+pub(crate) fn refresh_plugin_editor_settings(manager: &mut plugin_manager::PluginManager) {
+    use engine_state::settings::{global_config, ConfigValue, NS_EDITOR};
+    use plugin_editor_api::{EditorSettingValue, EditorSettingsSnapshot};
+
+    let settings = global_config()
+        .list_settings(NS_EDITOR, "code_editor")
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|setting| {
+            let value = global_config()
+                .get(NS_EDITOR, "code_editor", &setting.key)
+                .ok()?;
+            let value = match value {
+                ConfigValue::Bool(value) => EditorSettingValue::Boolean(value),
+                ConfigValue::Int(value) => EditorSettingValue::Integer(value),
+                ConfigValue::Float(value) => EditorSettingValue::Float(value),
+                ConfigValue::String(value) => EditorSettingValue::Text(value),
+                ConfigValue::Color(_) | ConfigValue::Array(_) => return None,
+            };
+            Some((setting.key, value))
+        })
+        .collect();
+
+    manager.set_editor_settings_snapshot(EditorSettingsSnapshot::new(settings));
+}
 
 /// Main Pulsar application
 pub struct PulsarApp {

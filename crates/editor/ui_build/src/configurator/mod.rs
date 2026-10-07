@@ -28,7 +28,9 @@ use gpui::{
 use ui::button::{Button, ButtonVariants as _};
 use ui::input::{InputEvent, InputState, TextInput};
 use ui::scroll::{Scrollbar, ScrollbarState};
-use ui::{ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, TitleBar, h_flex, v_flex};
+use ui::{
+    ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, TitleBar, h_flex, v_flex,
+};
 
 use crate::picker::config_icon;
 
@@ -133,7 +135,10 @@ impl window_manager::PulsarWindow for BuildConfiguratorWindow {
 impl BuildConfiguratorWindow {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         ensure_loaded();
-        let editing = build_configurations().read().selected_id().map(str::to_owned);
+        let editing = build_configurations()
+            .read()
+            .selected_id()
+            .map(str::to_owned);
 
         let input = |placeholder: &'static str, window: &mut Window, cx: &mut Context<Self>| {
             cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
@@ -161,10 +166,18 @@ impl BuildConfiguratorWindow {
             _ => {}
         };
         let subscriptions = vec![
-            cx.subscribe_in(&name, window, move |t, i, e: &InputEvent, w, c| changed(t, Field::Name, i, e, w, c)),
-            cx.subscribe_in(&description, window, move |t, i, e: &InputEvent, w, c| changed(t, Field::Description, i, e, w, c)),
-            cx.subscribe_in(&features, window, move |t, i, e: &InputEvent, w, c| changed(t, Field::Features, i, e, w, c)),
-            cx.subscribe_in(&extra_args, window, move |t, i, e: &InputEvent, w, c| changed(t, Field::ExtraArgs, i, e, w, c)),
+            cx.subscribe_in(&name, window, move |t, i, e: &InputEvent, w, c| {
+                changed(t, Field::Name, i, e, w, c)
+            }),
+            cx.subscribe_in(&description, window, move |t, i, e: &InputEvent, w, c| {
+                changed(t, Field::Description, i, e, w, c)
+            }),
+            cx.subscribe_in(&features, window, move |t, i, e: &InputEvent, w, c| {
+                changed(t, Field::Features, i, e, w, c)
+            }),
+            cx.subscribe_in(&extra_args, window, move |t, i, e: &InputEvent, w, c| {
+                changed(t, Field::ExtraArgs, i, e, w, c)
+            }),
             // Typing in either search box filters its list.
             cx.observe(&list_search, |_, _, cx| cx.notify()),
             cx.observe(&platform_search, |_, _, cx| cx.notify()),
@@ -201,9 +214,13 @@ impl BuildConfiguratorWindow {
             extra_args,
             platform_search,
             name_error: None,
-            expanded: [PlatformFamily::Windows, PlatformFamily::Linux, PlatformFamily::MacOs]
-                .into_iter()
-                .collect(),
+            expanded: [
+                PlatformFamily::Windows,
+                PlatformFamily::Linux,
+                PlatformFamily::MacOs,
+            ]
+            .into_iter()
+            .collect(),
             delete_armed: false,
             persist_task: None,
             arm_task: None,
@@ -230,7 +247,9 @@ impl BuildConfiguratorWindow {
 
     /// Edit the configuration being edited and schedule saving.
     pub(crate) fn edit(&mut self, cx: &mut Context<Self>, f: impl FnOnce(&mut BuildConfiguration)) {
-        let Some(id) = self.editing.clone() else { return };
+        let Some(id) = self.editing.clone() else {
+            return;
+        };
         build_configurations().update(|store| store.edit(&id, f));
         self.schedule_persist(cx);
         cx.notify();
@@ -305,7 +324,10 @@ impl BuildConfiguratorWindow {
                 let trimmed = text.trim();
                 let error = if trimmed.is_empty() {
                     Some("A configuration needs a name.".to_owned())
-                } else if build_configurations().read().name_taken(trimmed, Some(&config.id)) {
+                } else if build_configurations()
+                    .read()
+                    .name_taken(trimmed, Some(&config.id))
+                {
                     Some("Another configuration already uses this name.".to_owned())
                 } else {
                     None
@@ -318,7 +340,9 @@ impl BuildConfiguratorWindow {
                     cx.notify();
                 }
             }
-            Field::Description if text != config.description => self.edit(cx, |c| c.description = text),
+            Field::Description if text != config.description => {
+                self.edit(cx, |c| c.description = text)
+            }
             Field::Features if text != config.features => self.edit(cx, |c| c.features = text),
             Field::ExtraArgs if text != config.extra_args => self.edit(cx, |c| c.extra_args = text),
             _ => {}
@@ -331,7 +355,8 @@ impl BuildConfiguratorWindow {
             return;
         }
         if let Some(config) = self.current() {
-            self.name.update(cx, |input, cx| input.set_value(config.name, window, cx));
+            self.name
+                .update(cx, |input, cx| input.set_value(config.name, window, cx));
         }
         cx.notify();
     }
@@ -346,7 +371,9 @@ impl BuildConfiguratorWindow {
     }
 
     fn duplicate(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(id) = self.editing.clone() else { return };
+        let Some(id) = self.editing.clone() else {
+            return;
+        };
         if let Some(copy) = build_configurations().update(|store| store.duplicate(&id)) {
             self.schedule_persist(cx);
             self.set_editing(copy, window, cx);
@@ -354,7 +381,9 @@ impl BuildConfiguratorWindow {
     }
 
     fn delete(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(id) = self.editing.clone() else { return };
+        let Some(id) = self.editing.clone() else {
+            return;
+        };
         if !self.delete_armed {
             // Two clicks, so a stray one cannot lose a configuration.
             self.delete_armed = true;
@@ -376,7 +405,9 @@ impl BuildConfiguratorWindow {
     }
 
     fn make_active(&mut self, cx: &mut Context<Self>) {
-        let Some(id) = self.editing.clone() else { return };
+        let Some(id) = self.editing.clone() else {
+            return;
+        };
         build_configurations().update(|store| store.select(&id));
         self.schedule_persist(cx);
         cx.notify();
@@ -389,8 +420,13 @@ impl BuildConfiguratorWindow {
         let (matches, total, active) = {
             let store = build_configurations();
             let store = store.read();
-            let matches: Vec<BuildConfiguration> = store.search(&query).into_iter().cloned().collect();
-            (matches, store.configs().len(), store.selected_id().map(str::to_owned))
+            let matches: Vec<BuildConfiguration> =
+                store.search(&query).into_iter().cloned().collect();
+            (
+                matches,
+                store.configs().len(),
+                store.selected_id().map(str::to_owned),
+            )
         };
         let editing = self.editing.clone();
 
@@ -407,7 +443,12 @@ impl BuildConfiguratorWindow {
                     .py_2()
                     .justify_between()
                     .items_center()
-                    .child(div().text_sm().font_weight(gpui::FontWeight::SEMIBOLD).child("Configurations"))
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .child("Configurations"),
+                    )
                     .child(
                         Button::new("bc-new")
                             .small()
@@ -415,7 +456,9 @@ impl BuildConfiguratorWindow {
                             .icon(IconName::Plus)
                             .label("New")
                             .tooltip("Create a build configuration")
-                            .on_click(cx.listener(|this, _, window, cx| this.new_configuration(window, cx))),
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.new_configuration(window, cx)
+                            })),
                     ),
             )
             .child(
@@ -424,8 +467,16 @@ impl BuildConfiguratorWindow {
                     .pb_2()
                     .gap_2()
                     .items_center()
-                    .child(Icon::new(IconName::Search).size(px(14.)).text_color(p.muted))
-                    .child(div().flex_1().child(TextInput::new(&self.list_search).small())),
+                    .child(
+                        Icon::new(IconName::Search)
+                            .size(px(14.))
+                            .text_color(p.muted),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .child(TextInput::new(&self.list_search).small()),
+                    ),
             )
             .child(
                 div()
@@ -448,7 +499,14 @@ impl BuildConfiguratorWindow {
                                 } else {
                                     format!("No configurations match “{query}”.")
                                 };
-                                el.child(div().px_4().py_4().text_sm().text_color(p.muted).child(text))
+                                el.child(
+                                    div()
+                                        .px_4()
+                                        .py_4()
+                                        .text_sm()
+                                        .text_color(p.muted)
+                                        .child(text),
+                                )
                             })
                             .children(matches.iter().map(|config| {
                                 let id = config.id.clone();
@@ -462,7 +520,11 @@ impl BuildConfiguratorWindow {
                                     .gap_3()
                                     .items_center()
                                     .cursor_pointer()
-                                    .bg(if is_editing { p.active } else { p.card.opacity(0.0) })
+                                    .bg(if is_editing {
+                                        p.active
+                                    } else {
+                                        p.card.opacity(0.0)
+                                    })
                                     .hover(|s| s.bg(p.hover))
                                     .on_mouse_down(
                                         MouseButton::Left,
@@ -470,7 +532,11 @@ impl BuildConfiguratorWindow {
                                             this.set_editing(id.clone(), window, cx)
                                         }),
                                     )
-                                    .child(Icon::new(config_icon(config)).size(px(16.)).text_color(p.muted))
+                                    .child(
+                                        Icon::new(config_icon(config))
+                                            .size(px(16.))
+                                            .text_color(p.muted),
+                                    )
                                     .child(
                                         v_flex()
                                             .flex_1()
@@ -496,7 +562,10 @@ impl BuildConfiguratorWindow {
                                     .when(is_active, |el| el.child(active_badge(p)))
                             })),
                     )
-                    .child(Scrollbar::vertical(&self.list_scroll_state, &self.list_scroll)),
+                    .child(Scrollbar::vertical(
+                        &self.list_scroll_state,
+                        &self.list_scroll,
+                    )),
             )
             .child(
                 div()
@@ -521,27 +590,39 @@ impl BuildConfiguratorWindow {
             .items_center()
             .justify_center()
             .gap_3()
-            .child(Icon::new(IconName::Hammer).size(px(40.)).text_color(p.muted))
-            .child(div().text_lg().font_weight(gpui::FontWeight::SEMIBOLD).child("No build configurations"))
+            .child(
+                Icon::new(IconName::Hammer)
+                    .size(px(40.))
+                    .text_color(p.muted),
+            )
             .child(
                 div()
-                    .text_sm()
-                    .text_color(p.muted)
-                    .child("A configuration says how to build: the Rust mode, the platforms and the steps."),
+                    .text_lg()
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child("No build configurations"),
             )
+            .child(div().text_sm().text_color(p.muted).child(
+                "A configuration says how to build: the Rust mode, the platforms and the steps.",
+            ))
             .child(
                 Button::new("bc-empty-new")
                     .primary()
                     .icon(IconName::Plus)
                     .label("Create a configuration")
-                    .on_click(cx.listener(|this, _, window, cx| this.new_configuration(window, cx))),
+                    .on_click(
+                        cx.listener(|this, _, window, cx| this.new_configuration(window, cx)),
+                    ),
             )
             .into_any_element()
     }
 
-    fn render_editor(&mut self, config: BuildConfiguration, p: Palette, cx: &mut Context<Self>) -> gpui::AnyElement {
-        let is_active =
-            build_configurations().read().selected_id() == Some(config.id.as_str());
+    fn render_editor(
+        &mut self,
+        config: BuildConfiguration,
+        p: Palette,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let is_active = build_configurations().read().selected_id() == Some(config.id.as_str());
         let armed = self.delete_armed;
 
         let header = h_flex()
@@ -551,7 +632,11 @@ impl BuildConfiguratorWindow {
             .items_center()
             .border_b_1()
             .border_color(p.border)
-            .child(Icon::new(config_icon(&config)).size(px(20.)).text_color(p.muted))
+            .child(
+                Icon::new(config_icon(&config))
+                    .size(px(20.))
+                    .text_color(p.muted),
+            )
             .child(
                 v_flex()
                     .flex_1()
@@ -590,7 +675,11 @@ impl BuildConfiguratorWindow {
                     .small()
                     .ghost()
                     .icon(IconName::Trash)
-                    .label(if armed { "Click again to delete" } else { "Delete" })
+                    .label(if armed {
+                        "Click again to delete"
+                    } else {
+                        "Delete"
+                    })
                     .selected(armed)
                     .on_click(cx.listener(|this, _, window, cx| this.delete(window, cx))),
             );
@@ -623,7 +712,10 @@ impl BuildConfiguratorWindow {
                             .track_scroll(&self.form_scroll)
                             .child(body),
                     )
-                    .child(Scrollbar::vertical(&self.form_scroll_state, &self.form_scroll)),
+                    .child(Scrollbar::vertical(
+                        &self.form_scroll_state,
+                        &self.form_scroll,
+                    )),
             )
             .into_any_element()
     }
@@ -662,7 +754,11 @@ impl Render for BuildConfiguratorWindow {
             .track_focus(&self.focus_handle)
             .size_full()
             .bg(p.bg)
-            .child(TitleBar::new().unified_background(p.bg).child("Build Configurations"))
+            .child(
+                TitleBar::new()
+                    .unified_background(p.bg)
+                    .child("Build Configurations"),
+            )
             .child(h_flex().flex_1().min_h_0().child(sidebar).child(main))
     }
 }

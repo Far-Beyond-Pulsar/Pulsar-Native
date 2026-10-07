@@ -24,6 +24,7 @@ pub fn set_locale(locale: &str) {
 }
 
 pub mod asset_picker;
+pub mod asset_thumbnails;
 pub mod command_palette;
 pub mod file_utils;
 pub mod generic_window;
@@ -38,6 +39,7 @@ pub mod radial_menu;
 pub mod reflected_properties_panel;
 pub mod shared;
 pub mod shared_state;
+mod texture_asset_editor;
 pub mod theme_dropdown;
 
 pub use asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};

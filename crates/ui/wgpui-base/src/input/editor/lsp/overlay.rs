@@ -215,5 +215,3 @@ impl InputBaseState<EditorMode> {
         self.clear_hover_state(cx);
     }
 }
-
-

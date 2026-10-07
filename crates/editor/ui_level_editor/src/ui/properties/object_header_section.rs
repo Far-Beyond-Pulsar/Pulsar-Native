@@ -5,10 +5,10 @@
 
 use gpui::{prelude::*, *};
 use std::sync::Arc;
-use ui::{ActiveTheme, h_flex, v_flex};
+use ui::{h_flex, v_flex, ActiveTheme};
 
 use super::bindings::bound_field::{BoolBoundField, StringBoundField};
-use crate::core::commands::{SceneCommand, execute_command};
+use crate::core::commands::{execute_command, SceneCommand};
 use crate::state::LevelEditorState;
 use engine_backend::scene::SharedScene;
 
@@ -73,11 +73,8 @@ impl ObjectHeaderSection {
                 BoolFieldBinding::new_with_db(
                     |id, db| {
                         let world = db.read();
-                        crate::scene_edit::objects::get_object_visibility(
-                            &world.world,
-                            id,
-                        )
-                        .map(|(visible, _)| visible)
+                        crate::scene_edit::objects::get_object_visibility(&world.world, id)
+                            .map(|(visible, _)| visible)
                     },
                     move |id, visible, _db| {
                         execute_command(
@@ -105,11 +102,8 @@ impl ObjectHeaderSection {
                 BoolFieldBinding::new_with_db(
                     |id, db| {
                         let world = db.read();
-                        crate::scene_edit::objects::get_object_visibility(
-                            &world.world,
-                            id,
-                        )
-                        .map(|(_, locked)| locked)
+                        crate::scene_edit::objects::get_object_visibility(&world.world, id)
+                            .map(|(_, locked)| locked)
                     },
                     move |id, locked, _db| {
                         execute_command(

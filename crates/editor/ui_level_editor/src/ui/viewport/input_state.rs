@@ -3,8 +3,8 @@
 //! This module provides atomic-based input state tracking with zero mutex contention,
 //! enabling high-performance camera controls with latency tracking.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
+use std::sync::Arc;
 
 use super::components::camera_selector::CameraSpeedControl;
 
@@ -54,7 +54,16 @@ impl InputState {
             pan_delta_y: Arc::new(AtomicI32::new(0)),
             zoom_delta: Arc::new(AtomicI32::new(0)),
             input_latency_us: Arc::new(AtomicU64::new(0)),
-            move_speed: Arc::new(AtomicU32::new(10.0_f32.to_bits())),
+            move_speed: Arc::new(AtomicU32::new(
+                (engine_state::settings::global_config()
+                    .get(engine_state::settings::NS_EDITOR, "viewport", "camera_move_speed")
+                    .ok()
+                    .and_then(|value| value.as_float().ok())
+                    .filter(|value| value.is_finite())
+                    .unwrap_or(10.0)
+                    .clamp(1.0, 100.0) as f32)
+                    .to_bits(),
+            )),
         }
     }
 
@@ -133,6 +142,13 @@ impl CameraSpeedControl for InputState {
         let new_speed = (current + delta).max(MIN_MOVE_SPEED).min(MAX_MOVE_SPEED);
         self.move_speed
             .store(new_speed.to_bits(), Ordering::Relaxed);
+        if let Err(error) = engine_state::GlobalSettings::new().set_and_save(
+            "viewport",
+            "camera_move_speed",
+            engine_state::ConfigValue::Float(new_speed as f64),
+        ) {
+            tracing::warn!(%error, "Could not persist viewport camera speed");
+        }
         let verify = f32::from_bits(self.move_speed.load(Ordering::Relaxed));
         tracing::info!(
             "[INPUT_STATE] 🔧 adjust_move_speed: current={:.2}, delta={:.2}, new={:.2}, verify={:.2}, ptr={:p}",

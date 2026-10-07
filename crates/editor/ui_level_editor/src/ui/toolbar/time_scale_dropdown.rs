@@ -1,8 +1,8 @@
 use gpui::*;
 use ui::{
-    ActiveTheme, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     popup_menu::PopupMenuExt,
+    ActiveTheme, IconName, Sizable,
 };
 
 use super::actions::SetTimeScale;

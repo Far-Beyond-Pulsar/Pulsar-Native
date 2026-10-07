@@ -723,5 +723,3 @@ mod tests {
         assert_eq!(normalize_number_input("ab 中 1"), "ab 中 1");
     }
 }
-
-

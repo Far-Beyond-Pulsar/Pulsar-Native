@@ -6,16 +6,16 @@
 
 use gpui::*;
 use ui::{
-    Sizable,
     button::{Button, ButtonVariants as _},
     h_flex,
     popup_menu::PopupMenuExt,
+    Sizable,
 };
 
 use crate::ui::actions::{
     FocusSelected, FrontView, NewScene, OpenScene, OrthographicView, PerspectiveView, SaveScene,
-    SaveSceneAs, SideView, ToggleGrid, TogglePerformanceOverlay, ToggleLighting, ToggleViewportOptions,
-    ToggleWireframe, TopView,
+    SaveSceneAs, SideView, ToggleGrid, ToggleLighting, TogglePerformanceOverlay,
+    ToggleViewportOptions, ToggleWireframe, TopView,
 };
 
 pub struct LevelEditorMenus;
@@ -35,10 +35,7 @@ impl LevelEditorMenus {
                             .menu("Toggle Wireframe", Box::new(ToggleWireframe))
                             .menu("Toggle Lighting", Box::new(ToggleLighting))
                             .separator()
-                            .menu(
-                                "Performance Overlay",
-                                Box::new(TogglePerformanceOverlay),
-                            )
+                            .menu("Performance Overlay", Box::new(TogglePerformanceOverlay))
                             .menu("Viewport Options", Box::new(ToggleViewportOptions))
                             .separator()
                             .menu("Perspective", Box::new(PerspectiveView))
@@ -53,9 +50,7 @@ impl LevelEditorMenus {
                     .label("Go")
                     .small()
                     .ghost()
-                    .popup_menu(|menu, _, _| {
-                        menu.menu("Focus Selected", Box::new(FocusSelected))
-                    }),
+                    .popup_menu(|menu, _, _| menu.menu("Focus Selected", Box::new(FocusSelected))),
             )
             .child(
                 Button::new("le_menu_project")

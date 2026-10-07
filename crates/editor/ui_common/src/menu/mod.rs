@@ -841,6 +841,13 @@ impl FontSizeSelector {
         cx: &mut Context<Self>,
     ) {
         Theme::global_mut(cx).font_size = px(font_size.0 as f32);
+        if let Err(error) = engine_state::GlobalSettings::new().set_and_save(
+            "appearance",
+            "font_size",
+            engine_state::ConfigValue::Int(font_size.0.into()),
+        ) {
+            tracing::warn!(%error, "Could not persist appearance font size");
+        }
         window.refresh();
     }
 
@@ -851,6 +858,13 @@ impl FontSizeSelector {
         cx: &mut Context<Self>,
     ) {
         Theme::global_mut(cx).radius = px(radius.0 as f32);
+        if let Err(error) = engine_state::GlobalSettings::new().set_and_save(
+            "appearance",
+            "radius",
+            engine_state::ConfigValue::Int(radius.0.into()),
+        ) {
+            tracing::warn!(%error, "Could not persist appearance radius");
+        }
         window.refresh();
     }
 
@@ -861,6 +875,18 @@ impl FontSizeSelector {
         cx: &mut Context<Self>,
     ) {
         Theme::global_mut(cx).scrollbar_show = show.0;
+        let value = match show.0 {
+            ui::scroll::ScrollbarShow::Scrolling => "scrolling",
+            ui::scroll::ScrollbarShow::Hover => "hover",
+            ui::scroll::ScrollbarShow::Always => "always",
+        };
+        if let Err(error) = engine_state::GlobalSettings::new().set_and_save(
+            "appearance",
+            "scrollbar_show",
+            engine_state::ConfigValue::String(value.to_owned()),
+        ) {
+            tracing::warn!(%error, "Could not persist scrollbar visibility");
+        }
         window.refresh();
     }
 }

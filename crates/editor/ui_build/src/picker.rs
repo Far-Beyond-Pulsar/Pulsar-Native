@@ -103,7 +103,12 @@ impl BuildPicker {
 
     fn filtered(&self, cx: &App) -> Vec<BuildConfiguration> {
         let query = self.query(cx);
-        build_configurations().read().search(&query).into_iter().cloned().collect()
+        build_configurations()
+            .read()
+            .search(&query)
+            .into_iter()
+            .cloned()
+            .collect()
     }
 
     fn select(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -143,13 +148,20 @@ impl Render for BuildPicker {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let filtered = self.filtered(cx);
         let highlighted = self.highlighted.min(filtered.len().saturating_sub(1));
-        let selected = build_configurations().read().selected_id().map(str::to_owned);
+        let selected = build_configurations()
+            .read()
+            .selected_id()
+            .map(str::to_owned);
         let query = self.query(cx);
         let total = build_configurations().read().configs().len();
 
         let theme = cx.theme();
-        let (bg, border, fg, muted) =
-            (theme.background, theme.border, theme.foreground, theme.muted_foreground);
+        let (bg, border, fg, muted) = (
+            theme.background,
+            theme.border,
+            theme.foreground,
+            theme.muted_foreground,
+        );
         let (hover_bg, active_bg) = (theme.secondary, theme.list_active);
 
         v_flex()
@@ -196,7 +208,14 @@ impl Render for BuildPicker {
                                 } else {
                                     format!("No configurations match “{query}”.")
                                 };
-                                el.child(div().px_4().py_4().text_sm().text_color(muted).child(message))
+                                el.child(
+                                    div()
+                                        .px_4()
+                                        .py_4()
+                                        .text_sm()
+                                        .text_color(muted)
+                                        .child(message),
+                                )
                             })
                             .children(filtered.iter().enumerate().map(|(ix, config)| {
                                 let id = config.id.clone();
@@ -222,7 +241,11 @@ impl Render for BuildPicker {
                                         MouseButton::Left,
                                         cx.listener(move |this, _, _, cx| this.select(&id, cx)),
                                     )
-                                    .child(Icon::new(config_icon(config)).size(px(16.)).text_color(muted))
+                                    .child(
+                                        Icon::new(config_icon(config))
+                                            .size(px(16.))
+                                            .text_color(muted),
+                                    )
                                     .child(
                                         v_flex()
                                             .flex_1()
@@ -247,7 +270,9 @@ impl Render for BuildPicker {
                                             ),
                                     )
                                     .when(is_selected, |el| {
-                                        el.child(Icon::new(IconName::Check).size(px(14.)).text_color(fg))
+                                        el.child(
+                                            Icon::new(IconName::Check).size(px(14.)).text_color(fg),
+                                        )
                                     })
                             })),
                     )

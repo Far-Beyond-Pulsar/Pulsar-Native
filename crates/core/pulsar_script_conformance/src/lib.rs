@@ -25,8 +25,8 @@ pub mod harness {
 
     use pulsar_scenedb::{Entity, World};
     use pulsar_script_vm::{
-        Budget, CapabilityPolicy, Completion, Continuation, Host, Instance, Module, NativeFn, NativeRegistry, Param,
-        Program, ScriptError, Signature, Type, TypeRegistry, Value, Vm,
+        Budget, CapabilityPolicy, Completion, Continuation, Host, Instance, Module, NativeFn,
+        NativeRegistry, Param, Program, ScriptError, Signature, Type, TypeRegistry, Value, Vm,
     };
 
     /// The limits a run applies, to both backends.
@@ -40,7 +40,11 @@ pub mod harness {
 
     impl Default for Limits {
         fn default() -> Self {
-            Self { budget: 100_000, max_depth: 64, checked: false }
+            Self {
+                budget: 100_000,
+                max_depth: 64,
+                checked: false,
+            }
         }
     }
 
@@ -53,7 +57,11 @@ pub mod harness {
     #[derive(Clone, Debug)]
     pub enum Step {
         /// Call `function` of instance `instance`.
-        Call { instance: usize, function: &'static str, args: Vec<Value> },
+        Call {
+            instance: usize,
+            function: &'static str,
+            args: Vec<Value>,
+        },
         /// Move the fake clock on, resuming every waiting call that is due.
         Advance(f64),
     }
@@ -68,7 +76,12 @@ pub mod harness {
 
     impl Scenario {
         pub fn new(module: Module, steps: Vec<Step>) -> Self {
-            Self { module, instances: 1, limits: Limits::default(), steps }
+            Self {
+                module,
+                instances: 1,
+                limits: Limits::default(),
+                steps,
+            }
         }
 
         pub fn instances(mut self, instances: usize) -> Self {
@@ -83,11 +96,19 @@ pub mod harness {
     }
 
     pub fn call(function: &'static str, args: Vec<Value>) -> Step {
-        Step::Call { instance: 0, function, args }
+        Step::Call {
+            instance: 0,
+            function,
+            args,
+        }
     }
 
     pub fn call_on(instance: usize, function: &'static str, args: Vec<Value>) -> Step {
-        Step::Call { instance, function, args }
+        Step::Call {
+            instance,
+            function,
+            args,
+        }
     }
 
     type Log = Arc<Mutex<Vec<String>>>;
@@ -96,17 +117,28 @@ pub mod harness {
     /// math types, ..) plus test natives that record into `log`.
     pub fn registry(log: &Log) -> NativeRegistry {
         let mut registry = NativeRegistry::with_engine_natives();
-        let mut add = |native: NativeFn| registry.register(native).expect("test native names are unique");
+        let mut add = |native: NativeFn| {
+            registry
+                .register(native)
+                .expect("test native names are unique")
+        };
 
         let recorder = Arc::clone(log);
-        add(NativeFn::builder("test::note").params(["text", "n"]).build(move |text: Arc<str>, n: i64| {
-            recorder.lock().unwrap().push(format!("note({text:?}, {n})"));
-        }));
+        add(NativeFn::builder("test::note").params(["text", "n"]).build(
+            move |text: Arc<str>, n: i64| {
+                recorder
+                    .lock()
+                    .unwrap()
+                    .push(format!("note({text:?}, {n})"));
+            },
+        ));
         let recorder = Arc::clone(log);
-        add(NativeFn::builder("test::fail").build(move || -> Result<(), String> {
-            recorder.lock().unwrap().push("fail()".into());
-            Err("deliberate failure".into())
-        }));
+        add(
+            NativeFn::builder("test::fail").build(move || -> Result<(), String> {
+                recorder.lock().unwrap().push("fail()".into());
+                Err("deliberate failure".into())
+            }),
+        );
         let recorder = Arc::clone(log);
         add(NativeFn::builder("test::boom").build(move || -> () {
             recorder.lock().unwrap().push("boom()".into());
@@ -120,29 +152,48 @@ pub mod harness {
         add(NativeFn::builder("test::bump").build_raw(
             Signature::new([Param::inout(Type::Int)], Type::Unit),
             Box::new(move |_, args| {
-                let Value::Int(n) = &mut args[0] else { unreachable!("checked by the VM") };
+                let Value::Int(n) = &mut args[0] else {
+                    unreachable!("checked by the VM")
+                };
                 *n += 1;
                 recorder.lock().unwrap().push(format!("bump -> {n}"));
                 Ok(Value::Unit)
             }),
         ));
-        add(NativeFn::builder("test::twice").pure().build(|n: i64| n.wrapping_mul(2)));
+        add(NativeFn::builder("test::twice")
+            .pure()
+            .build(|n: i64| n.wrapping_mul(2)));
 
         // The natives the Blueprint fixtures import (see `blueprint_compiler`'s
         // `conformance_fixtures`).
-        add(NativeFn::builder("std::add").pure().params(["a", "b"]).build(|a: i64, b: i64| a.wrapping_add(b)));
-        add(NativeFn::builder("std::append").pure().params(["a", "b"]).build(|a: String, b: String| a + &b));
-        add(NativeFn::builder("std::less").pure().params(["a", "b"]).build(|a: i64, b: i64| a < b));
+        add(NativeFn::builder("std::add")
+            .pure()
+            .params(["a", "b"])
+            .build(|a: i64, b: i64| a.wrapping_add(b)));
+        add(NativeFn::builder("std::append")
+            .pure()
+            .params(["a", "b"])
+            .build(|a: String, b: String| a + &b));
+        add(NativeFn::builder("std::less")
+            .pure()
+            .params(["a", "b"])
+            .build(|a: i64, b: i64| a < b));
         add(NativeFn::builder("std::roll").build(|| 4i64));
-        add(NativeFn::builder("std::to_int").pure().params(["x"]).build(|x: f64| x.round() as i64));
-        add(NativeFn::builder("std::pick").attr("exec_outputs", "X,Y,Z").params(["n", "result"]).build_raw(
-            Signature::new([Param::new(Type::Int), Param::inout(Type::Int)], Type::Int),
-            Box::new(|_, args| {
-                let n = args[0].as_int().unwrap();
-                args[1] = Value::Int(n * 10);
-                Ok(Value::Int(n % 3))
-            }),
-        ));
+        add(NativeFn::builder("std::to_int")
+            .pure()
+            .params(["x"])
+            .build(|x: f64| x.round() as i64));
+        add(NativeFn::builder("std::pick")
+            .attr("exec_outputs", "X,Y,Z")
+            .params(["n", "result"])
+            .build_raw(
+                Signature::new([Param::new(Type::Int), Param::inout(Type::Int)], Type::Int),
+                Box::new(|_, args| {
+                    let n = args[0].as_int().unwrap();
+                    args[1] = Value::Int(n * 10);
+                    Ok(Value::Int(n % 3))
+                }),
+            ));
         registry
     }
 
@@ -151,7 +202,9 @@ pub mod harness {
     pub fn show(value: &Value) -> String {
         match value {
             Value::Object(object) => {
-                let literal = TypeRegistry::global().encode_value(object).unwrap_or_else(|e| e);
+                let literal = TypeRegistry::global()
+                    .encode_value(object)
+                    .unwrap_or_else(|e| e);
                 format!("{}{literal}", object.type_name())
             }
             other => format!("{other:?}"),
@@ -159,7 +212,10 @@ pub mod harness {
     }
 
     fn show_error(error: &ScriptError) -> String {
-        format!("{:?} trace={:?} locations={:?}", error.kind, error.trace, error.locations)
+        format!(
+            "{:?} trace={:?} locations={:?}",
+            error.kind, error.trace, error.locations
+        )
     }
 
     struct Instances {
@@ -176,21 +232,38 @@ pub mod harness {
         let registry = registry(&log);
         let program = match backend {
             Backend::Interpreted => Program::link(Arc::new(scenario.module.clone()), &registry),
-            Backend::Generated => crate::generated::link(&scenario.module.name, &registry, None, &CapabilityPolicy::allow_all())
-                .unwrap_or_else(|| panic!("no generated code for fixture `{}`", scenario.module.name)),
+            Backend::Generated => crate::generated::link(
+                &scenario.module.name,
+                &registry,
+                None,
+                &CapabilityPolicy::allow_all(),
+            )
+            .unwrap_or_else(|| panic!("no generated code for fixture `{}`", scenario.module.name)),
         }
         .expect("the fixture links");
 
         let mut trace = vec![format!(
             "program: functions={:?} variables={:?} subscriptions={:?}",
-            scenario.module.functions.iter().map(|f| (&f.name, f.exported)).collect::<Vec<_>>(),
-            scenario.module.variables.iter().map(|v| &v.name).collect::<Vec<_>>(),
+            scenario
+                .module
+                .functions
+                .iter()
+                .map(|f| (&f.name, f.exported))
+                .collect::<Vec<_>>(),
+            scenario
+                .module
+                .variables
+                .iter()
+                .map(|v| &v.name)
+                .collect::<Vec<_>>(),
             program.subscriptions(),
         )];
         let mut world = World::new();
         let entities: Vec<Entity> = (0..scenario.instances).map(|_| world.spawn()).collect();
         let mut instances = Instances {
-            states: (0..scenario.instances).map(|_| program.instantiate()).collect(),
+            states: (0..scenario.instances)
+                .map(|_| program.instantiate())
+                .collect(),
             entities,
             waiting: Vec::new(),
             sequence: 0,
@@ -202,8 +275,14 @@ pub mod harness {
 
         for step in &scenario.steps {
             match step {
-                Step::Call { instance, function, args } => {
-                    let func = program.entry(function).unwrap_or_else(|| panic!("no exported function `{function}`"));
+                Step::Call {
+                    instance,
+                    function,
+                    args,
+                } => {
+                    let func = program
+                        .entry(function)
+                        .unwrap_or_else(|| panic!("no exported function `{function}`"));
                     let mut host = Host::at_time(&mut world, instances.entities[*instance], now);
                     let result = vm.start(
                         &program,
@@ -230,7 +309,9 @@ pub mod harness {
                             .iter()
                             .enumerate()
                             .filter(|(_, (_, wake, _, _))| *wake <= now)
-                            .min_by(|(_, (_, wa, sa, _)), (_, (_, wb, sb, _))| wa.partial_cmp(wb).unwrap().then(sa.cmp(sb)))
+                            .min_by(|(_, (_, wa, sa, _)), (_, (_, wb, sb, _))| {
+                                wa.partial_cmp(wb).unwrap().then(sa.cmp(sb))
+                            })
                             .map(|(index, _)| index);
                         let Some(index) = due else { break };
                         let (instance, wake, _, continuation) = instances.waiting.remove(index);
@@ -256,13 +337,22 @@ pub mod harness {
                     .variables
                     .iter()
                     .enumerate()
-                    .map(|(i, v)| format!("{}={}", v.name, show(program.var(state, i).expect("variable"))))
+                    .map(|(i, v)| {
+                        format!(
+                            "{}={}",
+                            v.name,
+                            show(program.var(state, i).expect("variable"))
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join(" ");
                 trace.push(format!("vars #{index}: {vars}"));
             }
-            let mut waiting: Vec<_> =
-                instances.waiting.iter().map(|(i, wake, _, c)| (*i, *wake, c.functions().join(">"))).collect();
+            let mut waiting: Vec<_> = instances
+                .waiting
+                .iter()
+                .map(|(i, wake, _, c)| (*i, *wake, c.functions().join(">")))
+                .collect();
             waiting.sort_by(|a, b| a.partial_cmp(b).unwrap());
             trace.push(format!("waiting: {waiting:?}"));
             trace.push(format!("natives: {:?}", log.lock().unwrap()));
@@ -278,14 +368,23 @@ pub mod harness {
     ) -> String {
         match result {
             Ok(Completion::Returned(value)) => format!("returned {}", show(&value)),
-            Ok(Completion::Waiting { seconds, continuation }) => {
+            Ok(Completion::Waiting {
+                seconds,
+                continuation,
+            }) => {
                 instances.sequence += 1;
                 let names = continuation.functions().join(">");
-                instances.waiting.push((instance, now + seconds, instances.sequence, continuation));
+                instances
+                    .waiting
+                    .push((instance, now + seconds, instances.sequence, continuation));
                 format!("waiting {seconds}s in {names}")
             }
             Ok(Completion::Paused { snapshot, .. }) => {
-                let frame = snapshot.call_stack.last().map(|frame| format!("{}@{}", frame.function, frame.pc)).unwrap_or_default();
+                let frame = snapshot
+                    .call_stack
+                    .last()
+                    .map(|frame| format!("{}@{}", frame.function, frame.pc))
+                    .unwrap_or_default();
                 format!("paused at {frame}")
             }
             Err(error) => format!("error {}", show_error(&error)),

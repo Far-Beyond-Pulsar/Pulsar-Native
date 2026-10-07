@@ -98,7 +98,10 @@ impl ViewportPanel {
                 if let Some(snapshot) = EngineFrameSnapshot::read_stats(&engine) {
                     snapshot.record_into(stats);
                 }
-                stats.record(Metric::InputLatencyMs, input.get_input_latency_us() as f64 / 1000.0);
+                stats.record(
+                    Metric::InputLatencyMs,
+                    input.get_input_latency_us() as f64 / 1000.0,
+                );
             })
         };
 

@@ -16,11 +16,11 @@ mod geometry;
 use demo_data::{CANDLES, CHANDELIER_Z, COLUMN_Z, GLASS_LIGHTS};
 
 use super::{
-    LevelEditorCameraState, LightType, MeshType, ObjectType, SceneObjectData, Transform,
-    components, level_io, objects,
+    components, level_io, objects, LevelEditorCameraState, LightType, MeshType, ObjectType,
+    SceneObjectData, Transform,
 };
 use helio::{MeshUpload, PackedVertex};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -174,17 +174,13 @@ fn build_world(batches: &[Batch]) -> pulsar_scenedb::World {
             ),
             Some(architecture.clone()),
         );
+        let mut mesh_data = super::static_mesh_component_json(&batch.file);
+        mesh_data["legacy_material_override"] = batch.material.clone();
         components::add_component(
             &mut world,
             &id,
             "StaticMeshComponent".to_string(),
-            super::static_mesh_component_json(&batch.file),
-        );
-        components::add_component(
-            &mut world,
-            &id,
-            "MaterialOverrideComponent".to_string(),
-            batch.material.clone(),
+            mesh_data,
         );
     }
 

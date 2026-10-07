@@ -13,13 +13,13 @@ use agent_provider_vertex_ai::VertexAiProviderCrate;
 use gpui::*;
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 use ui::{
-    VirtualListScrollHandle,
     dock::{DockArea, TabPanel},
     dropdown::{
         SearchableList, SearchableListEvent, SearchableListItemAction, SearchableListItemState,
     },
     input::InputState,
     scroll::ScrollbarState,
+    VirtualListScrollHandle,
 };
 
 use super::panel::AgentChatPanel;
@@ -109,8 +109,10 @@ impl AgentChatPanel {
                     provider_states_shared
                         .borrow_mut()
                         .insert(instance.id.clone(), ProviderState::Ready);
-                    provider_entries
-                        .insert(instance.id.clone(), Self::instance_entry(&template, instance));
+                    provider_entries.insert(
+                        instance.id.clone(),
+                        Self::instance_entry(&template, instance),
+                    );
                 }
                 Err(e) => tracing::warn!("Saved provider '{}' failed to load: {e}", instance.name),
             }

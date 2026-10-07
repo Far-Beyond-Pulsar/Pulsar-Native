@@ -233,7 +233,9 @@ impl Reader<'_> {
         if len == u32::MAX {
             return Some(None);
         }
-        Some(Some(String::from_utf8_lossy(self.take(len as usize)?).into_owned()))
+        Some(Some(
+            String::from_utf8_lossy(self.take(len as usize)?).into_owned(),
+        ))
     }
 }
 
@@ -297,7 +299,11 @@ impl Region {
         // [write_pos, read_pos + capacity).
         unsafe {
             std::ptr::copy_nonoverlapping(bytes.as_ptr(), self.ring().add(off), first);
-            std::ptr::copy_nonoverlapping(bytes.as_ptr().add(first), self.ring(), bytes.len() - first);
+            std::ptr::copy_nonoverlapping(
+                bytes.as_ptr().add(first),
+                self.ring(),
+                bytes.len() - first,
+            );
         }
     }
 
@@ -309,7 +315,11 @@ impl Region {
         // SAFETY: the consumer owns [read_pos, write_pos).
         unsafe {
             std::ptr::copy_nonoverlapping(self.ring().add(off), out.as_mut_ptr(), first);
-            std::ptr::copy_nonoverlapping(self.ring(), out.as_mut_ptr().add(first), out.len() - first);
+            std::ptr::copy_nonoverlapping(
+                self.ring(),
+                out.as_mut_ptr().add(first),
+                out.len() - first,
+            );
         }
     }
 
@@ -337,19 +347,31 @@ fn open_file(path: &Path) -> io::Result<File> {
 
 fn validate(map: &[u8]) -> io::Result<&Header> {
     if map.len() < HEADER_SIZE {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "not a profiling target"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "not a profiling target",
+        ));
     }
     // SAFETY: the mapping holds at least a header; only atomics are read
     // before the magic check.
     let header = unsafe { &*(map.as_ptr() as *const Header) };
     if header.magic.load(Ordering::Acquire) != MAGIC {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "not a profiling target (yet)"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "not a profiling target (yet)",
+        ));
     }
     if header.version != VERSION {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, format!("profiling target version {}", header.version)));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("profiling target version {}", header.version),
+        ));
     }
     if (map.len() as u64) < HEADER_SIZE as u64 + header.ring_capacity {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "truncated profiling target"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "truncated profiling target",
+        ));
     }
     Ok(header)
 }
@@ -416,12 +438,21 @@ pub fn publish_process(description: TargetDescription) -> bool {
 }
 
 /// Publish this process in `dir` with a ring of `ring_bytes`.
-pub fn serve_in(dir: &Path, description: TargetDescription, ring_bytes: usize) -> io::Result<Publisher> {
+pub fn serve_in(
+    dir: &Path,
+    description: TargetDescription,
+    ring_bytes: usize,
+) -> io::Result<Publisher> {
     std::fs::create_dir_all(dir)?;
     let pid = std::process::id();
     let path = dir.join(format!("{pid}.pprof"));
     let ring_capacity = ring_bytes.max(4096) as u64;
-    let file = OpenOptions::new().read(true).write(true).create(true).truncate(true).open(&path)?;
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&path)?;
     file.set_len(HEADER_SIZE as u64 + ring_capacity)?;
     // SAFETY: the file is ours; other processes only map it, and every
     // shared access goes through the header atomics and the SPSC ring.
@@ -437,10 +468,16 @@ pub fn serve_in(dir: &Path, description: TargetDescription, ring_bytes: usize) -
         header.kind_len = copy_str(&mut header.kind, &description.kind);
         header.name_len = copy_str(&mut header.name, &description.name);
         header.project_len = copy_str(&mut header.project, &description.project);
-        header.heartbeat_unix_ms.0.store(now_unix_ms(), Ordering::Relaxed);
+        header
+            .heartbeat_unix_ms
+            .0
+            .store(now_unix_ms(), Ordering::Relaxed);
         header.magic.store(MAGIC, Ordering::Release);
     }
-    let region = Region { ptr: map.as_mut_ptr(), ring_capacity };
+    let region = Region {
+        ptr: map.as_mut_ptr(),
+        ring_capacity,
+    };
     let stop = Arc::new(AtomicBool::new(false));
     let thread = std::thread::Builder::new()
         .name("pulsar-profiler-publisher".into())
@@ -452,7 +489,11 @@ pub fn serve_in(dir: &Path, description: TargetDescription, ring_bytes: usize) -
                 publish_loop(&region, &stop);
             }
         })?;
-    Ok(Publisher { stop, thread: Some(thread), path })
+    Ok(Publisher {
+        stop,
+        thread: Some(thread),
+        path,
+    })
 }
 
 fn publish_loop(region: &Region, stop: &AtomicBool) {
@@ -462,7 +503,10 @@ fn publish_loop(region: &Region, stop: &AtomicBool) {
     let mut batch = Vec::new();
     let mut record = Vec::new();
     while !stop.load(Ordering::Acquire) {
-        header.heartbeat_unix_ms.0.store(now_unix_ms(), Ordering::Relaxed);
+        header
+            .heartbeat_unix_ms
+            .0
+            .store(now_unix_ms(), Ordering::Relaxed);
         let control = header.control.load(Ordering::Acquire);
         let want = control & CONTROL_RECORD != 0;
         if want != recording {
@@ -538,7 +582,8 @@ fn describe(path: &Path) -> io::Result<TargetInfo> {
         name: read_str(&header.name, header.name_len),
         project: read_str(&header.project, header.project_len),
         started_unix_ms: header.started_unix_ms,
-        heartbeat_age_ms: now_unix_ms().saturating_sub(header.heartbeat_unix_ms.0.load(Ordering::Relaxed)),
+        heartbeat_age_ms: now_unix_ms()
+            .saturating_sub(header.heartbeat_unix_ms.0.load(Ordering::Relaxed)),
         recording: header.recording.load(Ordering::Acquire) != 0,
         viewer_pid: (viewer != 0).then_some((viewer >> 32) as u32),
     })
@@ -579,7 +624,9 @@ pub fn list_targets() -> Vec<TargetInfo> {
 /// Every profilable process in `dir`, newest first. Files left behind by
 /// processes that exited are removed.
 pub fn list_targets_in(dir: &Path) -> Vec<TargetInfo> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
     let mut targets: Vec<TargetInfo> = entries
         .filter_map(Result::ok)
         .map(|entry| entry.path())
@@ -630,8 +677,18 @@ impl TargetConnection {
             let header = validate(&map)?;
             (header.pid, header.ring_capacity)
         };
-        let region = Region { ptr: map.as_mut_ptr(), ring_capacity };
-        Ok(Self { region, _map: map, pid, token: next_viewer_token(), owns_control: false, scratch: Vec::new() })
+        let region = Region {
+            ptr: map.as_mut_ptr(),
+            ring_capacity,
+        };
+        Ok(Self {
+            region,
+            _map: map,
+            pid,
+            token: next_viewer_token(),
+            owns_control: false,
+            scratch: Vec::new(),
+        })
     }
 
     pub fn pid(&self) -> u32 {
@@ -640,7 +697,13 @@ impl TargetConnection {
 
     /// Milliseconds since the target's last heartbeat.
     pub fn heartbeat_age_ms(&self) -> u64 {
-        now_unix_ms().saturating_sub(self.region.header().heartbeat_unix_ms.0.load(Ordering::Relaxed))
+        now_unix_ms().saturating_sub(
+            self.region
+                .header()
+                .heartbeat_unix_ms
+                .0
+                .load(Ordering::Relaxed),
+        )
     }
 
     /// The target acknowledged recording (it is streaming).
@@ -661,9 +724,17 @@ impl TargetConnection {
         loop {
             // A viewer that died without releasing the target is taken over.
             if owner != 0 && owner != self.token && process_alive((owner >> 32) as u32) {
-                return Err(format!("process {} is already recording this target", owner >> 32));
+                return Err(format!(
+                    "process {} is already recording this target",
+                    owner >> 32
+                ));
             }
-            match header.viewer.compare_exchange(owner, self.token, Ordering::AcqRel, Ordering::Acquire) {
+            match header.viewer.compare_exchange(
+                owner,
+                self.token,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
                 Ok(_) => break,
                 Err(current) => owner = current,
             }
@@ -684,7 +755,9 @@ impl TargetConnection {
         }
         let header = self.region.header();
         header.control.store(0, Ordering::Release);
-        let _ = header.viewer.compare_exchange(self.token, 0, Ordering::AcqRel, Ordering::Acquire);
+        let _ = header
+            .viewer
+            .compare_exchange(self.token, 0, Ordering::AcqRel, Ordering::Acquire);
         self.owns_control = false;
     }
 
@@ -750,26 +823,63 @@ mod tests {
             encode_event(&e, &mut buf);
             let d = decode_event(&buf).unwrap();
             assert_eq!(
-                (d.scope_id, d.parent_scope_id, d.name, d.thread_name, d.start_ns, d.duration_ns, d.depth, d.location, d.metadata, d.track_name),
-                (e.scope_id, e.parent_scope_id, e.name, e.thread_name, e.start_ns, e.duration_ns, e.depth, e.location, e.metadata, e.track_name)
+                (
+                    d.scope_id,
+                    d.parent_scope_id,
+                    d.name,
+                    d.thread_name,
+                    d.start_ns,
+                    d.duration_ns,
+                    d.depth,
+                    d.location,
+                    d.metadata,
+                    d.track_name
+                ),
+                (
+                    e.scope_id,
+                    e.parent_scope_id,
+                    e.name,
+                    e.thread_name,
+                    e.start_ns,
+                    e.duration_ns,
+                    e.depth,
+                    e.location,
+                    e.metadata,
+                    e.track_name
+                )
             );
         }
-        assert!(decode_event(&buf[..buf.len() - 1]).is_none(), "truncated records are rejected");
+        assert!(
+            decode_event(&buf[..buf.len() - 1]).is_none(),
+            "truncated records are rejected"
+        );
     }
 
     #[test]
     fn the_ring_wraps_and_drops_instead_of_blocking() {
         let dir = tempfile_dir("ring");
         // A second mapping of the same file stands in for another process.
-        let file = OpenOptions::new().read(true).write(true).create(true).truncate(true).open(dir.join("r.pprof")).unwrap();
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(dir.join("r.pprof"))
+            .unwrap();
         let cap = 4096u64;
         file.set_len(HEADER_SIZE as u64 + cap).unwrap();
         let mut producer_map = unsafe { MmapMut::map_mut(&file).unwrap() };
-        let producer = Region { ptr: producer_map.as_mut_ptr(), ring_capacity: cap };
+        let producer = Region {
+            ptr: producer_map.as_mut_ptr(),
+            ring_capacity: cap,
+        };
         unsafe { &mut *(producer_map.as_mut_ptr() as *mut Header) }.ring_capacity = cap;
         let mut consumer_map = unsafe { MmapMut::map_mut(&file).unwrap() };
         let consumer = TargetConnection {
-            region: Region { ptr: consumer_map.as_mut_ptr(), ring_capacity: cap },
+            region: Region {
+                ptr: consumer_map.as_mut_ptr(),
+                ring_capacity: cap,
+            },
             _map: unsafe { MmapMut::map_mut(&file).unwrap() },
             pid: 0,
             token: 0,
@@ -790,7 +900,10 @@ mod tests {
             consumer.read_events(&mut seen);
         }
         assert_eq!(seen.len() as u64, next);
-        assert!(seen.iter().enumerate().all(|(i, e)| e.scope_id == i as u64 && e.name == format!("scope-{i}")));
+        assert!(seen
+            .iter()
+            .enumerate()
+            .all(|(i, e)| e.scope_id == i as u64 && e.name == format!("scope-{i}")));
         // Fill without reading: pushes fail and are counted, never block.
         let mut refused = 0;
         for i in 0..1000 {
@@ -806,7 +919,10 @@ mod tests {
     }
 
     fn tempfile_dir(test: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("pulsar-profiler-unit-{test}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "pulsar-profiler-unit-{test}-{}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }

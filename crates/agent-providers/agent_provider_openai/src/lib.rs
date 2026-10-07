@@ -1004,7 +1004,11 @@ mod template_tests {
         let entries = OpenAiProviderCrate.entries();
         let lm = entries.iter().find(|e| e.id == "lm_studio").unwrap();
         assert!(lm.template);
-        let endpoint = lm.config_fields.iter().find(|f| f.key == "endpoint_url").unwrap();
+        let endpoint = lm
+            .config_fields
+            .iter()
+            .find(|f| f.key == "endpoint_url")
+            .unwrap();
         assert!(!endpoint.required);
         assert_eq!(endpoint.placeholder, Some("http://localhost:1234/v1"));
         assert!(!entries.iter().find(|e| e.id == "openai").unwrap().template);
@@ -1017,7 +1021,10 @@ mod template_tests {
     #[test]
     fn templates_fall_back_to_their_default_endpoint() {
         let lm = entry("lm_studio");
-        assert_eq!(resolve_endpoint(lm, &config(&[])).unwrap(), "http://localhost:1234/v1");
+        assert_eq!(
+            resolve_endpoint(lm, &config(&[])).unwrap(),
+            "http://localhost:1234/v1"
+        );
         assert_eq!(
             resolve_endpoint(lm, &config(&[("endpoint_url", " http://gpu-box:1234/v1 ")])).unwrap(),
             "http://gpu-box:1234/v1"

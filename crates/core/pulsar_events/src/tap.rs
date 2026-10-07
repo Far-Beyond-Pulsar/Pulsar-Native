@@ -127,7 +127,8 @@ impl Tap {
     }
 
     pub(crate) fn set_enabled(&self, on: bool, capacity: usize) {
-        self.capacity.store(capacity.max(1) as u64, Ordering::Relaxed);
+        self.capacity
+            .store(capacity.max(1) as u64, Ordering::Relaxed);
         self.enabled.store(on, Ordering::Relaxed);
         if !on {
             self.clear();
@@ -144,7 +145,12 @@ impl Tap {
     }
 
     /// Move everything noted so far into the ring.
-    pub(crate) fn delivered(&self, frame: u64, point: FlushPoint, count: impl Fn(u64, Channel) -> usize) {
+    pub(crate) fn delivered(
+        &self,
+        frame: u64,
+        point: FlushPoint,
+        count: impl Fn(u64, Channel) -> usize,
+    ) {
         let pending = std::mem::take(&mut *lock(&self.pending));
         if pending.is_empty() {
             return;
@@ -179,7 +185,9 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 /// `a=1, b=entity:2a` for a payload, at most ~120 characters.
 pub(crate) fn summarize(descriptor: Option<&EventDescriptor>, event: Option<&DynEvent>) -> String {
-    let Some(event) = event else { return String::new() };
+    let Some(event) = event else {
+        return String::new();
+    };
     let mut out = String::new();
     for (i, value) in event.fields.iter().enumerate() {
         if i > 0 {

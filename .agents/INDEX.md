@@ -10,6 +10,7 @@
   FILESYSTEM.md      Virtual filesystem — engine_fs, providers, asset index
   REFLECTION.md      Type system — Reflectable, RuntimeTypeInfo, EngineClass
   ECS.md             Archetype ECS — World, Query, Schedule, Actor
+  COMPONENT_RUNTIME_GAPS.md Current component runtime and proposed Rust lifecycle/events
   THEMING.md         Theme JSON schema, syntax highlighting, window backgrounds
 ```
 
@@ -18,4 +19,6 @@ subsystem in the Pulsar engine. The root `AGENTS.md` provides a short
 index and workspace commands.
 
 These files are written from the source code, not from design docs. They
-describe how the systems actually work today.
+describe how the systems actually work today. `COMPONENT_RUNTIME_GAPS.md`
+is the exception: it distinguishes the current implementation from a proposed
+component runtime target.

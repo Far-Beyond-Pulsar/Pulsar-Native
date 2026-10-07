@@ -23,10 +23,19 @@ fn blueprint_classes_compile_headlessly() {
     std::fs::create_dir_all(classes.join("Door")).unwrap();
     std::fs::write(classes.join("Door/graph_save.json"), EMPTY_GRAPH).unwrap();
 
-    let output = pulsar_package::build_scripts(project.path(), BuildProfile::Dev).expect("Door compiles");
-    assert!(output.languages.iter().any(|l| l == "blueprint"), "{:?}", output.languages);
-    let module = std::fs::read(classes.join("Door/events/.build/module.json")).expect("module written");
-    assert_eq!(pulsar_script_vm::Module::decode(&module).unwrap().name, "Door");
+    let output =
+        pulsar_package::build_scripts(project.path(), BuildProfile::Dev).expect("Door compiles");
+    assert!(
+        output.languages.iter().any(|l| l == "blueprint"),
+        "{:?}",
+        output.languages
+    );
+    let module =
+        std::fs::read(classes.join("Door/events/.build/module.json")).expect("module written");
+    assert_eq!(
+        pulsar_script_vm::Module::decode(&module).unwrap().name,
+        "Door"
+    );
 
     // A class that does not parse fails the build, and loses its stale module.
     std::fs::create_dir_all(classes.join("Broken/events/.build")).unwrap();
@@ -37,6 +46,14 @@ fn blueprint_classes_compile_headlessly() {
     else {
         panic!("a broken class must fail the build");
     };
-    assert!(problems.iter().any(|p| p.error && p.class.as_deref() == Some("Broken")), "{problems:?}");
-    assert!(!classes.join("Broken/events/.build/module.json").exists(), "stale module removed");
+    assert!(
+        problems
+            .iter()
+            .any(|p| p.error && p.class.as_deref() == Some("Broken")),
+        "{problems:?}"
+    );
+    assert!(
+        !classes.join("Broken/events/.build/module.json").exists(),
+        "stale module removed"
+    );
 }

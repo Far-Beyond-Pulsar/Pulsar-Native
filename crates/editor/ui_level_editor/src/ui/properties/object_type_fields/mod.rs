@@ -22,7 +22,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
 use ui::dropdown::{SearchableList, SearchableListEvent};
-use ui::{ActiveTheme, v_flex};
+use ui::{v_flex, ActiveTheme};
 use ui_common::{MeshAssetPicker, PropertyStateManager};
 
 use crate::state::LevelEditorState;
@@ -210,10 +210,7 @@ impl ObjectTypeFieldsSection {
         }
         let mut world = self.scene_db.write();
         for sub in subs {
-            crate::scene_edit::components::unsubscribe_component(
-                &mut world.world,
-                sub,
-            );
+            crate::scene_edit::components::unsubscribe_component(&mut world.world, sub);
         }
     }
 
@@ -258,11 +255,8 @@ impl ObjectTypeFieldsSection {
             .class_registry
             .get_or_insert_with(crate::scene_edit::classes::project_registry);
         let world = self.scene_db.read();
-        self.slot_defaults = crate::scene_edit::classes::slot_defaults(
-            &world.world,
-            &self.object_id,
-            registry,
-        );
+        self.slot_defaults =
+            crate::scene_edit::classes::slot_defaults(&world.world, &self.object_id, registry);
         self.class_view = crate::scene_edit::classes::class_instance_view(
             &world.world,
             &self.object_id,
@@ -384,10 +378,7 @@ impl Render for ObjectTypeFieldsSection {
         // ── Detect structural changes without full get_components() ────────
         let current_count = {
             let world = self.scene_db.read();
-            crate::scene_edit::components::component_count(
-                &world.world,
-                &self.object_id,
-            )
+            crate::scene_edit::components::component_count(&world.world, &self.object_id)
         };
         let count_changed = current_count != self.cached_component_count;
         self.cached_component_count = current_count;
@@ -436,10 +427,7 @@ impl Render for ObjectTypeFieldsSection {
         // render would only make this panel's complexity set the framerate.
         let attached = {
             let world = self.scene_db.read();
-            crate::scene_edit::components::get_components_metadata(
-                &world.world,
-                &self.object_id,
-            )
+            crate::scene_edit::components::get_components_metadata(&world.world, &self.object_id)
         };
 
         let component_hierarchy =
@@ -481,9 +469,7 @@ impl Render for ObjectTypeFieldsSection {
         if !self.world_subs.is_empty() {
             let events = {
                 let mut world = self.scene_db.write();
-                crate::scene_edit::components::take_world_component_events(
-                    &mut world.world,
-                )
+                crate::scene_edit::components::take_world_component_events(&mut world.world)
             };
             for event in events {
                 for (card, sub) in &self.world_subs {

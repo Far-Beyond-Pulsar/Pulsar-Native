@@ -119,7 +119,11 @@ auto-assigns UUIDs). User-defined `.alias.json` files are scanned by
 
 ## ComponentRuntimeBehavior
 
-Runtime components implement this trait to participate in the ECS tick:
+`ComponentRuntimeBehavior` currently provides `sync_component` for the
+typed SceneDB-to-runtime/projection bridge. It is not the component gameplay
+tick or event lifecycle. See
+[`COMPONENT_RUNTIME_GAPS.md`](COMPONENT_RUNTIME_GAPS.md) for the current gaps
+and proposed Rust-facing component runtime.
 
 ```rust
 pub trait ComponentRuntimeBehavior {

@@ -428,5 +428,3 @@ impl<M: InputModeKind> InputBaseState<M> {
         );
     }
 }
-
-

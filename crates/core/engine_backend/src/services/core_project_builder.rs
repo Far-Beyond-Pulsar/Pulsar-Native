@@ -74,6 +74,189 @@ fn cargo_safe_name(raw: &str) -> String {
     }
 }
 
+/// Cargo permits hyphens in package/dependency names, but Rust source refers
+/// to those crates with underscores. Keep the manifest spelling unchanged and
+/// normalize only the identifier emitted into generated Rust.
+fn rust_crate_ident(cargo_name: &str) -> String {
+    cargo_name.replace('-', "_")
+}
+
+/// Add dependencies required by generated launcher/bootstrap files to a
+/// user-owned manifest. The builder still leaves the package and unrelated
+/// dependencies alone, while the Rust files it owns remain buildable.
+fn ensure_generated_dependencies(manifest: &str, script_crates: &[ScriptCrate]) -> String {
+    let mut required = Vec::new();
+    for name in ["pulsar_game", "tracing", "tracing-subscriber"] {
+        if let Some(line) = dependency_line(GAME_MANIFEST_DEPS, name) {
+            required.push((name.to_string(), line.to_string()));
+        }
+    }
+    for krate in script_crates {
+        required.push((
+            krate.name.clone(),
+            format!(
+                "{} = {{ path = \"scripts/{}\" }}",
+                krate.name,
+                krate.dir_name.replace('\\', "/")
+            ),
+        ));
+    }
+
+    let lines: Vec<&str> = manifest.lines().collect();
+    let dependency_table = lines
+        .iter()
+        .position(|line| line.trim() == "[dependencies]");
+    let (start, end) = match dependency_table {
+        Some(start) => {
+            let end = (start + 1..lines.len())
+                .find(|&index| lines[index].trim_start().starts_with('['))
+                .unwrap_or(lines.len());
+            (start + 1, end)
+        }
+        None => (lines.len(), lines.len()),
+    };
+
+    let mut additions = Vec::new();
+    for (name, line) in required {
+        let already_present = lines[start..end].iter().any(|line| {
+            line.split_once('=')
+                .map(|(key, _)| key.trim().trim_matches('"') == name)
+                .unwrap_or(false)
+        });
+        if !already_present {
+            additions.push(line);
+        }
+    }
+    let out = if additions.is_empty() {
+        manifest.to_string()
+    } else {
+        let mut out = String::with_capacity(
+            manifest.len() + additions.iter().map(String::len).sum::<usize>() + 96,
+        );
+        if dependency_table.is_none() {
+            out.push_str(manifest.trim_end());
+            out.push_str("\n\n[dependencies]\n");
+        } else {
+            for line in &lines[..end] {
+                out.push_str(line);
+                out.push('\n');
+            }
+            if !out.ends_with("\n\n") {
+                out.push('\n');
+            }
+        }
+        out.push_str("# Required by Pulsar-generated launcher and bootstrap source.\n");
+        for line in additions {
+            out.push_str(&line);
+            out.push('\n');
+        }
+        if dependency_table.is_some() {
+            for line in &lines[end..] {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+        out
+    };
+
+    merge_baked_patches(&out)
+}
+
+/// Find one dependency assignment inside a `[dependencies]` block.
+fn dependency_line<'a>(manifest: &'a str, dependency: &str) -> Option<&'a str> {
+    let mut in_dependencies = false;
+    for line in manifest.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            if in_dependencies {
+                break;
+            }
+            in_dependencies = trimmed == "[dependencies]";
+            continue;
+        }
+        if in_dependencies
+            && line
+                .split_once('=')
+                .map(|(key, _)| key.trim().trim_matches('"') == dependency)
+                .unwrap_or(false)
+        {
+            return Some(trimmed);
+        }
+    }
+    None
+}
+
+/// Merge baked `[patch.*]` overrides into a user-owned manifest. These
+/// overrides keep generated games on the same local crate sources as the
+/// engine, avoiding duplicate native-link crates such as tree-sitter.
+fn merge_baked_patches(manifest: &str) -> String {
+    let mut baked_sections: Vec<(String, Vec<String>)> = Vec::new();
+    let mut current: Option<usize> = None;
+    for line in GAME_MANIFEST_DEPS.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("[patch.") && trimmed.ends_with(']') {
+            baked_sections.push((trimmed.to_string(), Vec::new()));
+            current = Some(baked_sections.len() - 1);
+        } else if trimmed.starts_with('[') {
+            current = None;
+        } else if let Some(index) = current {
+            if !trimmed.is_empty() && !trimmed.starts_with('#') && trimmed.contains('=') {
+                baked_sections[index].1.push(trimmed.to_string());
+            }
+        }
+    }
+
+    let mut result = manifest.to_string();
+    for (header, entries) in baked_sections {
+        let lines: Vec<&str> = result.lines().collect();
+        if let Some(start) = lines.iter().position(|line| line.trim() == header) {
+            let end = (start + 1..lines.len())
+                .find(|&index| lines[index].trim_start().starts_with('['))
+                .unwrap_or(lines.len());
+            let existing_keys: Vec<&str> = lines[start + 1..end]
+                .iter()
+                .filter_map(|line| line.split_once('=').map(|(key, _)| key.trim()))
+                .collect();
+            let missing: Vec<&String> = entries
+                .iter()
+                .filter(|entry| {
+                    entry
+                        .split_once('=')
+                        .map(|(key, _)| !existing_keys.contains(&key.trim()))
+                        .unwrap_or(false)
+                })
+                .collect();
+            if missing.is_empty() {
+                continue;
+            }
+
+            let mut merged = String::new();
+            for line in &lines[..end] {
+                merged.push_str(line);
+                merged.push('\n');
+            }
+            for entry in missing {
+                merged.push_str(entry);
+                merged.push('\n');
+            }
+            for line in &lines[end..] {
+                merged.push_str(line);
+                merged.push('\n');
+            }
+            result = merged;
+        } else {
+            result.push_str("\n\n");
+            result.push_str(&header);
+            result.push('\n');
+            for entry in entries {
+                result.push_str(&entry);
+                result.push('\n');
+            }
+        }
+    }
+    result
+}
+
 fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
     // Register schemas once before any project settings reads.
     register_default_settings();
@@ -111,20 +294,34 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
     let script_crates = discover_script_crates(project_root);
 
     let cargo_toml_path = project_root.join("Cargo.toml");
-    let should_write_cargo = if cargo_toml_path.exists() {
-        let existing = String::from_utf8(
-            virtual_fs::read_file(&cargo_toml_path)
-                .map_err(|e| format!("Failed to read existing Cargo.toml: {e}"))?,
+    let existing_manifest = if cargo_toml_path.exists() {
+        Some(
+            String::from_utf8(
+                virtual_fs::read_file(&cargo_toml_path)
+                    .map_err(|e| format!("Failed to read existing Cargo.toml: {e}"))?,
+            )
+            .map_err(|e| format!("Failed to read existing Cargo.toml as UTF-8: {e}"))?,
         )
-        .map_err(|e| format!("Failed to read existing Cargo.toml as UTF-8: {e}"))?;
-
-        existing.contains("Generated Pulsar game project:")
-            || existing.contains("Generated by Pulsar Core Project Builder")
     } else {
-        true
+        None
     };
 
+    let should_write_cargo = existing_manifest
+        .as_deref()
+        .map(|existing| {
+            existing.contains("Generated Pulsar game project:")
+                || existing.contains("Generated by Pulsar Core Project Builder")
+        })
+        .unwrap_or(true);
+
     if !should_write_cargo {
+        let existing = existing_manifest.as_deref().unwrap_or_default();
+        let updated = ensure_generated_dependencies(existing, &script_crates);
+        if updated != existing {
+            virtual_fs::write_file(&cargo_toml_path, updated.as_bytes()).map_err(|e| {
+                format!("Failed to update generated source dependencies in Cargo.toml: {e}")
+            })?;
+        }
         return Ok(());
     }
 
@@ -322,14 +519,20 @@ pub fn ensure_engine_primitives(project_root: &Path) {
             continue;
         };
         if let Err(e) = virtual_fs::create_dir_all(parent) {
-            tracing::warn!("Could not create engine mesh directory {}: {e}", parent.display());
+            tracing::warn!(
+                "Could not create engine mesh directory {}: {e}",
+                parent.display()
+            );
             continue;
         }
 
         match EmbeddedEngineMeshes::get(asset_path) {
             Some(asset) => {
                 if let Err(e) = virtual_fs::write_file(&dst, &asset.data) {
-                    tracing::warn!("Failed to write embedded engine mesh {}: {e}", dst.display());
+                    tracing::warn!(
+                        "Failed to write embedded engine mesh {}: {e}",
+                        dst.display()
+                    );
                 } else {
                     tracing::debug!("Materialized embedded engine mesh → {}", dst.display());
                 }
@@ -812,7 +1015,7 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
                 "    // User gameplay crate `scripts/{dir}`:\n    \
                  {name}::register_scripts(game)?;\n",
                 dir = krate.dir_name,
-                name = krate.name
+                name = rust_crate_ident(&krate.name)
             )
         })
         .collect();
@@ -916,12 +1119,40 @@ mod tests {
         super::ensure_engine_main(project.path(), &src).unwrap();
         let text = std::fs::read_to_string(src.join("engine_main.rs")).unwrap();
         assert!(text.contains("game.enable_project_scripting()?;"));
-        assert!(!text.contains("CARGO_MANIFEST_DIR"), "no compile-time project path (#926)");
+        assert!(
+            !text.contains("CARGO_MANIFEST_DIR"),
+            "no compile-time project path (#926)"
+        );
         let main = super::generated_main_rs("game");
         assert!(main.contains("pulsar_game::standalone::run(engine_main::setup)"));
-        assert!(!main.contains("CARGO_MANIFEST_DIR"), "no compile-time project path (#926)");
+        assert!(
+            !main.contains("CARGO_MANIFEST_DIR"),
+            "no compile-time project path (#926)"
+        );
         assert!(!text.contains("load_project_classes"));
         assert!(!text.contains("script_runtime"));
+    }
+
+    #[test]
+    fn generated_setup_normalizes_hyphens_in_script_crate_identifiers() {
+        let project = tempfile::tempdir().unwrap();
+        let script_root = project
+            .path()
+            .join("scripts/voxel-reference-project_scripts");
+        std::fs::create_dir_all(script_root.join("src")).unwrap();
+        std::fs::write(
+            script_root.join("Cargo.toml"),
+            "[package]\nname = \"voxel-reference-project_scripts\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+
+        let src = project.path().join("src");
+        std::fs::create_dir_all(&src).unwrap();
+        super::ensure_engine_main(project.path(), &src).unwrap();
+        let text = std::fs::read_to_string(src.join("engine_main.rs")).unwrap();
+
+        assert!(text.contains("voxel_reference_project_scripts::register_scripts(game)?;"));
+        assert!(!text.contains("voxel-reference-project_scripts::"));
     }
 
     #[test]

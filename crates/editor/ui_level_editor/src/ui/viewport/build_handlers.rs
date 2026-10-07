@@ -148,12 +148,18 @@ pub(super) fn handle_mouse_move(
             // A drag stroke keeps only the latest brush position queued.
             if let Some(events) = &pointer_events_move {
                 if let Ok(mut events) = events.lock() {
-                    let brush = engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush {
-                        norm_x,
-                        norm_y,
-                        request,
-                    };
-                    if matches!(events.last(), Some(engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush { .. })) {
+                    let brush =
+                        engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush {
+                            norm_x,
+                            norm_y,
+                            request,
+                        };
+                    if matches!(
+                        events.last(),
+                        Some(
+                            engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush { .. }
+                        )
+                    ) {
                         *events.last_mut().expect("checked above") = brush;
                     } else {
                         events.push(brush);
@@ -215,9 +221,7 @@ pub(super) fn handle_right_mouse_down(
     let y = (window_y * 1000.0) as i32;
 
     if let Some((screen_x, screen_y)) =
-        crate::ui::viewport::cursor::window_to_screen_position(
-            window, window_x, window_y,
-        )
+        crate::ui::viewport::cursor::window_to_screen_position(window, window_x, window_y)
     {
         locked_cursor_x.store(x, Ordering::Relaxed);
         locked_cursor_y.store(y, Ordering::Relaxed);
@@ -302,9 +306,7 @@ pub(super) fn handle_middle_mouse_down(
     let y = (window_y * 1000.0) as i32;
 
     if let Some((screen_x, screen_y)) =
-        crate::ui::viewport::cursor::window_to_screen_position(
-            window, window_x, window_y,
-        )
+        crate::ui::viewport::cursor::window_to_screen_position(window, window_x, window_y)
     {
         locked_cursor_x.store(x, Ordering::Relaxed);
         locked_cursor_y.store(y, Ordering::Relaxed);
@@ -457,11 +459,13 @@ pub(super) fn handle_left_mouse_down(
         crate::tool_modes::ToolPointerResult::VoxelBrush(request) => {
             if let Some(events) = &pointer_events {
                 if let Ok(mut events) = events.lock() {
-                    events.push(engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush {
-                        norm_x,
-                        norm_y,
-                        request,
-                    });
+                    events.push(
+                        engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush {
+                            norm_x,
+                            norm_y,
+                            request,
+                        },
+                    );
                 }
             }
             return;

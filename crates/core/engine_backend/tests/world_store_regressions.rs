@@ -4,7 +4,11 @@
 use engine_backend::scene::{ObjectType, SceneWorldExt, SpawnObject};
 use pulsar_scenedb::World;
 
-fn spawn(world: &mut World, id: &str, parent: Option<pulsar_scenedb::Entity>) -> pulsar_scenedb::Entity {
+fn spawn(
+    world: &mut World,
+    id: &str,
+    parent: Option<pulsar_scenedb::Entity>,
+) -> pulsar_scenedb::Entity {
     world
         .spawn_object(SpawnObject::new(id).with_id(id).with_parent(parent))
         .unwrap()
@@ -39,7 +43,10 @@ fn duplicate_ids_never_replace_the_existing_entity() {
     assert!(error.is_err());
     assert_eq!(world.entity_for("same"), Some(original));
     assert_eq!(
-        world.get::<engine_backend::scene::Name>(original).unwrap().0,
+        world
+            .get::<engine_backend::scene::Name>(original)
+            .unwrap()
+            .0,
         "same"
     );
 }
@@ -110,5 +117,8 @@ fn an_object_spawns_in_a_single_archetype() {
         .iter()
         .filter(|archetype| archetype.entity_count > 0)
         .count();
-    assert_eq!(populated, 1, "bundle spawn must not leave a chain of partial archetypes");
+    assert_eq!(
+        populated, 1,
+        "bundle spawn must not leave a chain of partial archetypes"
+    );
 }

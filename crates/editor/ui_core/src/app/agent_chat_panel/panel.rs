@@ -148,6 +148,7 @@ impl AgentChatPanel {
             let mut pm = pm_lock.write();
 
             pm.set_project_root(project_path);
+            super::super::refresh_plugin_editor_settings(&mut pm);
             let panel = pm
                 .create_editor_for_file(&path, window, cx)
                 .map_err(|err| err.to_string())?;

@@ -98,6 +98,26 @@ impl PulsarApp {
         let t_total = std::time::Instant::now();
         tracing::info!("[PulsarApp] new_internal start");
 
+        // Component events are registered in the host executable. Publish
+        // their declarations through the shared editor API so Blueprint and
+        // other dynamically loaded editors do not need their own inventory
+        // copy (which cannot see host registrations across a DLL boundary).
+        let mut component_events: Vec<_> = pulsar_world_registry::component_event_registrations()
+            .map(|registration| plugin_editor_api::ComponentEventMetadata {
+                component_class: registration.class_name.to_owned(),
+                event: (registration.declaration)(),
+            })
+            .collect();
+        component_events.sort_by(|a, b| {
+            (&a.component_class, &a.event.name).cmp(&(&b.component_class, &b.event.name))
+        });
+        component_events.dedup_by(|a, b| {
+            a.component_class == b.component_class && a.event.name == b.event.name
+        });
+        cx.set_global(plugin_editor_api::ComponentEventCatalog {
+            events: component_events,
+        });
+
         // ── Dock area ──────────────────────────────────────────────────────────
         let t = std::time::Instant::now();
         let dock_area = cx.new(|cx| ui::dock::DockArea::new("main-dock", Some(1), window, cx));
@@ -422,12 +442,15 @@ impl PulsarApp {
                 drawer_docked: false,
                 drawer_height: 400.0,
                 drawer_resizing: false,
+                drawer_resize_start_y: 0.0,
+                drawer_resize_start_height: 400.0,
                 suppress_drawer_for_drag: false,
                 problems_drawer,
                 type_debugger_drawer,
                 mission_control,
                 mission_control_open: false,
                 git_manager_open: false,
+                task_queue_refresh_task: None,
                 center_tabs,
                 // script_editor: None, // Migrated to plugins
                 // daw_editors: Vec::new(),
@@ -463,6 +486,25 @@ impl PulsarApp {
                 radial: super::radial_menu::RadialHost::new(cx),
             },
         };
+
+        // Repaint the task button when queue state changes. The task window owns
+        // its own refresh task while it is open.
+        // The queue is editor-only; game/runtime work is never routed through it.
+        let task_queue = editor_task_queue::global().clone();
+        let task_queue_refresh_task = cx.spawn(async move |this, cx| {
+            let mut revision = task_queue.revision();
+            loop {
+                smol::Timer::after(std::time::Duration::from_millis(250)).await;
+                let next_revision = task_queue.revision();
+                if next_revision != revision {
+                    revision = next_revision;
+                    this.update(cx, |app, cx| {
+                        cx.notify();
+                    });
+                }
+            }
+        });
+        app.state.task_queue_refresh_task = Some(task_queue_refresh_task);
 
         // Update file manager drawer with registered file types from plugin manager
         let file_types: Vec<plugin_editor_api::FileTypeDefinition> =

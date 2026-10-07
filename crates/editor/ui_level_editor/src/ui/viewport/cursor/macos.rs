@@ -22,11 +22,11 @@ unsafe extern "C" {
 #[cfg(target_os = "macos")]
 fn is_accessibility_trusted(prompt_if_missing: bool) -> bool {
     use core::ffi::c_void;
-    use core_foundation_sys::base::{CFRelease, kCFAllocatorDefault};
+    use core_foundation_sys::base::{kCFAllocatorDefault, CFRelease};
     use core_foundation_sys::dictionary::{
-        CFDictionaryCreate, kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks,
+        kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks, CFDictionaryCreate,
     };
-    use core_foundation_sys::string::{CFStringCreateWithCString, kCFStringEncodingUTF8};
+    use core_foundation_sys::string::{kCFStringEncodingUTF8, CFStringCreateWithCString};
 
     unsafe {
         let key = CFStringCreateWithCString(

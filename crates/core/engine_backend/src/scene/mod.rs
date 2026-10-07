@@ -47,12 +47,12 @@ pub mod helio_bridge;
 
 // Re-export new system types for convenience
 #[cfg(feature = "render")]
+pub use editor_rows::sync_editor_light_rows;
+#[cfg(feature = "render")]
 pub use helio_bridge::{
     arm_render_row_subscriptions, arm_render_row_subscriptions_for_entity, ensure_gpu_mirror,
     mark_render_components_changed, retire_gpu_rows_for_entity, sync_static_mesh_rows,
 };
-#[cfg(feature = "render")]
-pub use editor_rows::sync_editor_light_rows;
 #[cfg(feature = "render")]
 pub mod editor_postprocess;
 #[cfg(feature = "render")]
@@ -182,7 +182,10 @@ mod change_window_tests {
             }
         }
         let tracker = world.change_tracker().expect("attached").clone();
-        assert!(!tracker.lock().drain_component_removals().is_empty(), "removals were recorded");
+        assert!(
+            !tracker.lock().drain_component_removals().is_empty(),
+            "removals were recorded"
+        );
 
         let entity = world.spawn();
         world.insert(entity, Visibility::default());
@@ -190,7 +193,11 @@ mod change_window_tests {
         super::end_change_window(world);
 
         let delta = tracker.drain_with_world(world);
-        assert!(delta.spawned.is_empty() && delta.despawned.is_empty() && delta.component_deltas.is_empty());
+        assert!(
+            delta.spawned.is_empty()
+                && delta.despawned.is_empty()
+                && delta.component_deltas.is_empty()
+        );
         assert!(tracker.drain_component_removals().is_empty());
     }
 }

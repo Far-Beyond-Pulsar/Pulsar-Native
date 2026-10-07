@@ -56,7 +56,9 @@ impl std::str::FromStr for BuildProfile {
         match s.trim().to_ascii_lowercase().as_str() {
             "dev" | "development" | "debug" => Ok(Self::Dev),
             "shipping" | "release" | "ship" => Ok(Self::Shipping),
-            other => Err(format!("unknown profile `{other}` (expected `dev` or `shipping`)")),
+            other => Err(format!(
+                "unknown profile `{other}` (expected `dev` or `shipping`)"
+            )),
         }
     }
 }
@@ -116,7 +118,13 @@ pub struct WindowSettings {
 
 impl Default for WindowSettings {
     fn default() -> Self {
-        Self { title: None, width: 1280, height: 720, fullscreen: false, resizable: true }
+        Self {
+            title: None,
+            width: 1280,
+            height: 720,
+            fullscreen: false,
+            resizable: true,
+        }
     }
 }
 
@@ -135,12 +143,20 @@ pub struct ScriptProfileLimits {
 impl ScriptProfileLimits {
     /// Editor / Play-in-Editor / dev builds: generous, checked.
     pub fn dev() -> Self {
-        Self { instruction_budget: 1_000_000, max_call_depth: 256, checked_arithmetic: true }
+        Self {
+            instruction_budget: 1_000_000,
+            max_call_depth: 256,
+            checked_arithmetic: true,
+        }
     }
 
     /// Shipping builds: strict, unchecked (like a Rust release build).
     pub fn shipping() -> Self {
-        Self { instruction_budget: 100_000, max_call_depth: 64, checked_arithmetic: false }
+        Self {
+            instruction_budget: 100_000,
+            max_call_depth: 64,
+            checked_arithmetic: false,
+        }
     }
 }
 
@@ -166,7 +182,9 @@ fn dev_limits<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ScriptProfileLim
     Ok(PartialLimits::deserialize(d)?.over(ScriptProfileLimits::dev()))
 }
 
-fn shipping_limits<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ScriptProfileLimits, D::Error> {
+fn shipping_limits<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<ScriptProfileLimits, D::Error> {
     Ok(PartialLimits::deserialize(d)?.over(ScriptProfileLimits::shipping()))
 }
 
@@ -176,7 +194,10 @@ fn shipping_limits<'de, D: serde::Deserializer<'de>>(d: D) -> Result<ScriptProfi
 pub struct ScriptSettings {
     #[serde(default = "ScriptProfileLimits::dev", deserialize_with = "dev_limits")]
     pub dev: ScriptProfileLimits,
-    #[serde(default = "ScriptProfileLimits::shipping", deserialize_with = "shipping_limits")]
+    #[serde(
+        default = "ScriptProfileLimits::shipping",
+        deserialize_with = "shipping_limits"
+    )]
     pub shipping: ScriptProfileLimits,
     /// Native capabilities scripts may import (#869): `null` (the
     /// default) allows every capability, a list allows only those.
@@ -220,20 +241,41 @@ mod tests {
         assert_eq!(settings.scripting.dev, ScriptProfileLimits::dev());
         let shipping = settings.scripting.limits_for(BuildProfile::Shipping);
         assert_eq!(shipping.instruction_budget, 5);
-        assert!(!shipping.checked_arithmetic, "unset fields keep the profile's own defaults");
-        assert_eq!(shipping.max_call_depth, ScriptProfileLimits::shipping().max_call_depth);
-        assert_eq!(ProjectSettings::from_json(b"{}").unwrap(), ProjectSettings::default());
-        assert!(!ProjectSettings::default().scripting.shipping.checked_arithmetic);
+        assert!(
+            !shipping.checked_arithmetic,
+            "unset fields keep the profile's own defaults"
+        );
+        assert_eq!(
+            shipping.max_call_depth,
+            ScriptProfileLimits::shipping().max_call_depth
+        );
+        assert_eq!(
+            ProjectSettings::from_json(b"{}").unwrap(),
+            ProjectSettings::default()
+        );
+        assert!(
+            !ProjectSettings::default()
+                .scripting
+                .shipping
+                .checked_arithmetic
+        );
     }
 
     #[test]
     fn round_trips_and_names_the_window() {
-        let mut settings = ProjectSettings { name: "Game".into(), profile: BuildProfile::Shipping, ..Default::default() };
+        let mut settings = ProjectSettings {
+            name: "Game".into(),
+            profile: BuildProfile::Shipping,
+            ..Default::default()
+        };
         settings.scripting.allowed_capabilities = Some(vec!["fs".into()]);
         let back = ProjectSettings::from_json(settings.to_json().as_bytes()).unwrap();
         assert_eq!(back, settings);
         assert_eq!(back.script_limits(), &ScriptProfileLimits::shipping());
         assert_eq!(back.window_title("fallback"), "Game");
-        assert_eq!("release".parse::<BuildProfile>().unwrap(), BuildProfile::Shipping);
+        assert_eq!(
+            "release".parse::<BuildProfile>().unwrap(),
+            BuildProfile::Shipping
+        );
     }
 }

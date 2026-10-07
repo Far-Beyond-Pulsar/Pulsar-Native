@@ -6,14 +6,14 @@ use std::sync::Arc;
 
 use engine_backend::{
     scene::{
-        Transform,
         voxel_source::{VoxelSourceKind, VoxelSourceSession},
+        Transform,
     },
     services::gpu_renderer::GpuRenderer,
 };
 use gpui::{AppContext, MouseButton};
 use helio_component::{VoxelComponent, VoxelPayloadStore, VoxelTerrainComponent};
-use helio_voxel_data::{VOXEL_CHUNK_ENCODING_RAW, VoxelInboxClose, VoxelSampleEdit, VoxelSourceId};
+use helio_voxel_data::{VoxelInboxClose, VoxelSampleEdit, VoxelSourceId, VOXEL_CHUNK_ENCODING_RAW};
 use parking_lot::Mutex;
 use pulsar_scenedb::Entity;
 use rust_i18n::t;
@@ -23,8 +23,8 @@ use super::{
     ToolModeId, ToolPointerEvent, ToolPointerResult, ToolWidget, ViewportFrame,
 };
 use crate::state::{
-    LevelEditorState,
     terrain::{BrushShape, SculptMode, TerrainTarget},
+    LevelEditorState,
 };
 
 const SOURCE_ID: VoxelSourceId = VoxelSourceId(0x5445_5252_4149_4e01);
@@ -253,16 +253,21 @@ impl TerrainMode {
 }
 
 impl ToolMode for TerrainMode {
-    fn build_panels(&self, ctx: &mut super::ModePanelContext<'_, '_>) -> Vec<Arc<dyn ui::dock::PanelView>> {
+    fn build_panels(
+        &self,
+        ctx: &mut super::ModePanelContext<'_, '_>,
+    ) -> Vec<Arc<dyn ui::dock::PanelView>> {
         let state = ctx.state.clone();
         let terrain = {
             let window = &mut *ctx.window;
-            ctx.cx.new(|cx| panels::TerrainPanel::new(state, window, cx))
+            ctx.cx
+                .new(|cx| panels::TerrainPanel::new(state, window, cx))
         };
         let state = ctx.state.clone();
         let foliage = {
             let window = &mut *ctx.window;
-            ctx.cx.new(|cx| panels::FoliageSetsPanel::new(state, window, cx))
+            ctx.cx
+                .new(|cx| panels::FoliageSetsPanel::new(state, window, cx))
         };
         vec![Arc::new(terrain), Arc::new(foliage)]
     }

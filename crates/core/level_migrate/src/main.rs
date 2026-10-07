@@ -29,7 +29,6 @@
 use helio_component::{
     FoliageComponent as _ForceLink_FoliageComponent, LODComponent as _ForceLink_LODComponent,
     LightComponent as _ForceLink_LightComponent,
-    MaterialOverrideComponent as _ForceLink_MaterialOverrideComponent,
     PortalComponent as _ForceLink_PortalComponent,
     PostProcessVolumeComponent as _ForceLink_PostProcessVolumeComponent,
     ReflectionCaptureComponent as _ForceLink_ReflectionCaptureComponent,
@@ -195,7 +194,10 @@ fn migrate_classes(root: &mut Value, project: Option<&Path>) -> bool {
         println!("  blueprint binding -> ClassInstance: {object} ({class})");
     }
     for (object, class) in &report.unresolved {
-        println!("  class '{class}' (on {object}) not found in {} -- kept unresolved", project.display());
+        println!(
+            "  class '{class}' (on {object}) not found in {} -- kept unresolved",
+            project.display()
+        );
     }
     for (object, class) in &report.kept_bindings {
         println!("  kept legacy binding {object} -> {class} (object already has a class)");
@@ -226,7 +228,9 @@ fn migrate_file(path: &Path, project: Option<&Path>) -> Result<(), String> {
 
     let mut report = MigrationReport::default();
 
-    let project = project.map(Path::to_path_buf).or_else(|| find_project_root(path));
+    let project = project
+        .map(Path::to_path_buf)
+        .or_else(|| find_project_root(path));
     let classes_changed = migrate_classes(&mut root, project.as_deref());
 
     // V2+ shape: each object carries its own `component_instances[]`.
@@ -408,9 +412,16 @@ mod tests {
 
         migrate_file(&level, None).unwrap();
 
-        let migrated: Value = serde_json::from_str(&std::fs::read_to_string(&level).unwrap()).unwrap();
-        assert_eq!(migrated["components"]["d"][0]["class_name"], "ClassInstance");
-        assert_eq!(migrated["objects"][1]["component_instances"][0]["data"]["variable_overrides"]["open"], true);
+        let migrated: Value =
+            serde_json::from_str(&std::fs::read_to_string(&level).unwrap()).unwrap();
+        assert_eq!(
+            migrated["components"]["d"][0]["class_name"],
+            "ClassInstance"
+        );
+        assert_eq!(
+            migrated["objects"][1]["component_instances"][0]["data"]["variable_overrides"]["open"],
+            true
+        );
         assert!(migrated.get("blueprint_bindings").is_none());
         assert!(backup_path_for(&level).exists(), "original backed up");
     }

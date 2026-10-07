@@ -356,5 +356,3 @@ impl Default for EditorExtras {
         }
     }
 }
-
-

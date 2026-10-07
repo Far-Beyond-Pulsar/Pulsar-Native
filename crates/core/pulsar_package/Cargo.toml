@@ -39,6 +39,7 @@ thiserror = { workspace = true }
 
 blueprint_editor_plugin = { path = "../../../plugins/vendor/blueprint_editor", features = ["builtin"], optional = true }
 plugin_editor_api = { workspace = true, optional = true }
+pulsar_world_registry.workspace = true
 plugin_typescript = { workspace = true, optional = true }
 
 [dev-dependencies]

@@ -10,16 +10,16 @@
 //! - **Click chevron** - Expand/collapse components with children
 
 use crate::state::LevelEditorState;
-use engine_backend::ComponentInstance;
 use engine_backend::scene::SharedScene;
+use engine_backend::ComponentInstance;
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 use ui::{
-    ActiveTheme, HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout, IconName,
-    Sizable,
     button::{Button, ButtonVariants as _},
     h_flex,
     menu::popup_menu::PopupMenu,
+    ActiveTheme, HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout, IconName,
+    Sizable,
 };
 
 // ── Drag Payload ──────────────────────────────────────────────────────────────

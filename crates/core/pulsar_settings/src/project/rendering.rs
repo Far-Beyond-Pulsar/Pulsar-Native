@@ -5,326 +5,102 @@ use pulsar_config::{
 pub const NS: &str = "project";
 pub const OWNER: &str = "rendering";
 
+fn choices(values: &[(&str, &str)]) -> Vec<DropdownOption> {
+    values
+        .iter()
+        .map(|(label, value)| DropdownOption::new(*label, *value))
+        .collect()
+}
+
 pub fn register(cfg: &'static ConfigManager) {
-    let schema = NamespaceSchema::new("Rendering", "Rendering pipeline and lighting configuration")
+    let schema = NamespaceSchema::new("Rendering", "Project rendering quality and effects")
         .setting(
-            "render_pipeline",
-            SchemaEntry::new("Rendering pipeline to use", "deferred")
-                .label("Render Pipeline")
-                .page("Rendering")
-                .field_type(FieldType::Dropdown {
-                    options: vec![
-                        DropdownOption::new("Deferred", "deferred"),
-                        DropdownOption::new("Forward+", "forward_plus"),
-                        DropdownOption::new("Forward (Mobile)", "forward"),
-                    ],
-                }),
-        )
-        .setting(
-            "hdr_enabled",
-            SchemaEntry::new("Enable high dynamic range rendering", true)
-                .label("HDR")
-                .page("Rendering")
-                .field_type(FieldType::Checkbox),
-        )
-        .setting(
-            "tonemapper",
-            SchemaEntry::new("Tonemapping operator applied to the HDR buffer", "aces")
-                .label("Tonemapper")
-                .page("Rendering")
-                .field_type(FieldType::Dropdown {
-                    options: vec![
-                        DropdownOption::new("Linear", "linear"),
-                        DropdownOption::new("Reinhard", "reinhard"),
-                        DropdownOption::new("ACES", "aces"),
-                        DropdownOption::new("AgX", "agx"),
-                        DropdownOption::new("GT Tonemap", "gt"),
-                    ],
-                }),
-        )
-        .setting(
-            "exposure_mode",
-            SchemaEntry::new("Camera exposure control mode", "auto")
-                .label("Exposure Mode")
-                .page("Rendering")
-                .field_type(FieldType::Dropdown {
-                    options: vec![
-                        DropdownOption::new("Auto", "auto"),
-                        DropdownOption::new("Manual", "manual"),
-                    ],
+            "render_scale",
+            SchemaEntry::new("Internal render resolution scale", 0.75_f64)
+                .label("Render Scale")
+                .page("Rendering / Quality")
+                .field_type(FieldType::Slider {
+                    min: 0.25,
+                    max: 1.0,
+                    step: 0.05,
                 })
-                .validator(Validator::string_one_of(["auto", "manual"])),
+                .validator(Validator::float_range(0.25, 1.0)),
         )
         .setting(
-            "manual_exposure",
-            SchemaEntry::new(
-                "Manual exposure value in EV100 (used when mode = manual)",
-                10.0_f64,
-            )
-            .label("Manual Exposure (EV100)")
-            .page("Rendering")
-            .field_type(FieldType::Slider {
-                min: -10.0,
-                max: 20.0,
-                step: 0.1,
-            })
-            .validator(Validator::float_range(-10.0, 20.0)),
-        )
-        .setting(
-            "global_illumination",
-            SchemaEntry::new("Global illumination technique", "lumen")
-                .label("Global Illumination")
-                .page("Rendering")
+            "tsr_quality",
+            SchemaEntry::new("Temporal upscaling quality preset", "off")
+                .label("Temporal Super Resolution")
+                .page("Rendering / Quality")
                 .field_type(FieldType::Dropdown {
-                    options: vec![
-                        DropdownOption::new("None", "none"),
-                        DropdownOption::new("Baked (Lightmaps)", "lightmaps"),
-                        DropdownOption::new("SSGI", "ssgi"),
-                        DropdownOption::new("Lumen (Dynamic)", "lumen"),
-                        DropdownOption::new("Voxel GI", "voxel"),
-                    ],
+                    options: choices(&[
+                        ("Off", "off"),
+                        ("Performance", "performance"),
+                        ("Balanced", "balanced"),
+                        ("Quality", "quality"),
+                        ("Native", "native"),
+                    ]),
                 }),
         )
         .setting(
-            "reflections",
-            SchemaEntry::new("Real-time reflection technique", "ssr")
-                .label("Reflections")
-                .page("Rendering")
+            "shadow_quality",
+            SchemaEntry::new("Shadow filtering quality", "medium")
+                .label("Shadow Quality")
+                .page("Rendering / Quality")
                 .field_type(FieldType::Dropdown {
-                    options: vec![
-                        DropdownOption::new("None", "none"),
-                        DropdownOption::new("Reflection Captures", "captures"),
-                        DropdownOption::new("SSR", "ssr"),
-                        DropdownOption::new("Raytraced", "raytraced"),
-                    ],
+                    options: choices(&[
+                        ("Low", "low"),
+                        ("Medium", "medium"),
+                        ("High", "high"),
+                        ("Ultra", "ultra"),
+                    ]),
                 }),
         )
         .setting(
-            "ray_tracing",
-            SchemaEntry::new("Enable hardware ray tracing (requires RTX / RDNA3)", false)
-                .label("Ray Tracing")
-                .page("Rendering")
-                .field_type(FieldType::Checkbox),
-        )
-        .setting(
-            "ray_tracing_shadows",
-            SchemaEntry::new("Use ray-traced shadows (requires ray tracing)", false)
-                .label("RT Shadows")
-                .page("Rendering")
-                .field_type(FieldType::Checkbox),
-        )
-        .setting(
-            "ray_tracing_ao",
+            "shadow_atlas_size",
             SchemaEntry::new(
-                "Use ray-traced ambient occlusion (requires ray tracing)",
-                false,
+                "Shadow atlas resolution; larger values use substantially more GPU memory",
+                1024_i64,
             )
-            .label("RT Ambient Occlusion")
-            .page("Rendering")
-            .field_type(FieldType::Checkbox),
-        )
-        .setting(
-            "upscaling",
-            SchemaEntry::new("Temporal upscaling method for performance", "none")
-                .label("Upscaling")
-                .page("Rendering")
-                .field_type(FieldType::Dropdown {
-                    options: vec![
-                        DropdownOption::new("None", "none"),
-                        DropdownOption::new("Bilinear", "bilinear"),
-                        DropdownOption::new("DLSS", "dlss"),
-                        DropdownOption::new("FSR 3", "fsr3"),
-                        DropdownOption::new("XeSS", "xess"),
-                    ],
-                }),
-        )
-        .setting(
-            "upscaling_quality",
-            SchemaEntry::new("Upscaling quality preset", "quality")
-                .label("Upscaling Quality")
-                .page("Rendering")
-                .field_type(FieldType::Dropdown {
-                    options: vec![
-                        DropdownOption::new("Ultra Performance", "ultra_performance"),
-                        DropdownOption::new("Performance", "performance"),
-                        DropdownOption::new("Balanced", "balanced"),
-                        DropdownOption::new("Quality", "quality"),
-                        DropdownOption::new("Ultra Quality", "ultra_quality"),
-                    ],
-                }),
-        )
-        .setting(
-            "frame_interpolation",
-            SchemaEntry::new(
-                "Generate intermediate frames to boost perceived frame rate",
-                false,
-            )
-            .label("Frame Generation")
-            .page("Rendering")
-            .field_type(FieldType::Checkbox),
-        )
-        .setting(
-            "color_grading_lut",
-            SchemaEntry::new(
-                "Path to a 3D LUT for color grading (leave blank to disable)",
-                "",
-            )
-            .label("Color Grading LUT")
-            .page("Rendering")
-            .field_type(FieldType::TextInput {
-                placeholder: Some("assets/luts/cinematic.cube".into()),
-                multiline: false,
+            .label("Shadow Atlas Size")
+            .page("Rendering / Quality")
+            .field_type(FieldType::Dropdown {
+                options: choices(&[
+                    ("512", "512"),
+                    ("1024", "1024"),
+                    ("2048", "2048"),
+                    ("4096", "4096"),
+                ]),
             }),
         )
         .setting(
-            "color_grading_lut_intensity",
-            SchemaEntry::new("Blend intensity of the color grading LUT", 1.0_f64)
-                .label("LUT Intensity")
-                .page("Rendering")
-                .field_type(FieldType::Slider {
-                    min: 0.0,
-                    max: 1.0,
-                    step: 0.01,
-                })
-                .validator(Validator::float_range(0.0, 1.0)),
+            "screen_space_reflections",
+            SchemaEntry::new("Enable screen-space reflections", false)
+                .label("Screen Space Reflections")
+                .page("Rendering / Effects")
+                .field_type(FieldType::Checkbox),
         )
         .setting(
-            "gi_method",
-            SchemaEntry::new("Global illumination technique for indirect light", "none")
-                .label("Global Illumination")
-                .page("Rendering")
-                .field_type(FieldType::Dropdown {
-                    options: vec![
-                        DropdownOption::new("None", "none"),
-                        DropdownOption::new("Baked Lightmaps", "lightmap"),
-                        DropdownOption::new("DDGI (Dynamic)", "ddgi"),
-                        DropdownOption::new("Lumen (Software)", "lumen_sw"),
-                        DropdownOption::new("Lumen (Hardware RT)", "lumen_hw"),
-                        DropdownOption::new("SSGI", "ssgi"),
-                    ],
-                })
-                .validator(Validator::string_one_of([
-                    "none", "lightmap", "ddgi", "lumen_sw", "lumen_hw", "ssgi",
-                ])),
+            "planar_reflections",
+            SchemaEntry::new("Render authored planar reflection surfaces", false)
+                .label("Planar Reflections")
+                .page("Rendering / Effects")
+                .field_type(FieldType::Checkbox),
         )
         .setting(
-            "lightmap_resolution",
-            SchemaEntry::new("Default lightmap texture resolution in texels", "512")
-                .label("Default Lightmap Resolution")
-                .page("Rendering")
-                .field_type(FieldType::Dropdown {
-                    options: vec![
-                        DropdownOption::new("64", "64"),
-                        DropdownOption::new("128", "128"),
-                        DropdownOption::new("256", "256"),
-                        DropdownOption::new("512", "512"),
-                        DropdownOption::new("1024", "1024"),
-                        DropdownOption::new("2048", "2048"),
-                    ],
-                }),
-        )
-        .setting(
-            "ray_tracing_enabled",
+            "render_mode",
             SchemaEntry::new(
-                "Enable hardware ray tracing for shadows, reflections, and GI",
-                false,
+                "Renderer path; changing it rebuilds the render graph",
+                "deferred",
             )
-            .label("Ray Tracing")
-            .page("Rendering")
-            .field_type(FieldType::Checkbox),
-        )
-        .setting(
-            "rt_reflections",
-            SchemaEntry::new(
-                "Use ray-traced reflections (requires ray tracing to be enabled)",
-                false,
-            )
-            .label("RT Reflections")
-            .page("Rendering")
-            .field_type(FieldType::Checkbox),
-        )
-        .setting(
-            "rt_shadows",
-            SchemaEntry::new(
-                "Use ray-traced soft shadows (requires ray tracing to be enabled)",
-                false,
-            )
-            .label("RT Shadows")
-            .page("Rendering")
-            .field_type(FieldType::Checkbox),
-        )
-        .setting(
-            "rt_ambient_occlusion",
-            SchemaEntry::new(
-                "Use ray-traced ambient occlusion for accurate contact shadows",
-                false,
-            )
-            .label("RT Ambient Occlusion")
-            .page("Rendering")
-            .field_type(FieldType::Checkbox),
-        )
-        .setting(
-            "upscaler",
-            SchemaEntry::new(
-                "Temporal upscaling technique to reconstruct native resolution from lower input",
-                "none",
-            )
-            .label("Upscaler")
-            .page("Rendering")
+            .label("Render Mode")
+            .page("Rendering / Advanced")
             .field_type(FieldType::Dropdown {
-                options: vec![
-                    DropdownOption::new("None", "none"),
-                    DropdownOption::new("DLSS (NVIDIA)", "dlss"),
-                    DropdownOption::new("FSR 3 (AMD)", "fsr3"),
-                    DropdownOption::new("XeSS (Intel)", "xess"),
-                    DropdownOption::new("TAA (built-in)", "taa"),
-                ],
-            })
-            .validator(Validator::string_one_of([
-                "none", "dlss", "fsr3", "xess", "taa",
-            ])),
-        )
-        .setting(
-            "sky_atmosphere",
-            SchemaEntry::new("Enable physically-based sky atmosphere scattering", false)
-                .label("Sky Atmosphere")
-                .page("Rendering")
-                .field_type(FieldType::Checkbox),
-        )
-        .setting(
-            "volumetric_clouds",
-            SchemaEntry::new("Render volumetric clouds using raymarching", false)
-                .label("Volumetric Clouds")
-                .page("Rendering")
-                .field_type(FieldType::Checkbox),
-        )
-        .setting(
-            "max_draw_calls",
-            SchemaEntry::new(
-                "Maximum draw calls per frame before an overdraw warning is surfaced",
-                10_000_i64,
-            )
-            .label("Max Draw Calls")
-            .page("Rendering")
-            .field_type(FieldType::NumberInput {
-                min: Some(100.0),
-                max: Some(1_000_000.0),
-                step: Some(1000.0),
-            })
-            .validator(Validator::int_range(100, 1_000_000)),
-        )
-        .setting(
-            "triangle_budget",
-            SchemaEntry::new("Target triangle count per frame in thousands", 5_000_i64)
-                .label("Triangle Budget (K)")
-                .page("Rendering")
-                .field_type(FieldType::NumberInput {
-                    min: Some(100.0),
-                    max: Some(100_000.0),
-                    step: Some(100.0),
-                })
-                .validator(Validator::int_range(100, 100_000)),
+                options: choices(&[
+                    ("Deferred", "deferred"),
+                    ("Forward Opaque", "forward_opaque"),
+                    ("Forward Only", "forward_only"),
+                ]),
+            }),
         );
-
     let _ = cfg.register(NS, OWNER, schema);
 }

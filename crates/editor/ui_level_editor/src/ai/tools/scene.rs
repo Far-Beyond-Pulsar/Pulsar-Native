@@ -28,7 +28,9 @@ pub fn level_editor_query_scene(ctx: &ToolContext) -> Result<Value> {
     let objects = scene_edit::objects::get_all_objects(&world);
     let mut counts_by_kind = std::collections::BTreeMap::new();
     for object in &objects {
-        *counts_by_kind.entry(object_kind(&object.object_type)).or_insert(0usize) += 1;
+        *counts_by_kind
+            .entry(object_kind(&object.object_type))
+            .or_insert(0usize) += 1;
     }
     let pie = &state.play.pie;
     Ok(json!({
@@ -75,7 +77,11 @@ fn step_history(ctx: &ToolContext, steps: Option<u32>, redo: bool) -> Result<Val
     let requested = steps.unwrap_or(1).max(1);
     let mut applied = 0;
     while applied < requested {
-        let ok = if redo { state.scene.redo() } else { state.scene.undo() };
+        let ok = if redo {
+            state.scene.redo()
+        } else {
+            state.scene.undo()
+        };
         if !ok {
             break;
         }

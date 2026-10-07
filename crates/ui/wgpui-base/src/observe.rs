@@ -18,7 +18,9 @@ pub type ObservedElement<E> = E;
 /// div().id("input").test_support().test_props(|props| props.value("invented"));
 /// ```
 #[cfg(feature = "test-support")]
-pub trait TestSupportExt: Element<PrepaintState = Option<Hitbox>> + InteractiveElement + Sized {
+pub trait TestSupportExt:
+    Element<PrepaintState = Option<Hitbox>> + InteractiveElement + Sized
+{
     /// With `test-support`, observes the element without adding a layout node.
     /// Otherwise returns the original element with its exact native type.
     /// Call before `track_focus` so the actual focus binding can be observed.
@@ -39,7 +41,9 @@ impl<E: Element<PrepaintState = Option<Hitbox>> + InteractiveElement> TestSuppor
 
 #[cfg(not(feature = "test-support"))]
 pub trait TestSupportExt: Sized {
-    fn test_support(self) -> Self { self }
+    fn test_support(self) -> Self {
+        self
+    }
 }
 #[cfg(not(feature = "test-support"))]
 impl<E> TestSupportExt for E {}
@@ -57,5 +61,3 @@ mod tests {
         let _: gpui::Stateful<gpui::Div> = element;
     }
 }
-
-

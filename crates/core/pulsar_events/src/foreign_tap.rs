@@ -11,11 +11,11 @@
 use std::ffi::c_void;
 use std::sync::{Arc, Weak};
 
-use gamma::ffi::{RawBus, RawDropFn, RawEventRef, RawHandler, RawChannel, EVENT_DYN, STATUS_OK};
 use gamma::DynEvent;
+use gamma::ffi::{EVENT_DYN, RawBus, RawChannel, RawDropFn, RawEventRef, RawHandler, STATUS_OK};
 
 use crate::hub::Inner;
-use crate::tap::{summarize, Pending};
+use crate::tap::{Pending, summarize};
 
 struct TapCtx {
     inner: RawBus,
@@ -115,7 +115,11 @@ unsafe extern "C" fn tap_publish_deferred(
     status
 }
 
-unsafe extern "C" fn tap_register_descriptor(ctx: *const c_void, data: *const u8, len: usize) -> i32 {
+unsafe extern "C" fn tap_register_descriptor(
+    ctx: *const c_void,
+    data: *const u8,
+    len: usize,
+) -> i32 {
     // SAFETY: live ctx; forwarded.
     let tap = unsafe { tap_ctx(ctx) };
     unsafe { (tap.inner.register_descriptor)(tap.inner.ctx, data, len) }
@@ -125,7 +129,8 @@ unsafe extern "C" fn tap_register_descriptor(ctx: *const c_void, data: *const u8
 /// `event` is valid for the call.
 unsafe fn note(tap: &TapCtx, event: *const RawEventRef, origin: &str) {
     // SAFETY: forwarded.
-    if let (Some(pending), Some(hub)) = (unsafe { pending(tap, event, origin) }, tap.hub.upgrade()) {
+    if let (Some(pending), Some(hub)) = (unsafe { pending(tap, event, origin) }, tap.hub.upgrade())
+    {
         hub.tap.note(pending);
     }
 }
@@ -143,12 +148,25 @@ unsafe fn pending(tap: &TapCtx, event: *const RawEventRef, origin: &str) -> Opti
     let event = unsafe { &*event };
     let channel = event.channel.to_channel()?;
     let descriptor = hub.bus.descriptor(event.id);
-    let name = descriptor.as_ref().map_or_else(|| format!("#{:016x}", event.id), |d| d.name.clone());
+    let name = descriptor
+        .as_ref()
+        .map_or_else(|| format!("#{:016x}", event.id), |d| d.name.clone());
     let decoded = (event.kind == EVENT_DYN && !event.data.is_null())
         // SAFETY: an EVENT_DYN payload is `len` encoded bytes.
-        .then(|| DynEvent::decode(unsafe { std::slice::from_raw_parts(event.data, event.len) }).ok())
+        .then(|| {
+            DynEvent::decode(unsafe { std::slice::from_raw_parts(event.data, event.len) }).ok()
+        })
         .flatten();
     let mut summary = summarize(descriptor.as_deref(), decoded.as_ref());
-    summary = if summary.is_empty() { format!("({origin})") } else { format!("({origin}) {summary}") };
-    Some(Pending { id: event.id, name, channel, summary })
+    summary = if summary.is_empty() {
+        format!("({origin})")
+    } else {
+        format!("({origin}) {summary}")
+    };
+    Some(Pending {
+        id: event.id,
+        name,
+        channel,
+        summary,
+    })
 }

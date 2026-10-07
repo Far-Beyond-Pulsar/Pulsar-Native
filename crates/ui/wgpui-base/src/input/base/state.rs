@@ -9260,5 +9260,3 @@ impl InputBaseState<crate::input::EditorMode> {
         cx.notify();
     }
 }
-
-

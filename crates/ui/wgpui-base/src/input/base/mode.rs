@@ -469,5 +469,3 @@ mod tests {
         assert_eq!(mode.rows(), 5);
     }
 }
-
-

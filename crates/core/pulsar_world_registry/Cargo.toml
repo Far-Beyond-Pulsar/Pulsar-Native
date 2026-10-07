@@ -6,6 +6,7 @@ description = "Class-name-keyed registry bridging reflection-typed, ComponentRun
 
 [dependencies]
 pulsar_scenedb    = { workspace = true }
+pulsar_events     = { workspace = true }
 pulsar_reflection = { workspace = true }
 serde_json        = { workspace = true }
 inventory         = { workspace = true }

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use crate::capability::CapabilityPolicy;
 use crate::compiled::CompiledCode;
 use crate::error::LinkError;
-use crate::events::{EventCatalog, EventSignature, check_handler};
+use crate::events::{check_handler, EventCatalog, EventSignature};
 use crate::module::{BinOp, Constant, EventRef, Instr, Module, SubscriptionScope, UnOp};
 use crate::native::{NativeFn, NativeRegistry};
 use crate::types::{Type, TypeRegistry};
@@ -171,7 +171,11 @@ impl Program {
     /// Such a program can run in a read-only host, concurrently with
     /// others, under a shared lock; any other needs exclusive access.
     pub fn access(&self) -> crate::native::Access {
-        if self.natives.iter().all(|native| native.access() == crate::native::Access::Read) {
+        if self
+            .natives
+            .iter()
+            .all(|native| native.access() == crate::native::Access::Read)
+        {
             crate::native::Access::Read
         } else {
             crate::native::Access::Write

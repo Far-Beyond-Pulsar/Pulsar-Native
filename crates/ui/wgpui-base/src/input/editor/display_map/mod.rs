@@ -64,5 +64,3 @@ impl DisplayPoint {
         Self { row, col }
     }
 }
-
-

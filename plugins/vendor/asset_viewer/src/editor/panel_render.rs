@@ -7,11 +7,12 @@ use ui::{h_flex, v_flex, ActiveTheme};
 use solid_fbx::FbxLoader;
 use solid_rs::registry::Registry;
 
-use super::panel::{AssetViewerPanel, MeshProps, SceneStats};
+use super::panel::{AssetViewerPanel, MeshProps, MeshRenderMode, SceneStats};
 
 static MESH_VERTEX_SRC: &str = r#"
 struct Uniforms {
     view_proj: mat4x4<f32>,
+    render_mode: vec4<u32>,
 };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
@@ -33,6 +34,12 @@ fn vs_main(input: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(@location(0) world_normal: vec3<f32>) -> @location(0) vec4<f32> {
+    if uniforms.render_mode.x == 1u {
+        return vec4(0.74, 0.83, 1.0, 1.0);
+    }
+    if uniforms.render_mode.x == 2u {
+        return vec4(0.32, 0.68, 1.0, 1.0);
+    }
     let n = normalize(world_normal);
     let light_dir = normalize(vec3(0.5, 1.0, 0.8));
     let diffuse = max(dot(n, light_dir), 0.0);
@@ -92,6 +99,71 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     return textureSample(texture, tex_sampler, uv);
 }
 "#;
+
+fn create_mesh_pipeline(
+    device: &wgpu::Device,
+    config: &wgpu::SurfaceConfiguration,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    topology: wgpu::PrimitiveTopology,
+    cull_mode: Option<wgpu::Face>,
+    label: &'static str,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some(label),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vs_main"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            buffers: &[Some(wgpu::VertexBufferLayout {
+                array_stride: 24,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &[
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Float32x3,
+                        offset: 0,
+                        shader_location: 0,
+                    },
+                    wgpu::VertexAttribute {
+                        format: wgpu::VertexFormat::Float32x3,
+                        offset: 12,
+                        shader_location: 1,
+                    },
+                ],
+            })],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some("fs_main"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: config.format,
+                blend: Some(wgpu::BlendState::REPLACE),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Cw,
+            cull_mode,
+            unclipped_depth: false,
+            polygon_mode: wgpu::PolygonMode::Fill,
+            conservative: false,
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: wgpu::TextureFormat::Depth32Float,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    })
+}
 
 impl AssetViewerPanel {
     pub(crate) fn init_surface(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
@@ -168,7 +240,7 @@ impl AssetViewerPanel {
     fn setup_mesh_pipeline(&mut self, device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) {
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("mesh uniform buffer"),
-            size: 64,
+            size: 80,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -178,7 +250,7 @@ impl AssetViewerPanel {
             label: Some("mesh bind group layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -210,61 +282,24 @@ impl AssetViewerPanel {
             immediate_size: 0,
         });
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("mesh pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &vs_module,
-                entry_point: Some("vs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: 24,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x3,
-                            offset: 0,
-                            shader_location: 0,
-                        },
-                        wgpu::VertexAttribute {
-                            format: wgpu::VertexFormat::Float32x3,
-                            offset: 12,
-                            shader_location: 1,
-                        },
-                    ],
-                })],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &vs_module,
-                entry_point: Some("fs_main"),
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Cw,
-                cull_mode: Some(wgpu::Face::Back),
-                unclipped_depth: false,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                conservative: false,
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: wgpu::TextureFormat::Depth32Float,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::Less),
-                stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
-            }),
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-        self.mesh_pipeline = Some(pipeline);
+        self.mesh_pipeline = Some(create_mesh_pipeline(
+            device,
+            config,
+            &pipeline_layout,
+            &vs_module,
+            wgpu::PrimitiveTopology::TriangleList,
+            Some(wgpu::Face::Back),
+            "mesh pipeline",
+        ));
+        self.wire_pipeline = Some(create_mesh_pipeline(
+            device,
+            config,
+            &pipeline_layout,
+            &vs_module,
+            wgpu::PrimitiveTopology::LineList,
+            None,
+            "mesh wireframe pipeline",
+        ));
     }
 
     fn setup_quad_pipeline(
@@ -703,6 +738,20 @@ impl AssetViewerPanel {
             return;
         }
 
+        let wire_indices: Vec<u32> = indices
+            .chunks_exact(3)
+            .flat_map(|triangle| {
+                [
+                    triangle[0],
+                    triangle[1],
+                    triangle[1],
+                    triangle[2],
+                    triangle[2],
+                    triangle[0],
+                ]
+            })
+            .collect();
+
         let vb = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("mesh vertex buffer"),
             size: (verts.len() * 4) as u64,
@@ -719,9 +768,19 @@ impl AssetViewerPanel {
         });
         queue.write_buffer(&ib, 0, bytemuck::cast_slice(&indices));
 
+        let wire_ib = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mesh wireframe index buffer"),
+            size: (wire_indices.len() * 4) as u64,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(&wire_ib, 0, bytemuck::cast_slice(&wire_indices));
+
         self.mesh_vertex_buffer = Some(vb);
         self.mesh_index_buffer = Some(ib);
         self.mesh_index_count = indices.len() as u32;
+        self.wire_index_buffer = Some(wire_ib);
+        self.wire_index_count = wire_indices.len() as u32;
 
         log::info!(
             "Loaded FBX {:?}: {} verts, {} indices",
@@ -987,15 +1046,20 @@ impl AssetViewerPanel {
         let Some(vb) = &self.mesh_vertex_buffer else {
             return;
         };
-        let Some(ib) = &self.mesh_index_buffer else {
-            return;
+        let (ib, index_count, pipeline) = if self.render_mode == MeshRenderMode::Wireframe {
+            let (Some(ib), Some(pipeline)) = (&self.wire_index_buffer, &self.wire_pipeline) else {
+                return;
+            };
+            (ib, self.wire_index_count, pipeline)
+        } else {
+            let (Some(ib), Some(pipeline)) = (&self.mesh_index_buffer, &self.mesh_pipeline) else {
+                return;
+            };
+            (ib, self.mesh_index_count, pipeline)
         };
-        if self.mesh_index_count == 0 {
+        if index_count == 0 {
             return;
         }
-        let Some(pipeline) = &self.mesh_pipeline else {
-            return;
-        };
         let Some(bg) = &self.mesh_bind_group else {
             return;
         };
@@ -1020,6 +1084,12 @@ impl AssetViewerPanel {
 
         if let Some(buf) = &self.mesh_uniform_buffer {
             queue.write_buffer(buf, 0, bytemuck::bytes_of(&view_proj));
+            let mode = match self.render_mode {
+                MeshRenderMode::Lit => 0,
+                MeshRenderMode::Unlit => 1,
+                MeshRenderMode::Wireframe => 2,
+            };
+            queue.write_buffer(buf, 64, bytemuck::bytes_of(&[mode, 0, 0, 0]));
         }
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -1088,7 +1158,7 @@ impl AssetViewerPanel {
             rpass.set_bind_group(0, bg, &[]);
             rpass.set_vertex_buffer(0, vb.slice(..));
             rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-            rpass.draw_indexed(0..self.mesh_index_count, 0, 0..1);
+            rpass.draw_indexed(0..index_count, 0, 0..1);
         }
 
         queue.submit(Some(encoder.finish()));

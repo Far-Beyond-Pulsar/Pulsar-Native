@@ -6,9 +6,8 @@ use gpui::*;
 use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme, Disableable, IconName, Sizable,
     button::{Button, ButtonVariants as _},
-    h_flex,
+    h_flex, ActiveTheme, Disableable, IconName, Sizable,
 };
 
 use crate::state::LevelEditorState;

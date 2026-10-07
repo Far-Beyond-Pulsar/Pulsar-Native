@@ -331,7 +331,11 @@ impl RopeExt for Rope {
         let line = self.slice_line(pos.line as usize);
         // Clamp out-of-range columns while preserving a UTF-8 byte offset.
         self.line_start_offset(pos.line as usize)
-            + line.chars().take(pos.character as usize).map(char::len_utf8).sum::<usize>()
+            + line
+                .chars()
+                .take(pos.character as usize)
+                .map(char::len_utf8)
+                .sum::<usize>()
     }
 
     fn offset_to_position(&self, offset: usize) -> Position {
@@ -717,5 +721,3 @@ mod tests {
         assert_eq!(rope.offset_to_char_index(10), 5);
     }
 }
-
-

@@ -288,7 +288,13 @@ pub struct BuildSteps {
 
 impl BuildSteps {
     pub const fn just_build() -> Self {
-        Self { update: false, clean: false, check: false, build: true, run: false }
+        Self {
+            update: false,
+            clean: false,
+            check: false,
+            build: true,
+            run: false,
+        }
     }
 
     /// Whether anything would happen.
@@ -369,12 +375,7 @@ impl BuildConfiguration {
         }
     }
 
-    fn with(
-        name: &str,
-        description: &str,
-        profile: BuildProfile,
-        steps: BuildSteps,
-    ) -> Self {
+    fn with(name: &str, description: &str, profile: BuildProfile, steps: BuildSteps) -> Self {
         let mut config = Self::new(name);
         config.description = description.into();
         config.profile = profile;
@@ -432,16 +433,62 @@ impl BuildConfiguration {
     /// The configurations a new project starts with.
     pub fn defaults() -> Vec<Self> {
         use BuildProfile::*;
-        let steps = |update, clean, check, build, run| BuildSteps { update, clean, check, build, run };
+        let steps = |update, clean, check, build, run| BuildSteps {
+            update,
+            clean,
+            check,
+            build,
+            run,
+        };
         vec![
-            Self::with("Build", "Optimised build.", Release, steps(false, false, false, true, false)),
-            Self::with("Build & Run", "Build, then launch the game.", Release, steps(false, false, false, true, true)),
-            Self::with("Check", "Type-check only; no binaries.", Debug, steps(false, false, true, false, false)),
-            Self::with("Debug Build", "Fast, unoptimised build.", Debug, steps(false, false, false, true, false)),
-            Self::with("Debug Run", "Fast build, then launch.", Debug, steps(false, false, false, true, true)),
-            Self::with("Clean Build", "Start from scratch.", Release, steps(false, true, false, true, false)),
-            Self::with("Update, Build & Run", "Refresh dependencies first, then build and launch.", Release, steps(true, false, false, true, true)),
-            Self::with("Shipping", "Clean, fully optimised build for distribution.", Shipping, steps(false, true, false, true, false)),
+            Self::with(
+                "Build",
+                "Optimised build.",
+                Release,
+                steps(false, false, false, true, false),
+            ),
+            Self::with(
+                "Build & Run",
+                "Build, then launch the game.",
+                Release,
+                steps(false, false, false, true, true),
+            ),
+            Self::with(
+                "Check",
+                "Type-check only; no binaries.",
+                Debug,
+                steps(false, false, true, false, false),
+            ),
+            Self::with(
+                "Debug Build",
+                "Fast, unoptimised build.",
+                Debug,
+                steps(false, false, false, true, false),
+            ),
+            Self::with(
+                "Debug Run",
+                "Fast build, then launch.",
+                Debug,
+                steps(false, false, false, true, true),
+            ),
+            Self::with(
+                "Clean Build",
+                "Start from scratch.",
+                Release,
+                steps(false, true, false, true, false),
+            ),
+            Self::with(
+                "Update, Build & Run",
+                "Refresh dependencies first, then build and launch.",
+                Release,
+                steps(true, false, false, true, true),
+            ),
+            Self::with(
+                "Shipping",
+                "Clean, fully optimised build for distribution.",
+                Shipping,
+                steps(false, true, false, true, false),
+            ),
         ]
     }
 }
@@ -568,7 +615,9 @@ struct FileFormat {
 
 /// Where a project keeps its build configurations.
 pub fn configurations_path(project_root: &Path) -> PathBuf {
-    project_root.join(".pulsar").join("build_configurations.toml")
+    project_root
+        .join(".pulsar")
+        .join("build_configurations.toml")
 }
 
 impl BuildConfigurations {
@@ -729,7 +778,11 @@ mod tests {
 
     #[test]
     fn running_implies_building() {
-        let steps = BuildSteps { run: true, ..Default::default() }.normalized();
+        let steps = BuildSteps {
+            run: true,
+            ..Default::default()
+        }
+        .normalized();
         assert!(steps.build);
     }
 
@@ -741,8 +794,17 @@ mod tests {
         store.edit(&id, |c| {
             c.name = "Console Cert".into();
             c.profile = BuildProfile::Shipping;
-            c.platforms = vec![TargetPlatform::LinuxX86_64Gnu, TargetPlatform::PlayStationPs5];
-            c.steps = BuildSteps { update: true, clean: true, check: false, build: true, run: false };
+            c.platforms = vec![
+                TargetPlatform::LinuxX86_64Gnu,
+                TargetPlatform::PlayStationPs5,
+            ];
+            c.steps = BuildSteps {
+                update: true,
+                clean: true,
+                check: false,
+                build: true,
+                run: false,
+            };
             c.features = "a, b".into();
             c.extra_args = "--locked".into();
         });
@@ -780,7 +842,10 @@ platforms = ["LinuxX86_64Gnu", "QuantumToaster"]
         )
         .unwrap();
         let store = BuildConfigurations::load(&dir);
-        assert_eq!(store.get("a").unwrap().platforms, vec![TargetPlatform::LinuxX86_64Gnu]);
+        assert_eq!(
+            store.get("a").unwrap().platforms,
+            vec![TargetPlatform::LinuxX86_64Gnu]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -814,9 +879,17 @@ platforms = ["LinuxX86_64Gnu", "QuantumToaster"]
         let c = store.insert(BuildConfiguration::new("C"));
         store.select(&b);
         store.remove(&b);
-        assert_eq!(store.selected_id(), Some(c.as_str()), "the one that took its place");
+        assert_eq!(
+            store.selected_id(),
+            Some(c.as_str()),
+            "the one that took its place"
+        );
         store.remove(&c);
-        assert_eq!(store.selected_id(), Some(a.as_str()), "falls back to the last");
+        assert_eq!(
+            store.selected_id(),
+            Some(a.as_str()),
+            "falls back to the last"
+        );
         store.remove(&a);
         assert_eq!(store.selected_id(), None);
     }
@@ -850,9 +923,16 @@ platforms = ["LinuxX86_64Gnu", "QuantumToaster"]
     #[test]
     fn subtitles_read_naturally() {
         let mut c = BuildConfiguration::new("x");
-        c.steps = BuildSteps { build: true, run: true, ..Default::default() };
+        c.steps = BuildSteps {
+            build: true,
+            run: true,
+            ..Default::default()
+        };
         assert_eq!(c.subtitle(), "Release · This machine · Build › Run");
-        c.platforms = vec![TargetPlatform::WindowsX86_64Msvc, TargetPlatform::LinuxX86_64Gnu];
+        c.platforms = vec![
+            TargetPlatform::WindowsX86_64Msvc,
+            TargetPlatform::LinuxX86_64Gnu,
+        ];
         assert_eq!(c.platforms_summary(), "Windows x64 +1");
     }
 }

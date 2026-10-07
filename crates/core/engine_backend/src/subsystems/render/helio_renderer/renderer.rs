@@ -2,7 +2,7 @@
 
 use glam::{DVec3, Mat4, Vec3};
 use std::collections::HashSet;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 
 use helio::{Camera, Renderer, RendererConfig};
@@ -254,6 +254,7 @@ pub struct HelioRenderer {
     pub pending_errors: Arc<Mutex<Vec<String>>>,
 
     inner: Option<HelioInner>,
+    applied_graph_settings: Option<ProjectGraphSettings>,
 
     // ── Camera State ──
     cam_pos: DVec3,
@@ -324,6 +325,62 @@ struct HelioInner {
     has_rendered_frame: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ProjectGraphSettings {
+    shadow_quality: String,
+    shadow_atlas_size: u32,
+    screen_space_reflections: bool,
+    planar_reflections: bool,
+    render_mode: String,
+}
+
+impl ProjectGraphSettings {
+    fn load() -> Self {
+        let setting = |key: &str| {
+            engine_state::settings::global_config().get(
+                engine_state::settings::NS_PROJECT,
+                "rendering",
+                key,
+            )
+        };
+        let text = |key: &str, fallback: &str| {
+            setting(key)
+                .ok()
+                .and_then(|value| value.as_str().ok().map(str::to_owned))
+                .unwrap_or_else(|| fallback.to_owned())
+        };
+        let boolean = |key: &str, fallback| {
+            setting(key)
+                .ok()
+                .and_then(|value| value.as_bool().ok())
+                .unwrap_or(fallback)
+        };
+        let shadow_atlas_size = setting("shadow_atlas_size")
+            .ok()
+            .and_then(|value| {
+                value
+                    .as_str()
+                    .ok()
+                    .and_then(|value| value.parse::<u32>().ok())
+                    .or_else(|| {
+                        value
+                            .as_int()
+                            .ok()
+                            .and_then(|value| u32::try_from(value).ok())
+                    })
+            })
+            .filter(|size| matches!(size, 512 | 1024 | 2048 | 4096))
+            .unwrap_or(1024);
+        Self {
+            shadow_quality: text("shadow_quality", "medium"),
+            shadow_atlas_size,
+            screen_space_reflections: boolean("screen_space_reflections", false),
+            planar_reflections: boolean("planar_reflections", false),
+            render_mode: text("render_mode", "deferred"),
+        }
+    }
+}
+
 impl HelioRenderer {
     pub fn new(scene_store: crate::scene::SharedScene) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
@@ -346,6 +403,7 @@ impl HelioRenderer {
             static_drag_warning: Arc::new(Mutex::new(None)),
             reset_taa_next_frame: false,
             inner: None,
+            applied_graph_settings: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
             cam_pos: DVec3::new(8.0, 6.0, 12.0),
             cam_yaw: -0.5,
@@ -426,7 +484,6 @@ impl HelioRenderer {
         (self.cam_yaw, self.cam_pitch) = local_yaw_pitch(self.cam_frame, forward);
     }
 
-
     /// Configure cheap frame-spike warning cadence independently from deep
     /// WGPUI capture. Disabling this affects only warning logs.
     pub fn set_spike_log_config(&mut self, config: RenderSpikeLogConfig) {
@@ -477,6 +534,20 @@ impl HelioRenderer {
             self.reset_taa_next_frame = true;
         }
 
+        // Graph-affecting project settings rebuild at a frame boundary. This
+        // keeps pass topology and its GPU allocations in sync with the UI.
+        let graph_settings = ProjectGraphSettings::load();
+        if self.inner.is_some()
+            && self
+                .applied_graph_settings
+                .as_ref()
+                .is_some_and(|applied| applied != &graph_settings)
+        {
+            self.inner = None;
+            self.applied_graph_settings = None;
+            self.reset_taa_next_frame = true;
+        }
+
         // ── Lazy init (first frame only) ────────────────────────────────────────
         if self.inner.is_none() {
             #[cfg(feature = "editor-ui")]
@@ -491,7 +562,48 @@ impl HelioRenderer {
                 self.voxel_backends
                     .temporal_quality(&entries, [width, height])
             };
-            let mut config = RendererConfig::new(width, height, format);
+            let project_setting = |key: &str| {
+                engine_state::settings::global_config()
+                    .get(engine_state::settings::NS_PROJECT, "rendering", key)
+                    .ok()
+            };
+            let project_string = |key: &str, default: &str| {
+                project_setting(key)
+                    .and_then(|value| value.as_str().ok().map(str::to_owned))
+                    .unwrap_or_else(|| default.to_owned())
+            };
+            let project_float = |key: &str, default: f32| {
+                project_setting(key)
+                    .and_then(|value| value.as_float().ok())
+                    .filter(|value| value.is_finite())
+                    .unwrap_or(default as f64) as f32
+            };
+            let mut config = RendererConfig::new(width, height, format)
+                .with_render_scale(project_float("render_scale", 0.75).clamp(0.25, 1.0))
+                .with_ssr(graph_settings.screen_space_reflections)
+                .with_planar_reflections(graph_settings.planar_reflections);
+            let shadow_quality = match graph_settings.shadow_quality.as_str() {
+                "low" => helio::ShadowQuality::Low,
+                "high" => helio::ShadowQuality::High,
+                "ultra" => helio::ShadowQuality::Ultra,
+                _ => helio::ShadowQuality::Medium,
+            };
+            config = config.with_shadow_quality(shadow_quality);
+            config.shadow_atlas_size = graph_settings.shadow_atlas_size;
+            config = match project_string("tsr_quality", "off").as_str() {
+                "performance" => config.with_tsr_quality(helio::TsrQuality::Performance),
+                "balanced" => config.with_tsr_quality(helio::TsrQuality::Balanced),
+                "quality" => config.with_tsr_quality(helio::TsrQuality::Quality),
+                "native" => config.with_tsr_quality(helio::TsrQuality::Native),
+                _ => config.without_tsr(),
+            };
+            config = match graph_settings.render_mode.as_str() {
+                "forward_opaque" => config.with_render_mode(helio::RenderMode::ForwardOpaque),
+                "forward_only" => config.with_render_mode(helio::RenderMode::ForwardOnly),
+                _ => config.with_render_mode(helio::RenderMode::Deferred),
+            };
+            // Voxel scenes have a workload-specific temporal preset and take
+            // precedence over the project's general TSR preference.
             if let Some(quality) = voxel_quality {
                 config = config.with_tsr_quality(quality);
             }
@@ -522,9 +634,19 @@ impl HelioRenderer {
                 .unwrap_or(512)
                 .clamp(64, 16384) as u32;
             let tile_px = streaming_int("virtual_texture_tile_size")
+                .or_else(|| {
+                    engine_state::settings::global_config()
+                        .get(
+                            engine_state::settings::NS_PROJECT,
+                            "streaming",
+                            "virtual_texture_tile_size",
+                        )
+                        .ok()
+                        .and_then(|value| value.as_str().ok()?.parse::<i64>().ok())
+                })
                 .and_then(|s| u32::try_from(s).ok())
-                .unwrap_or(128)
-                .max(16);
+                .filter(|size| matches!(size, 64 | 128 | 256 | 512))
+                .unwrap_or(128);
             // Streaming stays OFF unless the canonical toggle says otherwise:
             // defaults must preserve today's behavior exactly.
             //
@@ -571,6 +693,7 @@ impl HelioRenderer {
                 has_rendered_frame: false,
             };
             self.inner = Some(inner);
+            self.applied_graph_settings = Some(graph_settings.clone());
             self.viewport_size = (width, height);
 
             tracing::info!(
@@ -633,7 +756,11 @@ impl HelioRenderer {
                         profiling::profile_scope!("helio_handle_left_release");
                         self.handle_left_release();
                     }
-                    PendingPointerEvent::VoxelBrush { norm_x, norm_y, request } => {
+                    PendingPointerEvent::VoxelBrush {
+                        norm_x,
+                        norm_y,
+                        request,
+                    } => {
                         self.handle_voxel_brush(norm_x, norm_y, request);
                     }
                 }
@@ -792,9 +919,6 @@ impl HelioRenderer {
                 pulsar_scenedb::component_id::<helio_component::components::StaticMeshComponent>(),
                 pulsar_scenedb::component_id::<crate::scene::Transform>(),
                 pulsar_scenedb::component_id::<crate::scene::Visibility>(),
-                pulsar_scenedb::component_id::<
-                    helio_component::components::MaterialOverrideComponent,
-                >(),
             ];
             let light_components = [
                 pulsar_scenedb::component_id::<helio_component::components::LightComponent>(),
@@ -832,8 +956,7 @@ impl HelioRenderer {
                 // Splines are SceneDB components drawn by Helio's editor debug
                 // pass in world space, so they follow the camera like the grid.
                 profiling::profile_scope!("helio_sync_spline_lines");
-                let lines =
-                    helio_component::components::spline_debug_lines(&scene_store.world);
+                let lines = helio_component::components::spline_debug_lines(&scene_store.world);
                 inner.renderer.debug_set_editor_lines("splines", lines);
             }
             {
@@ -860,8 +983,11 @@ impl HelioRenderer {
                 .query::<&helio_pass_sky::SkyComponent>()
                 .next()
                 .is_some();
-            let authored_meshes = store.world
-                .query::<&helio_pass_gbuffer::StaticObjectComponent>().next().is_some();
+            let authored_meshes = store
+                .world
+                .query::<&helio_pass_gbuffer::StaticObjectComponent>()
+                .next()
+                .is_some();
             // Voxel terrain traces sunlight towards the scene's directional
             // light (its row stores the direction the light travels).
             let sun = store
@@ -877,7 +1003,10 @@ impl HelioRenderer {
         let outdoor_sky = self.voxel_backends.uses_outdoor_sky(&voxel_entries);
         self.voxel_altitude = self.voxel_backends.altitude(&voxel_entries, self.cam_pos);
         self.voxel_up = self.voxel_backends.ambient_up(&voxel_entries, self.cam_pos);
-        let target = self.voxel_up.map_or(Vec3::Y, |up| up.as_vec3()).normalize_or(Vec3::Y);
+        let target = self
+            .voxel_up
+            .map_or(Vec3::Y, |up| up.as_vec3())
+            .normalize_or(Vec3::Y);
         match self.pending_view_direction.take() {
             // A pose set from outside: its view direction within the frame at it.
             Some(forward) => {
@@ -886,15 +1015,53 @@ impl HelioRenderer {
             }
             None => self.cam_frame = transported(self.cam_frame, target),
         }
-        let (terrain_near, far) = self.voxel_backends.camera_clip_range(&voxel_entries, self.cam_pos)
+        let (terrain_near, far) = self
+            .voxel_backends
+            .camera_clip_range(&voxel_entries, self.cam_pos)
             .unwrap_or((0.1, 10_000.0));
         // A terrain's empty-space certificate says nothing about authored
         // meshes. Preserve their close clipping plane in mixed scenes.
-        let near = if authored_meshes { terrain_near.min(0.1) } else { terrain_near };
-        inner.renderer.set_tsr_quality(
-            self.voxel_backends
-                .temporal_quality(&voxel_entries, [width, height]),
-        );
+        let near = if authored_meshes {
+            terrain_near.min(0.1)
+        } else {
+            terrain_near
+        };
+        let voxel_tsr_quality = self
+            .voxel_backends
+            .temporal_quality(&voxel_entries, [width, height]);
+        let project_tsr_quality = engine_state::settings::global_config()
+            .get(
+                engine_state::settings::NS_PROJECT,
+                "rendering",
+                "tsr_quality",
+            )
+            .ok()
+            .and_then(|value| value.as_str().ok().map(str::to_owned))
+            .and_then(|quality| match quality.as_str() {
+                "performance" => Some(helio::TsrQuality::Performance),
+                "balanced" => Some(helio::TsrQuality::Balanced),
+                "quality" => Some(helio::TsrQuality::Quality),
+                "native" => Some(helio::TsrQuality::Native),
+                _ => None,
+            });
+        let effective_tsr_quality = voxel_tsr_quality.or(project_tsr_quality);
+        inner.renderer.set_tsr_quality(effective_tsr_quality);
+        if effective_tsr_quality.is_none() {
+            let render_scale = engine_state::settings::global_config()
+                .get(
+                    engine_state::settings::NS_PROJECT,
+                    "rendering",
+                    "render_scale",
+                )
+                .ok()
+                .and_then(|value| value.as_float().ok())
+                .filter(|value| value.is_finite())
+                .unwrap_or(0.75) as f32;
+            let render_scale = render_scale.clamp(0.25, 1.0);
+            if (inner.renderer.render_scale() - render_scale).abs() > f32::EPSILON {
+                inner.renderer.set_render_scale(render_scale);
+            }
+        }
         let t_prepare = Instant::now();
         let camera = {
             #[cfg(feature = "editor-ui")]
@@ -917,8 +1084,8 @@ impl HelioRenderer {
                 far,
             );
             camera.position = self.cam_pos.as_vec3();
-            camera.view = (camera.view.as_dmat4()
-                * glam::DMat4::from_translation(-self.cam_pos)).as_mat4();
+            camera.view =
+                (camera.view.as_dmat4() * glam::DMat4::from_translation(-self.cam_pos)).as_mat4();
 
             // Debug geometry is transient GPU execution state. World content is
             // read by Helio passes directly from the SceneDB GPU mirror.
@@ -969,7 +1136,8 @@ impl HelioRenderer {
                 tracing::info!(
                     "VOXEL_STATS altitude={:.1} speed_scale={:.1} {line}",
                     self.voxel_altitude.unwrap_or(f64::NAN),
-                    self.voxel_altitude.map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6)),
+                    self.voxel_altitude
+                        .map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6)),
                 );
             }
         }
@@ -1173,12 +1341,15 @@ impl HelioRenderer {
         let frame_up = self.cam_frame * Vec3::Y;
         // Over voxel worlds speed grows with height above the ground: the
         // base speed within 20 m of it, 50x at 1 km, orbit in seconds.
-        let altitude = self.voxel_altitude.map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6) as f32);
-        let speed = altitude * if input.boost {
-            input.move_speed * 3.0
-        } else {
-            input.move_speed
-        };
+        let altitude = self
+            .voxel_altitude
+            .map_or(1.0, |h| (h / 20.0).clamp(1.0, 1.0e6) as f32);
+        let speed = altitude
+            * if input.boost {
+                input.move_speed * 3.0
+            } else {
+                input.move_speed
+            };
 
         // Target local velocity from input (units/sec).
         let target_velocity =
@@ -1310,7 +1481,10 @@ impl HelioRenderer {
             Ok(Some(commit)) => {
                 // Fill the gap from the stroke's previous stamp, so fast drags
                 // stay continuous at any frame rate.
-                let voxel = entries.iter().find(|e| e.id == commit.id).map_or(0.1, |e| e.voxel_size);
+                let voxel = entries
+                    .iter()
+                    .find(|e| e.id == commit.id)
+                    .map_or(0.1, |e| e.voxel_size);
                 let fill = self
                     .voxel_stroke_last
                     .as_ref()
@@ -1319,7 +1493,10 @@ impl HelioRenderer {
                     .unwrap_or_default();
                 let mut scene = self.scene_store.write();
                 for edit in fill {
-                    let stamp = VoxelBrushCommit { edit, ..commit.clone() };
+                    let stamp = VoxelBrushCommit {
+                        edit,
+                        ..commit.clone()
+                    };
                     self.gizmo_dirty |= apply_voxel_brush_commit(&mut scene.world, stamp);
                 }
                 self.gizmo_dirty |= apply_voxel_brush_commit(&mut scene.world, commit.clone());
@@ -1442,16 +1619,22 @@ impl HelioRenderer {
         let (ray_origin, ray_direction) = self.build_pick_ray(norm_x, norm_y);
         let Some(inner) = &mut self.inner else { return };
         let store = self.scene_store.read();
-        if inner
-            .interaction
-            .try_start_drag(&store.world, ray_origin, ray_direction, self.cam_pos.as_vec3())
-        {
+        if inner.interaction.try_start_drag(
+            &store.world,
+            ray_origin,
+            ray_direction,
+            self.cam_pos.as_vec3(),
+        ) {
             // SceneDB's projected promise, not the authored property: it is
             // what the caches the drag would invalidate actually read.
             let fixed = store.world.selected_entity().and_then(|entity| {
                 let movability = *store.world.get::<helio::Movability>(entity)?;
                 (!movability.can_move()).then(|| StaticDragWarning {
-                    object_id: store.world.stable_id_of(entity).unwrap_or_default().to_string(),
+                    object_id: store
+                        .world
+                        .stable_id_of(entity)
+                        .unwrap_or_default()
+                        .to_string(),
                     object_name: store
                         .world
                         .get::<crate::scene::Name>(entity)
@@ -1569,7 +1752,11 @@ mod camera_frame_tests {
     #[test]
     fn world_frame_matches_the_legacy_yaw_pitch_convention() {
         let (forward, right, up) = basis(glam::Quat::IDENTITY, 0.0, 0.0);
-        assert!(forward.abs_diff_eq(Vec3::NEG_Z, 1e-6) && right.abs_diff_eq(Vec3::X, 1e-6) && up.abs_diff_eq(Vec3::Y, 1e-6));
+        assert!(
+            forward.abs_diff_eq(Vec3::NEG_Z, 1e-6)
+                && right.abs_diff_eq(Vec3::X, 1e-6)
+                && up.abs_diff_eq(Vec3::Y, 1e-6)
+        );
         let d = direction(0.7, -0.3);
         let (yaw, pitch) = yaw_pitch(d);
         assert!((yaw - 0.7).abs() < 1e-5 && (pitch + 0.3).abs() < 1e-5);
@@ -1584,7 +1771,10 @@ mod camera_frame_tests {
         for yaw in [0.0, 1.0, 2.5, -2.0] {
             let (forward, right, up) = basis(frame, yaw, 0.0);
             // Level: forward and right horizontal, up is the local vertical.
-            assert!(forward.dot(local_up).abs() < 1e-5 && right.dot(local_up).abs() < 1e-5, "yaw {yaw}");
+            assert!(
+                forward.dot(local_up).abs() < 1e-5 && right.dot(local_up).abs() < 1e-5,
+                "yaw {yaw}"
+            );
             assert!(up.abs_diff_eq(local_up, 1e-5), "yaw {yaw}");
         }
         // A world-space direction survives the round trip through the frame.
@@ -1603,7 +1793,10 @@ mod camera_frame_tests {
             frame = transported(frame, up);
             let forward = basis(frame, 0.4, -0.2).0;
             // The view turns only as much as the vertical does.
-            assert!(forward.angle_between(previous) <= 0.1f32.to_radians() * 1.01, "step {step}");
+            assert!(
+                forward.angle_between(previous) <= 0.1f32.to_radians() * 1.01,
+                "step {step}"
+            );
             previous = forward;
         }
     }

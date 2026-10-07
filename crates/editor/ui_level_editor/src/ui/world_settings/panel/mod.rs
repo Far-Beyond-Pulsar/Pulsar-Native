@@ -16,17 +16,16 @@ use ui::replication::{
     ReplicationRegistry, UserPresence,
 };
 use ui::{
-    ActiveTheme, Disableable, Icon, IconName, Sizable, StyledExt,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::{InputState, NumberInput},
     scroll::ScrollbarAxis,
-    v_flex,
+    v_flex, ActiveTheme, Disableable, Icon, IconName, Sizable, StyledExt,
 };
 
-use crate::WorldSettingsPanel;
 use crate::state::LevelEditorState;
 use crate::world_settings_data::WorldSettingsData;
+use crate::WorldSettingsPanel;
 
 /// World Settings panel implementation, rendered inside the `WorldSettingsPanel`
 /// dock wrapper. All fields replicate across multiuser sessions.

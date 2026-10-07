@@ -1,23 +1,34 @@
 use std::sync::Arc;
 
 use glam::{DVec3, Mat4, Quat, Vec2, Vec3, Vec4};
+use pulsar_scenedb::World;
 use pulsar_script_math::literal;
 use pulsar_script_vm::{
-    Budget, Constant, Function, Host, Import, Instr, LinkError, Module, NativeRegistry, Param, Program, Signature,
-    Type, TypeRegistry, Value, Variable, Vm,
+    Budget, Constant, Function, Host, Import, Instr, LinkError, Module, NativeRegistry, Param,
+    Program, Signature, Type, TypeRegistry, Value, Variable, Vm,
 };
-use pulsar_scenedb::World;
 
 fn obj(name: &str) -> Type {
     Type::object(name)
 }
 
 fn constant(ty: &str, json: impl Into<String>) -> Constant {
-    Constant::Value { ty: ty.into(), json: json.into() }
+    Constant::Value {
+        ty: ty.into(),
+        json: json.into(),
+    }
 }
 
 fn function(name: &str, ret: Type, registers: Vec<Type>, code: Vec<Instr>) -> Function {
-    Function { name: name.into(), exported: true, params: vec![], ret, registers, code, debug: None }
+    Function {
+        name: name.into(),
+        exported: true,
+        params: vec![],
+        ret,
+        registers,
+        code,
+        debug: None,
+    }
 }
 
 fn link(module: Module) -> Result<Program, LinkError> {
@@ -30,7 +41,16 @@ fn run(program: &Program, name: &str) -> Value {
     let mut instance = program.instantiate();
     let func = program.entry(name).expect("entry");
     let mut host = Host::new(&mut world, entity);
-    Vm::new().call(program, &mut instance, func, &[], &mut host, &mut Budget::new(10_000)).expect("run")
+    Vm::new()
+        .call(
+            program,
+            &mut instance,
+            func,
+            &[],
+            &mut host,
+            &mut Budget::new(10_000),
+        )
+        .expect("run")
 }
 
 fn as_value<T: Clone + 'static>(value: &Value) -> T {
@@ -47,18 +67,42 @@ fn every_math_type_is_registered_with_a_default() {
         assert!(types.is_known(&obj(name)), "{name}");
         assert!(types.default_value(&obj(name)).is_some(), "{name}");
     }
-    assert_eq!(as_value::<Quat>(&types.default_value(&obj("Quat")).unwrap()), Quat::IDENTITY);
-    assert_eq!(as_value::<Mat4>(&types.default_value(&obj("Mat4")).unwrap()), Mat4::IDENTITY);
+    assert_eq!(
+        as_value::<Quat>(&types.default_value(&obj("Quat")).unwrap()),
+        Quat::IDENTITY
+    );
+    assert_eq!(
+        as_value::<Mat4>(&types.default_value(&obj("Mat4")).unwrap()),
+        Mat4::IDENTITY
+    );
 }
 
 #[test]
 fn literals_round_trip_through_every_type() {
     let types = TypeRegistry::global();
     let decode = |ty: &str, json: String| types.decode_value(ty, &json).unwrap();
-    assert_eq!(as_value::<Vec2>(&decode("Vec2", literal::vec2(Vec2::new(1.0, -2.5)))), Vec2::new(1.0, -2.5));
-    assert_eq!(as_value::<Vec3>(&decode("Vec3", literal::vec3(Vec3::new(0.0, 1.0, 0.0)))), Vec3::Y);
-    assert_eq!(as_value::<Vec4>(&decode("Vec4", literal::vec4(Vec4::new(1.0, 2.0, 3.0, 4.0)))), Vec4::new(1.0, 2.0, 3.0, 4.0));
-    assert_eq!(as_value::<DVec3>(&decode("DVec3", literal::dvec3(DVec3::new(1e10, 0.1, -3.0)))), DVec3::new(1e10, 0.1, -3.0));
+    assert_eq!(
+        as_value::<Vec2>(&decode("Vec2", literal::vec2(Vec2::new(1.0, -2.5)))),
+        Vec2::new(1.0, -2.5)
+    );
+    assert_eq!(
+        as_value::<Vec3>(&decode("Vec3", literal::vec3(Vec3::new(0.0, 1.0, 0.0)))),
+        Vec3::Y
+    );
+    assert_eq!(
+        as_value::<Vec4>(&decode(
+            "Vec4",
+            literal::vec4(Vec4::new(1.0, 2.0, 3.0, 4.0))
+        )),
+        Vec4::new(1.0, 2.0, 3.0, 4.0)
+    );
+    assert_eq!(
+        as_value::<DVec3>(&decode(
+            "DVec3",
+            literal::dvec3(DVec3::new(1e10, 0.1, -3.0))
+        )),
+        DVec3::new(1e10, 0.1, -3.0)
+    );
     let q = Quat::from_rotation_y(0.5);
     assert_eq!(as_value::<Quat>(&decode("Quat", literal::quat(q))), q);
     let m = Mat4::from_translation(Vec3::new(1.0, 2.0, 3.0));
@@ -69,7 +113,9 @@ fn literals_round_trip_through_every_type() {
 fn matrix_literals_are_column_major() {
     let mut elements: Vec<f64> = (0..16).map(f64::from).collect();
     elements[12] = 7.0; // translation x lives at column 3, row 0
-    let value = TypeRegistry::global().decode_value("Mat4", &serde_json::to_string(&elements).unwrap()).unwrap();
+    let value = TypeRegistry::global()
+        .decode_value("Mat4", &serde_json::to_string(&elements).unwrap())
+        .unwrap();
     let m = as_value::<Mat4>(&value);
     assert_eq!(m.col(3).x, 7.0);
     assert_eq!(m.col(1).z, 6.0);
@@ -99,7 +145,10 @@ fn a_constant_value_links_loads_and_is_typed() {
         "up",
         obj("Vec3"),
         vec![obj("Vec3")],
-        vec![Instr::Const { dst: 0, index: 0 }, Instr::Return { value: Some(0) }],
+        vec![
+            Instr::Const { dst: 0, index: 0 },
+            Instr::Return { value: Some(0) },
+        ],
     ));
     let program = link(module).unwrap();
     assert_eq!(as_value::<Vec3>(&run(&program, "up")), Vec3::Y);
@@ -113,7 +162,10 @@ fn a_literal_of_the_wrong_register_type_fails_verification() {
         "bad",
         obj("Vec2"),
         vec![obj("Vec2")],
-        vec![Instr::Const { dst: 0, index: 0 }, Instr::Return { value: Some(0) }],
+        vec![
+            Instr::Const { dst: 0, index: 0 },
+            Instr::Return { value: Some(0) },
+        ],
     ));
     assert!(matches!(link(module), Err(LinkError::Verify(_))));
 }
@@ -127,10 +179,17 @@ fn a_malformed_or_unknown_constant_is_a_link_error_with_a_site() {
             "f",
             obj(ty),
             vec![obj(ty)],
-            vec![Instr::Const { dst: 0, index: 0 }, Instr::Return { value: Some(0) }],
+            vec![
+                Instr::Const { dst: 0, index: 0 },
+                Instr::Return { value: Some(0) },
+            ],
         ));
         let err = link(module.clone()).err().expect("link must fail");
-        assert!(matches!(&err, LinkError::BadConstant { .. }) || matches!(&err, LinkError::UnknownType { .. }), "{err}");
+        assert!(
+            matches!(&err, LinkError::BadConstant { .. })
+                || matches!(&err, LinkError::UnknownType { .. }),
+            "{err}"
+        );
         if matches!(err, LinkError::BadConstant { .. }) {
             let site = module.locate_link_error(&err).expect("site");
             assert_eq!((site.function.as_str(), site.pc), ("f", Some(0)));
@@ -150,7 +209,10 @@ fn a_variable_default_is_a_fresh_copy_per_instance() {
     let with_x = module.imports.len() as u32;
     module.imports.push(Import {
         name: "Vec3::with_x".into(),
-        sig: Signature::new(vec![Param::new(obj("Vec3")), Param::new(Type::Float)], obj("Vec3")),
+        sig: Signature::new(
+            vec![Param::new(obj("Vec3")), Param::new(Type::Float)],
+            obj("Vec3"),
+        ),
     });
     module.constants.push(Constant::Float(9.0));
     module.functions.push(function(
@@ -160,7 +222,11 @@ fn a_variable_default_is_a_fresh_copy_per_instance() {
         vec![
             Instr::LoadVar { dst: 0, var: 0 },
             Instr::Const { dst: 1, index: 0 },
-            Instr::CallNative { import: with_x, args: vec![0, 1], dst: Some(2) },
+            Instr::CallNative {
+                import: with_x,
+                args: vec![0, 1],
+                dst: Some(2),
+            },
             Instr::StoreVar { var: 0, src: 2 },
             Instr::Return { value: None },
         ],
@@ -172,19 +238,36 @@ fn a_variable_default_is_a_fresh_copy_per_instance() {
     let (mut a, b) = (program.instantiate(), program.instantiate());
     let func = program.entry("poke").unwrap();
     let mut host = Host::new(&mut world, entity);
-    Vm::new().call(&program, &mut a, func, &[], &mut host, &mut Budget::new(10_000)).unwrap();
+    Vm::new()
+        .call(
+            &program,
+            &mut a,
+            func,
+            &[],
+            &mut host,
+            &mut Budget::new(10_000),
+        )
+        .unwrap();
 
     let var = program.variable("dir").unwrap();
-    assert_eq!(as_value::<Vec3>(program.var(&a, var).unwrap()), Vec3::new(9.0, 1.0, 0.0));
+    assert_eq!(
+        as_value::<Vec3>(program.var(&a, var).unwrap()),
+        Vec3::new(9.0, 1.0, 0.0)
+    );
     // The other instance, and the module's own default, are untouched.
     assert_eq!(as_value::<Vec3>(program.var(&b, var).unwrap()), Vec3::Y);
-    assert_eq!(as_value::<Vec3>(program.var(&program.instantiate(), var).unwrap()), Vec3::Y);
+    assert_eq!(
+        as_value::<Vec3>(program.var(&program.instantiate(), var).unwrap()),
+        Vec3::Y
+    );
 }
 
 #[test]
 fn modules_with_value_constants_round_trip_json_and_binary() {
     let mut module = Module::new("codec");
-    module.constants.push(constant("Quat", literal::quat(Quat::from_rotation_x(1.0))));
+    module
+        .constants
+        .push(constant("Quat", literal::quat(Quat::from_rotation_x(1.0))));
     let json = serde_json::to_string(&module).unwrap();
     let from_json: Module = serde_json::from_str(&json).unwrap();
     assert_eq!(from_json.constants, module.constants);
@@ -197,17 +280,27 @@ fn native(name: &str, params: Vec<Type>, ret: Type, args: Vec<Constant>) -> Valu
     let mut module = Module::new("native");
     module.imports.push(Import {
         name: name.into(),
-        sig: Signature::new(params.iter().cloned().map(Param::new).collect::<Vec<_>>(), ret.clone()),
+        sig: Signature::new(
+            params.iter().cloned().map(Param::new).collect::<Vec<_>>(),
+            ret.clone(),
+        ),
     });
     let mut registers = params.clone();
     registers.push(ret.clone());
     let mut code = Vec::new();
     for (i, constant) in args.into_iter().enumerate() {
         module.constants.push(constant);
-        code.push(Instr::Const { dst: i as u16, index: i as u32 });
+        code.push(Instr::Const {
+            dst: i as u16,
+            index: i as u32,
+        });
     }
     let dst = params.len() as u16;
-    code.push(Instr::CallNative { import: 0, args: (0..dst).collect(), dst: Some(dst) });
+    code.push(Instr::CallNative {
+        import: 0,
+        args: (0..dst).collect(),
+        dst: Some(dst),
+    });
     code.push(Instr::Return { value: Some(dst) });
     module.functions.push(function("f", ret, registers, code));
     run(&link(module).unwrap(), "f")
@@ -220,54 +313,116 @@ fn v3(x: f32, y: f32, z: f32) -> Constant {
 #[test]
 fn natives_construct_split_and_compute() {
     let f = Type::Float;
-    let made = native("Vec3::new", vec![f.clone(); 3], obj("Vec3"), vec![Constant::Float(1.0), Constant::Float(2.0), Constant::Float(3.0)]);
+    let made = native(
+        "Vec3::new",
+        vec![f.clone(); 3],
+        obj("Vec3"),
+        vec![
+            Constant::Float(1.0),
+            Constant::Float(2.0),
+            Constant::Float(3.0),
+        ],
+    );
     assert_eq!(as_value::<Vec3>(&made), Vec3::new(1.0, 2.0, 3.0));
 
-    let y = native("Vec3::y", vec![obj("Vec3")], f.clone(), vec![v3(1.0, 2.0, 3.0)]);
+    let y = native(
+        "Vec3::y",
+        vec![obj("Vec3")],
+        f.clone(),
+        vec![v3(1.0, 2.0, 3.0)],
+    );
     assert_eq!(y, Value::Float(2.0));
 
-    let cross = native("Vec3::cross", vec![obj("Vec3"); 2], obj("Vec3"), vec![v3(1.0, 0.0, 0.0), v3(0.0, 1.0, 0.0)]);
+    let cross = native(
+        "Vec3::cross",
+        vec![obj("Vec3"); 2],
+        obj("Vec3"),
+        vec![v3(1.0, 0.0, 0.0), v3(0.0, 1.0, 0.0)],
+    );
     assert_eq!(as_value::<Vec3>(&cross), Vec3::Z);
 
     // Zero normalizes to zero, not NaN.
-    let n = native("Vec3::normalize", vec![obj("Vec3")], obj("Vec3"), vec![v3(0.0, 0.0, 0.0)]);
+    let n = native(
+        "Vec3::normalize",
+        vec![obj("Vec3")],
+        obj("Vec3"),
+        vec![v3(0.0, 0.0, 0.0)],
+    );
     assert_eq!(as_value::<Vec3>(&n), Vec3::ZERO);
 
     let rotated = native(
         "Quat::rotate",
         vec![obj("Quat"), obj("Vec3")],
         obj("Vec3"),
-        vec![constant("Quat", literal::quat(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2))), v3(1.0, 0.0, 0.0)],
+        vec![
+            constant(
+                "Quat",
+                literal::quat(Quat::from_rotation_z(std::f32::consts::FRAC_PI_2)),
+            ),
+            v3(1.0, 0.0, 0.0),
+        ],
     );
     assert!(as_value::<Vec3>(&rotated).abs_diff_eq(Vec3::Y, 1e-6));
 }
 
 #[test]
 fn equality_is_raw_unless_a_tolerance_is_given() {
-    let eq = |a: Constant, b: Constant| native("Vec3::eq", vec![obj("Vec3"); 2], Type::Bool, vec![a, b]);
+    let eq =
+        |a: Constant, b: Constant| native("Vec3::eq", vec![obj("Vec3"); 2], Type::Bool, vec![a, b]);
     assert_eq!(eq(v3(1.0, 2.0, 3.0), v3(1.0, 2.0, 3.0)), Value::Bool(true));
-    assert_eq!(eq(v3(1.0, 2.0, 3.0), v3(1.0, 2.0, 3.001)), Value::Bool(false));
+    assert_eq!(
+        eq(v3(1.0, 2.0, 3.0), v3(1.0, 2.0, 3.001)),
+        Value::Bool(false)
+    );
     let approx = native(
         "Vec3::approx_eq",
         vec![obj("Vec3"), obj("Vec3"), Type::Float],
         Type::Bool,
-        vec![v3(1.0, 2.0, 3.0), v3(1.0, 2.0, 3.001), Constant::Float(0.01)],
+        vec![
+            v3(1.0, 2.0, 3.0),
+            v3(1.0, 2.0, 3.001),
+            Constant::Float(0.01),
+        ],
     );
     assert_eq!(approx, Value::Bool(true));
 
     // q and -q are one rotation, but not raw-equal.
     let q = Quat::from_rotation_y(0.7);
-    let (a, b) = (constant("Quat", literal::quat(q)), constant("Quat", literal::quat(-q)));
+    let (a, b) = (
+        constant("Quat", literal::quat(q)),
+        constant("Quat", literal::quat(-q)),
+    );
     let sig = vec![obj("Quat"), obj("Quat")];
-    assert_eq!(native("Quat::eq", sig.clone(), Type::Bool, vec![a.clone(), b.clone()]), Value::Bool(false));
+    assert_eq!(
+        native(
+            "Quat::eq",
+            sig.clone(),
+            Type::Bool,
+            vec![a.clone(), b.clone()]
+        ),
+        Value::Bool(false)
+    );
     let mut with_eps = sig;
     with_eps.push(Type::Float);
-    assert_eq!(native("Quat::same_rotation", with_eps, Type::Bool, vec![a, b, Constant::Float(1e-6)]), Value::Bool(true));
+    assert_eq!(
+        native(
+            "Quat::same_rotation",
+            with_eps,
+            Type::Bool,
+            vec![a, b, Constant::Float(1e-6)]
+        ),
+        Value::Bool(true)
+    );
 }
 
 #[test]
 fn to_string_and_matrix_failures_are_reported() {
-    let s = native("Vec3::to_string", vec![obj("Vec3")], Type::Str, vec![v3(1.0, 2.0, 3.0)]);
+    let s = native(
+        "Vec3::to_string",
+        vec![obj("Vec3")],
+        Type::Str,
+        vec![v3(1.0, 2.0, 3.0)],
+    );
     assert_eq!(s.as_str(), Some("[1, 2, 3]"));
 
     let mut module = Module::new("singular");
@@ -275,14 +430,20 @@ fn to_string_and_matrix_failures_are_reported() {
         name: "Mat4::inverse".into(),
         sig: Signature::new(vec![Param::new(obj("Mat4"))], obj("Mat4")),
     });
-    module.constants.push(constant("Mat4", literal::mat4(Mat4::ZERO)));
+    module
+        .constants
+        .push(constant("Mat4", literal::mat4(Mat4::ZERO)));
     module.functions.push(function(
         "f",
         obj("Mat4"),
         vec![obj("Mat4"), obj("Mat4")],
         vec![
             Instr::Const { dst: 0, index: 0 },
-            Instr::CallNative { import: 0, args: vec![0], dst: Some(1) },
+            Instr::CallNative {
+                import: 0,
+                args: vec![0],
+                dst: Some(1),
+            },
             Instr::Return { value: Some(1) },
         ],
     ));
@@ -293,7 +454,14 @@ fn to_string_and_matrix_failures_are_reported() {
     let func = program.entry("f").unwrap();
     let mut host = Host::new(&mut world, entity);
     let err = Vm::new()
-        .call(&program, &mut instance, func, &[], &mut host, &mut Budget::new(1000))
+        .call(
+            &program,
+            &mut instance,
+            func,
+            &[],
+            &mut host,
+            &mut Budget::new(1000),
+        )
         .expect_err("singular matrix");
     assert!(err.to_string().contains("not invertible"), "{err}");
 }
@@ -302,7 +470,11 @@ fn to_string_and_matrix_failures_are_reported() {
 fn value_types_compare_and_print() {
     use pulsar_script_vm::{BinOp, UnOp};
     let mut module = Module::new("ops");
-    module.constants = vec![constant("Vec3", "[1.0,2.0,3.0]"), constant("Vec3", "[1.0,2.0,3.0]"), constant("Vec3", "[0.0,0.0,0.0]")];
+    module.constants = vec![
+        constant("Vec3", "[1.0,2.0,3.0]"),
+        constant("Vec3", "[1.0,2.0,3.0]"),
+        constant("Vec3", "[0.0,0.0,0.0]"),
+    ];
     let vec3 = || obj("Vec3");
     let compare = |name: &str, op: BinOp, other: u32| {
         function(
@@ -311,8 +483,16 @@ fn value_types_compare_and_print() {
             vec![vec3(), vec3(), Type::Bool],
             vec![
                 Instr::Const { dst: 0, index: 0 },
-                Instr::Const { dst: 1, index: other },
-                Instr::Binary { op, dst: 2, a: 0, b: 1 },
+                Instr::Const {
+                    dst: 1,
+                    index: other,
+                },
+                Instr::Binary {
+                    op,
+                    dst: 2,
+                    a: 0,
+                    b: 1,
+                },
                 Instr::Return { value: Some(2) },
             ],
         )
@@ -325,7 +505,15 @@ fn value_types_compare_and_print() {
             "text",
             Type::Str,
             vec![vec3(), Type::Str],
-            vec![Instr::Const { dst: 0, index: 0 }, Instr::Unary { op: UnOp::ToStr, dst: 1, src: 0 }, Instr::Return { value: Some(1) }],
+            vec![
+                Instr::Const { dst: 0, index: 0 },
+                Instr::Unary {
+                    op: UnOp::ToStr,
+                    dst: 1,
+                    src: 0,
+                },
+                Instr::Return { value: Some(1) },
+            ],
         ),
     ];
     let program = link(module).expect("links: Vec3 has equality and display");

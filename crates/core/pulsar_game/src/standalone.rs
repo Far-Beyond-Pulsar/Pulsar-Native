@@ -53,7 +53,8 @@ pub const DEFAULT_HEADLESS_FRAMES: u64 = 60;
 /// tools and CI to find.
 pub const HEADLESS_REPORT_PREFIX: &str = "PULSAR_HEADLESS_REPORT ";
 
-pub const USAGE: &str = "usage: <game> [--headless] [--frames N] [--content DIR] [--pulsar-profile]\n\
+pub const USAGE: &str =
+    "usage: <game> [--headless] [--frames N] [--content DIR] [--pulsar-profile]\n\
     \n  --headless       run the game loop without a window or renderer\
     \n  --frames N       with --headless: run N ticks, then exit (default 60)\
     \n  --content DIR    read content from DIR instead of <exe dir>/Content or the project\
@@ -70,18 +71,25 @@ impl LaunchOptions {
         let mut args = args.into_iter().map(Into::into);
         while let Some(arg) = args.next() {
             let (flag, inline) = match arg.split_once('=') {
-                Some((flag, value)) if flag.starts_with("--") => (flag.to_owned(), Some(value.to_owned())),
+                Some((flag, value)) if flag.starts_with("--") => {
+                    (flag.to_owned(), Some(value.to_owned()))
+                }
                 _ => (arg.clone(), None),
             };
             let mut value = |name: &str| {
-                inline.clone().or_else(|| args.next()).ok_or_else(|| format!("{name} needs a value\n{USAGE}"))
+                inline
+                    .clone()
+                    .or_else(|| args.next())
+                    .ok_or_else(|| format!("{name} needs a value\n{USAGE}"))
             };
             match flag.as_str() {
                 "--headless" => options.headless = true,
                 "--frames" => {
                     let raw = value("--frames")?;
-                    options.frames =
-                        Some(raw.parse().map_err(|_| format!("--frames: `{raw}` is not a number\n{USAGE}"))?);
+                    options.frames = Some(
+                        raw.parse()
+                            .map_err(|_| format!("--frames: `{raw}` is not a number\n{USAGE}"))?,
+                    );
                 }
                 "--content" => options.content = Some(PathBuf::from(value("--content")?)),
                 profiling::remote::ARG_FLAG => options.profile = true,
@@ -102,7 +110,9 @@ impl LaunchOptions {
 /// else [`ContentRoot::discover`].
 pub fn install_content(options: &LaunchOptions) -> Result<ContentRoot, String> {
     let content = match &options.content {
-        Some(dir) => ContentRoot::open(dir).map_err(|e| format!("--content {}: {e}", dir.display()))?,
+        Some(dir) => {
+            ContentRoot::open(dir).map_err(|e| format!("--content {}: {e}", dir.display()))?
+        }
         None => ContentRoot::discover()?,
     };
     content.install();
@@ -130,14 +140,21 @@ pub fn startup_level(content: &ContentRoot) -> Option<PathBuf> {
         if content.exists(rel) {
             return Some(content.path(rel));
         }
-        tracing::warn!(level = rel, "Startup level from Pulsar/project.json not found");
+        tracing::warn!(
+            level = rel,
+            "Startup level from Pulsar/project.json not found"
+        );
     }
     if !content.is_packaged() {
         // Dev builds: the editor's own setting (`.pulsar/project/*.toml`).
-        let configured = engine_state::settings::ProjectSettings::new(content.root()).and_then(|ps| {
-            ps.load_all();
-            ps.get("project", "default_map")?.as_str().ok().map(str::to_owned)
-        });
+        let configured =
+            engine_state::settings::ProjectSettings::new(content.root()).and_then(|ps| {
+                ps.load_all();
+                ps.get("project", "default_map")?
+                    .as_str()
+                    .ok()
+                    .map(str::to_owned)
+            });
         if let Some(rel) = configured.filter(|m| !m.is_empty()) {
             if content.exists(&rel) {
                 return Some(content.path(&rel));
@@ -145,10 +162,14 @@ pub fn startup_level(content: &ContentRoot) -> Option<PathBuf> {
             tracing::warn!(level = %rel, "project.default_map not found; trying the default level files");
         }
     }
-    ["scene/default.level", "scenes/default.level", "scenes/default_level.json"]
-        .into_iter()
-        .find(|rel| content.exists(rel))
-        .map(|rel| content.path(rel))
+    [
+        "scene/default.level",
+        "scenes/default.level",
+        "scenes/default_level.json",
+    ]
+    .into_iter()
+    .find(|rel| content.exists(rel))
+    .map(|rel| content.path(rel))
 }
 
 /// The game's `setup()`: registers actors and turns on scripting (the
@@ -197,7 +218,9 @@ pub fn run_with(
             tracing::info!("Profiling enabled: the editor's profiler can record this process");
         }
     }
-    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
     if options.headless {
         let mut game = TickLoop::new(TickMode::Fixed { dt: HEADLESS_STEP }, threads);
         setup(&mut game).map_err(|e| format!("Level setup failed: {e}"))?;
@@ -278,7 +301,11 @@ impl HeadlessReport {
 /// Load the startup level into `game`'s world and run `frames` ticks with
 /// no window or renderer, then end every script (`end_play`). The same
 /// [`TickLoop::tick_once`] the windowed game's tick thread runs.
-pub fn run_headless(game: &mut TickLoop, content: &ContentRoot, frames: u64) -> Result<HeadlessReport, String> {
+pub fn run_headless(
+    game: &mut TickLoop,
+    content: &ContentRoot,
+    frames: u64,
+) -> Result<HeadlessReport, String> {
     prepare_engine(content)?;
     let settings = content.settings();
     let level = startup_level(content);
@@ -303,7 +330,9 @@ pub fn run_headless(game: &mut TickLoop, content: &ContentRoot, frames: u64) -> 
         problems: game.take_script_problems(),
     };
     if let Some(driver) = &game.scripts {
-        let driver = driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let driver = driver
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let runtime = driver.runtime();
         for id in runtime.instance_ids() {
             let class = runtime.class_of(id).unwrap_or_default().to_owned();
@@ -322,7 +351,11 @@ pub fn run_headless(game: &mut TickLoop, content: &ContentRoot, frames: u64) -> 
                     Some((name, value))
                 })
                 .collect();
-            report.instances.push(InstanceReport { id: id.clone(), class, variables });
+            report.instances.push(InstanceReport {
+                id: id.clone(),
+                class,
+                variables,
+            });
         }
     }
     game.end_scripts();
@@ -339,16 +372,29 @@ pub fn run_headless(game: &mut TickLoop, content: &ContentRoot, frames: u64) -> 
 
 /// Hydrate the level at `path` (under the content root) into `game`'s
 /// world, resolving placed classes against the content's classes.
-pub fn load_level(game: &mut TickLoop, content: &ContentRoot, path: &std::path::Path) -> Result<(), String> {
+pub fn load_level(
+    game: &mut TickLoop,
+    content: &ContentRoot,
+    path: &std::path::Path,
+) -> Result<(), String> {
     let registry = pulsar_class::ClassRegistry::scan(content.root());
-    let name = content.relative(path).unwrap_or_else(|| path.display().to_string());
+    let name = content
+        .relative(path)
+        .unwrap_or_else(|| path.display().to_string());
     {
         let mut store = game.scene_store.write();
-        engine_backend::scene::RuntimeLevel::load_into_with_classes(path, &mut store.world, &registry)
-            .map_err(|e| format!("Failed to load level {name}: {e}"))?;
+        engine_backend::scene::RuntimeLevel::load_into_with_classes(
+            path,
+            &mut store.world,
+            &registry,
+        )
+        .map_err(|e| format!("Failed to load level {name}: {e}"))?;
     }
     if let Some(driver) = &game.scripts {
-        driver.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).set_level_name(name.clone());
+        driver
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .set_level_name(name.clone());
     }
     tracing::info!(level = %name, "Level loaded");
     Ok(())
@@ -360,12 +406,20 @@ mod tests {
 
     #[test]
     fn launch_options_parse() {
-        assert_eq!(LaunchOptions::from_args(Vec::<String>::new()).unwrap(), LaunchOptions::default());
-        let options = LaunchOptions::from_args(["--headless", "--frames", "5", "--content=/x"]).unwrap();
+        assert_eq!(
+            LaunchOptions::from_args(Vec::<String>::new()).unwrap(),
+            LaunchOptions::default()
+        );
+        let options =
+            LaunchOptions::from_args(["--headless", "--frames", "5", "--content=/x"]).unwrap();
         assert!(options.headless);
         assert_eq!(options.frames, Some(5));
         assert_eq!(options.content.as_deref(), Some(std::path::Path::new("/x")));
-        assert!(LaunchOptions::from_args(["--pulsar-profile"]).unwrap().profile);
+        assert!(
+            LaunchOptions::from_args(["--pulsar-profile"])
+                .unwrap()
+                .profile
+        );
         assert!(!LaunchOptions::from_args(["--headless"]).unwrap().profile);
         assert!(LaunchOptions::from_args(["--frames"]).is_err());
         assert!(LaunchOptions::from_args(["--frames", "many"]).is_err());

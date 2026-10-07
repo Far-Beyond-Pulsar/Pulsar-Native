@@ -8,11 +8,11 @@ pub mod dispatcher;
 pub mod level_edit;
 pub mod registry;
 pub mod spline;
-pub mod voxel_sculpt;
 pub mod terrain;
+pub mod voxel_sculpt;
 
-use std::sync::Mutex;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
 
@@ -20,8 +20,8 @@ pub use dispatcher::*;
 pub use level_edit::*;
 pub use registry::*;
 pub use spline::*;
-pub use voxel_sculpt::VoxelSculptMode;
 pub use terrain::TerrainMode;
+pub use voxel_sculpt::VoxelSculptMode;
 
 use crate::state::LevelEditorState;
 
@@ -232,7 +232,10 @@ pub trait ToolMode: Send + Sync {
 
     /// Construct dock panels owned by this mode. The editor shell only docks
     /// the returned views; it does not need to know mode or panel types.
-    fn build_panels(&self, _ctx: &mut ModePanelContext<'_, '_>) -> Vec<Arc<dyn ui::dock::PanelView>> {
+    fn build_panels(
+        &self,
+        _ctx: &mut ModePanelContext<'_, '_>,
+    ) -> Vec<Arc<dyn ui::dock::PanelView>> {
         Vec::new()
     }
 

@@ -547,5 +547,3 @@ mod tests {
         assert_eq!(disabled.label(), Some("Save"));
     }
 }
-
-

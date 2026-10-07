@@ -41,8 +41,6 @@ use std::{
     sync::{Arc, RwLock},
 };
 use ui::{
-    ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
-    VirtualListScrollHandle,
     bubble::{Bubble, BubbleVariant},
     button::{Button, ButtonVariants as _},
     dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
@@ -57,7 +55,8 @@ use ui::{
     scroll::{Scrollbar, ScrollbarState},
     spinner::Spinner,
     text::TextView,
-    v_flex, v_virtual_list,
+    v_flex, v_virtual_list, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size,
+    StyledExt, VirtualListScrollHandle,
 };
 
 impl Render for AgentChatPanel {

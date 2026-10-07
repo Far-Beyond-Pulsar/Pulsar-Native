@@ -44,7 +44,6 @@ pub fn arm_render_row_subscriptions_for_entity(
         let _ = world.subscribe::<StaticMeshComponent>(entity);
         let _ = world.subscribe::<Transform>(entity);
         let _ = world.subscribe::<Visibility>(entity);
-        let _ = world.subscribe::<helio_component::components::MaterialOverrideComponent>(entity);
     }
     if world
         .get::<helio_component::components::LightComponent>(entity)
@@ -62,14 +61,20 @@ pub fn arm_render_row_subscriptions_for_entity(
 /// components were (re)inserted before the entity's subscriptions were
 /// armed (a class instance rebuilt from its class), which records no
 /// change event. Also refreshes every registered class's GPU mirror.
-pub fn mark_render_components_changed(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+pub fn mark_render_components_changed(
+    world: &mut pulsar_scenedb::World,
+    entity: pulsar_scenedb::Entity,
+) {
     if !world.is_alive(entity) {
         return;
     }
-    let classes: Vec<&'static str> = pulsar_world_registry::registered_world_component_classes().collect();
+    let classes: Vec<&'static str> =
+        pulsar_world_registry::registered_world_component_classes().collect();
     for class_name in classes {
         if pulsar_world_registry::world_component_present_for_class(class_name, world, entity) {
-            pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(class_name, world, entity);
+            pulsar_world_registry::refresh_world_component_gpu_mirror_for_class(
+                class_name, world, entity,
+            );
         }
     }
     if let Some(mut light) = world.get_mut::<helio_component::components::LightComponent>(entity) {
@@ -85,12 +90,402 @@ pub fn mark_render_components_changed(world: &mut pulsar_scenedb::World, entity:
 
 struct EditorMeshRow;
 
+/// Renderer-only draw row for a non-first material section. It lives in the
+/// SceneDB world so the existing GPU object-batch path can consume the same
+/// reflected `StaticObjectComponent` schema for every section.
+#[derive(Clone, Copy)]
+struct MeshSectionDraw {
+    owner: pulsar_scenedb::Entity,
+    section_index: usize,
+}
+
+fn section_draw_entities(
+    world: &pulsar_scenedb::World,
+    owner: pulsar_scenedb::Entity,
+) -> Vec<(pulsar_scenedb::Entity, usize)> {
+    let mut draws: Vec<_> = world
+        .query::<&MeshSectionDraw>()
+        .filter(|(_, draw)| draw.owner == owner)
+        .map(|(entity, draw)| (entity, draw.section_index))
+        .collect();
+    draws.sort_by_key(|(_, index)| *index);
+    draws
+}
+
+fn sync_section_draw_entities(
+    world: &mut pulsar_scenedb::World,
+    owner: pulsar_scenedb::Entity,
+    section_count: usize,
+) -> Vec<pulsar_scenedb::Entity> {
+    let draws = section_draw_entities(world, owner);
+    let wanted = section_count.saturating_sub(1);
+    let mut entities = Vec::with_capacity(wanted);
+    for section_index in 1..section_count {
+        if let Some((entity, _)) = draws
+            .iter()
+            .find(|(_, existing_index)| *existing_index == section_index)
+        {
+            entities.push(*entity);
+        } else {
+            let entity = world.spawn();
+            world.insert(
+                entity,
+                MeshSectionDraw {
+                    owner,
+                    section_index,
+                },
+            );
+            entities.push(entity);
+        }
+    }
+    for (entity, _) in draws {
+        if !entities.contains(&entity) {
+            world.despawn(entity);
+        }
+    }
+    debug_assert_eq!(entities.len(), wanted);
+    entities
+}
+
+fn retire_section_draw_entities(world: &mut pulsar_scenedb::World, owner: pulsar_scenedb::Entity) {
+    for (entity, _) in section_draw_entities(world, owner) {
+        world.despawn(entity);
+    }
+}
+
+#[derive(Clone)]
+struct ResolvedSlotMaterial {
+    surface: helio_component::mesh_cache::ImportedSurfaceMaterial,
+    material_class: u32,
+    graph_hash: u64,
+}
+
+fn graph_material_cache() -> &'static std::sync::Mutex<
+    std::collections::HashMap<std::path::PathBuf, (u64, Result<(u64, String), String>)>,
+> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<
+            std::collections::HashMap<std::path::PathBuf, (u64, Result<(u64, String), String>)>,
+        >,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn graph_texture_cache(
+) -> &'static std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (u64, u32)>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (u64, u32)>>,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn register_graph_texture(path: &std::path::Path, mirror: &GpuMirrorHandle) -> Result<u32, String> {
+    use std::hash::{Hash, Hasher};
+    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    let fingerprint = hasher.finish();
+    let mut cache = graph_texture_cache()
+        .lock()
+        .map_err(|_| "graph texture cache lock poisoned".to_string())?;
+    if let Some((cached_fingerprint, slot)) = cache.get(path) {
+        if *cached_fingerprint == fingerprint {
+            return Ok(*slot);
+        }
+    }
+    let texture_store = mirror
+        .texture_store()
+        .ok_or_else(|| "SceneDB has no material texture store".to_string())?;
+    let mut store = texture_store
+        .write()
+        .map_err(|_| "SceneDB texture store lock poisoned".to_string())?;
+    if let Some((_, old_slot)) = cache.get(path) {
+        let _ = store.unregister(*old_slot);
+    }
+    let decoded = image::load_from_memory(&bytes)
+        .map_err(|error| format!("could not decode texture image: {error}"))?
+        .to_rgba8();
+    let (width, height) = decoded.dimensions();
+    if width == 0 || height == 0 {
+        return Err("texture image has empty dimensions".to_string());
+    }
+    let device = mirror.store().device_arc();
+    let descriptor = wgpu::TextureDescriptor {
+        label: Some("Blueprint Material Texture"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    };
+    let slot = store
+        .register(&device, mirror.queue(), &descriptor, decoded.as_raw())
+        .map_err(|error| format!("could not register texture in SceneDB: {error:?}"))?;
+    cache.insert(path.to_path_buf(), (fingerprint, slot));
+    Ok(slot)
+}
+
+fn graph_material_source(
+    path: &std::path::Path,
+    project_root: &std::path::Path,
+    mirror: &GpuMirrorHandle,
+) -> Result<(u64, String), String> {
+    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
+    use std::hash::{Hash, Hasher};
+    let mut fingerprint_hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut fingerprint_hasher);
+    let fingerprint = fingerprint_hasher.finish();
+    let result = (|| {
+        let text = std::str::from_utf8(&bytes).map_err(|error| error.to_string())?;
+        // Shader graph saves may carry a line comment before their JSON body.
+        let json_start = text
+            .find('{')
+            .ok_or_else(|| "shader graph JSON object is missing".to_string())?;
+        let document: serde_json::Value = serde_json::from_str(&text[json_start..])
+            .map_err(|error| format!("invalid shader graph JSON: {error}"))?;
+        let graph_value = document
+            .get("main_graph")
+            .ok_or_else(|| "shader graph asset has no main_graph".to_string())?;
+        let mut texture_bindings = std::collections::HashMap::new();
+        if let Some(nodes) = graph_value
+            .get("nodes")
+            .and_then(serde_json::Value::as_object)
+        {
+            for node in nodes.values().filter(|node| {
+                matches!(
+                    node.get("node_type").and_then(serde_json::Value::as_str),
+                    Some("sample_texture" | "sample_texture_level" | "sample_texture_grad")
+                )
+            }) {
+                let Some(asset) = node
+                    .get("properties")
+                    .and_then(|props| props.get("texture"))
+                    .and_then(serde_json::Value::as_str)
+                else {
+                    continue;
+                };
+                let texture_path = if std::path::Path::new(asset).is_absolute() {
+                    std::path::PathBuf::from(asset)
+                } else {
+                    project_root.join(asset)
+                };
+                let slot = register_graph_texture(&texture_path, mirror)
+                    .map_err(|error| format!("texture '{}': {error}", texture_path.display()))?;
+                texture_bindings.insert(asset.to_string(), slot);
+            }
+        }
+        if let Ok(cache) = graph_material_cache().lock() {
+            if let Some((cached_fingerprint, cached_result)) = cache.get(path) {
+                if *cached_fingerprint == fingerprint {
+                    return cached_result.clone();
+                }
+            }
+        }
+        let graph: psgc::GraphDescription = serde_json::from_value(graph_value.clone())
+            .map_err(|error| format!("invalid main_graph: {error}"))?;
+        let generated = psgc::compile_shader(&graph)
+            .map_err(|error| format!("shader graph compile failed: {error}"))?;
+        let snippet = adapt_graph_wgsl(&generated, &texture_bindings)?;
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        snippet.hash(&mut hasher);
+        let hash = hasher.finish().max(1);
+        Ok((hash, snippet))
+    })();
+    if let Ok(mut cache) = graph_material_cache().lock() {
+        cache.insert(path.to_path_buf(), (fingerprint, result.clone()));
+    }
+    result
+}
+
+fn adapt_graph_wgsl(
+    generated: &str,
+    texture_bindings: &std::collections::HashMap<String, u32>,
+) -> Result<String, String> {
+    let mut source = generated.to_string();
+    for (asset, slot) in texture_bindings {
+        source = source.replace(asset, &format!("scene_textures[{slot}u]"));
+    }
+    bind_graph_texture_samplers(&mut source);
+    if let Some(start) = source.find("struct Uniforms {") {
+        let end = source[start..]
+            .find("};")
+            .map(|offset| start + offset + 2)
+            .ok_or_else(|| "malformed PSGC Uniforms declaration".to_string())?;
+        source.replace_range(start..end, "");
+    }
+    source = source.replace("@group(0) @binding(0) var<uniform> uniforms: Uniforms;", "");
+    source = source.replace("uniforms.time", "0.0");
+    source = source.replace("FragmentOutput", "PulsarGraphOutput");
+    for location in 0..8 {
+        source = source.replace(&format!("@location({location}) "), "");
+    }
+
+    let entry = source
+        .find("@fragment\nfn fragment_main(")
+        .or_else(|| source.find("@fragment\r\nfn fragment_main("))
+        .ok_or_else(|| "PSGC output is not a fragment shader".to_string())?;
+    let open = source[entry..]
+        .find('{')
+        .map(|offset| entry + offset)
+        .ok_or_else(|| "malformed PSGC fragment entry point".to_string())?;
+    let replacement = "fn pulsar_material_graph(input: VertexOutput) -> PulsarGraphOutput {\n    let frag_coord = input.clip_position;\n    let uv = input.tex_coords;\n    let normal = input.world_normal;\n    let world_pos = input.world_position;";
+    source.replace_range(entry..=open, replacement);
+
+    let body = r#"let graph_surface = pulsar_material_graph(input);
+albedo = graph_surface.base_color;
+// Preserve the connected RGBA color's alpha. The separate opacity input
+// modulates coverage and defaults to 1 when it is not connected.
+alpha = clamp(graph_surface.base_color.a, 0.0, 1.0) * clamp(graph_surface.opacity, 0.0, 1.0);
+albedo.a = alpha;
+roughness = clamp(graph_surface.roughness, 0.045, 1.0);
+metallic = clamp(graph_surface.metallic, 0.0, 1.0);
+ao = clamp(graph_surface.ambient_occlusion, 0.0, 1.0);
+emissive = graph_surface.emissive_color.rgb * graph_surface.emissive_color.a;
+let graph_normal_length = length(graph_surface.normal);
+if graph_normal_length > 0.0001 { N = graph_surface.normal / graph_normal_length; }
+specular_f0 = clamp(mix(vec3<f32>(0.04), albedo.rgb, metallic), vec3<f32>(0.0), vec3<f32>(0.999));"#;
+    Ok(format!(
+        "/*RADIANT_GRAPH_DECLARATIONS*/\n{source}\n/*RADIANT_GRAPH_BODY*/\n{body}"
+    ))
+}
+
+fn bind_graph_texture_samplers(source: &mut String) {
+    for function in [
+        "textureSample(",
+        "textureSampleLevel(",
+        "textureSampleGrad(",
+    ] {
+        let mut search_from = 0;
+        while let Some(relative) = source[search_from..].find(function) {
+            let call_start = search_from + relative;
+            let args_start = call_start + function.len();
+            let Some(first_comma_rel) = source[args_start..].find(',') else {
+                break;
+            };
+            let first_comma = args_start + first_comma_rel;
+            let first_arg = source[args_start..first_comma]
+                .trim()
+                .trim_matches(['(', ')'])
+                .trim();
+            let Some(slot_text) = first_arg
+                .strip_prefix("scene_textures[")
+                .and_then(|value| value.strip_suffix(']'))
+            else {
+                search_from = first_comma + 1;
+                continue;
+            };
+            let Some(second_comma_rel) = source[first_comma + 1..].find(',') else {
+                break;
+            };
+            let second_comma = first_comma + 1 + second_comma_rel;
+            source.replace_range(
+                first_comma + 1..second_comma,
+                &format!(" scene_samplers[{slot_text}]"),
+            );
+            search_from = second_comma + 1;
+        }
+    }
+}
+
+fn material_surface_for_slot(
+    slot: Option<&helio_component::components::StaticMeshMaterialSlot>,
+    entity: pulsar_scenedb::Entity,
+    mirror: &GpuMirrorHandle,
+) -> ResolvedSlotMaterial {
+    let imported = || ResolvedSlotMaterial {
+        surface: slot.map_or_else(Default::default, |slot| {
+            slot.surface_override.unwrap_or(slot.imported_surface)
+        }),
+        material_class: helio_mats::MATERIAL_CLASS_DEFAULT,
+        graph_hash: 0,
+    };
+    let Some(slot) = slot else {
+        return imported();
+    };
+    if let Some(override_surface) = slot.surface_override {
+        return ResolvedSlotMaterial {
+            surface: override_surface,
+            material_class: helio_mats::MATERIAL_CLASS_DEFAULT,
+            graph_hash: 0,
+        };
+    }
+    if slot.material_asset.trim().is_empty() {
+        return imported();
+    }
+    let Some(project_root) = engine_state::get_project_path() else {
+        return imported();
+    };
+    let path = helio_component::subsystems::resolve_asset_path(
+        std::path::Path::new(&project_root),
+        &slot.material_asset,
+    );
+    let graph_file = if path.is_dir() {
+        Some(path.join("shader_graph_save.json"))
+    } else if path
+        .file_name()
+        .is_some_and(|name| name == "shader_graph_save.json")
+    {
+        Some(path.clone())
+    } else {
+        None
+    };
+    if let Some(graph_file) = graph_file.filter(|file| file.is_file()) {
+        match graph_material_source(&graph_file, std::path::Path::new(&project_root), mirror) {
+            Ok((hash, source)) => {
+                helio_mats::register_graph_source(hash, source);
+                return ResolvedSlotMaterial {
+                    surface: slot.imported_surface,
+                    material_class: helio_mats::MATERIAL_CLASS_CUSTOM,
+                    graph_hash: hash,
+                };
+            }
+            Err(error) => {
+                tracing::warn!(entity = entity.index(), path = %graph_file.display(), %error, "could not compile Blueprint material graph; using imported FBX material")
+            }
+        }
+    }
+    let loaded = std::fs::read(&path).ok().and_then(|bytes| {
+        serde_json::from_slice::<helio_component::components::SurfaceMaterialAsset>(&bytes).ok()
+    });
+    match loaded {
+        Some(material) if material.version == 1 => ResolvedSlotMaterial {
+            surface: helio_component::mesh_cache::ImportedSurfaceMaterial {
+                base_color: material.base_color,
+                roughness: material.roughness,
+                metallic: material.metallic,
+                emissive: material.emissive_color,
+                emissive_intensity: material.emissive_intensity,
+                alpha: material.alpha,
+            },
+            material_class: helio_mats::MATERIAL_CLASS_DEFAULT,
+            graph_hash: 0,
+        },
+        _ => {
+            tracing::warn!(
+                entity = entity.index(),
+                path = %path.display(),
+                "static mesh material asset could not be loaded; using the imported FBX material"
+            );
+            imported()
+        }
+    }
+}
+
 /// Keep SceneDB's `helio::Movability` on `entity` equal to its authored
 /// `movability` (Pulsar-Native#837), written only on change so an idle
 /// frame stays clean. Passes read the SceneDB component, never the
 /// authored property. A mesh's value wins over a light's on the same
 /// entity: the mesh is what the caches that read it describe.
-pub(crate) fn project_movability(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+pub(crate) fn project_movability(
+    world: &mut pulsar_scenedb::World,
+    entity: pulsar_scenedb::Entity,
+) {
     let authored = world
         .get::<StaticMeshComponent>(entity)
         .map(|mesh| mesh.movability)
@@ -157,9 +552,25 @@ pub fn sync_static_mesh_rows(
             .map(|(entity, _)| entity)
             .collect();
         for entity in stale {
+            retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);
             scene_db.world.remove::<EditorMeshRow>(entity);
             project_movability(&mut scene_db.world, entity);
+        }
+        let stale_sections: Vec<_> = scene_db
+            .world
+            .query::<&MeshSectionDraw>()
+            .filter(|(_, draw)| {
+                !scene_db.world.is_alive(draw.owner)
+                    || scene_db
+                        .world
+                        .get::<StaticMeshComponent>(draw.owner)
+                        .is_none()
+            })
+            .map(|(entity, _)| entity)
+            .collect();
+        for entity in stale_sections {
+            scene_db.world.despawn(entity);
         }
     }
     tracing::debug!(
@@ -185,6 +596,7 @@ pub fn sync_static_mesh_rows(
     );
     for entity in entities {
         if scene_db.world.get::<StaticMeshComponent>(entity).is_none() {
+            retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);
             if scene_db.world.get::<EditorMeshRow>(entity).is_some() {
                 scene_db.world.remove::<EditorMeshRow>(entity);
@@ -198,6 +610,7 @@ pub fn sync_static_mesh_rows(
             "[SceneDB render diagnostics] evaluating StaticMeshComponent"
         );
         let Some(transform) = scene_db.world.get::<Transform>(entity).copied() else {
+            retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);
             continue;
         };
@@ -206,21 +619,30 @@ pub fn sync_static_mesh_rows(
             .get::<Visibility>(entity)
             .is_some_and(|v| !v.visible)
         {
+            retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);
             continue;
         }
         // Real, geometry-derived local bounds (see `bounds_local`'s doc) --
         // computed once at hydrate time from the mesh's actual vertex
         // positions, not guessed from the transform's scale.
-        let (bounds_local, flags) = scene_db
+        let (bounds_local, flags, mesh_sections, material_slots) = scene_db
             .world
             .get::<StaticMeshComponent>(entity)
-            .map(|c| (c.bounds_local, object_row_flags(c)))
-            .unwrap_or(([0.0, 0.0, 0.0, 0.5], 0));
+            .map(|c| {
+                (
+                    c.bounds_local,
+                    object_row_flags(c),
+                    c.mesh_sections.clone(),
+                    c.material_slots.slots.clone(),
+                )
+            })
+            .unwrap_or(([0.0, 0.0, 0.0, 0.5], 0, Vec::new(), Vec::new()));
         let Some(vertices) =
             StaticMeshComponent::vertices_gpu_handle(mirror.store(), entity.index())
                 .filter(|r| r.count != 0)
         else {
+            retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);
             continue;
         };
@@ -233,49 +655,10 @@ pub fn sync_static_mesh_rows(
         let Some(indices) = StaticMeshComponent::indices_gpu_handle(mirror.store(), entity.index())
             .filter(|r| r.count != 0)
         else {
+            retire_section_draw_entities(&mut scene_db.world, entity);
             retire_static_object_row(&mut scene_db.world, entity);
             continue;
         };
-        // A level-authored `MaterialOverrideComponent` defines the surface;
-        // otherwise fall back to a default brown material that is only
-        // inserted once. Rewrites are guarded so unchanged rows stay clean.
-        let desired = match scene_db
-            .world
-            .get::<helio_component::components::MaterialOverrideComponent>(entity)
-        {
-            Some(o) => Some(helio_pass_gbuffer::MaterialComponent::from_surface(
-                [o.base_color[0], o.base_color[1], o.base_color[2]],
-                o.alpha,
-                o.roughness,
-                o.metallic,
-                o.emissive_color,
-                o.emissive_intensity,
-            )),
-            None => None,
-        };
-        let existing = scene_db
-            .world
-            .get::<helio_pass_gbuffer::MaterialComponent>(entity)
-            .copied();
-        match (desired, existing) {
-            (Some(d), Some(e)) if d == e => {}
-            (Some(d), _) => {
-                scene_db.world.insert(entity, d);
-            }
-            (None, None) => {
-                scene_db.world.insert(
-                    entity,
-                    helio_pass_gbuffer::MaterialComponent::new(
-                        [0.22, 0.15, 0.08, 1.0],
-                        0.7,
-                        0.0,
-                        [0.0; 3],
-                        0.0,
-                    ),
-                );
-            }
-            (None, Some(_)) => {}
-        }
         let model = glam::Mat4::from_scale_rotation_translation(
             glam::Vec3::from_array(transform.scale),
             glam::Quat::from_euler(
@@ -298,34 +681,69 @@ pub fn sync_static_mesh_rows(
         let world_radius =
             bounds_local[3] * glam::Vec3::from_array(transform.scale).abs().max_element();
         let world_radius = world_radius.max(0.0);
-        let world_extents = glam::Vec3::splat(world_radius);
-        let world_center_vec = glam::Vec3::new(world_center.x, world_center.y, world_center.z);
+        let sections = if mesh_sections.is_empty() {
+            vec![helio_component::mesh_cache::MeshSection {
+                first_index: 0,
+                index_count: indices.count,
+                material_slot: 0,
+            }]
+        } else {
+            mesh_sections
+        };
+        let section_entities =
+            sync_section_draw_entities(&mut scene_db.world, entity, sections.len());
+        let render_entities = std::iter::once(entity).chain(section_entities);
+        for (section_index, render_entity) in render_entities.enumerate() {
+            let Some(section) = sections.get(section_index) else {
+                continue;
+            };
+            let material = material_surface_for_slot(
+                material_slots.get(section.material_slot as usize),
+                entity,
+                &mirror,
+            );
+            let material_row = helio_pass_gbuffer::MaterialComponent::from_surface(
+                [
+                    material.surface.base_color[0],
+                    material.surface.base_color[1],
+                    material.surface.base_color[2],
+                ],
+                material.surface.alpha,
+                material.surface.roughness,
+                material.surface.metallic,
+                material.surface.emissive,
+                material.surface.emissive_intensity,
+            );
+            if scene_db
+                .world
+                .get::<helio_pass_gbuffer::MaterialComponent>(render_entity)
+                != Some(&material_row)
+            {
+                scene_db.world.insert(render_entity, material_row);
+            }
 
-        let object_row = helio_pass_gbuffer::StaticObjectComponent::new(
-            entity.index(),
-            entity.generation().wrapping_add(1),
-            entity.index(),
-            entity.generation().wrapping_add(1),
-            model,
-            [world_center.x, world_center.y, world_center.z, world_radius],
-            indices.count,
-            indices.offset,
-            vertices.offset as i32,
-            0,
-            0,
-            flags,
-        );
-        // Write only on change. Every `insert` bumps the SceneDB revision, and
-        // that revision is what the status bar / hierarchy / properties panels
-        // and the renderer's own idle check poll: an unconditional write here
-        // made the world look edited on every render frame, dirtying those
-        // panels and defeating idle detection.
-        if scene_db
-            .world
-            .get::<helio_pass_gbuffer::StaticObjectComponent>(entity)
-            != Some(&object_row)
-        {
-            scene_db.world.insert(entity, object_row);
+            let object_row = helio_pass_gbuffer::StaticObjectComponent::new(
+                entity.index(),
+                entity.generation().wrapping_add(1),
+                render_entity.index(),
+                render_entity.generation().wrapping_add(1),
+                model,
+                [world_center.x, world_center.y, world_center.z, world_radius],
+                section.index_count,
+                indices.offset.saturating_add(section.first_index),
+                vertices.offset as i32,
+                material.material_class,
+                material.graph_hash,
+                flags,
+            );
+            // Write only on change. Every `insert` bumps the SceneDB revision.
+            if scene_db
+                .world
+                .get::<helio_pass_gbuffer::StaticObjectComponent>(render_entity)
+                != Some(&object_row)
+            {
+                scene_db.world.insert(render_entity, object_row);
+            }
         }
         if scene_db.world.get::<EditorMeshRow>(entity).is_none() {
             scene_db.world.insert(entity, EditorMeshRow);
@@ -516,7 +934,14 @@ pub fn ensure_gpu_mirror(
         }
     }
 
-    let mirror = GpuMirrorHandle::new(Arc::new(gpu_store), queue);
+    let material_texture_limit =
+        helio_mats::MaterialBindingConfig::for_device(&device).max_textures;
+    let texture_store = Arc::new(std::sync::RwLock::new(
+        pulsar_scenedb::gpu::TextureStore::new(material_texture_limit as u32),
+    ));
+    let mirror = GpuMirrorHandle::new(Arc::new(gpu_store), queue)
+        .with_texture_store(texture_store)
+        .expect("register SceneDB material texture store");
     scene_db.world.attach_gpu_mirror(mirror.clone());
     crate::scene::install_scenedb_inspector(&mut scene_db.world);
 

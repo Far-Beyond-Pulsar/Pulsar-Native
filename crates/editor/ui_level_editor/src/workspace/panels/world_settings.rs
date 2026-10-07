@@ -6,9 +6,8 @@ use gpui::*;
 use std::collections::HashSet;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme,
     dock::{Panel, PanelEvent},
-    v_flex,
+    v_flex, ActiveTheme,
 };
 
 /// World Settings Panel (replaced Scene Browser)

@@ -6,18 +6,20 @@
 use std::sync::{Arc, Mutex};
 
 use glam::{DVec3, Vec3};
-use helio_default_graphs::VoxelPassFactory;
 use helio_component::{voxel_world::planet_brush, VoxelWorldShape};
+use helio_default_graphs::VoxelPassFactory;
 use helio_pass_voxel_planet::{
     engine::{PlanetFrame, PlanetPass, SharedPlanetFrame},
     terrain, Planet, PlanetRecipe, TerrainSource,
 };
 use helio_voxel_data::{VoxelBrushEdit, VoxelBrushOp, VoxelBrushShape, VoxelEditJournal};
 
-use crate::scene::voxel_frame::{VoxelEntryId, VoxelGeneratorConfig, VoxelSceneEntry};
 use super::renderer::VoxelBrushRequest;
+use crate::scene::voxel_frame::{VoxelEntryId, VoxelGeneratorConfig, VoxelSceneEntry};
 
-pub use helio_voxel_data::{VOXEL_TERRAIN_GENERATOR, VOXEL_TERRAIN_GENERATOR_VERSION, VOXEL_TERRAIN_RENDERER};
+pub use helio_voxel_data::{
+    VOXEL_TERRAIN_GENERATOR, VOXEL_TERRAIN_GENERATOR_VERSION, VOXEL_TERRAIN_RENDERER,
+};
 
 /// Camera coordinates here are f64 so backend recipes can preserve a fine
 /// world-space sample interval at planetary scale.
@@ -51,20 +53,31 @@ pub struct VoxelBrushCommit {
 /// voxel); the endpoints are not repeated. Samples of different brushes, or
 /// farther apart than a plausible drag step (the pointer jumped to other
 /// ground), start a new stroke segment instead.
-pub fn stroke_fill(previous: &VoxelBrushEdit, next: &VoxelBrushEdit, voxel_size: f64) -> Vec<VoxelBrushEdit> {
+pub fn stroke_fill(
+    previous: &VoxelBrushEdit,
+    next: &VoxelBrushEdit,
+    voxel_size: f64,
+) -> Vec<VoxelBrushEdit> {
     let same_brush = previous.op == next.op
         && previous.shape == next.shape
         && previous.material == next.material
         && (previous.radius - next.radius).abs() < 1e-9;
-    let (a, b) = (DVec3::from_array(previous.center), DVec3::from_array(next.center));
+    let (a, b) = (
+        DVec3::from_array(previous.center),
+        DVec3::from_array(next.center),
+    );
     let distance = a.distance(b);
     let spacing = (next.radius * 0.6).max(voxel_size);
-    if !same_brush || distance <= spacing || distance > (next.radius * 16.0).max(voxel_size * 32.0) {
+    if !same_brush || distance <= spacing || distance > (next.radius * 16.0).max(voxel_size * 32.0)
+    {
         return Vec::new();
     }
     let steps = (distance / spacing).ceil() as usize;
     (1..steps)
-        .map(|k| VoxelBrushEdit { center: a.lerp(b, k as f64 / steps as f64).to_array(), ..*next })
+        .map(|k| VoxelBrushEdit {
+            center: a.lerp(b, k as f64 / steps as f64).to_array(),
+            ..*next
+        })
         .collect()
 }
 
@@ -183,21 +196,26 @@ impl VoxelBackendRegistry {
 
     /// Local vertical of the first visible source that defines one.
     pub fn ambient_up(&self, entries: &[VoxelSceneEntry], eye: DVec3) -> Option<DVec3> {
-        entries.iter().filter(|entry| entry.visible).find_map(|entry| {
-            self.backends
-                .iter()
-                .filter(|backend| {
-                    entry.renderer_id == backend.renderer_id()
-                        || (entry.renderer_id.is_empty() && backend.supports(entry))
-                })
-                .find_map(|backend| backend.ambient_up(entry, eye))
-        })
+        entries
+            .iter()
+            .filter(|entry| entry.visible)
+            .find_map(|entry| {
+                self.backends
+                    .iter()
+                    .filter(|backend| {
+                        entry.renderer_id == backend.renderer_id()
+                            || (entry.renderer_id.is_empty() && backend.supports(entry))
+                    })
+                    .find_map(|backend| backend.ambient_up(entry, eye))
+            })
     }
 
     /// [`VoxelRenderBackend::lift_out_of_ground`] of the first backend that
     /// has the eye inside its terrain.
     pub fn lift_out_of_ground(&self, eye: DVec3) -> Option<DVec3> {
-        self.backends.iter().find_map(|backend| backend.lift_out_of_ground(eye))
+        self.backends
+            .iter()
+            .find_map(|backend| backend.lift_out_of_ground(eye))
     }
 
     /// Smallest [`VoxelRenderBackend::altitude`] of the visible sources.
@@ -286,9 +304,7 @@ impl VoxelBackendRegistry {
                 if !matches {
                     continue;
                 }
-                if let Some(commit) =
-                    backend.edit_ray(entry, origin, direction, request)?
-                {
+                if let Some(commit) = backend.edit_ray(entry, origin, direction, request)? {
                     if closest
                         .as_ref()
                         .is_none_or(|old| commit.distance < old.distance)
@@ -303,7 +319,10 @@ impl VoxelBackendRegistry {
 
     /// [`VoxelRenderBackend::diagnostics`] of every backend that has some.
     pub fn diagnostics(&self, renderer: &helio::Renderer) -> Vec<String> {
-        self.backends.iter().filter_map(|backend| backend.diagnostics(renderer)).collect()
+        self.backends
+            .iter()
+            .filter_map(|backend| backend.diagnostics(renderer))
+            .collect()
     }
 
     pub fn needs_frame(&self, renderer: &helio::Renderer) -> bool {
@@ -381,7 +400,10 @@ fn world_recipe(entry: &VoxelSceneEntry, generator: &VoxelGeneratorConfig) -> Pl
 }
 
 /// Build the world of an entry: its generated terrain with every journal brush.
-fn build_planet(entry: &VoxelSceneEntry, generator: &VoxelGeneratorConfig) -> Result<Planet, String> {
+fn build_planet(
+    entry: &VoxelSceneEntry,
+    generator: &VoxelGeneratorConfig,
+) -> Result<Planet, String> {
     let mut planet = Planet::new(world_recipe(entry, generator))?;
     for edit in entry.edits.iter() {
         planet.apply(planet_brush(edit))?;
@@ -431,7 +453,10 @@ impl PlanetVoxelBackend {
     fn validate_source(entry: &VoxelSceneEntry) -> Result<&VoxelGeneratorConfig, String> {
         let generator = entry.generator.as_ref().ok_or("generator ID is required")?;
         if terrain::find(&generator.id, generator.version).is_none() {
-            let known: Vec<_> = terrain::generators().into_iter().map(|g| format!("{} v{}", g.id, g.version)).collect();
+            let known: Vec<_> = terrain::generators()
+                .into_iter()
+                .map(|g| format!("{} v{}", g.id, g.version))
+                .collect();
             return Err(format!(
                 "unknown terrain generator '{}' version {}; registered: {}",
                 generator.id,
@@ -445,7 +470,9 @@ impl PlanetVoxelBackend {
         // The world owns its acceleration layout; component chunk/LOD
         // metadata describes generic live payloads and does not apply.
         if entry.origin != [0.0; 3] {
-            return Err("a voxel world is centred on the world origin; move the entity to (0, 0, 0)".into());
+            return Err(
+                "a voxel world is centred on the world origin; move the entity to (0, 0, 0)".into(),
+            );
         }
         Ok(generator)
     }
@@ -498,7 +525,13 @@ impl PlanetVoxelBackend {
     fn cached_planet(&self, entry: &VoxelSceneEntry) -> Option<&Arc<Planet>> {
         self.cached
             .as_ref()
-            .filter(|c| c.id == entry.id && c.revision == entry.source_revision && c.world == entry.world && c.edits == entry.edits && entry.generator.as_ref() == Some(&c.generator))
+            .filter(|c| {
+                c.id == entry.id
+                    && c.revision == entry.source_revision
+                    && c.world == entry.world
+                    && c.edits == entry.edits
+                    && entry.generator.as_ref() == Some(&c.generator)
+            })
             .map(|c| &c.planet)
     }
 }
@@ -538,7 +571,8 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
     }
 
     fn altitude(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<f64> {
-        self.cached_planet(source).map(|planet| planet.ground_height(eye))
+        self.cached_planet(source)
+            .map(|planet| planet.ground_height(eye))
     }
 
     fn ambient_up(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<DVec3> {
@@ -550,9 +584,9 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
 
     fn camera_clip_range(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<(f32, f32)> {
         let far = (eye.length() + 40_000_000.0) as f32;
-        let near = self
-            .cached_planet(source)
-            .map_or(0.05, |planet| (planet.air_clearance(eye) * 0.25).clamp(0.05, 50_000.0) as f32);
+        let near = self.cached_planet(source).map_or(0.05, |planet| {
+            (planet.air_clearance(eye) * 0.25).clamp(0.05, 50_000.0) as f32
+        });
         Some((near, far))
     }
 
@@ -578,26 +612,46 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             return Ok(None);
         };
         let material = helio_pass_voxel_planet::terrain::material::ID & request.material;
-        if request.op != VoxelBrushOp::Remove && !(1..helio_pass_voxel_planet::terrain::material::COUNT).contains(&material) {
-            return Err(format!("material {} is not a solid terrain material", request.material));
+        if request.op != VoxelBrushOp::Remove
+            && !(1..helio_pass_voxel_planet::terrain::material::COUNT).contains(&material)
+        {
+            return Err(format!(
+                "material {} is not a solid terrain material",
+                request.material
+            ));
         }
         // Building fills the empty block in front of the hit face.
-        let cell = if request.op == VoxelBrushOp::Add { hit.previous } else { hit.cell };
+        let cell = if request.op == VoxelBrushOp::Add {
+            hit.previous
+        } else {
+            hit.cell
+        };
         let grid = planet.grid();
         let (radius, shape) = if request.single_block {
             (grid.voxel_size() * 0.5, VoxelBrushShape::Cube)
         } else {
-            (f64::from(request.radius).max(grid.voxel_size() * 0.5), request.shape)
+            (
+                f64::from(request.radius).max(grid.voxel_size() * 0.5),
+                request.shape,
+            )
         };
         let edit = VoxelBrushEdit {
             center: grid.cell_center(cell).to_array(),
             radius,
             shape,
             op: request.op,
-            material: if request.op == VoxelBrushOp::Remove { 0 } else { material },
+            material: if request.op == VoxelBrushOp::Remove {
+                0
+            } else {
+                material
+            },
         };
         planet_brush(&edit).resolve(grid)?;
-        Ok(Some(VoxelBrushCommit { id: source.id, distance: hit.distance, edit }))
+        Ok(Some(VoxelBrushCommit {
+            id: source.id,
+            distance: hit.distance,
+            edit,
+        }))
     }
 
     fn supports(&self, source: &VoxelSceneEntry) -> bool {
@@ -659,7 +713,10 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         match entry.store.try_read() {
             Ok(state) if !state.1.is_empty() => {
                 self.clear()?;
-                return Err("the voxel planet does not consume live sample chunks yet; edit with brushes".into());
+                return Err(
+                    "the voxel planet does not consume live sample chunks yet; edit with brushes"
+                        .into(),
+                );
             }
             Ok(_) => {}
             Err(std::sync::TryLockError::WouldBlock) => return Ok(()),
@@ -732,7 +789,13 @@ mod tests {
     }
 
     fn dig(radius: f32) -> VoxelBrushRequest {
-        VoxelBrushRequest { op: VoxelBrushOp::Remove, shape: VoxelBrushShape::Sphere, radius, material: 0, single_block: false }
+        VoxelBrushRequest {
+            op: VoxelBrushOp::Remove,
+            shape: VoxelBrushShape::Sphere,
+            radius,
+            material: 0,
+            single_block: false,
+        }
     }
 
     fn raise(radius: f32) -> VoxelBrushRequest {
@@ -744,7 +807,14 @@ mod tests {
     }
 
     fn frame_planet(backend: &PlanetVoxelBackend) -> Arc<Planet> {
-        backend.frame.lock().unwrap().as_ref().unwrap().planet.clone()
+        backend
+            .frame
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .planet
+            .clone()
     }
 
     #[test]
@@ -769,7 +839,11 @@ mod tests {
         let coarse = frame_planet(&backend);
         assert!(!Arc::ptr_eq(&first, &coarse));
         assert_eq!(coarse.grid().voxel_size(), 1.0);
-        assert_eq!(first.grid().voxel_size(), 0.1, "old frame snapshots remain immutable");
+        assert_eq!(
+            first.grid().voxel_size(),
+            0.1,
+            "old frame snapshots remain immutable"
+        );
 
         let orbit = eye.normalize() * (coarse.grid().radius() + 300_000.0);
         let (near, far) = backend.camera_clip_range(&revised, orbit).unwrap();
@@ -778,7 +852,10 @@ mod tests {
         let mut invalid = revised.clone();
         invalid.generator.as_mut().unwrap().parameters = "{".into();
         assert!(backend.publish_frame(&[&invalid], view(eye)).is_err());
-        assert!(backend.frame.lock().unwrap().is_none(), "invalid recipes must not retain stale terrain");
+        assert!(
+            backend.frame.lock().unwrap().is_none(),
+            "invalid recipes must not retain stale terrain"
+        );
         backend.publish_frame(&[&revised], view(eye)).unwrap();
 
         revised
@@ -812,7 +889,13 @@ mod tests {
         assert!(registry.publish_frame(&entries, view(eye)).is_empty());
         assert!(frame.lock().unwrap().is_some());
 
-        scene.insert(entity, Visibility { visible: false, locked: false });
+        scene.insert(
+            entity,
+            Visibility {
+                visible: false,
+                locked: false,
+            },
+        );
         let (hidden, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty());
         assert!(!hidden[0].visible);
@@ -835,8 +918,13 @@ mod tests {
         assert_ne!(original.material(target), 0);
 
         let mut registry = VoxelBackendRegistry::new();
-        registry.register(Box::new(PlanetVoxelBackend::new())).unwrap();
-        let commit = registry.edit_ray(&entries, eye, down, dig(0.5)).unwrap().unwrap();
+        registry
+            .register(Box::new(PlanetVoxelBackend::new()))
+            .unwrap();
+        let commit = registry
+            .edit_ray(&entries, eye, down, dig(0.5))
+            .unwrap()
+            .unwrap();
         assert_eq!(commit.id, entries[0].id);
         let replay = |edits: &VoxelEditJournal| {
             let mut planet = Planet::new(PlanetRecipe::default()).unwrap();
@@ -845,7 +933,10 @@ mod tests {
             }
             planet
         };
-        assert_eq!(replay(&[commit.edit].into_iter().collect()).material(target), 0);
+        assert_eq!(
+            replay(&[commit.edit].into_iter().collect()).material(target),
+            0
+        );
         // The same canonical cell is addressed from the ground, from orbit
         // and from far beyond the renderer's precision range.
         for distance in [2_000.0, 300_000.0, 1_000_000_000.0] {
@@ -853,24 +944,52 @@ mod tests {
                 .edit_ray(&entries, eye - down * distance, down, dig(0.05))
                 .unwrap()
                 .expect("remote terrain remains editable");
-            assert_eq!(replay(&[remote.edit].into_iter().collect()).material(target), 0);
+            assert_eq!(
+                replay(&[remote.edit].into_iter().collect()).material(target),
+                0
+            );
             assert!(remote.distance > distance);
         }
         // Building fills the empty cell in front of the hit.
-        let build = registry.edit_ray(&entries, eye, down, raise(0.05)).unwrap().unwrap();
+        let build = registry
+            .edit_ray(&entries, eye, down, raise(0.05))
+            .unwrap()
+            .unwrap();
         assert_eq!(build.edit.op, VoxelBrushOp::Add);
-        assert_eq!(build.edit.material, helio_pass_voxel_planet::terrain::material::COBBLE);
+        assert_eq!(
+            build.edit.material,
+            helio_pass_voxel_planet::terrain::material::COBBLE
+        );
         // One block, painted: a unit cube on the hit block.
-        let paint = VoxelBrushRequest { op: VoxelBrushOp::Paint, material: helio_pass_voxel_planet::terrain::material::SNOW, single_block: true, ..raise(3.0) };
-        let painted = registry.edit_ray(&entries, eye, down, paint).unwrap().unwrap();
-        assert_eq!((painted.edit.shape, painted.edit.radius), (VoxelBrushShape::Cube, 0.05));
+        let paint = VoxelBrushRequest {
+            op: VoxelBrushOp::Paint,
+            material: helio_pass_voxel_planet::terrain::material::SNOW,
+            single_block: true,
+            ..raise(3.0)
+        };
+        let painted = registry
+            .edit_ray(&entries, eye, down, paint)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (painted.edit.shape, painted.edit.radius),
+            (VoxelBrushShape::Cube, 0.05)
+        );
         let mut planet = Planet::new(PlanetRecipe::default()).unwrap();
         planet.apply(planet_brush(&painted.edit)).unwrap();
-        assert_eq!(planet.material(target), helio_pass_voxel_planet::terrain::material::SNOW);
-        let invalid = VoxelBrushRequest { material: 99, ..raise(1.0) };
+        assert_eq!(
+            planet.material(target),
+            helio_pass_voxel_planet::terrain::material::SNOW
+        );
+        let invalid = VoxelBrushRequest {
+            material: 99,
+            ..raise(1.0)
+        };
         assert!(registry.edit_ray(&entries, eye, down, invalid).is_err());
 
-        assert!(super::super::renderer::apply_voxel_brush_commit(&mut scene, commit));
+        assert!(super::super::renderer::apply_voxel_brush_commit(
+            &mut scene, commit
+        ));
         let terrain = scene.get::<VoxelTerrainComponent>(entity).unwrap();
         assert_eq!(terrain.source_revision, 1);
         assert_eq!(terrain.edits.len(), 1);
@@ -890,13 +1009,18 @@ mod tests {
         scene.insert(entity, planet_terrain());
         let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         let mut registry = VoxelBackendRegistry::new();
-        registry.register(Box::new(PlanetVoxelBackend::new())).unwrap();
+        registry
+            .register(Box::new(PlanetVoxelBackend::new()))
+            .unwrap();
         let planet = Planet::new(PlanetRecipe::default()).unwrap();
         let ground = planet.surface_point(DVec3::Y, 2.0);
         assert!(registry.publish_frame(&entries, view(ground)).is_empty());
         let near = registry.altitude(&entries, ground).unwrap();
         let orbit = registry.altitude(&entries, ground * 1.05).unwrap();
-        assert!((near - 2.0).abs() < 0.2 && orbit > 250_000.0, "{near} {orbit}");
+        assert!(
+            (near - 2.0).abs() < 0.2 && orbit > 250_000.0,
+            "{near} {orbit}"
+        );
         // 3 km over lowland: below the highest possible terrain, where a
         // conservative clearance is ~0, the camera still moves at altitude speed.
         let high = planet.surface_point(DVec3::Y, 3000.0);
@@ -911,21 +1035,49 @@ mod tests {
         scene.insert(entity, planet_terrain());
         let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         let mut registry = VoxelBackendRegistry::new();
-        registry.register(Box::new(PlanetVoxelBackend::new())).unwrap();
+        registry
+            .register(Box::new(PlanetVoxelBackend::new()))
+            .unwrap();
         let planet = Planet::new(PlanetRecipe::default()).unwrap();
         let surface = planet.surface_point(DVec3::Y, 0.0);
-        assert!(registry.publish_frame(&entries, view(surface + DVec3::Y * 2.0)).is_empty());
+        assert!(registry
+            .publish_frame(&entries, view(surface + DVec3::Y * 2.0))
+            .is_empty());
         let buried = surface - DVec3::Y * 3.0;
-        let lifted = registry.lift_out_of_ground(buried).expect("inside the ground");
-        assert!((lifted.y - surface.y - 0.5).abs() < 0.2, "{} {}", lifted.y, surface.y);
-        assert!(registry.lift_out_of_ground(surface + DVec3::Y * 2.0).is_none());
+        let lifted = registry
+            .lift_out_of_ground(buried)
+            .expect("inside the ground");
+        assert!(
+            (lifted.y - surface.y - 0.5).abs() < 0.2,
+            "{} {}",
+            lifted.y,
+            surface.y
+        );
+        assert!(registry
+            .lift_out_of_ground(surface + DVec3::Y * 2.0)
+            .is_none());
 
         // Dig a cave around the buried point: the camera may stay in it.
-        let dig = VoxelBrushEdit { center: buried.to_array(), radius: 1.5, shape: VoxelBrushShape::Sphere, op: VoxelBrushOp::Remove, material: 0 };
-        scene.get_mut::<VoxelTerrainComponent>(entity).unwrap().edits.push(dig);
-        scene.get_mut::<VoxelTerrainComponent>(entity).unwrap().source_revision += 1;
+        let dig = VoxelBrushEdit {
+            center: buried.to_array(),
+            radius: 1.5,
+            shape: VoxelBrushShape::Sphere,
+            op: VoxelBrushOp::Remove,
+            material: 0,
+        };
+        scene
+            .get_mut::<VoxelTerrainComponent>(entity)
+            .unwrap()
+            .edits
+            .push(dig);
+        scene
+            .get_mut::<VoxelTerrainComponent>(entity)
+            .unwrap()
+            .source_revision += 1;
         let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
-        assert!(registry.publish_frame(&entries, view(surface + DVec3::Y * 2.0)).is_empty());
+        assert!(registry
+            .publish_frame(&entries, view(surface + DVec3::Y * 2.0))
+            .is_empty());
         assert!(registry.lift_out_of_ground(buried).is_none());
     }
 
@@ -941,13 +1093,34 @@ mod tests {
         // 3 m apart with 0.6 m spacing: stamps at 0.6 m steps between them.
         let fill = stroke_fill(&edit(0.0), &edit(3.0), 0.1);
         assert_eq!(fill.len(), 4);
-        assert!(fill.windows(2).all(|w| (w[1].center[0] - w[0].center[0] - 0.6).abs() < 1e-9));
-        assert!(stroke_fill(&edit(0.0), &edit(0.5), 0.1).is_empty(), "close samples need no fill");
-        assert!(stroke_fill(&edit(0.0), &edit(40.0), 0.1).is_empty(), "a jump starts a new segment");
-        let paint = VoxelBrushEdit { op: VoxelBrushOp::Paint, material: 5, ..edit(3.0) };
-        assert!(stroke_fill(&edit(0.0), &paint, 0.1).is_empty(), "another brush starts a new segment");
+        assert!(fill
+            .windows(2)
+            .all(|w| (w[1].center[0] - w[0].center[0] - 0.6).abs() < 1e-9));
+        assert!(
+            stroke_fill(&edit(0.0), &edit(0.5), 0.1).is_empty(),
+            "close samples need no fill"
+        );
+        assert!(
+            stroke_fill(&edit(0.0), &edit(40.0), 0.1).is_empty(),
+            "a jump starts a new segment"
+        );
+        let paint = VoxelBrushEdit {
+            op: VoxelBrushOp::Paint,
+            material: 5,
+            ..edit(3.0)
+        };
+        assert!(
+            stroke_fill(&edit(0.0), &paint, 0.1).is_empty(),
+            "another brush starts a new segment"
+        );
         // One-block cubes: a stamp per voxel.
-        let block = |x: f64| VoxelBrushEdit { shape: VoxelBrushShape::Cube, radius: 0.05, op: VoxelBrushOp::Add, material: 13, ..edit(x) };
+        let block = |x: f64| VoxelBrushEdit {
+            shape: VoxelBrushShape::Cube,
+            radius: 0.05,
+            op: VoxelBrushOp::Add,
+            material: 13,
+            ..edit(x)
+        };
         assert_eq!(stroke_fill(&block(0.0), &block(1.0), 0.1).len(), 9);
     }
 
@@ -965,19 +1138,34 @@ mod tests {
         let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty(), "{errors:?}");
         let mut backend = PlanetVoxelBackend::new();
-        backend.publish_frame(&[&entries[0]], view(DVec3::new(0.0, 6_371_000.0 + 3_000.0, 0.0))).unwrap();
+        backend
+            .publish_frame(
+                &[&entries[0]],
+                view(DVec3::new(0.0, 6_371_000.0 + 3_000.0, 0.0)),
+            )
+            .unwrap();
         let recipe = frame_planet(&backend).recipe().clone();
-        assert_eq!(recipe.terrain.generator, helio_pass_voxel_planet::landform::ID);
+        assert_eq!(
+            recipe.terrain.generator,
+            helio_pass_voxel_planet::landform::ID
+        );
         assert_eq!(recipe.terrain.seed, 99);
-        let settings: helio_pass_voxel_planet::landform::Landform = serde_json::from_str(&recipe.terrain.settings).unwrap();
+        let settings: helio_pass_voxel_planet::landform::Landform =
+            serde_json::from_str(&recipe.terrain.settings).unwrap();
         assert_eq!(settings.snowline_m, 1_234.0);
         assert_eq!(settings.mountain_km, 55.0);
     }
 
     #[test]
     fn shared_ids_name_the_registered_landform_generator() {
-        assert_eq!(VOXEL_TERRAIN_GENERATOR, helio_pass_voxel_planet::landform::ID);
-        assert_eq!(VOXEL_TERRAIN_GENERATOR_VERSION, helio_pass_voxel_planet::landform::VERSION);
+        assert_eq!(
+            VOXEL_TERRAIN_GENERATOR,
+            helio_pass_voxel_planet::landform::ID
+        );
+        assert_eq!(
+            VOXEL_TERRAIN_GENERATOR_VERSION,
+            helio_pass_voxel_planet::landform::VERSION
+        );
     }
 
     #[test]
@@ -995,11 +1183,18 @@ mod tests {
         let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty(), "{errors:?}");
         let mut backend = PlanetVoxelBackend::new();
-        backend.publish_frame(&[&entries[0]], view(DVec3::new(0.0, 40.0, 0.0))).unwrap();
+        backend
+            .publish_frame(&[&entries[0]], view(DVec3::new(0.0, 40.0, 0.0)))
+            .unwrap();
         let planet = frame_planet(&backend);
-        let hit = planet.raycast(DVec3::new(3.0, 40.0, -5.0), -DVec3::Y, 100.0).unwrap();
+        let hit = planet
+            .raycast(DVec3::new(3.0, 40.0, -5.0), -DVec3::Y, 100.0)
+            .unwrap();
         assert!((hit.distance - 28.0).abs() < 0.11, "{}", hit.distance);
-        assert_eq!(planet.material(hit.cell), helio_pass_voxel_planet::terrain::material::SAND);
+        assert_eq!(
+            planet.material(hit.cell),
+            helio_pass_voxel_planet::terrain::material::SAND
+        );
     }
 
     #[test]
@@ -1011,7 +1206,10 @@ mod tests {
         scene.insert(entity, terrain);
         let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         let error = PlanetVoxelBackend::validate_source(&entries[0]).unwrap_err();
-        assert!(error.contains("helio.landform") && error.contains("helio.flat"), "{error}");
+        assert!(
+            error.contains("helio.landform") && error.contains("helio.flat"),
+            "{error}"
+        );
     }
 
     #[test]
@@ -1041,11 +1239,25 @@ mod tests {
             // Digging straight down removes the cell below the eye.
             let ground = planet.surface_point(DVec3::new(10.0, 0.0, -20.0), 3.0);
             let target = planet.raycast(ground, -DVec3::Y, 100.0).unwrap().cell;
-            let commit = registry.edit_ray(&entries, ground, -DVec3::Y, dig(0.5)).unwrap().unwrap();
-            assert!(super::super::renderer::apply_voxel_brush_commit(&mut scene, commit));
+            let commit = registry
+                .edit_ray(&entries, ground, -DVec3::Y, dig(0.5))
+                .unwrap()
+                .unwrap();
+            assert!(super::super::renderer::apply_voxel_brush_commit(
+                &mut scene, commit
+            ));
             let (entries, _) = crate::scene::voxel_frame::project_voxel_entries(&scene);
             assert!(registry.publish_frame(&entries, view(eye)).is_empty());
-            assert_eq!(frame.lock().unwrap().as_ref().unwrap().planet.material(target), 0);
+            assert_eq!(
+                frame
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .planet
+                    .material(target),
+                0
+            );
         }
     }
 }

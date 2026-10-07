@@ -1,0 +1,11 @@
+[package]
+name = "editor_task_queue"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+parking_lot = { workspace = true }
+
+[lints]
+workspace = true

@@ -2883,5 +2883,3 @@ mod tests {
         assert_eq!(handle.drag_ends.get(), 1);
     }
 }
-
-

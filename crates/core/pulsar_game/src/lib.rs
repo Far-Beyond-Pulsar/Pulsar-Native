@@ -81,8 +81,8 @@ mod test_probe;
 /// Convenience prelude — glob-import this to get the whole public API.
 pub mod prelude {
     pub use crate::{
-        scripting::ScriptRuntime,
         freecam::FreeCam,
+        scripting::ScriptRuntime,
         tick::{ScriptStats, SharedTickLoop, TickLoop},
         window::{RenderCamera, WindowDescriptor, WindowHandle, WindowManager},
     };

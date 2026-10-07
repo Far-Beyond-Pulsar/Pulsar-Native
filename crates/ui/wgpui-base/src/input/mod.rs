@@ -96,9 +96,9 @@ pub use language_config::{AutoClosingPair, BracketPair, IndentationRules};
 pub use lsp::{
     CodeActionItem, CodeActionMenuState, CodeActionProvider, CompletionMenuOptions,
     CompletionMenuState, CompletionProvider, DefinitionProvider, DocumentColorProvider,
-    DocumentRangeSemanticTokensProvider, HoverPopoverState, HoverProvider, InputOverlayKind, Lsp,
-    InlineCompletionContext, InlineCompletionItem, InlineCompletionList,
-    InlineCompletionResponse, InlineCompletionTriggerKind, ShowDocumentHandler,
+    DocumentRangeSemanticTokensProvider, HoverPopoverState, HoverProvider, InlineCompletionContext,
+    InlineCompletionItem, InlineCompletionList, InlineCompletionResponse,
+    InlineCompletionTriggerKind, InputOverlayKind, Lsp, ShowDocumentHandler,
 };
 pub use lsp_types::Position;
 pub use mask_pattern::MaskPattern;
@@ -111,5 +111,3 @@ pub use ropey::Rope;
 pub use search::{SearchMatcher, SearchSession};
 pub use state::*;
 pub use textarea::{Textarea, TextareaState};
-
-

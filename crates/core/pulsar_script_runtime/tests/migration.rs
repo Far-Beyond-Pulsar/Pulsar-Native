@@ -12,11 +12,18 @@ use pulsar_script_vm::{
 use Instr::*;
 
 fn runtime() -> ScriptRuntime {
-    ScriptRuntime::new(std::env::temp_dir().join(format!("pulsar_script_migration_{}", std::process::id())))
+    ScriptRuntime::new(
+        std::env::temp_dir().join(format!("pulsar_script_migration_{}", std::process::id())),
+    )
 }
 
 fn var(id: Option<&str>, name: &str, ty: Type) -> Variable {
-    Variable { name: name.into(), ty, default: None, id: id.map(Into::into) }
+    Variable {
+        name: name.into(),
+        ty,
+        default: None,
+        id: id.map(Into::into),
+    }
 }
 
 fn class(name: &str, version: u32, variables: Vec<Variable>, functions: Vec<Function>) -> Module {
@@ -30,7 +37,15 @@ fn class(name: &str, version: u32, variables: Vec<Variable>, functions: Vec<Func
 fn function(name: &str, params: Vec<Type>, extra: Vec<Type>, code: Vec<Instr>) -> Function {
     let mut registers = params.clone();
     registers.extend(extra);
-    Function { name: name.into(), exported: true, params, ret: Type::Unit, registers, code, debug: None }
+    Function {
+        name: name.into(),
+        exported: true,
+        params,
+        ret: Type::Unit,
+        registers,
+        code,
+        debug: None,
+    }
 }
 
 fn reload(rt: &mut ScriptRuntime, module: Module) -> pulsar_script_runtime::ReloadReport {
@@ -38,13 +53,23 @@ fn reload(rt: &mut ScriptRuntime, module: Module) -> pulsar_script_runtime::Relo
 }
 
 fn kinds(changes: &[VariableChange], variable: &str) -> Vec<ChangeKind> {
-    changes.iter().filter(|c| c.variable == variable).map(|c| c.kind.clone()).collect()
+    changes
+        .iter()
+        .filter(|c| c.variable == variable)
+        .map(|c| c.kind.clone())
+        .collect()
 }
 
 /// A class with one instance `a` whose int variable `hp` is 7.
 fn with_hp(id: Option<&str>) -> ScriptRuntime {
     let mut rt = runtime();
-    rt.load_class(class("Unit", 0, vec![var(id, "hp", Type::Int), var(None, "keep", Type::Int)], vec![])).unwrap();
+    rt.load_class(class(
+        "Unit",
+        0,
+        vec![var(id, "hp", Type::Int), var(None, "keep", Type::Int)],
+        vec![],
+    ))
+    .unwrap();
     rt.spawn("a", "Unit", None, &[]).unwrap();
     rt.set_variable("a", "hp", Value::Int(7)).unwrap();
     rt.set_variable("a", "keep", Value::Int(3)).unwrap();
@@ -56,12 +81,23 @@ fn a_rename_keeps_the_value_by_id() {
     let mut rt = with_hp(Some("v-hp"));
     let report = reload(
         &mut rt,
-        class("Unit", 0, vec![var(Some("v-hp"), "health", Type::Int), var(None, "keep", Type::Int)], vec![]),
+        class(
+            "Unit",
+            0,
+            vec![
+                var(Some("v-hp"), "health", Type::Int),
+                var(None, "keep", Type::Int),
+            ],
+            vec![],
+        ),
     );
     assert_eq!(rt.variable("a", "health"), Some(&Value::Int(7)));
     assert_eq!(rt.variable("a", "keep"), Some(&Value::Int(3)));
     assert_eq!(rt.variable("a", "hp"), None);
-    assert_eq!(kinds(&report.variables, "health"), [ChangeKind::Renamed { from: "hp".into() }]);
+    assert_eq!(
+        kinds(&report.variables, "health"),
+        [ChangeKind::Renamed { from: "hp".into() }]
+    );
     assert_eq!(report.variables_kept, 1);
 }
 
@@ -73,7 +109,11 @@ fn reordering_adding_and_removing_keep_the_rest() {
         class(
             "Unit",
             0,
-            vec![var(Some("v-new"), "fresh", Type::Int), var(None, "keep", Type::Int), var(Some("v-hp"), "hp", Type::Int)],
+            vec![
+                var(Some("v-new"), "fresh", Type::Int),
+                var(None, "keep", Type::Int),
+                var(Some("v-hp"), "hp", Type::Int),
+            ],
             vec![],
         ),
     );
@@ -83,7 +123,10 @@ fn reordering_adding_and_removing_keep_the_rest() {
     assert_eq!(kinds(&report.variables, "fresh"), [ChangeKind::Defaulted]);
 
     // Removing a variable discards its value and says so.
-    let report = reload(&mut rt, class("Unit", 0, vec![var(None, "keep", Type::Int)], vec![]));
+    let report = reload(
+        &mut rt,
+        class("Unit", 0, vec![var(None, "keep", Type::Int)], vec![]),
+    );
     assert_eq!(kinds(&report.variables, "hp"), [ChangeKind::Removed]);
     assert_eq!(rt.variable("a", "keep"), Some(&Value::Int(3)));
 }
@@ -93,16 +136,42 @@ fn a_reused_name_with_another_id_does_not_inherit_the_value() {
     let mut rt = with_hp(Some("v-hp"));
     let report = reload(
         &mut rt,
-        class("Unit", 0, vec![var(Some("v-other"), "hp", Type::Int), var(None, "keep", Type::Int)], vec![]),
+        class(
+            "Unit",
+            0,
+            vec![
+                var(Some("v-other"), "hp", Type::Int),
+                var(None, "keep", Type::Int),
+            ],
+            vec![],
+        ),
     );
-    assert_eq!(rt.variable("a", "hp"), Some(&Value::Int(0)), "a different variable is not the old hp");
-    assert_eq!(kinds(&report.variables, "hp"), [ChangeKind::Defaulted, ChangeKind::Removed]);
+    assert_eq!(
+        rt.variable("a", "hp"),
+        Some(&Value::Int(0)),
+        "a different variable is not the old hp"
+    );
+    assert_eq!(
+        kinds(&report.variables, "hp"),
+        [ChangeKind::Defaulted, ChangeKind::Removed]
+    );
 }
 
 #[test]
 fn data_from_before_ids_matches_by_name() {
     let mut rt = with_hp(None);
-    reload(&mut rt, class("Unit", 0, vec![var(Some("v-hp"), "hp", Type::Int), var(None, "keep", Type::Int)], vec![]));
+    reload(
+        &mut rt,
+        class(
+            "Unit",
+            0,
+            vec![
+                var(Some("v-hp"), "hp", Type::Int),
+                var(None, "keep", Type::Int),
+            ],
+            vec![],
+        ),
+    );
     assert_eq!(rt.variable("a", "hp"), Some(&Value::Int(7)));
 }
 
@@ -111,10 +180,24 @@ fn a_retyped_variable_starts_at_its_default_and_is_reported() {
     let mut rt = with_hp(Some("v-hp"));
     let report = reload(
         &mut rt,
-        class("Unit", 0, vec![var(Some("v-hp"), "hp", Type::Float), var(None, "keep", Type::Int)], vec![]),
+        class(
+            "Unit",
+            0,
+            vec![
+                var(Some("v-hp"), "hp", Type::Float),
+                var(None, "keep", Type::Int),
+            ],
+            vec![],
+        ),
     );
     assert_eq!(rt.variable("a", "hp"), Some(&Value::Float(0.0)));
-    assert_eq!(kinds(&report.variables, "hp"), [ChangeKind::Incompatible { from: Type::Int, to: Type::Float }]);
+    assert_eq!(
+        kinds(&report.variables, "hp"),
+        [ChangeKind::Incompatible {
+            from: Type::Int,
+            to: Type::Float
+        }]
+    );
 }
 
 #[test]
@@ -124,7 +207,10 @@ fn ambiguous_ids_are_refused_and_the_old_class_keeps_running() {
         .reload_class(class(
             "Unit",
             0,
-            vec![var(Some("same"), "hp", Type::Int), var(Some("same"), "keep", Type::Int)],
+            vec![
+                var(Some("same"), "hp", Type::Int),
+                var(Some("same"), "keep", Type::Int),
+            ],
             vec![],
         ))
         .unwrap_err();
@@ -138,14 +224,22 @@ fn migrating_class(version: u32, body: Vec<Instr>, registers: Vec<Type>) -> Modu
     let mut m = class(
         "Unit",
         version,
-        vec![var(Some("v-hp"), "hp", Type::Float), var(None, "was", Type::Int), var(None, "keep", Type::Int)],
+        vec![
+            var(Some("v-hp"), "hp", Type::Float),
+            var(None, "was", Type::Int),
+            var(None, "keep", Type::Int),
+        ],
         vec![function("migrate", vec![Type::Int], registers, body)],
     );
     m.imports.push(Import {
         name: "migration::old_int".into(),
         sig: Signature::new(vec![Param::new(Type::Str)], Type::Int),
     });
-    m.constants = vec![Constant::Str("hp".into()), Constant::Str("missing".into()), Constant::Float(1.0)];
+    m.constants = vec![
+        Constant::Str("hp".into()),
+        Constant::Str("missing".into()),
+        Constant::Float(1.0),
+    ];
     m
 }
 
@@ -156,8 +250,16 @@ fn migrate_converts_old_values_when_the_class_version_rises() {
         2,
         vec![
             Const { dst: 1, index: 0 },
-            CallNative { import: 0, args: vec![1], dst: Some(2) },
-            Unary { op: UnOp::IntToFloat, dst: 3, src: 2 },
+            CallNative {
+                import: 0,
+                args: vec![1],
+                dst: Some(2),
+            },
+            Unary {
+                op: UnOp::IntToFloat,
+                dst: 3,
+                src: 2,
+            },
             StoreVar { var: 0, src: 3 },
             StoreVar { var: 1, src: 0 },
             Return { value: None },
@@ -166,9 +268,16 @@ fn migrate_converts_old_values_when_the_class_version_rises() {
     );
     let report = reload(&mut rt, module);
     assert_eq!(rt.variable("a", "hp"), Some(&Value::Float(7.0)));
-    assert_eq!(rt.variable("a", "was"), Some(&Value::Int(0)), "from_version is the old class version");
+    assert_eq!(
+        rt.variable("a", "was"),
+        Some(&Value::Int(0)),
+        "from_version is the old class version"
+    );
     assert_eq!(rt.variable("a", "keep"), Some(&Value::Int(3)));
-    assert_eq!(kinds(&report.variables, "migrate"), [ChangeKind::MigrateRan { from_version: 0 }]);
+    assert_eq!(
+        kinds(&report.variables, "migrate"),
+        [ChangeKind::MigrateRan { from_version: 0 }]
+    );
 }
 
 #[test]
@@ -176,7 +285,15 @@ fn migrate_does_not_run_unless_the_version_rises() {
     let mut rt = with_hp(Some("v-hp"));
     let module = migrating_class(
         0,
-        vec![Const { dst: 1, index: 0 }, CallNative { import: 0, args: vec![1], dst: Some(2) }, Return { value: None }],
+        vec![
+            Const { dst: 1, index: 0 },
+            CallNative {
+                import: 0,
+                args: vec![1],
+                dst: Some(2),
+            },
+            Return { value: None },
+        ],
         vec![Type::Str, Type::Int],
     );
     let report = reload(&mut rt, module);
@@ -191,7 +308,11 @@ fn a_failing_migrate_refuses_the_whole_reload() {
         2,
         vec![
             Const { dst: 1, index: 1 }, // `missing`: the old class had no such variable
-            CallNative { import: 0, args: vec![1], dst: Some(2) },
+            CallNative {
+                import: 0,
+                args: vec![1],
+                dst: Some(2),
+            },
             Return { value: None },
         ],
         vec![Type::Str, Type::Int],
@@ -207,9 +328,21 @@ fn a_failing_migrate_refuses_the_whole_reload() {
 #[test]
 fn migrate_cannot_suspend() {
     let mut rt = with_hp(Some("v-hp"));
-    let mut module = migrating_class(2, vec![Const { dst: 1, index: 2 }, Wait { seconds: 1 }, Return { value: None }], vec![Type::Float, Type::Float]);
+    let mut module = migrating_class(
+        2,
+        vec![
+            Const { dst: 1, index: 2 },
+            Wait { seconds: 1 },
+            Return { value: None },
+        ],
+        vec![Type::Float, Type::Float],
+    );
     module.functions[0].registers = vec![Type::Int, Type::Float];
-    module.functions[0].code = vec![Const { dst: 1, index: 2 }, Wait { seconds: 1 }, Return { value: None }];
+    module.functions[0].code = vec![
+        Const { dst: 1, index: 2 },
+        Wait { seconds: 1 },
+        Return { value: None },
+    ];
     let err = rt.reload_class(module).unwrap_err();
     assert!(matches!(err, RuntimeError::Migration { .. }), "{err}");
     assert_eq!(rt.variable("a", "hp"), Some(&Value::Int(7)));
@@ -222,29 +355,58 @@ fn a_migrate_with_the_wrong_signature_is_an_entry_point_error() {
     module.functions[0].params = vec![Type::Float];
     module.functions[0].registers = vec![Type::Float];
     let err = rt.reload_class(module).unwrap_err();
-    assert!(matches!(err, RuntimeError::BadEntryPoint { name: "migrate", .. }), "{err}");
+    assert!(
+        matches!(
+            err,
+            RuntimeError::BadEntryPoint {
+                name: "migrate",
+                ..
+            }
+        ),
+        "{err}"
+    );
 }
 
 #[test]
 fn overrides_name_a_variable_by_id_or_name_and_refuse_ambiguity() {
     let mut rt = with_hp(Some("v-hp"));
-    rt.spawn("by_id", "Unit", None, &[("v-hp".into(), Value::Int(11))]).unwrap();
-    rt.spawn("by_name", "Unit", None, &[("hp".into(), Value::Int(12))]).unwrap();
+    rt.spawn("by_id", "Unit", None, &[("v-hp".into(), Value::Int(11))])
+        .unwrap();
+    rt.spawn("by_name", "Unit", None, &[("hp".into(), Value::Int(12))])
+        .unwrap();
     assert_eq!(rt.variable("by_id", "hp"), Some(&Value::Int(11)));
     assert_eq!(rt.variable("by_name", "hp"), Some(&Value::Int(12)));
 
     // `x` is the id of one variable and the name of another.
     let mut rt = runtime();
-    rt.load_class(class("Odd", 0, vec![var(Some("x"), "a", Type::Int), var(Some("y"), "x", Type::Int)], vec![]))
-        .unwrap();
-    let err = rt.spawn("o", "Odd", None, &[("x".into(), Value::Int(1))]).unwrap_err();
+    rt.load_class(class(
+        "Odd",
+        0,
+        vec![
+            var(Some("x"), "a", Type::Int),
+            var(Some("y"), "x", Type::Int),
+        ],
+        vec![],
+    ))
+    .unwrap();
+    let err = rt
+        .spawn("o", "Odd", None, &[("x".into(), Value::Int(1))])
+        .unwrap_err();
     assert!(matches!(err, RuntimeError::BadVariable { .. }), "{err}");
 }
 
 // ---- saved state ----------------------------------------------------------
 
 fn pose(id_pos: Option<&str>, name: &str) -> Module {
-    class("Pose", 0, vec![var(id_pos, name, Type::object("Vec3")), var(None, "count", Type::Int)], vec![])
+    class(
+        "Pose",
+        0,
+        vec![
+            var(id_pos, name, Type::object("Vec3")),
+            var(None, "count", Type::Int),
+        ],
+        vec![],
+    )
 }
 
 #[test]
@@ -265,9 +427,17 @@ fn saved_state_round_trips_including_value_types() {
     rt.spawn("q", "Pose", None, &[]).unwrap();
     let report = rt.restore_state("q", &saved).unwrap();
     assert_eq!(report.variables_kept, 2);
-    assert!(report.changes.is_empty() && report.unreadable.is_empty(), "{report:?}");
-    let Some(Value::Object(restored)) = rt.variable("q", "position") else { panic!("not an object") };
-    assert_eq!(restored.downcast_ref::<Vec3>(), Some(&Vec3::new(1.5, 2.0, -3.0)));
+    assert!(
+        report.changes.is_empty() && report.unreadable.is_empty(),
+        "{report:?}"
+    );
+    let Some(Value::Object(restored)) = rt.variable("q", "position") else {
+        panic!("not an object")
+    };
+    assert_eq!(
+        restored.downcast_ref::<Vec3>(),
+        Some(&Vec3::new(1.5, 2.0, -3.0))
+    );
     assert_eq!(rt.variable("q", "count"), Some(&Value::Int(4)));
 }
 
@@ -283,33 +453,61 @@ fn an_old_save_loads_into_a_renamed_and_extended_class() {
     let mut newer = class(
         "Pose",
         1,
-        vec![var(Some("v-pos"), "location", Type::object("Vec3")), var(None, "count", Type::Int), var(None, "extra", Type::Int)],
+        vec![
+            var(Some("v-pos"), "location", Type::object("Vec3")),
+            var(None, "count", Type::Int),
+            var(None, "extra", Type::Int),
+        ],
         vec![],
     );
     newer.variables[1].default = Some(Constant::Int(0));
     rt.reload_class(newer).unwrap();
     let report = rt.restore_state("p", &saved).unwrap();
     assert_eq!(rt.variable("p", "count"), Some(&Value::Int(9)));
-    assert_eq!(kinds(&report.changes, "location"), [ChangeKind::Renamed { from: "position".into() }]);
+    assert_eq!(
+        kinds(&report.changes, "location"),
+        [ChangeKind::Renamed {
+            from: "position".into()
+        }]
+    );
     assert_eq!(kinds(&report.changes, "extra"), [ChangeKind::Defaulted]);
 }
 
 #[test]
 fn handles_are_not_saved_and_survive_a_restore() {
     let mut rt = runtime();
-    rt.load_class(class("Holder", 0, vec![var(None, "target", Type::Entity), var(None, "n", Type::Int)], vec![])).unwrap();
+    rt.load_class(class(
+        "Holder",
+        0,
+        vec![var(None, "target", Type::Entity), var(None, "n", Type::Int)],
+        vec![],
+    ))
+    .unwrap();
     let mut world = World::new();
     let entity = world.spawn();
-    rt.spawn("h", "Holder", None, &[("target".into(), Value::Entity(entity))]).unwrap();
+    rt.spawn(
+        "h",
+        "Holder",
+        None,
+        &[("target".into(), Value::Entity(entity))],
+    )
+    .unwrap();
     rt.set_variable("h", "n", Value::Int(5)).unwrap();
 
     let saved = rt.save_state("h").unwrap();
-    assert!(saved.variables.iter().all(|v| v.name != "target"), "entities are process-local");
+    assert!(
+        saved.variables.iter().all(|v| v.name != "target"),
+        "entities are process-local"
+    );
 
     rt.set_variable("h", "n", Value::Int(0)).unwrap();
     let report = rt.restore_state("h", &saved).unwrap();
     assert_eq!(rt.variable("h", "n"), Some(&Value::Int(5)));
-    assert_eq!(rt.variable("h", "target"), Some(&Value::Entity(entity)), "the host's binding is kept");
+    assert_eq!(
+        rt.variable("h", "target"),
+        Some(&Value::Entity(entity)),
+        "the host's binding is kept"
+    );
     assert!(report.changes.is_empty(), "{report:?}");
 }
 
@@ -322,11 +520,17 @@ fn conflicting_saved_identities_and_unreadable_values_are_reported() {
 
     let mut dup = saved.clone();
     dup.variables[1].id = dup.variables[0].id.clone();
-    assert!(matches!(rt.restore_state("p", &dup), Err(RuntimeError::State { .. })));
+    assert!(matches!(
+        rt.restore_state("p", &dup),
+        Err(RuntimeError::State { .. })
+    ));
 
     let mut wrong_class = saved.clone();
     wrong_class.class = "Other".into();
-    assert!(matches!(rt.restore_state("p", &wrong_class), Err(RuntimeError::State { .. })));
+    assert!(matches!(
+        rt.restore_state("p", &wrong_class),
+        Err(RuntimeError::State { .. })
+    ));
 
     saved.variables[0].value = serde_json::json!("not a vector");
     let report = rt.restore_state("p", &saved).unwrap();
@@ -339,8 +543,16 @@ fn collections_save_and_restore_and_carry_over_a_reload() {
     let variables = || {
         vec![
             var(Some("v-items"), "items", Type::list(Type::Int)),
-            var(Some("v-scores"), "scores", Type::map(Type::Str, Type::list(Type::Float))),
-            var(Some("v-pair"), "pair", Type::Tuple(vec![Type::Int, Type::Str])),
+            var(
+                Some("v-scores"),
+                "scores",
+                Type::map(Type::Str, Type::list(Type::Float)),
+            ),
+            var(
+                Some("v-pair"),
+                "pair",
+                Type::Tuple(vec![Type::Int, Type::Str]),
+            ),
             var(Some("v-flags"), "flags", Type::map(Type::Int, Type::Bool)),
         ]
     };
@@ -353,16 +565,24 @@ fn collections_save_and_restore_and_carry_over_a_reload() {
     ]);
     let flags = std::collections::BTreeMap::from([(3i64, true), (-1, false)]);
     for (name, value) in [
-        ("items", pulsar_script_vm::ScriptValue::into_value(vec![3i64, 1, 2])),
+        (
+            "items",
+            pulsar_script_vm::ScriptValue::into_value(vec![3i64, 1, 2]),
+        ),
         ("scores", pulsar_script_vm::ScriptValue::into_value(scores)),
-        ("pair", pulsar_script_vm::ScriptValue::into_value((7i64, "seven".to_owned()))),
+        (
+            "pair",
+            pulsar_script_vm::ScriptValue::into_value((7i64, "seven".to_owned())),
+        ),
         ("flags", pulsar_script_vm::ScriptValue::into_value(flags)),
     ] {
         rt.set_variable("a", name, value).unwrap();
     }
 
     // Through JSON text and into another instance.
-    let saved: SavedState = serde_json::from_str(&serde_json::to_string(&rt.save_state("a").unwrap()).unwrap()).unwrap();
+    let saved: SavedState =
+        serde_json::from_str(&serde_json::to_string(&rt.save_state("a").unwrap()).unwrap())
+            .unwrap();
     rt.spawn("b", "Bag", None, &[]).unwrap();
     let report = rt.restore_state("b", &saved).unwrap();
     assert_eq!(report.variables_kept, 4, "{report:?}");
@@ -375,5 +595,12 @@ fn collections_save_and_restore_and_carry_over_a_reload() {
     let mut renamed = variables();
     renamed[0].name = "entries".into();
     reload(&mut rt, class("Bag", 0, renamed, vec![]));
-    assert_eq!(rt.variable("a", "entries"), Some(&Value::list(vec![Value::Int(3), Value::Int(1), Value::Int(2)])));
+    assert_eq!(
+        rt.variable("a", "entries"),
+        Some(&Value::list(vec![
+            Value::Int(3),
+            Value::Int(1),
+            Value::Int(2)
+        ]))
+    );
 }

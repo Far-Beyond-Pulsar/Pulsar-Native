@@ -18,8 +18,8 @@ use serde_json::Value;
 
 use super::changes::{record_property_change, record_structural_change};
 use super::{
-    ComponentInstance, ObjectId, attachment_data, is_scenedb_authority_class, overlay_live_data,
-    remap_component_parents,
+    attachment_data, is_scenedb_authority_class, overlay_live_data, remap_component_parents,
+    ComponentInstance, ObjectId,
 };
 
 // ── Reads ──────────────────────────────────────────────────────────────────
@@ -226,11 +226,16 @@ pub fn after_property_edit(world: &mut World, object_id: &str, class_name: &str,
     let Some(terrain) = world.get::<helio_component::VoxelTerrainComponent>(entity) else {
         return;
     };
-    let Some(class) = helio_component::voxel_world::generator_settings_component(&terrain.generator.id, terrain.generator.version)
-    else {
+    let Some(class) = helio_component::voxel_world::generator_settings_component(
+        &terrain.generator.id,
+        terrain.generator.version,
+    ) else {
         return;
     };
-    if get_components(world, object_id).iter().any(|component| component.class_name == class) {
+    if get_components(world, object_id)
+        .iter()
+        .any(|component| component.class_name == class)
+    {
         return;
     }
     let Some(defaults) = pulsar_reflection::REGISTRY

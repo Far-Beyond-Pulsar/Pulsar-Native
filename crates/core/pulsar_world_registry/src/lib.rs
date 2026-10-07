@@ -72,6 +72,204 @@
 // crate without that crate needing its own direct `inventory` dependency --
 // same pattern `pulsar_reflection` already uses for `RuntimeBehaviorRegistration`.
 pub use inventory;
+/// VM declarations/codecs referenced by generated component event metadata.
+pub use pulsar_script_vm;
+
+mod component_lifecycle;
+pub use component_lifecycle::{
+    end_live_components, process_component_removals, tick_live_components, ComponentInstanceKey,
+    ComponentRuntimeState,
+};
+
+/// Generated native component lifecycle entry. Unlike the legacy
+/// `ComponentRuntimeBehavior::sync_component` bridge, this callback runs on
+/// the live typed SceneDB value and never deserializes or stores a shadow.
+pub struct ComponentTickRegistration {
+    /// Rust type name used only for deterministic local callback ordering;
+    /// it is not an event id and is never sent across the DLL boundary.
+    pub type_name: &'static str,
+    pub class_name: &'static str,
+    /// Event names with generated native `#[bp_handler]` adapters. Only
+    /// these are subscribed for each active component instance.
+    pub handler_events: &'static [&'static str],
+    pub component_type: fn() -> ComponentId,
+    /// Runs callbacks on live rows, reporting the active set. The previous
+    /// set lets generated shims invoke `begin_play` only on activation.
+    pub tick: fn(
+        &mut World,
+        &pulsar_events::EventHub,
+        f32,
+        &std::collections::HashSet<Entity>,
+        &mut std::collections::HashSet<Entity>,
+        &mut ComponentRuntimeState,
+    ),
+    /// Owner-only teardown after the row has already been removed/disabled.
+    pub end_play: Option<fn(Entity, &pulsar_events::EventHub)>,
+}
+
+inventory::collect!(ComponentTickRegistration);
+
+/// A stable Gamma event descriptor registered by a component event macro.
+pub struct ComponentEventRegistration {
+    pub class_name: &'static str,
+    pub descriptor: fn() -> pulsar_events::gamma::EventDescriptor,
+    pub declaration: fn() -> pulsar_script_vm::EventDecl,
+}
+
+inventory::collect!(ComponentEventRegistration);
+
+/// Register all link-time component event descriptors on a session hub.
+/// Calling this more than once is safe when descriptors are identical.
+pub fn register_component_events(hub: &pulsar_events::EventHub) -> Result<(), String> {
+    for registration in inventory::iter::<ComponentEventRegistration> {
+        hub.register(
+            (registration.descriptor)(),
+            pulsar_events::EventCategory::Gameplay,
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+/// Link-time component event declarations used to install typed local
+/// signatures in the Blueprint bridge after their Gamma descriptors exist.
+pub fn component_event_registrations() -> impl Iterator<Item = &'static ComponentEventRegistration>
+{
+    inventory::iter::<ComponentEventRegistration>.into_iter()
+}
+
+/// Short-lived, per-entity outbox for events emitted by reflected World
+/// methods. It is transport state only: it does not mirror component fields
+/// and is removed as soon as queued messages have been handed to Gamma.
+#[derive(Default)]
+pub struct ComponentEventOutbox {
+    pub events: Vec<QueuedComponentEvent>,
+}
+
+#[derive(Clone)]
+pub struct QueuedComponentEvent {
+    pub name: String,
+    pub fields: Vec<pulsar_events::gamma::DynValue>,
+}
+
+/// Append a component event to the owner's outbox. Delivery occurs at the
+/// runtime's `AfterPhysics` flush, after the World-mutating call returns.
+pub fn queue_component_event(
+    world: &mut World,
+    entity: Entity,
+    name: impl Into<String>,
+    fields: Vec<pulsar_events::gamma::DynValue>,
+) {
+    let event = QueuedComponentEvent {
+        name: name.into(),
+        fields,
+    };
+    if let Some(mut outbox) = world.get_mut::<ComponentEventOutbox>(entity) {
+        outbox.events.push(event);
+        return;
+    }
+    world.insert(
+        entity,
+        ComponentEventOutbox {
+            events: vec![event],
+        },
+    );
+}
+
+/// Publish queued outbox events after all World borrows for the emitting
+/// phase have ended. Unknown/unregistered names remain queued for the next
+/// phase rather than being silently discarded.
+pub fn flush_component_events(world: &mut World, hub: &pulsar_events::EventHub) -> usize {
+    let entities: Vec<_> = world
+        .query::<&ComponentEventOutbox>()
+        .map(|(entity, _)| entity)
+        .collect();
+    let mut delivered = 0;
+    for entity in entities {
+        let Some(mut outbox) = world.remove::<ComponentEventOutbox>(entity) else {
+            continue;
+        };
+        let mut pending = Vec::new();
+        for event in outbox.events.drain(..) {
+            match hub.publish_named(
+                pulsar_events::gamma::Channel::Entity(entity.bits()),
+                &event.name,
+                event.fields.clone(),
+            ) {
+                Ok(()) => delivered += 1,
+                Err(error) => {
+                    tracing::warn!(event = %event.name, %error, "component event was not registered; keeping it queued");
+                    pending.push(event);
+                }
+            }
+        }
+        if !pending.is_empty() {
+            world.insert(entity, ComponentEventOutbox { events: pending });
+        }
+    }
+    delivered
+}
+
+/// Services available to a live component callback. The component itself is
+/// borrowed from SceneDB for the callback's duration. The context exposes
+/// the owner and a deferred, owner-scoped event writer, but intentionally no
+/// `World` reference: handlers can therefore never re-enter a World borrow.
+pub struct ComponentContext<'a> {
+    pub entity: Entity,
+    pub events: ComponentEventWriter<'a>,
+}
+
+impl<'a> ComponentContext<'a> {
+    #[doc(hidden)]
+    pub fn new(entity: Entity, hub: &'a pulsar_events::EventHub) -> Self {
+        Self {
+            entity,
+            events: ComponentEventWriter::new(entity, hub),
+        }
+    }
+}
+
+pub struct ComponentEventWriter<'a> {
+    entity: Entity,
+    hub: &'a pulsar_events::EventHub,
+}
+
+impl<'a> ComponentEventWriter<'a> {
+    #[doc(hidden)]
+    pub fn new(entity: Entity, hub: &'a pulsar_events::EventHub) -> Self {
+        Self { entity, hub }
+    }
+
+    /// Publish an already-registered named event on this component owner's
+    /// entity channel. Gamma queues delivery; handlers do not run inline.
+    pub fn emit_named(
+        &self,
+        name: &str,
+        fields: Vec<pulsar_events::gamma::DynValue>,
+    ) -> Result<(), String> {
+        self.hub
+            .publish_named(
+                pulsar_events::gamma::Channel::Entity(self.entity.bits()),
+                name,
+                fields,
+            )
+            .map_err(|error| error.to_string())
+    }
+
+    /// Emit a component event with its original Rust payload type. The VM
+    /// codec wraps it in a stable, versioned byte envelope before Gamma sees
+    /// it; only bytes and the declared event name cross the DLL boundary.
+    pub fn emit_value<T: Clone + Send + Sync + 'static>(
+        &self,
+        name: &str,
+        payload_type: &'static str,
+        payload: &T,
+    ) -> Result<(), String> {
+        let object = pulsar_script_vm::Object::new(payload_type, payload.clone());
+        let bytes = pulsar_script_vm::TypeRegistry::global().encode_event_value(&object)?;
+        self.emit_named(name, vec![pulsar_events::gamma::DynValue::Bytes(bytes)])
+    }
+}
 
 pub mod audit;
 pub mod dispatch;
@@ -89,8 +287,8 @@ mod script_natives;
 // graph nodes) uses to touch live World components. No bespoke dispatch
 // downstream.
 pub use dispatch::{
-    get_component_property, get_component_property_boxed, invoke_component_method, property_descriptor,
-    set_component_property, set_component_property_boxed,
+    get_component_property, get_component_property_boxed, invoke_component_method,
+    property_descriptor, set_component_property, set_component_property_boxed,
 };
 // The one script-facing error taxonomy (#641/#643). Canonical home is this
 // crate (next to the dispatcher whose failures these are);
@@ -848,18 +1046,31 @@ mod tests {
         world.take_component_change_events();
 
         {
-            let guard = get_world_component_as_engine_class_mut("TestComponent", &mut world, entity).unwrap();
+            let guard =
+                get_world_component_as_engine_class_mut("TestComponent", &mut world, entity)
+                    .unwrap();
             let _ = guard.to_json();
         }
-        assert!(world.take_component_change_events().is_empty(), "a read is not a mutation");
+        assert!(
+            world.take_component_change_events().is_empty(),
+            "a read is not a mutation"
+        );
 
-        let mut guard = get_world_component_as_engine_class_mut("TestComponent", &mut world, entity).unwrap();
-        guard.as_any_mut().downcast_mut::<TestComponent>().unwrap().value = 7;
+        let mut guard =
+            get_world_component_as_engine_class_mut("TestComponent", &mut world, entity).unwrap();
+        guard
+            .as_any_mut()
+            .downcast_mut::<TestComponent>()
+            .unwrap()
+            .value = 7;
         drop(guard);
         let events = world.take_component_change_events();
         assert_eq!(events.len(), 1, "{events:?}");
         assert_eq!(events[0].kind, ComponentChangeKind::Mutated);
-        assert_eq!(world.get::<TestComponent>(entity), Some(&TestComponent { value: 7 }));
+        assert_eq!(
+            world.get::<TestComponent>(entity),
+            Some(&TestComponent { value: 7 })
+        );
     }
 
     #[test]

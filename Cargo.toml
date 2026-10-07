@@ -110,6 +110,7 @@ lyon = { opt-level = 3 }
 ###################################
 
 [workspace.dependencies]
+owo-colors = "4"
 
 # ---------- GPUI (vendored) ----------
 gpui-ce      = { path = "crates/ui/wgpui", features = ["inspector", "flamegraph"] }
@@ -129,6 +130,7 @@ arc-swap                           = "1.9"
 # wgpui as well.
 profiling-v1                       = { package = "profiling", version = "1", default-features = false }
 engine_fs                          = { path = "crates/core/engine_fs", default-features = false }
+editor_task_queue                  = { path = "crates/core/editor_task_queue" }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }
 engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }
@@ -142,7 +144,8 @@ pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
 pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "e74df984b95ffe5235a67653a5b95a07e579df47", features = ["gpu"] }
 pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "e74df984b95ffe5235a67653a5b95a07e579df47" }
-pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
+pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
+pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 # Gamma v2 (Pulsar-Native#923): the event bus under `pulsar_events`' engine
 # hub. Pinned to the merged v0.2.0 on Gamma `main`.
@@ -173,6 +176,7 @@ agent_provider_cohere              = { path = "crates/agent-providers/agent_prov
 # ---------- Subsystem Crates ----------
 pulsar_physics        = { path = "crates/subsystems/pulsar_physics" }
 helio_component       = { path = "crates/renderer/helio/crates/helio-component" }
+helio-mats            = { path = "crates/renderer/helio/crates/helio-mats" }
 
 
 # ---------- Editor Crates ----------
@@ -274,7 +278,7 @@ git2 = "0.21"
 walkdir = "2.4"
 rfd = "0.17"
 thiserror = "2.0"
-pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
+pulsar_reflection_derive = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_derive" }
 dashmap = "6.1.0"
 inventory = "0.3"
 flume = "0.12"
@@ -370,8 +374,8 @@ gpui-ce = { path = "crates/ui/wgpui" }
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
 # The plugins pin Pulsar-Native by git rev, and those revs carry their own
 # `pulsar_reflection`; resolve them to the one Pulsar-Reflection rev (#844).
-pulsar_reflection = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
-pulsar_reflection_derive = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
+pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
+pulsar_reflection_derive = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_derive" }
 gpui-ce          = { path = "crates/ui/wgpui" }
 ui               = { path = "crates/ui/wgpui-component/crates/ui" }
 ui-macros        = { path = "crates/ui/wgpui-component/crates/ui-macros" }
@@ -426,9 +430,9 @@ wgsl_std = { path = "crates/third-party/psgc/crates/wgsl_std" }
 # together. The `//` URL spelling is what lets a patch point at a different rev
 # of the "same" source.
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection"]
-pulsar_reflection = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
-pulsar_reflection_derive = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
-pulsar_reflection_codegen = { git = "https://github.com//Far-Beyond-Pulsar/Pulsar-Reflection", rev = "2dab12bfb147d813e508e1db0b5220ba9ba167ae" }
+pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
+pulsar_reflection_derive = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_derive" }
+pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 
 # SceneDB's World-level subscription system (SceneDB#47, merged at c761890)
 # is what the properties panel's cache-until-signaled rework

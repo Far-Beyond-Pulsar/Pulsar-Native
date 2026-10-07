@@ -21,6 +21,8 @@ struct AssetItem {
 pub enum AssetQuery {
     Extension(String),
     FileType(String),
+    /// Folder-backed assets identified by a marker file inside the folder.
+    FolderMarker(String),
 }
 
 impl AssetQuery {
@@ -30,6 +32,20 @@ impl AssetQuery {
 
     pub fn file_type(id: impl Into<String>) -> Self {
         Self::FileType(id.into())
+    }
+
+    pub fn folder_marker(marker_file: impl Into<String>) -> Self {
+        Self::FolderMarker(marker_file.into())
+    }
+
+    /// Common raster and GPU texture formats offered by the texture picker.
+    pub fn texture_images() -> Vec<Self> {
+        [
+            "png", "jpg", "jpeg", "webp", "tga", "bmp", "gif", "tif", "tiff",
+        ]
+        .into_iter()
+        .map(Self::extension)
+        .collect()
     }
 }
 
@@ -225,6 +241,7 @@ impl MeshAssetPicker {
         let cache_root = self.thumbnail_cache_root.clone();
         let (tx, rx) = smol::channel::bounded::<Option<Arc<image::RgbaImage>>>(1);
 
+        crate::asset_thumbnails::register_mesh_thumbnail_renderer();
         engine_fs::thumbnails::service().request(abs_path, cache_root, move |rgba| {
             smol::block_on(tx.send(rgba));
         });
@@ -278,7 +295,15 @@ fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
         })
         .collect();
 
-    if extensions.is_empty() {
+    let folder_markers: Vec<&str> = queries
+        .iter()
+        .filter_map(|query| match query {
+            AssetQuery::FolderMarker(marker) => Some(marker.as_str()),
+            _ => None,
+        })
+        .collect();
+
+    if extensions.is_empty() && folder_markers.is_empty() {
         return vec![];
     }
 
@@ -290,6 +315,12 @@ fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
     let mut out = BTreeSet::new();
     for entry in entries {
         if entry.is_dir {
+            if folder_markers.iter().any(|marker| {
+                engine_fs::virtual_fs::exists(&project_root.join(&entry.path).join(marker))
+                    .unwrap_or(false)
+            }) {
+                out.insert(normalize_asset_path(&entry.path));
+            }
             continue;
         }
         let matches = std::path::Path::new(&entry.path)

@@ -67,7 +67,9 @@ impl AgentChatPanel {
         let provider_crate = crates
             .iter()
             .find(|c| c.entries().iter().any(|e| e.id == instance.template_id))
-            .ok_or_else(|| anyhow::anyhow!("unknown provider template '{}'", instance.template_id))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!("unknown provider template '{}'", instance.template_id)
+            })?;
         let inner = provider_crate.create(&instance.template_id, instance.provider_config())?;
         Ok(Box::new(ProviderInstance::new(instance, inner)))
     }
@@ -155,8 +157,10 @@ impl AgentChatPanel {
         self.provider_instances = instances;
 
         if let Some(template) = self.provider_entries.get(&instance.template_id).cloned() {
-            self.provider_entries
-                .insert(instance.id.clone(), Self::instance_entry(&template, &instance));
+            self.provider_entries.insert(
+                instance.id.clone(),
+                Self::instance_entry(&template, &instance),
+            );
         }
         self.provider_registry.register(Arc::from(provider));
         self.set_provider_state(&instance.id, ProviderState::Ready);
@@ -227,14 +231,19 @@ impl AgentChatPanel {
                 deletable: instances.iter().any(|i| &i.id == id),
             })
             .collect();
-        catalog.extend(entries.values().filter(|e| e.template).map(|e| ProviderDefinition {
-            id: e.id,
-            label: Self::static_str(format!("New {} connection…", e.display_name)),
-            kind: kind_of(e.id),
-            endpoint: e.default_endpoint.unwrap_or(""),
-            models: Arc::new(vec![]),
-            deletable: false,
-        }));
+        catalog.extend(
+            entries
+                .values()
+                .filter(|e| e.template)
+                .map(|e| ProviderDefinition {
+                    id: e.id,
+                    label: Self::static_str(format!("New {} connection…", e.display_name)),
+                    kind: kind_of(e.id),
+                    endpoint: e.default_endpoint.unwrap_or(""),
+                    models: Arc::new(vec![]),
+                    deletable: false,
+                }),
+        );
 
         let state_order = |id: &str| -> u8 {
             match states.get(id) {

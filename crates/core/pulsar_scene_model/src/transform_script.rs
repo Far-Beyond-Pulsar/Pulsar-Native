@@ -19,10 +19,15 @@ use crate::components::Transform;
 use crate::motion::ensure_can_move;
 
 /// Write `change` to `entity`'s transform if it may move.
-fn write(world: &mut World, entity: Entity, change: impl FnOnce(&mut Transform)) -> Result<(), String> {
+fn write(
+    world: &mut World,
+    entity: Entity,
+    change: impl FnOnce(&mut Transform),
+) -> Result<(), String> {
     ensure_can_move(world, entity)?;
-    let mut transform =
-        world.get_mut::<Transform>(entity).ok_or_else(|| format!("{entity:?} has no Transform"))?;
+    let mut transform = world
+        .get_mut::<Transform>(entity)
+        .ok_or_else(|| format!("{entity:?} has no Transform"))?;
     change(&mut transform);
     Ok(())
 }
@@ -55,13 +60,19 @@ impl Transform {
     /// Move by `delta`. Fails if the object is not allowed to move.
     #[world_method(category = "Transform")]
     fn translate(world: &mut World, entity: Entity, delta: Vec3) -> Result<(), String> {
-        write(world, entity, |t| t.position = (Vec3::from(t.position) + delta).to_array())
+        write(world, entity, |t| {
+            t.position = (Vec3::from(t.position) + delta).to_array()
+        })
     }
 
     /// Set the Euler rotation (degrees). Fails if the object is not allowed
     /// to move.
     #[world_method(category = "Transform")]
-    fn set_rotation_degrees(world: &mut World, entity: Entity, rotation: Vec3) -> Result<(), String> {
+    fn set_rotation_degrees(
+        world: &mut World,
+        entity: Entity,
+        rotation: Vec3,
+    ) -> Result<(), String> {
         write(world, entity, |t| t.rotation = rotation.to_array())
     }
 

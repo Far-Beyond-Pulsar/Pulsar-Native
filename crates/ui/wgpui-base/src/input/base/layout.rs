@@ -46,5 +46,3 @@ impl LastLayout {
         }
     }
 }
-
-

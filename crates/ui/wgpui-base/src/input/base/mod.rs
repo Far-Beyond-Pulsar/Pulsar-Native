@@ -282,5 +282,3 @@ mod tests {
         assert_eq!(disabled.resolved_style().opacity, Some(0.5));
     }
 }
-
-

@@ -1,3 +1,4 @@
+use engine_state::{ConfigValue, GlobalSettings};
 use gpui::prelude::*;
 use gpui::*;
 use rust_i18n::t;
@@ -75,11 +76,35 @@ pub struct FileManagerDrawer {
 }
 
 impl FileManagerDrawer {
+    fn persisted_choice(key: &str, fallback: &str) -> String {
+        engine_state::settings::global_config()
+            .get(engine_state::settings::NS_EDITOR, "file_manager", key)
+            .ok()
+            .and_then(|value| value.as_str().ok().map(str::to_owned))
+            .unwrap_or_else(|| fallback.to_owned())
+    }
+
+    pub(crate) fn persist_preference(&self, key: &str, value: ConfigValue) {
+        let Some(handle) = engine_state::settings::global_config()
+            .owner_handle(engine_state::settings::NS_EDITOR, "file_manager")
+        else {
+            return;
+        };
+        if let Err(error) = handle.set(key, value) {
+            tracing::warn!(%error, key, "Could not update file manager preference");
+            return;
+        }
+        if let Err(error) = GlobalSettings::new().save_owner_keys("file_manager", &[key]) {
+            tracing::warn!(%error, key, "Could not persist file manager preference");
+        }
+    }
+
     pub fn new(project_path: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let resizable_state = ResizableState::new(cx);
         let rename_input_state = cx.new(|cx| InputState::new(window, cx));
         let folder_search_state = cx.new(|cx| InputState::new(window, cx));
-        let file_filter_state = cx.new(|cx| InputState::new(window, cx));
+        let file_filter_state =
+            cx.new(|cx| InputState::new(window, cx).placeholder("Filter files…"));
 
         cx.subscribe(
             &rename_input_state,
@@ -136,6 +161,30 @@ impl FileManagerDrawer {
         let folder_tree = crate::preload::take_preloaded_tree()
             .or_else(|| project_path.as_ref().and_then(|p| FolderNode::from_path(p)));
 
+        let view_mode = match Self::persisted_choice("view_mode", "grid").as_str() {
+            "list" => ViewMode::List,
+            _ => ViewMode::Grid,
+        };
+        let sort_by = match Self::persisted_choice("sort_by", "name").as_str() {
+            "modified" => SortBy::Modified,
+            "size" => SortBy::Size,
+            "type" => SortBy::Type,
+            _ => SortBy::Name,
+        };
+        let sort_order = match Self::persisted_choice("sort_order", "ascending").as_str() {
+            "descending" => SortOrder::Descending,
+            _ => SortOrder::Ascending,
+        };
+        let show_hidden_files = engine_state::settings::global_config()
+            .get(
+                engine_state::settings::NS_EDITOR,
+                "file_manager",
+                "show_hidden_files",
+            )
+            .ok()
+            .and_then(|value| value.as_bool().ok())
+            .unwrap_or(false);
+
         let mut this = Self {
             folder_tree,
             project_path: project_path.clone(),
@@ -154,9 +203,9 @@ impl FileManagerDrawer {
             resizable_state,
             renaming_item: None,
             rename_input_state,
-            view_mode: ViewMode::Grid,
-            sort_by: SortBy::Name,
-            sort_order: SortOrder::Ascending,
+            view_mode,
+            sort_by,
+            sort_order,
             search_query: String::new(),
             folder_search_state,
             file_filter_query: String::new(),
@@ -164,7 +213,7 @@ impl FileManagerDrawer {
             directory_cache: None,
             directory_cache_dirty: true,
             fs_event_listener: None,
-            show_hidden_files: false,
+            show_hidden_files,
             clipboard: None,
             registered_file_types: Vec::new(),
             grid_scroll_handle: VirtualListScrollHandle::new(),
@@ -253,6 +302,10 @@ impl Render for FileManagerDrawer {
             .size_full()
             .track_focus(&self.focus_handle)
             .key_context("FileManagerDrawer")
+            // The drawer is mounted over the editor viewport as a flyout.
+            // Let its own scrollable children handle wheel input, then stop
+            // the event here so it cannot continue into the viewport behind.
+            .on_scroll_wheel(|_, _, cx| cx.stop_propagation())
             .on_action(cx.listener(|this, _: &RefreshFileManager, _w, cx| {
                 if let Some(ref p) = this.project_path {
                     this.folder_tree = FolderNode::from_path(p);
@@ -260,11 +313,29 @@ impl Render for FileManagerDrawer {
                 this.mark_directory_cache_dirty();
                 cx.notify();
             }))
+            .on_action(cx.listener(|this, _: &ToggleHiddenFiles, _w, cx| {
+                this.show_hidden_files = !this.show_hidden_files;
+                cx.notify();
+            }))
+            .on_action(cx.listener(|this, _: &ToggleDeletedFiles, _w, cx| {
+                crate::handlers::handle_toggle_deleted_files(this, cx)
+            }))
+            .on_action(cx.listener(|_this, _: &PopoutFileManager, w, cx| {
+                cx.emit(PopoutFileManagerEvent {
+                    position: w.mouse_position(),
+                });
+            }))
+            .on_action(cx.listener(|_, _: &DockFileManager, _w, cx| {
+                cx.emit(DockFileManagerEvent);
+            }))
             .on_action(cx.listener(|this, a: &CreateAsset, _w, cx| {
                 crate::handlers::handle_create_asset(this, a, cx)
             }))
-            .on_action(cx.listener(|this, a: &NewFolder, _w, cx| {
-                crate::handlers::handle_new_folder(this, a, cx)
+            .on_action(cx.listener(|this, a: &NewFile, w, cx| {
+                crate::handlers::handle_new_file(this, a, w, cx)
+            }))
+            .on_action(cx.listener(|this, a: &NewFolder, w, cx| {
+                crate::handlers::handle_new_folder(this, a, w, cx)
             }))
             .on_action(cx.listener(|this, _: &DeleteItem, _w, cx| {
                 crate::handlers::handle_delete_item(this, cx)
@@ -360,6 +431,16 @@ pub fn render_file_content(
     w: &mut Window,
     cx: &mut Context<FileManagerDrawer>,
 ) -> impl IntoElement {
+    // Queue thumbnails for every asset in the opened folder before applying
+    // the UI filter or virtualizing rows. This keeps offscreen and filtered
+    // items from being skipped by the editor task queue.
+    if let Some(folder) = d.selected_folder.clone() {
+        for item in d.cached_items_for_folder(&folder) {
+            if !item.is_folder && !item.is_ghost {
+                d.ensure_thumbnail(&item.path, cx);
+            }
+        }
+    }
     let items = d.get_filtered_items();
     let hc = d.clipboard.is_some();
     let sf = d.selected_folder.clone();
@@ -431,12 +512,24 @@ pub fn render_file_content(
                             cx.notify();
                         },
                     ))
+                    .on_drag_move(cx.listener(
+                        move |d, _: &DragMoveEvent<plugin_editor_api::AssetPayload>, _w, cx| {
+                            d.hovered_drop_folder = d.selected_folder.clone();
+                            d.show_drop_hint = true;
+                            cx.notify();
+                        },
+                    ))
                     .drag_over::<DraggedFile>(|s, _, _, cx| {
                         s.bg(cx.theme().accent.opacity(0.12))
                             .border_1()
                             .border_color(cx.theme().accent.opacity(0.8))
                     })
                     .drag_over::<ExternalPaths>(|s, _, _, cx| {
+                        s.bg(cx.theme().accent.opacity(0.12))
+                            .border_1()
+                            .border_color(cx.theme().accent.opacity(0.8))
+                    })
+                    .drag_over::<plugin_editor_api::AssetPayload>(|s, _, _, cx| {
                         s.bg(cx.theme().accent.opacity(0.12))
                             .border_1()
                             .border_color(cx.theme().accent.opacity(0.8))
@@ -454,7 +547,21 @@ pub fn render_file_content(
                         if let Some(ref f) = d.selected_folder.clone() {
                             d.handle_external_drop_on_folder(f, ext.paths(), w, cx);
                         }
-                    }));
+                    }))
+                    .on_drop(cx.listener(
+                        move |d, asset: &plugin_editor_api::AssetPayload, w, cx| {
+                            d.show_drop_hint = false;
+                            d.hovered_drop_folder = None;
+                            if let Some(ref f) = d.selected_folder.clone() {
+                                d.handle_drop_on_folder_new(
+                                    f,
+                                    &[PathBuf::from(&asset.engine_path)],
+                                    w,
+                                    cx,
+                                );
+                            }
+                        },
+                    ));
             }
             let cd = cd.child(match d.view_mode {
                 ViewMode::Grid => render_grid_view(d, &items, w, cx).into_any_element(),
@@ -511,7 +618,7 @@ pub fn render_grid_view(
             (vp - 250.0).max(100.0)
         });
     const CW: f32 = 100.0;
-    const CH: f32 = 110.0;
+    const CH: f32 = 144.0;
     const G: f32 = 12.0;
     const HP: f32 = 16.0;
     let aw = (pw - HP).max(CW);
@@ -620,10 +727,8 @@ pub fn render_grid_item(
         .id(SharedString::from(format!("grid-item-{}", item.name)))
         .w_full()
         .h_full()
-        .p_3()
-        .gap_2()
-        .items_center()
-        .justify_center();
+        .items_stretch()
+        .justify_start();
     if fld {
         inner = inner.on_drag(dd, move |d, pos, _, cx| {
             let mut x = d.clone();
@@ -648,7 +753,8 @@ pub fn render_grid_item(
         });
     }
     if fld {
-        let (d1, d2, d3, d4) = (
+        let (d1, d2, d3, d4, d5) = (
+            ifd.path.clone(),
             ifd.path.clone(),
             ifd.path.clone(),
             ifd.path.clone(),
@@ -659,9 +765,15 @@ pub fn render_grid_item(
                 cx.listener(move |d, _: &DragMoveEvent<ExternalPaths>, _w, cx| {
                     d.hovered_drop_folder = Some(d1.clone());
                     d.show_drop_hint = true;
+                    d.start_breadcrumb_hover_timer(&d1, cx);
                     cx.notify();
                 }),
             )
+            .on_drag_move(cx.listener(
+                move |d, _: &DragMoveEvent<plugin_editor_api::AssetPayload>, _w, cx| {
+                    d.start_breadcrumb_hover_timer(&d5, cx);
+                },
+            ))
             .drag_over::<DraggedFile>(|s, _, _, cx| {
                 s.bg(cx.theme().accent.opacity(0.2))
                     .border_2()
@@ -702,8 +814,9 @@ pub fn render_grid_item(
     }
     div()
         .w(px(cw))
-        .h(px(110.0))
+        .h(px(144.0))
         .rounded_lg()
+        .overflow_hidden()
         .border_1()
         .when(ghost, |e| e.opacity(0.45))
         .when(sel, |e| {
@@ -725,30 +838,34 @@ pub fn render_grid_item(
             inner
                 .child(
                     div()
-                        .w(px(48.0))
-                        .h(px(48.0))
-                        .rounded_lg()
+                        .w_full()
+                        .flex_1()
+                        .min_h_0()
+                        .rounded_tl(px(8.0))
+                        .rounded_tr(px(8.0))
                         .bg(ic.opacity(0.15))
-                        .border_1()
-                        .border_color(ic.opacity(0.3))
                         .flex()
                         .items_center()
                         .justify_center()
-                        .shadow_sm()
                         .overflow_hidden()
                         .map(|e| match thumb {
                             Some(ref img) => e.child(
                                 gpui::img(gpui::ImageSource::Render(img.clone()))
-                                    .w(px(48.0))
-                                    .h(px(48.0))
+                                    .w_full()
+                                    .h_full()
                                     .object_fit(gpui::ObjectFit::Cover),
                             ),
-                            None => e.child(Icon::new(icon).size(px(24.0)).text_color(ic)),
+                            None => e.child(Icon::new(icon).size(px(48.0)).text_color(ic)),
                         }),
                 )
                 .child(if ren {
                     div()
                         .w_full()
+                        .h(px(30.0))
+                        .px_2()
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
                         .text_xs()
                         .text_center()
                         .child(TextInput::new(&d.rename_input_state).xsmall())
@@ -756,6 +873,13 @@ pub fn render_grid_item(
                 } else {
                     div()
                         .w_full()
+                        .h(px(30.0))
+                        .px_2()
+                        .flex_shrink_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(cx.theme().background.opacity(0.9))
                         .text_xs()
                         .text_center()
                         .font_weight(gpui::FontWeight::MEDIUM)
@@ -799,6 +923,9 @@ pub fn render_grid_item(
                     cx.listener(move |d, _: &DragMoveEvent<DraggedFile>, _w, cx| {
                         d.hovered_drop_folder = if fld { Some(ihp.clone()) } else { None };
                         d.show_drop_hint = fld;
+                        if fld {
+                            d.start_breadcrumb_hover_timer(&ihp, cx);
+                        }
                         cx.notify();
                     }),
                 )
@@ -936,7 +1063,8 @@ pub fn render_list_item(
         });
     }
     if fld {
-        let (d1, d2, d3, d4) = (
+        let (d1, d2, d3, d4, d5) = (
+            ifd.path.clone(),
             ifd.path.clone(),
             ifd.path.clone(),
             ifd.path.clone(),
@@ -947,9 +1075,15 @@ pub fn render_list_item(
                 cx.listener(move |d, _: &DragMoveEvent<ExternalPaths>, _w, cx| {
                     d.hovered_drop_folder = Some(d1.clone());
                     d.show_drop_hint = true;
+                    d.start_breadcrumb_hover_timer(&d1, cx);
                     cx.notify();
                 }),
             )
+            .on_drag_move(cx.listener(
+                move |d, _: &DragMoveEvent<plugin_editor_api::AssetPayload>, _w, cx| {
+                    d.start_breadcrumb_hover_timer(&d5, cx);
+                },
+            ))
             .drag_over::<DraggedFile>(|s, _, _, cx| {
                 s.bg(cx.theme().accent.opacity(0.2))
                     .border_2()
@@ -1060,6 +1194,9 @@ pub fn render_list_item(
         cx.listener(move |d, _: &DragMoveEvent<DraggedFile>, _w, cx| {
             d.hovered_drop_folder = if fld { Some(ihp.clone()) } else { None };
             d.show_drop_hint = fld;
+            if fld {
+                d.start_breadcrumb_hover_timer(&ihp, cx);
+            }
             cx.notify();
         }),
     )
@@ -1083,6 +1220,9 @@ pub fn render_combined_toolbar(
         .selected_deleted_commit
         .clone()
         .unwrap_or_else(|| "HEAD".to_string());
+    let create_menu_focus = d.focus_handle.clone();
+    let more_menu_focus = d.focus_handle.clone();
+    let show_hidden_files = d.show_hidden_files;
     h_flex()
         .w_full()
         .h(px(56.))
@@ -1093,6 +1233,27 @@ pub fn render_combined_toolbar(
         .border_color(cx.theme().border)
         .bg(cx.theme().background)
         .child(render_clickable_breadcrumb(d, items, w, cx))
+        .child(
+            h_flex()
+                .w(px(180.))
+                .h(px(32.))
+                .px_2()
+                .rounded(px(6.))
+                .border_1()
+                .border_color(cx.theme().border)
+                .bg(cx.theme().sidebar.opacity(0.5))
+                .child(
+                    TextInput::new(&d.file_filter_state)
+                        .w_full()
+                        .xsmall()
+                        .appearance(false)
+                        .prefix(
+                            Icon::new(IconName::Search)
+                                .size_3()
+                                .text_color(cx.theme().muted_foreground),
+                        ),
+                ),
+        )
         .child(
             div()
                 .px_2()
@@ -1140,101 +1301,74 @@ pub fn render_combined_toolbar(
                 .on_click(cx.listener(|d, s: &Vec<usize>, _w, cx| {
                     if s.contains(&0) {
                         d.view_mode = ViewMode::Grid;
+                        d.persist_preference("view_mode", ConfigValue::String("grid".into()));
                     } else if s.contains(&1) {
                         d.view_mode = ViewMode::List;
+                        d.persist_preference("view_mode", ConfigValue::String("list".into()));
                     }
                     cx.notify();
                 })),
         )
-        .child(ui::divider::Divider::vertical().h(px(24.)))
         .child(
-            h_flex()
-                .gap_1()
-                .child(
-                    Button::new("new-file")
-                        .icon(IconName::PagePlus)
-                        .ghost()
-                        .tooltip(t!("FileManager.NewFile").to_string())
-                        .on_click(cx.listener(|d, _e, _w, cx| d.start_new_file(cx))),
-                )
-                .child(
-                    Button::new("new-folder")
-                        .icon(IconName::FolderPlus)
-                        .ghost()
-                        .tooltip(t!("FileManager.NewFolder").to_string())
-                        .on_click(cx.listener(|d, _e, _w, cx| d.start_new_folder(cx))),
-                ),
+            Button::new("create-item")
+                .icon(IconName::Plus)
+                .ghost()
+                .tooltip("Create file or folder")
+                .popup_menu(move |menu, _, _| {
+                    menu.action_context(create_menu_focus.clone())
+                        .menu_with_icon(
+                            t!("FileManager.NewFile").to_string(),
+                            Icon::new(IconName::PagePlus),
+                            Box::new(NewFile::default()),
+                        )
+                        .menu_with_icon(
+                            t!("FileManager.NewFolder").to_string(),
+                            Icon::new(IconName::FolderPlus),
+                            Box::new(NewFolder::default()),
+                        )
+                })
+                .anchor(Corner::BottomRight),
         )
-        .child(ui::divider::Divider::vertical().h(px(24.)))
         .child(
-            h_flex()
-                .gap_1()
-                .child(
-                    Button::new("toggle-hidden")
-                        .icon(if d.show_hidden_files {
-                            IconName::EyeOff
-                        } else {
-                            IconName::Eye
-                        })
-                        .ghost()
-                        .tooltip(if d.show_hidden_files {
-                            t!("FileManager.HideHidden").to_string()
-                        } else {
-                            t!("FileManager.ShowHidden").to_string()
-                        })
-                        .on_click(cx.listener(|d, _e, _w, cx| {
-                            d.show_hidden_files = !d.show_hidden_files;
-                            cx.notify();
-                        })),
-                )
-                .child(
-                    Button::new("refresh")
-                        .icon(IconName::Refresh)
-                        .ghost()
-                        .tooltip(t!("FileManager.Refresh").to_string())
-                        .on_click(cx.listener(|d, _e, _w, cx| d.refresh(cx))),
-                ),
-        )
-        .child(ui::divider::Divider::vertical().h(px(24.)))
-        .child(
-            h_flex()
-                .gap_1()
-                .child(
-                    Button::new("external")
-                        .icon(IconName::ExternalLink)
-                        .ghost()
-                        .tooltip(t!("FileManager.OpenInFileManager").to_string())
-                        .on_click(cx.listener(|d, _e, _w, _cx| {
-                            if let Some(ref f) = d.selected_folder {
-                                #[cfg(target_os = "windows")]
-                                let _ = std::process::Command::new("explorer").arg(f).spawn();
-                                #[cfg(target_os = "macos")]
-                                let _ = std::process::Command::new("open").arg(f).spawn();
-                                #[cfg(target_os = "linux")]
-                                let _ = std::process::Command::new("xdg-open").arg(f).spawn();
-                            }
-                        })),
-                )
-                .child(
-                    Button::new("popout")
-                        .icon(IconName::ArrowUpRightSquare)
-                        .ghost()
-                        .tooltip("Pop Out to New Window")
-                        .on_click(cx.listener(|_d, _e, w: &mut Window, cx| {
-                            cx.emit(PopoutFileManagerEvent {
-                                position: w.mouse_position(),
-                            })
-                        })),
-                )
-                .child(
-                    Button::new("dock")
-                        .icon(IconName::PanelBottom)
-                        .ghost()
-                        .tooltip("Dock File Manager at Bottom")
-                        .on_click(cx.listener(|_d, _e, _w, cx| {
-                            cx.emit(DockFileManagerEvent);
-                        })),
-                ),
+            Button::new("file-manager-more")
+                .icon(IconName::Ellipsis)
+                .ghost()
+                .tooltip("More file options")
+                .popup_menu(move |menu, _, _| {
+                    menu.action_context(more_menu_focus.clone())
+                        .menu_with_check(
+                            if show_hidden_files {
+                                "Hide hidden files"
+                            } else {
+                                "Show hidden files"
+                            },
+                            show_hidden_files,
+                            Box::new(ToggleHiddenFiles),
+                        )
+                        .separator()
+                        .menu_with_icon(
+                            t!("FileManager.Refresh").to_string(),
+                            Icon::new(IconName::Refresh),
+                            Box::new(RefreshFileManager),
+                        )
+                        .menu_with_icon(
+                            t!("FileManager.OpenInFileManager").to_string(),
+                            Icon::new(IconName::ExternalLink),
+                            Box::new(OpenInFileManager::default()),
+                        )
+                        .separator()
+                        .menu_with_icon(
+                            "Pop out to new window",
+                            Icon::new(IconName::ArrowUpRightSquare),
+                            Box::new(PopoutFileManager),
+                        )
+                        .menu_with_icon(
+                            "Dock at bottom",
+                            Icon::new(IconName::PanelBottom),
+                            Box::new(DockFileManager),
+                        )
+                })
+                .anchor(Corner::BottomRight),
         )
         .when_some(d.project_path.as_ref(), |el, _| {
             el.child(ui::divider::Divider::vertical().h(px(24.)))
@@ -1320,6 +1454,9 @@ pub fn render_clickable_breadcrumb(
             }
             let cp = path.clone();
             let hp = path.clone();
+            let dp = path.clone();
+            let dap = path.clone();
+            let dep = path.clone();
             els.push(
                 div()
                     .text_sm()
@@ -1343,7 +1480,32 @@ pub fn render_clickable_breadcrumb(
                             .border_1()
                             .border_color(cx.theme().accent)
                     })
-                    .on_drop(cx.listener(move |_d, _: &DraggedFile, _w, _cx| {}))
+                    .drag_over::<plugin_editor_api::AssetPayload>(|s, _, _, cx| {
+                        s.bg(cx.theme().accent.opacity(0.3))
+                            .border_1()
+                            .border_color(cx.theme().accent)
+                    })
+                    .drag_over::<ExternalPaths>(|s, _, _, cx| {
+                        s.bg(cx.theme().accent.opacity(0.3))
+                            .border_1()
+                            .border_color(cx.theme().accent)
+                    })
+                    .on_drop(cx.listener(move |d, drag: &DraggedFile, w, cx| {
+                        d.handle_drop_on_folder_new(&dp, &drag.paths, w, cx);
+                    }))
+                    .on_drop(cx.listener(
+                        move |d, asset: &plugin_editor_api::AssetPayload, w, cx| {
+                            d.handle_drop_on_folder_new(
+                                &dap,
+                                &[PathBuf::from(&asset.engine_path)],
+                                w,
+                                cx,
+                            );
+                        },
+                    ))
+                    .on_drop(cx.listener(move |d, ext: &ExternalPaths, w, cx| {
+                        d.handle_external_drop_on_folder(&dep, ext.paths(), w, cx);
+                    }))
                     .on_mouse_move(cx.listener(move |d, _: &MouseMoveEvent, _w, cx| {
                         if cx.has_active_drag() {
                             d.start_breadcrumb_hover_timer(&hp, cx);

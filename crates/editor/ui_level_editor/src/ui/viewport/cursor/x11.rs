@@ -234,7 +234,11 @@ fn blank_cursor(display: *mut Display) -> Option<Cursor> {
     };
     let cursor = unsafe { XCreatePixmapCursor(display, pixmap, pixmap, &black, &black, 0, 0) };
     unsafe { XFreePixmap(display, pixmap) };
-    if cursor == 0 { None } else { Some(cursor) }
+    if cursor == 0 {
+        None
+    } else {
+        Some(cursor)
+    }
 }
 
 // ── Cursor control ───────────────────────────────────────────────────────────

@@ -8,8 +8,7 @@
 use engine_state::build_config::{BuildConfigurations, build_configurations};
 use engine_state::playback::{PlayPhase, PlaybackState, game_process, playback};
 use gpui::{
-    App, Corner, Entity, IntoElement, ParentElement as _, Styled as _,
-    prelude::FluentBuilder as _,
+    App, Corner, Entity, IntoElement, ParentElement as _, Styled as _, prelude::FluentBuilder as _,
 };
 use ui::button::{Button, ButtonVariants as _};
 use ui::popover::Popover;
@@ -53,8 +52,16 @@ pub fn build_button(
     // Not while a play session or the launched game is using the project.
     let busy = state.phase != PlayPhase::Stopped || state.game_running;
     let (icon, label, tooltip) = match &selected {
-        Some(config) => (config_icon(config), shorten(&config.name), config.subtitle()),
-        None => (IconName::Hammer, "No configuration".to_owned(), "Choose a build configuration".to_owned()),
+        Some(config) => (
+            config_icon(config),
+            shorten(&config.name),
+            config.subtitle(),
+        ),
+        None => (
+            IconName::Hammer,
+            "No configuration".to_owned(),
+            "Choose a build configuration".to_owned(),
+        ),
     };
 
     let run = Button::new("build-run")

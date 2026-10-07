@@ -1,9 +1,11 @@
 //! Rendering implementation for PulsarApp
 
 use engine_backend::services::AnalyzerStatus;
+use gpui::UpdateGlobal as _;
 use gpui::{
     div, prelude::*, px, relative, rgb, Animation, AnimationExt as _, AnyElement, App, Context,
-    FocusHandle, Focusable, Hsla, IntoElement, MouseButton, MouseMoveEvent, Render, Window,
+    FocusHandle, Focusable, Hsla, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, Render,
+    Window,
 };
 use plugin_editor_api::{StatusbarAction, StatusbarPosition};
 use rust_i18n::t;
@@ -41,6 +43,16 @@ impl PulsarApp {
             .count_by_severity(ui_problems::DiagnosticSeverity::Warning);
 
         let type_count = self.state.type_debugger_drawer.read(cx).total_count();
+        let active_task_count = editor_task_queue::global()
+            .snapshots()
+            .iter()
+            .filter(|task| {
+                matches!(
+                    task.status,
+                    editor_task_queue::TaskStatus::Queued | editor_task_queue::TaskStatus::Running
+                )
+            })
+            .count();
         let is_agent_chat_open = self
             .state
             .dock_area
@@ -108,6 +120,30 @@ impl PulsarApp {
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_drawer(window, cx);
                                     })),
+                            )
+                            .child(
+                                Button::new("open-editor-tasks")
+                                    .ghost()
+                                    .label(if active_task_count > 0 {
+                                        format!("Tasks {active_task_count}")
+                                    } else {
+                                        "Tasks".to_string()
+                                    })
+                                    .icon(
+                                        Icon::new(IconName::TaskList)
+                                            .size(px(16.))
+                                            .text_color(cx.theme().muted_foreground),
+                                    )
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.))
+                                    .tooltip("Open editor tasks")
+                                    .on_click(|_, _, cx| {
+                                        window_manager::WindowRegistry::update_global(
+                                            cx,
+                                            |reg, cx| reg.open("EditorTasksWindow", cx),
+                                        );
+                                    }),
                             )
                             .child(
                                 Button::new("toggle-problems")
@@ -566,6 +602,7 @@ impl PulsarApp {
 
                                 if let Some(plugin_id) = plugin_id {
                                     let mut pm = pm_lock.write();
+                                    super::refresh_plugin_editor_settings(&mut pm);
                                     match pm.create_editor(&plugin_id, &editor_id, path, window, cx)
                                     {
                                         Ok(panel) => {
@@ -664,6 +701,8 @@ impl Render for PulsarApp {
 
         let drawer_open = self.state.drawer_open;
         let drawer_docked = self.state.drawer_docked;
+        let resize_handle_blue = Hsla::from(rgb(0x1684ff));
+        let resize_handle_black = Hsla::from(rgb(0x000000));
 
         v_flex()
             .size_full()
@@ -738,9 +777,16 @@ impl Render for PulsarApp {
                             div()
                                 .absolute()
                                 .bottom_0()
-                                .left_0()
-                                .right_0()
+                                .left_4()
+                                .right_4()
                                 .h(px(self.state.drawer_height))
+                                .bg(Hsla::black())
+                                .rounded_tl(px(8.))
+                                .rounded_tr(px(8.))
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .shadow_xl()
+                                .overflow_hidden()
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                                 .on_mouse_down(MouseButton::Right, |_, _, cx| cx.stop_propagation())
                                 .child(
@@ -750,16 +796,42 @@ impl Render for PulsarApp {
                                             // Resize handle at top
                                             div()
                                                 .id("drawer-resize-handle")
+                                                .group("file-drawer-resize-handle")
+                                                .relative()
                                                 .w_full()
                                                 .h(px(6.))
                                                 .cursor_ns_resize()
-                                                .bg(cx.theme().border.opacity(0.5))
-                                                .hover(|style| {
-                                                    style.bg(cx.theme().accent).h(px(8.))
-                                                })
+                                                .child(
+                                                    div()
+                                                        .absolute()
+                                                        .top(px(1.5))
+                                                        .left_0()
+                                                        .right_0()
+                                                        .h(px(3.))
+                                                        .rounded_tl(px(8.))
+                                                        .rounded_tr(px(8.))
+                                                        .bg(if self.state.drawer_resizing {
+                                                            resize_handle_blue
+                                                        } else {
+                                                            resize_handle_black
+                                                        })
+                                                        .when(!self.state.drawer_resizing, |this| {
+                                                            this.group_hover(
+                                                                "file-drawer-resize-handle",
+                                                                |style| {
+                                                                    style.bg(
+                                                                        resize_handle_blue
+                                                                            .opacity(0.45),
+                                                                    )
+                                                                },
+                                                            )
+                                                        }),
+                                                )
                                                 .on_mouse_down(
                                                     MouseButton::Left,
-                                                    cx.listener(|this, _event, _window, cx| {
+                                                    cx.listener(|this, event: &MouseDownEvent, _window, cx| {
+                                                        this.state.drawer_resize_start_y = event.position.y.into();
+                                                        this.state.drawer_resize_start_height = this.state.drawer_height;
                                                         this.state.drawer_resizing = true;
                                                         cx.notify();
                                                     }),
@@ -785,10 +857,10 @@ impl Render for PulsarApp {
                         )
                         .when(self.state.drawer_resizing, |this| {
                             this.on_mouse_move(cx.listener(
-                                |app, event: &MouseMoveEvent, window, cx| {
-                                    let window_height: f32 = window.viewport_size().height.into();
+                                |app, event: &MouseMoveEvent, _window, cx| {
                                     let mouse_y: f32 = event.position.y.into();
-                                    let new_height = window_height - mouse_y;
+                                    let drag_delta = mouse_y - app.state.drawer_resize_start_y;
+                                    let new_height = app.state.drawer_resize_start_height - drag_delta;
                                     app.state.drawer_height = new_height.clamp(200.0, 700.0);
                                     cx.notify();
                                 },
@@ -810,6 +882,7 @@ impl Render for PulsarApp {
                         .w_full()
                         .h(px(self.state.drawer_height))
                         .flex_shrink_0()
+                        .bg(Hsla::black())
                         .border_t_1()
                         .border_color(cx.theme().border)
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -820,15 +893,42 @@ impl Render for PulsarApp {
                                 .child(
                                     div()
                                         .id("docked-drawer-resize-handle")
+                                        .group("docked-file-drawer-resize-handle")
+                                        .relative()
                                         .w_full()
                                         .h(px(6.))
                                         .flex_shrink_0()
                                         .cursor_ns_resize()
-                                        .bg(cx.theme().border.opacity(0.5))
-                                        .hover(|style| style.bg(cx.theme().accent).h(px(8.)))
+                                        .child(
+                                            div()
+                                                .absolute()
+                                                .top(px(1.5))
+                                                .left_0()
+                                                .right_0()
+                                                .h(px(3.))
+                                                .rounded_tl(px(8.))
+                                                .rounded_tr(px(8.))
+                                                .bg(if self.state.drawer_resizing {
+                                                    resize_handle_blue
+                                                } else {
+                                                    resize_handle_black
+                                                })
+                                                .when(!self.state.drawer_resizing, |this| {
+                                                    this.group_hover(
+                                                        "docked-file-drawer-resize-handle",
+                                                        |style| {
+                                                            style.bg(
+                                                                resize_handle_blue.opacity(0.45),
+                                                            )
+                                                        },
+                                                    )
+                                                }),
+                                        )
                                         .on_mouse_down(
                                             MouseButton::Left,
-                                            cx.listener(|this, _event, _window, cx| {
+                                            cx.listener(|this, event: &MouseDownEvent, _window, cx| {
+                                                this.state.drawer_resize_start_y = event.position.y.into();
+                                                this.state.drawer_resize_start_height = this.state.drawer_height;
                                                 this.state.drawer_resizing = true;
                                                 cx.notify();
                                             }),
@@ -843,10 +943,10 @@ impl Render for PulsarApp {
                         )
                         .when(self.state.drawer_resizing, |this| {
                             this.on_mouse_move(cx.listener(
-                                |app, event: &MouseMoveEvent, window, cx| {
-                                    let window_height: f32 = window.viewport_size().height.into();
+                                |app, event: &MouseMoveEvent, _window, cx| {
                                     let mouse_y: f32 = event.position.y.into();
-                                    let new_height = window_height - mouse_y;
+                                    let drag_delta = mouse_y - app.state.drawer_resize_start_y;
+                                    let new_height = app.state.drawer_resize_start_height - drag_delta;
                                     app.state.drawer_height = new_height.clamp(200.0, 700.0);
                                     cx.notify();
                                 },

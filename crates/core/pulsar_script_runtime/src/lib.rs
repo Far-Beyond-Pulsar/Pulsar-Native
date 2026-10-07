@@ -61,14 +61,13 @@ use pulsar_script_vm::migrate::{self, MigrationSource, VariableFate};
 mod latent;
 mod phase;
 mod state;
+pub use phase::{PhaseStats, DEFAULT_PARALLEL_THRESHOLD};
 use pulsar_script_vm::{
     Budget, CapabilityPolicy, Completion, Continuation, DebugCommand, DebugSnapshot, Debugger,
-    ErrorSite, EventCatalog, EventDecl, EventSink, FuncId, Host, Instance, LibraryError, LibraryId,
-    LinkError, LinkedSubscription, Module, NativeFn, NativeLibraries, NativeRegistry, Program,
-    ScriptError, SourceLoc, Type, TypeRegistry, Value, Variable, Vm,
-    Latent, Wake,
+    ErrorSite, EventCatalog, EventDecl, EventSink, FuncId, Host, Instance, Latent, LibraryError,
+    LibraryId, LinkError, LinkedSubscription, Module, NativeFn, NativeLibraries, NativeRegistry,
+    Program, ScriptError, SourceLoc, Type, TypeRegistry, Value, Variable, Vm, Wake,
 };
-pub use phase::{PhaseStats, DEFAULT_PARALLEL_THRESHOLD};
 pub use state::{value_to_json, RestoreReport, SavedState, SavedVariable};
 
 /// The engine's event hub, as the runtime sees it: a sink for the event
@@ -519,7 +518,9 @@ impl ScriptRuntime {
 
     /// Number of suspended calls on an instance.
     pub fn waiting_calls(&self, object_id: &str) -> usize {
-        self.instances.get(object_id).map_or(0, |i| i.waiting.len() + i.blocked.len())
+        self.instances
+            .get(object_id)
+            .map_or(0, |i| i.waiting.len() + i.blocked.len())
     }
 
     /// Runtime counters for live script instances, in spawn order.

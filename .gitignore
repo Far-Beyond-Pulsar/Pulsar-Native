@@ -44,3 +44,4 @@ blueprint_graph_debug.json
 /crates/target/generated
 /target-perf-investigation
 /target-perf-investigation-o3
+docs/blog/helio-planet-scale-voxel-terrain.md

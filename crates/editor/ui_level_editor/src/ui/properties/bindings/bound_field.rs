@@ -7,12 +7,11 @@
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 use ui::{
-    ActiveTheme, Sizable,
     button::ButtonVariants as _,
     checkbox::Checkbox,
     h_flex,
     input::{InputEvent, InputState, NumberInput, NumberInputEvent, StepAction, TextInput},
-    v_flex,
+    v_flex, ActiveTheme, Sizable,
 };
 
 use super::field_bindings::{BoolFieldBinding, F32FieldBinding, FieldBinding, StringFieldBinding};

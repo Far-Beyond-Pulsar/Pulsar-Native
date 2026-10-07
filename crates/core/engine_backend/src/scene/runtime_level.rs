@@ -181,7 +181,7 @@ impl RuntimeLevel {
             let Some(entity) = world.entity_for(&obj.id) else {
                 continue;
             };
-            let (instances, has_component_source) = match persisted.get(&obj.id) {
+            let (mut instances, has_component_source) = match persisted.get(&obj.id) {
                 // A persisted entry is authoritative, including an explicit empty
                 // array, which means all registered components are removed.
                 Some(records) => (records.clone(), true),
@@ -201,6 +201,22 @@ impl RuntimeLevel {
                     (records, component_source_present(obj))
                 }
             };
+            let legacy = instances
+                .iter()
+                .find(|record| record.class_name == "MaterialOverrideComponent")
+                .map(|record| record.data.clone());
+            if let Some(legacy) = legacy {
+                if let Some(mesh) = instances
+                    .iter_mut()
+                    .find(|record| record.class_name == "StaticMeshComponent")
+                {
+                    if let Some(data) = mesh.data.as_object_mut() {
+                        data.entry("legacy_material_override")
+                            .or_insert(legacy);
+                    }
+                }
+                instances.retain(|record| record.class_name != "MaterialOverrideComponent");
+            }
 
             // SceneDB keeps the ordered compatibility projection as well as the
             // typed registered component values. Older consumers can therefore
@@ -923,7 +939,8 @@ mod tests {
         )
         .unwrap();
 
-        let level = RuntimeLevel::load_with_classes(&level_path, &registry).expect("old level loads");
+        let level =
+            RuntimeLevel::load_with_classes(&level_path, &registry).expect("old level loads");
         let scene = level.scene();
         let scene = scene.read();
         let world = &scene.world;
@@ -934,7 +951,11 @@ mod tests {
         assert_eq!(instance.class_name, "Lamp");
         assert!(!instance.class.is_empty(), "resolved to the class GUID");
         assert_eq!(
-            world.get::<LightComponent>(lamp).unwrap().intensity.intensity,
+            world
+                .get::<LightComponent>(lamp)
+                .unwrap()
+                .intensity
+                .intensity,
             42.0,
             "prefab component built on the placed object"
         );

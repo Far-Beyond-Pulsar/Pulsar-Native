@@ -41,6 +41,14 @@ pub struct MeshProps {
     pub bounds_max: [f32; 3],
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum MeshRenderMode {
+    #[default]
+    Lit,
+    Unlit,
+    Wireframe,
+}
+
 pub struct AssetViewerPanel {
     pub focus_handle: FocusHandle,
     pub current_path: Option<PathBuf>,
@@ -57,11 +65,9 @@ pub struct AssetViewerPanel {
     pub surface_config: Option<wgpu::SurfaceConfiguration>,
     pub surface_handle: Option<gpui::WgpuSurfaceHandle>,
 
-    pub wire_vertex_buffer: Option<wgpu::Buffer>,
+    pub wire_index_buffer: Option<wgpu::Buffer>,
     pub wire_index_count: u32,
     pub wire_pipeline: Option<wgpu::RenderPipeline>,
-    pub wire_bind_group: Option<wgpu::BindGroup>,
-    pub wire_uniform_buffer: Option<wgpu::Buffer>,
 
     pub depth_texture: Option<wgpu::Texture>,
     pub depth_view: Option<wgpu::TextureView>,
@@ -74,6 +80,7 @@ pub struct AssetViewerPanel {
     pub mesh_pipeline: Option<wgpu::RenderPipeline>,
     pub mesh_bind_group: Option<wgpu::BindGroup>,
     pub mesh_uniform_buffer: Option<wgpu::Buffer>,
+    pub render_mode: MeshRenderMode,
 
     pub quad_pipeline: Option<wgpu::RenderPipeline>,
     pub quad_bind_group_layout: Option<wgpu::BindGroupLayout>,
@@ -374,11 +381,9 @@ impl AssetViewerPanel {
             queue: None,
             surface_config: None,
             surface_handle: None,
-            wire_vertex_buffer: None,
+            wire_index_buffer: None,
             wire_index_count: 0,
             wire_pipeline: None,
-            wire_bind_group: None,
-            wire_uniform_buffer: None,
             depth_texture: None,
             depth_view: None,
             mesh_vertex_buffer: None,
@@ -389,6 +394,7 @@ impl AssetViewerPanel {
             mesh_pipeline: None,
             mesh_bind_group: None,
             mesh_uniform_buffer: None,
+            render_mode: MeshRenderMode::Lit,
             quad_pipeline: None,
             quad_bind_group_layout: None,
             quad_bind_group: None,

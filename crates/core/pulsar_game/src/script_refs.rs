@@ -216,10 +216,12 @@ mod tests {
     fn scene() -> (pulsar_scenedb::SceneDb, Entity, Entity) {
         let mut store = engine_backend::scene::new_scene();
         let door = store
-            .world.spawn_object(engine_backend::scene::SpawnObject::new("Front Door").with_id("door"))
+            .world
+            .spawn_object(engine_backend::scene::SpawnObject::new("Front Door").with_id("door"))
             .expect("spawn door");
         let lamp = store
-            .world.spawn_object(engine_backend::scene::SpawnObject::new("Red Lamp").with_id("lamp"))
+            .world
+            .spawn_object(engine_backend::scene::SpawnObject::new("Red Lamp").with_id("lamp"))
             .expect("spawn lamp");
         (store, door, lamp)
     }

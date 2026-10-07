@@ -1,11 +1,11 @@
 //! Scene spline storage and undoable authoring operations.
 
 use crate::{
-    commands::{CommandResult, SceneCommand, execute_command},
+    commands::{execute_command, CommandResult, SceneCommand},
     scene_edit::{self, ObjectType, SceneObjectData, Transform},
     state::{
-        LevelEditorState,
         spline::{SplineData, SplinePoint},
+        LevelEditorState,
     },
 };
 use glam::{Mat4, Quat, Vec3};
@@ -290,7 +290,10 @@ mod tests {
         let object = selected(&state).unwrap().0;
         let saved = scene_edit::components::get_components(&state.scene.world(), &object.id);
         let spline = saved.iter().find(|c| c.class_name == SPLINE_CLASS).unwrap();
-        assert_eq!(serde_json::from_value::<SplineData>(spline.data.clone()).unwrap(), curve);
+        assert_eq!(
+            serde_json::from_value::<SplineData>(spline.data.clone()).unwrap(),
+            curve
+        );
     }
     #[test]
     fn edits_reach_the_world_component_the_renderer_reads() {
@@ -301,7 +304,9 @@ mod tests {
         let object = selected(&state).unwrap().0;
         let world = state.scene.world();
         let entity = world.entity_for(&object.id).unwrap();
-        let live = world.get::<SplineData>(entity).expect("typed World component");
+        let live = world
+            .get::<SplineData>(entity)
+            .expect("typed World component");
         assert!(live.closed);
         assert!(object.props.get(LEGACY_SPLINE_PROPERTY).is_none());
     }
@@ -327,7 +332,13 @@ mod tests {
             LEGACY_SPLINE_PROPERTY.into(),
             serde_json::to_value(&legacy).unwrap(),
         );
-        let result = execute_command(&mut state, SceneCommand::AddObject { data: object, parent_id: None });
+        let result = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: object,
+                parent_id: None,
+            },
+        );
         select(&mut state, result.affected_ids[0].clone());
         assert_eq!(selected(&state).unwrap().1, legacy);
         edit(&mut state, |d| d.closed = true);

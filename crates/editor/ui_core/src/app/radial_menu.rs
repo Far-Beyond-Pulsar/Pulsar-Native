@@ -20,12 +20,12 @@
 use std::time::Duration;
 
 use gpui::{
-    Action, AnyElement, App, Bounds, Context, FocusHandle, InteractiveElement as _, IntoElement,
-    KeyUpEvent, KeystrokeEvent, ParentElement, Pixels, Point, Styled, Subscription, Window, div,
-    prelude::FluentBuilder as _,
+    div, prelude::FluentBuilder as _, Action, AnyElement, App, Bounds, Context, FocusHandle,
+    InteractiveElement as _, IntoElement, KeyUpEvent, KeystrokeEvent, ParentElement, Pixels, Point,
+    Styled, Subscription, Window,
 };
 use ui::IconName;
-use ui_common::radial_menu::{MAX_ITEMS, RadialMenu, RadialMenuItem};
+use ui_common::radial_menu::{RadialMenu, RadialMenuItem, MAX_ITEMS};
 
 use super::PulsarApp;
 
@@ -74,7 +74,10 @@ fn setting(key: &str) -> Option<engine_state::ConfigValue> {
 }
 
 fn enabled() -> bool {
-    !matches!(setting("enabled"), Some(engine_state::ConfigValue::Bool(false)))
+    !matches!(
+        setting("enabled"),
+        Some(engine_state::ConfigValue::Bool(false))
+    )
 }
 
 fn hold_delay() -> Duration {
@@ -164,7 +167,12 @@ impl PulsarApp {
         self.state.radial._subscriptions = vec![intercept, activation];
     }
 
-    fn radial_intercept(&mut self, event: &KeystrokeEvent, window: &mut Window, cx: &mut Context<Self>) {
+    fn radial_intercept(
+        &mut self,
+        event: &KeystrokeEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let keystroke = &event.keystroke;
         if matches!(self.state.radial.phase, Phase::Idle) {
             if keystroke.key == "tab"
@@ -177,7 +185,10 @@ impl PulsarApp {
             }
             return;
         }
-        let Phase::Held { menu, dismissed, .. } = &mut self.state.radial.phase else {
+        let Phase::Held {
+            menu, dismissed, ..
+        } = &mut self.state.radial.phase
+        else {
             return;
         };
         // Tab is held: every key belongs to the menu (Tab itself is repeat).
@@ -230,8 +241,10 @@ impl PulsarApp {
         let delay = hold_delay();
         cx.spawn_in(window, async move |this, cx| {
             cx.background_executor().timer(delay).await;
-            this.update_in(cx, |app, window, cx| app.radial_open(generation, window, cx))
-                .ok();
+            this.update_in(cx, |app, window, cx| {
+                app.radial_open(generation, window, cx)
+            })
+            .ok();
         })
         .detach();
     }
@@ -290,7 +303,10 @@ impl PulsarApp {
                 continue;
             }
             items.push(RadialMenuItem {
-                label: label.map(str::to_string).unwrap_or_else(|| humanize(name)).into(),
+                label: label
+                    .map(str::to_string)
+                    .unwrap_or_else(|| humanize(name))
+                    .into(),
                 icon: icon_for(name),
                 action,
             });
@@ -342,7 +358,11 @@ impl PulsarApp {
     }
 
     /// The catcher (always present, invisible) and, while open, the menu.
-    pub(super) fn render_radial_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub(super) fn render_radial_menu(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let catcher = div()
             .id("radial-menu-catcher")
             .absolute()
@@ -355,16 +375,24 @@ impl PulsarApp {
             }));
 
         let menu = match &self.state.radial.phase {
-            Phase::Held { menu: Some(menu), .. } => {
+            Phase::Held {
+                menu: Some(menu), ..
+            } => {
                 let hover = cx.listener(|app, position: &Point<Pixels>, _, cx| {
-                    if let Phase::Held { menu: Some(menu), .. } = &mut app.state.radial.phase {
+                    if let Phase::Held {
+                        menu: Some(menu), ..
+                    } = &mut app.state.radial.phase
+                    {
                         if menu.select_at(*position) {
                             cx.notify();
                         }
                     }
                 });
                 let scroll = cx.listener(|app, delta: &Pixels, _, cx| {
-                    if let Phase::Held { menu: Some(menu), .. } = &mut app.state.radial.phase {
+                    if let Phase::Held {
+                        menu: Some(menu), ..
+                    } = &mut app.state.radial.phase
+                    {
                         if menu.scroll(*delta) {
                             cx.notify();
                         }
@@ -393,16 +421,28 @@ mod tests {
 
     #[test]
     fn item_lines_parse_with_and_without_labels() {
-        assert_eq!(parse_line("Save | level_editor::SaveScene"), Some((Some("Save"), "level_editor::SaveScene")));
-        assert_eq!(parse_line("  level_editor::Undo  "), Some((None, "level_editor::Undo")));
-        assert_eq!(parse_line(" | level_editor::Undo"), Some((None, "level_editor::Undo")));
+        assert_eq!(
+            parse_line("Save | level_editor::SaveScene"),
+            Some((Some("Save"), "level_editor::SaveScene"))
+        );
+        assert_eq!(
+            parse_line("  level_editor::Undo  "),
+            Some((None, "level_editor::Undo"))
+        );
+        assert_eq!(
+            parse_line(" | level_editor::Undo"),
+            Some((None, "level_editor::Undo"))
+        );
         assert_eq!(parse_line(""), None);
         assert_eq!(parse_line("# comment"), None);
     }
 
     #[test]
     fn action_names_humanize() {
-        assert_eq!(humanize("level_editor::DuplicateObject"), "Duplicate Object");
+        assert_eq!(
+            humanize("level_editor::DuplicateObject"),
+            "Duplicate Object"
+        );
         assert_eq!(humanize("Undo"), "Undo");
     }
 
@@ -413,6 +453,8 @@ mod tests {
             .filter_map(parse_line)
             .collect();
         assert!(parsed.len() >= 8);
-        assert!(parsed.iter().all(|(label, name)| label.is_some() && name.contains("::")));
+        assert!(parsed
+            .iter()
+            .all(|(label, name)| label.is_some() && name.contains("::")));
     }
 }

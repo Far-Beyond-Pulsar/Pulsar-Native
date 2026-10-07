@@ -10,11 +10,13 @@ ui_common = { workspace = true }
 window_manager = { workspace = true }
 engine_state = { workspace = true }
 engine_backend = { workspace = true }
+editor_task_queue = { workspace = true }
 parking_lot = { workspace = true }
 profiling = { workspace = true }
 serde_json = { workspace = true }
 smol = { workspace = true }
 tracing = { workspace = true }
+rodio = { version = "0.21.1", default-features = false, features = ["playback", "mp3"] }
 
 [lints]
 workspace = true

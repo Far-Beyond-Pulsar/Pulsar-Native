@@ -3,8 +3,8 @@
 use std::rc::Rc;
 
 use gpui::{
-    ClipboardItem, Context, FontWeight, IntoElement, ListSizingBehavior, Render, Size, Window,
-    div, prelude::*, px, size,
+    ClipboardItem, Context, FontWeight, IntoElement, ListSizingBehavior, Render, Size, Window, div,
+    prelude::*, px, size,
 };
 use ui::button::{Button, ButtonVariants as _};
 use ui::{
@@ -102,24 +102,35 @@ impl Render for FailureList {
             .w_full()
             .h(px(560.))
             .gap_3()
-            .child(div().text_sm().text_color(cx.theme().muted_foreground).child(format!(
-                "{} compiler error{} captured from Cargo.",
-                self.errors.len(),
-                if self.errors.len() == 1 { "" } else { "s" }
-            )))
             .child(
-                div().id("build-failure-list-container").flex_1().overflow_hidden().child(
-                    v_virtual_list(
-                        view,
-                        "build-failure-list",
-                        sizes,
-                        |this, range, _window, cx| {
-                            range.map(|ix| this.render_error(ix, cx)).collect::<Vec<_>>()
-                        },
-                    )
-                    .with_sizing_behavior(ListSizingBehavior::Infer)
-                    .track_scroll(&self.scroll_handle),
-                ),
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!(
+                        "{} compiler error{} captured from Cargo.",
+                        self.errors.len(),
+                        if self.errors.len() == 1 { "" } else { "s" }
+                    )),
+            )
+            .child(
+                div()
+                    .id("build-failure-list-container")
+                    .flex_1()
+                    .overflow_hidden()
+                    .child(
+                        v_virtual_list(
+                            view,
+                            "build-failure-list",
+                            sizes,
+                            |this, range, _window, cx| {
+                                range
+                                    .map(|ix| this.render_error(ix, cx))
+                                    .collect::<Vec<_>>()
+                            },
+                        )
+                        .with_sizing_behavior(ListSizingBehavior::Infer)
+                        .track_scroll(&self.scroll_handle),
+                    ),
             )
     }
 }
@@ -132,29 +143,36 @@ pub fn show(message: String, title: String, window: &mut Window, cx: &mut gpui::
     window.open_modal(cx, move |modal, _, cx| {
         let list = cx.new(|_| FailureList::new(errors.clone()));
         let copy_all = all.clone();
-        modal.width(px(900.)).title(title.clone()).show_close(true).overlay_closable(true).child(
-            v_flex().w_full().gap_3().child(list).child(
-                h_flex()
-                    .w_full()
-                    .justify_end()
-                    .gap_2()
-                    .child(
-                        Button::new("copy-all-build-errors")
-                            .primary()
-                            .icon(IconName::Copy)
-                            .label("Copy All Errors")
-                            .on_click(move |_, _, cx| {
-                                cx.write_to_clipboard(ClipboardItem::new_string(copy_all.clone()));
-                            }),
-                    )
-                    .child(
-                        Button::new("close-build-errors")
-                            .ghost()
-                            .label("Close")
-                            .on_click(|_, window, cx| window.close_modal(cx)),
-                    ),
-            ),
-        )
+        modal
+            .width(px(900.))
+            .title(title.clone())
+            .show_close(true)
+            .overlay_closable(true)
+            .child(
+                v_flex().w_full().gap_3().child(list).child(
+                    h_flex()
+                        .w_full()
+                        .justify_end()
+                        .gap_2()
+                        .child(
+                            Button::new("copy-all-build-errors")
+                                .primary()
+                                .icon(IconName::Copy)
+                                .label("Copy All Errors")
+                                .on_click(move |_, _, cx| {
+                                    cx.write_to_clipboard(ClipboardItem::new_string(
+                                        copy_all.clone(),
+                                    ));
+                                }),
+                        )
+                        .child(
+                            Button::new("close-build-errors")
+                                .ghost()
+                                .label("Close")
+                                .on_click(|_, window, cx| window.close_modal(cx)),
+                        ),
+                ),
+            )
     });
 }
 
@@ -164,7 +182,8 @@ mod tests {
 
     #[test]
     fn errors_are_split_on_the_separator() {
-        let message = format!("cargo build failed:\n\na{ERROR_SEPARATOR}b\n\n{ERROR_SEPARATOR}\n\n");
+        let message =
+            format!("cargo build failed:\n\na{ERROR_SEPARATOR}b\n\n{ERROR_SEPARATOR}\n\n");
         assert_eq!(parse_errors(&message), ["cargo build failed:\n\na", "b"]);
     }
 

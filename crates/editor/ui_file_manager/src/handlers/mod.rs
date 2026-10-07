@@ -206,9 +206,22 @@ pub fn handle_create_asset(
     }
 }
 
+pub fn handle_new_file(
+    d: &mut FileManagerDrawer,
+    action: &NewFile,
+    w: &mut Window,
+    cx: &mut Context<FileManagerDrawer>,
+) {
+    if !action.folder_path.is_empty() {
+        d.selected_folder = Some(PathBuf::from(&action.folder_path));
+    }
+    d.start_new_file(w, cx);
+}
+
 pub fn handle_new_folder(
     d: &mut FileManagerDrawer,
     action: &NewFolder,
+    w: &mut Window,
     cx: &mut Context<FileManagerDrawer>,
 ) {
     let base = if !action.folder_path.is_empty() {
@@ -220,13 +233,13 @@ pub fn handle_new_folder(
         return;
     };
     let mut c = 1;
-    let mut name = "NewFolder".to_string();
+    let mut name = "New Folder".to_string();
     let mut fp = crate::utils::cloud_join(&folder, &name);
     while (engine_fs::virtual_fs::is_remote()
         && engine_fs::virtual_fs::exists(&fp).unwrap_or(false))
         || (!engine_fs::virtual_fs::is_remote() && fp.exists())
     {
-        name = format!("NewFolder_{}", c);
+        name = format!("New Folder ({})", c);
         fp = crate::utils::cloud_join(&folder, &name);
         c += 1;
     }
@@ -238,9 +251,8 @@ pub fn handle_new_folder(
     } {
         tracing::error!("new_folder: {}", e);
     } else {
-        d.renaming_item = Some(fp);
+        crate::utils::start_rename(d, fp, w, cx);
         d.mark_directory_cache_dirty();
-        cx.notify();
     }
 }
 
@@ -447,11 +459,17 @@ pub fn handle_toggle_favorite(
     tracing::info!("favorite not impl");
 }
 pub fn handle_toggle_hidden(
-    _: &mut FileManagerDrawer,
+    drawer: &mut FileManagerDrawer,
     _: &ToggleHidden,
-    _: &mut Context<FileManagerDrawer>,
+    cx: &mut Context<FileManagerDrawer>,
 ) {
-    tracing::info!("hidden not impl");
+    drawer.show_hidden_files = !drawer.show_hidden_files;
+    drawer.persist_preference(
+        "show_hidden_files",
+        engine_state::ConfigValue::Bool(drawer.show_hidden_files),
+    );
+    drawer.directory_cache_dirty = true;
+    cx.notify();
 }
 pub fn handle_show_history(
     _: &mut FileManagerDrawer,

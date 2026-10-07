@@ -209,10 +209,7 @@ impl fmt::Debug for Value {
             Self::Component(v) => write!(f, "{v:?}"),
             Self::Object(v) => write!(f, "{}(..)", v.type_name()),
             Self::List(items) => f.debug_list().entries(items.iter()).finish(),
-            Self::Map(entries) => f
-                .debug_map()
-                .entries(entries.iter())
-                .finish(),
+            Self::Map(entries) => f.debug_map().entries(entries.iter()).finish(),
             Self::Tuple(items) => {
                 let mut tuple = f.debug_tuple("");
                 for item in items.iter() {

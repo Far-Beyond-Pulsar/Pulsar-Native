@@ -7,7 +7,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use crate::commands::{SceneCommand, execute_command};
+        use crate::commands::{execute_command, SceneCommand};
         let mut state = self.shared_state.write();
         execute_command(
             &mut state,
@@ -38,7 +38,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use crate::commands::{SceneCommand, execute_command};
+        use crate::commands::{execute_command, SceneCommand};
         let mut state = self.shared_state.write();
         execute_command(
             &mut state,
@@ -69,7 +69,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use crate::commands::{SceneCommand, execute_command};
+        use crate::commands::{execute_command, SceneCommand};
         let selected = self.shared_state.read().scene.selected_object();
         if let Some(id) = selected {
             let mut state = self.shared_state.write();
@@ -86,7 +86,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use crate::commands::{SceneCommand, execute_command};
+        use crate::commands::{execute_command, SceneCommand};
         let selected = self.shared_state.read().scene.selected_object();
         if let Some(id) = selected {
             let mut state = self.shared_state.write();

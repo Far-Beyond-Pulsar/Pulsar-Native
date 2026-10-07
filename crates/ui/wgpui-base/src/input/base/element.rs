@@ -2426,12 +2426,7 @@ impl<M: InputModeKind> Element for TextElement<M> {
                     window.paint_quad(fill(ghost_bounds, editor_background));
 
                     // Paint ghost line text
-                    _ = ghost_line.paint(
-                        ghost_p,
-                        line_height,
-                        window,
-                        cx,
-                    );
+                    _ = ghost_line.paint(ghost_p, line_height, window, cx);
                     offset_y += line_height;
                 }
             }
@@ -3398,5 +3393,3 @@ mod tests {
         );
     }
 }
-
-

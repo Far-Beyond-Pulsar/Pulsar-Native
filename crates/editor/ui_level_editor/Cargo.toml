@@ -23,6 +23,7 @@ pulsar_world_registry = { workspace = true }
 
 # Engine
 engine_state.workspace = true
+editor_task_queue.workspace = true
 engine_backend.workspace = true
 # Level file format types shared with the runtime loader (SceneFile's
 # BlueprintBindings, #650) so editor saves round-trip the section.

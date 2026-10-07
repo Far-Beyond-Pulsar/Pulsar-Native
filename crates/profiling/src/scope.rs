@@ -115,10 +115,7 @@ impl ProfileScope {
     }
 
     /// Begin a static-label scope with file location.
-    pub fn new_static_with_location(
-        name: &'static str,
-        location: Option<String>,
-    ) -> Self {
+    pub fn new_static_with_location(name: &'static str, location: Option<String>) -> Self {
         Self::new_name(ScopeName::Static(name), location)
     }
 
@@ -153,12 +150,19 @@ impl ProfileScope {
             let mut state = ts.borrow_mut();
             let depth = explicit_depth.unwrap_or(state.scope_stack.len() as u32);
             let thread_id = *state.thread_id.get_or_insert_with(get_thread_id);
-            let parent_scope_id = explicit_parent.or_else(|| state.scope_stack.last().map(|frame| frame.id));
+            let parent_scope_id =
+                explicit_parent.or_else(|| state.scope_stack.last().map(|frame| frame.id));
             let scope_id = allocate_scope_id();
             state.scope_stack.push(ScopeFrame { name, id: scope_id });
             (depth, thread_id, parent_scope_id)
         });
-        let scope_id = THREAD_STATE.with(|ts| ts.borrow().scope_stack.last().map(|frame| frame.id).unwrap_or(0));
+        let scope_id = THREAD_STATE.with(|ts| {
+            ts.borrow()
+                .scope_stack
+                .last()
+                .map(|frame| frame.id)
+                .unwrap_or(0)
+        });
 
         Self {
             start: Some(start),
@@ -260,7 +264,8 @@ pub struct ScopeContext {
 
 pub fn current_scope_context() -> ScopeContext {
     ScopeContext {
-        parent_scope_id: THREAD_STATE.with(|ts| ts.borrow().scope_stack.last().map(|frame| frame.id)),
+        parent_scope_id: THREAD_STATE
+            .with(|ts| ts.borrow().scope_stack.last().map(|frame| frame.id)),
         depth: THREAD_STATE.with(|ts| ts.borrow().scope_stack.len() as u32),
         track_name: TRACK_NAME.with(|track| track.borrow().clone()),
     }
@@ -284,7 +289,10 @@ pub fn record_elapsed(name: impl Into<String>, elapsed: std::time::Duration) {
             state.scope_stack.len() as u32,
             thread_id,
             state.scope_stack.last().map(|frame| frame.id),
-            state.scope_stack.last().map(|frame| frame.name.as_str().to_owned()),
+            state
+                .scope_stack
+                .last()
+                .map(|frame| frame.name.as_str().to_owned()),
         )
     });
     profiler.submit_event(ProfileEvent {

@@ -26,18 +26,17 @@
 use gpui::*;
 use rust_i18n::t;
 use ui::{
-    ActiveTheme, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
     h_flex,
     input::{InputEvent, InputState, TextInput},
     popover::Popover,
-    v_flex,
+    v_flex, ActiveTheme, Icon, IconName, Sizable,
 };
 use ui_common::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 
 use super::widgets::{
-    SharedState, ToolSpec, checkbox_row, collapsible_header, panel_header, stepper_row, tool_grid,
+    checkbox_row, collapsible_header, panel_header, stepper_row, tool_grid, SharedState, ToolSpec,
 };
 use crate::state::foliage_sets::{
     FoliageSelection, FoliageSetLibrary, MemberId, MemberPlacement, SetId,
@@ -166,17 +165,13 @@ impl FoliageSetsPanel {
             return;
         }
         self.pump_started = true;
-        crate::ui::frame_pump::spawn_frame_pump(
-            &cx.entity(),
-            window,
-            |this, _window, cx| {
-                let signature = FoliageSignature::of(&this.state);
-                if signature != this.last_signature {
-                    this.last_signature = signature;
-                    cx.notify();
-                }
-            },
-        );
+        crate::ui::frame_pump::spawn_frame_pump(&cx.entity(), window, |this, _window, cx| {
+            let signature = FoliageSignature::of(&this.state);
+            if signature != this.last_signature {
+                this.last_signature = signature;
+                cx.notify();
+            }
+        });
     }
 
     fn apply_rename(&self, text: String) {
@@ -506,7 +501,11 @@ impl FoliageSetsPanel {
                     state.write().editor.terrain.foliage_sets.selection =
                         Some(FoliageSelection::Set(set_id));
                 });
-            if selected { button.primary() } else { button }
+            if selected {
+                button.primary()
+            } else {
+                button
+            }
         };
         let remove = {
             let state = state.clone();
@@ -620,7 +619,11 @@ impl FoliageSetsPanel {
                     state.write().editor.terrain.foliage_sets.selection =
                         Some(FoliageSelection::Member(set_id, member_id));
                 });
-            if selected { button.primary() } else { button }
+            if selected {
+                button.primary()
+            } else {
+                button
+            }
         };
         let remove = {
             let state = state.clone();

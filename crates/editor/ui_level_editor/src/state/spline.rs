@@ -129,4 +129,3 @@ impl Default for SplineDomain {
         }
     }
 }
-

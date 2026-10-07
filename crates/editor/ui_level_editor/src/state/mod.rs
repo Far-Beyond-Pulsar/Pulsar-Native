@@ -41,7 +41,7 @@ pub use build::BuildDomain;
 pub use editor::EditorDomain;
 pub use hierarchy::HierarchyDomain;
 pub use overlays::OverlayDomain;
-pub use play::{MAX_PIE_PROBLEMS, PieControl, PieStartRequest, PlayDomain};
+pub use play::{PieControl, PieStartRequest, PlayDomain, MAX_PIE_PROBLEMS};
 pub use scene::SceneDomain;
 pub use spline::SplineDomain;
 pub use terrain::TerrainDomain;
@@ -124,9 +124,7 @@ pub fn request_thumbnail_capture(shared_state: &Arc<parking_lot::RwLock<LevelEdi
 
 // Re-export enums at the module level so `use crate::state::{TransformTool, ...}`
 // still works. These were previously in the flat state module.
-pub use editor::{
-    CameraMode, MultiplayerMode, TransformTool,
-};
+pub use editor::{CameraMode, MultiplayerMode, TransformTool};
 pub use hierarchy::{HierarchyDragPayload, HierarchyDragState};
 pub use overlays::OverlayState;
 pub use scene::EditorMode;

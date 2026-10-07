@@ -44,9 +44,9 @@ pub use auto_scroll::*;
 #[cfg(feature = "editor-core")]
 pub use button::*;
 #[cfg(feature = "editor-core")]
-pub use element_ext::*;
-#[cfg(feature = "editor-core")]
 pub use component_traits::*;
+#[cfg(feature = "editor-core")]
+pub use element_ext::*;
 #[cfg(feature = "editor-core")]
 pub use geometry::*;
 #[cfg(feature = "editor-core")]
@@ -64,9 +64,9 @@ pub use state_style::*;
 #[cfg(feature = "editor-core")]
 pub use styled::*;
 #[cfg(feature = "editor-core")]
-pub use theme_tokens::SemanticThemeTokens;
-#[cfg(feature = "editor-core")]
 pub use theme::*;
+#[cfg(feature = "editor-core")]
+pub use theme_tokens::SemanticThemeTokens;
 #[cfg(feature = "editor-core")]
 pub use touch_selection::*;
 

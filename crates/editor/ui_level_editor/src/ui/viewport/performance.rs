@@ -148,7 +148,13 @@ fn position_label(position: usize) -> SharedString {
     static LABELS: std::sync::OnceLock<Vec<SharedString>> = std::sync::OnceLock::new();
     let labels = LABELS.get_or_init(|| {
         (1..=HISTORY_CAPACITY)
-            .map(|n| SharedString::from(if n == HISTORY_CAPACITY { "1k".to_string() } else { n.to_string() }))
+            .map(|n| {
+                SharedString::from(if n == HISTORY_CAPACITY {
+                    "1k".to_string()
+                } else {
+                    n.to_string()
+                })
+            })
             .collect()
     });
     labels
@@ -232,7 +238,11 @@ impl EngineFrameSnapshot {
     pub fn record_into(&self, stats: &mut LiveStats) {
         // The renderer's metric stands in when the UI-side frame count is not
         // available yet.
-        let ui_fps = if self.ui_fps > 0.0 { self.ui_fps } else { self.helio_fps };
+        let ui_fps = if self.ui_fps > 0.0 {
+            self.ui_fps
+        } else {
+            self.helio_fps
+        };
         stats.record(Metric::UiFps, ui_fps);
         stats.record(Metric::RenderFps, self.render_fps);
         stats.record(Metric::FrameTimeMs, self.frame_time_ms);
@@ -285,8 +295,6 @@ impl EngineFrameSnapshot {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,14 +334,22 @@ mod tests {
         stats.record(Metric::Vertices, 5000.0);
         assert_eq!(stats.mean_since(&mut cursor, Metric::DrawCalls), 100.0);
         assert_eq!(stats.mean_since(&mut cursor, Metric::Vertices), 5000.0);
-        assert_eq!(stats.mean_since(&mut cursor, Metric::MemoryMb), 0.0, "never recorded");
+        assert_eq!(
+            stats.mean_since(&mut cursor, Metric::MemoryMb),
+            0.0,
+            "never recorded"
+        );
     }
 
     #[::core::prelude::v1::test]
     fn the_label_step_keeps_at_most_ten_labels_and_ends_at_hundreds() {
         let labels = |len: usize| len / label_step(len);
         for len in 1..=HISTORY_CAPACITY {
-            assert!(labels(len) <= MAX_LABELS, "{len} samples would show {} labels", labels(len));
+            assert!(
+                labels(len) <= MAX_LABELS,
+                "{len} samples would show {} labels",
+                labels(len)
+            );
         }
         assert_eq!(label_step(5), 1, "every sample while there are few");
         assert_eq!(label_step(10), 1);

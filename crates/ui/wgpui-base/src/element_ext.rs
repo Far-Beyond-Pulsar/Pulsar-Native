@@ -19,5 +19,3 @@ pub trait ElementExt: ParentElement + Sized {
 }
 
 impl<T: ParentElement> ElementExt for T {}
-
-

@@ -36,8 +36,8 @@ use std::process::Command;
 
 use pulsar_class::{ClassIndex, ClassRegistry};
 use pulsar_content::{
-    AssetRegistry, BuildProfile, PakWriter, ProjectSettings, ASSET_REGISTRY_FILE, CONTENT_DIR_NAME, PAK_FILE_NAME,
-    PROJECT_SETTINGS_FILE,
+    AssetRegistry, BuildProfile, PakWriter, ProjectSettings, ASSET_REGISTRY_FILE, CONTENT_DIR_NAME,
+    PAK_FILE_NAME, PROJECT_SETTINGS_FILE,
 };
 use serde::Serialize;
 
@@ -122,7 +122,10 @@ pub fn default_engine_assets() -> Option<PathBuf> {
 }
 
 /// Compile a project's scripts and verify them (`pulsar build-scripts`).
-pub fn build_scripts(project: &Path, profile: BuildProfile) -> Result<compile::CompileOutput, PackageError> {
+pub fn build_scripts(
+    project: &Path,
+    profile: BuildProfile,
+) -> Result<compile::CompileOutput, PackageError> {
     let settings = project_settings(project, profile)?;
     let output = compile::compile_project(project, &settings);
     if output.has_errors() {
@@ -131,7 +134,10 @@ pub fn build_scripts(project: &Path, profile: BuildProfile) -> Result<compile::C
     Ok(output)
 }
 
-fn project_settings(project: &Path, profile: BuildProfile) -> Result<ProjectSettings, PackageError> {
+fn project_settings(
+    project: &Path,
+    profile: BuildProfile,
+) -> Result<ProjectSettings, PackageError> {
     let path = project.join(PROJECT_SETTINGS_FILE);
     let mut settings = match std::fs::read(&path) {
         Ok(bytes) => ProjectSettings::from_json(&bytes).map_err(PackageError::Project)?,
@@ -143,19 +149,23 @@ fn project_settings(project: &Path, profile: BuildProfile) -> Result<ProjectSett
 
 /// Package a project. See the crate doc.
 pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> {
-    let project = options
-        .project
-        .canonicalize()
-        .map_err(|e| PackageError::Project(format!("project {}: {e}", options.project.display())))?;
+    let project = options.project.canonicalize().map_err(|e| {
+        PackageError::Project(format!("project {}: {e}", options.project.display()))
+    })?;
     let mut settings = project_settings(&project, options.profile)?;
-    let mut report = PackageReport { profile: options.profile.as_str().into(), ..Default::default() };
+    let mut report = PackageReport {
+        profile: options.profile.as_str().into(),
+        ..Default::default()
+    };
 
     // 1. Scripts.
     let compiled = compile::compile_project(&project, &settings);
     if compiled.has_errors() {
         return Err(PackageError::Scripts(compiled.problems));
     }
-    report.warnings.extend(compiled.problems.iter().map(ToString::to_string));
+    report
+        .warnings
+        .extend(compiled.problems.iter().map(ToString::to_string));
     let registry = ClassRegistry::scan(&project);
 
     // 2. Cook.
@@ -173,7 +183,12 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
             .dir
             .strip_prefix(&project)
             .ok()
-            .map(|rel| rel.components().map(|c| c.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/"))
+            .map(|rel| {
+                rel.components()
+                    .map(|c| c.as_os_str().to_string_lossy())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
             .filter(|rel| !rel.is_empty())
             .unwrap_or_else(|| format!("src/classes/{}", entry.name));
         files.insert(
@@ -183,29 +198,53 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
         let prefab_path = entry.dir.join(pulsar_class::PREFAB_FILE);
         if prefab_path.is_file() {
             // Slot ids are assigned (and saved to the project) by the load.
-            let prefab = pulsar_class::PrefabAsset::load_from_dir(&entry.dir).map_err(PackageError::Cook)?;
-            let mut value = serde_json::to_value(&prefab).map_err(|e| PackageError::Cook(e.to_string()))?;
-            if let Some(class_ref) = value.get_mut("blueprint_class").and_then(|v| v.as_object_mut()) {
+            let prefab =
+                pulsar_class::PrefabAsset::load_from_dir(&entry.dir).map_err(PackageError::Cook)?;
+            let mut value =
+                serde_json::to_value(&prefab).map_err(|e| PackageError::Cook(e.to_string()))?;
+            if let Some(class_ref) = value
+                .get_mut("blueprint_class")
+                .and_then(|v| v.as_object_mut())
+            {
                 class_ref.insert("class_path".into(), serde_json::Value::String(dir.clone()));
             }
-            cook::rewrite_assets(&mut value, &resolver, &mut assets, &format!("{dir}/prefab.json"));
+            cook::rewrite_assets(
+                &mut value,
+                &resolver,
+                &mut assets,
+                &format!("{dir}/prefab.json"),
+            );
             cook::relativize_project_paths(&mut value, &project);
             files.insert(format!("{dir}/{}", pulsar_class::PREFAB_FILE), json(&value));
         }
         if let Some(module) = &class.module {
             files.insert(
-                format!("{dir}/events/.build/{}", pulsar_game::scripting::MODULE_BINARY_FILE),
+                format!(
+                    "{dir}/events/.build/{}",
+                    pulsar_game::scripting::MODULE_BINARY_FILE
+                ),
                 module.to_binary(),
             );
         }
-        report.classes.push((entry.name.clone(), entry.id.as_str().to_owned(), class.module.is_some()));
+        report.classes.push((
+            entry.name.clone(),
+            entry.id.as_str().to_owned(),
+            class.module.is_some(),
+        ));
     }
     files.insert(
         pulsar_class::CLASS_INDEX_FILE.into(),
-        ClassIndex::from_registry(&registry, &project).to_json().into_bytes(),
+        ClassIndex::from_registry(&registry, &project)
+            .to_json()
+            .into_bytes(),
     );
-    if let Some(config) = cook::cook_scripting_config(&project, &registry).map_err(PackageError::Cook)? {
-        files.insert(pulsar_game::scripting::SCRIPTING_CONFIG_FILE.into(), json(&config));
+    if let Some(config) =
+        cook::cook_scripting_config(&project, &registry).map_err(PackageError::Cook)?
+    {
+        files.insert(
+            pulsar_game::scripting::SCRIPTING_CONFIG_FILE.into(),
+            json(&config),
+        );
     }
 
     // Levels: every `.level` file, plus the startup level.
@@ -215,36 +254,50 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
         .or_else(|| settings.startup_level.clone())
         .or_else(|| default_map(&project))
         .or_else(|| {
-            ["scene/default.level", "scenes/default.level", "scenes/default_level.json"]
-                .into_iter()
-                .find(|rel| project.join(rel).is_file())
-                .map(str::to_owned)
+            [
+                "scene/default.level",
+                "scenes/default.level",
+                "scenes/default_level.json",
+            ]
+            .into_iter()
+            .find(|rel| project.join(rel).is_file())
+            .map(str::to_owned)
         })
         .map(|rel| rel.replace('\\', "/"));
     let mut levels = cook::find_levels(&project, &[options.out.clone()]);
     if let Some(startup) = &startup {
         if !project.join(startup).is_file() {
-            return Err(PackageError::Project(format!("startup level {startup} does not exist")));
+            return Err(PackageError::Project(format!(
+                "startup level {startup} does not exist"
+            )));
         }
         levels.insert(startup.clone());
     } else {
-        report.warnings.push("no startup level: the game starts with an empty world".into());
+        report
+            .warnings
+            .push("no startup level: the game starts with an empty world".into());
     }
     for rel in &levels {
         let path = project.join(rel);
         let bytes = std::fs::read(&path).map_err(|e| PackageError::Cook(format!("{rel}: {e}")))?;
-        let value: serde_json::Value =
-            serde_json::from_slice(&bytes).map_err(|e| PackageError::Cook(format!("{rel}: {e}")))?;
-        let (cooked, level_report) = cook::cook_level(value, &registry, &resolver, &mut assets, rel);
+        let value: serde_json::Value = serde_json::from_slice(&bytes)
+            .map_err(|e| PackageError::Cook(format!("{rel}: {e}")))?;
+        let (cooked, level_report) =
+            cook::cook_level(value, &registry, &resolver, &mut assets, rel);
         for class in level_report.unresolved_classes {
-            report.warnings.push(format!("{rel}: placed class {class} is not in the project"));
+            report
+                .warnings
+                .push(format!("{rel}: placed class {class} is not in the project"));
         }
-        let rel = pulsar_content::normalize_rel(rel).ok_or_else(|| PackageError::Cook(format!("bad level path {rel}")))?;
+        let rel = pulsar_content::normalize_rel(rel)
+            .ok_or_else(|| PackageError::Cook(format!("bad level path {rel}")))?;
         files.insert(rel.clone(), json(&cooked));
         report.levels.push(rel);
     }
     for (context, value) in &assets.unresolved {
-        report.warnings.push(format!("{context}: asset `{value}` not found; not shipped"));
+        report
+            .warnings
+            .push(format!("{context}: asset `{value}` not found; not shipped"));
     }
 
     // Project settings, cooked.
@@ -254,13 +307,17 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
         settings.name = project_name(&project);
     }
     report.startup_level = settings.startup_level.clone();
-    files.insert(PROJECT_SETTINGS_FILE.into(), settings.to_json().into_bytes());
+    files.insert(
+        PROJECT_SETTINGS_FILE.into(),
+        settings.to_json().into_bytes(),
+    );
 
     // Assets.
     let mut registry_out = AssetRegistry::new();
     let mut asset_bytes: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     for (id, source) in &assets.assets {
-        let bytes = std::fs::read(source).map_err(|e| PackageError::Cook(format!("asset {}: {e}", source.display())))?;
+        let bytes = std::fs::read(source)
+            .map_err(|e| PackageError::Cook(format!("asset {}: {e}", source.display())))?;
         registry_out.insert(cook::asset_record(id, source, &project, &bytes));
         asset_bytes.insert(id.clone(), bytes);
     }
@@ -274,9 +331,11 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
     }
     let content_dir = options.out.join(CONTENT_DIR_NAME);
     if content_dir.exists() {
-        std::fs::remove_dir_all(&content_dir).map_err(|e| PackageError::Write(format!("{}: {e}", content_dir.display())))?;
+        std::fs::remove_dir_all(&content_dir)
+            .map_err(|e| PackageError::Write(format!("{}: {e}", content_dir.display())))?;
     }
-    std::fs::create_dir_all(&content_dir).map_err(|e| PackageError::Write(format!("{}: {e}", content_dir.display())))?;
+    std::fs::create_dir_all(&content_dir)
+        .map_err(|e| PackageError::Write(format!("{}: {e}", content_dir.display())))?;
     if options.loose {
         for (rel, bytes) in files.iter().chain(asset_bytes.iter()) {
             write_loose(&content_dir, rel, bytes)?;
@@ -284,26 +343,39 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
         }
         let registry_json = registry_out.to_json().into_bytes();
         write_loose(&content_dir, ASSET_REGISTRY_FILE, &registry_json)?;
-        report.files.insert(ASSET_REGISTRY_FILE.into(), registry_json.len() as u64);
+        report
+            .files
+            .insert(ASSET_REGISTRY_FILE.into(), registry_json.len() as u64);
     } else {
         let pak_path = content_dir.join(PAK_FILE_NAME);
-        let mut pak = PakWriter::create(&pak_path).map_err(|e| PackageError::Write(e.to_string()))?;
+        let mut pak =
+            PakWriter::create(&pak_path).map_err(|e| PackageError::Write(e.to_string()))?;
         // Assets first, so the registry (written last) knows their place.
         for (rel, bytes) in &asset_bytes {
-            let entry = pak.add(rel, bytes).map_err(|e| PackageError::Write(e.to_string()))?;
+            let entry = pak
+                .add(rel, bytes)
+                .map_err(|e| PackageError::Write(e.to_string()))?;
             if let Some(record) = registry_out.assets.get_mut(rel) {
-                record.pak = Some(pulsar_content::registry::PakLocation { offset: entry.offset, len: entry.len });
+                record.pak = Some(pulsar_content::registry::PakLocation {
+                    offset: entry.offset,
+                    len: entry.len,
+                });
             }
             report.files.insert(rel.clone(), bytes.len() as u64);
         }
         for (rel, bytes) in &files {
-            pak.add(rel, bytes).map_err(|e| PackageError::Write(e.to_string()))?;
+            pak.add(rel, bytes)
+                .map_err(|e| PackageError::Write(e.to_string()))?;
             report.files.insert(rel.clone(), bytes.len() as u64);
         }
         let registry_json = registry_out.to_json().into_bytes();
-        pak.add(ASSET_REGISTRY_FILE, &registry_json).map_err(|e| PackageError::Write(e.to_string()))?;
-        report.files.insert(ASSET_REGISTRY_FILE.into(), registry_json.len() as u64);
-        pak.finish().map_err(|e| PackageError::Write(e.to_string()))?;
+        pak.add(ASSET_REGISTRY_FILE, &registry_json)
+            .map_err(|e| PackageError::Write(e.to_string()))?;
+        report
+            .files
+            .insert(ASSET_REGISTRY_FILE.into(), registry_json.len() as u64);
+        pak.finish()
+            .map_err(|e| PackageError::Write(e.to_string()))?;
         report.pak = Some(pak_path);
     }
     report.out = options.out.clone();
@@ -312,7 +384,11 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
     if options.skip_build {
         tracing::warn!("--skip-build: the game executable was not built");
     } else {
-        report.executable = Some(build_game(&project, &options.out, options.target.as_deref())?);
+        report.executable = Some(build_game(
+            &project,
+            &options.out,
+            options.target.as_deref(),
+        )?);
     }
     Ok(report)
 }
@@ -320,9 +396,11 @@ pub fn package(options: &PackageOptions) -> Result<PackageReport, PackageError> 
 fn write_loose(content_dir: &Path, rel: &str, bytes: &[u8]) -> Result<(), PackageError> {
     let path = content_dir.join(rel);
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| PackageError::Write(format!("{}: {e}", parent.display())))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| PackageError::Write(format!("{}: {e}", parent.display())))?;
     }
-    std::fs::write(&path, bytes).map_err(|e| PackageError::Write(format!("{}: {e}", path.display())))
+    std::fs::write(&path, bytes)
+        .map_err(|e| PackageError::Write(format!("{}: {e}", path.display())))
 }
 
 /// A machine-specific path in a shipped text file: the project's own
@@ -340,7 +418,9 @@ pub fn machine_path_in(rel: &str, bytes: &[u8], project: &Path) -> Option<String
     let value: serde_json::Value = serde_json::from_str(text).ok()?;
     fn find(value: &serde_json::Value) -> Option<String> {
         match value {
-            serde_json::Value::String(s) if cook::is_absolute_path(s) && s.len() > 1 => Some(s.clone()),
+            serde_json::Value::String(s) if cook::is_absolute_path(s) && s.len() > 1 => {
+                Some(s.clone())
+            }
             serde_json::Value::Array(items) => items.iter().find_map(find),
             serde_json::Value::Object(map) => map.values().find_map(find),
             _ => None,
@@ -354,51 +434,88 @@ fn default_map(project: &Path) -> Option<String> {
     pulsar_settings::register_all_settings(engine_state::settings::global_config());
     let settings = engine_state::settings::ProjectSettings::new(project)?;
     settings.load_all();
-    let map = settings.get("project", "default_map")?.as_str().ok()?.to_owned();
+    let map = settings
+        .get("project", "default_map")?
+        .as_str()
+        .ok()?
+        .to_owned();
     (!map.is_empty() && project.join(&map).is_file()).then_some(map)
 }
 
 fn project_name(project: &Path) -> String {
-    project.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| "Pulsar Game".into())
+    project
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "Pulsar Game".into())
 }
 
 /// `cargo build --release` of the project's game binary, copied to `out`.
 fn build_game(project: &Path, out: &Path, target: Option<&str>) -> Result<PathBuf, PackageError> {
     let manifest = project.join("Cargo.toml");
-    let text = std::fs::read_to_string(&manifest)
-        .map_err(|e| PackageError::Build(format!("{}: {e} (is this a generated Pulsar project?)", manifest.display())))?;
-    let doc: toml::Table = text.parse().map_err(|e| PackageError::Build(format!("{}: {e}", manifest.display())))?;
+    let text = std::fs::read_to_string(&manifest).map_err(|e| {
+        PackageError::Build(format!(
+            "{}: {e} (is this a generated Pulsar project?)",
+            manifest.display()
+        ))
+    })?;
+    let doc: toml::Table = text
+        .parse()
+        .map_err(|e| PackageError::Build(format!("{}: {e}", manifest.display())))?;
     let bin = doc
         .get("bin")
         .and_then(|b| b.as_array())
         .and_then(|bins| {
-            let names: Vec<&str> = bins.iter().filter_map(|b| b.get("name")?.as_str()).collect();
-            names.iter().find(|n| n.ends_with("_game")).or(names.first()).map(|n| (*n).to_owned())
+            let names: Vec<&str> = bins
+                .iter()
+                .filter_map(|b| b.get("name")?.as_str())
+                .collect();
+            names
+                .iter()
+                .find(|n| n.ends_with("_game"))
+                .or(names.first())
+                .map(|n| (*n).to_owned())
         })
         .or_else(|| doc.get("package")?.get("name")?.as_str().map(str::to_owned))
         .ok_or_else(|| PackageError::Build("the project's Cargo.toml names no binary".into()))?;
 
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let mut command = Command::new(cargo);
-    command.arg("build").arg("--release").arg("--bin").arg(&bin).arg("--manifest-path").arg(&manifest);
+    command
+        .arg("build")
+        .arg("--release")
+        .arg("--bin")
+        .arg(&bin)
+        .arg("--manifest-path")
+        .arg(&manifest);
     if let Some(target) = target {
         command.arg("--target").arg(target);
     }
     tracing::info!(bin = %bin, "Building the game binary (cargo build --release)");
-    let status = command.status().map_err(|e| PackageError::Build(format!("cannot run cargo: {e}")))?;
+    let status = command
+        .status()
+        .map_err(|e| PackageError::Build(format!("cannot run cargo: {e}")))?;
     if !status.success() {
-        return Err(PackageError::Build(format!("cargo build exited with {status}")));
+        return Err(PackageError::Build(format!(
+            "cargo build exited with {status}"
+        )));
     }
 
-    let target_dir = std::env::var_os("CARGO_TARGET_DIR").map(PathBuf::from).unwrap_or_else(|| project.join("target"));
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| project.join("target"));
     let mut built = target_dir;
     if let Some(target) = target {
         built.push(target);
     }
     built.push("release");
-    let exe_name = if target.map_or(cfg!(windows), |t| t.contains("windows")) { format!("{bin}.exe") } else { bin };
+    let exe_name = if target.map_or(cfg!(windows), |t| t.contains("windows")) {
+        format!("{bin}.exe")
+    } else {
+        bin
+    };
     let built = built.join(&exe_name);
     let dest = out.join(&exe_name);
-    std::fs::copy(&built, &dest).map_err(|e| PackageError::Build(format!("copy {}: {e}", built.display())))?;
+    std::fs::copy(&built, &dest)
+        .map_err(|e| PackageError::Build(format!("copy {}: {e}", built.display())))?;
     Ok(dest)
 }

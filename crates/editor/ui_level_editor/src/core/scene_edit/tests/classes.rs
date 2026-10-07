@@ -3,13 +3,13 @@
 
 use std::path::{Path, PathBuf};
 
-use engine_backend::scene::{SceneWorldExt, new_scene};
+use engine_backend::scene::{new_scene, SceneWorldExt};
 use helio_component::components::LightComponent;
 use pulsar_class::ClassRegistry;
 use pulsar_scenedb::World;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
-use super::super::{Transform, classes, components, history, level_io, objects};
+use super::super::{classes, components, history, level_io, objects, Transform};
 
 fn light_json(intensity: f32) -> Value {
     let mut light = LightComponent::default();
@@ -225,10 +225,8 @@ fn old_levels_migrate_on_load_and_save_without_the_old_fields() {
             1.0,
             "{id} has the class components"
         );
-        assert!(
-            !components::get_component_class_names(world, id)
-                .contains(&"ScriptComponent".to_string())
-        );
+        assert!(!components::get_component_class_names(world, id)
+            .contains(&"ScriptComponent".to_string()));
     }
     assert_eq!(
         classes::class_instance(world, "bound")
@@ -333,7 +331,7 @@ fn details_view_marks_overrides_and_reverts_them() {
 fn class_asset_updates_rebuild_placed_instances() {
     use crate::core::asset_updates;
     use crate::state::LevelEditorState;
-    use plugin_editor_api::{AssetKind, AssetUpdated, publish_asset_updated};
+    use plugin_editor_api::{publish_asset_updated, AssetKind, AssetUpdated};
 
     let (_project, dir) = project_with_lamp(1.0);
     let state = std::sync::Arc::new(parking_lot::RwLock::new(LevelEditorState::new()));
@@ -457,7 +455,7 @@ fn class_color_edit_reaches_live_lights_and_their_render_rows() {
 /// go through the normal command path, so undo brings the override back.
 #[test]
 fn reverts_and_variable_edits_are_undoable_commands() {
-    use crate::commands::{SceneCommand, execute_command};
+    use crate::commands::{execute_command, SceneCommand};
     use crate::state::LevelEditorState;
 
     let (project, dir) = project_with_lamp(1.0);
@@ -521,12 +519,10 @@ fn reverts_and_variable_edits_are_undoable_commands() {
             value: None,
         },
     );
-    assert!(
-        classes::class_instance(&state.scene.world(), &a)
-            .unwrap()
-            .variable_overrides
-            .is_empty()
-    );
+    assert!(classes::class_instance(&state.scene.world(), &a)
+        .unwrap()
+        .variable_overrides
+        .is_empty());
     state.scene.undo();
     assert_eq!(
         classes::class_instance(&state.scene.world(), &a)

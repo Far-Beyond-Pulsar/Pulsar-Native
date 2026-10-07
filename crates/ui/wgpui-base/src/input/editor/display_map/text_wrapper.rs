@@ -289,9 +289,9 @@ impl TextWrapper {
         new_text: &Rope,
         cx: &mut App,
     ) {
-        let mut line_wrapper = cx
-            .text_system()
-            .line_wrapper(self.font.clone(), self.font_size, None);
+        let mut line_wrapper =
+            cx.text_system()
+                .line_wrapper(self.font.clone(), self.font_size, None);
         self._update(
             changed_text,
             range,
@@ -1539,5 +1539,3 @@ mod tests {
         )
     }
 }
-
-

@@ -69,7 +69,11 @@ pub enum LinkError {
     /// The module compares or prints a value type that has no equality or
     /// display registered (`script_value_ops!`).
     #[error("`{function}`: {message}")]
-    UnsupportedOperation { function: String, pc: usize, message: String },
+    UnsupportedOperation {
+        function: String,
+        pc: usize,
+        message: String,
+    },
 }
 
 /// What went wrong while running.

@@ -10,8 +10,8 @@
 
 use gpui::*;
 
-use super::LevelEditorPanel;
 use super::pie::{begin_pie, end_pie};
+use super::LevelEditorPanel;
 
 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
 use crate::ui::actions::*;

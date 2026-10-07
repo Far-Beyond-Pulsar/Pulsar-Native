@@ -428,6 +428,15 @@ impl ScriptDriver {
             old.clear();
         }
         let events = ScriptEvents::new(hub);
+        for registration in pulsar_world_registry::component_event_registrations() {
+            let declaration = (registration.declaration)();
+            if let Err(error) = events
+                .bridge()
+                .register_event_decl(registration.class_name, &declaration)
+            {
+                tracing::warn!(event = %declaration.name, %error, "component event could not be linked to Blueprint");
+            }
+        }
         for entry in self.registry.entries() {
             events.bridge().add_class(&entry.name, entry.id.as_str());
         }
@@ -437,7 +446,9 @@ impl ScriptDriver {
         }
         self.events = Some(events);
         self.predeclare_project_events();
-        self.resubscribe(None);
+        // Component-scoped subscriptions are resolved at the next script
+        // phase, when the driver has a read/write borrow of the live World.
+        self.resubscribe(None, None);
     }
 
     /// Declare the events of every compiled class in the project on the
@@ -482,7 +493,7 @@ impl ScriptDriver {
 
     /// (Re)subscribe the live instances of `class` (the runtime's class
     /// name), or of every class when `None`.
-    fn resubscribe(&mut self, class: Option<&str>) {
+    fn resubscribe(&mut self, class: Option<&str>, world: Option<&World>) {
         let Some(events) = self.events.as_mut() else {
             return;
         };
@@ -511,7 +522,8 @@ impl ScriptDriver {
             .collect();
         for (id, class_name, guid, entity) in targets {
             // Timers and queued handler calls survive a class reload.
-            for failure in events.resubscribe(&self.runtime, &id, &class_name, &guid, entity) {
+            for failure in events.resubscribe(&self.runtime, &id, &class_name, &guid, entity, world)
+            {
                 tracing::warn!("{failure}");
             }
         }
@@ -523,11 +535,12 @@ impl ScriptDriver {
         class: &str,
         guid: &str,
         entity: Option<Entity>,
+        world: Option<&World>,
         report: &mut DriverReport,
     ) {
         if let Some(events) = self.events.as_mut() {
             events.bridge().add_class(class, guid);
-            for failure in events.subscribe(&self.runtime, id, class, guid, entity) {
+            for failure in events.subscribe(&self.runtime, id, class, guid, entity, world) {
                 tracing::warn!("{failure}");
                 report.failures.push(failure);
             }
@@ -673,7 +686,11 @@ impl ScriptDriver {
     ///    concurrently; the renderer's own readers are not blocked.
     /// 3. **Write lock**: every other instance, then the commands scripts
     ///    queued (spawns, destroys).
-    pub fn run_frame_shared(&mut self, scene: &engine_backend::scene::SharedScene, delta_time: f64) -> DriverReport {
+    pub fn run_frame_shared(
+        &mut self,
+        scene: &engine_backend::scene::SharedScene,
+        delta_time: f64,
+    ) -> DriverReport {
         use std::time::Instant;
         let mut report = DriverReport::default();
         let mut locks = LockTimes::default();
@@ -745,6 +762,10 @@ impl ScriptDriver {
         }
         if let Some(events) = self.events.as_mut() {
             events.announce_level(&self.level);
+            for failure in events.reconcile_component_subscriptions(&self.runtime, world) {
+                tracing::warn!("{failure}");
+                report.failures.push(failure);
+            }
             report
                 .script_errors
                 .extend(events.run_calls(&mut self.runtime, world));
@@ -754,7 +775,12 @@ impl ScriptDriver {
 
     /// The last part of a frame, with exclusive access: fire hub timers and
     /// apply the commands scripts queued.
-    fn frame_finish(&mut self, world: &mut World, mut scope: CommandScope, report: &mut DriverReport) {
+    fn frame_finish(
+        &mut self,
+        world: &mut World,
+        mut scope: CommandScope,
+        report: &mut DriverReport,
+    ) {
         if let Some(events) = &self.events {
             events.bridge().fire_timers(self.runtime.time());
         }
@@ -921,7 +947,7 @@ impl ScriptDriver {
         }
         if !self.globals_started {
             self.globals_started = true;
-            self.start_globals(report);
+            self.start_globals(world, report);
         }
         let dirty = match self.cursor.as_mut() {
             None => {
@@ -1097,7 +1123,14 @@ impl ScriptDriver {
                     tracked.instance = Some(id.clone());
                 }
                 self.by_instance.insert(id.clone(), entity);
-                self.subscribe_instance(&id, &class, entry.id.as_str(), Some(entity), report);
+                self.subscribe_instance(
+                    &id,
+                    &class,
+                    entry.id.as_str(),
+                    Some(entity),
+                    Some(world),
+                    report,
+                );
                 report.started.push(id);
             }
             Err(error) => {
@@ -1144,7 +1177,7 @@ impl ScriptDriver {
         }
     }
 
-    fn start_globals(&mut self, report: &mut DriverReport) {
+    fn start_globals(&mut self, world: &World, report: &mut DriverReport) {
         for class_ref in self.config.global_scripts.clone() {
             let Some(entry) = self.resolve_class_ref(&class_ref) else {
                 let message = format!("global script class '{class_ref}' is not in this project");
@@ -1168,7 +1201,14 @@ impl ScriptDriver {
             match self.runtime.spawn(id.clone(), &class, None, &[]) {
                 Ok(()) => {
                     self.globals.push(id.clone());
-                    self.subscribe_instance(&id, &class, entry.id.as_str(), None, report);
+                    self.subscribe_instance(
+                        &id,
+                        &class,
+                        entry.id.as_str(),
+                        None,
+                        Some(world),
+                        report,
+                    );
                     report.started.push(id);
                 }
                 Err(error) => {
@@ -1351,7 +1391,7 @@ impl ScriptDriver {
                             self.loaded.insert(entry.id.clone(), name.clone());
                         }
                         // Its subscriptions may have changed.
-                        self.resubscribe(Some(&name));
+                        self.resubscribe(Some(&name), Some(world));
                     }
                     Err(error) => {
                         // The old code keeps running.

@@ -50,7 +50,9 @@ pub(crate) fn watch<T: 'static>(drawer: Entity<ProblemsDrawer>, cx: &mut Context
         let _subscription = subscription;
         let mut seen = 0;
         loop {
-            cx.background_executor().timer(std::time::Duration::from_millis(250)).await;
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(250))
+                .await;
             let version = shared.version.load(Ordering::Acquire);
             if version == seen {
                 continue;
@@ -64,7 +66,9 @@ pub(crate) fn watch<T: 'static>(drawer: Entity<ProblemsDrawer>, cx: &mut Context
                 .map(diagnostic)
                 .collect();
             if drawer
-                .update(cx, |drawer, cx| drawer.set_external_diagnostics(SOURCE, diagnostics, cx))
+                .update(cx, |drawer, cx| {
+                    drawer.set_external_diagnostics(SOURCE, diagnostics, cx)
+                })
                 .is_err()
             {
                 break;

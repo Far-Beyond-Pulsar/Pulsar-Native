@@ -80,7 +80,11 @@ impl ProblemsDrawer {
     /// drawer (and, through the caller, the whole app) several times a second
     /// with nothing new to show -- each notify turning a ~0.5 ms display-only
     /// frame into a multi-millisecond full draw.
-    pub fn set_diagnostics(&mut self, diagnostics: Vec<Diagnostic>, cx: &mut Context<Self>) -> bool {
+    pub fn set_diagnostics(
+        &mut self,
+        diagnostics: Vec<Diagnostic>,
+        cx: &mut Context<Self>,
+    ) -> bool {
         // Compare with the previous *publish*: the stored copy also carries the
         // code-action hints fetched since, so it never equals a fresh publish.
         if self.last_published == diagnostics {
@@ -106,7 +110,11 @@ impl ProblemsDrawer {
         diagnostics: Vec<Diagnostic>,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.external.get(source).map_or(diagnostics.is_empty(), |d| *d == diagnostics) {
+        if self
+            .external
+            .get(source)
+            .map_or(diagnostics.is_empty(), |d| *d == diagnostics)
+        {
             return false;
         }
         if diagnostics.is_empty() {

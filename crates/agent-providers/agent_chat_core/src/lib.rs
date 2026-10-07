@@ -346,7 +346,8 @@ mod tests {
         let path = dir.path().join("configs").join("ai_providers.json");
         assert!(load_provider_instances(&path).unwrap().is_empty());
 
-        let values = HashMap::from([("endpoint_url".to_string(), "http://box:1234/v1".to_string())]);
+        let values =
+            HashMap::from([("endpoint_url".to_string(), "http://box:1234/v1".to_string())]);
         let saved = vec![ProviderInstanceConfig::new("lm_studio", "Box", values, &[])];
         save_provider_instances(&path, &saved).unwrap();
         assert_eq!(load_provider_instances(&path).unwrap(), saved);

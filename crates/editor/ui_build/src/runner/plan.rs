@@ -16,7 +16,11 @@ pub struct Invocation {
 
 impl Invocation {
     fn new(subcommand: &'static str) -> Self {
-        Self { subcommand, args: Vec::new(), envs: Vec::new() }
+        Self {
+            subcommand,
+            args: Vec::new(),
+            envs: Vec::new(),
+        }
     }
 
     /// The command line, for display.
@@ -41,16 +45,27 @@ pub enum Step {
     Bootstrap,
     Update(Invocation),
     Clean(Invocation),
-    Check { platform: Option<TargetPlatform>, invocation: Invocation },
-    Build { platform: Option<TargetPlatform>, invocation: Invocation },
-    Run { platform: Option<TargetPlatform>, invocation: Invocation },
+    Check {
+        platform: Option<TargetPlatform>,
+        invocation: Invocation,
+    },
+    Build {
+        platform: Option<TargetPlatform>,
+        invocation: Invocation,
+    },
+    Run {
+        platform: Option<TargetPlatform>,
+        invocation: Invocation,
+    },
 }
 
 impl Step {
     /// What it is doing, for status text.
     pub fn title(&self) -> String {
         let on = |platform: &Option<TargetPlatform>| {
-            platform.map(|p| format!(" for {}", p.label())).unwrap_or_default()
+            platform
+                .map(|p| format!(" for {}", p.label()))
+                .unwrap_or_default()
         };
         match self {
             Self::Bootstrap => "Preparing project".into(),
@@ -158,7 +173,12 @@ pub fn parse_features(text: &str) -> Vec<String> {
 
 /// The arguments shared by check / build / run for one platform.
 fn common_args(config: &BuildConfiguration, platform: Option<TargetPlatform>) -> Vec<String> {
-    let mut args: Vec<String> = config.profile.cargo_args().iter().map(|s| s.to_string()).collect();
+    let mut args: Vec<String> = config
+        .profile
+        .cargo_args()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     if let Some(triple) = platform.and_then(TargetPlatform::triple) {
         args.push("--target".into());
         args.push(triple.into());
@@ -213,7 +233,10 @@ pub fn plan(config: &BuildConfiguration, host: Option<TargetPlatform>) -> Result
         config.platforms.iter().copied().map(Some).collect()
     };
 
-    let mut plan = Plan { steps: vec![Step::Bootstrap], warnings: Vec::new() };
+    let mut plan = Plan {
+        steps: vec![Step::Bootstrap],
+        warnings: Vec::new(),
+    };
 
     if steps.update {
         plan.steps.push(Step::Update(Invocation::new("update")));
@@ -298,19 +321,38 @@ mod tests {
 
     #[test]
     fn steps_run_in_a_fixed_order() {
-        let c = config(BuildSteps { update: true, clean: true, check: true, build: true, run: true });
+        let c = config(BuildSteps {
+            update: true,
+            clean: true,
+            check: true,
+            build: true,
+            run: true,
+        });
         let p = plan(&c, WIN).unwrap();
-        assert_eq!(kinds(&p), ["bootstrap", "update", "clean", "check", "build", "run"]);
+        assert_eq!(
+            kinds(&p),
+            ["bootstrap", "update", "clean", "check", "build", "run"]
+        );
     }
 
     #[test]
     fn nothing_enabled_is_an_error() {
-        assert_eq!(plan(&config(BuildSteps::default()), WIN), Err(PlanError::NoSteps));
+        assert_eq!(
+            plan(&config(BuildSteps::default()), WIN),
+            Err(PlanError::NoSteps)
+        );
     }
 
     #[test]
     fn run_alone_still_builds() {
-        let p = plan(&config(BuildSteps { run: true, ..Default::default() }), WIN).unwrap();
+        let p = plan(
+            &config(BuildSteps {
+                run: true,
+                ..Default::default()
+            }),
+            WIN,
+        )
+        .unwrap();
         assert_eq!(kinds(&p), ["bootstrap", "build", "run"]);
     }
 
@@ -322,7 +364,9 @@ mod tests {
         c.features = "a, b  a".into();
         c.extra_args = r#"--locked --config "build.jobs=4""#.into();
         let p = plan(&c, WIN).unwrap();
-        let Step::Build { invocation, .. } = &p.steps[1] else { panic!("not a build") };
+        let Step::Build { invocation, .. } = &p.steps[1] else {
+            panic!("not a build")
+        };
         assert_eq!(
             invocation.display(),
             r#"cargo build --release --target x86_64-unknown-linux-gnu --features a,b --locked --config build.jobs=4"#
@@ -333,37 +377,70 @@ mod tests {
     fn debug_has_no_profile_flag_and_shipping_sets_the_release_overrides() {
         let mut c = config(BuildSteps::just_build());
         c.profile = BuildProfile::Debug;
-        let Step::Build { invocation, .. } = &plan(&c, WIN).unwrap().steps[1] else { panic!() };
+        let Step::Build { invocation, .. } = &plan(&c, WIN).unwrap().steps[1] else {
+            panic!()
+        };
         assert_eq!(invocation.display(), "cargo build");
         assert!(invocation.envs.is_empty());
 
         c.profile = BuildProfile::Shipping;
-        let Step::Build { invocation, .. } = &plan(&c, WIN).unwrap().steps[1] else { panic!() };
+        let Step::Build { invocation, .. } = &plan(&c, WIN).unwrap().steps[1] else {
+            panic!()
+        };
         assert!(invocation.args.contains(&"--release".to_string()));
-        assert!(invocation.envs.iter().any(|(k, v)| k == "CARGO_PROFILE_RELEASE_LTO" && v == "fat"));
+        assert!(
+            invocation
+                .envs
+                .iter()
+                .any(|(k, v)| k == "CARGO_PROFILE_RELEASE_LTO" && v == "fat")
+        );
     }
 
     #[test]
     fn each_platform_is_built_in_turn_and_clean_happens_once() {
-        let mut c = config(BuildSteps { clean: true, check: true, build: true, ..Default::default() });
-        c.platforms = vec![TargetPlatform::WindowsX86_64Msvc, TargetPlatform::LinuxX86_64Gnu];
+        let mut c = config(BuildSteps {
+            clean: true,
+            check: true,
+            build: true,
+            ..Default::default()
+        });
+        c.platforms = vec![
+            TargetPlatform::WindowsX86_64Msvc,
+            TargetPlatform::LinuxX86_64Gnu,
+        ];
         let p = plan(&c, WIN).unwrap();
-        assert_eq!(kinds(&p), ["bootstrap", "clean", "check", "build", "check", "build"]);
+        assert_eq!(
+            kinds(&p),
+            ["bootstrap", "clean", "check", "build", "check", "build"]
+        );
     }
 
     #[test]
     fn run_launches_the_first_platform_this_machine_can_run() {
-        let mut c = config(BuildSteps { build: true, run: true, ..Default::default() });
-        c.platforms = vec![TargetPlatform::LinuxX86_64Gnu, TargetPlatform::WindowsX86_64Msvc];
+        let mut c = config(BuildSteps {
+            build: true,
+            run: true,
+            ..Default::default()
+        });
+        c.platforms = vec![
+            TargetPlatform::LinuxX86_64Gnu,
+            TargetPlatform::WindowsX86_64Msvc,
+        ];
         let p = plan(&c, WIN).unwrap();
-        let Some(Step::Run { platform, .. }) = p.steps.last() else { panic!("no run step") };
+        let Some(Step::Run { platform, .. }) = p.steps.last() else {
+            panic!("no run step")
+        };
         assert_eq!(*platform, WIN);
         assert!(p.warnings.is_empty());
     }
 
     #[test]
     fn run_is_skipped_with_a_warning_when_nothing_runs_here() {
-        let mut c = config(BuildSteps { build: true, run: true, ..Default::default() });
+        let mut c = config(BuildSteps {
+            build: true,
+            run: true,
+            ..Default::default()
+        });
         c.platforms = vec![TargetPlatform::LinuxX86_64Gnu];
         let p = plan(&c, WIN).unwrap();
         assert_eq!(kinds(&p), ["bootstrap", "build"]);
@@ -372,20 +449,35 @@ mod tests {
 
     #[test]
     fn the_machine_default_always_runs() {
-        let c = config(BuildSteps { build: true, run: true, ..Default::default() });
+        let c = config(BuildSteps {
+            build: true,
+            run: true,
+            ..Default::default()
+        });
         // Even on a host we do not recognise.
         let p = plan(&c, None).unwrap();
-        assert!(matches!(p.steps.last(), Some(Step::Run { platform: None, .. })));
+        assert!(matches!(
+            p.steps.last(),
+            Some(Step::Run { platform: None, .. })
+        ));
     }
 
     #[test]
     fn a_console_cannot_be_built_but_update_and_clean_do_not_care() {
         let mut c = config(BuildSteps::just_build());
         c.platforms = vec![TargetPlatform::PlayStationPs5];
-        assert_eq!(plan(&c, WIN), Err(PlanError::UnbuildablePlatform(TargetPlatform::PlayStationPs5)));
+        assert_eq!(
+            plan(&c, WIN),
+            Err(PlanError::UnbuildablePlatform(
+                TargetPlatform::PlayStationPs5
+            ))
+        );
 
         let c2 = {
-            let mut c2 = config(BuildSteps { update: true, ..Default::default() });
+            let mut c2 = config(BuildSteps {
+                update: true,
+                ..Default::default()
+            });
             c2.platforms = vec![TargetPlatform::PlayStationPs5];
             c2
         };
@@ -408,7 +500,13 @@ mod tests {
 
     #[test]
     fn progress_ranges_are_contiguous_and_end_at_100() {
-        let c = config(BuildSteps { update: true, clean: true, check: true, build: true, run: true });
+        let c = config(BuildSteps {
+            update: true,
+            clean: true,
+            check: true,
+            build: true,
+            run: true,
+        });
         let p = plan(&c, WIN).unwrap();
         let ranges = progress_ranges(&p);
         assert_eq!(ranges.len(), p.steps.len());

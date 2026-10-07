@@ -24,7 +24,11 @@ pub struct ContentFsProvider {
 
 impl ContentFsProvider {
     pub fn new(root: PathBuf, pak: Arc<PakReader>) -> Self {
-        Self { root, pak, local: LocalFsProvider::new() }
+        Self {
+            root,
+            pak,
+            local: LocalFsProvider::new(),
+        }
     }
 
     /// The content-relative path of `path` when it is under the root
@@ -39,7 +43,8 @@ impl ContentFsProvider {
     }
 
     fn pak_file(&self, path: &Path) -> Option<String> {
-        self.rel(path).filter(|rel| !rel.is_empty() && self.pak.contains(rel))
+        self.rel(path)
+            .filter(|rel| !rel.is_empty() && self.pak.contains(rel))
     }
 
     fn pak_dir(&self, path: &Path) -> Option<String> {
@@ -79,7 +84,12 @@ impl FsProvider for ContentFsProvider {
         if let Some(rel) = self.pak_dir(path) {
             for (name, is_dir, size) in self.pak.list_dir(&rel) {
                 if !entries.iter().any(|e| e.name == name) {
-                    entries.push(FsEntry { name, is_dir, size, modified: None });
+                    entries.push(FsEntry {
+                        name,
+                        is_dir,
+                        size,
+                        modified: None,
+                    });
                 }
             }
         } else if entries.is_empty() {
@@ -103,10 +113,18 @@ impl FsProvider for ContentFsProvider {
     fn metadata(&self, path: &Path) -> Result<FsMetadata> {
         if let Some(rel) = self.pak_file(path) {
             let len = self.pak.entry(&rel).map_or(0, |e| e.len);
-            return Ok(FsMetadata { is_dir: false, size: len, modified: None });
+            return Ok(FsMetadata {
+                is_dir: false,
+                size: len,
+                modified: None,
+            });
         }
         if self.pak_dir(path).is_some() {
-            return Ok(FsMetadata { is_dir: true, size: 0, modified: None });
+            return Ok(FsMetadata {
+                is_dir: true,
+                size: 0,
+                modified: None,
+            });
         }
         self.local.metadata(path)
     }
@@ -147,17 +165,33 @@ mod tests {
         let outside = tmp.path().join("outside.txt");
         std::fs::write(&outside, b"out").unwrap();
 
-        let fs = ContentFsProvider::new(root.clone(), Arc::new(PakReader::open(root.join("game.pak")).unwrap()));
-        assert_eq!(fs.read_file(&root.join("src/classes/A/prefab.json")).unwrap(), b"{}");
+        let fs = ContentFsProvider::new(
+            root.clone(),
+            Arc::new(PakReader::open(root.join("game.pak")).unwrap()),
+        );
+        assert_eq!(
+            fs.read_file(&root.join("src/classes/A/prefab.json"))
+                .unwrap(),
+            b"{}"
+        );
         assert_eq!(fs.read_file(&root.join("loose.txt")).unwrap(), b"loose");
         assert_eq!(fs.read_file(&outside).unwrap(), b"out");
         assert!(fs.exists(&root.join("src/classes")).unwrap());
         assert!(fs.metadata(&root.join("src/classes/A")).unwrap().is_dir);
         assert!(!fs.exists(&root.join("src/nothing")).unwrap());
-        let names: Vec<String> = fs.list_dir(&root).unwrap().into_iter().map(|e| e.name).collect();
+        let names: Vec<String> = fs
+            .list_dir(&root)
+            .unwrap()
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
         assert_eq!(names, ["game.pak", "loose.txt", "src"]);
-        let classes: Vec<(String, bool)> =
-            fs.list_dir(&root.join("src/classes")).unwrap().into_iter().map(|e| (e.name, e.is_dir)).collect();
+        let classes: Vec<(String, bool)> = fs
+            .list_dir(&root.join("src/classes"))
+            .unwrap()
+            .into_iter()
+            .map(|e| (e.name, e.is_dir))
+            .collect();
         assert_eq!(classes, [("A".to_string(), true)]);
     }
 }

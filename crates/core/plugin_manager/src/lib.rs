@@ -177,10 +177,12 @@ mod permanent_library;
 mod registry;
 pub mod tool_bridge;
 
-pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, LinkedEditorProvider};
 /// Re-exported so a linked provider can `inventory::submit!` without its own
 /// dependency (see [`LinkedEditorProvider`]).
-pub use inventory;
+pub use ::inventory;
+pub use builtin::{
+    BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext, LinkedEditorProvider,
+};
 pub use permanent_library::{IntegrityError, PermanentLibrary, PermanentLibraryLoadError};
 pub use registry::{EditorRegistry, FileTypeRegistry};
 pub use tool_bridge::PluginToolBridge;
@@ -287,6 +289,9 @@ pub struct PluginManager {
     /// Project root path for editor context
     project_root: Option<PathBuf>,
 
+    /// Host-owned editor settings passed to plugin editor factories.
+    editor_settings: EditorSettingsSnapshot,
+
     /// Statusbar buttons registered by all plugins
     /// Stored with plugin ownership tracking for proper cleanup
     statusbar_buttons: Vec<(PluginId, StatusbarButtonDefinition)>,
@@ -343,6 +348,7 @@ impl PluginManager {
             builtin_registry: BuiltinEditorRegistry::new(),
             engine_version: VersionInfo::current(),
             project_root: None,
+            editor_settings: EditorSettingsSnapshot::default(),
             statusbar_buttons: Vec::new(),
             plugin_subsystems: Vec::new(),
             plugin_component_registrations: Vec::new(),
@@ -353,6 +359,11 @@ impl PluginManager {
     /// Set the project root path for editor context.
     pub fn set_project_root(&mut self, project_root: Option<PathBuf>) {
         self.project_root = project_root;
+    }
+
+    /// Replace the host-owned settings passed to subsequently created plugin editors.
+    pub fn set_editor_settings_snapshot(&mut self, settings: EditorSettingsSnapshot) {
+        self.editor_settings = settings;
     }
 
     /// Get a mutable reference to the built-in editor registry.
@@ -961,16 +972,26 @@ impl PluginManager {
     /// Run every scripting language's pre-Play validation on
     /// `project_root`. `Err` joins the failures.
     pub fn validate_scripts(&self, project_root: &std::path::Path) -> Result<(), String> {
+        let component_events: Vec<_> = pulsar_world_registry::component_event_registrations()
+            .map(|registration| plugin_editor_api::ComponentEventMetadata {
+                component_class: registration.class_name.to_owned(),
+                event: (registration.declaration)(),
+            })
+            .collect();
         let failures: Vec<String> = self
             .script_languages()
             .iter()
             .filter_map(|lang| {
-                lang.validate_project(project_root)
+                lang.validate_project_with_component_events(project_root, &component_events)
                     .err()
                     .map(|e| format!("{}: {e}", lang.display_name()))
             })
             .collect();
-        if failures.is_empty() { Ok(()) } else { Err(failures.join("\n")) }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("\n"))
+        }
     }
 
     /// Get all component definitions registered by all plugins and built-in providers.
@@ -1106,6 +1127,7 @@ impl PluginManager {
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginManagerError> {
         let file_path_for_decoration = file_path.clone();
+        let settings = self.editor_settings.clone();
 
         let plugin =
             self.plugins
@@ -1148,7 +1170,7 @@ impl PluginManager {
             }
         })?;
 
-        (factory.create)(file_path, window, cx)
+        (factory.create)(file_path, &settings, window, cx)
             .map(|panel| self.decorate_editor_panel_for_path(panel, &file_path_for_decoration))
             .map_err(|e| PluginManagerError::PluginError {
                 plugin_id: plugin_id.clone(),
