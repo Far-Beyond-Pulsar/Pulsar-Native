@@ -53,6 +53,7 @@ pulsar_scene.workspace = true
 helio_component.workspace = true
 helio-mats = { workspace = true, optional = true }
 psgc = { path = "../../third-party/psgc/crates/psgc", optional = true }
+image = { workspace = true, optional = true }
 helio-pass-billboard = { workspace = true, optional = true }
 helio-pass-forward-lit = { workspace = true, optional = true }
 helio-pass-decal = { workspace = true, optional = true }
@@ -113,7 +114,7 @@ default = ["render", "editor-ui", "pie", "networking", "vcs", "physics"]
 # documented there first. Implied by `render` (GPU-column registration is
 # meaningless without wgpu anyway), not standalone-selectable.
 gpu        = []
-render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:helio-pass-decal", "dep:helio-pass-billboard", "dep:helio-pass-forward-lit", "dep:helio-pass-gbuffer", "dep:helio-pass-water-sim", "dep:helio-pass-postprocess", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-pass-voxel-planet", "dep:helio-pass-sky", "dep:helio-pass-tsr", "dep:helio-mats", "dep:psgc"]
+render     = ["dep:scenedb-inspector-agent", "dep:helio", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:helio-pass-decal", "dep:helio-pass-billboard", "dep:helio-pass-forward-lit", "dep:helio-pass-gbuffer", "dep:helio-pass-water-sim", "dep:helio-pass-postprocess", "dep:wgpu", "dep:bytemuck", "gpu", "dep:helio-pass-voxel-planet", "dep:helio-pass-sky", "dep:helio-pass-tsr", "dep:helio-mats", "dep:psgc", "dep:image"]
 editor-ui  = ["dep:gpui-ce", "dep:ui", "dep:pulsar_lsp", "dep:lsp-types", "dep:ropey", "dep:flume"]
 pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "dep:wgpu"]
 networking = ["dep:reqwest", "dep:async-tungstenite", "dep:futures"]

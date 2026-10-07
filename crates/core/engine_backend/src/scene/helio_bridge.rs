@@ -160,38 +160,138 @@ struct ResolvedSlotMaterial {
     graph_hash: u64,
 }
 
-fn graph_material_cache() -> &'static std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (u64, Result<(u64, String), String>)>> {
-    static CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (u64, Result<(u64, String), String>)>>> = std::sync::OnceLock::new();
+fn graph_material_cache() -> &'static std::sync::Mutex<
+    std::collections::HashMap<std::path::PathBuf, (u64, Result<(u64, String), String>)>,
+> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<
+            std::collections::HashMap<std::path::PathBuf, (u64, Result<(u64, String), String>)>,
+        >,
+    > = std::sync::OnceLock::new();
     CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 }
 
-fn graph_material_source(path: &std::path::Path) -> Result<(u64, String), String> {
+fn graph_texture_cache(
+) -> &'static std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (u64, u32)>> {
+    static CACHE: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, (u64, u32)>>,
+    > = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn register_graph_texture(path: &std::path::Path, mirror: &GpuMirrorHandle) -> Result<u32, String> {
+    use std::hash::{Hash, Hasher};
     let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    use std::hash::{Hash, Hasher};
     bytes.hash(&mut hasher);
     let fingerprint = hasher.finish();
-    if let Ok(cache) = graph_material_cache().lock() {
-        if let Some((cached_fingerprint, result)) = cache.get(path) {
-            if *cached_fingerprint == fingerprint {
-                return result.clone();
-            }
+    let mut cache = graph_texture_cache()
+        .lock()
+        .map_err(|_| "graph texture cache lock poisoned".to_string())?;
+    if let Some((cached_fingerprint, slot)) = cache.get(path) {
+        if *cached_fingerprint == fingerprint {
+            return Ok(*slot);
         }
     }
+    let texture_store = mirror
+        .texture_store()
+        .ok_or_else(|| "SceneDB has no material texture store".to_string())?;
+    let mut store = texture_store
+        .write()
+        .map_err(|_| "SceneDB texture store lock poisoned".to_string())?;
+    if let Some((_, old_slot)) = cache.get(path) {
+        let _ = store.unregister(*old_slot);
+    }
+    let decoded = image::load_from_memory(&bytes)
+        .map_err(|error| format!("could not decode texture image: {error}"))?
+        .to_rgba8();
+    let (width, height) = decoded.dimensions();
+    if width == 0 || height == 0 {
+        return Err("texture image has empty dimensions".to_string());
+    }
+    let device = mirror.store().device_arc();
+    let descriptor = wgpu::TextureDescriptor {
+        label: Some("Blueprint Material Texture"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    };
+    let slot = store
+        .register(&device, mirror.queue(), &descriptor, decoded.as_raw())
+        .map_err(|error| format!("could not register texture in SceneDB: {error:?}"))?;
+    cache.insert(path.to_path_buf(), (fingerprint, slot));
+    Ok(slot)
+}
 
+fn graph_material_source(
+    path: &std::path::Path,
+    project_root: &std::path::Path,
+    mirror: &GpuMirrorHandle,
+) -> Result<(u64, String), String> {
+    let bytes = std::fs::read(path).map_err(|error| error.to_string())?;
+    use std::hash::{Hash, Hasher};
+    let mut fingerprint_hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut fingerprint_hasher);
+    let fingerprint = fingerprint_hasher.finish();
     let result = (|| {
         let text = std::str::from_utf8(&bytes).map_err(|error| error.to_string())?;
         // Shader graph saves may carry a line comment before their JSON body.
-        let json_start = text.find('{').ok_or_else(|| "shader graph JSON object is missing".to_string())?;
+        let json_start = text
+            .find('{')
+            .ok_or_else(|| "shader graph JSON object is missing".to_string())?;
         let document: serde_json::Value = serde_json::from_str(&text[json_start..])
             .map_err(|error| format!("invalid shader graph JSON: {error}"))?;
-        let graph_value = document.get("main_graph")
+        let graph_value = document
+            .get("main_graph")
             .ok_or_else(|| "shader graph asset has no main_graph".to_string())?;
+        let mut texture_bindings = std::collections::HashMap::new();
+        if let Some(nodes) = graph_value
+            .get("nodes")
+            .and_then(serde_json::Value::as_object)
+        {
+            for node in nodes.values().filter(|node| {
+                matches!(
+                    node.get("node_type").and_then(serde_json::Value::as_str),
+                    Some("sample_texture" | "sample_texture_level" | "sample_texture_grad")
+                )
+            }) {
+                let Some(asset) = node
+                    .get("properties")
+                    .and_then(|props| props.get("texture"))
+                    .and_then(serde_json::Value::as_str)
+                else {
+                    continue;
+                };
+                let texture_path = if std::path::Path::new(asset).is_absolute() {
+                    std::path::PathBuf::from(asset)
+                } else {
+                    project_root.join(asset)
+                };
+                let slot = register_graph_texture(&texture_path, mirror)
+                    .map_err(|error| format!("texture '{}': {error}", texture_path.display()))?;
+                texture_bindings.insert(asset.to_string(), slot);
+            }
+        }
+        if let Ok(cache) = graph_material_cache().lock() {
+            if let Some((cached_fingerprint, cached_result)) = cache.get(path) {
+                if *cached_fingerprint == fingerprint {
+                    return cached_result.clone();
+                }
+            }
+        }
         let graph: psgc::GraphDescription = serde_json::from_value(graph_value.clone())
             .map_err(|error| format!("invalid main_graph: {error}"))?;
         let generated = psgc::compile_shader(&graph)
             .map_err(|error| format!("shader graph compile failed: {error}"))?;
-        let snippet = adapt_graph_wgsl(&generated)?;
+        let snippet = adapt_graph_wgsl(&generated, &texture_bindings)?;
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         snippet.hash(&mut hasher);
         let hash = hasher.finish().max(1);
@@ -203,31 +303,45 @@ fn graph_material_source(path: &std::path::Path) -> Result<(u64, String), String
     result
 }
 
-fn adapt_graph_wgsl(generated: &str) -> Result<String, String> {
-    if generated.contains("textureSample(") || generated.contains("textureSampleLevel(") || generated.contains("textureSampleGrad(") {
-        return Err("this material graph references textures, but runtime graph-texture bindings are not connected yet".to_string());
-    }
+fn adapt_graph_wgsl(
+    generated: &str,
+    texture_bindings: &std::collections::HashMap<String, u32>,
+) -> Result<String, String> {
     let mut source = generated.to_string();
+    for (asset, slot) in texture_bindings {
+        source = source.replace(asset, &format!("scene_textures[{slot}u]"));
+    }
+    bind_graph_texture_samplers(&mut source);
     if let Some(start) = source.find("struct Uniforms {") {
-        let end = source[start..].find("};").map(|offset| start + offset + 2)
+        let end = source[start..]
+            .find("};")
+            .map(|offset| start + offset + 2)
             .ok_or_else(|| "malformed PSGC Uniforms declaration".to_string())?;
         source.replace_range(start..end, "");
     }
     source = source.replace("@group(0) @binding(0) var<uniform> uniforms: Uniforms;", "");
     source = source.replace("uniforms.time", "0.0");
     source = source.replace("FragmentOutput", "PulsarGraphOutput");
+    for location in 0..8 {
+        source = source.replace(&format!("@location({location}) "), "");
+    }
 
-    let entry = source.find("@fragment\nfn fragment_main(")
+    let entry = source
+        .find("@fragment\nfn fragment_main(")
         .or_else(|| source.find("@fragment\r\nfn fragment_main("))
         .ok_or_else(|| "PSGC output is not a fragment shader".to_string())?;
-    let open = source[entry..].find('{').map(|offset| entry + offset)
+    let open = source[entry..]
+        .find('{')
+        .map(|offset| entry + offset)
         .ok_or_else(|| "malformed PSGC fragment entry point".to_string())?;
     let replacement = "fn pulsar_material_graph(input: VertexOutput) -> PulsarGraphOutput {\n    let frag_coord = input.clip_position;\n    let uv = input.tex_coords;\n    let normal = input.world_normal;\n    let world_pos = input.world_position;";
     source.replace_range(entry..=open, replacement);
 
     let body = r#"let graph_surface = pulsar_material_graph(input);
 albedo = graph_surface.base_color;
-alpha = clamp(graph_surface.opacity, 0.0, 1.0) * graph_surface.base_color.a;
+// Preserve the connected RGBA color's alpha. The separate opacity input
+// modulates coverage and defaults to 1 when it is not connected.
+alpha = clamp(graph_surface.base_color.a, 0.0, 1.0) * clamp(graph_surface.opacity, 0.0, 1.0);
 albedo.a = alpha;
 roughness = clamp(graph_surface.roughness, 0.045, 1.0);
 metallic = clamp(graph_surface.metallic, 0.0, 1.0);
@@ -236,15 +350,58 @@ emissive = graph_surface.emissive_color.rgb * graph_surface.emissive_color.a;
 let graph_normal_length = length(graph_surface.normal);
 if graph_normal_length > 0.0001 { N = graph_surface.normal / graph_normal_length; }
 specular_f0 = clamp(mix(vec3<f32>(0.04), albedo.rgb, metallic), vec3<f32>(0.0), vec3<f32>(0.999));"#;
-    Ok(format!("/*RADIANT_GRAPH_DECLARATIONS*/\n{source}\n/*RADIANT_GRAPH_BODY*/\n{body}"))
+    Ok(format!(
+        "/*RADIANT_GRAPH_DECLARATIONS*/\n{source}\n/*RADIANT_GRAPH_BODY*/\n{body}"
+    ))
+}
+
+fn bind_graph_texture_samplers(source: &mut String) {
+    for function in [
+        "textureSample(",
+        "textureSampleLevel(",
+        "textureSampleGrad(",
+    ] {
+        let mut search_from = 0;
+        while let Some(relative) = source[search_from..].find(function) {
+            let call_start = search_from + relative;
+            let args_start = call_start + function.len();
+            let Some(first_comma_rel) = source[args_start..].find(',') else {
+                break;
+            };
+            let first_comma = args_start + first_comma_rel;
+            let first_arg = source[args_start..first_comma]
+                .trim()
+                .trim_matches(['(', ')'])
+                .trim();
+            let Some(slot_text) = first_arg
+                .strip_prefix("scene_textures[")
+                .and_then(|value| value.strip_suffix(']'))
+            else {
+                search_from = first_comma + 1;
+                continue;
+            };
+            let Some(second_comma_rel) = source[first_comma + 1..].find(',') else {
+                break;
+            };
+            let second_comma = first_comma + 1 + second_comma_rel;
+            source.replace_range(
+                first_comma + 1..second_comma,
+                &format!(" scene_samplers[{slot_text}]"),
+            );
+            search_from = second_comma + 1;
+        }
+    }
 }
 
 fn material_surface_for_slot(
     slot: Option<&helio_component::components::StaticMeshMaterialSlot>,
     entity: pulsar_scenedb::Entity,
+    mirror: &GpuMirrorHandle,
 ) -> ResolvedSlotMaterial {
     let imported = || ResolvedSlotMaterial {
-        surface: slot.map_or_else(Default::default, |slot| slot.surface_override.unwrap_or(slot.imported_surface)),
+        surface: slot.map_or_else(Default::default, |slot| {
+            slot.surface_override.unwrap_or(slot.imported_surface)
+        }),
         material_class: helio_mats::MATERIAL_CLASS_DEFAULT,
         graph_hash: 0,
     };
@@ -252,7 +409,11 @@ fn material_surface_for_slot(
         return imported();
     };
     if let Some(override_surface) = slot.surface_override {
-        return ResolvedSlotMaterial { surface: override_surface, material_class: helio_mats::MATERIAL_CLASS_DEFAULT, graph_hash: 0 };
+        return ResolvedSlotMaterial {
+            surface: override_surface,
+            material_class: helio_mats::MATERIAL_CLASS_DEFAULT,
+            graph_hash: 0,
+        };
     }
     if slot.material_asset.trim().is_empty() {
         return imported();
@@ -266,13 +427,16 @@ fn material_surface_for_slot(
     );
     let graph_file = if path.is_dir() {
         Some(path.join("shader_graph_save.json"))
-    } else if path.file_name().is_some_and(|name| name == "shader_graph_save.json") {
+    } else if path
+        .file_name()
+        .is_some_and(|name| name == "shader_graph_save.json")
+    {
         Some(path.clone())
     } else {
         None
     };
     if let Some(graph_file) = graph_file.filter(|file| file.is_file()) {
-        match graph_material_source(&graph_file) {
+        match graph_material_source(&graph_file, std::path::Path::new(&project_root), mirror) {
             Ok((hash, source)) => {
                 helio_mats::register_graph_source(hash, source);
                 return ResolvedSlotMaterial {
@@ -281,26 +445,27 @@ fn material_surface_for_slot(
                     graph_hash: hash,
                 };
             }
-            Err(error) => tracing::warn!(entity = entity.index(), path = %graph_file.display(), %error, "could not compile Blueprint material graph; using imported FBX material"),
+            Err(error) => {
+                tracing::warn!(entity = entity.index(), path = %graph_file.display(), %error, "could not compile Blueprint material graph; using imported FBX material")
+            }
         }
     }
-    let loaded = std::fs::read(&path)
-        .ok()
-        .and_then(|bytes| {
-            serde_json::from_slice::<helio_component::components::SurfaceMaterialAsset>(&bytes)
-                .ok()
-        });
+    let loaded = std::fs::read(&path).ok().and_then(|bytes| {
+        serde_json::from_slice::<helio_component::components::SurfaceMaterialAsset>(&bytes).ok()
+    });
     match loaded {
-        Some(material) if material.version == 1 => {
-            ResolvedSlotMaterial { surface: helio_component::mesh_cache::ImportedSurfaceMaterial {
+        Some(material) if material.version == 1 => ResolvedSlotMaterial {
+            surface: helio_component::mesh_cache::ImportedSurfaceMaterial {
                 base_color: material.base_color,
                 roughness: material.roughness,
                 metallic: material.metallic,
                 emissive: material.emissive_color,
                 emissive_intensity: material.emissive_intensity,
                 alpha: material.alpha,
-            }, material_class: helio_mats::MATERIAL_CLASS_DEFAULT, graph_hash: 0 }
-        }
+            },
+            material_class: helio_mats::MATERIAL_CLASS_DEFAULT,
+            graph_hash: 0,
+        },
         _ => {
             tracing::warn!(
                 entity = entity.index(),
@@ -397,7 +562,10 @@ pub fn sync_static_mesh_rows(
             .query::<&MeshSectionDraw>()
             .filter(|(_, draw)| {
                 !scene_db.world.is_alive(draw.owner)
-                    || scene_db.world.get::<StaticMeshComponent>(draw.owner).is_none()
+                    || scene_db
+                        .world
+                        .get::<StaticMeshComponent>(draw.owner)
+                        .is_none()
             })
             .map(|(entity, _)| entity)
             .collect();
@@ -461,12 +629,14 @@ pub fn sync_static_mesh_rows(
         let (bounds_local, flags, mesh_sections, material_slots) = scene_db
             .world
             .get::<StaticMeshComponent>(entity)
-            .map(|c| (
-                c.bounds_local,
-                object_row_flags(c),
-                c.mesh_sections.clone(),
-                c.material_slots.slots.clone(),
-            ))
+            .map(|c| {
+                (
+                    c.bounds_local,
+                    object_row_flags(c),
+                    c.mesh_sections.clone(),
+                    c.material_slots.slots.clone(),
+                )
+            })
             .unwrap_or(([0.0, 0.0, 0.0, 0.5], 0, Vec::new(), Vec::new()));
         let Some(vertices) =
             StaticMeshComponent::vertices_gpu_handle(mirror.store(), entity.index())
@@ -520,20 +690,24 @@ pub fn sync_static_mesh_rows(
         } else {
             mesh_sections
         };
-        let section_entities = sync_section_draw_entities(
-            &mut scene_db.world,
-            entity,
-            sections.len(),
-        );
+        let section_entities =
+            sync_section_draw_entities(&mut scene_db.world, entity, sections.len());
         let render_entities = std::iter::once(entity).chain(section_entities);
         for (section_index, render_entity) in render_entities.enumerate() {
-            let Some(section) = sections.get(section_index) else { continue };
+            let Some(section) = sections.get(section_index) else {
+                continue;
+            };
             let material = material_surface_for_slot(
                 material_slots.get(section.material_slot as usize),
                 entity,
+                &mirror,
             );
             let material_row = helio_pass_gbuffer::MaterialComponent::from_surface(
-                [material.surface.base_color[0], material.surface.base_color[1], material.surface.base_color[2]],
+                [
+                    material.surface.base_color[0],
+                    material.surface.base_color[1],
+                    material.surface.base_color[2],
+                ],
                 material.surface.alpha,
                 material.surface.roughness,
                 material.surface.metallic,
@@ -760,7 +934,14 @@ pub fn ensure_gpu_mirror(
         }
     }
 
-    let mirror = GpuMirrorHandle::new(Arc::new(gpu_store), queue);
+    let material_texture_limit =
+        helio_mats::MaterialBindingConfig::for_device(&device).max_textures;
+    let texture_store = Arc::new(std::sync::RwLock::new(
+        pulsar_scenedb::gpu::TextureStore::new(material_texture_limit as u32),
+    ));
+    let mirror = GpuMirrorHandle::new(Arc::new(gpu_store), queue)
+        .with_texture_store(texture_store)
+        .expect("register SceneDB material texture store");
     scene_db.world.attach_gpu_mirror(mirror.clone());
     crate::scene::install_scenedb_inspector(&mut scene_db.world);
 
