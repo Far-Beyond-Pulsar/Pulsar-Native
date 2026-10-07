@@ -18,9 +18,7 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-use engine_backend::scene::{
-    ensure_gpu_mirror, scene_join, RuntimeLevel,
-};
+use engine_backend::scene::{ensure_gpu_mirror, scene_join, RuntimeLevel};
 use helio::{required_wgpu_features, required_wgpu_limits, Camera, Renderer, RendererConfig};
 use parking_lot::RwLock;
 

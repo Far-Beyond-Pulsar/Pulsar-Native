@@ -436,7 +436,11 @@ fn class_color_edit_reaches_live_lights_and_their_render_rows() {
         assert_eq!(kids.len(), 1);
         for object in [id, &kids[0]] {
             let live = light(&world, object);
-            assert_eq!(live.color.color, [1.0, 0.0, 0.0, 1.0], "{object}: live light");
+            assert_eq!(
+                live.color.color,
+                [1.0, 0.0, 0.0, 1.0],
+                "{object}: live light"
+            );
             let row = helio_component::components::LightSourceRow::of(&live);
             assert_eq!(
                 row.color_intensity[..3],

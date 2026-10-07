@@ -61,7 +61,13 @@ Found and fixed on the way:
 
 ## Tests
 
-RESULTS
+All on Linux with Mesa lavapipe (no hardware GPU):
+
+- `ui_level_editor --test render_acceptance` passes (camera at rest and nudging). Mesh cases, color pixels / depth texels changed against the empty scene (256×256): editor insert before or after the first frame 13,110 / 5,902; movable and static again 13,110 / 5,902; moved 8,190 / 3,707; hidden, disabled, removed and "no geometry yet" 0 / 0; shown and re-enabled 8,190 / 3,707; panel draining first, typed insert and geometry arriving 13,110 / 5,902. Lights against the unlit frame: panel payload and class `to_json` 22,492 color pixels, disabled 0, the refused legacy flat payload 0. Phase 0 recorded 0 / 0 for every mesh added after the first frame and for every light.
+- `engine_backend --test scene_join_rows` (the join over the engine's rows) passes; so does `helio-default-graphs/tests/scene_join.rs` (see above).
+- The sweep `ui_level_editor`, `pulsar_game`, `engine_class_derive`, `pulsar_scene_model`, `pulsar_world_registry`, `pulsar_class`, `pulsar_script_object_model`, `pulsar_script_codegen`, `engine_backend`, `helio_component` passes except four failures that predate this work: the `engine_backend` gizmo hover test, the `helio_component` light-mapping intensity test, and two `toggle_button.rs` doctests.
+- SceneDB `--features gpu` passes except `alloc_gate_gpu` and `world_gpu_mirror_reservation_shrink`, the two lavapipe failures Phase 1 recorded on unmodified SceneDB.
+- `cargo test -p scene_inventory` passes.
 
 ## Ledger
 

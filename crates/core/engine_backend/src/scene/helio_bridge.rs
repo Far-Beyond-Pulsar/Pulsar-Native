@@ -11,13 +11,12 @@
 use std::sync::Arc;
 
 use helio_component::components::{
-    LightSourceRow, StaticMeshComponent, StaticMeshDraw, LIGHT_SOURCES_BUFFER,
-    MESH_BOUNDS_BUFFER, MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER,
+    LightSourceRow, StaticMeshComponent, StaticMeshDraw, LIGHT_SOURCES_BUFFER, MESH_BOUNDS_BUFFER,
+    MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER,
 };
 use helio_default_graphs::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
 use pulsar_scenedb::gpu::{
-    BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig,
-    SceneGpuStore,
+    BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
 };
 
 use pulsar_scene_model::attachments::ComponentOwner;
@@ -209,7 +208,10 @@ mod tests {
             size_of::<helio_component::components::MeshSectionDraw>() as u64,
             join::MESH_SECTION_ROW_BYTES
         );
-        assert_eq!(size_of::<LightSourceRow>() as u64, join::LIGHT_SOURCE_ROW_BYTES);
+        assert_eq!(
+            size_of::<LightSourceRow>() as u64,
+            join::LIGHT_SOURCE_ROW_BYTES
+        );
         assert_eq!(size_of::<[f32; 4]>() as u64, join::MESH_BOUNDS_ROW_BYTES);
         assert_eq!(size_of::<u32>() as u64, join::MESH_FLAGS_ROW_BYTES);
     }

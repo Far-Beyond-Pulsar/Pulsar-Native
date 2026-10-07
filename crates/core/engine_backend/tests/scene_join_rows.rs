@@ -36,7 +36,12 @@ fn mesh(movability: ObjectMovability) -> StaticMeshComponent {
     };
     StaticMeshComponent {
         mesh_asset: MeshAssetPath::new(""),
-        vertices: vec![vertex(0.0, 0.0), vertex(1.0, 0.0), vertex(0.0, 1.0), vertex(1.0, 1.0)],
+        vertices: vec![
+            vertex(0.0, 0.0),
+            vertex(1.0, 0.0),
+            vertex(0.0, 1.0),
+            vertex(1.0, 1.0),
+        ],
         indices: vec![0, 1, 2, 2, 1, 3],
         mesh_sections: vec![
             helio_component::mesh_cache::MeshSection {
@@ -109,7 +114,9 @@ impl Join {
         let mut encoder = self.device.create_command_encoder(&Default::default());
         encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, buffer.size());
         self.queue.submit([encoder.finish()]);
-        staging.slice(..).map_async(wgpu::MapMode::Read, |r| r.unwrap());
+        staging
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, |r| r.unwrap());
         self.device
             .poll(wgpu::PollType::wait_indefinitely())
             .unwrap();
@@ -154,13 +161,17 @@ fn the_join_follows_the_engines_authored_rows() {
     // derived ones included.
     let mut scene = SceneDb::new();
     let object = place(&mut scene, "mesh", [3.0, 0.0, 0.0]);
-    let instance =
-        pulsar_world_registry::attach_value(&mut scene.world, object, mesh(ObjectMovability::Static))
-            .unwrap();
+    let instance = pulsar_world_registry::attach_value(
+        &mut scene.world,
+        object,
+        mesh(ObjectMovability::Static),
+    )
+    .unwrap();
     let lamp = place(&mut scene, "lamp", [0.0, 5.0, 2.0]);
     let mut light = LightComponent::default();
     light.general.enabled = true;
-    let light_instance = pulsar_world_registry::attach_value(&mut scene.world, lamp, light).unwrap();
+    let light_instance =
+        pulsar_world_registry::attach_value(&mut scene.world, lamp, light).unwrap();
 
     engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
     let mut join = Join {
@@ -172,10 +183,22 @@ fn the_join_follows_the_engines_authored_rows() {
     let out = join.run(&mut scene);
     let rows = join.mesh_rows(&out, instance);
     assert_eq!(rows.len(), 2, "one object row per section");
-    assert!(rows.iter().all(|row| row.flags & helio::INSTANCE_FLAG_MOVABLE == 0), "static");
-    assert_eq!(rows[0].transform[3][..3], [3.0, 0.0, 0.0], "placed by its owner");
+    assert!(
+        rows.iter()
+            .all(|row| row.flags & helio::INSTANCE_FLAG_MOVABLE == 0),
+        "static"
+    );
+    assert_eq!(
+        rows[0].transform[3][..3],
+        [3.0, 0.0, 0.0],
+        "placed by its owner"
+    );
     let lit = join.light_row(&out, light_instance);
-    assert_eq!(lit.position_range[..3], [0.0, 5.0, 2.0], "the light is at its owner");
+    assert_eq!(
+        lit.position_range[..3],
+        [0.0, 5.0, 2.0],
+        "the light is at its owner"
+    );
     assert!(lit.color_intensity[3] > 0.0);
 
     // A movability edit through the reflected property path.
@@ -190,29 +213,54 @@ fn the_join_follows_the_engines_authored_rows() {
     let out = join.run(&mut scene);
     let rows = join.mesh_rows(&out, instance);
     assert_eq!(rows.len(), 2);
-    assert!(rows.iter().all(|row| row.flags & helio::INSTANCE_FLAG_MOVABLE != 0), "movable");
+    assert!(
+        rows.iter()
+            .all(|row| row.flags & helio::INSTANCE_FLAG_MOVABLE != 0),
+        "movable"
+    );
 
     scene.world.get_mut::<Transform>(object).unwrap().position = [-1.0, 2.0, 0.0];
     let out = join.run(&mut scene);
-    assert_eq!(join.mesh_rows(&out, instance)[0].transform[3][..3], [-1.0, 2.0, 0.0], "moved");
+    assert_eq!(
+        join.mesh_rows(&out, instance)[0].transform[3][..3],
+        [-1.0, 2.0, 0.0],
+        "moved"
+    );
 
     attachments::set_enabled(&mut scene.world, instance, false);
     attachments::set_enabled(&mut scene.world, light_instance, false);
     let out = join.run(&mut scene);
     assert!(join.mesh_rows(&out, instance).is_empty(), "disabled mesh");
-    assert_eq!(join.light_row(&out, light_instance).color_intensity, [0.0; 4], "disabled light");
+    assert_eq!(
+        join.light_row(&out, light_instance).color_intensity,
+        [0.0; 4],
+        "disabled light"
+    );
     attachments::set_enabled(&mut scene.world, instance, true);
     attachments::set_enabled(&mut scene.world, light_instance, true);
 
     scene.world.get_mut::<Visibility>(lamp).unwrap().visible = false;
     let out = join.run(&mut scene);
     assert_eq!(join.mesh_rows(&out, instance).len(), 2, "re-enabled");
-    assert_eq!(join.light_row(&out, light_instance).color_intensity, [0.0; 4], "hidden owner");
+    assert_eq!(
+        join.light_row(&out, light_instance).color_intensity,
+        [0.0; 4],
+        "hidden owner"
+    );
 
-    scene.world.get_mut::<LightComponent>(light_instance).unwrap().general.enabled = false;
+    scene
+        .world
+        .get_mut::<LightComponent>(light_instance)
+        .unwrap()
+        .general
+        .enabled = false;
     scene.world.get_mut::<Visibility>(lamp).unwrap().visible = true;
     let out = join.run(&mut scene);
-    assert_eq!(join.light_row(&out, light_instance).color_intensity, [0.0; 4], "light switched off");
+    assert_eq!(
+        join.light_row(&out, light_instance).color_intensity,
+        [0.0; 4],
+        "light switched off"
+    );
 
     attachments::detach(&mut scene.world, instance);
     let out = join.run(&mut scene);

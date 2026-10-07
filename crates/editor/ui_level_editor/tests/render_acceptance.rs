@@ -396,8 +396,6 @@ fn set_mesh_movability(state: &LevelEditorState, id: &str, movability: ObjectMov
     assert!(result.is_ok(), "movability edit was refused");
 }
 
-
-
 /// The bright, opaque, emissive surface every acceptance mesh draws with, so
 /// it shows against the empty scene without depending on lights.
 fn emissive_surface() -> helio_component::mesh_cache::ImportedSurfaceMaterial {
@@ -414,10 +412,9 @@ fn emissive_surface() -> helio_component::mesh_cache::ImportedSurfaceMaterial {
 /// A mesh built in code and inserted as a typed value: the cube's geometry,
 /// sections and bounds, every slot overridden with [`emissive_surface`].
 fn typed_mesh() -> StaticMeshComponent {
-    let upload = helio_component::subsystems::load_mesh_asset_upload(std::path::Path::new(
-        &mesh_asset(),
-    ))
-    .expect("SM_Cube.fbx loads");
+    let upload =
+        helio_component::subsystems::load_mesh_asset_upload(std::path::Path::new(&mesh_asset()))
+            .expect("SM_Cube.fbx loads");
     let radius = upload
         .geometry
         .vertices
@@ -519,7 +516,11 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
 
     for nudge in [false, true] {
         harness.nudge_camera.set(nudge);
-        let mode = if nudge { "camera nudging" } else { "camera at rest" };
+        let mode = if nudge {
+            "camera nudging"
+        } else {
+            "camera at rest"
+        };
         let reference = {
             let state = LevelEditorState::new();
             let mut renderer = harness.renderer(&state);
@@ -542,7 +543,10 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             drop_mesh(&mut state);
             let mut renderer = harness.renderer(&state);
             let frame = harness.frames(&mut renderer, || {});
-            assert_drawn(&format!("[{mode}] editor mesh, before the first frame"), observe("before_first_frame", frame));
+            assert_drawn(
+                &format!("[{mode}] editor mesh, before the first frame"),
+                observe("before_first_frame", frame),
+            );
         }
 
         // ── Editor insertion after the first frame, then edits ─────────────
@@ -556,14 +560,23 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
                 color: placed.color.clone(),
                 depth: placed.depth.clone(),
             };
-            assert_drawn(&format!("[{mode}] editor mesh, after the first frame"), observe("after_first_frame", placed));
+            assert_drawn(
+                &format!("[{mode}] editor mesh, after the first frame"),
+                observe("after_first_frame", placed),
+            );
 
             set_mesh_movability(&state, &id, ObjectMovability::Movable);
             let frame = harness.frames(&mut renderer, || {});
-            assert_drawn(&format!("[{mode}]   made Movable"), observe("movable", frame));
+            assert_drawn(
+                &format!("[{mode}]   made Movable"),
+                observe("movable", frame),
+            );
             set_mesh_movability(&state, &id, ObjectMovability::Static);
             let frame = harness.frames(&mut renderer, || {});
-            assert_drawn(&format!("[{mode}]   made Static again"), observe("static_again", frame));
+            assert_drawn(
+                &format!("[{mode}]   made Static again"),
+                observe("static_again", frame),
+            );
 
             move_to(&mut state, &id, [radius * 1.5, 0.0, 0.0]);
             let moved = harness.frames(&mut renderer, || {});
@@ -576,21 +589,43 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
 
             set_visible(&mut state, &id, false);
             let frame = harness.frames(&mut renderer, || {});
-            assert_not_drawn(&format!("[{mode}]   object hidden"), observe("hidden", frame));
+            assert_not_drawn(
+                &format!("[{mode}]   object hidden"),
+                observe("hidden", frame),
+            );
             set_visible(&mut state, &id, true);
             let frame = harness.frames(&mut renderer, || {});
             assert_drawn(&format!("[{mode}]   object shown"), observe("shown", frame));
 
-            assert!(components::set_component_enabled(&mut state.scene.world_mut(), &id, 0, false));
+            assert!(components::set_component_enabled(
+                &mut state.scene.world_mut(),
+                &id,
+                0,
+                false
+            ));
             let frame = harness.frames(&mut renderer, || {});
-            assert_not_drawn(&format!("[{mode}]   mesh disabled"), observe("disabled", frame));
-            assert!(components::set_component_enabled(&mut state.scene.world_mut(), &id, 0, true));
+            assert_not_drawn(
+                &format!("[{mode}]   mesh disabled"),
+                observe("disabled", frame),
+            );
+            assert!(components::set_component_enabled(
+                &mut state.scene.world_mut(),
+                &id,
+                0,
+                true
+            ));
             let frame = harness.frames(&mut renderer, || {});
-            assert_drawn(&format!("[{mode}]   mesh re-enabled"), observe("enabled", frame));
+            assert_drawn(
+                &format!("[{mode}]   mesh re-enabled"),
+                observe("enabled", frame),
+            );
 
             components::remove_component(&mut state.scene.world_mut(), &id, 0);
             let frame = harness.frames(&mut renderer, || {});
-            assert_not_drawn(&format!("[{mode}]   mesh removed"), observe("removed", frame));
+            assert_not_drawn(
+                &format!("[{mode}]   mesh removed"),
+                observe("removed", frame),
+            );
         }
 
         // ── The properties panel open and draining the shared queue first ──
@@ -608,7 +643,10 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             let frame = harness.frames(&mut renderer, || {
                 components::take_world_component_events(&mut state.scene.world_mut());
             });
-            assert_drawn(&format!("[{mode}] editor mesh, panel draining first"), observe("panel_drains", frame));
+            assert_drawn(
+                &format!("[{mode}] editor mesh, panel draining first"),
+                observe("panel_drains", frame),
+            );
         }
 
         // ── Direct typed insertion after the first frame ───────────────────
@@ -625,7 +663,10 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
                     .expect("attach typed mesh");
             }
             let frame = harness.frames(&mut renderer, || {});
-            assert_drawn(&format!("[{mode}] typed mesh, inserted directly"), observe("typed", frame));
+            assert_drawn(
+                &format!("[{mode}] typed mesh, inserted directly"),
+                observe("typed", frame),
+            );
         }
 
         // ── Asset completion: geometry arrives after the instance ──────────
@@ -633,7 +674,11 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             let mut state = LevelEditorState::new();
             let mut renderer = harness.renderer(&state);
             harness.frames(&mut renderer, || {});
-            let id = add_object(&mut state, "pending mesh", ObjectType::Mesh(MeshType::Custom));
+            let id = add_object(
+                &mut state,
+                "pending mesh",
+                ObjectType::Mesh(MeshType::Custom),
+            );
             components::add_component(
                 &mut state.scene.world_mut(),
                 &id,
@@ -641,7 +686,10 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
                 json!({ "mesh_asset": "" }),
             );
             let frame = harness.frames(&mut renderer, || {});
-            assert_not_drawn(&format!("[{mode}] mesh without geometry yet"), observe("pending", frame));
+            assert_not_drawn(
+                &format!("[{mode}] mesh without geometry yet"),
+                observe("pending", frame),
+            );
             let instance = first_instance(&state, &id);
             {
                 // The asset completes: the instance receives its geometry
@@ -651,12 +699,19 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
                 world.insert(instance, completed);
             }
             let frame = harness.frames(&mut renderer, || {});
-            assert_drawn(&format!("[{mode}]   geometry arrived"), observe("completed", frame));
+            assert_drawn(
+                &format!("[{mode}]   geometry arrived"),
+                observe("completed", frame),
+            );
         }
 
         // ── Lights added after the first frame, next to a mesh ─────────────
         for (label, data, accepted) in [
-            ("panel payload", bright(panel_defaults("LightComponent")), true),
+            (
+                "panel payload",
+                bright(panel_defaults("LightComponent")),
+                true,
+            ),
             ("class to_json", bright(class_json("LightComponent")), true),
             ("legacy flat intensity", legacy_flat_light(), false),
         ] {
@@ -667,7 +722,12 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             let id = add_object(&mut state, "Light", ObjectType::Light(LightType::Point));
             // Above and in front of the mesh, between it and the camera.
             move_to(&mut state, &id, [0.0, radius * 1.5, radius * 2.0]);
-            components::add_component(&mut state.scene.world_mut(), &id, "LightComponent".to_string(), data);
+            components::add_component(
+                &mut state.scene.world_mut(),
+                &id,
+                "LightComponent".to_string(),
+                data,
+            );
             let attached = components::instance_at(&state.scene.world(), &id, 0).is_some();
             assert_eq!(attached, accepted, "[{mode}] light ({label}): attached");
             let lit = harness.frames(&mut renderer, || {});
@@ -676,8 +736,16 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             let change = lit.difference(&unlit);
             println!("PHASE2 [{mode}] light ({label}) vs unlit: {change:?}");
             if accepted {
-                assert!(change.color_pixels > 0, "[{mode}] light ({label}) did not light the scene");
-                assert!(components::set_component_enabled(&mut state.scene.world_mut(), &id, 0, false));
+                assert!(
+                    change.color_pixels > 0,
+                    "[{mode}] light ({label}) did not light the scene"
+                );
+                assert!(components::set_component_enabled(
+                    &mut state.scene.world_mut(),
+                    &id,
+                    0,
+                    false
+                ));
                 let dark = harness.frames(&mut renderer, || {});
                 let change = dark.difference(&unlit);
                 println!("PHASE2 [{mode}]   light disabled vs unlit: {change:?}");
@@ -686,7 +754,10 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
                     "[{mode}] a disabled light still lights the scene"
                 );
             } else {
-                assert_eq!(change.color_pixels, 0, "[{mode}] a refused light changed the frame");
+                assert_eq!(
+                    change.color_pixels, 0,
+                    "[{mode}] a refused light changed the frame"
+                );
             }
         }
     }
