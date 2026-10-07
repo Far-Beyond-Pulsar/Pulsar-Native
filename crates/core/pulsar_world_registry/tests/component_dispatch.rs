@@ -138,7 +138,6 @@ impl EngineClass for DispatchGizmo {
     }
 }
 
-
 fn gizmo_remove(world: &mut World, entity: Entity) {
     let _ = world.remove::<DispatchGizmo>(entity);
 }
@@ -704,4 +703,47 @@ fn property_access_builds_descriptors_once() {
         get_component_property_boxed(&world, entity, "DispatchGizmo", 0, "nope"),
         Err(ScriptRefError::UnknownProperty { .. })
     ));
+}
+
+/// The shape `pulsar_script_codegen` generates for a prefab component:
+/// a function-local `DefaultCache`, so every actor of the class clones one
+/// decoded default (Pulsar-Native#1035, Phase 3).
+fn attach_generated_default(world: &mut World, entity: Entity) -> Result<Entity, String> {
+    static __DEFAULT: pulsar_world_registry::instances::DefaultCache =
+        pulsar_world_registry::instances::DefaultCache::new();
+    pulsar_world_registry::instances::attach_cached_default(
+        world,
+        entity,
+        "DispatchGizmo",
+        "{\"charges\": 4}",
+        &__DEFAULT,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[test]
+fn generated_defaults_decode_once_and_each_actor_gets_its_own_value() {
+    use pulsar_scene_model::SceneWorldExt;
+    let mut world = World::new();
+    let a = world
+        .spawn_object(pulsar_scene_model::SpawnObject::new("a"))
+        .unwrap();
+    let b = world
+        .spawn_object(pulsar_scene_model::SpawnObject::new("b"))
+        .unwrap();
+    let first = attach_generated_default(&mut world, a).unwrap();
+    let second = attach_generated_default(&mut world, b).unwrap();
+    world.get_mut::<DispatchGizmo>(first).unwrap().charges = 9;
+    assert_eq!(world.get::<DispatchGizmo>(second).unwrap().charges, 4);
+
+    static UNKNOWN: pulsar_world_registry::instances::DefaultCache =
+        pulsar_world_registry::instances::DefaultCache::new();
+    assert!(pulsar_world_registry::instances::attach_cached_default(
+        &mut world,
+        a,
+        "NoSuchClass",
+        "{}",
+        &UNKNOWN
+    )
+    .is_err());
 }

@@ -110,6 +110,46 @@ pub fn attach_value<T: EngineClass>(
     )
 }
 
+/// A class's default value decoded once, for generated actor code that
+/// attaches the same prefab component to every actor it spawns
+/// ([`attach_cached_default`]).
+pub type DefaultCache = std::sync::OnceLock<Result<Box<dyn Any + Send + Sync>, String>>;
+
+/// Attach a new instance of `class_name` to `owner` holding a clone of the
+/// default `json` describes, decoded once into `cache` (the first call) and
+/// cloned for every later one. Refused like [`attach_component`] for an
+/// unregistered class or data that does not decode.
+pub fn attach_cached_default(
+    world: &mut World,
+    owner: Entity,
+    class_name: &str,
+    json: &str,
+    cache: &DefaultCache,
+) -> Result<Entity, AttachError> {
+    let decoded = cache.get_or_init(|| {
+        let data =
+            serde_json::from_str::<Value>(json).unwrap_or_else(|_| Value::Object(Map::new()));
+        match crate::find(class_name) {
+            Some(registration) => (registration.decode)(&data),
+            None => Err(format!(
+                "`{class_name}` is not a registered component class"
+            )),
+        }
+    });
+    let default = decoded.as_ref().map_err(|error| AttachError::Decode {
+        class: class_name.to_string(),
+        error: error.clone(),
+    })?;
+    let value = crate::values::clone_value(class_name, default.as_ref())
+        .ok_or_else(|| AttachError::UnknownClass(class_name.to_string()))?;
+    attach_component(
+        world,
+        owner,
+        NewInstance::new(class_name),
+        ComponentPayload::Value(value),
+    )
+}
+
 /// Attach a payload this build cannot use as a live component -- an
 /// unregistered class, or data that does not decode -- as an explicit
 /// [`UnresolvedComponent`] that keeps the payload for lossless saving.
@@ -515,36 +555,6 @@ fn records_with(
             record(world, *instance, parent_index)
         })
         .collect()
-}
-
-/// Replace `instance`'s value with `data` (a record's data; its metadata
-/// keys are ignored): decoded once here for a registered class, which also
-/// resolves an instance that was unresolved; kept as the payload of an
-/// unresolved instance of a class this build does not register. Nothing is
-/// written when the data does not decode.
-pub fn set_instance_data(
-    world: &mut World,
-    instance: Entity,
-    data: &Value,
-) -> Result<(), AttachError> {
-    let Some(class) = attachments::meta(world, instance).map(|meta| meta.class_name.clone()) else {
-        return Err(AttachError::Instance(InstanceError::DeadOwner(instance)));
-    };
-    let body = split_record(data).body;
-    let Some(registration) = crate::find(&class) else {
-        if let Some(mut unresolved) = world.get_mut::<UnresolvedComponent>(instance) {
-            unresolved.data = body;
-            return Ok(());
-        }
-        return Err(AttachError::UnknownClass(class));
-    };
-    let value = (registration.decode)(&body).map_err(|error| AttachError::Decode {
-        class: class.clone(),
-        error,
-    })?;
-    insert_world_component_value(&class, world, instance, value)?;
-    world.remove::<UnresolvedComponent>(instance);
-    Ok(())
 }
 
 /// Split a record's data into the class's own data and its metadata.

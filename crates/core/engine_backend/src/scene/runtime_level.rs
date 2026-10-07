@@ -181,7 +181,7 @@ impl RuntimeLevel {
             let Some(entity) = world.entity_for(&obj.id) else {
                 continue;
             };
-            let mut instances = match persisted.get(&obj.id) {
+            let instances = match persisted.get(&obj.id) {
                 // A persisted entry is authoritative, including an explicit empty
                 // array, which means the object has no components.
                 Some(records) => records.clone(),
@@ -197,22 +197,9 @@ impl RuntimeLevel {
                         .collect::<Vec<_>>()
                 }
             };
-            let legacy = instances
-                .iter()
-                .find(|record| record.class_name == "MaterialOverrideComponent")
-                .map(|record| record.data.clone());
-            if let Some(legacy) = legacy {
-                if let Some(mesh) = instances
-                    .iter_mut()
-                    .find(|record| record.class_name == "StaticMeshComponent")
-                {
-                    if let Some(data) = mesh.data.as_object_mut() {
-                        data.entry("legacy_material_override").or_insert(legacy);
-                    }
-                }
-                instances.retain(|record| record.class_name != "MaterialOverrideComponent");
-            }
-
+            // Legacy shapes were migrated with the file
+            // (`pulsar_class::records`): MaterialOverrideComponent folded,
+            // flat data nested, a bare `props.mesh_asset` made a mesh.
             hydrate_components(world, entity, &obj.id, &instances)?;
         }
 
@@ -333,6 +320,16 @@ fn migrate_scene_file(file: &mut SceneFile, registry: &pulsar_class::ClassRegist
     let report = pulsar_class::migrate::migrate_level_value(&mut value, registry);
     if !report.changed() {
         return;
+    }
+    let records = &report.records;
+    if records.changed() {
+        tracing::info!(
+            material_overrides = records.material_overrides.len(),
+            nested = records.nested.len(),
+            mesh_asset_props = records.mesh_asset_props.len(),
+            stripped_props = records.stripped_props.len(),
+            "Migrated legacy component records"
+        );
     }
     if let Some(objects) = value.get("objects").and_then(Value::as_array) {
         for (obj, migrated) in file.objects.iter_mut().zip(objects) {
@@ -678,6 +675,28 @@ mod tests {
                 .is_none(),
             "the GPU companion is the light's own GPU row, never a component"
         );
+    }
+
+    /// Pulsar-Native#1035, Phase 3: a light saved with `intensity` as a
+    /// bare number (the flat property form; the class nests it in its
+    /// `IntensityLightProps` group) is migrated at load and hydrates live,
+    /// keeping the saved value, instead of failing the level.
+    #[test]
+    fn a_legacy_flat_light_is_migrated_and_loads() {
+        let mut data = serde_json::to_value(LightComponent::default()).unwrap();
+        data["intensity"] = serde_json::json!(1002.0);
+        let instances = serde_json::json!([
+            { "index": 0, "class_name": "LightComponent", "data": data }
+        ]);
+        let file = level_with_sun_components(Value::Null, Some(instances));
+        let level = RuntimeLevel::from_scene_file(file).expect("the migrated light loads");
+        let scene = level.scene();
+        let scene = scene.read();
+        let world = &scene.world;
+        let sun = world.entity_for("sun").unwrap();
+        let lights = pulsar_scene_model::attachments::instances(world, sun);
+        let light = world.get::<LightComponent>(lights[0]).expect("live");
+        assert_eq!(light.intensity.intensity, 1002.0);
     }
 
     /// #637: unregistered classes stay attached as unresolved JSON.

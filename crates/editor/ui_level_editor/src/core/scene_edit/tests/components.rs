@@ -173,7 +173,14 @@ fn physics_world_edits_survive_object_updates_and_save_projection() {
     let world = &mut scene.world;
     let id = objects::add_object(world, object("PhysicsBody"), None);
     components::add_component(world, &id, "PhysicsComponent".into(), physics_json(true));
-    components::update_component(world, &id, 0, physics_json(false));
+    let mut physics = PhysicsComponent::default();
+    physics.general.collision_enabled = false;
+    assert!(components::set_component_value(
+        world,
+        &id,
+        0,
+        pulsar_world_registry::InstanceValue::Value(Box::new(physics)),
+    ));
     let mut updated = objects::get_object(world, &id).unwrap();
     updated.transform.position = [1.0, 2.0, 3.0];
     assert!(objects::update_object(world, updated));

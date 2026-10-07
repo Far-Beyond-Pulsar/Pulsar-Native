@@ -166,10 +166,9 @@ pub struct LevelEditorCameraState {
 // ── Blueprint helpers ──────────────────────────────────────────────────────
 
 /// A `StaticMeshComponent` data payload carrying every texture slot the
-/// current class requires (Helio#237). Older scenes predate the slots; the
-/// legacy `props.mesh_asset` projection and tests must emit all of them or
-/// hydration's deserialization rejects the instance outright. Empty paths
-/// mean "slot unassigned", which hydrate treats as zero-semantics.
+/// current class requires (Helio#237), for the HLFS demo scene builder.
+/// Empty paths mean "slot unassigned".
+#[cfg(test)]
 fn static_mesh_component_json(mesh_asset: &str) -> Value {
     serde_json::json!({
         "mesh_asset": mesh_asset,

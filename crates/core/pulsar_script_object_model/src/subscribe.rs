@@ -66,7 +66,7 @@ mod tests {
         let _sub_b = subscribe_component(&mut world, &ref_b).expect("subscribes");
 
         ref_a
-            .set_property(&mut world, "charges", serde_json::json!(42))
+            .set_property(&mut world, "charges", Box::new(42))
             .unwrap();
 
         let events = take_change_events_for(&mut world, sub_a);
@@ -97,7 +97,7 @@ mod tests {
         assert_eq!(events[0].entity, e);
 
         let err = r
-            .set_property(&mut world, "charges", serde_json::json!(1))
+            .set_property(&mut world, "charges", Box::new(1))
             .unwrap_err();
         assert!(matches!(err, ScriptRefError::ReferenceDespawned { .. }));
     }

@@ -185,17 +185,20 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                     default,
                 );
                 if updated.is_err() {
-                    let Some(json) = json else {
+                    // An unresolved payload: write the default into it.
+                    let written = json.is_some_and(|json| {
+                        crate::scene_edit::components::set_unresolved_property(
+                            &mut state.scene.world_mut(),
+                            id,
+                            class_name,
+                            component_index,
+                            prop_name,
+                            json,
+                        )
+                    });
+                    if !written {
                         return CommandResult::noop("Class default could not be written");
-                    };
-                    crate::scene_edit::components::update_component_property(
-                        &mut state.scene.world_mut(),
-                        id,
-                        class_name,
-                        component_index,
-                        prop_name,
-                        json,
-                    );
+                    }
                 }
                 state.scene.bump_revision(true);
                 CommandResult::ok(vec![id.clone()])
@@ -409,9 +412,8 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 //
                 // `component_index` targets the exact instance being edited
                 // (Pulsar-Native#519): every instance is its own entity with
-                // its own typed value (Pulsar-Native#1035). Only an instance
-                // whose class this build does not register (an unresolved
-                // payload) falls back to the indexed JSON write below.
+                // its own typed value (Pulsar-Native#1035). Only an
+                // unresolved payload falls back to the payload write below.
                 let update_result = crate::scene_edit::components::update_live_component_property(
                     &mut state.scene.world_mut(),
                     id,
@@ -437,16 +439,21 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                             .serialize_json_for_any(value.as_ref())
                         {
                             Ok(value_json) => {
-                                crate::scene_edit::components::update_component_property(
+                                // An unresolved payload: its JSON is the
+                                // only copy of its values.
+                                if crate::scene_edit::components::set_unresolved_property(
                                     &mut state.scene.world_mut(),
                                     id,
                                     class_name,
                                     component_index,
                                     prop_name,
                                     value_json,
-                                );
-                                state.scene.bump_revision(true);
-                                CommandResult::ok(vec![id.clone()])
+                                ) {
+                                    state.scene.bump_revision(true);
+                                    CommandResult::ok(vec![id.clone()])
+                                } else {
+                                    CommandResult::noop("No such property or no change")
+                                }
                             }
                             Err(error) => {
                                 // Not `World`-registered AND not in
@@ -641,29 +648,28 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 {
                     let mut world = state.scene.world_mut();
                     for id in &ids {
-                        let targets: Vec<(usize, String)> = components::get_component_class_names(
-                            &world, id,
-                        )
-                        .into_iter()
-                        .enumerate()
-                        .filter(|(index, class_name)| {
-                            matches!(
-                                class_name.as_str(),
-                                "StaticMeshComponent" | "LightComponent"
-                            ) && components::read_live_component_property(
-                                &world,
-                                id,
-                                class_name,
-                                *index,
-                                "movability",
-                            )
-                            .and_then(|value| {
-                                value
+                        let targets: Vec<(usize, String)> =
+                            components::get_component_class_names(&world, id)
+                                .into_iter()
+                                .enumerate()
+                                .filter(|(index, class_name)| {
+                                    matches!(
+                                        class_name.as_str(),
+                                        "StaticMeshComponent" | "LightComponent"
+                                    ) && components::read_live_component_property(
+                                        &world,
+                                        id,
+                                        class_name,
+                                        *index,
+                                        "movability",
+                                    )
+                                    .and_then(|value| {
+                                        value
                                     .downcast_ref::<helio_component::components::ObjectMovability>()
                                     .copied()
-                            }) != Some(movability)
-                        })
-                        .collect();
+                                    }) != Some(movability)
+                                })
+                                .collect();
                         for (index, class_name) in targets {
                             // Typed setter; `movability` is a flat property
                             // name on both classes (lights via `#[sub_props]`).
