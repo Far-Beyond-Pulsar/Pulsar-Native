@@ -74,6 +74,18 @@ pub fn write_file(path: &Path, content: &[u8]) -> Result<()> {
     result
 }
 
+/// Atomically replace a file when the active provider supports it.
+///
+/// Providers that cannot guarantee atomic replacement return an error rather
+/// than silently falling back to a partial write.
+pub fn write_file_atomically(path: &Path, content: &[u8]) -> Result<()> {
+    let result = global().read().write_file_atomically(path, content);
+    if result.is_ok() {
+        events::emit(path.to_path_buf(), FsChangeKind::Modified);
+    }
+    result
+}
+
 /// Create a new file with `content`, failing if it already exists.
 pub fn create_file(path: &Path, content: &[u8]) -> Result<()> {
     let result = global().read().create_file(path, content);

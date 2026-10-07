@@ -26,7 +26,7 @@ impl LevelEditorPanel {
                 // Load into the existing shared SceneDb (renderer keeps its Arc).
                 let result = {
                     let mut world = scene_db.write();
-                    crate::scene_edit::level_io::load_from_file_with_editor_camera(
+                    crate::scene_edit::level_io::load_from_file_with_editor_camera_and_settings(
                         &mut world.world,
                         &path,
                     )
@@ -34,10 +34,11 @@ impl LevelEditorPanel {
                 cx.update(|cx| {
                     this.update(cx, |this, cx| {
                         match result {
-                            Ok(editor_camera) => {
+                            Ok((editor_camera, world_settings)) => {
                                 this.apply_editor_camera_state(editor_camera.as_ref());
                                 let mut state = state_arc.write();
                                 state.scene.current_scene = Some(path);
+                                state.scene.world_settings = world_settings;
                                 state.scene.has_unsaved_changes = false;
                                 // Deselect so properties panel clears stale data.
                                 state.scene.select_object(None);
@@ -62,6 +63,7 @@ impl LevelEditorPanel {
         // Clear the scene IN-PLACE so the renderer keeps its Arc<SceneDb>.
         let scene_db = { self.shared_state.read().scene.shared_scene() };
         let mut editor_camera = None;
+        let mut world_settings = crate::world_settings_data::WorldSettingsData::default();
         {
             let mut world = scene_db.write();
             crate::scene_edit::objects::clear(&mut world.world);
@@ -75,13 +77,16 @@ impl LevelEditorPanel {
             if engine_fs::virtual_fs::write_file(&tmp, &bytes).is_ok() {
                 let load_result = {
                     let mut world = scene_db.write();
-                    crate::scene_edit::level_io::load_from_file_with_editor_camera(
+                    crate::scene_edit::level_io::load_from_file_with_editor_camera_and_settings(
                         &mut world.world,
                         &tmp,
                     )
                 };
                 match load_result {
-                    Ok(loaded_camera) => editor_camera = loaded_camera,
+                    Ok((loaded_camera, loaded_settings)) => {
+                        editor_camera = loaded_camera;
+                        world_settings = loaded_settings;
+                    }
                     Err(e) => {
                         tracing::warn!("New scene: could not load embedded default.level: {e}")
                     }
@@ -92,6 +97,7 @@ impl LevelEditorPanel {
         {
             let mut state = self.shared_state.write();
             state.scene.current_scene = None;
+            state.scene.world_settings = world_settings;
             state.scene.has_unsaved_changes = false;
             // Deselect so properties panel clears stale data.
             state.scene.select_object(None);

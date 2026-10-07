@@ -9326,6 +9326,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "trait_editor_plugin",
  "ui",
  "ui_common",
  "ui_core",
@@ -13100,6 +13101,22 @@ checksum = "ab27f167b093214c68413a2e0bcd318f0591af475597405ff68138ba0a433379"
 dependencies = [
  "cc",
  "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "trait_editor_plugin"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_fs",
+ "gpui-ce",
+ "plugin_editor_api",
+ "plugin_manager",
+ "serde",
+ "serde_json",
+ "tracing",
+ "ui",
+ "ui_types_common",
 ]
 
 [[package]]

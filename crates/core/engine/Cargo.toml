@@ -54,6 +54,7 @@ dotenv = "0.15"
 window_manager.workspace = true
 # Registers itself at link time (see plugin_manager::LinkedEditorProvider).
 blueprint_editor_plugin = { path = "../../../plugins/vendor/blueprint_editor", features = ["builtin"], optional = true }
+trait_editor_plugin = { path = "../../../plugins/trait_editor", features = ["builtin"], optional = true }
 plugin_typescript = { workspace = true, optional = true }
 pulsar_std = { workspace = true }
 tracing-appender = "0.2.4"
@@ -68,8 +69,9 @@ dhat = { version = "0.3", optional = true }
 # The Blueprint editor and its scripting language. They are a plugin like any
 # other: the editor shell does not depend on them, and `--no-default-features`
 # builds an editor without them (CI keeps that building).
-default = ["blueprint", "typescript"]
+default = ["blueprint", "trait-editor", "typescript"]
 blueprint = ["dep:blueprint_editor_plugin"]
+trait-editor = ["dep:trait_editor_plugin"]
 # TypeScript scripting (`class.ts`); likewise optional.
 typescript = ["dep:plugin_typescript"]
 dhat-heap = ["dep:dhat"]
