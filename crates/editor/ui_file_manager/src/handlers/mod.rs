@@ -1,6 +1,6 @@
 use gpui::prelude::*;
 use gpui::*;
-use std::path::PathBuf;
+use std::path::{Component, PathBuf};
 
 use crate::components::FileManagerDrawer;
 use crate::utils::git_integration;
@@ -101,14 +101,37 @@ pub fn handle_create_asset(
     action: &CreateAsset,
     cx: &mut Context<FileManagerDrawer>,
 ) {
-    let Some(folder) = &d.selected_folder else {
-        return;
-    };
     let ft = d
         .registered_file_types
         .iter()
         .find(|x| x.id.as_str() == action.file_type_id)
         .cloned();
+    let creation_directory = ft
+        .as_ref()
+        .and_then(|file_type| file_type.creation_directory.clone());
+    let folder = if let Some(directory) = creation_directory.as_deref() {
+        let relative = PathBuf::from(directory);
+        if relative.is_absolute()
+            || relative.components().any(|component| {
+                matches!(
+                    component,
+                    Component::ParentDir | Component::RootDir | Component::Prefix(_)
+                )
+            })
+        {
+            tracing::error!(directory, "Asset creation directory must be project-relative");
+            return;
+        }
+        let Some(project_root) = d.project_path.as_ref() else {
+            tracing::error!(directory, "Cannot create this asset without an open project");
+            return;
+        };
+        crate::utils::cloud_join(project_root, directory)
+    } else if let Some(folder) = d.selected_folder.clone() {
+        folder
+    } else {
+        return;
+    };
     let display = ft
         .as_ref()
         .map(|x| x.display_name.as_str())
@@ -117,32 +140,26 @@ pub fn handle_create_asset(
         .as_ref()
         .map(|x| x.extension.as_str())
         .unwrap_or(action.extension.as_str());
-    let mut fp =
-        crate::utils::cloud_join(folder, &format!("New{}.{}", display.replace(" ", ""), ext));
+    let mut fp = crate::utils::cloud_join(
+        &folder,
+        &format!("New{}.{}", display.replace(" ", ""), ext),
+    );
     let mut c = 1;
     while (engine_fs::virtual_fs::is_remote()
         && engine_fs::virtual_fs::exists(&fp).unwrap_or(false))
         || (!engine_fs::virtual_fs::is_remote() && fp.exists())
     {
         fp = crate::utils::cloud_join(
-            folder,
+            &folder,
             &format!("New{}_{}.{}", display.replace(" ", ""), c, ext),
         );
         c += 1;
     }
     let write = |p: &std::path::Path, data: &[u8]| -> Result<(), Box<dyn std::error::Error>> {
-        if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(p) {
-            Ok(engine_fs::virtual_fs::write_file(p, data)?)
-        } else {
-            Ok(std::fs::write(p, data)?)
-        }
+        Ok(engine_fs::virtual_fs::write_file(p, data)?)
     };
     let mkdir = |p: &std::path::Path| -> Result<(), Box<dyn std::error::Error>> {
-        if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(p) {
-            Ok(engine_fs::virtual_fs::create_dir_all(p)?)
-        } else {
-            Ok(std::fs::create_dir_all(p)?)
-        }
+        Ok(engine_fs::virtual_fs::create_dir_all(p)?)
     };
     let r = if let Some(def) = ft {
         match def.structure {
@@ -154,7 +171,11 @@ pub fn handle_create_asset(
                         .unwrap_or_default()
                         .into_bytes()
                 };
-                write(&fp, &content)
+                if let Some(parent) = fp.parent() {
+                    mkdir(parent).and_then(|_| write(&fp, &content))
+                } else {
+                    write(&fp, &content)
+                }
             }
             plugin_editor_api::FileStructure::FolderBased {
                 marker_file,
@@ -198,6 +219,9 @@ pub fn handle_create_asset(
     if let Err(e) = r {
         tracing::error!("create_asset: {}", e);
     } else {
+        if creation_directory.is_some() {
+            d.selected_folder = Some(folder.clone());
+        }
         if let Some(ref p) = d.project_path {
             d.folder_tree = FolderNode::from_path(p);
         }

@@ -42,6 +42,7 @@ impl BuiltinEditorProvider for TraitEditorBuiltinProvider {
                 "meta": {}
             }),
             categories: vec!["Types".to_owned(), "Traits".to_owned()],
+            creation_directory: Some("types/traits".to_owned()),
         }]
     }
 
