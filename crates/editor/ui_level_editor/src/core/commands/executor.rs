@@ -182,6 +182,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                         &mut state.scene.world_mut(),
                         id,
                         class_name,
+                        component_index,
                         prop_name,
                         json,
                     );
@@ -277,16 +278,21 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                         .map(|o| o.transform.position);
                 let mut created = Vec::new();
                 for i in 0..count {
-                    if let Some(new_id) = crate::scene_edit::objects::duplicate_object(
+                    // Results are bound before each `if let`: a scene guard
+                    // taken in its scrutinee would live through the block,
+                    // which locks the scene again.
+                    let duplicated = crate::scene_edit::objects::duplicate_object(
                         &mut state.scene.world_mut(),
                         source_id,
-                    ) {
+                    );
+                    if let Some(new_id) = duplicated {
                         if let (Some(off), Some(src)) = (position_offset, src_pos) {
                             let n = (i + 1) as f32;
-                            if let Some(mut copy) = crate::scene_edit::objects::get_object(
+                            let copy = crate::scene_edit::objects::get_object(
                                 &state.scene.world(),
                                 &new_id,
-                            ) {
+                            );
+                            if let Some(mut copy) = copy {
                                 copy.transform.position = [
                                     src[0] + off[0] * n,
                                     src[1] + off[1] * n,
@@ -392,14 +398,10 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 // reflected setter closure, no JSON anywhere (Pulsar-Native#561).
                 //
                 // `component_index` targets the exact instance being edited
-                // (Pulsar-Native#519): only the object's first enabled instance
-                // of a World-registered class is live-typed in `World` (one
-                // storage slot per `(entity, type)`), so that instance takes the
-                // typed path and every OTHER instance -- plus classes with no
-                // World registration at all (`LODComponent`/
-                // non-world metadata-only component) -- is handled inside as an
-                // indexed metadata_db JSON write, so each duplicate keeps its
-                // own field values instead of every edit landing in instance 0.
+                // (Pulsar-Native#519): every instance is its own entity with
+                // its own typed value (Pulsar-Native#1035). Only an instance
+                // whose class this build does not register (an unresolved
+                // payload) falls back to the indexed JSON write below.
                 let update_result = crate::scene_edit::components::update_live_component_property(
                     &mut state.scene.world_mut(),
                     id,
@@ -414,6 +416,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                             &mut state.scene.world_mut(),
                             id,
                             class_name,
+                            component_index,
                             prop_name,
                         );
                         state.scene.bump_revision(true);
@@ -428,6 +431,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                                     &mut state.scene.world_mut(),
                                     id,
                                     class_name,
+                                    component_index,
                                     prop_name,
                                     value_json,
                                 );
@@ -460,7 +464,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 class_name,
                 data,
             } => edit_components(state, id, "Component could not be added", |world| {
-                crate::scene_edit::components::add_component(world, id, class_name, data)
+                crate::scene_edit::components::add_component(world, id, class_name, data);
             }),
 
             SceneCommand::RemoveComponent {

@@ -20,6 +20,12 @@ fn object(name: &str) -> SceneObjectData {
     }
 }
 
+/// Whether a metadata record's data holds only record metadata keys.
+fn metadata_only(data: &Value) -> bool {
+    data.as_object()
+        .is_some_and(|map| map.keys().all(|key| key.starts_with("__")))
+}
+
 fn physics_json(collision_enabled: bool) -> Value {
     let mut data = serde_json::to_value(PhysicsComponent::default()).unwrap();
     data["general"]["collision_enabled"] = json!(collision_enabled);
@@ -40,8 +46,9 @@ fn light_edits_remain_canonical_through_object_edits_and_history() {
         serde_json::to_value(LightComponent::default()).unwrap(),
     );
     let entity = world.entity_for(&id).unwrap();
+    let instance = components::instance_at(world, &id, 0).unwrap();
     world
-        .get_mut::<LightComponent>(entity)
+        .get_mut::<LightComponent>(instance)
         .unwrap()
         .intensity
         .intensity = 321.0;
@@ -53,9 +60,9 @@ fn light_edits_remain_canonical_through_object_edits_and_history() {
         components::get_components(world, &id)[0].data["intensity"]["intensity"],
         json!(321.0)
     );
-    assert!(components::get_components_metadata(world, &id)[0]
-        .data
-        .is_null());
+    assert!(metadata_only(
+        &components::get_components_metadata(world, &id)[0].data
+    ));
     let snapshot = history::capture_history_snapshot(world);
     objects::clear(world);
     history::restore_history_snapshot(world, &snapshot).unwrap();
@@ -145,12 +152,12 @@ fn physics_component_data_is_owned_by_the_scene_db_world() {
 
     let metadata = components::get_components_metadata(world, &id);
     assert_eq!(metadata.len(), 1);
-    assert_eq!(metadata[0].data, Value::Null);
+    assert!(metadata_only(&metadata[0].data));
     assert_eq!(
         components::get_components(world, &id)[0].data["general"]["collision_enabled"],
         json!(false)
     );
-    let entity = world.entity_for(&id).unwrap();
+    let entity = components::instance_at(world, &id, 0).unwrap();
     assert!(
         !world
             .get::<PhysicsComponent>(entity)
@@ -175,11 +182,10 @@ fn physics_world_edits_survive_object_updates_and_save_projection() {
         components::get_components(world, &id)[0].data["general"]["collision_enabled"],
         json!(false)
     );
-    assert_eq!(
-        components::get_components_metadata(world, &id)[0].data,
-        Value::Null
-    );
-    let entity = world.entity_for(&id).unwrap();
+    assert!(metadata_only(
+        &components::get_components_metadata(world, &id)[0].data
+    ));
+    let entity = components::instance_at(world, &id, 0).unwrap();
     assert!(
         !world
             .get::<PhysicsComponent>(entity)
@@ -197,16 +203,21 @@ fn disabling_and_reenabling_physics_preserves_the_canonical_value() {
     components::add_component(world, &id, "PhysicsComponent".into(), physics_json(false));
 
     assert!(components::set_component_enabled(world, &id, 0, false));
-    let entity = world.entity_for(&id).unwrap();
-    assert!(world.get::<PhysicsComponent>(entity).is_none());
+    let instance = components::instance_at(world, &id, 0).unwrap();
+    assert!(
+        world.get::<PhysicsComponent>(instance).is_some(),
+        "a disabled instance keeps its typed value in place"
+    );
+    assert!(!engine_backend::scene::attachments::is_enabled(
+        world, instance
+    ));
 
     assert!(components::set_component_enabled(world, &id, 0, true));
     assert_eq!(
         components::get_components(world, &id)[0].data["general"]["collision_enabled"],
         json!(false)
     );
-    assert_eq!(
-        components::get_components_metadata(world, &id)[0].data,
-        Value::Null
-    );
+    assert!(metadata_only(
+        &components::get_components_metadata(world, &id)[0].data
+    ));
 }

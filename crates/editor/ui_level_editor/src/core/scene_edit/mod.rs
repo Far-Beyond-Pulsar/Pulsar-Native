@@ -15,8 +15,9 @@
 //! | [`changes`] | which component properties changed, for the properties panel's relevance gate |
 //! | [`classes`] | placed class instances: placement, rebuild, overrides, revert (#921) |
 //!
-//! JSON is used for persistence and for dormant or unregistered component
-//! instances; live registered component values in the world are authoritative.
+//! Every attached component is its own entity holding its typed value
+//! (Pulsar-Native#1035, D1). JSON is used only at boundaries: persistence,
+//! history, tools, and the payload of a class this build does not register.
 
 use crate::world_settings_data::WorldSettingsData;
 use engine_backend::ComponentInstance;
@@ -39,57 +40,6 @@ mod tests;
 pub use changes::PropertyChangeSet;
 pub use engine_backend::scene::{LightType, MeshType, ObjectId, ObjectType};
 pub use history::{SceneHistoryDelta, SceneHistorySnapshot};
-
-/// Whether `class_name` has a live typed component registered in the world
-/// (as opposed to being a JSON-only attachment).
-fn is_scenedb_authority_class(class_name: &str) -> bool {
-    pulsar_world_registry::component_id_for_class(class_name).is_some()
-}
-
-/// The `__`-prefixed editor metadata keys of a component's JSON (e.g.
-/// `__parent_index`), which live on the attachment record rather than in the
-/// typed component.
-fn attachment_data(data: &Value) -> Value {
-    let metadata: serde_json::Map<String, Value> = data
-        .as_object()
-        .into_iter()
-        .flat_map(|map| map.iter())
-        .filter(|(key, _)| key.starts_with("__"))
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect();
-    if metadata.is_empty() {
-        Value::Null
-    } else {
-        Value::Object(metadata)
-    }
-}
-
-fn overlay_live_data(data: &Value, mut live: Value) -> Value {
-    if let (Some(metadata), Some(live)) = (attachment_data(data).as_object(), live.as_object_mut())
-    {
-        live.extend(metadata.clone());
-    }
-    live
-}
-
-fn remap_component_parents(
-    components: &mut [ComponentInstance],
-    remap: impl Fn(usize) -> Option<usize>,
-) {
-    for component in components {
-        let Some(data) = component.data.as_object_mut() else {
-            continue;
-        };
-        let Some(parent) = data.get("__parent_index").and_then(Value::as_u64) else {
-            continue;
-        };
-        if let Some(parent) = remap(parent as usize) {
-            data.insert("__parent_index".into(), serde_json::json!(parent));
-        } else {
-            data.remove("__parent_index");
-        }
-    }
-}
 
 // ── Transform ─────────────────────────────────────────────────────────────
 
@@ -158,7 +108,9 @@ pub struct SceneObjectData {
     /// exclusively through the [`components`] functions.
     #[serde(default)]
     pub props: HashMap<String, Value>,
-    /// Reflection-based component instances (projection of the attachments).
+    /// Inline component instances of an object being added (older v2
+    /// level files and add-object callers). Read models leave it `None`:
+    /// the attached instances are read through [`components`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub component_instances: Option<Value>,
 }

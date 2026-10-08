@@ -106,12 +106,6 @@ fn vm_probe_get_mut(
     pulsar_world_registry::EngineClassMut::of::<VmProbe>(world, entity)
 }
 
-fn vm_probe_hydrate(world: &mut World, entity: Entity, data: &JsonValue) -> Result<(), String> {
-    let parsed: VmProbe = serde_json::from_value(data.clone()).map_err(|e| e.to_string())?;
-    world.insert(entity, parsed);
-    Ok(())
-}
-
 fn vm_probe_remove(world: &mut World, entity: Entity) {
     let _ = world.remove::<VmProbe>(entity);
 }
@@ -120,13 +114,16 @@ pulsar_world_registry::inventory::submit! {
     WorldComponentRegistration {
         class_name: "VmProbe",
         component_type: component_id::<VmProbe>,
-        hydrate: vm_probe_hydrate,
+        default_value: pulsar_world_registry::values::erased::default_value::<VmProbe>,
+        decode: pulsar_world_registry::values::erased::decode_json::<VmProbe>,
+        clone_value: pulsar_world_registry::values::erased::clone_value::<VmProbe>,
+        register_erased: pulsar_scenedb::register_component::<VmProbe>,
         remove: vm_probe_remove,
         dispatch: |world, entity, _: _, _: usize, _: _| world.get::<VmProbe>(entity).is_some(),
         get_as_engine_class: vm_probe_get,
         get_as_engine_class_mut: vm_probe_get_mut,
         on_removed: |_, _| {},
-        refresh_gpu_mirror: |_, _| {},
+        property_written: pulsar_world_registry::values::erased::no_property_written,
     }
 }
 

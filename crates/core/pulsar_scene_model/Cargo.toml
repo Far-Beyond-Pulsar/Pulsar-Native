@@ -11,6 +11,7 @@ inventory = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+uuid = { workspace = true }
 # `#[derive(SceneStore)]` output names `::wgpu` directly.
 wgpu = { workspace = true }
 # The derive output also names `::pulsar_reflection` (packed GPU views are Reflectable).

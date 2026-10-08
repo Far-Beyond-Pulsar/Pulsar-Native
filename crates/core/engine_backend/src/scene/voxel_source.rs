@@ -10,6 +10,7 @@ use helio_voxel_data::{
     VoxelPublicationWorker, VoxelSampleEdit, VoxelSourceId, VoxelSourceWriter, VoxelTerrainId,
     VOXEL_CHUNK_ENCODING_RAW,
 };
+use pulsar_scene_model::attachments;
 use pulsar_scenedb::{Entity, World};
 
 use super::{
@@ -257,7 +258,8 @@ fn resolve(
             let component = world
                 .get::<VoxelComponent>(entity)
                 .ok_or("voxel object component is absent")?;
-            if !component.enabled || !component.editable {
+            if !component.enabled || !component.editable || !attachments::is_enabled(world, entity)
+            {
                 return Err("voxel object is disabled or not editable".into());
             }
             object_entry(world, entity, &component).map_err(str::to_string)
@@ -266,7 +268,8 @@ fn resolve(
             let component = world
                 .get::<VoxelTerrainComponent>(entity)
                 .ok_or("voxel terrain component is absent")?;
-            if !component.enabled || !component.editable {
+            if !component.enabled || !component.editable || !attachments::is_enabled(world, entity)
+            {
                 return Err("voxel terrain is disabled or not editable".into());
             }
             terrain_entry(world, entity, &component).map_err(str::to_string)
@@ -276,6 +279,7 @@ fn resolve(
 
 #[cfg(test)]
 mod tests {
+    use super::super::voxel_frame::spawn_test_instance;
     use super::*;
 
     fn admit_when_ready(
@@ -298,7 +302,7 @@ mod tests {
         let scene: SharedScene = Arc::new(parking_lot::RwLock::new(pulsar_scenedb::SceneDb::new()));
         let entity = {
             let mut scene = scene.write();
-            let entity = scene.world.spawn();
+            let entity = spawn_test_instance(&mut scene.world, "VoxelComponent");
             // Deserialization intentionally omits runtime payloads.
             let serialized = serde_json::to_value(VoxelComponent::default()).unwrap();
             let restored: VoxelComponent = serde_json::from_value(serialized).unwrap();
@@ -356,7 +360,7 @@ mod tests {
         let scene: SharedScene = Arc::new(parking_lot::RwLock::new(pulsar_scenedb::SceneDb::new()));
         let entity = {
             let mut scene = scene.write();
-            let entity = scene.world.spawn();
+            let entity = spawn_test_instance(&mut scene.world, "VoxelComponent");
             scene.world.insert(entity, VoxelComponent::default());
             entity
         };
@@ -431,7 +435,7 @@ mod tests {
         let scene: SharedScene = Arc::new(parking_lot::RwLock::new(pulsar_scenedb::SceneDb::new()));
         let entity = {
             let mut scene = scene.write();
-            let entity = scene.world.spawn();
+            let entity = spawn_test_instance(&mut scene.world, "VoxelComponent");
             scene.world.insert(entity, VoxelComponent::default());
             entity
         };
@@ -502,7 +506,7 @@ mod tests {
         let scene: SharedScene = Arc::new(parking_lot::RwLock::new(pulsar_scenedb::SceneDb::new()));
         let entity = {
             let mut guard = scene.write();
-            let entity = guard.world.spawn();
+            let entity = spawn_test_instance(&mut guard.world, "VoxelTerrainComponent");
             let mut component = VoxelTerrainComponent::default();
             component.chunk_edge_voxels = 2;
             component.max_chunk_lod = 4;

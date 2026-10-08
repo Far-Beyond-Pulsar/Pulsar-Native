@@ -73,6 +73,7 @@ use pulsar_class::{ClassEntry, ClassId, ClassInstance, ClassRegistry, LocalTrans
 use pulsar_scenedb::{ChangeCursor, ChangeRead, ComponentChange, Entity, World};
 use pulsar_script_runtime::{InstanceRuntimeStats, RuntimeError, ScriptRuntime};
 use pulsar_script_vm::{DebugCommand, DebugSnapshot, LibraryId};
+use pulsar_world_registry::pulsar_scene_model::attachments;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -355,6 +356,10 @@ pub struct ScriptDriver {
     config: ScriptingConfig,
     cursor: Option<ChangeCursor>,
     tracked: HashMap<Entity, Tracked>,
+    /// Each tracked object's `ClassInstance` component instance -> the
+    /// object, so a change on an instance already despawned still names
+    /// its object (Pulsar-Native#1035).
+    holders: HashMap<Entity, Entity>,
     by_instance: HashMap<String, Entity>,
     /// Class GUID → the runtime's class name (the module name).
     loaded: HashMap<ClassId, String>,
@@ -401,6 +406,7 @@ impl ScriptDriver {
             config,
             cursor: None,
             tracked: HashMap::new(),
+            holders: HashMap::new(),
             by_instance: HashMap::new(),
             loaded: HashMap::new(),
             globals: Vec::new(),
@@ -964,7 +970,7 @@ impl ScriptDriver {
                         Some(
                             self.scratch
                                 .iter()
-                                .map(|change| change.entity)
+                                .map(|change| self.object_of_holder(world, change.entity))
                                 .filter(|entity| seen.insert(*entity))
                                 .collect::<Vec<_>>(),
                         )
@@ -986,12 +992,24 @@ impl ScriptDriver {
         }
     }
 
+    /// The object a `ClassInstance` change on `holder` concerns: the
+    /// holder's owner, or for a holder already gone, the object it was
+    /// tracked for.
+    fn object_of_holder(&self, world: &World, holder: Entity) -> Entity {
+        if world.is_alive(holder) {
+            return attachments::object_of(world, holder);
+        }
+        self.holders.get(&holder).copied().unwrap_or(holder)
+    }
+
     /// Stop instances whose object is gone and start or refresh every live
     /// `ClassInstance`, by depth then StableId.
     fn rescan(&mut self, world: &mut World, report: &mut DriverReport) {
+        let mut objects = HashSet::new();
         let mut roots: Vec<(usize, String, Entity)> = world
             .query::<&ClassInstance>()
-            .map(|(entity, _)| entity)
+            .map(|(holder, _)| attachments::object_of(world, holder))
+            .filter(|object| objects.insert(*object))
             .collect::<Vec<_>>()
             .into_iter()
             .map(|entity| {
@@ -1017,14 +1035,17 @@ impl ScriptDriver {
     }
 
     fn sync_entity(&mut self, world: &mut World, entity: Entity, report: &mut DriverReport) {
-        let live = world
+        let holder = world
             .is_alive(entity)
-            .then(|| world.get::<ClassInstance>(entity).cloned())
+            .then(|| pulsar_class::world::class_instance_entity(world, entity))
             .flatten();
-        let Some(instance) = live else {
+        let Some(instance) = holder.and_then(|holder| world.get::<ClassInstance>(holder).cloned())
+        else {
             self.stop(world, entity, report);
             return;
         };
+        self.holders.retain(|_, object| *object != entity);
+        self.holders.insert(holder.expect("resolved above"), entity);
         let Some(tracked) = self.tracked.get(&entity).cloned() else {
             self.start(world, entity, &instance, report);
             return;
@@ -1142,6 +1163,7 @@ impl ScriptDriver {
     }
 
     fn stop(&mut self, world: &mut World, entity: Entity, report: &mut DriverReport) {
+        self.holders.retain(|_, object| *object != entity);
         let Some(tracked) = self.tracked.remove(&entity) else {
             return;
         };
@@ -1419,7 +1441,7 @@ impl ScriptDriver {
                     bind_class_slots(&mut self.runtime, &id, world, root);
                 }
                 None => {
-                    if let Some(instance) = world.get::<ClassInstance>(root).cloned() {
+                    if let Some(instance) = pulsar_class::world::class_instance_of(world, root) {
                         self.try_spawn(world, root, &instance.variable_overrides, &entry, report);
                     }
                 }

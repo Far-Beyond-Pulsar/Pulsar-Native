@@ -23,7 +23,7 @@ use std::fmt;
 use std::sync::{Arc, LazyLock};
 
 use pulsar_reflection::methods::TypeRef;
-use pulsar_scenedb::{ComponentId, ComponentRef, Entity};
+use pulsar_scenedb::{ComponentId, ComponentRef, Entity, World};
 use serde::{Deserialize, Serialize};
 
 use crate::value::{MapKey, Object, Value};
@@ -568,6 +568,27 @@ inventory::collect!(ComponentProvider);
 pub struct ProvidedComponent {
     pub name: &'static str,
     pub id: fn() -> ComponentId,
+    pub addressing: ComponentAddressing,
+}
+
+/// How a script component reference reaches its value. A reference names
+/// an entity; `resolve` maps it to the entity that holds the component's
+/// value (`None` if there is none) and `object` to the object the
+/// component belongs to. [`DIRECT`](Self::DIRECT) treats the referenced
+/// entity as both; a provider whose components live on their own
+/// entities (Pulsar-Native#1035) supplies its own.
+#[derive(Clone, Copy, Debug)]
+pub struct ComponentAddressing {
+    pub resolve: fn(&World, Entity, ComponentId) -> Option<Entity>,
+    pub object: fn(&World, Entity) -> Entity,
+}
+
+impl ComponentAddressing {
+    /// The value lives on the referenced entity itself.
+    pub const DIRECT: Self = Self {
+        resolve: |world, entity, id| world.has_component(entity, id).then_some(entity),
+        object: |_, entity| entity,
+    };
 }
 
 /// A value type visible to scripts under a stable name. Submitted by
@@ -781,11 +802,22 @@ pub struct ComponentBinding {
     pub name: &'static str,
     pub type_id: TypeId,
     id: fn() -> ComponentId,
+    addressing: ComponentAddressing,
 }
 
 impl ComponentBinding {
     pub fn component_id(&self) -> ComponentId {
         (self.id)()
+    }
+
+    /// The entity holding the value a reference to `entity` names.
+    pub fn resolve(&self, world: &World, entity: Entity) -> Option<Entity> {
+        (self.addressing.resolve)(world, entity, self.component_id())
+    }
+
+    /// The object a reference to `entity` belongs to.
+    pub fn object(&self, world: &World, entity: Entity) -> Entity {
+        (self.addressing.object)(world, entity)
     }
 }
 
@@ -848,6 +880,7 @@ impl TypeRegistry {
                 name: reg.name,
                 type_id: reg.ty.type_id(),
                 id: reg.id,
+                addressing: ComponentAddressing::DIRECT,
             };
             if registry.components.insert(reg.name, binding).is_some() {
                 tracing::error!("script component name `{}` registered twice", reg.name);
@@ -869,6 +902,7 @@ impl TypeRegistry {
                     name: provided.name,
                     type_id,
                     id: provided.id,
+                    addressing: provided.addressing,
                 };
                 registry.components.insert(provided.name, binding);
                 registry.components_by_rust.insert(type_id, provided.name);

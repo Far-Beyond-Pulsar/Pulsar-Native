@@ -704,7 +704,7 @@ fn starter_lib_rs() -> String {
 //! game runs and your actors re-bind to their existing entities instead of
 //! spawning duplicates.
 
-use pulsar_game::scene::{MeshAssetPath, StaticMeshComponent, Transform};
+use pulsar_game::scene::{attach_value, attachments, MeshAssetPath, StaticMeshComponent, Transform};
 use pulsar_game::tick::TickLoop;
 // Re-exports: script crates need no direct scenedb dependency — everything
 // gameplay-facing rides on `pulsar_game`.
@@ -713,7 +713,7 @@ use pulsar_game::{Actor, Entity, World};
 /// Rotates a cube forever. Spawned at the world origin on Play.
 ///
 /// `begin_play` gives the entity something visible (absent-only: scene-provided
-/// components always win), and `tick` mutates the LIVE `Transform` component —
+/// components always win; components attach to an object as instances), and `tick` mutates the LIVE `Transform` component —
 /// the same row the renderer reads, so edits show next frame and survive reload.
 pub struct Spinner {
     degrees_per_second: f32,
@@ -721,14 +721,14 @@ pub struct Spinner {
 
 impl Actor for Spinner {
     fn begin_play(&mut self, entity: Entity, world: &mut World) {
-        if world.get::<StaticMeshComponent>(entity).is_none() {
-            world.insert(
-                entity,
-                StaticMeshComponent {
-                    mesh_asset: MeshAssetPath::new("meshes/primitives/SM_Cube.fbx"),
-                    ..Default::default()
-                },
-            );
+        if attachments::enabled_components_of::<StaticMeshComponent>(world, entity).is_empty() {
+            let cube = StaticMeshComponent {
+                mesh_asset: MeshAssetPath::new("meshes/primitives/SM_Cube.fbx"),
+                ..Default::default()
+            };
+            if let Err(error) = attach_value(world, entity, cube) {
+                eprintln!("Spinner: could not attach its cube mesh: {error}");
+            }
         }
         if world.get::<Transform>(entity).is_none() {
             world.insert(entity, Transform::default());

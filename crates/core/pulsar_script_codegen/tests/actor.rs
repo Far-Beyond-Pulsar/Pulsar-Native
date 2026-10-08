@@ -65,7 +65,7 @@ fn enabled_prefab_components_are_hydrated_and_disabled_ones_are_not() {
     ];
     let source = generate_actor("Crate", &empty_class("Crate"), &components).unwrap();
     assert!(source.contains("__init_components(entity: Entity, world: &mut World)"));
-    assert!(source.contains("hydrate_world_component_for_class("));
+    assert!(source.contains("attach_record("));
     assert!(source.contains("RigidbodyComponent"));
     assert!(
         source.contains(r#"{\"mass\": 2.0}"#),

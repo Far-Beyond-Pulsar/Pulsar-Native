@@ -346,7 +346,9 @@ impl SceneDomain {
     fn apply_voxel_journal(&mut self, journal: &VoxelEditJournal, redo: bool) -> bool {
         let mut world = self.world_mut();
         for entry in &journal.entries {
-            let Some(entity) = world.entity_for(&entry.id) else {
+            let Some(entity) =
+                engine_backend::scene::attachments::instance_by_id(&world, entry.instance)
+            else {
                 return false;
             };
             let Some(mut terrain) = world.get_mut::<helio_component::VoxelTerrainComponent>(entity)

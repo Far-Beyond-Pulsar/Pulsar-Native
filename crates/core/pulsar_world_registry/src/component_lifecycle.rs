@@ -35,7 +35,8 @@ pub struct ComponentInstanceKey {
 #[derive(Default)]
 pub struct ComponentRuntimeState {
     scene_identity: Option<usize>,
-    active: HashMap<RegistrationKey, HashSet<Entity>>,
+    /// Per class: active instance entity -> its owner object.
+    active: HashMap<RegistrationKey, HashMap<Entity, Entity>>,
     inbox: Arc<Mutex<EventInbox>>,
     subscriptions: HashMap<ComponentInstanceKey, Vec<pulsar_events::gamma::SyncSubscription>>,
 }
@@ -50,9 +51,12 @@ impl ComponentRuntimeState {
     /// Subscribe a live component instance to its generated native handler
     /// events. Gamma callbacks only copy wire-safe dynamic fields into this
     /// host-owned inbox; they never access World or component memory.
+    /// Subscribe instance `key` to `event_names` addressed to `channel`, its
+    /// owner object's event channel.
     pub fn subscribe_instance(
         &mut self,
         key: ComponentInstanceKey,
+        channel: Entity,
         hub: &EventHub,
         event_names: &[&'static str],
     ) {
@@ -79,7 +83,7 @@ impl ComponentRuntimeState {
             subscriptions.push(hub.bus().subscribe_dyn(
                 descriptor.id,
                 pulsar_events::gamma::SubscribeOptions::channel(
-                    pulsar_events::gamma::Channel::Entity(key.entity.bits()),
+                    pulsar_events::gamma::Channel::Entity(channel.bits()),
                 ),
                 move |event| {
                     let mut inbox = inbox
@@ -140,13 +144,13 @@ impl ComponentRuntimeState {
             let key = registration_key(registration);
             if let Some(entities) = self.active.remove(&key) {
                 let mut entities: Vec<_> = entities.into_iter().collect();
-                entities.sort_by_key(|entity| entity.bits());
+                entities.sort_by_key(|(entity, _)| entity.bits());
                 if let Some(end_play) = registration.end_play {
-                    for &entity in &entities {
-                        end_play(entity, events);
+                    for &(_, owner) in &entities {
+                        end_play(owner, events);
                     }
                 }
-                for entity in entities {
+                for (entity, _) in entities {
                     self.unsubscribe_instance(ComponentInstanceKey {
                         component_type: key.component_type,
                         entity,
@@ -208,20 +212,24 @@ pub fn tick_live_components(
     for registration in registrations {
         let key = registration_key(registration);
         let previous = state.active.get(&key).cloned().unwrap_or_default();
-        let mut current = HashSet::new();
+        let mut current = HashMap::new();
         (registration.tick)(world, events, delta_seconds, &previous, &mut current, state);
 
-        let mut ended: Vec<_> = previous.difference(&current).copied().collect();
-        ended.sort_by_key(|entity| entity.bits());
+        let mut ended: Vec<(Entity, Entity)> = previous
+            .iter()
+            .filter(|(entity, _)| !current.contains_key(*entity))
+            .map(|(entity, owner)| (*entity, *owner))
+            .collect();
+        ended.sort_by_key(|(entity, _)| entity.bits());
         if let Some(end_play) = registration.end_play {
-            for entity in ended {
-                end_play(entity, events);
+            for &(_, owner) in &ended {
+                end_play(owner, events);
             }
         }
-        for entity in previous.difference(&current) {
+        for (entity, _) in ended {
             state.unsubscribe_instance(ComponentInstanceKey {
                 component_type: key.component_type,
-                entity: *entity,
+                entity,
             });
         }
         state.active.insert(key, current);
@@ -259,13 +267,13 @@ pub fn process_component_removals(
             continue;
         };
         let key = registration_key(registration);
-        let was_active = state
+        let ended_owner = state
             .active
             .get_mut(&key)
-            .is_some_and(|entities| entities.remove(&entity));
-        if was_active {
+            .and_then(|entities| entities.remove(&entity));
+        if let Some(owner) = ended_owner {
             if let Some(end_play) = registration.end_play {
-                end_play(entity, events);
+                end_play(owner, events);
             }
             state.unsubscribe_instance(ComponentInstanceKey {
                 component_type,

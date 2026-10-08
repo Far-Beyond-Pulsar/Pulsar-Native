@@ -10,9 +10,7 @@ use pulsar_scenedb::World;
 use super::classes::{self, project_registry};
 use super::{ComponentInstance, ObjectId, SceneObjectData};
 
-use super::components::{
-    add_component_instance, get_components, get_components_metadata, remove_component,
-};
+use super::components::{get_components, replace_components};
 use super::objects::{add_object, clear, get_all_objects};
 use super::{LevelEditorCameraState, LevelEditorFileState, LevelFile, LevelMetadata};
 use crate::world_settings_data::WorldSettingsData;
@@ -343,12 +341,7 @@ pub(crate) fn load_with_classes_and_settings<P: AsRef<Path>>(
     // When present, persisted components are authoritative and replace defaults.
     if has_persisted_components {
         for (object_id, components) in level_file.components {
-            while !get_components_metadata(world, &object_id).is_empty() {
-                remove_component(world, &object_id, 0);
-            }
-            for component in components {
-                add_component_instance(world, &object_id, component);
-            }
+            replace_components(world, &object_id, &components);
         }
     }
 

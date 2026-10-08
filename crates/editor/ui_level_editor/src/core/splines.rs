@@ -25,11 +25,20 @@ pub const LEGACY_SPLINE_PROPERTY: &str = "editor_spline";
 /// component list and its current value, read off the World (the
 /// `component_instances` on a `SceneObjectData` is only a load-time copy).
 fn live_component(world: &World, id: &str) -> Option<(usize, serde_json::Value)> {
-    scene_edit::components::get_components(world, id)
+    use engine_backend::scene::{attachments, SceneWorldExt};
+    let owner = world.entity_for(id)?;
+    let (index, instance) = attachments::instances(world, owner)
         .into_iter()
         .enumerate()
-        .find(|(_, component)| component.enabled && component.class_name == SPLINE_CLASS)
-        .map(|(index, component)| (index, component.data))
+        .find(|(_, instance)| {
+            attachments::is_enabled(world, *instance)
+                && attachments::meta(world, *instance)
+                    .is_some_and(|meta| meta.class_name == SPLINE_CLASS)
+        })?;
+    let value = pulsar_world_registry::instance_engine_class(world, instance)?
+        .to_json()
+        .ok()?;
+    Some((index, value))
 }
 
 pub fn data(world: &World, object: &SceneObjectData) -> Option<SplineData> {
@@ -304,9 +313,10 @@ mod tests {
         let object = selected(&state).unwrap().0;
         let world = state.scene.world();
         let entity = world.entity_for(&object.id).unwrap();
-        let live = world
-            .get::<SplineData>(entity)
-            .expect("typed World component");
+        let (_, live) =
+            engine_backend::scene::attachments::enabled_components_of::<SplineData>(&world, entity)
+                .pop()
+                .expect("typed World component");
         assert!(live.closed);
         assert!(object.props.get(LEGACY_SPLINE_PROPERTY).is_none());
     }

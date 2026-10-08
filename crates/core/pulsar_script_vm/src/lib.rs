@@ -67,8 +67,8 @@ pub use native::{
     NativeRegistration, NativeRegistry, Origin, PolyNative,
 };
 pub use types::{
-    ComponentProvider, Obj, Outcome, ProvidedComponent, ScriptKey, ScriptValue, Type, TypeRegistry,
-    ValueOpsRegistration,
+    ComponentAddressing, ComponentProvider, Obj, Outcome, ProvidedComponent, ScriptKey,
+    ScriptValue, Type, TypeRegistry, ValueOpsRegistration,
 };
 pub use value::{MapKey, Object, Value};
 pub use verify::verify;

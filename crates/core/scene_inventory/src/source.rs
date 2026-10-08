@@ -80,7 +80,12 @@ pub const SITE_PATTERNS: &[SitePattern] = &[
     },
     SitePattern {
         id: "cpu-projection",
-        needles: &["sync_static_mesh_rows", "sync_editor_light_rows", "project_movability", "sync_editor_postprocess"],
+        needles: &[
+            "sync_static_mesh_rows",
+            "sync_editor_light_rows",
+            "project_movability",
+            "sync_editor_postprocess",
+        ],
         regex: r"\b(sync_static_mesh_rows|sync_editor_light_rows|project_movability|sync_editor_postprocess)\s*\(",
         meaning: "CPU projection of authored components into pass-owned rows",
     },
@@ -88,13 +93,19 @@ pub const SITE_PATTERNS: &[SitePattern] = &[
         id: "mirror-replay",
         needles: &["ensure_gpu_mirror"],
         regex: r"\bensure_gpu_mirror\s*\(",
-        meaning: "Attaches the GPU mirror and replays a fixed list of types",
+        meaning: "Attaches the shared GPU mirror (SceneDB replays existing rows on attach)",
     },
     SitePattern {
         id: "json-hydrate",
         needles: &["hydrate_"],
         regex: r"\bhydrate_world_component\w*\s*\(|\bhydrate_canonical_component\s*\(",
         meaning: "Builds a live component by deserializing JSON",
+    },
+    SitePattern {
+        id: "record-attach",
+        needles: &["attach_record", "replace_records", "set_instance_data"],
+        regex: r"\battach_records?\s*\(|\battach_record_or_unresolved\s*\(|\breplace_records\s*\(|\bset_instance_data\s*\(",
+        meaning: "Attaches or rewrites a component instance by decoding a JSON record",
     },
     SitePattern {
         id: "render-props-sync",
@@ -104,7 +115,10 @@ pub const SITE_PATTERNS: &[SitePattern] = &[
     },
     SitePattern {
         id: "behavior-dispatch",
-        needles: &["apply_runtime_behavior_for_class", "dispatch_world_component"],
+        needles: &[
+            "apply_runtime_behavior_for_class",
+            "dispatch_world_component",
+        ],
         regex: r"\bapply_runtime_behavior_for_class\s*\(|\bdispatch_world_component\w*\s*\(",
         meaning: "Generic ComponentRuntimeBehavior dispatch",
     },
@@ -159,7 +173,10 @@ pub struct SourceFile {
 }
 
 fn is_test_file(path: &Path) -> bool {
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
     name == "tests.rs" || name.ends_with("_tests.rs") || name == "build.rs"
 }
 
@@ -170,7 +187,10 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
     let mut entries: Vec<_> = entries.flatten().map(|e| e.path()).collect();
     entries.sort();
     for path in entries {
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        let name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
         if path.is_dir() {
             if !SKIPPED_DIRS.contains(&name) {
                 walk(&path, out);
@@ -217,7 +237,9 @@ fn production_lines(text: &str) -> Vec<(usize, String)> {
             let module = (i + 1..all.len()).find(|&j| !all[j].trim().is_empty());
             if let Some(start) = module.filter(|&j| {
                 let l = all[j].trim_start();
-                l.starts_with("mod ") || l.starts_with("pub mod ") || l.starts_with("pub(crate) mod ")
+                l.starts_with("mod ")
+                    || l.starts_with("pub mod ")
+                    || l.starts_with("pub(crate) mod ")
             }) {
                 let mut depth = 0i32;
                 let mut end = start;
@@ -254,7 +276,11 @@ pub fn production_files(root: &Path) -> &'static [SourceFile] {
             .into_iter()
             .filter_map(|path| {
                 let text = fs::read_to_string(&path).ok()?;
-                let rel = path.strip_prefix(root).ok()?.to_string_lossy().replace('\\', "/");
+                let rel = path
+                    .strip_prefix(root)
+                    .ok()?
+                    .to_string_lossy()
+                    .replace('\\', "/");
                 let package = path
                     .parent()
                     .and_then(|dir| package_name(dir, &mut packages))
@@ -288,7 +314,8 @@ pub fn sites(root: &Path) -> BTreeMap<(String, String), usize> {
                     .filter(|m| !line[..m.start()].trim_end().ends_with("fn"))
                     .count();
                 if hits > 0 {
-                    *out.entry((pattern.id.to_string(), file.path.clone())).or_insert(0) += hits;
+                    *out.entry((pattern.id.to_string(), file.path.clone()))
+                        .or_insert(0) += hits;
                 }
             }
         }
@@ -360,7 +387,11 @@ pub fn buffer_graph(root: &Path) -> BufferGraph {
                     .or_else(|| current_struct.clone())
                     .unwrap_or_else(|| "<unknown>".to_string());
                 let key = caps[1].to_string();
-                graph.producers.entry(key.clone()).or_default().insert(owner.clone());
+                graph
+                    .producers
+                    .entry(key.clone())
+                    .or_default()
+                    .insert(owner.clone());
                 graph.buffers_of_type.entry(owner).or_default().insert(key);
             }
             for caps in lookup.captures_iter(line) {
@@ -393,7 +424,8 @@ pub fn editor_packages(root: &Path) -> BTreeSet<String> {
         "cargo metadata failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let metadata: serde_json::Value = serde_json::from_slice(&output.stdout).expect("metadata JSON");
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("metadata JSON");
     let names: HashMap<&str, &str> = metadata["packages"]
         .as_array()
         .into_iter()
@@ -443,8 +475,15 @@ pub fn editor_packages(root: &Path) -> BTreeSet<String> {
 pub fn registered_gpu_schemas(root: &Path, linked: &BTreeSet<String>) -> BTreeSet<String> {
     let call = Regex::new(r"([A-Za-z_][\w:]*)::register_gpu_columns\w*\s*\(").unwrap();
     let mut out = BTreeSet::new();
-    for file in production_files(root).iter().filter(|f| linked.contains(&f.package)) {
-        for (_, line) in file.lines.iter().filter(|(_, l)| l.contains("register_gpu_columns")) {
+    for file in production_files(root)
+        .iter()
+        .filter(|f| linked.contains(&f.package))
+    {
+        for (_, line) in file
+            .lines
+            .iter()
+            .filter(|(_, l)| l.contains("register_gpu_columns"))
+        {
             for caps in call.captures_iter(line) {
                 out.insert(caps[1].to_string());
             }
@@ -493,7 +532,11 @@ pub fn pass_crates(root: &Path) -> Vec<PassCrate> {
         let Ok(entries) = fs::read_dir(helio.join(group)) else {
             continue;
         };
-        let mut dirs: Vec<PathBuf> = entries.flatten().map(|e| e.path()).filter(|p| p.is_dir()).collect();
+        let mut dirs: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_dir())
+            .collect();
         dirs.sort();
         for dir in dirs {
             let Some(package) = package_name(&dir, &mut cache) else {
@@ -501,7 +544,11 @@ pub fn pass_crates(root: &Path) -> Vec<PassCrate> {
             };
             out.push(PassCrate {
                 in_default_graph: default_graph.contains(&package),
-                dir: dir.strip_prefix(root).unwrap_or(&dir).to_string_lossy().replace('\\', "/"),
+                dir: dir
+                    .strip_prefix(root)
+                    .unwrap_or(&dir)
+                    .to_string_lossy()
+                    .replace('\\', "/"),
                 package,
             });
         }

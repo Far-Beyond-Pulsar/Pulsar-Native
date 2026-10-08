@@ -4,7 +4,8 @@
 //! and its replication `Snapshot` is shaped for network resync -- every component
 //! needs a registered per-field schema, a poor fit for the free-form JSON in
 //! `RenderProps`. The editor therefore keeps its own snapshots: a capture is the
-//! object list plus every object's component instances, and a restore rebuilds the
+//! object list plus every object's component records (with their instance
+//! ids, so a restore keeps component identity), and a restore rebuilds the
 //! scene *in place* in the same world, so the GPU mirror, inspector bridge and the
 //! world's change counter carry straight through.
 
@@ -13,7 +14,7 @@ use std::collections::HashMap;
 use engine_backend::scene::SceneWorldExt;
 use pulsar_scenedb::World;
 
-use super::components::{attach_component_instance, get_components};
+use super::components::{get_components, replace_components};
 use super::objects::{clear, collect_dfs, spawn_raw};
 use super::{ComponentInstance, ObjectId, SceneObjectData};
 
@@ -42,7 +43,10 @@ pub struct VoxelEditJournal {
 
 #[derive(Clone, Debug)]
 pub(crate) struct VoxelEditJournalEntry {
+    /// The terrain's object, for scoping the history entry.
     pub(crate) id: ObjectId,
+    /// The terrain component instance itself (Pulsar-Native#1035).
+    pub(crate) instance: engine_backend::scene::attachments::ComponentInstanceId,
     pub(crate) before_len: usize,
     pub(crate) before_revision: u64,
     pub(crate) edits: Vec<helio_voxel_data::VoxelBrushEdit>,
@@ -154,12 +158,12 @@ pub fn restore_history_delta(
             super::objects::update_object(world, object.clone());
             super::objects::reparent_object(world, &object.id, object.parent.clone());
         }
-        super::components::clear_components(world, &object.id);
-        if let Some(components) = snapshot.components.get(&object.id) {
-            for component in components {
-                attach_component_instance(world, &object.id, component.clone(), false);
-            }
-        }
+        let components = snapshot
+            .components
+            .get(&object.id)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
+        replace_components(world, &object.id, components);
     }
     Ok(())
 }
@@ -197,9 +201,7 @@ pub fn restore_history_snapshot(
         spawn_raw(world, obj)?;
     }
     for (object_id, components) in &snapshot.components {
-        for component in components {
-            attach_component_instance(world, object_id, component.clone(), false);
-        }
+        replace_components(world, object_id, components);
     }
     Ok(())
 }

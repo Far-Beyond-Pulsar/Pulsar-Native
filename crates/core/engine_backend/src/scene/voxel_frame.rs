@@ -10,6 +10,7 @@ use helio_voxel_data::{
     VoxelChunkUpdate, VoxelDomain, VoxelGeneratorDescriptor, VoxelPayloadStore, VoxelSourceId,
     VoxelSourceWriter, VoxelTerrainId, VOXEL_CHUNK_ENCODING_RAW, VOXEL_CHUNK_SCHEMA_VERSION,
 };
+use pulsar_scene_model::attachments;
 use pulsar_scenedb::{Entity, World};
 
 use crate::scene::{Transform, Visibility};
@@ -195,35 +196,40 @@ pub fn project_voxel_entries(world: &World) -> (Vec<VoxelSceneEntry>, Vec<String
     profiling::profile_scope!("voxel_project_entries");
     let mut entries = Vec::new();
     let mut errors = Vec::new();
-    for (entity, component) in world.query::<&VoxelComponent>() {
+    for (instance, owner, component) in attachments::enabled_components::<VoxelComponent>(world) {
         if !component.enabled {
             continue;
         }
-        match object_entry(world, entity, component) {
+        match object_entry(world, instance, component) {
             Ok(mut entry) => {
-                entry.visible = world.get::<Visibility>(entity).is_none_or(|v| v.visible);
+                entry.visible = world.get::<Visibility>(owner).is_none_or(|v| v.visible);
                 entries.push(entry);
             }
-            Err(error) => errors.push(format!("voxel object {}: {error}", entity.bits())),
+            Err(error) => errors.push(format!("voxel object {}: {error}", instance.bits())),
         }
     }
-    for (entity, component) in world.query::<&VoxelTerrainComponent>() {
+    for (instance, owner, component) in
+        attachments::enabled_components::<VoxelTerrainComponent>(world)
+    {
         if !component.enabled {
             continue;
         }
-        match terrain_entry(world, entity, component) {
+        match terrain_entry(world, instance, component) {
             Ok(mut entry) => {
-                entry.visible = world.get::<Visibility>(entity).is_none_or(|v| v.visible);
+                entry.visible = world.get::<Visibility>(owner).is_none_or(|v| v.visible);
                 entries.push(entry);
             }
-            Err(error) => errors.push(format!("voxel terrain {}: {error}", entity.bits())),
+            Err(error) => errors.push(format!("voxel terrain {}: {error}", instance.bits())),
         }
     }
     (entries, errors)
 }
 
-fn origin_scale(world: &World, entity: Entity) -> Result<([f64; 3], f64), &'static str> {
-    let transform = world.get::<Transform>(entity).copied().unwrap_or_default();
+/// World origin and uniform scale of `instance`'s owner object.
+fn origin_scale(world: &World, instance: Entity) -> Result<([f64; 3], f64), &'static str> {
+    let transform = attachments::owner_component::<Transform>(world, instance)
+        .copied()
+        .unwrap_or_default();
     if transform
         .rotation
         .iter()
@@ -385,6 +391,19 @@ pub(super) fn terrain_entry(
     })
 }
 
+/// A fresh object with one attached, enabled `class_name` instance (value
+/// not yet inserted); returns the instance entity.
+#[cfg(test)]
+pub(super) fn spawn_test_instance(world: &mut World, class_name: &str) -> Entity {
+    let owner = world.spawn();
+    attachments::spawn_instance(
+        world,
+        owner,
+        pulsar_scene_model::NewInstance::new(class_name),
+    )
+    .expect("spawn test instance")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -466,9 +485,9 @@ mod tests {
     #[test]
     fn projects_multiple_rows_with_generation_identity_and_rejects_bad_domains() {
         let mut world = World::new();
-        let object = world.spawn();
+        let object = spawn_test_instance(&mut world, "VoxelComponent");
         world.insert(object, VoxelComponent::default());
-        let terrain = world.spawn();
+        let terrain = spawn_test_instance(&mut world, "VoxelTerrainComponent");
         world.insert(terrain, VoxelTerrainComponent::default());
         let (entries, errors) = project_voxel_entries(&world);
         assert!(errors.is_empty());

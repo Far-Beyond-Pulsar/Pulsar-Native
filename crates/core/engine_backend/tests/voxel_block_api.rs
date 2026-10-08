@@ -8,23 +8,34 @@ use helio_component::voxel_generator_editor::generator_items;
 use helio_component::voxel_world::terrain_world;
 use helio_component::{VoxelFlatTerrainComponent, VoxelGeneratorRef, VoxelTerrainComponent};
 use helio_pass_voxel_planet::terrain::{generators, material, GeneratorInfo};
+use pulsar_scene_model::attachments;
 use pulsar_scene_model::components::Transform;
 use pulsar_scenedb::{component_id, Entity, World};
 
+/// An object with a flat terrain and its settings component attached;
+/// returns the terrain instance.
 fn flat_world() -> (World, Entity) {
     let mut world = World::new();
-    let entity = world.spawn();
+    let object = world.spawn();
     let mut terrain = VoxelTerrainComponent::plane(512.0);
     terrain.generator = VoxelGeneratorRef::new(helio_pass_voxel_planet::landform::FLAT_ID, 1);
-    world.insert(entity, terrain);
-    world.insert(
-        entity,
+    let entity = pulsar_world_registry::attach_value(&mut world, object, terrain).unwrap();
+    pulsar_world_registry::attach_value(
+        &mut world,
+        object,
         VoxelFlatTerrainComponent {
             height: 2.0,
             ..Default::default()
         },
-    );
+    )
+    .unwrap();
     (world, entity)
+}
+
+/// The settings instance next to terrain instance `terrain`.
+fn settings_of(world: &World, terrain: Entity) -> Entity {
+    let object = attachments::owner_of(world, terrain).unwrap();
+    attachments::enabled_components_of::<VoxelFlatTerrainComponent>(world, object)[0].0
 }
 
 fn call(
@@ -223,8 +234,9 @@ fn the_cached_world_follows_the_journal_and_the_settings() {
     set(&mut world, entity, [1.0, 2.05, 1.0], material::SAND).unwrap();
     let edited = terrain_world(&world, entity).unwrap();
     assert!(!std::sync::Arc::ptr_eq(&first, &edited));
+    let settings = settings_of(&world, entity);
     world
-        .get_mut::<VoxelFlatTerrainComponent>(entity)
+        .get_mut::<VoxelFlatTerrainComponent>(settings)
         .unwrap()
         .height = 5.0;
     let raised = terrain_world(&world, entity).unwrap();
@@ -236,7 +248,7 @@ fn the_cached_world_follows_the_journal_and_the_settings() {
 fn terrains_off_the_origin_are_rejected() {
     let (mut world, entity) = flat_world();
     world.insert(
-        entity,
+        attachments::owner_of(&world, entity).unwrap(),
         Transform {
             position: [1.0, 0.0, 0.0],
             ..Default::default()

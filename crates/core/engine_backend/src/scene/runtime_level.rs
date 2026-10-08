@@ -11,15 +11,15 @@
 //!
 //! - Objects/transforms/hierarchy/visibility are spawned straight into the
 //!   world with [`SceneWorldExt::spawn_object`].
-//! - Every enabled component instance whose class is
-//!   `#[register_world_component]`-registered is hydrated to its typed
-//!   World value through `pulsar_world_registry::
-//!   hydrate_world_component_for_class` (`StaticMeshComponent`'s custom
-//!   hydrate loads its mesh asset here -- it resolves paths via
-//!   `engine_state::get_project_path()`, so callers must have set that
-//!   before calling [`RuntimeLevel::load`]).
-//! - Unregistered classes stay as metadata JSON in the object's
-//!   `RenderProps.component_instances`, exactly as the editor does today.
+//! - Every component record becomes a component-instance entity attached
+//!   to its object (Pulsar-Native#1035, D1) through `pulsar_world_registry::
+//!   attach_records`, enabled or not: a `#[register_world_component]` class
+//!   holds its typed value (`StaticMeshComponent`'s decode loads its mesh
+//!   asset here -- it resolves paths via `engine_state::get_project_path()`,
+//!   so callers must have set that before calling [`RuntimeLevel::load`]).
+//! - A class this build does not register is attached as an explicit
+//!   `UnresolvedComponent` that keeps its JSON for lossless saving; a
+//!   registered class whose data does not decode fails the load.
 //!
 //! Component data source precedence matches the editor's ("persisted
 //! components are authoritative when present"): a top-level
@@ -181,24 +181,20 @@ impl RuntimeLevel {
             let Some(entity) = world.entity_for(&obj.id) else {
                 continue;
             };
-            let (mut instances, has_component_source) = match persisted.get(&obj.id) {
+            let mut instances = match persisted.get(&obj.id) {
                 // A persisted entry is authoritative, including an explicit empty
-                // array, which means all registered components are removed.
-                Some(records) => (records.clone(), true),
+                // array, which means the object has no components.
+                Some(records) => records.clone(),
                 None => {
-                    let records = component_instances_from_props(
-                        &obj.props,
-                        obj.component_instances.as_ref(),
-                    )
-                    .into_iter()
-                    .map(|(index, class_name, data)| ComponentRecord {
-                        index,
-                        class_name,
-                        data,
-                        enabled: true,
-                    })
-                    .collect::<Vec<_>>();
-                    (records, component_source_present(obj))
+                    component_instances_from_props(&obj.props, obj.component_instances.as_ref())
+                        .into_iter()
+                        .map(|(index, class_name, data)| ComponentRecord {
+                            index,
+                            class_name,
+                            data,
+                            enabled: true,
+                        })
+                        .collect::<Vec<_>>()
                 }
             };
             let legacy = instances
@@ -211,22 +207,12 @@ impl RuntimeLevel {
                     .find(|record| record.class_name == "StaticMeshComponent")
                 {
                     if let Some(data) = mesh.data.as_object_mut() {
-                        data.entry("legacy_material_override")
-                            .or_insert(legacy);
+                        data.entry("legacy_material_override").or_insert(legacy);
                     }
                 }
                 instances.retain(|record| record.class_name != "MaterialOverrideComponent");
             }
 
-            // SceneDB keeps the ordered compatibility projection as well as the
-            // typed registered component values. Older consumers can therefore
-            // observe the same enabled/order state without another scene list.
-            if has_component_source {
-                let component_instances = component_records_value(&instances);
-                if let Some(mut props) = world.get_mut::<RenderProps>(entity) {
-                    props.component_instances = Some(component_instances);
-                }
-            }
             hydrate_components(world, entity, &obj.id, &instances)?;
         }
 
@@ -412,7 +398,6 @@ fn spawn_file_object(
         .map_err(|error| parse_error(error.to_string()))?;
     if let Some(mut props) = world.get_mut::<RenderProps>(entity) {
         props.props = obj.props.clone();
-        props.component_instances = obj.component_instances.clone();
     }
     Ok(entity)
 }
@@ -477,35 +462,6 @@ fn persisted_components(components: &Value) -> HashMap<String, Vec<ComponentReco
     out
 }
 
-/// Hydrate/remove every registered class typed World value for an entity.
-fn component_source_present(obj: &pulsar_scene::format::SceneObject) -> bool {
-    obj.component_instances
-        .as_ref()
-        .and_then(Value::as_array)
-        .is_some()
-        || obj
-            .props
-            .get("__component_instances")
-            .and_then(Value::as_array)
-            .is_some()
-}
-
-fn component_records_value(records: &[ComponentRecord]) -> Value {
-    Value::Array(
-        records
-            .iter()
-            .map(|record| {
-                serde_json::json!({
-                    "index": record.index,
-                    "class_name": record.class_name,
-                    "data": record.data,
-                    "enabled": record.enabled,
-                })
-            })
-            .collect(),
-    )
-}
-
 fn validate_objects(
     world: &World,
     objects: &[pulsar_scene::format::SceneObject],
@@ -532,33 +488,44 @@ fn validate_objects(
     }
     Ok(())
 }
+/// Attach `instances` to `entity` as component-instance entities, in order
+/// (Pulsar-Native#1035, D1): every record becomes its own instance, enabled
+/// or not, with its stable id and parent link. A class this build does not
+/// register is kept as an explicit unresolved payload; a registered class
+/// whose data does not decode fails the load, naming the object and class.
 fn hydrate_components(
     world: &mut World,
     entity: pulsar_scenedb::Entity,
     object_id: &str,
     instances: &[ComponentRecord],
 ) -> Result<(), RuntimeLevelError> {
-    for class_name in pulsar_world_registry::registered_world_component_classes() {
-        match instances
-            .iter()
-            .find(|r| r.enabled && r.class_name == *class_name)
-        {
-            Some(record) => {
-                pulsar_world_registry::hydrate_world_component_for_class(
-                    class_name,
-                    world,
-                    entity,
-                    &record.data,
-                )
-                .map_err(|error| RuntimeLevelError::ComponentHydration {
-                    object_id: object_id.to_string(),
-                    class_name: class_name.to_string(),
-                    message: error.to_string(),
-                })?;
+    let records: Vec<pulsar_scene_model::ComponentInstance> = instances
+        .iter()
+        .map(|record| pulsar_scene_model::ComponentInstance {
+            class_name: record.class_name.clone(),
+            enabled: record.enabled,
+            data: record.data.clone(),
+        })
+        .collect();
+    let attached =
+        pulsar_world_registry::attach_records(world, entity, &records).map_err(|error| {
+            RuntimeLevelError::ComponentHydration {
+                object_id: object_id.to_string(),
+                class_name: String::new(),
+                message: error.to_string(),
             }
-            None => {
-                pulsar_world_registry::remove_world_component_for_class(class_name, world, entity);
-            }
+        })?;
+    for (record, instance) in records.iter().zip(attached) {
+        let Some(unresolved) = world.get::<pulsar_scene_model::UnresolvedComponent>(instance)
+        else {
+            continue;
+        };
+        if pulsar_world_registry::component_id_for_class(&record.class_name).is_some() {
+            return Err(RuntimeLevelError::ComponentHydration {
+                object_id: object_id.to_string(),
+                class_name: record.class_name.clone(),
+                message: unresolved.reason.clone(),
+            });
         }
     }
     Ok(())
@@ -612,11 +579,20 @@ mod tests {
         "editor": {"camera": {"position": [10.0, 20.0, 30.0], "yaw": 1.0, "pitch": -0.25}}
     }"#;
 
-    fn render_props(world: &World, id: &str) -> RenderProps {
-        world
-            .get::<RenderProps>(world.entity_for(id).unwrap())
-            .cloned()
-            .unwrap()
+    /// The object's attached component records, in order.
+    fn records(world: &World, id: &str) -> Vec<pulsar_scene_model::ComponentInstance> {
+        pulsar_world_registry::component_records(world, world.entity_for(id).unwrap())
+    }
+
+    /// The object's enabled light instances' values.
+    fn lights<'w>(world: &'w World, id: &str) -> Vec<&'w LightComponent> {
+        pulsar_scene_model::attachments::enabled_components_of::<LightComponent>(
+            world,
+            world.entity_for(id).unwrap(),
+        )
+        .into_iter()
+        .map(|(_, light)| light)
+        .collect()
     }
 
     fn sample_level() -> RuntimeLevel {
@@ -686,17 +662,25 @@ mod tests {
         let world = &scene.world;
 
         let sun = world.entity_for("sun").unwrap();
-        let light = world.get::<LightComponent>(sun).expect("hydrated");
+        let (instance, light) = pulsar_scene_model::attachments::single_enabled_component_of::<
+            LightComponent,
+        >(world, sun)
+        .unwrap()
+        .expect("hydrated");
         assert_eq!(light.intensity.intensity, 750.0);
         assert!(
+            world.get::<LightComponent>(sun).is_none(),
+            "the value lives on its instance entity, not the object"
+        );
+        assert!(
             world
-                .get::<helio_component::components::LightComponentGpuMirror>(sun)
-                .is_some(),
-            "an enabled light carries its GPU mirror"
+                .get::<helio_component::components::LightComponentGpuMirror>(instance)
+                .is_none(),
+            "the GPU companion is the light's own GPU row, never a component"
         );
     }
 
-    /// #637: unregistered classes stay metadata JSON in RenderProps.
+    /// #637: unregistered classes stay attached as unresolved JSON.
     #[test]
     fn unregistered_classes_stay_metadata_json() {
         let instances = serde_json::json!([
@@ -709,14 +693,19 @@ mod tests {
         let world = &scene.world;
 
         let sun = world.entity_for("sun").unwrap();
-        let props = render_props(world, "sun");
-        let instances = props.component_instances.expect("kept as JSON");
-        assert!(instances.to_string().contains("NotARealComponent"));
-        assert!(world.get::<LightComponent>(sun).is_none());
+        let records = records(world, "sun");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].class_name, "NotARealComponent");
+        assert_eq!(records[0].data["x"], serde_json::json!(1));
+        let instance = pulsar_scene_model::attachments::instances(world, sun)[0];
+        assert!(world
+            .get::<pulsar_scene_model::UnresolvedComponent>(instance)
+            .is_some());
+        assert!(lights(world, "sun").is_empty());
     }
 
     /// #637: a non-empty persisted `components` map is authoritative over
-    /// per-object `component_instances`, and disabled records don't hydrate.
+    /// per-object `component_instances`; disabled records attach disabled.
     #[test]
     fn persisted_components_map_wins_and_respects_enabled() {
         let mut disabled = LightComponent::default();
@@ -740,14 +729,15 @@ mod tests {
         let scene = scene.read();
         let world = &scene.world;
 
-        let light = world
-            .entity_for("sun")
-            .and_then(|e| world.get::<LightComponent>(e))
-            .expect("persisted map drove hydration");
+        let enabled = lights(world, "sun");
+        assert_eq!(enabled.len(), 1, "persisted map drove hydration");
         assert_eq!(
-            light.intensity.intensity, 99.0,
-            "disabled record must lose to the enabled one"
+            enabled[0].intensity.intensity, 99.0,
+            "only the enabled record is live"
         );
+        let records = records(world, "sun");
+        assert_eq!(records.len(), 2, "the disabled record stays attached");
+        assert!(!records[0].enabled && records[1].enabled);
     }
 
     #[test]
@@ -763,18 +753,13 @@ mod tests {
         let sun = world.entity_for("sun").unwrap();
 
         assert!(
-            world.get::<LightComponent>(sun).is_none(),
+            pulsar_scene_model::attachments::instances(world, sun).is_empty(),
             "an explicit empty persisted list removes the inline component"
-        );
-        assert_eq!(
-            render_props(world, "sun").component_instances,
-            Some(serde_json::json!([])),
-            "the removal remains visible in SceneDB metadata"
         );
     }
 
     #[test]
-    fn persisted_component_order_and_enabled_state_are_kept_in_scene_db_projection() {
+    fn persisted_component_order_and_enabled_state_are_kept_on_the_instances() {
         let mut disabled = LightComponent::default();
         disabled.general.enabled = true;
         let mut enabled = LightComponent::default();
@@ -810,15 +795,24 @@ mod tests {
         let scene = level.scene();
         let scene = scene.read();
         let world = &scene.world;
-        let records = render_props(world, "sun").component_instances.unwrap();
-        let records = records.as_array().unwrap();
+        let records = records(world, "sun");
 
-        assert_eq!(records.len(), 3);
-        assert_eq!(records[0]["index"], serde_json::json!(7));
-        assert_eq!(records[0]["enabled"], serde_json::json!(false));
-        assert_eq!(records[1]["index"], serde_json::json!(3));
-        assert_eq!(records[2]["index"], serde_json::json!(11));
-        assert_eq!(records[2]["enabled"], serde_json::json!(true));
+        let shape: Vec<_> = records
+            .iter()
+            .map(|record| (record.class_name.as_str(), record.enabled))
+            .collect();
+        assert_eq!(
+            shape,
+            [
+                ("LightComponent", false),
+                ("NotARealComponent", true),
+                ("LightComponent", true),
+            ]
+        );
+        assert_eq!(
+            records[2].data["intensity"]["intensity"],
+            serde_json::json!(99.0)
+        );
     }
     #[test]
     fn editor_camera_is_extracted_when_present() {
@@ -887,9 +881,7 @@ mod tests {
         let scene = level.scene();
         let scene = scene.read();
         let cube = scene.world.entity_for("cube").unwrap();
-        let instance = scene
-            .world
-            .get::<pulsar_class::ClassInstance>(cube)
+        let instance = pulsar_class::world::class_instance_of(&scene.world, cube)
             .expect("binding migrated to a ClassInstance");
         assert_eq!(instance.class_name, "TickProbe");
         assert_eq!(instance.class, registry.by_name("TickProbe").unwrap().id);
@@ -945,18 +937,16 @@ mod tests {
         let scene = scene.read();
         let world = &scene.world;
         let lamp = world.entity_for("lamp").unwrap();
-        let instance = world
-            .get::<pulsar_class::ClassInstance>(lamp)
-            .expect("migrated to ClassInstance");
+        let instance =
+            pulsar_class::world::class_instance_of(world, lamp).expect("migrated to ClassInstance");
         assert_eq!(instance.class_name, "Lamp");
         assert!(!instance.class.is_empty(), "resolved to the class GUID");
         assert_eq!(
-            world
-                .get::<LightComponent>(lamp)
-                .unwrap()
-                .intensity
-                .intensity,
-            42.0,
+            lights(world, "lamp")
+                .iter()
+                .map(|light| light.intensity.intensity)
+                .collect::<Vec<_>>(),
+            [42.0],
             "prefab component built on the placed object"
         );
     }
