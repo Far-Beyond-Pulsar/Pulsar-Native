@@ -25,6 +25,7 @@
 // Module declarations
 #[cfg(feature = "editor")]
 pub mod asset_index;
+pub mod blueprint_trait_index;
 #[cfg(feature = "editor")]
 mod engine_fs;
 pub mod events;
@@ -55,6 +56,7 @@ pub use engine_fs::EngineFs;
 pub use user_types::{UserTypeInfo, UserTypeRegistry};
 
 // Re-export provider types
+pub use blueprint_trait_index::{BlueprintTraitEntry, BlueprintTraitIndex};
 #[cfg(feature = "p2p")]
 pub use providers::P2pFsProvider;
 pub use providers::{FsEntry, FsMetadata, FsProvider, LocalFsProvider, ManifestEntry};

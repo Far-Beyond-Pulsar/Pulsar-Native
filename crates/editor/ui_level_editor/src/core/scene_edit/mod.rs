@@ -19,6 +19,7 @@
 //! (Pulsar-Native#1035, D1). JSON is used only at boundaries: persistence,
 //! history, tools, and the payload of a class this build does not register.
 
+use crate::world_settings_data::WorldSettingsData;
 use engine_backend::ComponentInstance;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -134,6 +135,10 @@ pub struct LevelFile {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub blueprint_bindings: pulsar_scene::BlueprintBindings,
     pub metadata: LevelMetadata,
+    /// Per-level simulation and gameplay settings. Missing values in older
+    /// files use [`WorldSettingsData::default`].
+    #[serde(default)]
+    pub world_settings: WorldSettingsData,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub editor: Option<LevelEditorFileState>,
 }
