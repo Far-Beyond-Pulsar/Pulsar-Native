@@ -123,4 +123,16 @@ None of them builds a CPU projection or keeps a renderer object cache. Script pa
 - **Rendered-frame parity for the standalone and embedded runtimes** is structural (the table above), not a rendered-frame test: those runtimes need a window. The editor's headless harness covers the shared seam.
 - **Helio's own SceneDB pin** (`crates/renderer/helio/Cargo.toml`) is still older than the workspace's. Inside Pulsar, the patch resolves it to `2ac389e`. `StaticMoveWatch`'s replaced-world test needs `2ac389e`. This is the same as in earlier phases.
 - **`wgpui-component` tests** fail to compile on main (`gpui::headless` is missing). This is unrelated to this work.
-- **Pre-existing test failures**, as in Phases 3 and 4. See the sweep below.
+- **Pre-existing test failures.** See the sweep below.
+
+## Sweep
+
+`pulsar_world_registry`, `pulsar_script_object_model`, `pulsar_script_vm`, `pulsar_game`, `ui_level_editor`, `engine_backend`, `helio_component`, `scene_inventory`, run with `--no-fail-fast`:
+- 37 test targets pass, including the four rendered-frame acceptance tests.
+- 5 targets fail. None of the failures is caused by Phase 5:
+  - The four recorded since Phase 3:
+    - the gizmo hover test (`press_captures_without_hover_and_drag_continues_off_handle`);
+    - the light mapping intensity test;
+    - the two `toggle_button` doctests;
+    - `voxel_block_api` in parallel.
+  - `pulsar_script_vm` `events::declared_events_are_verified_locally`, first swept here. It expects a `Vec3` event field to be rejected, but the link succeeds. The test, the verifier (`verify.rs`), its dev-dependency and the `pulsar-reflection` submodule are all identical to `main`, and Phase 5 changes only `tests/world.rs` in that crate.
