@@ -1,15 +1,15 @@
-# Phase 4: every render component reaches a pass, or is reported unsupported
+# Phase 4: every render component reaches a pass, or is reported unfinished
 
 Status: **complete** (Pulsar-Native#1035), pending review. Builds on Phase 3 ([14-phase-3.md](14-phase-3.md)).
 
-Phase 4 exit (from the plan): each supported render component has an actual GPU consumer and observable effect, and each unsupported capability is explicitly reported. No exposed component silently succeeds through an undrained queue or a no-op runtime behavior. `PendingWorldWrites` and the inert renderer behavior dispatch are deleted.
+Phase 4 exit (from the plan): each supported render component has an actual GPU consumer and observable effect, and each unsupported capability is explicitly reported. Phase 4 reports these as **unfinished**, each with a tracking issue (see [Unfinished features](#unfinished-features)). No exposed component silently succeeds through an undrained queue or a no-op runtime behavior. `PendingWorldWrites` and the inert renderer behavior dispatch are deleted.
 
 ## Decisions (approved)
 
-1. **Unsupported reporting.** A component class declares that it has no render consumer. The properties card shows a warning for it, and the renderer logs it once per class.
-2. **Sky and sun.** The sun comes from the authored directional light, as now. The sky stays a project/renderer setting. `sky_components` (a sky component) is reported unsupported.
-3. **LOD.** `LODComponent` is reported unsupported: nothing consumes it.
-4. **Decals, corona, sprites.** Reported unsupported: no authored component exists for them.
+1. **Unfinished reporting.** A component class declares that it has no render consumer yet, with its tracking issue. The properties card shows a warning with the issue, and the engine logs it once per class. (Approved as "unsupported"; renamed to "unfinished" with tracking issues at the owner's request.)
+2. **Sky and sun.** The sun comes from the authored directional light, as now. The sky stays a project/renderer setting. `sky_components` (a sky component) is unfinished (#1057).
+3. **LOD.** `LODComponent` is reported unfinished: nothing consumes it (#1053).
+4. **Decals, corona, sprites.** Unfinished: no authored component exists for them (#1058, #1059, #1060).
 5. **GPU uploads with no consumer are removed.** This covers the physics and rigidbody GPU companions and `LightComponentGpuMirror` (the lighting input is the derived `LightSourceRow`).
 
 ## Stages
@@ -17,7 +17,7 @@ Phase 4 exit (from the plan): each supported render component has an actual GPU 
 1. Fog (global, local volume), post-process volume and camera post-process; the editor camera post-process CPU copy removed.
 2. Water volumes, reflection captures (one schema owns the buffer), portals.
 3. Foliage; spline debug lines from data; the HLFS pass off the CPU `World`; voxel audit.
-4. `PendingWorldWrites` and the behavior dispatch deleted; unsupported reporting; the pass rows closed.
+4. `PendingWorldWrites` and the behavior dispatch deleted; unfinished reporting; the pass rows closed.
 
 ## Stage 1: fog, post-process volumes, camera post-process
 
@@ -46,7 +46,7 @@ Tests:
 - `ui_level_editor/tests/render_acceptance.rs` has `environment_components_reach_the_frame`. Each of the four components, added through `AddObjectWithComponents`, changes the rendered frame. Disabling it, or moving a local volume away, restores the frame. Depth never changes.
 - `engine_backend/tests/editor_bloom_toggle.rs` checks that the toolbar toggle changes the resolver baseline and writes no scene row.
 
-Deviation from decision 1: the one-time unsupported log fires when a component is attached, not in the renderer. Logging from the renderer would mean scanning the scene every frame.
+Deviation from decision 1: the one-time unfinished log fires when a component is attached, not in the renderer. Logging from the renderer would mean scanning the scene every frame.
 
 Sweep (`helio_component`, `engine_backend`, `pulsar_game`, `ui_level_editor`, run with `--no-fail-fast`):
 - Everything passes except the four failures Phase 3 already recorded: the gizmo hover test, the light mapping intensity test and the two `toggle_button` doctests.
@@ -63,18 +63,18 @@ The water passes read a fixed number of leading rows: `MAX_SIM_VOLUMES`, which i
 
 Limitation: the simulation reads wave spring, damping, scale and wind from pass-wide settings (`WaterSimPass` setters). The component's per-volume fields for these are carried in the row but have no effect.
 
-**Reflection captures: unsupported.** Deferred lighting samples a capture only through a baked cubemap layer (`cubemap_index`), and the engine runs no probe baker (`helio-bake` is not a dependency). A placed capture would therefore never contribute.
+**Reflection captures: unfinished (#1054).** Deferred lighting samples a capture only through a baked cubemap layer (`cubemap_index`), and the engine runs no probe baker (`helio-bake` is not a dependency). A placed capture would therefore never contribute.
 - The component keeps its authored settings and writes no rows.
 - The duplicate `ReflectionCaptureGpuComponent` schema and its binding are deleted, so `helio_pass_deferred_light::ReflectionCaptureComponent` is the only schema of `reflection_captures`.
 - Supporting captures needs probe baking (or dynamic captures) in the engine.
 
-**Portals: unsupported.** Helio's portal passes draw linked pairs: each authored `helio_pass_portal_cull::PortalComponent` names its peer, and `PortalProjectionBridge` turns the pairs into view and chain rows at dense, reserved entity slots.
+**Portals: unfinished (#1055).** Helio's portal passes draw linked pairs: each authored `helio_pass_portal_cull::PortalComponent` names its peer, and `PortalProjectionBridge` turns the pairs into view and chain rows at dense, reserved entity slots.
 - The engine's `PortalComponent` authors no peer; its `portal_id` was never a link.
 - The editor world cannot reserve dense entity slots.
 - Its old queued write (a one-portal chain with no peer) could not have drawn a portal even with a drain.
 - Supporting portals needs an authored peer reference and a portal contract that does not depend on entity slots.
 
-Both classes stop queueing writes now. Stage 4 adds the unsupported report: the card warning and a one-time log when the component is attached. `helio-component` no longer depends on the portal-cull or deferred-light passes.
+Both classes stop queueing writes now. Stage 4 adds the unfinished report: the card warning and a one-time log when the component is attached. `helio-component` no longer depends on the portal-cull or deferred-light passes.
 
 Tests:
 - `environment_join_rows.rs` has `water_volumes_are_packed_into_the_leading_rows`. Two volumes whose instance rows sit past row 8 land in rows 0 and 1, with their surface heights and the owner's scale applied. Disabling the first moves the second up. Hidden or detached volumes free their rows.
@@ -122,9 +122,9 @@ Recorded, not changed:
 - The CPU planet rebuild runs synchronously on the render thread.
 - Renderer brush commits bypass `append_edits`' validation and block events.
 - Two CPU planet caches exist (the renderer's and `voxel_world::WORLDS`).
-- A free-standing `VoxelComponent` has no renderer. Stage 4 reports it unsupported.
+- A free-standing `VoxelComponent` has no renderer. Stage 4 reports it unfinished (#1056).
 
-## Stage 4: the queue and dispatch deleted; unsupported reporting
+## Stage 4: the queue and dispatch deleted; unfinished reporting
 
 **`PendingWorldWrites` is deleted.** Every producer stopped queueing in Stages 1 to 3. The queue had no production drain.
 
@@ -136,17 +136,17 @@ Recorded, not changed:
 
 `ComponentRuntimeBehavior` stays only to carry `CLASS_NAME` for `#[register_world_component]`. Its trait and `RuntimeBehaviorRegistration` live in the `pulsar-reflection` submodule. That repository is outside this change, so they remain there, unused.
 
-**Unsupported reporting** (decision 1). `pulsar_world_registry::declare_unsupported_component!(class, reason)` registers a class the engine keeps but does not consume. Its data still attaches, edits, saves and loads normally. On top of that:
-- the properties card shows `Not supported by this engine: <reason>.` under the class name;
-- attaching the first instance logs the reason once per class. This is the deviation recorded in Stage 1: the log fires at attach, not in the renderer.
+**Unfinished reporting** (decision 1). `pulsar_world_registry::declare_unfinished_component!(class, reason, issue)` registers a class the engine keeps but does not consume yet, with the issue that tracks the work. Its data still attaches, edits, saves and loads normally. On top of that:
+- the properties card shows `Unfinished: <reason>. Tracked in <issue>.` under the class name;
+- attaching the first instance logs the reason and issue once per class. This is the deviation recorded in Stage 1: the log fires at attach, not in the renderer.
 
-Declared unsupported:
-- `LODComponent`: nothing consumes it;
-- `ReflectionCaptureComponent`: no probe baker;
-- `PortalComponent`: no peer link, and no dense projection slots;
-- free-standing `VoxelComponent`: no renderer.
+Declared unfinished:
+- `LODComponent`: nothing consumes it (#1053);
+- `ReflectionCaptureComponent`: no probe baker (#1054);
+- `PortalComponent`: no peer link, and no dense projection slots (#1055);
+- free-standing `VoxelComponent`: no renderer (#1056).
 
-Decals, corona and sprites (decision 4), and the sky (decision 2), have no authored component, so there is no card to warn on. Their pass rows are recorded `out-of-scope`. The ledger gains an `unsupported` status that requires a named test.
+Decals, corona and sprites (decision 4), and the sky (decision 2), have no authored component, so there is no card to warn on. Their pass rows are recorded `unfinished` with their issue. The ledger gains an `unfinished` status whose `test` must name the check or the tracking issue.
 
 **Unconsumed GPU uploads removed** (decision 5). Every `#[engine_class]` with `#[gpu]` fields or `#[sub_props]` used to generate a GPU companion, register a SceneDB dispatch for it, and auto-register and upload its row on the first insert. That covered `LightComponentGpuMirror`, the physics and rigidbody companions, and the zero-byte companions of the environment components. None of those rows had a reader. The companion now uploads only for a class that opts in with `#[engine_class(gpu_rows)]`; no engine class does. The companion type and `GpuMirrored::to_gpu_mirror` mapping stay as CPU helpers: `LightSourceRow` is built from the light's mirror. Tests:
 - `engine_class_derive`'s mirror tests opt in;
@@ -156,8 +156,8 @@ Decals, corona and sprites (decision 4), and the sky (decision 2), have no autho
 **Ledger.**
 - Every class row has `runtime_behavior = false`, and physics and rigidbody have no GPU columns.
 - The authored environment schemas are verified by the join tests.
-- The four unsupported classes are `unsupported`, tested by `helio-component/tests/unsupported_components.rs`.
-- Pass rows with no authored source in the engine are `out-of-scope`, each with its reason: sky, decals, corona, legacy fog, volumetric fog settings, reflection captures, portals and foliage interactors.
+- The four unfinished classes are `unfinished`, tested by `helio-component/tests/unfinished_components.rs`, with their issues.
+- Pass rows for unfinished features (sky, decals, corona, reflection captures, portals) are `unfinished` with their issue. Rows with no authored source and no planned one (legacy fog, volumetric fog settings, foliage interactors) are `out-of-scope`, each with its reason.
 
 Stage 4 sweep: `helio_component`, `engine_backend`, `pulsar_game`, `ui_level_editor`, `pulsar_class`, `pulsar_physics`, `pulsar_scene`, `pulsar_world_registry`, `scene_inventory` and `engine_class_derive`, with `--no-fail-fast`. 40 test targets pass. The only failures are the ones already known: the gizmo hover test, the light mapping intensity test, the two `toggle_button` doctests and the parallel `voxel_block_api` cache flake.
 
@@ -171,8 +171,23 @@ Stage 4 sweep: `helio_component`, `engine_backend`, `pulsar_game`, `ui_level_edi
   - foliage (blades drawn);
   - meshes and lights (Phase 2);
   - splines (editor lines, change-driven).
-- **Every unsupported capability is reported** on its card and in the log, or recorded `out-of-scope` where no authored component exists.
+- **Every unsupported capability is reported as unfinished** on its card and in the log, or in the ledger where no authored component exists, each with a tracking issue.
 - **No exposed component succeeds silently through an undrained queue or a no-op behavior:** `PendingWorldWrites` and the dispatch are gone.
+
+## Unfinished features
+
+Each is reported in the engine (the card and a one-time log, for authored classes) and in the ledger, and tracked by a sub-issue of #1035. Finishing one means a data contract like the other Phase 4 components, a frame test, and removing its `declare_unfinished_component!`.
+
+| Feature | Where it stands | Issue |
+|---|---|---|
+| `LODComponent` | authored, no consumer | #1053 |
+| `ReflectionCaptureComponent` | authored; needs probe baking or dynamic captures | #1054 |
+| `PortalComponent` | authored; needs peer links and a portal contract without dense entity slots | #1055 |
+| Free-standing `VoxelComponent` | authored (payload store and sessions work); no renderer | #1056 |
+| Sky component | pass schema only; the sky is a project setting | #1057 |
+| Decals | pass schema only | #1058 |
+| Corona (particle emitters) | pass schema only | #1059 |
+| Sprites / billboards | pass draws editor light icons only | #1060 |
 
 ## Left open (recorded, not done here)
 

@@ -67,7 +67,7 @@
 // crate without that crate needing its own direct `inventory` dependency --
 // the same pattern `pulsar_reflection` uses for its own registrations.
 pub use inventory;
-pub use unsupported::{unsupported_classes, unsupported_reason, UnsupportedComponentRegistration};
+pub use unfinished::{unfinished_component, unfinished_components, UnfinishedComponentRegistration};
 /// Re-exported so generated component code can name the instance types
 /// (`ComponentOwner`) without its own dependency.
 pub use pulsar_scene_model;
@@ -294,7 +294,7 @@ pub mod errors;
 pub mod instances;
 pub mod marshal;
 pub mod type_shims;
-pub mod unsupported;
+pub mod unfinished;
 pub mod values;
 // Linked so the math value types and natives are in every host that builds
 // the script registry; nothing references them by name.

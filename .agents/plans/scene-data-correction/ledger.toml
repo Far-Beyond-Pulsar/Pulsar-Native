@@ -83,10 +83,10 @@ world_registered = true
 own_gpu_columns = false
 runtime_behavior = false
 owner = "helio_component::components::lod_component"
-disposition = "unsupported, Phase 4: nothing consumes LOD settings; meshes draw their imported level of detail. Declared with declare_unsupported_component!: the properties card shows the reason and the first attach logs it once"
+disposition = "unfinished, Phase 4 (tracked in #1053): nothing consumes LOD settings; meshes draw their imported level of detail. Declared with declare_unfinished_component!: the properties card shows the reason and issue, and the first attach logs them once"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/renderer/helio/crates/helio-component/tests/unsupported_components.rs"
-status = "unsupported"
+test = "crates/renderer/helio/crates/helio-component/tests/unfinished_components.rs; tracked in #1053"
+status = "unfinished"
 
 [[class]]
 name = "LightComponent"
@@ -145,10 +145,10 @@ world_registered = true
 own_gpu_columns = false
 runtime_behavior = false
 owner = "helio_component::components::portal_component"
-disposition = "unsupported, Phase 4: Helio draws linked portal pairs from projection rows at dense reserved entity slots; this component authors no peer and the editor world cannot provide those slots. Declared with declare_unsupported_component!: the properties card shows the reason and the first attach logs it once"
+disposition = "unfinished, Phase 4 (tracked in #1055): Helio draws linked portal pairs from projection rows at dense reserved entity slots; this component authors no peer and the editor world cannot provide those slots. Declared with declare_unfinished_component!: the properties card shows the reason and issue, and the first attach logs them once"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/renderer/helio/crates/helio-component/tests/unsupported_components.rs"
-status = "unsupported"
+test = "crates/renderer/helio/crates/helio-component/tests/unfinished_components.rs; tracked in #1055"
+status = "unfinished"
 
 [[class]]
 name = "PostProcessVolumeComponent"
@@ -169,10 +169,10 @@ world_registered = true
 own_gpu_columns = false
 runtime_behavior = false
 owner = "helio_component::components::reflection_capture_component"
-disposition = "unsupported, Phase 4: a capture contributes only through a baked cubemap layer and the engine runs no probe baker. Declared with declare_unsupported_component!: the properties card shows the reason and the first attach logs it once"
+disposition = "unfinished, Phase 4 (tracked in #1054): a capture contributes only through a baked cubemap layer and the engine runs no probe baker. Declared with declare_unfinished_component!: the properties card shows the reason and issue, and the first attach logs them once"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/unsupported_components.rs"
-status = "unsupported"
+test = "crates/renderer/helio/crates/helio-component/tests/unfinished_components.rs; tracked in #1054"
+status = "unfinished"
 
 [[class]]
 name = "RigidbodyComponent"
@@ -218,10 +218,10 @@ world_registered = true
 own_gpu_columns = false
 runtime_behavior = false
 owner = "helio_component::components::voxel_component_runtime"
-disposition = "unsupported, Phase 4: no voxel renderer draws a free-standing voxel component (its entry has no compatible renderer; live chunks on a terrain are rejected); its payload store and sessions stay real work. Declared with declare_unsupported_component!: the properties card shows the reason and the first attach logs it once"
+disposition = "unfinished, Phase 4 (tracked in #1056): no voxel renderer draws a free-standing voxel component (its entry has no compatible renderer; live chunks on a terrain are rejected); its payload store and sessions stay real work. Declared with declare_unfinished_component!: the properties card shows the reason and issue, and the first attach logs them once"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/unsupported_components.rs"
-status = "unsupported"
+test = "crates/renderer/helio/crates/helio-component/tests/unfinished_components.rs; tracked in #1056"
+status = "unfinished"
 
 [[class]]
 name = "VoxelFlatTerrainComponent"
@@ -550,10 +550,10 @@ releases_var_len = false
 registered = false
 writer = "no production writer found"
 owner = "helio_pass_corona::components"
-disposition = "outside the engine (Phase 4): no authored component; corona is reported unsupported (decision 4), the pass reads its fallback"
+disposition = "unfinished (Phase 4; tracked in #1059): no authored emitter component (decision 4); the pass reads its fallback"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "out-of-scope"
+test = "tracked in #1059"
+status = "unfinished"
 
 [[schema]]
 type = "DecalComponent"
@@ -564,10 +564,10 @@ releases_var_len = false
 registered = true
 writer = "no production writer found (registered only)"
 owner = "helio_pass_decal::components"
-disposition = "outside the engine (Phase 4): no authored decal component (decision 4); the buffer is registered so the pass binds an empty table"
+disposition = "unfinished (Phase 4; tracked in #1058): no authored decal component (decision 4); the column is registered so the pass binds an empty table"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "out-of-scope"
+test = "tracked in #1058"
+status = "unfinished"
 
 [[schema]]
 type = "ReflectionCaptureComponent"
@@ -578,10 +578,10 @@ releases_var_len = false
 registered = false
 writer = "none in the engine (Phase 4 removed the queued write)"
 owner = "helio_pass_deferred_light::components"
-disposition = "outside the engine (Phase 4): ReflectionCaptureComponent is reported unsupported (no probe baker)"
+disposition = "unfinished (Phase 4; tracked in #1054): captures need baked cubemap layers; the engine runs no probe baker"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: unsupported (reported in Stage 4)"
-status = "out-of-scope"
+test = "tracked in #1054"
+status = "unfinished"
 
 [[schema]]
 type = "FoliageInteractorComponent"
@@ -760,10 +760,10 @@ releases_var_len = true
 registered = false
 writer = "no production writer found"
 owner = "helio_pass_portal_cull::components"
-disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
+disposition = "unfinished (Phase 4; tracked in #1055): PortalComponent has no peer link and the editor world cannot provide dense projection slots"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "out-of-scope"
+test = "tracked in #1055"
+status = "unfinished"
 
 [[schema]]
 type = "PortalComponent"
@@ -774,10 +774,10 @@ releases_var_len = false
 registered = false
 writer = "PortalComponent behavior through PendingWorldWrites (no production drain)"
 owner = "helio_pass_portal_cull::components"
-disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
+disposition = "unfinished (Phase 4; tracked in #1055): PortalComponent has no peer link and the editor world cannot provide dense projection slots"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "out-of-scope"
+test = "tracked in #1055"
+status = "unfinished"
 
 [[schema]]
 type = "PortalProjectionCountsComponent"
@@ -788,10 +788,10 @@ releases_var_len = false
 registered = false
 writer = "no production writer found"
 owner = "helio_pass_portal_cull::components"
-disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
+disposition = "unfinished (Phase 4; tracked in #1055): PortalComponent has no peer link and the editor world cannot provide dense projection slots"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "out-of-scope"
+test = "tracked in #1055"
+status = "unfinished"
 
 [[schema]]
 type = "PortalViewComponent"
@@ -802,10 +802,10 @@ releases_var_len = false
 registered = false
 writer = "no production writer found"
 owner = "helio_pass_portal_cull::components"
-disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
+disposition = "unfinished (Phase 4; tracked in #1055): PortalComponent has no peer link and the editor world cannot provide dense projection slots"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "out-of-scope"
+test = "tracked in #1055"
+status = "unfinished"
 
 [[schema]]
 type = "CameraPostProcessComponent"
@@ -844,10 +844,10 @@ releases_var_len = false
 registered = false
 writer = "renderer-side sky setup (HelioRenderer queries it); no authored component"
 owner = "helio_pass_sky::components"
-disposition = "outside the engine (Phase 4): the sky is a project/renderer setting and the sun comes from the directional light (decision 2); no authored sky component"
+disposition = "unfinished (Phase 4; tracked in #1057): no authored sky component; the sky is a project/renderer setting and the sun follows the directional light (decision 2)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "out-of-scope"
+test = "tracked in #1057"
+status = "unfinished"
 
 [[schema]]
 type = "FogComponent"
@@ -1567,17 +1567,17 @@ key = "PortalChainComponent::portals"
 producers = ["PortalChainComponent"]
 consumers = []
 owner = "portal-cull pass type (var-len pool)"
-disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
+disposition = "unfinished (Phase 4; tracked in #1055): PortalComponent has no peer link and the editor world cannot provide dense projection slots"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: consumer not identified"
-status = "out-of-scope"
+test = "tracked in #1055"
+status = "unfinished"
 
 [[buffer]]
 key = "billboard_instances"
 producers = ["BillboardComponent"]
 consumers = ["helio-default-graphs", "helio-pass-billboard"]
 owner = "helio-default-graphs scene join (editor mode)"
-disposition = "keep: editor light icons are a GPU output of the join over authored light rows (Phase 2)"
+disposition = "keep: editor light icons are a GPU output of the join over authored light rows (Phase 2); authored sprites are unfinished (decision 4; tracked in #1060)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
 test = "crates/renderer/helio/crates/helio-default-graphs/tests/scene_join.rs"
 status = "verified"
@@ -1617,20 +1617,20 @@ key = "corona_emitters"
 producers = ["CoronaEmitterComponent"]
 consumers = ["helio-pass-corona"]
 owner = "no authored Pulsar component found"
-disposition = "outside the engine (Phase 4): no authored component; corona is reported unsupported (decision 4)"
+disposition = "unfinished (Phase 4; tracked in #1059): no authored emitter component (decision 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored source"
-status = "out-of-scope"
+test = "tracked in #1059"
+status = "unfinished"
 
 [[buffer]]
 key = "decals"
 producers = ["DecalComponent"]
 consumers = ["helio-pass-decal"]
 owner = "no authored Pulsar component found"
-disposition = "outside the engine (Phase 4): no authored decal component (decision 4)"
+disposition = "unfinished (Phase 4; tracked in #1058): no authored decal component (decision 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored source"
-status = "out-of-scope"
+test = "tracked in #1058"
+status = "unfinished"
 
 [[buffer]]
 key = "fog_components"
@@ -1717,30 +1717,30 @@ key = "portal_projection_counts"
 producers = ["PortalProjectionCountsComponent"]
 consumers = []
 owner = "portal-cull pass type"
-disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
+disposition = "unfinished (Phase 4; tracked in #1055): PortalComponent has no peer link and the editor world cannot provide dense projection slots"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: writer not identified"
-status = "out-of-scope"
+test = "tracked in #1055"
+status = "unfinished"
 
 [[buffer]]
 key = "portal_views"
 producers = ["PortalViewComponent"]
 consumers = ["helio-pass-portal-cull", "helio-pass-portal-instances"]
 owner = "portal-cull pass type; written by Helio's PortalProjectionBridge at dense reserved entity slots (Helio examples); no engine writer"
-disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
+disposition = "unfinished (Phase 4; tracked in #1055): PortalComponent has no peer link and the editor world cannot provide dense projection slots"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: unsupported (reported in Stage 4)"
-status = "out-of-scope"
+test = "tracked in #1055"
+status = "unfinished"
 
 [[buffer]]
 key = "portals"
 producers = ["PortalComponent"]
 consumers = []
 owner = "portal-cull pass type, written through PendingWorldWrites (PortalComponent behavior)"
-disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
+disposition = "unfinished (Phase 4; tracked in #1055): PortalComponent has no peer link and the editor world cannot provide dense projection slots"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: portal culls and draws"
-status = "out-of-scope"
+test = "tracked in #1055"
+status = "unfinished"
 
 [[buffer]]
 key = "post_process_volumes"
@@ -1757,10 +1757,10 @@ key = "reflection_captures"
 producers = ["ReflectionCaptureComponent"]
 consumers = ["helio-pass-deferred-light"]
 owner = "helio_pass_deferred_light::components::ReflectionCaptureComponent (the only schema); no engine writer"
-disposition = "outside the engine (Phase 4): ReflectionCaptureComponent is reported unsupported (no probe baker)"
+disposition = "unfinished (Phase 4; tracked in #1054): captures need baked cubemap layers; the engine runs no probe baker"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: unsupported (reported in Stage 4)"
-status = "out-of-scope"
+test = "tracked in #1054"
+status = "unfinished"
 
 [[buffer]]
 key = "render_groups"
@@ -1797,10 +1797,10 @@ key = "sky_components"
 producers = ["SkyComponent"]
 consumers = ["helio-pass-sky"]
 owner = "no authored Pulsar component found (sky configured by the renderer)"
-disposition = "outside the engine (Phase 4): the sky is a project/renderer setting (decision 2)"
+disposition = "unfinished (Phase 4; tracked in #1057): no authored sky component (decision 2)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored source"
-status = "out-of-scope"
+test = "tracked in #1057"
+status = "unfinished"
 
 [[buffer]]
 key = "sprite_instances"
