@@ -11,6 +11,7 @@ use ui::{
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum TaskTab {
+    All,
     Waiting,
     InProgress,
     Failed,
@@ -18,7 +19,8 @@ enum TaskTab {
 }
 
 impl TaskTab {
-    const ALL: [Self; 4] = [
+    const ALL: [Self; 5] = [
+        Self::All,
         Self::Waiting,
         Self::InProgress,
         Self::Failed,
@@ -27,6 +29,7 @@ impl TaskTab {
 
     fn label(self) -> &'static str {
         match self {
+            Self::All => "All",
             Self::Waiting => "Waiting",
             Self::InProgress => "In Progress",
             Self::Failed => "Failed",
@@ -36,6 +39,7 @@ impl TaskTab {
 
     fn includes(self, status: TaskStatus) -> bool {
         match self {
+            Self::All => true,
             Self::Waiting => status == TaskStatus::Queued,
             Self::InProgress => status == TaskStatus::Running,
             Self::Failed => matches!(status, TaskStatus::Failed | TaskStatus::Cancelled),
@@ -66,7 +70,10 @@ impl TaskQueuePanel {
         Self {
             focus_handle: cx.focus_handle(),
             search: cx.new(|cx| InputState::new(window, cx).placeholder("Search tasks...")),
-            selected_tab: TaskTab::Waiting,
+            // Saves and other short background jobs may finish before the
+            // task panel is opened. Keep completed work visible by default so
+            // the queue also serves as an audit history.
+            selected_tab: TaskTab::All,
             visible: Vec::new(),
             _refresh_task: task,
         }
