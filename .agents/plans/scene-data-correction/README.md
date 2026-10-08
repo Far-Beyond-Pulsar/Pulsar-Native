@@ -23,6 +23,7 @@ This packet turns the confirmed SceneDB/rendering failures into a set of archite
 | [12-phase-1.md](12-phase-1.md) | Phase 1: SceneDB erased writes and mirror replay, intrinsic GPU companions, component-instance entities |
 | [13-phase-2.md](13-phase-2.md) | Phase 2: the GPU scene join for meshes and lights; the CPU projection and render subscriptions removed |
 | [14-phase-3.md](14-phase-3.md) | Phase 3: typed history, commands, class templates and script producers; explicit load migrations |
+| [15-phase-4.md](15-phase-4.md) | Phase 4: render components reach a pass through derived rows and graph-owned joins, or are reported unsupported; the queue and behavior dispatch deleted |
 | [ledger.toml](ledger.toml) | Closure ledger checked by `cargo test -p scene_inventory` |
 
 ## How to review

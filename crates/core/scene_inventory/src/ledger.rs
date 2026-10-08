@@ -21,6 +21,9 @@ pub const STATUSES: &[&str] = &[
     "verified",
     // Outside the corrective plan; `disposition` says why.
     "out-of-scope",
+    // No consumer in this engine, and reported so: the class declares a
+    // reason the properties card shows (Phase 4). `test` names the check.
+    "unsupported",
 ];
 
 #[derive(Debug, Deserialize, Default)]
@@ -161,7 +164,9 @@ pub fn check_dispositions(ledger: &Ledger) -> Vec<String> {
                 d.status
             ));
         }
-        if matches!(d.status.as_str(), "broken" | "verified") && d.test.starts_with("none") {
+        if matches!(d.status.as_str(), "broken" | "verified" | "unsupported")
+            && d.test.starts_with("none")
+        {
             problems.push(format!("{row}: status `{}` needs a named test", d.status));
         }
     };

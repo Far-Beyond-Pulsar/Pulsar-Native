@@ -1,4 +1,4 @@
-use engine_class_derive::{register_runtime_behavior, register_world_component};
+use engine_class_derive::{register_world_component};
 use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
 
 use super::RigidbodyComponent;
@@ -6,7 +6,6 @@ use super::RigidbodyComponent;
 // Phase B5 (Pulsar-Native#556). Same free-win rationale as PhysicsComponent
 // -- sync_component is a no-op stub today.
 #[register_world_component]
-#[register_runtime_behavior]
 impl ComponentRuntimeBehavior for RigidbodyComponent {
     const CLASS_NAME: &'static str = "RigidbodyComponent";
 

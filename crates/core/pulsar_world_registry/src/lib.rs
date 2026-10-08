@@ -6,12 +6,8 @@
 //! ## What this solves
 //!
 //! Before this crate, a component's *live* runtime shape was always
-//! `serde_json::Value`: `HelioRenderer::sync_scene` re-deserialized every
-//! component's JSON into its typed struct on *every rendered frame* (via
-//! `apply_runtime_behavior_for_class`), even though `#[register_runtime_behavior]`
-//! (Phase B2) already made `ComponentRuntimeBehavior::sync_component` itself
-//! typed -- the JSON round trip was purely an artifact of the dispatch
-//! boundary, not the trait.
+//! `serde_json::Value`, re-deserialized into its typed struct on every
+//! rendered frame by a JSON dispatch.
 //!
 //! `#[register_world_component]` (`engine_class_derive`) lets a component opt
 //! into this crate's registry, which provides:
@@ -20,9 +16,6 @@
 //!   SceneDB's type-erased `World::insert_dyn`, which runs exactly the write
 //!   hooks a typed insert runs. Hydrating a component is decode + erased
 //!   insert; nothing class-specific happens at insertion.
-//! - **`dispatch`**: read the typed value already sitting in `World` and call
-//!   `ComponentRuntimeBehavior::sync_component` directly -- no JSON, no
-//!   `serde_json::from_value` -- on the render hot path.
 //! - **`remove`**: drop the typed value when the component is deleted,
 //!   disabled, or its owning object is despawned.
 //! - **`on_removed`**: the consumer-side teardown counterpart to `hydrate` --
@@ -59,21 +52,22 @@
 //! Pulsar-Native-internal crate sitting alongside them -- itself depending
 //! on both -- is a clean fit with no cross-repo coordination needed at all.
 //!
-//! ## Why a separate registry from `RuntimeBehaviorRegistration`
+//! ## The runtime-behavior dispatch is gone
 //!
 //! `pulsar_reflection::RuntimeBehaviorRegistration`/`apply_runtime_behavior_for_class`
-//! stay exactly as they are (JSON-based) -- they're still the dispatch path
-//! for anything that only has JSON on hand (`pulsar_scene::SceneLoader`, and
-//! any component that hasn't been migrated onto this registry yet, e.g. the
-//! rest of B5's list before it lands). Migration is opt-in and incremental,
-//! one component at a time, which is exactly why this is a sibling registry
-//! rather than a breaking change to the existing one.
+//! (the JSON dispatch to `ComponentRuntimeBehavior::sync_component`) and this
+//! crate's typed `dispatch` had no production caller left; Pulsar-Native#1035
+//! (Phase 4) removed every registration and the typed path. Components reach
+//! their consumers through their data (SceneDB GPU rows and graph-owned
+//! derivations); `ComponentRuntimeBehavior` remains only as the carrier of
+//! `CLASS_NAME` for `#[register_world_component]`.
 
 // Re-exported so `#[register_world_component]` (`engine_class_derive`) can
 // emit `pulsar_world_registry::inventory::submit! { .. }` in the calling
 // crate without that crate needing its own direct `inventory` dependency --
-// same pattern `pulsar_reflection` already uses for `RuntimeBehaviorRegistration`.
+// the same pattern `pulsar_reflection` uses for its own registrations.
 pub use inventory;
+pub use unsupported::{unsupported_classes, unsupported_reason, UnsupportedComponentRegistration};
 /// Re-exported so generated component code can name the instance types
 /// (`ComponentOwner`) without its own dependency.
 pub use pulsar_scene_model;
@@ -300,6 +294,7 @@ pub mod errors;
 pub mod instances;
 pub mod marshal;
 pub mod type_shims;
+pub mod unsupported;
 pub mod values;
 // Linked so the math value types and natives are in every host that builds
 // the script registry; nothing references them by name.
@@ -388,14 +383,6 @@ pub struct WorldComponentRegistration {
     /// Called when the component is deleted, disabled, or its owning object
     /// is despawned.
     pub remove: fn(&mut World, Entity),
-    /// Dispatch `ComponentRuntimeBehavior::sync_component` using the typed
-    /// value already in `World` -- no JSON deserialize on this path at all.
-    /// Returns `false` (and does nothing) if `entity` doesn't have this
-    /// component in `World` (not hydrated yet); callers should fall back to
-    /// `pulsar_reflection::apply_runtime_behavior_for_class` in that case,
-    /// which still works off the JSON channel unconditionally.
-    pub dispatch:
-        fn(&World, Entity, &RuntimeComponentOwner, usize, &mut dyn ComponentRuntimeContext) -> bool,
     /// Borrow the typed value already in `World` as `&dyn EngineClass` --
     /// the properties panel's *read* path. No JSON, no throwaway `Default`
     /// instance: this is the one real, live value.
@@ -582,26 +569,6 @@ pub fn notify_world_component_removed_by_component_id(
         Some(registration) => {
             (registration.on_removed)(owner, context);
             true
-        }
-        None => false,
-    }
-}
-
-/// Dispatch `class_name`'s `ComponentRuntimeBehavior::sync_component`
-/// directly off `entity`'s typed `World` value, if that class is registered
-/// here and hydrated on `entity`. Returns `false` otherwise -- callers
-/// should fall back to `pulsar_reflection::apply_runtime_behavior_for_class`.
-pub fn dispatch_world_component_for_class(
-    class_name: &str,
-    world: &World,
-    entity: Entity,
-    owner: &RuntimeComponentOwner,
-    component_index: usize,
-    context: &mut dyn ComponentRuntimeContext,
-) -> bool {
-    match find(class_name) {
-        Some(registration) => {
-            (registration.dispatch)(world, entity, owner, component_index, context)
         }
         None => false,
     }
@@ -930,16 +897,6 @@ mod tests {
     fn test_on_removed(_owner: &RuntimeComponentOwner, _context: &mut dyn ComponentRuntimeContext) {
     }
 
-    fn test_dispatch(
-        world: &World,
-        entity: Entity,
-        _owner: &RuntimeComponentOwner,
-        _component_index: usize,
-        _context: &mut dyn ComponentRuntimeContext,
-    ) -> bool {
-        world.get::<TestComponent>(entity).is_some()
-    }
-
     fn test_property_written(_value: &mut dyn EngineClass, _property: Option<&str>) {}
 
     inventory::submit! {
@@ -953,7 +910,6 @@ mod tests {
             value_as_engine_class_mut: |_| None,
             register_erased: pulsar_scenedb::register_component::<TestComponent>,
             remove: test_remove,
-            dispatch: test_dispatch,
             get_as_engine_class: test_get,
             get_as_engine_class_mut: test_get_mut,
             on_removed: test_on_removed,
@@ -997,22 +953,9 @@ mod tests {
     }
 
     #[test]
-    fn hydrate_dispatch_remove_round_trip() {
+    fn hydrate_remove_round_trip() {
         let mut world = World::new();
         let entity = world.spawn();
-        let props = HashMap::new();
-        let mut ctx = dummy_context();
-
-        // Not hydrated yet -- dispatch is a clean no-op, not a panic.
-        assert!(!dispatch_world_component_for_class(
-            "TestComponent",
-            &world,
-            entity,
-            &dummy_owner(&props),
-            0,
-            &mut ctx
-        ));
-
         let hydrated = hydrate_world_component_for_class(
             "TestComponent",
             &mut world,
@@ -1026,14 +969,6 @@ mod tests {
             Some(&TestComponent { value: 42 })
         );
 
-        assert!(dispatch_world_component_for_class(
-            "TestComponent",
-            &world,
-            entity,
-            &dummy_owner(&props),
-            0,
-            &mut ctx
-        ));
 
         assert!(remove_world_component_for_class(
             "TestComponent",
@@ -1167,8 +1102,7 @@ mod tests {
                 value_as_engine_class_mut: |_| None,
                 register_erased: pulsar_scenedb::register_component::<NotifyRemovedTestComponent2>,
                 remove: test_remove,
-                dispatch: test_dispatch,
-                get_as_engine_class: test_get,
+                    get_as_engine_class: test_get,
                 get_as_engine_class_mut: test_get_mut,
                 on_removed: recording_on_removed,
                 property_written: test_property_written,
@@ -1224,8 +1158,6 @@ mod tests {
     fn unregistered_class_is_a_clean_no_op_everywhere() {
         let mut world = World::new();
         let entity = world.spawn();
-        let props = HashMap::new();
-        let mut ctx = dummy_context();
 
         assert_eq!(
             hydrate_world_component_for_class(
@@ -1241,14 +1173,6 @@ mod tests {
             "NotRegistered",
             &mut world,
             entity
-        ));
-        assert!(!dispatch_world_component_for_class(
-            "NotRegistered",
-            &world,
-            entity,
-            &dummy_owner(&props),
-            0,
-            &mut ctx
         ));
     }
 

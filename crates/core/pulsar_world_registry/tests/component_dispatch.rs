@@ -172,7 +172,6 @@ pulsar_world_registry::inventory::submit! {
         value_as_engine_class_mut: pulsar_world_registry::values::erased::as_engine_class_mut::<DispatchGizmo>,
         register_erased: pulsar_scenedb::register_component::<DispatchGizmo>,
         remove: gizmo_remove,
-        dispatch: |world, entity, _owner, _index, _ctx| world.get::<DispatchGizmo>(entity).is_some(),
         get_as_engine_class: gizmo_get,
         get_as_engine_class_mut: gizmo_get_mut,
         on_removed: |_owner, _context| {},

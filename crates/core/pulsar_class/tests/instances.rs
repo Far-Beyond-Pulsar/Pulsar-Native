@@ -1,7 +1,7 @@
 //! Class instances in a real World: instantiation, slot lookup, override
 //! round trips and unresolved classes (Pulsar-Native#921).
 
-use engine_class_derive::{engine_class, register_runtime_behavior, register_world_component};
+use engine_class_derive::{engine_class, register_world_component};
 use pulsar_class::world::{
     class_instance_of, collect_overrides, expand_all, generated_children, instantiate_class,
     is_generated_child, placement, slot_map, store_class_instance,
@@ -21,7 +21,6 @@ pub struct TestLamp {
 }
 
 #[register_world_component]
-#[register_runtime_behavior]
 impl ComponentRuntimeBehavior for TestLamp {
     const CLASS_NAME: &'static str = "TestLamp";
     fn sync_component(
