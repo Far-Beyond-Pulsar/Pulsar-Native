@@ -459,7 +459,9 @@ mod tests {
                 && object.get("children").is_none()
                 && object.get("scene_path").is_none()
         );
-        assert_eq!(object["props"]["mesh_asset"], "assets/meshes/a.mesh");
+        // The load migration drops the stale `props` copy of the mesh path
+        // (Pulsar-Native#1035 Phase 3); the component keeps it.
+        assert!(object["props"].get("mesh_asset").is_none());
         let components = &object["component_instances"];
         assert_eq!(components[0]["data"]["class"], "door-guid");
         assert_eq!(components[1]["data"]["mesh_asset"], "assets/meshes/a.mesh");

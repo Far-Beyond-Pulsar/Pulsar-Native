@@ -732,6 +732,24 @@ impl PluginManager {
             for (name, _) in &component_regs {
                 tracing::debug!("    - Component: {}", name);
             }
+            // A plugin class is a World component only when its
+            // `#[register_world_component]` registration ran into the host's
+            // registry. A plugin with its own static copy of the world crates
+            // registered into a registry the host never reads (#1081).
+            let unregistered: Vec<&str> = component_regs
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .filter(|name| pulsar_world_registry::component_id_for_class(name).is_none())
+                .collect();
+            if !unregistered.is_empty() {
+                tracing::warn!(
+                    "plugin {} provides components that are not World components: {}. \
+                     They registered into the plugin's own copy of the engine's world \
+                     crates and cannot be placed in a level.",
+                    plugin_id,
+                    unregistered.join(", ")
+                );
+            }
             self.plugin_component_registrations.extend(component_regs);
         }
 

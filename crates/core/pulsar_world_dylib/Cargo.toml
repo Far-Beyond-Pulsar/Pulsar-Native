@@ -1,0 +1,23 @@
+[package]
+name = "pulsar_world_dylib"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "The engine's world crates (SceneDB, reflection, the world-component registry, the scene model, inventory) as one Rust dylib, so the editor and plugin libraries linked against it share one copy of their registries."
+
+# A Rust `dylib`: an executable or plugin that depends on this crate links
+# every crate below through it, so their statics (component ids, inventory
+# registries, reflection tables) exist once per process. Both sides must be
+# built by the same compiler with the same features (same metadata hash).
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+pulsar_scenedb        = { workspace = true }
+pulsar_reflection     = { workspace = true }
+pulsar_world_registry = { workspace = true }
+pulsar_scene_model    = { workspace = true }
+inventory             = { workspace = true }
+
+[lints]
+workspace = true

@@ -109,6 +109,25 @@ pub trait EditorPluginFull: EditorPlugin + EditorPluginEditor
     + EditorPluginComponents + EditorPluginSubsystems {}
 ```
 
+## Plugin components and the World
+
+A plugin's `EditorPluginComponents::component_factories` hands the host a
+`Box<dyn EngineClass>` factory, enough for the property panel. A typed World
+component also needs its `#[register_world_component]` registration in the
+host's registry. A plugin built as above links its own static copy of the
+world crates, so that registration lands in a registry the host never reads.
+The loader warns about such classes and they cannot be placed in a level.
+
+The planned fix is the shared world library `pulsar_world_dylib` (a Rust
+`dylib` holding `pulsar_scenedb`, `pulsar_reflection`,
+`pulsar_world_registry`, `pulsar_scene_model` and `inventory`). A host and a
+plugin that both link it (`use pulsar_world_dylib as _;`) share one copy, so
+the plugin's classes register into the host's World when it loads. Both must
+be built by one cargo invocation of the engine workspace (same compiler,
+sources and features). `plugin_manager/tests/world_component_plugins.rs`
+covers both cases. The editor binary does not link the library yet; see
+`.agents/plans/scene-data-correction/18-phase-7.md` for what that costs.
+
 ## Plugin loading
 
 1. `PluginManager::new()` — creates empty registries

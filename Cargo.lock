@@ -9709,6 +9709,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_world_dylib"
+version = "0.1.0"
+dependencies = [
+ "inventory",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+]
+
+[[package]]
 name = "pulsar_world_registry"
 version = "0.1.0"
 dependencies = [
@@ -15722,6 +15733,44 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "world_plugin_host"
+version = "0.0.0"
+dependencies = [
+ "libloading 0.9.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_world_dylib",
+ "pulsar_world_registry",
+]
+
+[[package]]
+name = "world_shared_plugin"
+version = "0.0.0"
+dependencies = [
+ "engine_class_derive",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_world_dylib",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "world_static_plugin"
+version = "0.0.0"
+dependencies = [
+ "engine_class_derive",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+]
 
 [[package]]
 name = "write16"

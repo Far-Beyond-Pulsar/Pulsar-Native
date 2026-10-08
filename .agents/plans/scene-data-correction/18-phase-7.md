@@ -1,6 +1,6 @@
 # Phase 7: the acceptance gaps
 
-Status: **complete except for decisions this phase cannot make** (Pulsar-Native#1035, #1081), pending review. Builds on Phase 6 ([17-phase-6.md](17-phase-6.md)).
+Status: **complete except for the editor wiring of plugin components** (Pulsar-Native#1035, #1081), pending review. Builds on Phase 6 ([17-phase-6.md](17-phase-6.md)).
 
 Phase 6 left the acceptance matrix partly unmet; its gaps were filed as Pulsar-Native#1081. Phase 7 writes the missing tests. Six of them found real defects, and Phase 7 fixes each one:
 
@@ -60,6 +60,25 @@ Phase 6 left the acceptance matrix partly unmet; its gaps were filed as Pulsar-N
 
 Each of these used to build the same renderer inline. The parity test drives this code.
 
+## Plugin components: shared world library
+
+A plugin is a `cdylib` with its own static copy of `pulsar_scenedb`, `pulsar_reflection`, `pulsar_world_registry` and `inventory`. Its `#[register_world_component]` registration runs into its own registries, which the editor never reads. So a plugin's `Box<dyn EngineClass>` factory could not become a typed World component. `06-modules-and-plugins.md` left the ABI open; the decision is **a shared engine dylib**, the pattern Bevy uses for `bevy_dylib`.
+
+`crates/core/pulsar_world_dylib` is a Rust `dylib` that contains those crates. A binary and a plugin that both link it (`use pulsar_world_dylib as _;`) use its single copy: the plugin's registration runs into the host's registries when the library loads.
+
+Tests (`plugin_manager/tests/world_component_plugins.rs`): the fixtures under `tests/fixtures/world_plugins` build a host and two plugins that define the same `PluginWidget` class.
+- `a_statically_linked_plugin_cannot_register_world_components` shows the issue. The plugin sees its class, the host does not, and the component ids differ.
+- `a_plugin_linked_through_the_world_dylib_registers_live_world_components` shows the fix. The host sees the class with the plugin's component id, creates it through the registry, writes `charge` through reflection, reads it back from its World and reads the write from its change journal.
+
+**Requirements.** The host and the plugin must name the same build of the dylib: same compiler, same sources and the same features of every crate inside it. In practice they must be built in one cargo invocation of this workspace, as the test builds its fixtures. A mismatched plugin fails to load with an undefined-symbol error. The binary needs the dylib and the toolchain's `libstd-*.so` at run time (`cargo run` and `cargo test` set the search path).
+
+**Not wired into the editor yet.** Linking `pulsar_engine` to the dylib would also:
+1. **Split the editor's allocations.** The dylib links the standard library dynamically. A binary's `#[global_allocator]` then serves only the generic code instantiated in that binary; code in `libstd` and in the dylib allocates through `libstd`'s default. `TrackingAllocator` (the memory panel) and the `dhat-heap` profiler would see part of the heap. Pinned by `a_binary_linked_to_the_world_dylib_keeps_only_part_of_its_allocations`.
+2. **Change the release format.** The release ships one executable per target. It would have to ship the dylib and `libstd` beside it, with an `$ORIGIN` rpath on Linux and the libraries inside the macOS `.app`.
+3. **Risk Windows debug builds.** A debug build of the dylib exports about 83,000 symbols on Linux; a Windows DLL is limited to 65,535. A release build exports about 10,000. Not checked on Windows here.
+
+The plugin loader now warns when a plugin's component classes are not in the host's World registry, naming them.
+
 ## New tests, by acceptance group
 
 | Group | Tests added in Phase 7 |
@@ -83,12 +102,7 @@ The two items Phase 6 left unchecked:
 
 ## Not done here
 
-- **Plugin components as World components.** A plugin is a `cdylib` with its own copy of `pulsar_scenedb` and `pulsar_reflection` and their registries. A plugin's `Box<dyn EngineClass>` factory therefore cannot become a typed World component without a plugin ABI decision (`06-modules-and-plugins.md` left it open):
-  - a shared engine dylib;
-  - host-side registration through a stable C ABI;
-  - or plugin components kept as unresolved payloads.
-
-  Waiting on that decision.
+- **Plugin components in the shipped editor.** See [Plugin components](#plugin-components-shared-world-library): the shared library works and is tested, but the editor binary does not link it yet.
 - **GPU checks on hardware and DX12.** This environment has Mesa lavapipe only.
 - **`gpu_rows` padding.** An `#[engine_class(gpu_rows)]` mirror with a field narrower than its slot (a `bool`) uploads that slot's uninitialized padding. No production class uses `gpu_rows`; production GPU rows come from `#[derive(SceneStore)]`, whose `Pod` bound forbids padding.
 - **Carried from Phase 6:**

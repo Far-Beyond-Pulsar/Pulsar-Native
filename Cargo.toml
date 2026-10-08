@@ -20,6 +20,12 @@ members = [
     # `cargo test -p helio_component` because it could not build its
     # dev-dependencies.
     "crates/renderer/helio/crates/helio-component",
+    # Fixtures for plugin_manager's world-component plugin tests (#1081):
+    # members so they build against this workspace's patched SceneDB and
+    # Pulsar-Reflection, as editor plugins do.
+    "crates/core/plugin_manager/tests/fixtures/world_plugins/host",
+    "crates/core/plugin_manager/tests/fixtures/world_plugins/shared_plugin",
+    "crates/core/plugin_manager/tests/fixtures/world_plugins/static_plugin",
 ]
 
 # External plugin repositories are linked into `ui_core` as libraries, but own
