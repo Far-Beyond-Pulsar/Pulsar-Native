@@ -14,6 +14,23 @@ use pulsar_reflection::EngineClass;
 use pulsar_scenedb::{ComponentId, Entity, InsertDynError, World};
 use serde_json::Value;
 
+/// Decode a component value from its JSON record, naming the property
+/// that failed (`intensity.intensity: invalid type: ...`), so a load error
+/// identifies object, component and property together with the caller's
+/// object id and class name. The decoder `#[register_world_component]`
+/// generates; custom decoders use it for their own shapes.
+pub fn decode_json<T: serde::de::DeserializeOwned>(data: &Value) -> Result<T, String> {
+    serde_path_to_error::deserialize(data.clone()).map_err(|error| {
+        let path = error.path().to_string();
+        let inner = error.into_inner();
+        if path == "." {
+            inner.to_string()
+        } else {
+            format!("{path}: {inner}")
+        }
+    })
+}
+
 /// Why an owned value could not be inserted. Each variant that rejects a
 /// value hands it back.
 #[derive(Debug, thiserror::Error)]

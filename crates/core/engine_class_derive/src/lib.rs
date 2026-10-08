@@ -1511,7 +1511,7 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
     let decode_expr = match &args.decode {
         Some(custom) => quote! { #custom(data)? },
         None => quote! {
-            ::serde_json::from_value::<#self_ty>(data.clone()).map_err(|error| error.to_string())?
+            ::pulsar_world_registry::decode_json::<#self_ty>(data)?
         },
     };
 

@@ -9449,7 +9449,9 @@ version = "0.1.0"
 dependencies = [
  "blueprint_editor_plugin",
  "clap",
+ "engine_backend",
  "engine_state",
+ "helio_component",
  "plugin_editor_api",
  "plugin_typescript",
  "pulsar_class",
@@ -9720,6 +9722,7 @@ dependencies = [
  "pulsar_script_vm",
  "serde",
  "serde_json",
+ "serde_path_to_error",
  "thiserror 2.0.20",
  "tracing",
  "wgpu",

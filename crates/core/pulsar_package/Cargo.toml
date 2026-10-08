@@ -43,6 +43,8 @@ pulsar_world_registry.workspace = true
 plugin_typescript = { workspace = true, optional = true }
 
 [dev-dependencies]
+engine_backend = { workspace = true }
+helio_component = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]
