@@ -73,7 +73,15 @@ impl EngineFs {
 
     /// Scan the entire project and build the asset index and user type registry
     pub fn scan_project(&mut self) -> Result<()> {
-        self.scanner.scan_project()
+        self.scanner.scan_project()?;
+        if let Err(error) =
+            crate::blueprint_trait_index::BlueprintTraitIndex::rebuild(&self.project_root)
+        {
+            // This is derived metadata. Asset browsing should still work if a
+            // provider cannot persist it; the next successful scan can retry.
+            tracing::warn!(%error, "Failed to rebuild Blueprint trait index");
+        }
+        Ok(())
     }
 
     /// Start file system watching for automatic updates

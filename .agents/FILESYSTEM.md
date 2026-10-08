@@ -89,6 +89,27 @@ operations (CRUD by type), maintains `AssetIndex` (in-memory, DashMap-backed),
 scans projects via `ProjectScanner`, and manages `UserTypeRegistry` for
 user-defined `.alias.json` types.
 
+## Blueprint trait index
+
+`engine_fs::BlueprintTraitIndex` owns the derived project index at
+`.pulsar/blueprint_trait_index.json`. Blueprint source assets declare
+`blueprint_metadata.implemented_traits` as an array of normalized,
+project-relative trait asset paths (for example,
+`types/traits/movable.trait.json`). Missing arrays mean no implemented traits.
+The index scans current authored `graph_save.json` Blueprint files in class
+folders and `*.blueprint.json` assets, and only records references to valid
+`.trait.json` declarations under `types/traits/`.
+
+Call `BlueprintTraitIndex::rebuild(project_root)` after editing or saving a
+Blueprint. It scans through `virtual_fs`, sorts paths and trait references, and
+atomically replaces the index when the provider supports atomic writes. Remote
+and P2P providers currently lack atomic replacement, so they write the
+rebuildable derived index directly. `load_or_rebuild` always refreshes from
+source because providers do not share a reliable content freshness contract.
+Use `blueprints_for_trait("types/traits/movable.trait.json")` to find
+implementers, or `traits_for_blueprint(Path::new("classes/Player/graph_save.json"))`
+to retrieve one Blueprint's traits.
+
 ```rust
 pub struct EngineFs {
     pub project_root: PathBuf,

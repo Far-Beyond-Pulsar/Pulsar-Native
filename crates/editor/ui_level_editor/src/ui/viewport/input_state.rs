@@ -56,7 +56,11 @@ impl InputState {
             input_latency_us: Arc::new(AtomicU64::new(0)),
             move_speed: Arc::new(AtomicU32::new(
                 (engine_state::settings::global_config()
-                    .get(engine_state::settings::NS_EDITOR, "viewport", "camera_move_speed")
+                    .get(
+                        engine_state::settings::NS_EDITOR,
+                        "viewport",
+                        "camera_move_speed",
+                    )
                     .ok()
                     .and_then(|value| value.as_float().ok())
                     .filter(|value| value.is_finite())
