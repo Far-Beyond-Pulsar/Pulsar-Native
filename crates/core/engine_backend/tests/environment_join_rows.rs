@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use engine_backend::scene::{attachments, SceneWorldExt, SpawnObject, Transform, Visibility};
 use helio_component::components::{
-    CameraPostProcessComponent, GlobalFogComponent, LocalFogVolumeComponent,
+    CameraPostProcessComponent, FoliageComponent, GlobalFogComponent, LocalFogVolumeComponent,
     PostProcessVolumeComponent, WaterVolumeComponent,
 };
 use helio_default_graphs::environment_join::{
@@ -371,4 +371,114 @@ fn water_volumes_are_packed_into_the_leading_rows() {
         rows.iter().all(|row| row.bounds_max == [0.0; 4]),
         "detached"
     );
+}
+
+#[test]
+fn foliage_types_layers_and_wind_are_packed() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    type TypeRow = helio_pass_foliage_place::components::FoliageTypeComponent;
+    type LayerRow = helio_pass_foliage_place::components::FoliageLayerComponent;
+    type WindRow = helio_pass_foliage_place::components::FoliageWindComponent;
+
+    let mut scene = SceneDb::new();
+    let bystander = place(&mut scene, "bystander", at([0.0; 3]));
+    let grass = |density: f32, extent: f32, wind_speed: f32| {
+        let mut foliage = FoliageComponent::default();
+        foliage.general.enabled = true;
+        foliage.general.density = density;
+        foliage.placement.layer_extent = extent;
+        foliage.placement.altitude_min = -5.0;
+        foliage.placement.altitude_max = 50.0;
+        foliage.wind.wind_enabled = true;
+        foliage.wind.wind_speed = wind_speed;
+        foliage
+    };
+    let meadow = place(&mut scene, "meadow", at([10.0, 3.0, -20.0]));
+    let meadow =
+        pulsar_world_registry::attach_value(&mut scene.world, meadow, grass(8.0, 25.0, 2.0))
+            .unwrap();
+    let lawn_owner = place(
+        &mut scene,
+        "lawn",
+        Transform {
+            position: [-100.0, 0.0, 0.0],
+            rotation: [0.0; 3],
+            scale: [2.0, 1.0, 2.0],
+        },
+    );
+    let lawn =
+        pulsar_world_registry::attach_value(&mut scene.world, lawn_owner, grass(4.0, 5.0, 7.0))
+            .unwrap();
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        join: engine_backend::scene::environment_join(&device),
+        device,
+        queue,
+    };
+
+    let out = join.run(&mut scene);
+    let types: Vec<TypeRow> = join.read(&out, "foliage_types");
+    assert_eq!(
+        types.len(),
+        helio_default_graphs::environment_join::MAX_FOLIAGE_TYPES as usize
+    );
+    assert_eq!(
+        (types[0].density, types[1].density, types[2].density),
+        (8.0, 4.0, 0.0)
+    );
+    let layers: Vec<LayerRow> = join.read(&out, "foliage_layers");
+    assert_eq!(layers[0].bounds_min, [-15.0, -5.0, -45.0, 0.0]);
+    assert_eq!(layers[0].bounds_max, [35.0, 50.0, 5.0, 0.0]);
+    assert_eq!(
+        (layers[1].bounds_min[0], layers[1].bounds_max[0]),
+        (-110.0, -90.0),
+        "the lawn's square takes its owner's scale"
+    );
+    assert_eq!(layers[2].bounds_max, [0.0; 4]);
+    let wind: Vec<WindRow> = join.read(&out, "foliage_wind");
+    assert_eq!(wind.len(), 1);
+    assert_eq!(
+        wind[0].direction_speed[3], 2.0,
+        "the first component's wind"
+    );
+
+    // Moving an unrelated object re-derives nothing the foliage passes key
+    // their tiles on.
+    let types_generation = out
+        .get(BufferKey::of("foliage_types"))
+        .unwrap()
+        .content_generation;
+    scene
+        .world
+        .get_mut::<Transform>(bystander)
+        .unwrap()
+        .position = [1.0, 0.0, 0.0];
+    let out = join.run(&mut scene);
+    assert_eq!(
+        out.get(BufferKey::of("foliage_types"))
+            .unwrap()
+            .content_generation,
+        types_generation
+    );
+
+    // Disabled or hidden foliage gives up its rows.
+    attachments::set_enabled(&mut scene.world, meadow, false);
+    let out = join.run(&mut scene);
+    let types: Vec<TypeRow> = join.read(&out, "foliage_types");
+    assert_eq!((types[0].density, types[1].density), (4.0, 0.0));
+    let wind: Vec<WindRow> = join.read(&out, "foliage_wind");
+    assert_eq!(wind[0].direction_speed[3], 7.0, "the lawn's wind now");
+    scene
+        .world
+        .get_mut::<Visibility>(lawn_owner)
+        .unwrap()
+        .visible = false;
+    let out = join.run(&mut scene);
+    let types: Vec<TypeRow> = join.read(&out, "foliage_types");
+    assert!(types.iter().all(|row| row.density == 0.0), "nothing placed");
+    let _ = lawn;
 }

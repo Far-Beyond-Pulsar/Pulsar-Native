@@ -3080,6 +3080,7 @@ dependencies = [
  "helio-mats",
  "helio-pass-billboard",
  "helio-pass-decal",
+ "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
  "helio-pass-postprocess",
