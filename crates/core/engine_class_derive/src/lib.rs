@@ -554,7 +554,6 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut add_default = false;
     let mut add_clone = false;
     let mut add_debug = false;
-    let mut register_scene_props = false;
     let mut add_scene_store = false;
     let mut add_gpu_rows = false;
     let mut no_register = false;
@@ -567,7 +566,6 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
             Meta::Path(path) if path.is_ident("clone") => add_clone = true,
             Meta::Path(path) if path.is_ident("debug") => add_debug = true,
             Meta::Path(path) if path.is_ident("no_register") => no_register = true,
-            Meta::Path(path) if path.is_ident("scene_props_applier") => register_scene_props = true,
             Meta::Path(path) if path.is_ident("scene_store") => add_scene_store = true,
             Meta::Path(path) if path.is_ident("gpu_rows") => add_gpu_rows = true,
             Meta::NameValue(name_value) if name_value.path.is_ident("category") => {
@@ -725,19 +723,6 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let name = &item_struct.ident;
-    let scene_props_registration = if register_scene_props {
-        quote! {
-            pulsar_reflection::inventory::submit! {
-                pulsar_reflection::ScenePropsApplierRegistration {
-                    class_name: <#name as pulsar_reflection::ScenePropsProjector>::CLASS_NAME,
-                    apply: <#name as pulsar_reflection::ScenePropsProjector>::apply_scene_props,
-                }
-            }
-        }
-    } else {
-        quote! {}
-    };
-
     // SceneDB storage (Pod/HasTypeToken/SceneColumnSet/GpuColumnSet) is no
     // longer hand-generated here -- `add_scene_store` instead adds
     // `::pulsar_scenedb::SceneStore` to `derive_additions` above, which
@@ -761,7 +746,6 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         #gpu_rows_marker_attr
         #item_struct
         #sub_props_marker_impl
-        #scene_props_registration
     }
     .into()
 }

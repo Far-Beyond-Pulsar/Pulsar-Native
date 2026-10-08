@@ -1,5 +1,4 @@
 use serde_json::Value;
-use std::collections::HashMap;
 
 use super::PhysicsComponent;
 
@@ -14,15 +13,5 @@ impl PhysicsComponent {
             physics.advanced.apply_from_component_data(obj);
         }
         physics
-    }
-
-    pub fn to_scene_props(&self) -> HashMap<String, Value> {
-        let mut out = HashMap::new();
-        self.general.apply_to_scene_props(&mut out);
-        self.collision.apply_to_scene_props(&mut out);
-        self.material.apply_to_scene_props(&mut out);
-        self.simulation.apply_to_scene_props(&mut out);
-        self.advanced.apply_to_scene_props(&mut out);
-        out
     }
 }

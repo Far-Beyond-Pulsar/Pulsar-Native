@@ -15,7 +15,6 @@
 
 use std::collections::HashMap;
 
-use glam::{EulerRot, Mat4, Quat, Vec3};
 use serde_json::Value;
 
 // ── Force helio_component into the binary ────────────────────────────────────

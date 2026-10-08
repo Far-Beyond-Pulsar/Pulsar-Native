@@ -1,6 +1,5 @@
 use engine_class_derive::engine_class;
 use serde_json::Value;
-use std::collections::HashMap;
 
 #[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("Physics Material", category_color = "#4ECDC4")]
@@ -55,26 +54,5 @@ impl MaterialPhysicsProps {
         if let Some(v) = obj.get("combined_restitution").and_then(|v| v.as_f64()) {
             self.combined_restitution = v as f32;
         }
-    }
-
-    pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert(
-            "physics_material".to_string(),
-            Value::from(self.physics_material.clone()),
-        );
-        out.insert(
-            "override_physics_material".to_string(),
-            Value::from(self.override_physics_material),
-        );
-        out.insert("friction".to_string(), Value::from(self.friction));
-        out.insert("restitution".to_string(), Value::from(self.restitution));
-        out.insert(
-            "combined_friction".to_string(),
-            Value::from(self.combined_friction),
-        );
-        out.insert(
-            "combined_restitution".to_string(),
-            Value::from(self.combined_restitution),
-        );
     }
 }

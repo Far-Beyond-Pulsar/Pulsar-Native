@@ -9,7 +9,9 @@ use super::RigidbodyComponent;
 impl ScenePropsProjector for RigidbodyComponent {
     const CLASS_NAME: &'static str = "RigidbodyComponent";
 
-    fn apply_scene_props(props: &mut HashMap<String, Value>, component_data: Option<&Value>) {
+    /// Clears the keys this class's values once occupied in an object's
+    /// props (the level-file migration); the values live in the component.
+    fn apply_scene_props(props: &mut HashMap<String, Value>, _component_data: Option<&Value>) {
         for key in [
             "enabled",
             "mass",
@@ -58,15 +60,6 @@ impl ScenePropsProjector for RigidbodyComponent {
             "enable_gravity",
         ] {
             props.remove(key);
-        }
-
-        let Some(data) = component_data else {
-            return;
-        };
-
-        let rigidbody = RigidbodyComponent::from_component_data(data);
-        for (k, v) in rigidbody.to_scene_props() {
-            props.insert(k, v);
         }
     }
 }

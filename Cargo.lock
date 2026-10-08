@@ -9529,7 +9529,6 @@ name = "pulsar_scene"
 version = "0.1.0"
 dependencies = [
  "engine_fs",
- "glam 0.33.5",
  "helio",
  "helio-asset-compat",
  "helio_component",
