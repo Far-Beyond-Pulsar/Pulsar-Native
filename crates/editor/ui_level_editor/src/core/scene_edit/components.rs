@@ -118,23 +118,6 @@ pub fn read_live_component_property(
     })
 }
 
-/// Batch-read every property of the instance at `index`. Takes a pre-built
-/// property metadata slice so the caller's cached metadata is reused.
-pub fn read_component_properties_batch(
-    world: &World,
-    object_id: &str,
-    class_name: &str,
-    index: usize,
-    properties: &[pulsar_reflection::PropertyMetadata],
-) -> Option<Vec<Box<dyn Any>>> {
-    with_world_component(world, object_id, class_name, index, |instance| {
-        properties
-            .iter()
-            .map(|prop| (prop.getter)(instance))
-            .collect()
-    })
-}
-
 /// Run a closure with the live value of the instance at `index`. `None`
 /// unless that instance holds a live `class_name` value.
 pub fn with_world_component<T>(

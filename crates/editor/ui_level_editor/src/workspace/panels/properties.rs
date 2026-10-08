@@ -231,7 +231,12 @@ impl PropertiesPanelWrapper {
         let mut header_changed = false;
         for update in feed.take() {
             let ObjectUpdate::Changed(delta) = update else {
-                continue;
+                // The object despawned (a full restore respawns it under the
+                // same id): rebuild the sections next frame, which follows
+                // whatever now carries the selection.
+                self.current_object_id = None;
+                cx.notify();
+                return;
             };
             let header = delta.component == pulsar_scenedb::component_id::<Name>()
                 || delta.component == pulsar_scenedb::component_id::<Visibility>();

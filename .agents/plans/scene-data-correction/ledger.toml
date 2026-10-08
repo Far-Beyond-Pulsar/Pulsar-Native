@@ -667,13 +667,13 @@ path = "helio_pass_gbuffer::components::RenderGroupComponent"
 buffers = ["render_groups"]
 clears_on_remove = true
 releases_var_len = false
-registered = true
-writer = "no production writer found (registered only)"
+registered = false
+writer = "none in Pulsar"
 owner = "helio_pass_gbuffer::components"
-disposition = "audit: no literal consumer"
+disposition = "out of the engine (Phase 6): Pulsar no longer registers it, since nothing in Pulsar writes or reads it. Helio's host-side HLFS scene reader (SceneDbRayTracing, #1066) reads it"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "unverified"
+test = "crates/core/scene_inventory/tests/ledger.rs (registered = false)"
+status = "out-of-scope"
 
 [[schema]]
 type = "SectionedObjectComponent"
@@ -681,13 +681,13 @@ path = "helio_pass_gbuffer::components::SectionedObjectComponent"
 buffers = ["sectioned_objects"]
 clears_on_remove = true
 releases_var_len = false
-registered = true
-writer = "no production writer found (registered only)"
+registered = false
+writer = "none"
 owner = "helio_pass_gbuffer::components"
-disposition = "audit: no literal consumer"
+disposition = "out of the engine (Phase 6): Pulsar no longer registers it; no producer or pass consumer exists. HLFS lists its buffer only to refuse sectioned geometry"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "unverified"
+test = "crates/core/scene_inventory/tests/ledger.rs (registered = false)"
+status = "out-of-scope"
 
 [[schema]]
 type = "StaticObjectComponent"
@@ -716,20 +716,6 @@ disposition = "audit: no literal consumer; not registered in production"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: schema written, registered and consumed"
 status = "at-risk"
-
-[[schema]]
-type = "SublevelComponent"
-path = "helio_pass_gbuffer::components::SublevelComponent"
-buffers = ["sublevels"]
-clears_on_remove = true
-releases_var_len = false
-registered = true
-writer = "no production writer found (registered only)"
-owner = "helio_pass_gbuffer::components"
-disposition = "audit: no literal consumer"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "unverified"
 
 [[schema]]
 type = "PortalChainComponent"
@@ -1695,11 +1681,11 @@ status = "unfinished"
 key = "render_groups"
 producers = ["RenderGroupComponent"]
 consumers = []
-owner = "gbuffer pass type; writer not identified"
-disposition = "audit: no literal consumer"
+owner = "helio_pass_gbuffer (Helio type; not registered by Pulsar)"
+disposition = "out of the engine (Phase 6): no Pulsar writer or pass reader; the column is no longer registered"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: consumer not identified"
-status = "unverified"
+test = "crates/core/scene_inventory/tests/ledger.rs"
+status = "out-of-scope"
 
 [[buffer]]
 key = "scene_lights"
@@ -1715,11 +1701,11 @@ status = "verified"
 key = "sectioned_objects"
 producers = ["SectionedObjectComponent"]
 consumers = []
-owner = "gbuffer pass type; writer not identified"
-disposition = "audit: no literal consumer"
+owner = "helio_pass_gbuffer (Helio type; not registered by Pulsar)"
+disposition = "out of the engine (Phase 6): no Pulsar writer or pass reader; the column is no longer registered"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: consumer not identified"
-status = "unverified"
+test = "crates/core/scene_inventory/tests/ledger.rs"
+status = "out-of-scope"
 
 [[buffer]]
 key = "sky_components"
@@ -1754,16 +1740,6 @@ status = "verified"
 [[buffer]]
 key = "sublevel_actors"
 producers = ["SubLevelActorComponent"]
-consumers = []
-owner = "gbuffer pass type; writer not identified"
-disposition = "audit: no literal consumer"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: consumer not identified"
-status = "unverified"
-
-[[buffer]]
-key = "sublevels"
-producers = ["SublevelComponent"]
 consumers = []
 owner = "gbuffer pass type; writer not identified"
 disposition = "audit: no literal consumer"

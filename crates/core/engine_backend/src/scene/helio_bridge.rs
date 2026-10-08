@@ -137,21 +137,6 @@ pub fn ensure_gpu_mirror(
         256,
         &device,
     );
-    helio_pass_gbuffer::RenderGroupComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        256,
-        &device,
-    );
-    helio_pass_gbuffer::SublevelComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        64,
-        &device,
-    );
-    helio_pass_gbuffer::SectionedObjectComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        256,
-        &device,
-    );
     crate::scene::Transform::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // The environment join's inputs (see `environment_join_keys`); the fog
     // media, post-process volume, camera, water volume and foliage rows the

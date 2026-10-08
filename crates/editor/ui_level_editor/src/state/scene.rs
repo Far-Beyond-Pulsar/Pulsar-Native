@@ -55,9 +55,9 @@ pub struct SceneDomain {
     /// The scene — single source of truth for all scene data. Panels read and
     /// edit its `World` directly (see [`Self::world`] / [`Self::world_mut`]).
     pub scene: SharedScene,
-    /// Bumped whenever the whole scene is rebuilt in place (undo/redo, leaving
-    /// play mode). Subscriptions die with the entities they watched, so anything
-    /// caching against them must re-arm when this moves.
+    /// Bumped whenever the whole scene is rebuilt in place (leaving play
+    /// mode). Objects are respawned, so anything caching entities must rebind
+    /// when this moves.
     pub rebuild_epoch: u64,
     /// Snapshot of scene state when entering play mode (for reset on stop).
     /// Immutable snapshot captured before PIE; it carries parent links and
@@ -164,12 +164,6 @@ impl SceneDomain {
     /// editor mutates (the PIE host handing its world to the guest, the renderer).
     pub fn shared_scene(&self) -> SharedScene {
         Arc::clone(&self.scene)
-    }
-
-    /// Rebuild generation; see [`Self::rebuild_epoch`]. Subscriptions armed against an
-    /// older generation are dead and must be re-armed.
-    pub fn subscriptions_epoch(&self) -> u64 {
-        self.rebuild_epoch
     }
 
     // ── Selection ─────────────────────────────────────────────────────────

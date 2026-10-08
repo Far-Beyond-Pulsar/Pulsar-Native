@@ -93,7 +93,7 @@ pub struct ObjectTypeFieldsSection {
     /// structurally changes; remembered so the registry lookup isn't paid
     /// every render for a card that can never have a live value.
     pub(super) unsubscribable_classes: HashSet<String>,
-    /// Store generation (`SceneDatabase::subscriptions_epoch`) the cards
+    /// Scene rebuild generation (`SceneDomain::rebuild_epoch`) the cards
     /// were bound in. Undo/redo rebuilds the whole `World`, so the cards
     /// must be bound to the rebuilt world's instance entities; a mismatch
     /// rebinds.
@@ -202,7 +202,7 @@ impl ObjectTypeFieldsSection {
         self.world_value_cache.clear();
         self.dirty_classes.clear();
         self.unsubscribable_classes.clear();
-        self.subs_epoch = self.state_arc.read().scene.subscriptions_epoch();
+        self.subs_epoch = self.state_arc.read().scene.rebuild_epoch;
         self.class_cache_dirty = true;
     }
 
@@ -388,8 +388,8 @@ impl Render for ObjectTypeFieldsSection {
 
         // Undo/redo rebuilt the whole `World`: rebind every card to the
         // rebuilt world's instance entities -- see
-        // `SceneDatabase::subscriptions_epoch`.
-        if self.subs_epoch != self.state_arc.read().scene.subscriptions_epoch() {
+        // `SceneDomain::rebuild_epoch`.
+        if self.subs_epoch != self.state_arc.read().scene.rebuild_epoch {
             self.reset_world_subscription_state();
         }
 
