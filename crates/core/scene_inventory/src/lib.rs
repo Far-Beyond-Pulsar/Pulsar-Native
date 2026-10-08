@@ -1,7 +1,6 @@
-//! Executable Phase 0 inventory for the SceneDB corrective plan
-//! (`.agents/SCENEDB_CORRECTIVE_PLAN.md`, Pulsar-Native#1035).
+//! Executable inventory from the SceneDB corrective plan (Pulsar-Native#1035).
 //!
-//! The closure ledger (`.agents/plans/scene-data-correction/ledger.toml`)
+//! The closure ledger (`ledger.toml`, beside this crate's manifest)
 //! has one row per exposed component class, GPU-bearing schema, GPU buffer
 //! key, render pass crate and lifecycle call site. Each row carries two kinds
 //! of column:
@@ -41,5 +40,5 @@ pub fn repo_root() -> PathBuf {
 
 /// Path of the checked-in closure ledger.
 pub fn ledger_path() -> PathBuf {
-    repo_root().join(".agents/plans/scene-data-correction/ledger.toml")
+    repo_root().join("crates/core/scene_inventory/ledger.toml")
 }

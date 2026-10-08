@@ -1,6 +1,6 @@
 # Helio scene API migration audit
 
-Historical audit: its dependency versions, caller inventory, and completion claims require revalidation. The current corrective scope, including editor and runtime producers, is [SCENEDB_CORRECTIVE_PLAN.md](SCENEDB_CORRECTIVE_PLAN.md).
+Historical audit: its dependency versions, caller inventory, and completion claims require revalidation. The scene data as built, including editor and runtime producers, is described in [SCENEDB_MIGRATION.md](SCENEDB_MIGRATION.md).
 
 ## Current state (Pulsar-Native#1035, 2026-10-08)
 
@@ -24,8 +24,7 @@ historical record:
   with an unlisted `World::query`, subscribes to an object, or reintroduces
   a CPU projection.
 
-See [SCENEDB_MIGRATION.md](SCENEDB_MIGRATION.md) and
-`plans/scene-data-correction/13-phase-2.md`.
+See [SCENEDB_MIGRATION.md](SCENEDB_MIGRATION.md) and Pulsar-Native#1050.
 
 Status: partial Phase 13 migration. `SceneDbHandle` is now a cloneable
 `GpuMirrorHandle` projection, not `Arc<Mutex<SceneDb>>`; Helio never locks or

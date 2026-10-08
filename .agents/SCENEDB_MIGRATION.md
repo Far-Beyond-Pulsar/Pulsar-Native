@@ -1,10 +1,8 @@
 # SceneDB scene data
 
 SceneDB owns all scene state. This page describes the architecture as built
-by the corrective plan ([SCENEDB_CORRECTIVE_PLAN.md](SCENEDB_CORRECTIVE_PLAN.md),
-Pulsar-Native#1035). Each phase's decisions, evidence and open items are
-recorded in [`plans/scene-data-correction/`](plans/scene-data-correction/README.md);
-`ledger.toml` there has one closed row per component class, GPU schema,
+by the corrective plan (Pulsar-Native#1035; one PR per phase, #1036 to #1084).
+`crates/core/scene_inventory/ledger.toml` has one closed row per component class, GPU schema,
 buffer, render pass and lifecycle call site, and `cargo test -p scene_inventory`
 checks it against the linked registries and the source tree.
 
