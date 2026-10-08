@@ -159,6 +159,8 @@ Decals, corona and sprites (decision 4), and the sky (decision 2), have no autho
 - The four unsupported classes are `unsupported`, tested by `helio-component/tests/unsupported_components.rs`.
 - Pass rows with no authored source in the engine are `out-of-scope`, each with its reason: sky, decals, corona, legacy fog, volumetric fog settings, reflection captures, portals and foliage interactors.
 
+Stage 4 sweep: `helio_component`, `engine_backend`, `pulsar_game`, `ui_level_editor`, `pulsar_class`, `pulsar_physics`, `pulsar_scene`, `pulsar_world_registry`, `scene_inventory` and `engine_class_derive`, with `--no-fail-fast`. 40 test targets pass. The only failures are the ones already known: the gizmo hover test, the light mapping intensity test, the two `toggle_button` doctests and the parallel `voxel_block_api` cache flake.
+
 ## Phase 4 exit
 
 - **Every supported render component has a consumer and an observable effect, checked by a frame test:**
