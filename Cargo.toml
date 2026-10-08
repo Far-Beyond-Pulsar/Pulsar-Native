@@ -142,8 +142,8 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "1981d7ccf5607ffe816d6f123f09934ec06ad7c2", features = ["gpu"] }
-pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "1981d7ccf5607ffe816d6f123f09934ec06ad7c2" }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "7d14a4c3e9612ff1afc94dfacb348f6405c29b6f", features = ["gpu"] }
+pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "7d14a4c3e9612ff1afc94dfacb348f6405c29b6f" }
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
@@ -481,13 +481,13 @@ pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/p
 # e74df984b95ffe5235a67653a5b95a07e579df47: component methods,
 # ComponentRef/ComponentHandle, and erased component access.
 #
-# SCENEDB CORRECTIVE PLAN PHASES 1-6 (Pulsar-Native#1035): 1981d7c on SceneDB
-# branch `claude/cool-hypatia-ict23g-phase-6` (Phase 1's 358ec86 -- erased
+# SCENEDB CORRECTIVE PLAN PHASES 1-7 (Pulsar-Native#1035): 7d14a4c on SceneDB
+# branch `claude/cool-hypatia-ict23g-phase-7` (Phase 1's 358ec86 -- erased
 # insert/remove through the normal write path, generic mirror replay on
 # attach, derived GPU rows -- Phase 2's several GPU registrations per
 # component, Phase 5's change cursors bound to their World, and Phase 6's
-# object subscriptions, with process-unique ids, replacing the destructive per-key queue).
+# object subscriptions, with process-unique ids, replacing the destructive per-key queue; Phase 7: a read-only get_mut guard uploads nothing).
 # NOT YET MERGED upstream: merge those branches and repin to the merged rev
 # before this lands.
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "1981d7ccf5607ffe816d6f123f09934ec06ad7c2" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "1981d7ccf5607ffe816d6f123f09934ec06ad7c2" }
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "7d14a4c3e9612ff1afc94dfacb348f6405c29b6f" }
+pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "7d14a4c3e9612ff1afc94dfacb348f6405c29b6f" }
