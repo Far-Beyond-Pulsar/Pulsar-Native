@@ -3,7 +3,7 @@
 //! # Usage (runtime)
 //!
 //! Standalone games and PIE hydrate the level file into the shared
-//! `WorldSceneStore`/SceneDb world via `engine_backend::scene::RuntimeLevel`
+//! `SceneDb` world via `engine_backend::scene::RuntimeLevel`
 //! (Pulsar-Native#637), so renderer and gameplay see ONE copy of scene
 //! state. The legacy loader that dispatched records straight into a Helio
 //! scene was removed in Pulsar-Native#1035 (Phase 4).
@@ -12,7 +12,7 @@
 //! use engine_backend::scene::RuntimeLevel;
 //!
 //! let level = RuntimeLevel::load(&project_root.join("scenes/default_level.json"))?;
-//! let store = level.store(); // Arc<RwLock<WorldSceneStore>> -- the one world
+//! let store = level.store(); // Arc<RwLock<SceneDb>> -- the one world
 //! ```
 //!
 //! # Usage (editor / save)

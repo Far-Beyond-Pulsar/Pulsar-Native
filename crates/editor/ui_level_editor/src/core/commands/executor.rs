@@ -61,8 +61,8 @@ fn edit_components(
 
 /// Apply `cmd` to `state`.
 ///
-/// Mutations go through `state.scene.database`, which writes to the shared
-/// `WorldSceneStore` the Helio renderer reads every frame.  `scene_revision`
+/// Mutations write the shared `SceneDb` world the Helio renderer reads every
+/// frame.  `scene_revision`
 /// is bumped on every mutation, causing the polling task in
 /// `LevelEditorPanel` to notify the GPUI hierarchy and properties panels.
 ///
@@ -345,7 +345,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 rotation,
                 scale,
             } => {
-                // `SceneDatabase::set_transform`, NOT `get_object`+`update_object`
+                // `scene_edit::objects::set_transform`, NOT `get_object`+`update_object`
                 // (Pulsar-Native#561): the old whole-object round trip triggered
                 // `sync_registered_component_props_to_scene_db` -- a full
                 // re-serialize/re-hydrate of every component on the object --

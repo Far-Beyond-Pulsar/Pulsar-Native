@@ -2,7 +2,7 @@
 //! the scene `World` (Pulsar-Native#637).
 //!
 //! This is the runtime counterpart of the editor's own load path
-//! (`SceneDatabase::load_from_file`): one authoritative copy of the scene,
+//! (`scene_edit::level_io::load_from_file`): one authoritative copy of the scene,
 //! owned by SceneDB, that renderers and gameplay share -- NOT a direct
 //! imperative load into a Helio `Scene` (that was `pulsar_scene::
 //! SceneLoader`, now legacy/import-only).

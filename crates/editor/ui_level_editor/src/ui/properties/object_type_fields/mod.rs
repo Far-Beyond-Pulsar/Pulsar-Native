@@ -67,16 +67,12 @@ pub struct ObjectTypeFieldsSection {
     /// changes without calling `get_components()` (which clones JSON).
     pub(super) cached_component_count: usize,
 
-    // ── Live-value subscription caches (Pulsar-Native#575, SceneDB#47) ────
+    // ── Live-value caches (Pulsar-Native#575, #1035) ─────────────────────
     //
-    // Before subscriptions existed, every render pass re-pulled every
-    // property of every mounted card straight from `World`, unconditionally,
-    // because nothing could say whether the underlying data had moved. Now:
-    // each mounted card arms ONE World subscription (per `(entity, class)`
-    // pair), keeps its latest pulled values here, and re-pulls only when a
-    // signal fires -- a subscription event for its own card, a legacy JSON-
-    // path write recorded in the property change set, or a structural /
-    // store-swap invalidation.
+    // Each mounted card reads its values once and keeps them here. After
+    // that the selected object's subscription delivers every change with
+    // its new value (`apply_update`); a structural change or a scene
+    // rebuild rebinds and re-reads.
     /// Latest known live values per mounted component card, keyed by
     /// `(class_name, component_index)` -- the index is what keeps N
     /// instances of the same class distinct (Pulsar-Native#519). Borrowed
@@ -88,15 +84,14 @@ pub struct ObjectTypeFieldsSection {
     /// The instance entity behind each mounted live card, so a value the
     /// object's subscription delivers (`apply_update`) lands on its card.
     pub(super) card_entities: HashMap<pulsar_scenedb::Entity, (String, usize)>,
-    /// Classes with no `World`-registered component id at all (the legacy
-    /// JSON-only classes). Permanently un-subscribable until the card set
-    /// structurally changes; remembered so the registry lookup isn't paid
-    /// every render for a card that can never have a live value.
+    /// Classes with no `World`-registered component id (an unresolved
+    /// payload's class). Remembered so the registry lookup isn't paid every
+    /// render for a card that can never have a live value.
     pub(super) unsubscribable_classes: HashSet<String>,
     /// Scene rebuild generation (`SceneDomain::rebuild_epoch`) the cards
-    /// were bound in. Undo/redo rebuilds the whole `World`, so the cards
-    /// must be bound to the rebuilt world's instance entities; a mismatch
-    /// rebinds.
+    /// were bound in. Leaving play mode rebuilds the whole `World`, so the
+    /// cards must be bound to the rebuilt world's instance entities; a
+    /// mismatch rebinds.
     pub(super) subs_epoch: u64,
 
     // ── Class instances (#921) ──────────────────────────────────────────────

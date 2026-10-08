@@ -1599,7 +1599,7 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
             entity: pulsar_scenedb::Entity,
         ) -> Option<pulsar_world_registry::EngineClassMut<'_>> {
             // A guard, not a bare `&mut`: SceneDB's write hooks (GPU mirror,
-            // change tracker, subscriptions, journals) fire when it drops,
+            // change tracker, journals, object subscriptions) fire when it drops,
             // after the edit, and only if it was written through (#841).
             pulsar_world_registry::EngineClassMut::of::<#self_ty>(world, entity)
         }

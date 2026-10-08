@@ -323,7 +323,7 @@ impl HierarchyItem for SceneObjectItem {
 /// Hierarchy Panel - Scene outliner showing all objects in a tree structure
 pub struct HierarchyPanel {
     /// `(store_revision, selected)` the cached items were built from. Keyed on
-    /// the shared store's own mutation counter (`SceneDatabase::store_revision`)
+    /// the world's own mutation counter (`World::revision`)
     /// rather than `scene.revision`: the render thread writes gizmo-drag
     /// results and click-selects straight into the store without ever touching
     /// the UI-side revision counter.

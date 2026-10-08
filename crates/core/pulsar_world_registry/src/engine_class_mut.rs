@@ -3,7 +3,7 @@
 //!
 //! A bare `&mut dyn EngineClass` taken from `Mut::into_inner` reports the
 //! write *when it is borrowed*: every SceneDB hook (GPU mirror upload, change
-//! tracker, subscriptions, journals) fires with the old value, and the edit
+//! tracker, journals, object subscriptions) fires with the old value, and the edit
 //! that follows is never observed. [`EngineClassMut`] keeps the SceneDB guard
 //! alive instead: it derefs to `dyn EngineClass`, and the hooks fire when it
 //! is dropped, after the edit, like `Mut` and `MutDyn`. A guard that was only

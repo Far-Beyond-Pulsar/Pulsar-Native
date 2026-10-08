@@ -118,7 +118,7 @@ pub enum SceneCommand {
     ///
     /// Pulsar-Native#561: added so the properties panel's name field can go
     /// through `execute_command` (undo-tracked) like every other edit,
-    /// instead of calling `SceneDatabase::update_object` (whole-object
+    /// instead of calling `scene_edit::objects::update_object` (whole-object
     /// overwrite, NOT undo-tracked despite a comment that used to claim
     /// otherwise) directly.
     SetName {

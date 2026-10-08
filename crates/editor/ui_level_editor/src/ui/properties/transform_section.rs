@@ -22,7 +22,7 @@ enum Axis {
 /// Builds an `F32FieldBinding` for one axis (x/y/z) of one transform
 /// component (position/rotation/scale), routed through `SceneCommand::
 /// SetTransform`/`execute_command` (Pulsar-Native#561), not
-/// `SceneDatabase::update_object`.
+/// `scene_edit::objects::update_object`.
 ///
 /// Previously every one of these 9 fields used `F32FieldBinding::new`
 /// (whole-`SceneObjectData` getter/setter) whose `set()` called
@@ -33,7 +33,7 @@ enum Axis {
 /// module's own now-removed doc claiming it did. `new_with_db`'s setter
 /// closure below builds the single, minimal `SceneCommand::SetTransform`
 /// for just the axis that changed and runs it through `execute_command`,
-/// which is both cheaper (`SceneDatabase::set_transform` touches only the
+/// which is both cheaper (`scene_edit::objects::set_transform` touches only the
 /// transform, not any component) and correctly undo-tracked.
 fn axis_binding(
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,

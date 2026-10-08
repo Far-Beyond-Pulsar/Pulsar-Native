@@ -178,7 +178,7 @@ mod undo_redo_tests {
     // unchanged, `execute_command` applies it -- actually reaches the live
     // `World` value and is undo-tracked, with no `serde_json::Value`
     // anywhere on this call path (unlike the tests in `scene_database.rs`,
-    // which exercise `SceneDatabase` methods directly, this goes through the
+    // which exercise the `scene_edit` functions directly, this goes through the
     // actual `SceneCommand` enum + `execute_command` UI code calls).
     #[test]
     fn set_component_property_reaches_the_live_world_value_with_no_json() {

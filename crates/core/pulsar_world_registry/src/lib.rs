@@ -379,7 +379,7 @@ pub struct WorldComponentRegistration {
     /// Borrow the typed value already in `World` as `&mut dyn EngineClass`
     /// -- the properties panel's *write* path, as an [`EngineClassMut`] guard.
     /// Apply a `PropertyMetadata` setter to `&mut *guard`; SceneDB's write
-    /// hooks (GPU mirror, change tracker, subscriptions, journals) fire when
+    /// hooks (GPU mirror, change tracker, journals, object subscriptions) fire when
     /// the guard drops, after the edit (#841).
     pub get_as_engine_class_mut: for<'w> fn(&'w mut World, Entity) -> Option<EngineClassMut<'w>>,
     /// Re-establish data this class derives from its own fields after a
@@ -493,12 +493,8 @@ pub fn get_world_component_as_engine_class_mut<'w>(
     (find(class_name)?.get_as_engine_class_mut)(world, entity)
 }
 
-/// Every currently-registered `World`-backed class name. `SceneDatabase`
-/// uses this to know which classes to check for removal when an object's
-/// component list changes -- a class present in `World` from a previous
-/// hydration but no longer in the object's current enabled component list
-/// needs `remove` called, and this is how it finds out which classes to
-/// even ask about.
+/// Every currently-registered `World`-backed class name (the add-component
+/// menu, inventory checks).
 pub fn registered_world_component_classes() -> impl Iterator<Item = &'static str> {
     inventory::iter::<WorldComponentRegistration>
         .into_iter()

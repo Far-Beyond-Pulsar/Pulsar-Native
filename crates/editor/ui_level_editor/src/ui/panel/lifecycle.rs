@@ -202,7 +202,7 @@ impl LevelEditorPanel {
         let physics_query = engine_backend::EngineBackend::global()
             .and_then(|backend| backend.read().get_physics_query_service());
 
-        // Construct editor state first: SceneDatabase owns the SceneDB-backed
+        // Construct editor state first: its scene owns the SceneDB-backed
         // store, and the renderer receives only its shared access handle.
         let state = LevelEditorState::new();
         let scene_store = state.scene.shared_scene();
@@ -230,8 +230,8 @@ impl LevelEditorPanel {
             }
         }
 
-        // SceneDatabase and HelioRenderer share the same store `Arc`, so every
-        // add/remove/update made through SceneDatabase is visible to the
+        // The scene and HelioRenderer share the same store `Arc`, so every
+        // add/remove/update made through the scene is visible to the
         // renderer's next sync pass without a separate write-through call.
 
         let shared_state = Arc::new(parking_lot::RwLock::new(state));
@@ -244,7 +244,7 @@ impl LevelEditorPanel {
         let debug_replace_with_yellow = false;
 
         // Create HelioViewport — renders via WgpuSurfaceHandle every GPUI frame.
-        // It receives shared_state so viewport drop actions mutate SceneDatabase
+        // It receives shared_state so viewport drop actions mutate the scene
         // through the same command path as the rest of the editor.
         let viewport = cx.new(|cx| {
             HelioViewport::new(

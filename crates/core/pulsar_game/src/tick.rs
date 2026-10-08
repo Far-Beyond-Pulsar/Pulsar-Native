@@ -370,9 +370,8 @@ impl TickLoop {
         self.events.flush(pulsar_events::FlushPoint::AfterInput);
 
         // Phase 1: ECS systems. Short write scope -- the renderer takes this
-        // same lock every frame to rebuild its draw lists (see
-        // HelioRenderer::sync_scene_delta's phase docs), so nothing here may
-        // hold it across phases.
+        // same lock every frame to step the scene and flush its GPU mirror, so
+        // nothing here may hold it across phases.
         {
             let mut store = self.scene_store.write();
             self.schedule.run(&mut store.world, scenedb_time);
