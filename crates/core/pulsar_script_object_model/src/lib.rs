@@ -16,7 +16,7 @@
 //!
 //! - **One world.** Handles are meaningless without a world argument; all
 //!   accessors take `&pulsar_scenedb::World`/`&mut World` explicitly (the
-//!   same `Arc<RwLock<WorldSceneStore>>` handle pattern handoff A
+//!   same `Arc<RwLock<SceneDb>>` handle pattern handoff A
 //!   established; callers pass `store.read().world()` / `.world_mut()`).
 //! - **Validated per access.** A ref that was valid when stored may be stale
 //!   when used; storing refs freely is safe and supported. Staleness is an

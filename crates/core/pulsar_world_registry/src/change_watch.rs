@@ -4,8 +4,10 @@
 //! A [`ComponentWatch`] follows a set of `(entity, component)` pairs, each
 //! under a caller-chosen key, through its own [`ChangeCursor`]s -- one per
 //! component type. Reading never consumes anything another reader needs:
-//! two panels, a script and the renderer each hold their own watch and see
-//! every change in their own order. Reading needs only `&World`.
+//! several scripts each hold their own watch and see every change in their
+//! own order. Reading needs only `&World`. A view that displays one object
+//! (the properties panel) follows it through an
+//! [`ObjectFeed`](crate::ObjectFeed) instead, which delivers values.
 //!
 //! Notifications are invalidations, not payloads: [`ComponentWatch::poll`]
 //! returns the keys whose component changed since the last poll, and the

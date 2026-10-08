@@ -22,7 +22,7 @@ enum Axis {
 /// Builds an `F32FieldBinding` for one axis (x/y/z) of one transform
 /// component (position/rotation/scale), routed through `SceneCommand::
 /// SetTransform`/`execute_command` (Pulsar-Native#561), not
-/// `SceneDatabase::update_object`.
+/// `scene_edit::objects::update_object`.
 ///
 /// Previously every one of these 9 fields used `F32FieldBinding::new`
 /// (whole-`SceneObjectData` getter/setter) whose `set()` called
@@ -33,7 +33,7 @@ enum Axis {
 /// module's own now-removed doc claiming it did. `new_with_db`'s setter
 /// closure below builds the single, minimal `SceneCommand::SetTransform`
 /// for just the axis that changed and runs it through `execute_command`,
-/// which is both cheaper (`SceneDatabase::set_transform` touches only the
+/// which is both cheaper (`scene_edit::objects::set_transform` touches only the
 /// transform, not any component) and correctly undo-tracked.
 fn axis_binding(
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -247,6 +247,30 @@ impl TransformSection {
             scale_z,
             object_id,
             collapsed: false,
+        }
+    }
+
+    /// Show a transform delivered by the object's subscription (a gizmo
+    /// drag, a script, an undo), without reading the scene.
+    pub fn show_transform(
+        &self,
+        transform: &engine_backend::scene::Transform,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let fields = [
+            (&self.position_x, transform.position[0]),
+            (&self.position_y, transform.position[1]),
+            (&self.position_z, transform.position[2]),
+            (&self.rotation_x, transform.rotation[0]),
+            (&self.rotation_y, transform.rotation[1]),
+            (&self.rotation_z, transform.rotation[2]),
+            (&self.scale_x, transform.scale[0]),
+            (&self.scale_y, transform.scale[1]),
+            (&self.scale_z, transform.scale[2]),
+        ];
+        for (field, value) in fields {
+            field.update(cx, |field, cx| field.show(value, window, cx));
         }
     }
 

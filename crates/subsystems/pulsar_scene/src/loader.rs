@@ -15,7 +15,6 @@
 
 use std::collections::HashMap;
 
-use glam::{EulerRot, Mat4, Quat, Vec3};
 use serde_json::Value;
 
 // ── Force helio_component into the binary ────────────────────────────────────
@@ -96,16 +95,4 @@ pub fn migrate_legacy_material_override_records(records: &mut Vec<(usize, String
         .entry("legacy_material_override")
         .or_insert(legacy_data);
     records.remove(override_index);
-}
-
-/// Build transform from position / rotation (degrees YXZ) / scale.
-/// Identical to engine's `build_transform`.
-pub fn build_transform_parts(position: [f32; 3], rotation: [f32; 3], scale: [f32; 3]) -> Mat4 {
-    let q = Quat::from_euler(
-        EulerRot::YXZ,
-        rotation[1].to_radians(),
-        rotation[0].to_radians(),
-        rotation[2].to_radians(),
-    );
-    Mat4::from_scale_rotation_translation(Vec3::from_array(scale), q, Vec3::from_array(position))
 }

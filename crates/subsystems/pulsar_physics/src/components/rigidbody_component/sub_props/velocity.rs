@@ -1,6 +1,5 @@
 use engine_class_derive::engine_class;
 use serde_json::Value;
-use std::collections::HashMap;
 
 #[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("Velocity", category_color = "#3B82F6")]
@@ -69,34 +68,4 @@ impl VelocityRigidbodyProps {
         }
     }
 
-    pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert(
-            "linear_velocity".to_string(),
-            serde_json::json!([
-                self.linear_velocity[0],
-                self.linear_velocity[1],
-                self.linear_velocity[2]
-            ]),
-        );
-        out.insert(
-            "angular_velocity".to_string(),
-            serde_json::json!([
-                self.angular_velocity[0],
-                self.angular_velocity[1],
-                self.angular_velocity[2]
-            ]),
-        );
-        out.insert(
-            "auto_compute_linear_velocity".to_string(),
-            Value::from(self.auto_compute_linear_velocity),
-        );
-        out.insert(
-            "auto_compute_angular_velocity".to_string(),
-            Value::from(self.auto_compute_angular_velocity),
-        );
-        out.insert(
-            "compute_velocity_from_displacement".to_string(),
-            Value::from(self.compute_velocity_from_displacement),
-        );
-    }
 }

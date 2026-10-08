@@ -24,6 +24,7 @@ extern crate pulsar_class;
 extern crate pulsar_physics;
 extern crate pulsar_scene_model;
 
+pub mod architecture;
 pub mod ledger;
 pub mod linked;
 pub mod source;

@@ -6,6 +6,8 @@ Contract clarification: components own data and may opt fields into SceneDB GPU 
 
 Status: proposed implementation plan, based on source and runtime-log inspection on 2026-10-04. No implementation phase below is complete merely because an earlier migration document says it is.
 
+Implementation status (2026-10-08): Phases 0–6 are implemented; each phase's decisions, evidence and open items are recorded in [plans/scene-data-correction/](plans/scene-data-correction/README.md) (`10-phase-0-audit.md` to `17-phase-6.md`), and every ledger row is closed. The findings table below describes the code as it was on 2026-10-04. The architecture as built is in [SCENEDB_MIGRATION.md](SCENEDB_MIGRATION.md).
+
 ## Objective and completion rule
 
 Adding or changing a component through the editor, scripts, plugins, or runtime must change its actual value in SceneDB. SceneDB reflects GPU fields as part of its normal write lifecycle. Rendering consumes those GPU columns directly. Opening a property panel, subscribing, draining notifications, running a component dispatcher, or invoking a renderer refresh must have no bearing on whether the component renders.

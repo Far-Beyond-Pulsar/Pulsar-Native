@@ -2,6 +2,31 @@
 
 Historical audit: its dependency versions, caller inventory, and completion claims require revalidation. The current corrective scope, including editor and runtime producers, is [SCENEDB_CORRECTIVE_PLAN.md](SCENEDB_CORRECTIVE_PLAN.md).
 
+## Current state (Pulsar-Native#1035, 2026-10-08)
+
+The migration this audit tracks is finished, and the rest of this page is a
+historical record:
+
+- Helio's legacy scene surface (`scene/`: `Scene`, `SceneActor`,
+  `insert_actor`, the `insert_*`/`update_*` resource APIs, `scene_mut`) is
+  gone. Helio has no renderer-owned object registry.
+- Components write SceneDB; their `#[gpu]` fields mirror to GPU rows inside
+  the write. Helio receives the cloneable `GpuMirrorHandle`.
+- `engine_backend::scene::helio_bridge` attaches the mirror and builds
+  Helio's scene join (mesh and light instances, owner links, transforms,
+  visibility → the object, material and light rows passes draw) and
+  environment join (fog, post-process volumes, camera post-process, water,
+  foliage). Both run on the GPU when their inputs change. The
+  `rebuild_static_mesh_frame` / `rebuild_light_frame` projection, the pass
+  `StaticMeshRenderInput` records and the renderer-local material table
+  described below no longer exist.
+- `cargo test -p scene_inventory` fails if a renderer file scans the scene
+  with an unlisted `World::query`, subscribes to an object, or reintroduces
+  a CPU projection.
+
+See [SCENEDB_MIGRATION.md](SCENEDB_MIGRATION.md) and
+`plans/scene-data-correction/13-phase-2.md`.
+
 Status: partial Phase 13 migration. `SceneDbHandle` is now a cloneable
 `GpuMirrorHandle` projection, not `Arc<Mutex<SceneDb>>`; Helio never locks or
 flushes the authoritative CPU database. Pass-owned components and the legacy

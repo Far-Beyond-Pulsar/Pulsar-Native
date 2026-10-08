@@ -6,7 +6,9 @@
 
 use crate::{ComponentTickRegistration, QueuedComponentEvent};
 use pulsar_events::EventHub;
-use pulsar_scenedb::{ComponentId, Entity, World};
+use pulsar_scenedb::{
+    ChangeCursor, ChangeRead, ComponentChange, ComponentChangeKind, ComponentId, Entity, World,
+};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
@@ -39,6 +41,12 @@ pub struct ComponentRuntimeState {
     active: HashMap<RegistrationKey, HashMap<Entity, Entity>>,
     inbox: Arc<Mutex<EventInbox>>,
     subscriptions: HashMap<ComponentInstanceKey, Vec<pulsar_events::gamma::SyncSubscription>>,
+    /// This session's own change cursor per registered component type,
+    /// opened before any of its instances starts. Removals are read from it,
+    /// so whoever else reads (or drains) the world's change history cannot
+    /// take one from this session.
+    removal_cursors: HashMap<ComponentId, ChangeCursor>,
+    scratch: Vec<ComponentChange>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -160,6 +168,8 @@ impl ComponentRuntimeState {
         }
         self.active.clear();
         self.subscriptions.clear();
+        // Cursors of the replaced world; the next tick opens fresh ones.
+        self.removal_cursors.clear();
         *self
             .inbox
             .lock()
@@ -208,6 +218,13 @@ pub fn tick_live_components(
         .into_iter()
         .collect();
     registrations.sort_by_key(|registration| registration.type_name);
+    for registration in &registrations {
+        let component_type = (registration.component_type)();
+        state
+            .removal_cursors
+            .entry(component_type)
+            .or_insert_with(|| world.open_change_cursor_id(component_type));
+    }
 
     for registration in registrations {
         let key = registration_key(registration);
@@ -236,19 +253,31 @@ pub fn tick_live_components(
     }
 }
 
-/// Consume SceneDB's independent post-removal journal and end any active
-/// native component instances it names. Call this after mutation phases as
-/// well as before component ticks: actors and scripts can remove components
-/// after the native component phase has already run.
+/// Read the removals of registered component types since the last call,
+/// from this session's own change cursors, and end any active native
+/// component instances they name. Call this after mutation phases as well
+/// as before component ticks: actors and scripts can remove components
+/// after the native component phase has already run. An overflowed or
+/// replaced history ends nothing here; the next tick's reconciliation ends
+/// whatever is no longer live.
 pub fn process_component_removals(
     world: &World,
     events: &EventHub,
     state: &mut ComponentRuntimeState,
 ) -> usize {
-    let Some(tracker) = world.change_tracker() else {
-        return 0;
-    };
-    let removals = tracker.drain_component_removals();
+    let mut removals = Vec::new();
+    for (&component_type, cursor) in &mut state.removal_cursors {
+        state.scratch.clear();
+        if world.read_changes(cursor, &mut state.scratch) == ChangeRead::Complete {
+            removals.extend(
+                state
+                    .scratch
+                    .iter()
+                    .filter(|change| change.kind == ComponentChangeKind::Removed)
+                    .map(|change| (change.entity, component_type)),
+            );
+        }
+    }
     if removals.is_empty() {
         return 0;
     }
@@ -293,4 +322,65 @@ pub fn process_component_removals(
 /// already removed from SceneDB.
 pub fn end_live_components(state: &mut ComponentRuntimeState, events: &EventHub) {
     state.end_all(events);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[derive(Clone, Copy)]
+    struct Ticked;
+
+    static ENDED: AtomicUsize = AtomicUsize::new(0);
+
+    fn tick(
+        world: &mut World,
+        _: &EventHub,
+        _: f32,
+        _: &HashMap<Entity, Entity>,
+        current: &mut HashMap<Entity, Entity>,
+        _: &mut ComponentRuntimeState,
+    ) {
+        for (entity, _) in world.query::<&Ticked>() {
+            current.insert(entity, entity);
+        }
+    }
+
+    fn end_play(_: Entity, _: &EventHub) {
+        ENDED.fetch_add(1, Ordering::SeqCst);
+    }
+
+    inventory::submit! {
+        ComponentTickRegistration {
+            type_name: "component_lifecycle::tests::Ticked",
+            class_name: "Ticked",
+            handler_events: &[],
+            component_type: pulsar_scenedb::component_id::<Ticked>,
+            tick,
+            end_play: Some(end_play),
+        }
+    }
+
+    /// The removal reaches this session even when another reader drained
+    /// the world's change history first (the editor renderer closing its
+    /// change window on a world shared with Play-in-Editor).
+    #[test]
+    fn a_removal_drained_by_another_reader_still_ends_the_instance() {
+        let mut world = World::new();
+        world.attach_change_tracker(pulsar_scenedb::SharedChangeTracker::new());
+        let events = EventHub::new();
+        let mut state = ComponentRuntimeState::default();
+        let e = world.spawn();
+        world.insert(e, Ticked);
+        tick_live_components(&mut world, &events, 0.0, 1, &mut state);
+        assert!(state.has_active_components());
+
+        let before = ENDED.load(Ordering::SeqCst);
+        world.remove::<Ticked>(e);
+        let tracker = world.change_tracker().unwrap();
+        drop(tracker.drain_component_removals());
+        assert_eq!(process_component_removals(&world, &events, &mut state), 1);
+        assert_eq!(ENDED.load(Ordering::SeqCst) - before, 1);
+    }
 }

@@ -611,27 +611,23 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             );
         }
 
-        // ── The properties panel open and polling its watch first ──────────
+        // ── The properties panel subscribed to the mesh object ─────────────
         {
             let mut state = LevelEditorState::new();
             let mut renderer = harness.renderer(&state);
             harness.frames(&mut renderer, || {});
             let id = drop_mesh(&mut state);
-            let mut card = pulsar_world_registry::ComponentWatch::new();
-            assert!(components::watch_component(
-                &mut card,
-                &state.scene.world(),
-                ("StaticMeshComponent".to_string(), 0),
-                &id,
-                "StaticMeshComponent",
-                0,
-            ));
+            let feed = {
+                let mut world = state.scene.world_mut();
+                let entity = world.entity_for(&id).unwrap();
+                pulsar_world_registry::ObjectFeed::subscribe(&mut world, entity, || {}).unwrap()
+            };
             let frame = harness.frames(&mut renderer, || {
-                card.poll(&state.scene.world());
+                feed.take();
             });
             assert_drawn(
-                &format!("[{mode}] editor mesh, panel polling first"),
-                observe("panel_polls", frame),
+                &format!("[{mode}] editor mesh, panel subscribed"),
+                observe("panel_subscribed", frame),
             );
         }
 
@@ -1104,3 +1100,57 @@ fn foliage_reaches_the_frame() {
     );
 }
 
+
+/// Phase 6 (Pulsar-Native#1035): every pass of the editor's render graph
+/// runs on a scene with a mesh and a light. The passes fed by authored
+/// components are checked for their visible effect by the tests above; this
+/// covers the engine-internal ones (culling, Hi-Z, shadows' bookkeeping,
+/// post work) that have no scene input of their own.
+#[test]
+fn every_pass_of_the_editor_graph_runs() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, typed_mesh().bounds_local[3]);
+    let mut state = LevelEditorState::new();
+    drop_mesh(&mut state);
+    let mut renderer = harness.renderer(&state);
+    harness.frames(&mut renderer, || {});
+
+    let activity = renderer.debug_pass_activity();
+    let idle: Vec<&str> = activity
+        .iter()
+        .filter(|(_, ran)| !ran)
+        .map(|(name, _)| name.as_str())
+        .collect();
+    assert!(idle.is_empty(), "passes that recorded no work: {idle:?}");
+    for expected in [
+        "ObjectBatch",
+        "ShadowMatrix",
+        "ShadowDirty",
+        "ShadowCull",
+        "Shadow",
+        "IndirectDispatch",
+        "HiZBuild",
+        "OcclusionCull",
+        "LightCull",
+        "GBuffer",
+        "DeferredLight",
+        "VirtualGeometry",
+        "TransparentPass",
+        "FXAA",
+        "LensFlare",
+        "PostProcess",
+        "DofPass",
+        "DebugDraw",
+        "PerfOverlay",
+    ] {
+        assert!(
+            activity.iter().any(|(name, _)| name == expected),
+            "{expected} is not in the editor graph: {activity:?}"
+        );
+    }
+}

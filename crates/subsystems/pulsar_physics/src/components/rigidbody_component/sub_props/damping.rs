@@ -1,6 +1,5 @@
 use engine_class_derive::engine_class;
 use serde_json::Value;
-use std::collections::HashMap;
 
 #[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("Damping", category_color = "#8B5CF6")]
@@ -58,32 +57,5 @@ impl DampingRigidbodyProps {
         {
             self.disable_pose_animation_damping = v;
         }
-    }
-
-    pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert(
-            "linear_damping".to_string(),
-            Value::from(self.linear_damping),
-        );
-        out.insert(
-            "angular_damping".to_string(),
-            Value::from(self.angular_damping),
-        );
-        out.insert(
-            "default_linear_damping".to_string(),
-            Value::from(self.default_linear_damping),
-        );
-        out.insert(
-            "default_angular_damping".to_string(),
-            Value::from(self.default_angular_damping),
-        );
-        out.insert(
-            "disable_animation_damping".to_string(),
-            Value::from(self.disable_animation_damping),
-        );
-        out.insert(
-            "disable_pose_animation_damping".to_string(),
-            Value::from(self.disable_pose_animation_damping),
-        );
     }
 }

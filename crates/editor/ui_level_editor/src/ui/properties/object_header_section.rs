@@ -31,12 +31,12 @@ impl ObjectHeaderSection {
         use super::bindings::field_bindings::{BoolFieldBinding, StringFieldBinding};
 
         // Name/visible/locked all go through `SceneCommand`/`execute_command`
-        // now (Pulsar-Native#561), not `SceneDatabase::update_object`
+        // now (Pulsar-Native#561), not `scene_edit::objects::update_object`
         // (whole-object overwrite, and -- despite a since-removed comment
         // claiming otherwise -- never actually undo-tracked).
 
         // Name field. Getters use the targeted component reads (see
-        // `SceneDatabase::get_object_name`'s doc) — these run on every scene
+        // `scene_edit::objects::get_object_name`'s doc) — these run on every scene
         // revision bump while this object is selected, and a whole-object
         // read per bump scaled the panel's cost with component count.
         let name_field = cx.new(|cx| {

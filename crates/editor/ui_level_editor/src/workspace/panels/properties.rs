@@ -29,6 +29,12 @@ pub struct PropertiesPanelWrapper {
     transform_section: Option<Entity<TransformSection>>,
     object_type_fields_section: Option<Entity<ObjectTypeFieldsSection>>,
     current_object_id: Option<String>,
+    /// The selected object's subscription: writes made elsewhere (a gizmo
+    /// drag, a script, an undo) arrive here with their new values, and the
+    /// panel shows them without reading the scene.
+    object_feed: Option<pulsar_world_registry::ObjectFeed>,
+    /// Wakes the panel when `object_feed` queues an update.
+    _object_feed_task: Option<Task<()>>,
     // DEPRECATED: Old manual property editing (will be removed)
     editing_property: Option<String>,
     property_input: Entity<InputState>,
@@ -70,12 +76,16 @@ impl PropertiesPanelWrapper {
             transform_section: None,
             object_type_fields_section: None,
             current_object_id: None,
+            object_feed: None,
+            _object_feed_task: None,
             editing_property: None,
             property_input,
             collapsed_sections,
         };
-        // Build the initial selection once. Subsequent updates are explicit
-        // editor events; this panel never polls SceneDB/world revisions.
+        // Build the initial selection once. Selection changes are explicit
+        // editor events; scene data reaches the panel through the selected
+        // object's subscription. This panel never polls SceneDB/world
+        // revisions.
         panel.sync_sections(window, cx);
         panel
     }
@@ -164,7 +174,9 @@ impl PropertiesPanelWrapper {
                     )
                 }));
                 self.current_object_id = Some(object_id.clone());
+                self.follow_object(object_id, cx);
             } else {
+                self.end_object_feed();
                 self.object_header_section = None;
                 self.transform_section = None;
                 self.object_type_fields_section = None;
@@ -172,6 +184,87 @@ impl PropertiesPanelWrapper {
             }
         }
         true
+    }
+
+    /// Subscribe to `object_id`, replacing the previous selection's feed.
+    fn follow_object(&mut self, object_id: &str, cx: &mut Context<Self>) {
+        use engine_backend::scene::SceneWorldExt;
+        self.end_object_feed();
+        let (wake, woken) = smol::channel::unbounded::<()>();
+        self.object_feed = {
+            let state = self.state.read();
+            let mut world = state.scene.world_mut();
+            world.entity_for(object_id).and_then(|entity| {
+                pulsar_world_registry::ObjectFeed::subscribe(&mut world, entity, move || {
+                    let _ = wake.try_send(());
+                })
+            })
+        };
+        self._object_feed_task = Some(cx.spawn(async move |this, cx| {
+            while woken.recv().await.is_ok() {
+                while woken.try_recv().is_ok() {}
+                if this.update(cx, |_, cx| cx.notify()).is_err() {
+                    break;
+                }
+            }
+        }));
+    }
+
+    fn end_object_feed(&mut self) {
+        self._object_feed_task = None;
+        if let Some(feed) = self.object_feed.take() {
+            let state = self.state.read();
+            feed.unsubscribe(&mut state.scene.world_mut());
+        }
+    }
+
+    /// Show what the selected object's subscription delivered since the
+    /// last frame: the transform and header from the object itself, every
+    /// component value on its card.
+    fn apply_object_updates(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use engine_backend::scene::{Name, Transform, Visibility};
+        use pulsar_world_registry::ObjectUpdate;
+        let Some(feed) = &self.object_feed else {
+            return;
+        };
+        let object = feed.object();
+        let mut header_changed = false;
+        for update in feed.take() {
+            let ObjectUpdate::Changed(delta) = update else {
+                // The object despawned (a full restore respawns it under the
+                // same id): rebuild the sections next frame, which follows
+                // whatever now carries the selection.
+                self.current_object_id = None;
+                cx.notify();
+                return;
+            };
+            let header = delta.component == pulsar_scenedb::component_id::<Name>()
+                || delta.component == pulsar_scenedb::component_id::<Visibility>();
+            if delta.entity != object || !(header || delta.component == pulsar_scenedb::component_id::<Transform>()) {
+                if let Some(section) = &self.object_type_fields_section {
+                    section.update(cx, |section, cx| section.apply_update(&delta, cx));
+                }
+                continue;
+            }
+            if let Some(transform) = delta
+                .value
+                .as_deref()
+                .and_then(|v| v.downcast_ref::<Transform>())
+            {
+                if let Some(section) = &self.transform_section {
+                    section.update(cx, |section, cx| {
+                        section.show_transform(transform, window, cx)
+                    });
+                }
+            } else if header {
+                header_changed = true;
+            }
+        }
+        if header_changed {
+            if let Some(section) = &self.object_header_section {
+                section.update(cx, |section, cx| section.refresh(window, cx));
+            }
+        }
     }
 
     pub fn start_editing(
@@ -235,6 +328,12 @@ impl PropertiesPanelWrapper {
     }
 }
 
+impl Drop for PropertiesPanelWrapper {
+    fn drop(&mut self) {
+        self.end_object_feed();
+    }
+}
+
 impl EventEmitter<PanelEvent> for PropertiesPanelWrapper {}
 
 ui_common::panel_boilerplate!(PropertiesPanelWrapper);
@@ -251,6 +350,7 @@ impl Render for PropertiesPanelWrapper {
         // the three section entities. No polling, timer, or data refresh is
         // allowed through this path.
         self.sync_sections(window, cx);
+        self.apply_object_updates(window, cx);
         let _state_scope = gpui::render_stats::scope("properties: render state read");
         let state = self.state.read();
         drop(_state_scope);

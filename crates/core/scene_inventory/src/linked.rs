@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 
 use pulsar_reflection::inventory;
-use pulsar_reflection::{RuntimeBehaviorRegistration, REGISTRY};
+use pulsar_reflection::REGISTRY;
 use pulsar_scenedb::gpu::world_mirror::{
     GpuClearRegistration, GpuMirrorRegistration, VarLenReleaseRegistration,
 };
@@ -23,8 +23,6 @@ pub struct LinkedClass {
     pub world_registered: bool,
     /// The class's own `World` type has `#[gpu]` columns that SceneDB mirrors.
     pub own_gpu_columns: bool,
-    /// Has a `ComponentRuntimeBehavior` registration.
-    pub runtime_behavior: bool,
 }
 
 /// One `#[derive(SceneStore)]` type with at least one `#[gpu]` field.
@@ -64,10 +62,6 @@ where
 pub fn collect() -> Linked {
     let world: BTreeSet<&'static str> =
         pulsar_world_registry::registered_world_component_classes().collect();
-    let behaviors: BTreeSet<&'static str> = inventory::iter::<RuntimeBehaviorRegistration>
-        .into_iter()
-        .map(|r| r.class_name)
-        .collect();
     let mirrored = ids::<GpuMirrorRegistration>(|r| (r.component_id)());
     let clears = ids::<GpuClearRegistration>(|r| (r.component_id)());
     let releases = ids::<VarLenReleaseRegistration>(|r| (r.component_id)());
@@ -90,7 +84,6 @@ pub fn collect() -> Linked {
                 category,
                 world_registered: world.contains(name),
                 own_gpu_columns,
-                runtime_behavior: behaviors.contains(name),
             }
         })
         .collect();

@@ -118,12 +118,6 @@ fn test_gizmo_remove(world: &mut World, entity: Entity) {
     let _ = world.remove::<TestGizmo>(entity);
 }
 
-fn test_gizmo_on_removed(
-    _owner: &pulsar_reflection::RuntimeComponentOwner,
-    _context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-) {
-}
-
 fn test_gizmo_test_methods() -> Vec<pulsar_reflection::MethodMetadata> {
     <TestGizmo as EngineClass>::get_methods()
 }
@@ -147,7 +141,6 @@ pulsar_world_registry::inventory::submit! {
         remove: test_gizmo_remove,
         get_as_engine_class: test_gizmo_get,
         get_as_engine_class_mut: test_gizmo_get_mut,
-        on_removed: test_gizmo_on_removed,
         property_written: pulsar_world_registry::values::erased::no_property_written,
     }
 }

@@ -22,9 +22,9 @@
 //! # Thread Safety
 //!
 //! The entire state tree is wrapped in `Arc<parking_lot::RwLock<LevelEditorState>>`.
-//! Readers take `.read()`, writers take `.write()`. The `WorldSceneStore`
+//! Readers take `.read()`, writers take `.write()`. The `SceneDb`
 //! inside `SceneDomain` is itself behind a second, inner `RwLock` shared
-//! directly with the renderer (see `SceneDatabase`'s B1 migration note).
+//! directly with the renderer (`SceneDomain::shared_scene`).
 
 pub mod build;
 pub mod editor;

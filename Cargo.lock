@@ -9566,7 +9566,6 @@ name = "pulsar_scene"
 version = "0.1.0"
 dependencies = [
  "engine_fs",
- "glam 0.33.5",
  "helio",
  "helio-asset-compat",
  "helio_component",
@@ -9594,7 +9593,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=2ac389ee74ba4573abdbe18812ae2b11a2175115#2ac389ee74ba4573abdbe18812ae2b11a2175115"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=1981d7ccf5607ffe816d6f123f09934ec06ad7c2#1981d7ccf5607ffe816d6f123f09934ec06ad7c2"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9610,7 +9609,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=2ac389ee74ba4573abdbe18812ae2b11a2175115#2ac389ee74ba4573abdbe18812ae2b11a2175115"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=1981d7ccf5607ffe816d6f123f09934ec06ad7c2#1981d7ccf5607ffe816d6f123f09934ec06ad7c2"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection_codegen",

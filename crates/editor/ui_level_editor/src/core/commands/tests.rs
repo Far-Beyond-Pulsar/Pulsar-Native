@@ -178,7 +178,7 @@ mod undo_redo_tests {
     // unchanged, `execute_command` applies it -- actually reaches the live
     // `World` value and is undo-tracked, with no `serde_json::Value`
     // anywhere on this call path (unlike the tests in `scene_database.rs`,
-    // which exercise `SceneDatabase` methods directly, this goes through the
+    // which exercise the `scene_edit` functions directly, this goes through the
     // actual `SceneCommand` enum + `execute_command` UI code calls).
     #[test]
     fn set_component_property_reaches_the_live_world_value_with_no_json() {
@@ -356,13 +356,13 @@ mod undo_redo_tests {
         assert_eq!(reverted.downcast_ref::<bool>(), Some(&true)); // GeneralLightProps::default()
     }
 
-    // Mirrors the properties panel's refresh gate: after any component
-    // property command, `has_property_changes_for` must report the object so
-    // the frame pump marks the section dirty and pushes the new value into
-    // the cached editors (Pulsar-Native#575).
+    // A component property command writes the live value through the World:
+    // the revision moves, and the selected object's subscription (what the
+    // properties panel follows) delivers the new value.
     #[test]
-    fn a_component_property_command_registers_a_property_change_for_the_object() {
-        use crate::scene_edit::changes::{drain_property_changes, has_property_changes_for};
+    fn a_component_property_command_reaches_the_object_feed() {
+        use engine_backend::scene::SceneWorldExt;
+        use pulsar_world_registry::{ObjectFeed, ObjectUpdate};
 
         let mut state = LevelEditorState::new();
         let id = execute_command(
@@ -391,7 +391,7 @@ mod undo_redo_tests {
 
         let default_light_json =
             serde_json::to_value(helio_component::LightComponent::default()).unwrap();
-        {
+        let feed = {
             let mut world = state.scene.world_mut();
             crate::scene_edit::components::add_component(
                 &mut world,
@@ -399,12 +399,11 @@ mod undo_redo_tests {
                 "LightComponent".to_string(),
                 default_light_json,
             );
-        }
-
-        let revision_before = {
-            let world = state.scene.world();
-            world.revision()
+            let entity = world.entity_for(&id).unwrap();
+            ObjectFeed::subscribe(&mut world, entity, || {}).unwrap()
         };
+
+        let revision_before = state.scene.world().revision();
         execute_command(
             &mut state,
             SceneCommand::SetComponentProperty {
@@ -415,30 +414,22 @@ mod undo_redo_tests {
                 value: Box::new(false),
             },
         );
-
-        // The panel's frame pump gates on `World::revision()` moving (see
-        // `PropertiesPanelWrapper::sync_sections`). If the live setter path
-        // writes through a raw pointer without touching the change tracker,
-        // the revision never moves and the panel never re-renders -- the
-        // switch stays put even though the World value changed.
-        let revision_after = {
-            let world = state.scene.world();
-            world.revision()
-        };
         assert!(
-            revision_after > revision_before,
-            "live component writes must move the World change-tracker revision (was {revision_before}, now {revision_after})"
+            state.scene.world().revision() > revision_before,
+            "live component writes must move the World revision"
         );
 
-        assert!(
-            has_property_changes_for(&id),
-            "the panel's refresh gate relies on this peek reporting the just-edited object"
-        );
-
-        let drained = drain_property_changes();
-        assert!(
-            drained.class_changed(&id, "LightComponent"),
-            "the section marks cards dirty via class_changed on the drained set"
+        let delivered = feed.take().into_iter().find_map(|update| match update {
+            ObjectUpdate::Changed(delta) => delta
+                .value?
+                .downcast::<helio_component::LightComponent>()
+                .ok(),
+            ObjectUpdate::Despawned => None,
+        });
+        assert_eq!(
+            delivered.map(|light| light.general.enabled),
+            Some(false),
+            "the object's subscription delivers the edited value"
         );
     }
 

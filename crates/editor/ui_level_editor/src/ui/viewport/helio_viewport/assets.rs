@@ -47,7 +47,7 @@ impl HelioViewport {
         }
     }
 
-    /// Insert the dropped asset into the scene via the central SceneDatabase API.
+    /// Insert the dropped asset into the scene through the scene edit functions.
     ///
     /// All assets — meshes, FBX files, blueprints — are inserted as SceneObjectData
     /// entries with the appropriate component instances.  The renderer's sync_scene()

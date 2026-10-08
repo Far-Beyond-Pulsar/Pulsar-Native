@@ -19,7 +19,7 @@
 //!
 //! Resolution itself only needs three questions answered, so hosts plug in
 //! via the narrow [`StableIdResolver`] trait -- implemented for
-//! `WorldSceneStore` in `engine_backend` (see `scene::script_ref_bridge`
+//! `SceneDb` in `engine_backend` (see `scene::script_ref_bridge`
 //! there); tests use trivial fakes.
 
 use pulsar_scenedb::Entity;
@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use crate::refs::ComponentRef;
 
 /// Read-side bridge to a host's StableId⇄Entity table (implemented by
-/// `WorldSceneStore`; see the module doc for why this is a trait).
+/// `SceneDb`; see the module doc for why this is a trait).
 pub trait StableIdResolver {
     /// Current live entity for a stable id, if the object exists.
     fn entity_for_stable_id(&self, stable_id: &str) -> Option<Entity>;

@@ -16,21 +16,21 @@ pub mod voxel_source;
 pub mod render_resources;
 
 // Play-mode level bootstrap (Pulsar-Native#637) -- hydrates a `.level` file
-// into WorldSceneStore/SceneDb instead of pulsar_scene::SceneLoader's direct
+// into SceneDb instead of pulsar_scene::SceneLoader's direct
 // Helio Scene writes.
 pub mod runtime_level;
 
 // World/Entity-backed scene store (Phase B1, Pulsar-Native#553) -- the live
 // authoritative store. See `world_store`'s own doc for the full picture.
 
-// Script object model bridge (Pulsar-Native#639) -- `WorldSceneStore` as
+// Script object model bridge (Pulsar-Native#639) -- `SceneDb` as
 // the StableId⇄Entity resolver + duplicate-instance store the script-facing
 // handles route through. Impls only; no new storage.
 pub mod script_ref_bridge;
 pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 
 #[cfg(feature = "render")]
-// Shared WorldSceneStore <-> helio::Renderer seam (#637): GPU mirror attach
+// Shared SceneDb <-> helio::Renderer seam (#637): GPU mirror attach
 // and Helio's scene join over the authored rows.
 pub mod helio_bridge;
 #[cfg(feature = "render")]
@@ -94,8 +94,9 @@ pub fn new_scene() -> pulsar_scenedb::SceneDb {
 /// Close this frame's change window: drop everything the world's change
 /// tracker recorded since the last call and start a new frame.
 ///
-/// Nothing in the engine consumes the tracker's history yet (replication
-/// will drain it itself), and an undrained tracker grows with every write,
+/// Nothing in the engine consumes the tracker's history (replication will
+/// drain it itself; component lifecycles and other incremental readers use
+/// change-journal cursors), and an undrained tracker grows with every write,
 /// forever: component deltas, spawns, despawns and removals. It also slows
 /// every change record down, since each one searches the frame's list.
 /// Called once per frame by the game tick and the renderer; calling it

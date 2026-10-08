@@ -490,7 +490,6 @@ pub fn set_variable(
         );
     }
     class_world::store_class_instance(world, root, &instance);
-    super::changes::record_property_change(id, pulsar_class::CLASS_INSTANCE, name);
     true
 }
 
@@ -506,7 +505,6 @@ pub fn revert_variable(world: &mut World, id: &str, name: &str) -> bool {
         return false;
     }
     class_world::store_class_instance(world, root, &instance);
-    super::changes::record_property_change(id, pulsar_class::CLASS_INSTANCE, name);
     true
 }
 

@@ -12,6 +12,16 @@ the checked-in implementation.
 > migrated terrain component. The original comparison that follows records
 > the state before this implementation. See [Implemented behavior](#implemented-behavior)
 > for the current API, tick ordering, and remaining edges.
+>
+> **Phase 6 of Pulsar-Native#1035 (2026-10-08):** the `ComponentRuntimeBehavior`
+> sync dispatch the table below describes is gone. Pulsar registers no
+> runtime behavior, `#[register_runtime_behavior]` no longer exists, and
+> `#[register_world_component]` takes an inherent `impl Type {}` and
+> registers the World value only (factory, boundary decoder, clone,
+> insert/remove). Component instances are their own entities, so the
+> instance-identity question below is settled: a `ComponentInstanceId` and
+> the instance entity. Lifecycle removals are read from per-reader change
+> cursors.
 
 Pulsar already has typed component values in SceneDB, reflected properties,
 macro-generated component method metadata, a world-level method dispatcher,
@@ -33,9 +43,9 @@ live SceneDB value when their inputs change.
 
 | Area | Current implementation | Gap |
 | --- | --- | --- |
-| Component storage | `pulsar_scenedb::World` holds typed component rows. `pulsar_world_registry` can hydrate them from scene JSON on edits and remove them on deletion. | The storage and reflection paths are not yet a component behavior lifecycle. |
+| Component storage | `pulsar_scenedb::World` holds typed component rows. *(Before Phase 3, `pulsar_world_registry` hydrated them from scene JSON on edits; edits are now typed writes and JSON is decoded only at load.)* | The storage and reflection paths are not yet a component behavior lifecycle. |
 | Rust callable methods | `#[component_methods]` describes methods and `#[world_method]` exposes them to the script/Blueprint dispatch path. For example, terrain methods take `&World`/`&mut World` and an `Entity`. | The ergonomic Rust call still looks like a static world operation, not a method on the live component instance. There is no generated Rust event emitter or event handler binding surface. |
-| Runtime behavior trait | `ComponentRuntimeBehavior::sync_component` receives `&Self` and is dispatched by the world registry. Its use is for projection/synchronization work; it is not a tick callback. Several voxel implementations are deliberately empty. | No component `begin_play`, `tick`, event-handler dispatch, enable/disable, or end lifecycle is provided by this trait. |
+| Runtime behavior trait *(removed, Phase 4/6)* | `ComponentRuntimeBehavior::sync_component` receives `&Self` and is dispatched by the world registry. Its use is for projection/synchronization work; it is not a tick callback. Several voxel implementations are deliberately empty. | No component `begin_play`, `tick`, event-handler dispatch, enable/disable, or end lifecycle is provided by this trait. |
 | SceneDB mutation | World methods can use `&mut World`; terrain edits are appended to the typed terrain component row. That row is the authoritative data. Reflection setters and callable methods also dispatch against the live typed World value. | Runtime callbacks need a defined way to borrow the same value mutably, with World borrow rules respected. A second copy of component fields would introduce the sync architecture SceneDB is intended to avoid. |
 | Events | `pulsar_events` wraps Gamma's event bus. Typed events are convenient within a Rust build; the host/plugin path supports DLL-safe descriptors and encoded payloads. Script event delivery queues handler calls for a later script phase. | Components do not currently declare named events that are shared by Rust, Blueprint reflection, and DLL registration, nor do they have per-component-instance subscription dispatch. |
 | Registration | `#[register_runtime_behavior]` registers the current sync behavior; `#[register_world_component]` generates World hydration/removal/dispatch metadata. The world registry is populated by inventory. | These registrations do not declare or register component lifecycle callbacks, named events, event handlers, or their Blueprint pins. |
@@ -45,8 +55,9 @@ live SceneDB value when their inputs change.
 `VoxelTerrainComponent` has reflected scripting methods such as `get_block`,
 `set_block`, `fill_sphere`, and `fill_cube`. The methods use world/entity
 arguments, and mutating operations update the terrain's typed World row. Its
-`ComponentRuntimeBehavior::sync_component` implementation is empty. That is a
-useful and intentional state today: the terrain has callable operations and
+`ComponentRuntimeBehavior::sync_component` implementation was empty (the stub
+was removed in Phase 6). That was a
+useful and intentional state at the time: the terrain has callable operations and
 authoritative data, but it does not yet have a component-owned runtime or an
 `on_block_broken` event surface.
 
@@ -192,20 +203,23 @@ than pretending each event is an ordinary callable method.
   Gamma descriptors use?
 - What is the component instance identity when the same class can occur more
   than once on an owner, and how are stale subscriptions rejected?
-- Which pieces of `ComponentRuntimeBehavior::sync_component` remain useful for
-  renderer projection, and how are they named/documented so they cannot be
-  mistaken for the gameplay runtime?
+- ~~Which pieces of `ComponentRuntimeBehavior::sync_component` remain useful for
+  renderer projection?~~ None: Pulsar-Native#1035 moved every projection to
+  SceneDB GPU rows and graph-owned derivations and removed the dispatch.
 
 ## Source anchors
 
 - `crates/renderer/helio/crates/helio-component/src/components/voxel_world.rs`:
   terrain methods and edit journal mutation.
 - `crates/renderer/helio/crates/helio-component/src/components/voxel_component_runtime.rs`:
-  current no-op voxel sync callbacks.
-- `crates/core/pulsar_world_registry/src/lib.rs` and `src/dispatch.rs`:
-  typed SceneDB hydration/removal and reflected property/method dispatch.
+  voxel World registrations and the terrain's component runtime.
+- `crates/core/pulsar_world_registry/src/lib.rs`, `src/values.rs` and `src/dispatch.rs`:
+  typed World values (factory, boundary decode, clone, erased insert/remove)
+  and reflected property/method dispatch.
+- `crates/core/pulsar_world_registry/src/component_lifecycle.rs`: live
+  component lifecycles and their removal cursors.
 - `crates/core/engine_class_derive/src/lib.rs`:
-  `register_runtime_behavior` and `register_world_component` macro output.
+  `register_world_component` and `register_component_runtime` macro output.
 - `crates/core/pulsar_events/src/host.rs` and `src/hub.rs`:
   Gamma-backed host/plugin event transport and in-process event API.
 - `crates/core/pulsar_game/src/scripting/events.rs` and `src/tick.rs`:

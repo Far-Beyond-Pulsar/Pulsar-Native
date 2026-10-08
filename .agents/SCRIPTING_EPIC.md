@@ -5,6 +5,18 @@ Pulsar-Native issue #516 to the finished product. Epic: #633. Every agent
 MUST read this file first, then its own letter's section, then the GitHub
 issues for its letter.
 
+> **Superseded world-access details (Pulsar-Native#1035, 2026-10-08).** This
+> epic's record of the world handle and component storage predates the
+> scene-data correction. Where it says otherwise, the current state is:
+> one `engine_backend::scene::SharedScene` (`Arc<RwLock<SceneDb>>`), no
+> `WorldSceneStore` or `SceneDatabase`; each component instance is its own
+> SceneDB entity with a stable `ComponentInstanceId`, not a
+> `(class_name, component_index)` slot in `RenderProps.component_instances`
+> JSON; levels are decoded once at load, not hydrated per edit; and SceneDB's
+> `subscribe_id` / `take_component_change_events` queue is gone. Scripts
+> follow components through change-journal cursors (`ComponentWatch`), views
+> through object subscriptions. See [SCENEDB_MIGRATION.md](SCENEDB_MIGRATION.md).
+
 ## Architecture target (invariant across all agents)
 
 Gameplay logic — Rust crates or Blueprint graphs, compiled to VM bytecode or

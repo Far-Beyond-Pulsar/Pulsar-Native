@@ -100,7 +100,7 @@ impl SplinePanel {
         let st = state.read();
         (
             st.scene.world_revision(),
-            st.scene.subscriptions_epoch(),
+            st.scene.rebuild_epoch,
             st.scene.selected_object(),
             st.editor.spline.clone(),
         )

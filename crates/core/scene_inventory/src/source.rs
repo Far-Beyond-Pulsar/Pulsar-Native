@@ -49,6 +49,12 @@ pub const SITE_PATTERNS: &[SitePattern] = &[
         meaning: "Arms an entity/component subscription feeding the shared queue",
     },
     SitePattern {
+        id: "object-subscribe",
+        needles: &["subscribe_object", "ObjectFeed::subscribe"],
+        regex: r"\.subscribe_object\s*\(|\bObjectFeed::subscribe\s*\(",
+        meaning: "Subscribes a view to one object's writes, with their values",
+    },
+    SitePattern {
         id: "change-cursor",
         needles: &["open_change_cursor", "read_changes"],
         regex: r"\bopen_change_cursor\b|\bread_changes\s*\(",
@@ -120,7 +126,7 @@ pub const SITE_PATTERNS: &[SitePattern] = &[
             "dispatch_world_component",
         ],
         regex: r"\bapply_runtime_behavior_for_class\s*\(|\bdispatch_world_component\w*\s*\(",
-        meaning: "Generic ComponentRuntimeBehavior dispatch",
+        meaning: "Generic per-component runtime behavior dispatch (removed)",
     },
     SitePattern {
         id: "force-resync",
@@ -326,7 +332,7 @@ pub fn sites(root: &Path) -> BTreeMap<(String, String), usize> {
 /// Classes declared with `#[register_world_component]` in production source:
 /// `class name -> file`.
 pub fn declared_world_components(root: &Path) -> BTreeMap<String, String> {
-    let target = Regex::new(r"impl\s+ComponentRuntimeBehavior\s+for\s+(\w+)").unwrap();
+    let target = Regex::new(r"^\s*impl\s+(\w+)\s*\{").unwrap();
     let mut out = BTreeMap::new();
     for file in production_files(root) {
         let mut pending = false;

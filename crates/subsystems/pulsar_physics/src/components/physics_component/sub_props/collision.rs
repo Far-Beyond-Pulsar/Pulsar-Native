@@ -2,7 +2,6 @@ use engine_class_derive::engine_class;
 use pulsar_reflection::Reflectable;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
 
 use super::super::{CollisionChannel, CollisionPreset, CollisionResponse};
 use pulsar_reflection::{ReflectError, ReflectResult, pulsar_type};
@@ -112,43 +111,6 @@ impl CollisionPhysicsProps {
         }
     }
 
-    pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert(
-            "collision_preset".to_string(),
-            Value::from(self.collision_preset as u64),
-        );
-        out.insert(
-            "override_collision_preset".to_string(),
-            Value::from(self.override_collision_preset),
-        );
-        out.insert(
-            "create_physics_state".to_string(),
-            Value::from(self.create_physics_state),
-        );
-        out.insert(
-            "complex_as_simple".to_string(),
-            Value::from(self.complex_as_simple),
-        );
-        out.insert(
-            "collision_channel".to_string(),
-            Value::from(self.collision_channel),
-        );
-        let responses: Vec<Value> = self
-            .channel_responses
-            .iter()
-            .map(|r| {
-                serde_json::json!({
-                    "channel": r.channel as u64,
-                    "response": r.response as u64
-                })
-            })
-            .collect();
-        out.insert("channel_responses".to_string(), Value::Array(responses));
-        out.insert(
-            "all_channels_response".to_string(),
-            Value::from(self.all_channels_response as u64),
-        );
-    }
 }
 
 /// Describes the collision response for a specific channel
