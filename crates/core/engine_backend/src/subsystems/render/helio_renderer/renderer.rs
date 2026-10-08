@@ -306,6 +306,9 @@ pub struct HelioRenderer {
     /// Camera height above the voxel ground below it, from the last frame.
     voxel_altitude: Option<f64>,
     last_voxel_errors: Vec<String>,
+    /// What the voxel path reads from the scene, and the world revision it
+    /// was read at: camera-only frames reuse it instead of re-reading.
+    voxel_scene: Option<(u64, VoxelSceneRead)>,
     /// `PULSAR_VOXEL_STATS`: log voxel streaming diagnostics twice a second.
     voxel_stats_log: bool,
     last_voxel_stats_log: Instant,
@@ -427,6 +430,7 @@ impl HelioRenderer {
             voxel_stroke_last: None,
             voxel_altitude: None,
             last_voxel_errors: Vec::new(),
+            voxel_scene: None,
             voxel_stats_log: std::env::var_os("PULSAR_VOXEL_STATS").is_some(),
             last_voxel_stats_log: Instant::now(),
         }
@@ -943,53 +947,23 @@ impl HelioRenderer {
         }
 
         // ── Camera / gizmo / render ─────────────────────────────────────────────
-        let (voxel_entries, mut voxel_errors, authored_sky, authored_meshes, sun) = {
+        let VoxelSceneRead {
+            entries: voxel_entries,
+            errors: mut voxel_errors,
+            authored_sky,
+            authored_meshes,
+            sun,
+        } = {
             let store = self.scene_store.read();
-            let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&store.world);
-            let authored_sky = store
-                .world
-                .query::<&helio_pass_sky::SkyComponent>()
-                .next()
-                .is_some();
-            let authored_meshes = store
-                .world
-                .query::<(
-                    &helio_component::components::StaticMeshComponent,
-                    &pulsar_scene_model::attachments::ComponentOwner,
-                )>()
-                .any(|(_, (_, owner))| owner.is_enabled());
-            // Voxel terrain traces sunlight towards the scene's directional
-            // light: the opposite of the direction it travels, its owner's
-            // rotation of -Y.
-            let sun = store
-                .world
-                .query::<(
-                    &helio_component::components::LightComponent,
-                    &pulsar_scene_model::attachments::ComponentOwner,
-                )>()
-                .filter(|(_, (light, owner))| {
-                    owner.is_enabled()
-                        && light.general.enabled
-                        && light.general.light_type
-                            == helio_component::components::LightType::Directional
-                })
-                .find_map(|(instance, _)| {
-                    pulsar_scene_model::attachments::owner_component::<crate::scene::Transform>(
-                        &store.world,
-                        instance,
-                    )
-                    .copied()
-                })
-                .map(|transform| {
-                    let rotation = glam::Quat::from_euler(
-                        glam::EulerRot::YXZ,
-                        transform.rotation[1].to_radians(),
-                        transform.rotation[0].to_radians(),
-                        transform.rotation[2].to_radians(),
-                    );
-                    (rotation * Vec3::Y).to_array()
-                });
-            (entries, errors, authored_sky, authored_meshes, sun)
+            let revision = store.world.revision();
+            match &self.voxel_scene {
+                Some((read_at, read)) if *read_at == revision => read.clone(),
+                _ => {
+                    let read = VoxelSceneRead::of(&store.world);
+                    self.voxel_scene = Some((revision, read.clone()));
+                    read
+                }
+            }
         };
         let outdoor_sky = self.voxel_backends.uses_outdoor_sky(&voxel_entries);
         self.voxel_altitude = self.voxel_backends.altitude(&voxel_entries, self.cam_pos);
@@ -1815,6 +1789,70 @@ mod camera_frame_tests {
                 "step {step}"
             );
             previous = forward;
+        }
+    }
+}
+
+/// What the voxel path reads from the scene: the voxel entries, whether an
+/// authored sky or any enabled static mesh exists, and the sun direction.
+#[derive(Clone)]
+struct VoxelSceneRead {
+    entries: Vec<crate::scene::voxel_frame::VoxelSceneEntry>,
+    errors: Vec<String>,
+    authored_sky: bool,
+    authored_meshes: bool,
+    sun: Option<[f32; 3]>,
+}
+
+impl VoxelSceneRead {
+    fn of(world: &pulsar_scenedb::World) -> Self {
+        let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(world);
+        let authored_sky = world.query::<&helio_pass_sky::SkyComponent>().next().is_some();
+        let authored_meshes = world
+            .query::<(
+                &helio_component::components::StaticMeshComponent,
+                &pulsar_scene_model::attachments::ComponentOwner,
+            )>()
+            .any(|(_, (_, owner))| owner.is_enabled());
+        // Voxel terrain traces sunlight towards the scene's directional
+        // light: the opposite of the direction it travels, its owner's
+        // rotation of -Y. The light must be lit the way the scene join
+        // lights it: enabled, and its owner visible.
+        let sun = world
+            .query::<(
+                &helio_component::components::LightComponent,
+                &pulsar_scene_model::attachments::ComponentOwner,
+            )>()
+            .filter(|(_, (light, owner))| {
+                owner.is_enabled()
+                    && light.general.enabled
+                    && light.general.light_type
+                        == helio_component::components::LightType::Directional
+                    && world
+                        .get::<pulsar_scene_model::Visibility>(owner.entity())
+                        .is_none_or(|visibility| visibility.visible)
+            })
+            .find_map(|(instance, _)| {
+                pulsar_scene_model::attachments::owner_component::<crate::scene::Transform>(
+                    world, instance,
+                )
+                .copied()
+            })
+            .map(|transform| {
+                let rotation = glam::Quat::from_euler(
+                    glam::EulerRot::YXZ,
+                    transform.rotation[1].to_radians(),
+                    transform.rotation[0].to_radians(),
+                    transform.rotation[2].to_radians(),
+                );
+                (rotation * Vec3::Y).to_array()
+            });
+        Self {
+            entries,
+            errors,
+            authored_sky,
+            authored_meshes,
+            sun,
         }
     }
 }
