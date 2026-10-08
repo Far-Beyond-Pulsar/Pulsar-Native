@@ -28,7 +28,7 @@ You build your game in the Pulsar editor. When you export, the engine:
 
 1. **Code-generates a Rust crate** containing your game's reflected types,
    blueprint graphs, scene definitions, and asset manifests as Rust code
-2. **This crate compiles standalone** against `pulsar_core`, `pulsar_ecs`,
+2. **This crate compiles standalone** against `pulsar_core`, `pulsar_scenedb`,
    `pulsar_reflection`, and the renderer — minimal deps, no editor, no GPUI
 3. **Compile-time guarantees** — if the generated code compiles, your types
    match the engine's expectations. No runtime format mismatch, no missing
@@ -61,13 +61,15 @@ performance) — but the game only pays for what it uses.
 
 The building block of a Pulsar world is the **engine component** (`EngineClass`).
 Components carry reflected properties (serializable, inspectable in the editor),
-blueprint-callable methods, and per-tick runtime behavior via
-`ComponentRuntimeBehavior`. They are the atoms of the object model.
+blueprint-callable methods, and a generated runtime lifecycle (`begin_play`,
+`tick`, named events, `end_play`). They are the atoms of the object model.
 
-Components are not tied to the ECS — they exist as a higher-level abstraction
-that the ECS (`pulsar_ecs`) can host at runtime via `ComponentStore`. A
-component can be attached to an entity in a `.scene` prefab, edited in the
-level editor's property panel, serialized to JSON, and ticked in the runtime.
+At runtime a component is a typed value in SceneDB's `World` (`pulsar_scenedb`):
+each component attached to an object is its own component-instance entity,
+and its `#[gpu]` fields mirror to GPU rows on every write. The same value is
+edited in the level editor's property panel, ticked in the runtime, and drawn
+by the renderer; JSON is only its file format. See
+[SCENEDB_MIGRATION.md](SCENEDB_MIGRATION.md).
 
 ### The editor is a GPUI application
 

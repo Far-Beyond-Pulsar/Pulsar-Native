@@ -35,7 +35,6 @@ The heart of the engine. 26 crates with no UI dependencies.
 | `pulsar_bp_executor` | Blueprint graph runtime executor |
 | `pulsar_core` | Core types, math, utilities |
 | `pulsar_docs` | Doc generation from reflected types |
-| `pulsar_ecs` | Archetype-based ECS with `World`, `Query`, `Schedule` |
 | `pulsar_events` | Event bus |
 | `pulsar_game` | Game mode abstractions |
 | `pulsar_graph` | Blueprint graph data model |
@@ -43,6 +42,8 @@ The heart of the engine. 26 crates with no UI dependencies.
 | `pulsar_macros` | Various derive macros |
 | `pulsar_reflection` | Runtime type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass`, `Subsystems` |
 | `pulsar_reflection_derive` | `#[derive(Reflectable)]` proc macro |
+| `pulsar_scene_model` | Scene object components (`StableId`, `Name`, `Transform`, `Visibility`, hierarchy) and component-instance entities (`attachments`) |
+| `pulsar_world_registry` | Typed component classes in SceneDB's `World`: registration, boundary decode, object feeds, change watches, component lifecycles |
 | `pulsar_settings` | Settings store (wraps `pulsar-config`) |
 | `pulsar_script_vm` | Language-neutral script bytecode: module format, verifier, linker, VM, natives, shared `exec` semantics, `compiled` code contract, `migrate` planner |
 | `pulsar_script_runtime` | Runs script classes on entities: lifecycle, events, transactional hot reload with state migration, saved state |
@@ -54,6 +55,7 @@ The heart of the engine. 26 crates with no UI dependencies.
 | `pulsar_std_bundle` | Bundled std definitions |
 | `pulsar-multiplayer-core` | Multiplayer protocol and state |
 | `pulsar-relay` | Relay server client |
+| `scene_inventory` | Scene-data closure ledger and architecture checks (`cargo test -p scene_inventory`) |
 | `ui_gen_macros` | Proc macros for UI boilerplate |
 | `window_manager` | Multi-window management, window definitions |
 

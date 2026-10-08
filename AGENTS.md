@@ -13,7 +13,8 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/PLUGIN_SYSTEM.md` | Permanent DLL pattern, plugin SDK, loading, registries |
 | `.agents/FILESYSTEM.md` | `engine_fs::virtual_fs` — local, remote, P2P providers |
 | `.agents/REFLECTION.md` | Type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
-| `.agents/ECS.md` | Archetype ECS — `World`, `Query`, `Schedule` |
+| `.agents/ECS.md` | SceneDB's archetype ECS — `World`, queries, journals, `Schedule`, actors |
+| `.agents/SCENEDB_MIGRATION.md` | Scene data as built: SceneDB ownership, component instances, data flow, observers, renderer, architecture checks |
 | `.agents/SCENEDB_CORRECTIVE_PLAN.md` | Corrective scope and acceptance: typed components, direct GPU reflection, independent subscriptions |
 | `.agents/plans/scene-data-correction/README.md` | Review packet with proposed SceneDB, reflection, renderer, notification, persistence and module contracts |
 | `.agents/FILE_MANAGER.md` | `ui_file_manager` — flat crate layout, modules, conventions |
