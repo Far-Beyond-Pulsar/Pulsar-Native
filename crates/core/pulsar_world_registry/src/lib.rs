@@ -44,14 +44,13 @@
 //!
 //! ## The runtime-behavior dispatch is gone
 //!
-//! `pulsar_reflection::RuntimeBehaviorRegistration`/`apply_runtime_behavior_for_class`
-//! (the JSON dispatch to `ComponentRuntimeBehavior::sync_component`) and this
-//! crate's typed `dispatch` had no production caller left; Pulsar-Native#1035
-//! (Phase 4) removed every registration and the typed path. Components reach
-//! their consumers through their data (SceneDB GPU rows and graph-owned
-//! derivations). Phase 6 dropped the `ComponentRuntimeBehavior` stubs that
-//! only carried a class name: `#[register_world_component]` names the class
-//! after the type.
+//! Pulsar-Native#1035 removed the JSON runtime-behavior dispatch
+//! (`ComponentRuntimeBehavior::sync_component`) and this crate's typed
+//! `dispatch` path: Phase 4 removed every registration, Phase 6 the stubs,
+//! and `pulsar_reflection` no longer defines the API. Components reach their
+//! consumers through their data (SceneDB GPU rows and graph-owned
+//! derivations); `#[register_world_component]` names the class after the
+//! type.
 
 // Re-exported so `#[register_world_component]` (`engine_class_derive`) can
 // emit `pulsar_world_registry::inventory::submit! { .. }` in the calling
