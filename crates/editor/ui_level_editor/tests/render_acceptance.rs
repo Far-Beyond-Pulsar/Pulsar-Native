@@ -777,7 +777,7 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
 fn environment_components_reach_the_frame() {
     use helio_component::components::{
         CameraPostProcessComponent, GlobalFogComponent, LocalFogVolumeComponent,
-        PostProcessVolumeComponent,
+        PostProcessVolumeComponent, WaterVolumeComponent,
     };
     use ui_level_editor::commands::TypedComponent;
 
@@ -810,12 +810,16 @@ fn environment_components_reach_the_frame() {
     let mut camera = CameraPostProcessComponent::default();
     camera.view_id = 0;
     camera.settings.exposure_compensation = -3.0;
+    let mut water = WaterVolumeComponent::default();
+    // A pool around the mesh, its surface through the mesh's centre.
+    water.size = [radius * 3.0; 3];
 
     let cases: Vec<(&str, TypedComponent)> = vec![
         ("global fog", TypedComponent::new(fog)),
         ("local fog volume", TypedComponent::new(local)),
         ("post-process volume", TypedComponent::new(volume)),
         ("camera post-process", TypedComponent::new(camera)),
+        ("water volume", TypedComponent::new(water)),
     ];
     for (label, component) in cases {
         let mut state = LevelEditorState::new();
@@ -854,9 +858,9 @@ fn environment_components_reach_the_frame() {
         );
         assert_eq!(change.depth_texels, 0, "{label} moved geometry");
 
-        if label == "local fog volume" {
-            // A local volume follows its owner: moved far off-screen, the
-            // frame is the frame without it.
+        if label == "local fog volume" || label == "water volume" {
+            // A volume follows its owner: moved far off-screen, the frame
+            // is the frame without it.
             move_to(&mut state, &id, [radius * 100.0, 0.0, 0.0]);
             let away = harness.frames(&mut renderer, || {});
             let change = away.difference(&before);

@@ -145,9 +145,9 @@ world_registered = true
 own_gpu_columns = false
 runtime_behavior = true
 owner = "helio_component::components::portal_component"
-disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; the portal buffers are not registered in production"
+disposition = "unsupported, Phase 4: Helio draws linked portal pairs from projection rows at dense reserved entity slots; this component authors no peer and the editor world cannot provide those slots. The behavior no longer queues rows; the class is reported unsupported in Stage 4"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: portal culls and draws"
+test = "none: unsupported (reported in Stage 4)"
 status = "at-risk"
 
 [[class]]
@@ -169,9 +169,9 @@ world_registered = true
 own_gpu_columns = false
 runtime_behavior = true
 owner = "helio_component::components::reflection_capture_component"
-disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; two schemas declare reflection_captures and neither is registered in production"
+disposition = "unsupported, Phase 4: deferred lighting samples a capture only through a baked cubemap layer and the engine runs no probe baker. The behavior no longer queues rows and the duplicate GPU schema is gone; the class is reported unsupported in Stage 4"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: capture reaches deferred-light"
+test = "none: unsupported (reported in Stage 4)"
 status = "at-risk"
 
 [[class]]
@@ -263,13 +263,13 @@ status = "unverified"
 name = "WaterVolumeComponent"
 category = "Rendering"
 world_registered = true
-own_gpu_columns = false
+own_gpu_columns = true
 runtime_behavior = true
 owner = "helio_component::components::water_volume_component"
-disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain (water_volumes is registered, but nothing writes it)"
+disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates, places and packs it into water_volumes, which water simulation, surface, caustics and deferred lighting read. Per-volume wind, spring, damping and wave scale are carried but the simulation uses pass-wide values"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: water volume reaches water-sim"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 # ── GPU schemas ──────────────────────────────────────────────────────────
 # Every linked #[derive(SceneStore)] type with #[gpu] fields. `registered`:
@@ -514,20 +514,6 @@ test = "none: schema written, registered and consumed"
 status = "at-risk"
 
 [[schema]]
-type = "ReflectionCaptureGpuComponent"
-path = "helio_component::components::reflection_capture_component::ReflectionCaptureGpuComponent"
-buffers = ["reflection_captures"]
-clears_on_remove = true
-releases_var_len = false
-registered = false
-writer = "not found: declared next to ReflectionCaptureComponent, whose behavior queues the deferred-light type instead"
-owner = "helio_component::components::reflection_capture_component"
-disposition = "resolve the duplicate reflection_captures declaration; never registered in production"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
-
-[[schema]]
 type = "StaticMeshComponent"
 path = "helio_component::components::static_mesh_component::StaticMeshComponent"
 buffers = ["builtin_mesh_index", "builtin_mesh_vertex"]
@@ -590,11 +576,11 @@ buffers = ["reflection_captures"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "ReflectionCaptureComponent behavior through PendingWorldWrites (no production drain)"
+writer = "none in the engine (Phase 4 removed the queued write)"
 owner = "helio_pass_deferred_light::components"
-disposition = "replace the queued write with an authored schema; not registered in production"
+disposition = "keep as the pass row layout; the engine reports reflection captures unsupported (no probe baker)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
+test = "none: unsupported (reported in Stage 4)"
 status = "at-risk"
 
 [[schema]]
@@ -939,13 +925,13 @@ path = "helio_pass_water_sim::components::WaterVolumeComponent"
 buffers = ["water_volumes"]
 clears_on_remove = true
 releases_var_len = false
-registered = true
-writer = "WaterVolumeComponent behavior through PendingWorldWrites (no production drain)"
+registered = false
+writer = "helio-default-graphs environment join from WaterVolumeComponent's source rows (Phase 4); no component is inserted"
 owner = "helio_pass_water_sim::components"
-disposition = "replace with authored water columns (registered, but never written)"
+disposition = "keep as the pass row layout of water_volumes; produced by the join, no longer registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 [[schema]]
 type = "PhysicsComponentGpuMirror"
@@ -1265,36 +1251,6 @@ test = "none: component reaches its consumer without the queue"
 status = "at-risk"
 
 [[site]]
-pattern = "pending-world-writes"
-file = "crates/renderer/helio/crates/helio-component/src/components/portal_component.rs"
-count = 2
-owner = "helio::helio-component::components::portal_component"
-disposition = "replace with a direct authored-data contract; the queue has no production drain"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: component reaches its consumer without the queue"
-status = "at-risk"
-
-[[site]]
-pattern = "pending-world-writes"
-file = "crates/renderer/helio/crates/helio-component/src/components/reflection_capture_component.rs"
-count = 2
-owner = "helio::helio-component::components::reflection_capture_component"
-disposition = "replace with a direct authored-data contract; the queue has no production drain"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: component reaches its consumer without the queue"
-status = "at-risk"
-
-[[site]]
-pattern = "pending-world-writes"
-file = "crates/renderer/helio/crates/helio-component/src/components/water_volume_component.rs"
-count = 2
-owner = "helio::helio-component::components::water_volume_component"
-disposition = "replace with a direct authored-data contract; the queue has no production drain"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: component reaches its consumer without the queue"
-status = "at-risk"
-
-[[site]]
 pattern = "change-cursor"
 file = "crates/renderer/helio/crates/helio-component/src/static_move_watch.rs"
 count = 2
@@ -1590,6 +1546,34 @@ target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
 status = "verified"
 
+[[schema]]
+type = "WaterVolumeSourceRow"
+path = "helio_component::components::environment_rows::WaterVolumeSourceRow"
+buffers = ["water_volume_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "WaterVolumeComponent's derived GPU registration (local size and surface offset, then the water row after its bounds; zero when disabled), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's water_volumes input (Phase 4)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
+
+[[schema]]
+type = "WaterVolumeComponent"
+path = "helio_component::components::water_volume_component::WaterVolumeComponent"
+buffers = ["water_volumes"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "SceneDB write path of the authored value itself, through its derived WaterVolumeSourceRow registration (Phase 4)"
+owner = "helio_component::components::water_volume_component"
+disposition = "keep: the authored type's GPU dispatch is the derived source row; the scanner attributes water_volumes to it by name, but the row it writes is water_volume_sources"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
+
 [[buffer]]
 key = "Transform::packed"
 producers = []
@@ -1864,10 +1848,10 @@ status = "unverified"
 key = "portal_views"
 producers = ["PortalViewComponent"]
 consumers = ["helio-pass-portal-cull", "helio-pass-portal-instances"]
-owner = "portal-cull pass type"
-disposition = "audit the writer: derived execution output or authored"
+owner = "portal-cull pass type; written by Helio's PortalProjectionBridge at dense reserved entity slots (Helio examples); no engine writer"
+disposition = "unsupported in the engine: PortalComponent authors no peer and the editor world cannot provide dense slots; reporting lands with Stage 4"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: writer not identified"
+test = "none: unsupported (reported in Stage 4)"
 status = "unverified"
 
 [[buffer]]
@@ -1892,12 +1876,12 @@ status = "verified"
 
 [[buffer]]
 key = "reflection_captures"
-producers = ["ReflectionCaptureComponent", "ReflectionCaptureGpuComponent"]
-consumers = ["helio-pass-deferred-light", "helio_component"]
-owner = "helio_component ReflectionCaptureGpuComponent (no writer found) and deferred-light ReflectionCaptureComponent (queued by the ReflectionCaptureComponent behavior); neither registered in production"
-disposition = "resolve: two schemas declare the same buffer key; one authored schema must own it"
+producers = ["ReflectionCaptureComponent"]
+consumers = ["helio-pass-deferred-light"]
+owner = "helio_pass_deferred_light::components::ReflectionCaptureComponent (the only schema); no engine writer"
+disposition = "unsupported in the engine: a capture contributes only with a baked cubemap layer and the engine runs no probe baker. The authored component writes no rows (Phase 4); reporting it lands with Stage 4"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: capture reaches deferred-light"
+test = "none: unsupported (reported in Stage 4)"
 status = "at-risk"
 
 [[buffer]]
@@ -2003,12 +1987,12 @@ status = "unverified"
 [[buffer]]
 key = "water_volumes"
 producers = ["WaterVolumeComponent"]
-consumers = ["helio-pass-deferred-light", "helio-pass-water-sim"]
-owner = "PendingWorldWrites (WaterVolumeComponent behavior)"
-disposition = "replace the undrained queue with a direct authored contract"
+consumers = ["helio-default-graphs", "helio-pass-deferred-light", "helio-pass-water-sim"]
+owner = "helio-default-graphs environment join (execution output, placed volumes packed into MAX_WATER_VOLUMES leading rows in instance order)"
+disposition = "keep: the water passes read a fixed number of leading rows (deferred lighting reads row 0), so the join packs placed volumes rather than keeping the instance row"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: water volume reaches water-sim"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
 
 # ── Render pass crates ───────────────────────────────────────────────────
 # in_default_graph: listed in helio-default-graphs' [dependencies]; reads:
@@ -2050,6 +2034,16 @@ producers = ["CameraPostProcessSourceRow"]
 consumers = []
 owner = "helio_component::components::environment_rows"
 disposition = "keep: CameraPostProcessComponent in its owner's space, derived on every write; the environment join reads it into camera_postprocess"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "water_volume_sources"
+producers = ["WaterVolumeSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: WaterVolumeComponent in its owner's space, derived on every write; the environment join packs it into water_volumes"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
 status = "verified"

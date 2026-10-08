@@ -51,3 +51,33 @@ Deviation from decision 1: the one-time unsupported log fires when a component i
 Sweep (`helio_component`, `engine_backend`, `pulsar_game`, `ui_level_editor`, run with `--no-fail-fast`):
 - Everything passes except the four failures Phase 3 already recorded: the gizmo hover test, the light mapping intensity test and the two `toggle_button` doctests.
 - `voxel_block_api::the_cached_world_follows_the_journal_and_the_settings` fails intermittently when tests run in parallel. Helio's voxel world cache is process-global and keyed by entity bits alone. The test passes when run serially. This predates Phase 4 and is tracked separately.
+
+## Stage 2: water volumes, reflection captures, portals
+
+**Water volumes: supported.** `WaterVolumeComponent` derives `WaterVolumeSourceRow` (`water_volume_sources`): its local size, its surface height above the owner (in `w`), then the water row after its bounds. A disabled component derives a zero row. The environment join places the volume the same way as fog and post-process volumes, and sets the surface height to the owner's Y plus the offset, scaled with the owner.
+
+The water passes read a fixed number of leading rows: `MAX_SIM_VOLUMES`, which is 8, and deferred lighting reads only row 0. So the join *packs* placed volumes into those rows, in instance order, instead of keeping each instance's row (`cs_compact_rows`: one workgroup with an ordered prefix sum).
+- A volume keeps its row while the volumes ahead of it are unchanged.
+- Placed volumes beyond the eighth are not drawn.
+- The pass `WaterVolumeComponent` is no longer registered as a column.
+
+Limitation: the simulation reads wave spring, damping, scale and wind from pass-wide settings (`WaterSimPass` setters). The component's per-volume fields for these are carried in the row but have no effect.
+
+**Reflection captures: unsupported.** Deferred lighting samples a capture only through a baked cubemap layer (`cubemap_index`), and the engine runs no probe baker (`helio-bake` is not a dependency). A placed capture would therefore never contribute.
+- The component keeps its authored settings and writes no rows.
+- The duplicate `ReflectionCaptureGpuComponent` schema and its binding are deleted, so `helio_pass_deferred_light::ReflectionCaptureComponent` is the only schema of `reflection_captures`.
+- Supporting captures needs probe baking (or dynamic captures) in the engine.
+
+**Portals: unsupported.** Helio's portal passes draw linked pairs: each authored `helio_pass_portal_cull::PortalComponent` names its peer, and `PortalProjectionBridge` turns the pairs into view and chain rows at dense, reserved entity slots.
+- The engine's `PortalComponent` authors no peer; its `portal_id` was never a link.
+- The editor world cannot reserve dense entity slots.
+- Its old queued write (a one-portal chain with no peer) could not have drawn a portal even with a drain.
+- Supporting portals needs an authored peer reference and a portal contract that does not depend on entity slots.
+
+Both classes stop queueing writes now. Stage 4 adds the unsupported report: the card warning and a one-time log when the component is attached. `helio-component` no longer depends on the portal-cull or deferred-light passes.
+
+Tests:
+- `environment_join_rows.rs` has `water_volumes_are_packed_into_the_leading_rows`. Two volumes whose instance rows sit past row 8 land in rows 0 and 1, with their surface heights and the owner's scale applied. Disabling the first moves the second up. Hidden or detached volumes free their rows.
+- `environment_components_reach_the_frame` has a water case. The pool changes the frame, and moving it away or disabling it restores the frame. Depth never changes.
+- The sweep shows only the known failures (see Stage 1).
+
