@@ -22,7 +22,8 @@ pub use attachments::{
     ComponentOwner, InstanceError, NewInstance, UnresolvedComponent,
 };
 pub use components::{
-    Name, Parent, RenderProps, Selected, SiblingIndex, StableId, Transform, Visibility,
+    Name, ObjectHidden, Parent, RenderProps, Selected, SiblingIndex, StableId, Transform,
+    Visibility,
 };
 pub use instance::{ComponentInstance, EditorObjectId};
 pub use payload_catalog::{

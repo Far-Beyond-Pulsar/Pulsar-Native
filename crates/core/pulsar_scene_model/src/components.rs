@@ -79,6 +79,51 @@ impl Default for Visibility {
     }
 }
 
+/// [`Visibility`]'s GPU row: 1 when the object is hidden. Keyed by the
+/// object entity, so an object without a `Visibility` (a zero row) draws.
+/// Derived from the authored value by its own SceneDB GPU registration, on
+/// every write, removal and replay.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, pulsar_scenedb::SceneStore)]
+#[gpu(layout = packed, buffer = "object_hidden")]
+#[repr(C)]
+pub struct ObjectHidden {
+    #[gpu]
+    pub hidden: u32,
+}
+
+fn object_hidden_dispatch(
+    mirror: &pulsar_scenedb::gpu::GpuMirrorHandle,
+    row: u32,
+    data: *const (),
+    is_new_insert: bool,
+) {
+    // SAFETY: SceneDB reaches this only through `Visibility`'s own
+    // `ComponentId`, with a pointer to a live `Visibility`.
+    let visibility = unsafe { &*(data as *const Visibility) };
+    let row_value = ObjectHidden {
+        hidden: u32::from(!visibility.visible),
+    };
+    pulsar_scenedb::gpu::write_derived_row(mirror, row, &row_value, is_new_insert);
+}
+
+fn object_hidden_clear(mirror: &pulsar_scenedb::gpu::GpuMirrorHandle, row: u32) {
+    pulsar_scenedb::gpu::clear_derived_row::<ObjectHidden>(mirror, row);
+}
+
+pulsar_scenedb::pulsar_reflection::inventory::submit! {
+    pulsar_scenedb::gpu::GpuMirrorRegistration {
+        component_id: pulsar_scenedb::component_id::<Visibility>,
+        dispatch: object_hidden_dispatch,
+    }
+}
+
+pulsar_scenedb::pulsar_reflection::inventory::submit! {
+    pulsar_scenedb::gpu::GpuClearRegistration {
+        component_id: pulsar_scenedb::component_id::<Visibility>,
+        clear: object_hidden_clear,
+    }
+}
+
 /// Free-form scene props of an object (file-format `props`, plus the scene
 /// props registered component classes project from their values). Component
 /// values themselves live on component-instance entities

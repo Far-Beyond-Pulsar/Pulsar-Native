@@ -97,7 +97,7 @@ runtime_behavior = true
 owner = "helio_component::components::light_component"
 disposition = "render, Phase 2 vertical slice. Phase 1: its generated GPU row (LightComponentGpuMirror, sub-prop mirrors embedded, general.enabled included) is written by the authored value's own SceneDB dispatch on every insert, write, removal and mirror replay; nothing inserts or refreshes a companion. No pass consumes that row yet: lighting reads forward-lit LightComponent rows that editor_rows projects on the CPU"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
 status = "broken"
 notes = "Phase 0 baseline: the properties panel's own Add component payload (and the legacy flat intensity shape) fails to hydrate, yet the attachment stays enabled with its JSON, so the light looks attached. A class to_json payload hydrates but gets no forward-lit light row when added after the first frame."
 
@@ -206,7 +206,7 @@ runtime_behavior = true
 owner = "helio_component::components::static_mesh_component"
 disposition = "render, Phase 2 vertical slice. Its own vertex/index pools mirror to the GPU, but the draw row (gbuffer StaticObjectComponent) and material row are built by helio_bridge's CPU projection, which only sees entities a render subscription or a full projection reaches"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
 status = "broken"
 notes = "Phase 0 baseline: added after the renderer's first frame (asset drop or panel), the mesh hydrates and its pools reach the GPU but it never gets a draw or material row, panel open or closed. A row appears only if the panel is open, the renderer drains the queue first, and a later edit fires. Since Helio f9631fd the component also owns per-slot material assignments (the standalone MaterialOverrideComponent and its alpha-0 default are gone); helio_bridge still projects them into gbuffer material rows on the CPU."
 
@@ -275,18 +275,74 @@ status = "at-risk"
 # production code registers its columns (unregistered writes are dropped).
 
 [[schema]]
+type = "LightSourceRow"
+path = "helio_component::components::light_component::source_row::LightSourceRow"
+buffers = ["light_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "LightComponent's second GPU registration (to_helio_gpu_light of the authored value, enabled flag in the padding word), on every insert, write, removal and replay"
+owner = "helio_component::components::light_component::source_row"
+disposition = "keep: the scene join's light input (Phase 2)"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
+status = "verified"
+
+[[schema]]
+type = "StaticMeshDraw"
+path = "helio_component::components::static_mesh_draw::StaticMeshDraw"
+buffers = ["static_mesh_draw_bounds", "static_mesh_draw_flags", "static_mesh_draw_sections"]
+clears_on_remove = false
+releases_var_len = true
+registered = true
+writer = "StaticMeshComponent's second GPU registration (bounds, movable flag, sections with materials resolved from the slots), on every insert, write, removal and replay"
+owner = "helio_component::components::static_mesh_draw"
+disposition = "keep: the scene join's per-instance mesh draw input (Phase 2)"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+status = "verified"
+
+[[schema]]
+type = "ObjectHidden"
+path = "pulsar_scene_model::components::ObjectHidden"
+buffers = ["object_hidden"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "Visibility's GPU registration (hidden = !visible) on every insert, write, removal and replay"
+owner = "pulsar_scene_model::components"
+disposition = "keep: object visibility for the scene join (Phase 2)"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
+status = "verified"
+
+[[schema]]
+type = "Visibility"
+path = "pulsar_scene_model::components::Visibility"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "editor and scripts; its GPU registration derives ObjectHidden"
+owner = "pulsar_scene_model::components"
+disposition = "keep: authored object visibility; hiding an object hides its mesh and light instances through the join (Phase 2)"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
+status = "verified"
+
+[[schema]]
 type = "ComponentOwner"
 path = "pulsar_scene_model::attachments::ComponentOwner"
 buffers = ["component_owners"]
 clears_on_remove = true
 releases_var_len = false
-registered = false
+registered = true
 writer = "pulsar_scene_model::attachments (spawn_instance, set_enabled); written through SceneDB's typed insert like any component"
 owner = "pulsar_scene_model::attachments"
-disposition = "keep: the instance-to-object link of D1 (Phase 1); Phase 2 registers its buffer for the render-row consumers"
+disposition = "keep: the instance-to-object link of D1; the scene join reads it to place, enable and generation-check every mesh and light instance (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_class_derive/tests/component_instances.rs"
-status = "unverified"
+test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+status = "verified"
 
 [[schema]]
 type = "CameraPostProcessComponentGpuMirror"
@@ -353,10 +409,10 @@ releases_var_len = false
 registered = false
 writer = "the authored component's SceneDB GPU dispatch (engine_class_derive, write_derived_row): every insert, write, removal and mirror replay of the authored value; never a component (Phase 1)"
 owner = "helio_component::components::light_component::component"
-disposition = "keep: the authored light's GPU row (Phase 1: written only through LightComponent's own dispatch). Phase 2 makes it the lighting input, joined to the owner's transform"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+disposition = "keep as the generic reflection of LightComponent's #[gpu] fields; the lighting input is the derived LightSourceRow (the same to_helio_gpu_light mapping), so this row has no consumer. Phase 4 decides whether the companion stays"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written and consumed"
+status = "unverified"
 
 [[schema]]
 type = "AttenuationLightPropsGpuMirror"
@@ -474,15 +530,15 @@ status = "at-risk"
 type = "StaticMeshComponent"
 path = "helio_component::components::static_mesh_component::StaticMeshComponent"
 buffers = ["builtin_mesh_index", "builtin_mesh_vertex"]
-clears_on_remove = false
+clears_on_remove = true
 releases_var_len = true
 registered = true
-writer = "hydrate_static_mesh_component and refresh_static_mesh_gpu_mirror (disk reload on refresh)"
+writer = "its own SceneDB dispatch (content-interned geometry) and the derived StaticMeshDraw registration (bounds, movable flag, sections with resolved materials), on every insert, guarded write, removal and replay; decode and mesh_asset writes load the geometry"
 owner = "helio_component::components::static_mesh_component"
-disposition = "keep: canonical authored geometry pools; property-only edits must stop re-reading the mesh file"
+disposition = "keep: the authored mesh instance; the scene join draws it from its own rows joined to its owner (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "unverified"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
+status = "verified"
 
 [[schema]]
 type = "BillboardComponent"
@@ -490,13 +546,13 @@ path = "helio_pass_billboard::components::billboard::BillboardComponent"
 buffers = ["billboard_instances"]
 clears_on_remove = true
 releases_var_len = false
-registered = true
-writer = "engine_backend::scene::editor_rows (CPU projection of light icons)"
+registered = false
+writer = "none in Pulsar: in editor mode the scene join publishes a light icon per placed light (`billboard_instances`)"
 owner = "helio_pass_billboard::components::billboard"
-disposition = "replace with an editor-only GPU consumer of authored light rows (Phase 2)"
+disposition = "replaced for Pulsar (Phase 2): light icons are an editor-only output of the scene join over authored light rows; the component remains a Helio demo type (Phase 4)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/renderer/helio/crates/helio-default-graphs/tests/scene_join.rs"
+status = "verified"
 
 [[schema]]
 type = "CoronaEmitterComponent"
@@ -602,13 +658,13 @@ path = "helio_pass_forward_lit::components::LightComponent"
 buffers = ["scene_lights"]
 clears_on_remove = true
 releases_var_len = false
-registered = true
-writer = "engine_backend::scene::editor_rows::sync_editor_light_rows (CPU projection)"
+registered = false
+writer = "none in Pulsar: the scene join publishes `scene_lights` rows of this layout from LightSourceRow and the owner transform"
 owner = "helio_pass_forward_lit::components"
-disposition = "replace: lighting passes join authored light columns on the GPU (Phase 2)"
+disposition = "replaced for Pulsar (Phase 2): lights are joined on the GPU; the component remains a Helio demo type (Phase 4)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
+status = "verified"
 
 [[schema]]
 type = "MaterialComponent"
@@ -616,13 +672,13 @@ path = "helio_pass_gbuffer::components::MaterialComponent"
 buffers = ["materials"]
 clears_on_remove = true
 releases_var_len = false
-registered = true
-writer = "engine_backend::scene::helio_bridge::sync_static_mesh_rows (CPU projection, default material)"
+registered = false
+writer = "none in Pulsar: the scene join publishes one material row per drawn section (`materials`), resolved by StaticMeshDraw from the slot assignments"
 owner = "helio_pass_gbuffer::components"
-disposition = "replace: derive from StaticMeshComponent's per-slot material assignments (Phase 2)"
+disposition = "replaced for Pulsar (Phase 2): material rows derive from StaticMeshComponent's slots, defaulting once to the slot's imported surface; the component remains a Helio demo type (Phase 4)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
+status = "verified"
 
 [[schema]]
 type = "MeshComponent"
@@ -672,13 +728,13 @@ path = "helio_pass_gbuffer::components::StaticObjectComponent"
 buffers = ["static_objects"]
 clears_on_remove = true
 releases_var_len = false
-registered = true
-writer = "engine_backend::scene::helio_bridge::sync_static_mesh_rows (CPU projection)"
+registered = false
+writer = "none in Pulsar: Helio's scene join publishes rows of this layout (`static_objects`) as execution data from the authored mesh instances; Helio's standalone demos still insert it"
 owner = "helio_pass_gbuffer::components"
-disposition = "replace: draw rows from a GPU join of authored mesh, transform and visibility (Phase 2)"
+disposition = "replaced for Pulsar (Phase 2): the layout is the object-batch pass input the join writes; the component itself remains a Helio demo/pass-owned type (D2 migration scope, Phase 4)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+status = "verified"
 
 [[schema]]
 type = "SubLevelActorComponent"
@@ -936,47 +992,6 @@ status = "unverified"
 # One row per (pattern, file); `count` is checked against the source scan.
 
 [[site]]
-pattern = "cpu-projection"
-file = "crates/core/engine_backend/src/scene/editor_rows.rs"
-count = 3
-owner = "core::engine_backend::scene::editor_rows"
-disposition = "remove: render passes join authored GPU columns directly (no CPU-built pass rows)"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "at-risk"
-
-[[site]]
-pattern = "cpu-projection"
-file = "crates/core/engine_backend/src/scene/helio_bridge.rs"
-count = 3
-owner = "core::engine_backend::scene::helio_bridge"
-disposition = "remove: render passes join authored GPU columns directly (no CPU-built pass rows)"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "broken"
-notes = "Projection runs only for subscribed or fully-projected entities; see the baseline."
-
-[[site]]
-pattern = "render-arm"
-file = "crates/core/engine_backend/src/scene/helio_bridge.rs"
-count = 2
-owner = "core::engine_backend::scene::helio_bridge"
-disposition = "remove: renderer visibility must not depend on armed subscriptions"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 04-state-notifications.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "at-risk"
-
-[[site]]
-pattern = "subscribe"
-file = "crates/core/engine_backend/src/scene/helio_bridge.rs"
-count = 5
-owner = "core::engine_backend::scene::helio_bridge"
-disposition = "remove: render-row subscriptions"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "at-risk"
-
-[[site]]
 pattern = "record-attach"
 file = "crates/core/engine_backend/src/scene/runtime_level.rs"
 count = 1
@@ -999,23 +1014,12 @@ status = "at-risk"
 [[site]]
 pattern = "cpu-projection"
 file = "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs"
-count = 3
-owner = "core::engine_backend::subsystems::render::helio_renderer::renderer"
-disposition = "remove: render passes join authored GPU columns directly (no CPU-built pass rows)"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "at-risk"
-
-[[site]]
-pattern = "destructive-drain"
-file = "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs"
 count = 1
 owner = "core::engine_backend::subsystems::render::helio_renderer::renderer"
-disposition = "remove: the renderer drains the shared queue to choose rows to re-project"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "broken"
-notes = "Rows for a late mesh appear only when the renderer, not the panel, drains the edit event."
+disposition = "the remaining site is sync_editor_postprocess (the editor camera post-process baseline row); meshes and lights are joined on the GPU (Phase 2). Phase 4 replaces the post-process row with the camera component"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: camera post-process settings reach the frame"
+status = "at-risk"
 
 [[site]]
 pattern = "mirror-replay"
@@ -1026,16 +1030,6 @@ disposition = "keep: attaches the one shared mirror. Phase 1 removed its fixed s
 target_contract = "Phase 1 (SceneDB upstream); 03-gpu-reflection-and-rendering.md"
 test = "SceneDB crates/pulsar_scenedb/tests/world_gpu_mirror_replay.rs"
 status = "verified"
-
-[[site]]
-pattern = "render-arm"
-file = "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs"
-count = 1
-owner = "core::engine_backend::subsystems::render::helio_renderer::renderer"
-disposition = "remove: renderer visibility must not depend on armed subscriptions"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 04-state-notifications.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "at-risk"
 
 [[site]]
 pattern = "json-hydrate"
@@ -1058,16 +1052,6 @@ test = "crates/core/pulsar_class/tests/instances.rs"
 status = "unverified"
 
 [[site]]
-pattern = "cpu-projection"
-file = "crates/core/pulsar_game/src/embed.rs"
-count = 1
-owner = "core::pulsar_game::embed"
-disposition = "remove: render passes join authored GPU columns directly (no CPU-built pass rows)"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "at-risk"
-
-[[site]]
 pattern = "mirror-replay"
 file = "crates/core/pulsar_game/src/embed.rs"
 count = 1
@@ -1086,16 +1070,6 @@ disposition = "keep: independent ClassInstance cursor; reference pattern for Pha
 target_contract = "Phase 5; 04-state-notifications.md"
 test = "none: cursor overflow/rescan test for this consumer"
 status = "unverified"
-
-[[site]]
-pattern = "cpu-projection"
-file = "crates/core/pulsar_game/src/windowed_app.rs"
-count = 2
-owner = "core::pulsar_game::windowed_app"
-disposition = "remove: render passes join authored GPU columns directly (no CPU-built pass rows)"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "at-risk"
 
 [[site]]
 pattern = "mirror-replay"
@@ -1168,26 +1142,6 @@ test = "none: mutation-equivalence test"
 status = "at-risk"
 
 [[site]]
-pattern = "render-arm"
-file = "crates/editor/ui_level_editor/src/core/asset_updates.rs"
-count = 1
-owner = "editor::ui_level_editor::core::asset_updates"
-disposition = "remove: renderer visibility must not depend on armed subscriptions"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 04-state-notifications.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "at-risk"
-
-[[site]]
-pattern = "render-mark"
-file = "crates/editor/ui_level_editor/src/core/asset_updates.rs"
-count = 1
-owner = "editor::ui_level_editor::core::asset_updates"
-disposition = "remove: a synthetic change notification that exists only to wake the CPU projection"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: asset-update path renders without marking"
-status = "at-risk"
-
-[[site]]
 pattern = "add-component"
 file = "crates/editor/ui_level_editor/src/core/commands/executor.rs"
 count = 3
@@ -1208,17 +1162,6 @@ test = "none: mutation-equivalence test"
 status = "at-risk"
 
 [[site]]
-pattern = "render-arm"
-file = "crates/editor/ui_level_editor/src/core/commands/executor.rs"
-count = 1
-owner = "editor::ui_level_editor::core::commands::executor"
-disposition = "remove: renderer visibility must not depend on armed subscriptions"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 04-state-notifications.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "broken"
-notes = "AddObject arms an entity before its mesh exists, so the asset-drop mesh is never subscribed."
-
-[[site]]
 pattern = "destructive-drain"
 file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
 count = 1
@@ -1235,7 +1178,7 @@ count = 3
 owner = "editor::ui_level_editor::core::scene_edit::components"
 disposition = "editor add / restore / data-replace decode a record once into the instance's typed value; an interactive add or data edit that does not decode is refused with nothing written, history and level restore keep unusable payloads as UnresolvedComponent; enable/disable, reorder, parent and duplicate never touch JSON (Phase 1, D1)"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md, 05-persistence-and-undo.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
 status = "unverified"
 notes = "Phase 0's failure (a failed hydrate kept enabled JSON, so the component looked attached) is gone: the baseline's legacy flat light payload is now refused and nothing is attached."
 
@@ -1316,7 +1259,7 @@ count = 2
 owner = "editor::ui_level_editor::ui::properties::object_type_fields"
 disposition = "properties-panel Add component: builds a flat JSON map from a default instance; insert the typed instance directly"
 target_contract = "Phase 2; 02-typed-reflection-and-writes.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
 status = "broken"
 
 [[site]]
@@ -1326,7 +1269,7 @@ count = 1
 owner = "editor::ui_level_editor::ui::properties::object_type_fields"
 disposition = "replace with a per-panel journal cursor that prompts a re-read of current values; delete the single-drainer contract"
 target_contract = "Phase 5; 04-state-notifications.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
 status = "broken"
 notes = "Draining first consumes the event the renderer needed; the late mesh never gets a draw row."
 
@@ -1347,7 +1290,7 @@ count = 1
 owner = "editor::ui_level_editor::ui::viewport::helio_viewport::assets"
 disposition = "viewport asset drop: AddObject plus a JSON add_component outside the undo command; make one typed transaction"
 target_contract = "Phase 2; 02-typed-reflection-and-writes.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
 status = "broken"
 
 [[site]]
@@ -1661,9 +1604,109 @@ test = "none: never inserted, so the registration never runs"
 status = "out-of-scope"
 
 [[buffer]]
+key = "Transform::packed"
+producers = []
+consumers = ["engine_backend"]
+owner = "pulsar_scene_model::components::Transform"
+disposition = "keep: an object's world transform; the scene join places mesh and light instances by it"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "builtin_mesh_index::handles"
+producers = []
+consumers = ["engine_backend"]
+owner = "helio_component StaticMeshComponent (interned index pool handle table)"
+disposition = "keep: a mesh instance's index range; the scene join reads it per instance"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "builtin_mesh_vertex::handles"
+producers = []
+consumers = ["engine_backend"]
+owner = "helio_component StaticMeshComponent (interned vertex pool handle table)"
+disposition = "keep: a mesh instance's vertex range; the scene join reads it per instance"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "light_sources"
+producers = ["LightSourceRow"]
+consumers = []
+owner = "helio_component::components::light_component::source_row"
+disposition = "keep: a light instance in its own space, derived from LightComponent on every write; the scene join's light input"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "object_hidden"
+producers = ["ObjectHidden"]
+consumers = ["engine_backend"]
+owner = "pulsar_scene_model::components (Visibility's derived row)"
+disposition = "keep: an object's hidden flag; the scene join skips instances of hidden objects"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
+status = "verified"
+
+[[buffer]]
+key = "static_mesh_draw_bounds"
+producers = ["StaticMeshDraw"]
+consumers = []
+owner = "helio_component::components::static_mesh_draw"
+disposition = "keep: a mesh instance's local bounds; the scene join transforms them for culling"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "static_mesh_draw_flags"
+producers = ["StaticMeshDraw"]
+consumers = []
+owner = "helio_component::components::static_mesh_draw"
+disposition = "keep: a mesh instance's object-row flags (movable); static/movable edits reach the draw rows through it"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "static_mesh_draw_sections"
+producers = ["StaticMeshDraw"]
+consumers = []
+owner = "helio_component::components::static_mesh_draw"
+disposition = "keep: one draw section with its resolved material per mesh section; one output object row per pool slot"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "static_mesh_draw_sections::handles"
+producers = []
+consumers = ["engine_backend"]
+owner = "helio_component::components::static_mesh_draw"
+disposition = "keep: a mesh instance's section range in the sections pool"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "world_entity_generations"
+producers = []
+consumers = ["helio-core"]
+owner = "helio renderer (publishes SceneDB's generation mirror under helio_core::ENTITY_GENERATIONS_KEY)"
+disposition = "keep: entity generations; the scene join rejects instances whose recorded owner generation is stale"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/helio-default-graphs/tests/scene_join.rs"
+status = "verified"
+
+[[buffer]]
 key = "component_owners"
 producers = ["ComponentOwner"]
-consumers = []
+consumers = ["engine_backend"]
 owner = "pulsar_scene_model::attachments"
 disposition = "keep: each component instance's owner object and enabled flag as a GPU row (Phase 1, D1), the join a GPU consumer uses from an instance's row to its object; Phase 2 consumes it for render rows"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -1683,12 +1726,12 @@ status = "unverified"
 [[buffer]]
 key = "billboard_instances"
 producers = ["BillboardComponent"]
-consumers = ["helio-pass-billboard"]
-owner = "engine_backend::scene::editor_rows (CPU projection of light icons)"
-disposition = "replace with an editor-only GPU consumer of authored light rows"
+consumers = ["helio-default-graphs", "helio-pass-billboard"]
+owner = "helio-default-graphs scene join (editor mode)"
+disposition = "keep: editor light icons are a GPU output of the join over authored light rows (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: light icon follows an edited light"
-status = "at-risk"
+test = "crates/renderer/helio/crates/helio-default-graphs/tests/scene_join.rs"
+status = "verified"
 
 [[buffer]]
 key = "builtin_mesh_index"
@@ -1813,12 +1856,12 @@ status = "at-risk"
 [[buffer]]
 key = "materials"
 producers = ["MaterialComponent"]
-consumers = ["helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-object-batch", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
-owner = "engine_backend::scene::helio_bridge (CPU projection, default brown material)"
-disposition = "replace: material rows derive from StaticMeshComponent's material slots; the default material is defined once, by the slot's imported surface"
+consumers = ["helio-default-graphs", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-object-batch", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
+owner = "helio-default-graphs scene join (execution output, one row per drawn section)"
+disposition = "keep: material rows come from StaticMeshDraw's resolved slot materials; the default is the slot's imported surface, defined once in helio-component (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: material override reaches gbuffer"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
+status = "verified"
 
 [[buffer]]
 key = "portal_projection_counts"
@@ -1884,11 +1927,11 @@ status = "unverified"
 key = "scene_lights"
 producers = ["LightComponent"]
 consumers = ["helio-default-graphs", "helio-pass-deferred-light", "helio-pass-flare", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-hlfs", "helio-pass-light-cull", "helio-pass-perf-overlay", "helio-pass-radiance-cascades", "helio-pass-shadow-matrix", "helio-pass-transparent", "helio-pass-virtual-geometry", "helio-pass-volumetric-fog"]
-owner = "engine_backend::scene::editor_rows (CPU projection)"
-disposition = "replace: lighting passes join authored LightComponent GPU columns with owner transform/visibility"
+owner = "helio-default-graphs scene join (execution output)"
+disposition = "keep: light rows are joined on the GPU from LightSourceRow and the owner transform/visibility; shadow-matrix assigns atlas slots in them (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "broken"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
+status = "verified"
 
 [[buffer]]
 key = "sectioned_objects"
@@ -1923,12 +1966,12 @@ status = "out-of-scope"
 [[buffer]]
 key = "static_objects"
 producers = ["StaticObjectComponent"]
-consumers = ["helio-pass-object-batch"]
-owner = "engine_backend::scene::helio_bridge (CPU projection)"
-disposition = "replace: draw rows are built on the CPU from authored mesh/transform/visibility; the graph must join authored columns on the GPU"
+consumers = ["helio-default-graphs", "helio-pass-object-batch"]
+owner = "helio-default-graphs scene join (execution output; Helio demos still insert StaticObjectComponent)"
+disposition = "keep: draw rows are joined on the GPU from authored mesh instances, owner transform and visibility each frame the inputs change (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
-status = "broken"
+test = "crates/core/engine_backend/tests/scene_join_rows.rs"
+status = "verified"
 
 [[buffer]]
 key = "sublevel_actors"
@@ -2161,7 +2204,7 @@ reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights
 owner = "helio-default-graphs (mapping); helio-pass-gbuffer (algorithm)"
 disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, materials, scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
 status = "at-risk"
 
 [[pass]]
@@ -2212,7 +2255,7 @@ reads = ["materials", "static_objects"]
 owner = "helio-default-graphs (mapping); helio-pass-object-batch (algorithm)"
 disposition = "consumes materials, static_objects; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
 status = "at-risk"
 
 [[pass]]

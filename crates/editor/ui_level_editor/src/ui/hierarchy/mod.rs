@@ -52,7 +52,8 @@ struct SceneObjectItem {
     is_selected: bool,
     is_folder: bool,
     class_role: ClassRole,
-    /// SceneDB's projected `helio::Movability` (#837); `None` for objects
+    /// The object's authored movability (#837,
+    /// `helio_component::components::object_movability`); `None` for objects
     /// with no mesh or light.
     movability: Option<helio::Movability>,
 }
@@ -370,9 +371,9 @@ impl HierarchyPanel {
                 };
                 let movability = {
                     use engine_backend::scene::SceneWorldExt;
-                    world
-                        .entity_for(&obj.id)
-                        .and_then(|entity| world.get::<helio::Movability>(entity).copied())
+                    world.entity_for(&obj.id).and_then(|entity| {
+                        helio_component::components::object_movability(&world, entity)
+                    })
                 };
                 SceneObjectItem {
                     object: Rc::new(obj),

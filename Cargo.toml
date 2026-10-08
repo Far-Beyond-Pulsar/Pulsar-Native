@@ -143,8 +143,8 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "358ec86e4bac3fe2323baa7af5710c105486d01b", features = ["gpu"] }
-pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "358ec86e4bac3fe2323baa7af5710c105486d01b" }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "999373e1935b191baa1d306af3fb7cee7b661d2f", features = ["gpu"] }
+pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "999373e1935b191baa1d306af3fb7cee7b661d2f" }
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
@@ -178,6 +178,7 @@ agent_provider_cohere              = { path = "crates/agent-providers/agent_prov
 pulsar_physics        = { path = "crates/subsystems/pulsar_physics" }
 helio_component       = { path = "crates/renderer/helio/crates/helio-component" }
 helio-mats            = { path = "crates/renderer/helio/crates/helio-mats" }
+psgc                  = { path = "crates/third-party/psgc/crates/psgc" }
 
 
 # ---------- Editor Crates ----------
@@ -481,10 +482,11 @@ pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/p
 # e74df984b95ffe5235a67653a5b95a07e579df47: component methods,
 # ComponentRef/ComponentHandle, and erased component access.
 #
-# SCENEDB CORRECTIVE PLAN PHASE 1 (Pulsar-Native#1035): 358ec86 on SceneDB
-# branch `claude/cool-hypatia-ict23g` (main + erased insert/remove through the
-# normal write path, generic mirror replay on attach, derived GPU rows). NOT
-# YET MERGED upstream: merge that branch and repin to the merged rev before
-# this lands.
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "358ec86e4bac3fe2323baa7af5710c105486d01b" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "358ec86e4bac3fe2323baa7af5710c105486d01b" }
+# SCENEDB CORRECTIVE PLAN PHASES 1-2 (Pulsar-Native#1035): 999373e on SceneDB
+# branch `claude/cool-hypatia-ict23g-phase-2` (Phase 1's 358ec86 -- erased
+# insert/remove through the normal write path, generic mirror replay on
+# attach, derived GPU rows -- plus several GPU registrations per component).
+# NOT YET MERGED upstream: merge those branches and repin to the merged rev
+# before this lands.
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "999373e1935b191baa1d306af3fb7cee7b661d2f" }
+pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "999373e1935b191baa1d306af3fb7cee7b661d2f" }
