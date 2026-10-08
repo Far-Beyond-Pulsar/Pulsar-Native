@@ -345,14 +345,15 @@ fn rigidbody_add_edit_undo_and_save_are_typed() {
     );
 }
 
-/// Phase 5 (Pulsar-Native#1035): any number of panels watch the same card
-/// through their own cursors. An edit reaches each of them whichever polls
-/// first, a third reader (a script) takes nothing from them, and a history
-/// restore reports every card so each re-reads.
+/// Phase 6 (Pulsar-Native#1035): any number of panels follow the selected
+/// object through their own subscriptions. A light edited through the
+/// panel's write path and a transform moved elsewhere reach each of them
+/// with their new values, and a script's change watch still sees the edit.
 #[test]
-fn every_watcher_sees_an_edit_whichever_polls_first() {
+fn every_panel_feed_receives_edits_with_their_values() {
+    use engine_backend::scene::{SceneWorldExt, Transform};
     use helio_component::components::LightComponent;
-    use pulsar_world_registry::ComponentWatch;
+    use pulsar_world_registry::{ComponentWatch, ObjectFeed, ObjectUpdate};
 
     let mut scene = new_scene();
     let world = &mut scene.world;
@@ -363,36 +364,43 @@ fn every_watcher_sees_an_edit_whichever_polls_first() {
         "LightComponent".into(),
         serde_json::to_value(LightComponent::default()).unwrap(),
     );
-    let card = ("LightComponent".to_string(), 0);
-    let mut panel_a = ComponentWatch::new();
-    let mut panel_b = ComponentWatch::new();
-    let mut script = ComponentWatch::new();
-    for watch in [&mut panel_a, &mut panel_b, &mut script] {
-        assert!(components::watch_component(
-            watch,
-            world,
-            card.clone(),
-            &id,
-            "LightComponent",
-            0
-        ));
-    }
-
+    let entity = world.entity_for(&id).unwrap();
     let instance = components::instance_at(world, &id, 0).unwrap();
-    world
-        .get_mut::<LightComponent>(instance)
-        .unwrap()
-        .intensity
-        .intensity = 42.0;
+    let panel_a = ObjectFeed::subscribe(world, entity, || {}).unwrap();
+    let panel_b = ObjectFeed::subscribe(world, entity, || {}).unwrap();
+    let mut script = ComponentWatch::new();
+    assert!(script.watch_class(world, "light", instance, "LightComponent"));
 
-    assert_eq!(script.poll(world), vec![card.clone()]);
-    assert_eq!(panel_b.poll(world), vec![card.clone()]);
-    assert_eq!(panel_a.poll(world), vec![card.clone()]);
-    assert!(panel_a.poll(world).is_empty());
+    let mut light = LightComponent::default();
+    light.intensity.intensity = 42.0;
+    assert!(components::set_component_value(
+        world,
+        &id,
+        0,
+        pulsar_world_registry::InstanceValue::Value(Box::new(light)),
+    ));
+    world.get_mut::<Transform>(entity).unwrap().position = [1.0, 2.0, 3.0];
 
-    let snapshot = history::capture_history_snapshot(world);
-    objects::clear(world);
-    history::restore_history_snapshot(world, &snapshot).unwrap();
-    assert_eq!(panel_a.poll(world), vec![card.clone()]);
-    assert_eq!(panel_b.poll(world), vec![card]);
+    for feed in [&panel_a, &panel_b] {
+        let updates = feed.take();
+        let intensity = updates.iter().find_map(|u| match u {
+            ObjectUpdate::Changed(d) if d.entity == instance => d
+                .value
+                .as_deref()?
+                .downcast_ref::<LightComponent>()
+                .map(|l| l.intensity.intensity),
+            _ => None,
+        });
+        assert_eq!(intensity, Some(42.0));
+        let position = updates.iter().find_map(|u| match u {
+            ObjectUpdate::Changed(d) if d.entity == entity => d
+                .value
+                .as_deref()?
+                .downcast_ref::<Transform>()
+                .map(|t| t.position),
+            _ => None,
+        });
+        assert_eq!(position, Some([1.0, 2.0, 3.0]));
+    }
+    assert_eq!(script.poll(world), vec!["light"]);
 }

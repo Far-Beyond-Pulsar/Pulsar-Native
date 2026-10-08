@@ -3,8 +3,7 @@
 //!
 //! A script keeps a [`ComponentRefWatch`], watches the [`ComponentRef`]s it
 //! cares about, and polls once per tick. Each watch reads through its own
-//! cursors, so scripts, panels and the renderer never take changes from one
-//! another. Notifications are invalidations: [`ComponentRefWatch::changed`]
+//! cursors, so no script takes changes from another reader. Notifications are invalidations: [`ComponentRefWatch::changed`]
 //! names the refs whose component changed since the last poll (coalesced),
 //! and the script re-reads current state. A watched component that was
 //! removed, or whose actor despawned, reports changed; re-reading it is how

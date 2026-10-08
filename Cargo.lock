@@ -4229,7 +4229,7 @@ dependencies = [
  "log",
  "presser",
  "thiserror 2.0.20",
- "windows 0.54.0",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -9557,7 +9557,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=2ac389ee74ba4573abdbe18812ae2b11a2175115#2ac389ee74ba4573abdbe18812ae2b11a2175115"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=bb7c8aadd37496e1598db3d0f7e604ad92cba4b3#bb7c8aadd37496e1598db3d0f7e604ad92cba4b3"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9573,7 +9573,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=2ac389ee74ba4573abdbe18812ae2b11a2175115#2ac389ee74ba4573abdbe18812ae2b11a2175115"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=bb7c8aadd37496e1598db3d0f7e604ad92cba4b3#bb7c8aadd37496e1598db3d0f7e604ad92cba4b3"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection_codegen",
@@ -11358,7 +11358,7 @@ version = "3.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32824fab5e16e6c4d86dc1ba84489390419a39f97699852b66480bb87d297ed8"
 dependencies = [
- "dirs 5.0.1",
+ "dirs 6.0.0",
 ]
 
 [[package]]

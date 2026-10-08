@@ -151,27 +151,6 @@ pub fn with_world_component<T>(
     Some(f(value))
 }
 
-// ── Change watching (Pulsar-Native#575, Pulsar-Native#1035) ────────────────
-
-/// Watch the live instance at `index` under `key` -- the properties panel's
-/// watch-once-per-card replacement for poll-every-render. Reads only; each
-/// watch has its own cursors, so any number of panels can watch at once.
-/// `false` when there is no such live instance or its class has no World
-/// component. Watch first, then read the current values.
-pub fn watch_component<K: Clone + Eq + std::hash::Hash>(
-    watch: &mut pulsar_world_registry::ComponentWatch<K>,
-    world: &World,
-    key: K,
-    object_id: &str,
-    class_name: &str,
-    index: usize,
-) -> bool {
-    match live_instance(world, object_id, class_name, index) {
-        Some(instance) => watch.watch_class(world, key, instance, class_name),
-        None => false,
-    }
-}
-
 /// Follow-ups to a successful property edit of the instance at `index`.
 /// Choosing a voxel terrain's generator attaches that generator's settings
 /// component when the object has none, so its settings appear at once;

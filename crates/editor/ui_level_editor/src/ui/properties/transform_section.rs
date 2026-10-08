@@ -250,6 +250,30 @@ impl TransformSection {
         }
     }
 
+    /// Show a transform delivered by the object's subscription (a gizmo
+    /// drag, a script, an undo), without reading the scene.
+    pub fn show_transform(
+        &self,
+        transform: &engine_backend::scene::Transform,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let fields = [
+            (&self.position_x, transform.position[0]),
+            (&self.position_y, transform.position[1]),
+            (&self.position_z, transform.position[2]),
+            (&self.rotation_x, transform.rotation[0]),
+            (&self.rotation_y, transform.rotation[1]),
+            (&self.rotation_z, transform.rotation[2]),
+            (&self.scale_x, transform.scale[0]),
+            (&self.scale_y, transform.scale[1]),
+            (&self.scale_z, transform.scale[2]),
+        ];
+        for (field, value) in fields {
+            field.update(cx, |field, cx| field.show(value, window, cx));
+        }
+    }
+
     /// Refresh all fields when scene data changes externally (e.g., from undo/redo or gizmo manipulation)
     pub fn refresh(&self, window: &mut Window, cx: &mut App) {
         // Position

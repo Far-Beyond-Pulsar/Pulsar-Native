@@ -1189,6 +1189,26 @@ target_contract = "Phase 5; 04-state-notifications.md"
 test = "crates/core/pulsar_world_registry/src/change_watch.rs (two_watchers_see_the_same_changes_in_any_read_order, a_replaced_world_resyncs_every_key_once, an_overflowed_journal_resyncs_its_keys); crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs (every_watcher_sees_an_edit_whichever_polls_first)"
 status = "verified"
 
+[[site]]
+pattern = "object-subscribe"
+file = "crates/core/pulsar_world_registry/src/object_feed.rs"
+count = 1
+owner = "core::pulsar_world_registry::object_feed"
+disposition = "keep: ObjectFeed, a view's subscription to one object (SceneDB World::subscribe_object, Phase 6). Each write to the object's components calls back with the full new value, which the feed clones and queues; the view applies it without reading the World. Views only: renderers and bulk readers read the World"
+target_contract = "Phase 6; 04-state-notifications.md"
+test = "crates/core/pulsar_world_registry/src/object_feed.rs (a_transform_written_elsewhere_arrives_with_its_value, a_component_instance_arrives_with_its_full_value, despawn_ends_the_feed_and_unsubscribe_stops_it); SceneDB tests/world_object_subscriptions.rs"
+status = "verified"
+
+[[site]]
+pattern = "object-subscribe"
+file = "crates/editor/ui_level_editor/src/workspace/panels/properties.rs"
+count = 1
+owner = "editor::ui_level_editor::workspace::panels::properties"
+disposition = "keep: the properties panel follows the selected object through an ObjectFeed; delivered transforms, header changes and component values update the sections without polling or re-reading"
+target_contract = "Phase 6; 04-state-notifications.md"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs (every_panel_feed_receives_edits_with_their_values); crates/editor/ui_level_editor/tests/render_acceptance.rs (panel subscribed)"
+status = "verified"
+
 [[schema]]
 type = "CameraPostProcessComponent"
 path = "helio_component::components::camera_post_process_component::CameraPostProcessComponent"

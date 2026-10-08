@@ -611,27 +611,23 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             );
         }
 
-        // ── The properties panel open and polling its watch first ──────────
+        // ── The properties panel subscribed to the mesh object ─────────────
         {
             let mut state = LevelEditorState::new();
             let mut renderer = harness.renderer(&state);
             harness.frames(&mut renderer, || {});
             let id = drop_mesh(&mut state);
-            let mut card = pulsar_world_registry::ComponentWatch::new();
-            assert!(components::watch_component(
-                &mut card,
-                &state.scene.world(),
-                ("StaticMeshComponent".to_string(), 0),
-                &id,
-                "StaticMeshComponent",
-                0,
-            ));
+            let feed = {
+                let mut world = state.scene.world_mut();
+                let entity = world.entity_for(&id).unwrap();
+                pulsar_world_registry::ObjectFeed::subscribe(&mut world, entity, || {}).unwrap()
+            };
             let frame = harness.frames(&mut renderer, || {
-                card.poll(&state.scene.world());
+                feed.take();
             });
             assert_drawn(
-                &format!("[{mode}] editor mesh, panel polling first"),
-                observe("panel_polls", frame),
+                &format!("[{mode}] editor mesh, panel subscribed"),
+                observe("panel_subscribed", frame),
             );
         }
 

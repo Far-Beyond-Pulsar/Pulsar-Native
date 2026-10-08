@@ -49,6 +49,12 @@ pub const SITE_PATTERNS: &[SitePattern] = &[
         meaning: "Arms an entity/component subscription feeding the shared queue",
     },
     SitePattern {
+        id: "object-subscribe",
+        needles: &["subscribe_object", "ObjectFeed::subscribe"],
+        regex: r"\.subscribe_object\s*\(|\bObjectFeed::subscribe\s*\(",
+        meaning: "Subscribes a view to one object's writes, with their values",
+    },
+    SitePattern {
         id: "change-cursor",
         needles: &["open_change_cursor", "read_changes"],
         regex: r"\bopen_change_cursor\b|\bread_changes\s*\(",

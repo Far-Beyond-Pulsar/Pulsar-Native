@@ -85,20 +85,18 @@ pub struct ObjectTypeFieldsSection {
     /// Cards whose cached values are stale and must be re-pulled on the
     /// next render pass.
     pub(super) dirty_classes: HashSet<(String, usize)>,
-    /// This section's change watch over its mounted cards, keyed
-    /// `(class_name, component_index)`. Only the live-typed instance of a
-    /// class is watched. It reads through its own cursors, so other panels,
-    /// scripts and the renderer never take its changes.
-    pub(super) world_watch: pulsar_world_registry::ComponentWatch<(String, usize)>,
+    /// The instance entity behind each mounted live card, so a value the
+    /// object's subscription delivers (`apply_update`) lands on its card.
+    pub(super) card_entities: HashMap<pulsar_scenedb::Entity, (String, usize)>,
     /// Classes with no `World`-registered component id at all (the legacy
     /// JSON-only classes). Permanently un-subscribable until the card set
     /// structurally changes; remembered so the registry lookup isn't paid
     /// every render for a card that can never have a live value.
     pub(super) unsubscribable_classes: HashSet<String>,
-    /// Store generation (`SceneDatabase::subscriptions_epoch`) the watch
-    /// was bound in. Undo/redo rebuilds the whole `World`; the watch reports
-    /// every card once when that happens, but its cards must also be bound
-    /// to the rebuilt world's instance entities, so a mismatch rebinds.
+    /// Store generation (`SceneDatabase::subscriptions_epoch`) the cards
+    /// were bound in. Undo/redo rebuilds the whole `World`, so the cards
+    /// must be bound to the rebuilt world's instance entities; a mismatch
+    /// rebinds.
     pub(super) subs_epoch: u64,
 
     // ── Class instances (#921) ──────────────────────────────────────────────
@@ -183,7 +181,7 @@ impl ObjectTypeFieldsSection {
             cached_component_count: 0,
             world_value_cache: HashMap::new(),
             dirty_classes: HashSet::new(),
-            world_watch: pulsar_world_registry::ComponentWatch::new(),
+            card_entities: HashMap::new(),
             unsubscribable_classes: HashSet::new(),
             subs_epoch: 0, // corrected against the live epoch on first render
             class_registry: None,
@@ -196,11 +194,11 @@ impl ObjectTypeFieldsSection {
         }
     }
 
-    /// Invalidate ALL per-card watch state -- next render re-watches and
-    /// re-pulls everything. For undo/redo's wholesale `World` rebuild and
-    /// structural card-set changes.
+    /// Invalidate ALL per-card state -- next render rebinds and re-pulls
+    /// everything. For undo/redo's wholesale `World` rebuild and structural
+    /// card-set changes.
     fn reset_world_subscription_state(&mut self) {
-        self.world_watch.clear();
+        self.card_entities.clear();
         self.world_value_cache.clear();
         self.dirty_classes.clear();
         self.unsubscribable_classes.clear();
@@ -308,6 +306,52 @@ impl ObjectTypeFieldsSection {
     }
 }
 
+impl ObjectTypeFieldsSection {
+    /// Apply one change the object's subscription delivered. A live card's
+    /// new value replaces its cached values directly; a change to the card
+    /// set (an instance added, removed, reordered or toggled) rebinds.
+    pub fn apply_update(&mut self, delta: &pulsar_world_registry::ObjectDelta, cx: &mut Context<Self>) {
+        use pulsar_scenedb::{component_id, ComponentChangeKind};
+        use engine_backend::scene::attachments::{ComponentAttachments, ComponentMeta, ComponentOwner};
+        let structural = [
+            component_id::<ComponentMeta>(),
+            component_id::<ComponentOwner>(),
+            component_id::<ComponentAttachments>(),
+        ]
+        .contains(&delta.component);
+        match self.card_entities.get(&delta.entity).cloned() {
+            Some(card) if !structural && delta.kind != ComponentChangeKind::Removed => {
+                let Some(value) = delta.value.as_deref() else {
+                    self.dirty_classes.insert(card);
+                    cx.notify();
+                    return;
+                };
+                let Some(entry) = self.property_metadata_cache.get(&card.0).cloned() else {
+                    return;
+                };
+                let Some(class) = pulsar_world_registry::value_engine_class(&card.0, value) else {
+                    return;
+                };
+                let values = entry.properties.iter().map(|prop| (prop.getter)(class)).collect();
+                self.world_value_cache.insert(card.clone(), values);
+                self.dirty_classes.remove(&card);
+                cx.notify();
+            }
+            Some(_) => {
+                self.property_metadata_cache.clear();
+                self.reset_world_subscription_state();
+                cx.notify();
+            }
+            None if structural => {
+                self.property_metadata_cache.clear();
+                self.reset_world_subscription_state();
+                cx.notify();
+            }
+            None => {}
+        }
+    }
+}
+
 impl Render for ObjectTypeFieldsSection {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use super::ComponentHierarchyPanel;
@@ -330,9 +374,9 @@ impl Render for ObjectTypeFieldsSection {
         // entries from removed/renamed components don't persist.
         if structural || count_changed {
             self.property_metadata_cache.clear();
-            // The card set itself changed: every watch/cache entry is
-            // suspect (a removed card must stop being watched; a re-added
-            // one must be watched on its possibly-new entity).
+            // The card set itself changed: every binding/cache entry is
+            // suspect (a removed card's binding must go; a re-added one must
+            // be bound to its possibly-new entity).
             self.reset_world_subscription_state();
         }
 
@@ -388,22 +432,11 @@ impl Render for ObjectTypeFieldsSection {
         // Mark cards dirty from the two signals that can have fired since
         // last render, BEFORE building them:
         //
-        // 1. The section's change watch -- the push signal for every
-        //    World-registered card: real inserts, writes and removals of
-        //    exactly the `(entity, component)` pairs these cards display,
-        //    whether the write came from this panel, an AI tool, a script or
-        //    a renderer-side sync. The watch reads through its own cursors
-        //    under a read lock, so any number of panels can poll.
-        // 2. The legacy JSON change set -- covers the handful of
-        //    not-World-registered classes whose only write path still goes
-        //    through `metadata_db` (they can never fire a World change).
-        if !self.world_watch.is_empty() {
-            let changed = {
-                let world = self.scene_db.read();
-                self.world_watch.poll(&world.world)
-            };
-            self.dirty_classes.extend(changed);
-        }
+        // Live cards are updated by the object's subscription (the panel
+        // forwards each delivered value to `apply_update`), so nothing is
+        // re-read here. The legacy JSON change set below covers the handful
+        // of classes not registered with the World, whose writes go through
+        // `metadata_db`.
         if !property_changes.is_empty() {
             // Legacy JSON-path writes are recorded per (object, class,
             // property) without an instance index -- mark every card of a

@@ -289,6 +289,7 @@ impl<'a> ComponentEventWriter<'a> {
 
 pub mod audit;
 pub mod change_watch;
+pub mod object_feed;
 pub mod dispatch;
 mod engine_class_mut;
 pub mod errors;
@@ -332,6 +333,7 @@ pub use values::{
 // Metadata audit (#645): overload sweep + the deterministic registry
 // snapshot CI golden tests diff against.
 pub use change_watch::ComponentWatch;
+pub use object_feed::{ObjectDelta, ObjectFeed, ObjectUpdate};
 pub use audit::{find_overloaded_methods, metadata_snapshot_json, MetadataAuditError};
 
 use pulsar_reflection::{ComponentRuntimeContext, EngineClass, RuntimeComponentOwner};
@@ -836,8 +838,8 @@ mod tests {
     use std::collections::HashMap;
 
     #[derive(Clone, Debug, PartialEq, Default, serde::Deserialize)]
-    struct TestComponent {
-        value: i32,
+    pub(crate) struct TestComponent {
+        pub(crate) value: i32,
     }
 
     // Minimal hand-written `EngineClass` impl -- in real components this
