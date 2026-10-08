@@ -64,9 +64,15 @@ pub fn stamp_foliage_sets(
             continue;
         };
         let object = instance_object(spec, transform);
-        if !crate::scene_edit::objects::add_object(&mut state.scene.world_mut(), object, Some(parent))
-            .is_empty()
-        {
+        let mut world = state.scene.world_mut();
+        let id = crate::scene_edit::objects::add_object(&mut world, object, Some(parent));
+        if !id.is_empty() {
+            crate::scene_edit::components::add_component_value(
+                &mut world,
+                &id,
+                "StaticMeshComponent",
+                Some(Box::new(StaticMeshComponent::for_mesh_asset(&spec.mesh))),
+            );
             added += 1;
         }
     }
@@ -116,12 +122,8 @@ fn project(api: &TerrainEditApi, hit: &TerrainHit, spec: &InstanceSpec) -> Optio
     })
 }
 
+/// The object for one placed instance; its mesh component is attached next.
 fn instance_object(spec: &InstanceSpec, transform: &PlacedTransform) -> SceneObjectData {
-    let mut component = StaticMeshComponent::default();
-    component.mesh_asset = spec.mesh.clone().into();
-    let data = serde_json::to_value(&component)
-        .expect("StaticMeshComponent always serializes: plain leaves");
-
     SceneObjectData {
         id: String::new(),
         name: file_stem(&spec.mesh),
@@ -137,13 +139,7 @@ fn instance_object(spec: &InstanceSpec, transform: &PlacedTransform) -> SceneObj
         children: Vec::new(),
         scene_path: String::new(),
         props: Default::default(),
-        component_instances: Some(serde_json::json!([
-            {
-                "class_name": "StaticMeshComponent",
-                "enabled": true,
-                "data": data,
-            }
-        ])),
+        component_instances: None,
     }
 }
 
@@ -163,7 +159,7 @@ pub fn set_folder_name(set_name: &str) -> String {
 /// The folder object for `set_name`, created on first use.
 fn ensure_set_folder(state: &mut LevelEditorState, set_name: &str) -> Option<String> {
     let name = set_folder_name(set_name);
-    if let Some(existing) = crate::scene_edit::objects::get_all_objects(&state.scene.world(), )
+    if let Some(existing) = crate::scene_edit::objects::get_all_objects(&state.scene.world())
         .into_iter()
         .find(|o| o.object_type == ObjectType::Folder && o.name == name)
     {
@@ -202,7 +198,7 @@ pub fn erase_foliage(
     erase_density: f32,
     seed: u64,
 ) -> usize {
-    let all = crate::scene_edit::objects::get_all_objects(&state.scene.world(), );
+    let all = crate::scene_edit::objects::get_all_objects(&state.scene.world());
     let folder_ids: std::collections::HashSet<&str> = all
         .iter()
         .filter(|o| o.object_type == ObjectType::Folder && o.name.starts_with(SET_FOLDER_PREFIX))

@@ -47,10 +47,10 @@ world_registered = true
 own_gpu_columns = false
 runtime_behavior = true
 owner = "pulsar_class::component"
-disposition = "non-render: class placement provenance (not offered in Add component); typed defaults and overrides keyed by slot ID"
+disposition = "non-render: class placement provenance (not offered in Add component). Phase 3: slot defaults are typed in a cached ClassTemplate (decoded once per class definition); overrides stay persisted as JSON diffs keyed by slot ID and are applied through reflected setters"
 target_contract = "Phase 3; 05-persistence-and-undo.md"
-test = "none: class place/override/revert without JSON"
-status = "unverified"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/classes.rs instances_are_built_from_the_typed_template"
+status = "verified"
 
 [[class]]
 name = "FoliageComponent"
@@ -124,6 +124,7 @@ disposition = "non-render: native script attachment; typed VM adapters"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
 test = "none: script attach and property access are typed"
 status = "unverified"
+notes = "Phase 3: no runtime consumer exists yet (pulsar_game does not read it); the editor's record builders in core/native_scripts.rs are dead-code helpers at the file boundary. Stays unverified until a consumer lands."
 
 [[class]]
 name = "PhysicsComponent"
@@ -134,8 +135,8 @@ runtime_behavior = true
 owner = "pulsar_physics::components::physics_component"
 disposition = "non-render: physics subsystem data; typed lifecycle only. Its generated GPU companion is unregistered and has no consumer"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: typed add/edit/persist without a renderer"
-status = "unverified"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs physics_world_edits_survive_object_updates_and_save_projection, disabling_and_reenabling_physics_preserves_the_canonical_value"
+status = "verified"
 
 [[class]]
 name = "PortalComponent"
@@ -182,8 +183,8 @@ runtime_behavior = true
 owner = "pulsar_physics::components::rigidbody_component"
 disposition = "non-render: physics subsystem data; typed lifecycle only. Its generated GPU companion is unregistered and has no consumer"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: typed add/edit/persist without a renderer"
-status = "unverified"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs rigidbody_add_edit_undo_and_save_are_typed"
+status = "verified"
 
 [[class]]
 name = "SplineComponent"
@@ -996,10 +997,10 @@ pattern = "record-attach"
 file = "crates/core/engine_backend/src/scene/runtime_level.rs"
 count = 1
 owner = "core::engine_backend::scene::runtime_level"
-disposition = "keep at the level-file boundary: each record is decoded once into a component-instance entity (Phase 1, D1); a registered class whose data does not decode fails the load; Phase 3 adds the versioned archive decode"
+disposition = "keep at the level-file boundary: each record is decoded once into a component-instance entity (Phase 1, D1), after the explicit record migrations (pulsar_class::records, Phase 3: MaterialOverride fold, flat data nested, props.mesh_asset, projected props stripped); a registered class whose data still does not decode fails the load"
 target_contract = "Phase 3; 05-persistence-and-undo.md"
-test = "crates/core/engine_backend/src/scene/runtime_level.rs (registered_component_classes_hydrate_to_typed_values, persisted_component_order_and_enabled_state_are_kept_on_the_instances)"
-status = "unverified"
+test = "crates/core/engine_backend/src/scene/runtime_level.rs a_legacy_flat_light_is_migrated_and_loads"
+status = "verified"
 
 [[site]]
 pattern = "force-resync"
@@ -1036,20 +1037,20 @@ pattern = "json-hydrate"
 file = "crates/core/level_migrate/src/main.rs"
 count = 2
 owner = "core::level_migrate::main"
-disposition = "keep-boundary: offline .level repair tool; must call the Phase 3 archive migrations instead of live hydrate"
+disposition = "keep-boundary: offline .level repair tool. Runs the same load migrations as the editor and runtime (pulsar_class::records via migrate_level_value, with or without a project), then verifies each repaired record by decoding it into a scratch world before writing it"
 target_contract = "Phase 3; 05-persistence-and-undo.md"
-test = "none: typed insert path equivalence"
-status = "unverified"
+test = "crates/core/level_migrate/src/main.rs tests; crates/core/pulsar_class/src/records.rs tests"
+status = "verified"
 
 [[site]]
 pattern = "record-attach"
 file = "crates/core/pulsar_class/src/world.rs"
 count = 1
 owner = "core::pulsar_class::world"
-disposition = "class instantiation attaches prefab component records as instance entities, decoding each once (an unusable payload stays an explicit UnresolvedComponent); Phase 3 keeps typed defaults/overrides internally"
+disposition = "Phase 3: instantiation no longer decodes records; it clones the class template's typed slot values (overrides applied through reflection). attach_components remains only as a record boundary helper (level-load tests)"
 target_contract = "Phase 3; 05-persistence-and-undo.md"
-test = "crates/core/pulsar_class/tests/instances.rs"
-status = "unverified"
+test = "crates/core/pulsar_class/tests/instances.rs; crates/editor/ui_level_editor/src/core/scene_edit/tests/classes.rs"
+status = "verified"
 
 [[site]]
 pattern = "mirror-replay"
@@ -1083,23 +1084,13 @@ status = "verified"
 
 [[site]]
 pattern = "record-attach"
-file = "crates/core/pulsar_script_codegen/src/actor.rs"
-count = 1
-owner = "core::pulsar_script_codegen::actor"
-disposition = "generated actor code attaches absent prefab components as instances from baked JSON defaults; generate typed construction"
-target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: typed insert path equivalence"
-status = "at-risk"
-
-[[site]]
-pattern = "record-attach"
 file = "crates/core/pulsar_world_registry/src/instances.rs"
 count = 3
 owner = "core::pulsar_world_registry::instances"
-disposition = "keep: the one JSON record boundary for component instances (attach_records, replace_records over attach_record); callers are loaders, history and tools"
+disposition = "keep: the JSON record boundary for component instances (attach_records, replace_records over attach_record); callers are level loaders and tools. History, play mode and class building use typed InstanceSnapshot/ClassTemplate values (Phase 3); set_instance_data was removed"
 target_contract = "Phase 3; 05-persistence-and-undo.md"
 test = "crates/core/engine_class_derive/tests/component_instances.rs"
-status = "unverified"
+status = "verified"
 
 [[site]]
 pattern = "destructive-drain"
@@ -1126,40 +1117,40 @@ pattern = "add-component"
 file = "crates/editor/ui_level_editor/src/ai/tools/components.rs"
 count = 1
 owner = "editor::ui_level_editor::ai::tools::components"
-disposition = "keep JSON at the AI tool protocol boundary; decode into a typed command there and return typed errors"
+disposition = "keep JSON at the AI tool protocol boundary: the tool decodes once there and issues a typed AddComponent (Phase 3)"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: typed add produces the same state as a direct insert"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/src/ai/tools/mod.rs tools_edit_an_open_level_undoably"
+status = "verified"
 
 [[site]]
 pattern = "property-edit"
 file = "crates/editor/ui_level_editor/src/ai/tools/components.rs"
 count = 2
 owner = "editor::ui_level_editor::ai::tools::components"
-disposition = "convert to typed reflected patches with intrinsic SceneDB write hooks"
+disposition = "JSON patch at the AI tool boundary, decoded there into a typed SetComponentData (an unresolved instance takes a payload); no JSON in the command layer (Phase 3)"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: mutation-equivalence test"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/src/ai/tools/mod.rs tools_edit_an_open_level_undoably"
+status = "verified"
 
 [[site]]
 pattern = "add-component"
 file = "crates/editor/ui_level_editor/src/core/commands/executor.rs"
-count = 3
+count = 2
 owner = "editor::ui_level_editor::core::commands::executor"
-disposition = "convert to a typed factory and one validated transaction; JSON only at an external boundary"
+disposition = "converted (Phase 3): AddComponent and AddObjectWithComponents carry typed values (class default when none); nothing is decoded in the command layer"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: typed add produces the same state as a direct insert"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/src/core/commands/tests.rs typed_component_commands_are_undoable_and_report_no_ops"
+status = "verified"
 
 [[site]]
 pattern = "property-edit"
 file = "crates/editor/ui_level_editor/src/core/commands/executor.rs"
-count = 8
+count = 5
 owner = "editor::ui_level_editor::core::commands::executor"
-disposition = "convert to typed reflected patches with intrinsic SceneDB write hooks"
+disposition = "converted (Phase 3): SetComponentProperty and SetMovability use typed reflected setters; SetComponentData writes a typed value in place (or an unresolved payload to an unresolved instance); change detection is reported by each edit, no JSON fingerprint"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: mutation-equivalence test"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/src/core/commands/tests.rs"
+status = "verified"
 
 [[site]]
 pattern = "destructive-drain"
@@ -1174,23 +1165,13 @@ status = "at-risk"
 [[site]]
 pattern = "record-attach"
 file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
-count = 3
+count = 2
 owner = "editor::ui_level_editor::core::scene_edit::components"
-disposition = "editor add / restore / data-replace decode a record once into the instance's typed value; an interactive add or data edit that does not decode is refused with nothing written, history and level restore keep unusable payloads as UnresolvedComponent; enable/disable, reorder, parent and duplicate never touch JSON (Phase 1, D1)"
+disposition = "JSON record boundary only: add_component decodes a record once (tests, the HLFS demo builder) and replace_components attaches a level's records at load. Interactive adds, data edits, history and play mode are typed (Phase 3); enable/disable, reorder, parent and duplicate never touch JSON"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md, 05-persistence-and-undo.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
-status = "unverified"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs; crates/editor/ui_level_editor/src/core/commands/tests.rs"
+status = "verified"
 notes = "Phase 0's failure (a failed hydrate kept enabled JSON, so the component looked attached) is gone: the baseline's legacy flat light payload is now refused and nothing is attached."
-
-[[site]]
-pattern = "property-edit"
-file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
-count = 1
-owner = "editor::ui_level_editor::core::scene_edit::components"
-disposition = "convert to typed reflected patches with intrinsic SceneDB write hooks"
-target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: mutation-equivalence test"
-status = "at-risk"
 
 [[site]]
 pattern = "subscribe"
@@ -1205,32 +1186,32 @@ status = "at-risk"
 [[site]]
 pattern = "add-component"
 file = "crates/editor/ui_level_editor/src/core/scene_edit/hlfs_cathedral/mod.rs"
-count = 2
+count = 1
 owner = "editor::ui_level_editor::core::scene_edit::hlfs_cathedral"
-disposition = "generated demo-scene builder; typed writes"
+disposition = "keep-boundary: test-only generator of committed level data. Lights are attached as typed values; the mesh record (with its legacy material override, folded at load) is decoded exactly as the load path decodes it"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: typed add produces the same state as a direct insert"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/hlfs_cathedral/mod.rs tests"
+status = "verified"
 
 [[site]]
 pattern = "add-component"
 file = "crates/editor/ui_level_editor/src/core/splines.rs"
 count = 1
 owner = "editor::ui_level_editor::core::splines"
-disposition = "convert to a typed factory and one validated transaction; JSON only at an external boundary"
+disposition = "converted (Phase 3): AddComponent / AddObjectWithComponents with a typed SplineComponent"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: typed add produces the same state as a direct insert"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/src/core/splines.rs curves_are_scene_objects_and_edits_are_undoable"
+status = "verified"
 
 [[site]]
 pattern = "property-edit"
 file = "crates/editor/ui_level_editor/src/core/splines.rs"
 count = 1
 owner = "editor::ui_level_editor::core::splines"
-disposition = "convert to typed reflected patches with intrinsic SceneDB write hooks"
+disposition = "converted (Phase 3): curves are read and written as typed SplineComponent values (SetComponentData/AddComponent/AddObjectWithComponents); the legacy JSON prop is only read"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: mutation-equivalence test"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/src/core/splines.rs curves_are_scene_objects_and_edits_are_undoable"
+status = "verified"
 
 [[site]]
 pattern = "force-resync"
@@ -1255,12 +1236,12 @@ status = "at-risk"
 [[site]]
 pattern = "add-component"
 file = "crates/editor/ui_level_editor/src/ui/properties/object_type_fields/mod.rs"
-count = 2
+count = 1
 owner = "editor::ui_level_editor::ui::properties::object_type_fields"
-disposition = "properties-panel Add component: builds a flat JSON map from a default instance; insert the typed instance directly"
-target_contract = "Phase 2; 02-typed-reflection-and-writes.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
-status = "broken"
+disposition = "converted (Phase 3): Add Component issues AddComponent with the class default (one undo step); the flat JSON map is gone"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (panel add)"
+status = "verified"
 
 [[site]]
 pattern = "panel-drain"
@@ -1282,16 +1263,6 @@ disposition = "remove as a rendering prerequisite; observer subscriptions move t
 target_contract = "Phase 2 (render rows), Phase 5 (observers); 04-state-notifications.md"
 test = "none: rendering with zero subscribers"
 status = "at-risk"
-
-[[site]]
-pattern = "add-component"
-file = "crates/editor/ui_level_editor/src/ui/viewport/helio_viewport/assets.rs"
-count = 1
-owner = "editor::ui_level_editor::ui::viewport::helio_viewport::assets"
-disposition = "viewport asset drop: AddObject plus a JSON add_component outside the undo command; make one typed transaction"
-target_contract = "Phase 2; 02-typed-reflection-and-writes.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
-status = "broken"
 
 [[site]]
 pattern = "pending-world-writes"

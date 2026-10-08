@@ -13,14 +13,16 @@
 //! value is attached only when the caller asks for that explicitly
 //! ([`attach_record_or_unresolved`]), as an [`UnresolvedComponent`].
 //!
-//! JSON appears only in [`ComponentRecord`] conversions, for files, history
-//! snapshots and external tools.
+//! JSON appears only in [`ComponentRecord`] conversions, for files and
+//! external tools. Undo history and play mode use typed
+//! [`InstanceSnapshot`]s.
 
 use std::any::Any;
 
 use pulsar_reflection::EngineClass;
 use pulsar_scene_model::attachments::{
-    self, ComponentInstanceId, ComponentMeta, InstanceError, NewInstance, UnresolvedComponent,
+    self, ComponentAttachments, ComponentInstanceId, ComponentMeta, InstanceError, NewInstance,
+    UnresolvedComponent,
 };
 use pulsar_scene_model::{ClassSlot, ComponentInstance as ComponentRecord, Transform};
 use pulsar_scenedb::{Entity, World};
@@ -105,6 +107,46 @@ pub fn attach_value<T: EngineClass>(
         owner,
         NewInstance::new(T::class_name()),
         ComponentPayload::Value(Box::new(value)),
+    )
+}
+
+/// A class's default value decoded once, for generated actor code that
+/// attaches the same prefab component to every actor it spawns
+/// ([`attach_cached_default`]).
+pub type DefaultCache = std::sync::OnceLock<Result<Box<dyn Any + Send + Sync>, String>>;
+
+/// Attach a new instance of `class_name` to `owner` holding a clone of the
+/// default `json` describes, decoded once into `cache` (the first call) and
+/// cloned for every later one. Refused like [`attach_component`] for an
+/// unregistered class or data that does not decode.
+pub fn attach_cached_default(
+    world: &mut World,
+    owner: Entity,
+    class_name: &str,
+    json: &str,
+    cache: &DefaultCache,
+) -> Result<Entity, AttachError> {
+    let decoded = cache.get_or_init(|| {
+        let data =
+            serde_json::from_str::<Value>(json).unwrap_or_else(|_| Value::Object(Map::new()));
+        match crate::find(class_name) {
+            Some(registration) => (registration.decode)(&data),
+            None => Err(format!(
+                "`{class_name}` is not a registered component class"
+            )),
+        }
+    });
+    let default = decoded.as_ref().map_err(|error| AttachError::Decode {
+        class: class_name.to_string(),
+        error: error.clone(),
+    })?;
+    let value = crate::values::clone_value(class_name, default.as_ref())
+        .ok_or_else(|| AttachError::UnknownClass(class_name.to_string()))?;
+    attach_component(
+        world,
+        owner,
+        NewInstance::new(class_name),
+        ComponentPayload::Value(value),
     )
 }
 
@@ -208,7 +250,222 @@ pub fn duplicate_instances(
     Ok(copies)
 }
 
-// ── Records (file, history and tool boundaries) ───────────────────────────
+// ── Typed snapshots (undo history, play mode) ─────────────────────────────
+
+/// A typed copy of one attached instance: its metadata, enabled flag and a
+/// clone of its value (or its unresolved payload). Taken and restored
+/// without encoding or decoding anything.
+pub struct InstanceSnapshot {
+    pub meta: ComponentMeta,
+    pub enabled: bool,
+    pub value: InstanceValue,
+}
+
+/// What an [`InstanceSnapshot`] holds for the instance's class.
+pub enum InstanceValue {
+    /// A clone of the live typed value.
+    Value(Box<dyn Any + Send + Sync>),
+    /// The payload of an unresolved instance, as kept.
+    Unresolved(UnresolvedComponent),
+}
+
+impl InstanceValue {
+    fn clone_for(&self, class_name: &str) -> Option<Self> {
+        Some(match self {
+            Self::Value(value) => {
+                let registration = crate::find(class_name)?;
+                Self::Value((registration.clone_value)(value.as_ref())?)
+            }
+            Self::Unresolved(unresolved) => Self::Unresolved(unresolved.clone()),
+        })
+    }
+}
+
+impl Clone for InstanceSnapshot {
+    /// Clones the value through its class's registration. A value whose
+    /// class cannot clone it (not possible for a value taken by
+    /// [`snapshot_instance`]) is kept as an unresolved instance that says so.
+    fn clone(&self) -> Self {
+        let value = self
+            .value
+            .clone_for(&self.meta.class_name)
+            .unwrap_or_else(|| {
+                InstanceValue::Unresolved(UnresolvedComponent {
+                    data: Value::Null,
+                    reason: format!("`{}` value could not be cloned", self.meta.class_name),
+                })
+            });
+        Self {
+            meta: self.meta.clone(),
+            enabled: self.enabled,
+            value,
+        }
+    }
+}
+
+impl std::fmt::Debug for InstanceSnapshot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InstanceSnapshot")
+            .field("meta", &self.meta)
+            .field("enabled", &self.enabled)
+            .field(
+                "value",
+                &match &self.value {
+                    InstanceValue::Value(_) => "typed value",
+                    InstanceValue::Unresolved(_) => "unresolved payload",
+                },
+            )
+            .finish()
+    }
+}
+
+/// A typed snapshot of `instance`, or `None` if it is not an attached
+/// instance (or its registered value is missing).
+pub fn snapshot_instance(world: &World, instance: Entity) -> Option<InstanceSnapshot> {
+    let meta = attachments::meta(world, instance)?.clone();
+    let value = match world.get::<UnresolvedComponent>(instance) {
+        Some(unresolved) => InstanceValue::Unresolved(unresolved.clone()),
+        None => InstanceValue::Value(clone_instance_value(world, instance)?),
+    };
+    Some(InstanceSnapshot {
+        enabled: attachments::is_enabled(world, instance),
+        meta,
+        value,
+    })
+}
+
+/// Typed snapshots of all of `owner`'s instances, in order.
+pub fn snapshot_instances(world: &World, owner: Entity) -> Vec<InstanceSnapshot> {
+    attachments::instances(world, owner)
+        .into_iter()
+        .filter_map(|instance| snapshot_instance(world, instance))
+        .collect()
+}
+
+/// Make `owner`'s instances equal `snapshots`, in place: an instance whose
+/// id is in the snapshot keeps its entity and gets the snapshot's value (a
+/// clone, through the class's insert, so every write hook runs), enabled
+/// flag, slot and parent; instances not in the snapshot are detached;
+/// missing ones are attached with their snapshot id; the list takes the
+/// snapshot's order. Nothing is decoded. Returns the instance entities in
+/// snapshot order.
+///
+/// An instance id held by another object is refused before anything is
+/// written ([`InstanceError::DuplicateId`]).
+pub fn restore_instances(
+    world: &mut World,
+    owner: Entity,
+    snapshots: &[InstanceSnapshot],
+) -> Result<Vec<Entity>, AttachError> {
+    if !world.is_alive(owner) {
+        return Err(InstanceError::DeadOwner(owner).into());
+    }
+    for snapshot in snapshots {
+        let elsewhere = attachments::instance_by_id(world, snapshot.meta.id)
+            .is_some_and(|entity| attachments::owner_of(world, entity) != Some(owner));
+        if elsewhere {
+            return Err(InstanceError::DuplicateId(snapshot.meta.id).into());
+        }
+    }
+
+    // Detach what the snapshot does not hold, or holds as another class.
+    for instance in attachments::instances(world, owner) {
+        let keep = attachments::meta(world, instance).is_some_and(|meta| {
+            snapshots
+                .iter()
+                .any(|s| s.meta.id == meta.id && s.meta.class_name == meta.class_name)
+        });
+        if !keep {
+            attachments::detach(world, instance);
+        }
+    }
+
+    let mut restored = Vec::with_capacity(snapshots.len());
+    for snapshot in snapshots {
+        let class = snapshot.meta.class_name.as_str();
+        let Some(value) = snapshot.value.clone_for(class) else {
+            return Err(AttachError::UnknownClass(class.to_string()));
+        };
+        let instance = match attachments::instance_by_id(world, snapshot.meta.id) {
+            Some(instance) => {
+                set_instance_value(world, instance, value)?;
+                attachments::set_enabled(world, instance, snapshot.enabled);
+                if let Some(mut meta) = world.get::<ComponentMeta>(instance).cloned() {
+                    if meta.class_slot != snapshot.meta.class_slot {
+                        meta.class_slot = snapshot.meta.class_slot.clone();
+                        world.insert(instance, meta);
+                    }
+                }
+                instance
+            }
+            None => {
+                let spec = NewInstance {
+                    id: snapshot.meta.id,
+                    class_name: class.to_string(),
+                    enabled: snapshot.enabled,
+                    parent: None,
+                    class_slot: snapshot.meta.class_slot.clone(),
+                    index: None,
+                };
+                match value {
+                    InstanceValue::Value(value) => {
+                        attach_component(world, owner, spec, ComponentPayload::Value(value))?
+                    }
+                    InstanceValue::Unresolved(unresolved) => {
+                        attach_unresolved(world, owner, spec, unresolved.data, unresolved.reason)?
+                    }
+                }
+            }
+        };
+        restored.push(instance);
+    }
+
+    if attachments::instances(world, owner) != restored {
+        world.insert(owner, ComponentAttachments(restored.clone()));
+    }
+    // Parents last: every instance they may name is attached now.
+    for (snapshot, &instance) in snapshots.iter().zip(&restored) {
+        let current = attachments::meta(world, instance).and_then(|meta| meta.parent);
+        if current != snapshot.meta.parent {
+            attachments::set_parent(world, instance, snapshot.meta.parent);
+        }
+    }
+    Ok(restored)
+}
+
+/// Replace the attached `instance`'s value: a typed value of its class
+/// (written through the class's insert, so every write hook runs; an
+/// unresolved instance becomes live) or an unresolved payload (the typed
+/// value, if any, is removed). Nothing is decoded; a value of another class
+/// is refused before anything is written.
+pub fn set_instance_value(
+    world: &mut World,
+    instance: Entity,
+    value: InstanceValue,
+) -> Result<(), AttachError> {
+    let Some(class) = attachments::meta(world, instance).map(|meta| meta.class_name.clone()) else {
+        return Err(AttachError::Instance(InstanceError::DeadOwner(instance)));
+    };
+    match value {
+        InstanceValue::Value(value) => {
+            insert_world_component_value(&class, world, instance, value)?;
+            if world.get::<UnresolvedComponent>(instance).is_some() {
+                world.remove::<UnresolvedComponent>(instance);
+            }
+        }
+        InstanceValue::Unresolved(unresolved) => {
+            if let Some(registration) = crate::find(&class) {
+                (registration.remove)(world, instance);
+            }
+            if world.get::<UnresolvedComponent>(instance) != Some(&unresolved) {
+                world.insert(instance, unresolved);
+            }
+        }
+    }
+    Ok(())
+}
+
+// ── Records (file and tool boundaries) ───────────────────────────
 
 /// The record of `instance`: its class, id, enabled flag and data -- the
 /// live value encoded once here, or the unresolved payload as kept -- with
@@ -298,36 +555,6 @@ fn records_with(
             record(world, *instance, parent_index)
         })
         .collect()
-}
-
-/// Replace `instance`'s value with `data` (a record's data; its metadata
-/// keys are ignored): decoded once here for a registered class, which also
-/// resolves an instance that was unresolved; kept as the payload of an
-/// unresolved instance of a class this build does not register. Nothing is
-/// written when the data does not decode.
-pub fn set_instance_data(
-    world: &mut World,
-    instance: Entity,
-    data: &Value,
-) -> Result<(), AttachError> {
-    let Some(class) = attachments::meta(world, instance).map(|meta| meta.class_name.clone()) else {
-        return Err(AttachError::Instance(InstanceError::DeadOwner(instance)));
-    };
-    let body = split_record(data).body;
-    let Some(registration) = crate::find(&class) else {
-        if let Some(mut unresolved) = world.get_mut::<UnresolvedComponent>(instance) {
-            unresolved.data = body;
-            return Ok(());
-        }
-        return Err(AttachError::UnknownClass(class));
-    };
-    let value = (registration.decode)(&body).map_err(|error| AttachError::Decode {
-        class: class.clone(),
-        error,
-    })?;
-    insert_world_component_value(&class, world, instance, value)?;
-    world.remove::<UnresolvedComponent>(instance);
-    Ok(())
 }
 
 /// Split a record's data into the class's own data and its metadata.

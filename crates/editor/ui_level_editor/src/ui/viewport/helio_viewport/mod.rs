@@ -17,10 +17,10 @@ use plugin_editor_api::{AssetKind, AssetPayload};
 use rust_i18n::t;
 use ui::{notification::Notification, ActiveTheme as _, ContextModal};
 
-use crate::commands::{execute_command, SceneCommand};
+use crate::commands::{execute_command, SceneCommand, TypedComponent};
 use crate::scene_edit::{MeshType, ObjectType, SceneObjectData, Transform};
 use crate::state::LevelEditorState;
-use helio_component::asset_component::component_class_for_asset;
+use helio_component::asset_component::component_for_asset;
 use pulsar_reflection::REGISTRY;
 
 /// A GPUI component that drives the Helio renderer into a `WgpuSurfaceHandle`.

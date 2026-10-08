@@ -14,9 +14,8 @@
 use engine_backend::scene::ComponentInstance;
 use engine_backend::scene::SharedScene;
 use gpui::{prelude::*, *};
-use pulsar_reflection::{PropertyMetadata, REGISTRY, RUNTIME_TYPE_REGISTRY};
+use pulsar_reflection::{PropertyMetadata, REGISTRY};
 use pulsar_scenedb::SubscriptionId;
-use serde_json::Value;
 use std::any::Any;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -160,13 +159,12 @@ impl ObjectTypeFieldsSection {
                 .with_icon_getter(|_| ui::IconName::Component)
         });
 
-        let scene_db_for_add = scene_db.clone();
         let object_id_for_add = object_id.clone();
         cx.subscribe(
             &component_list,
-            move |_this, _, event: &SearchableListEvent<String>, cx| {
+            move |this, _, event: &SearchableListEvent<String>, cx| {
                 if let SearchableListEvent::Select(class_name) = event {
-                    Self::add_component(&scene_db_for_add, &object_id_for_add, class_name, cx);
+                    Self::add_component(&this.state_arc, &object_id_for_add, class_name);
                     cx.notify();
                 }
             },
@@ -264,56 +262,27 @@ impl ObjectTypeFieldsSection {
         );
     }
 
+    /// Add Component: the class default, attached through the command
+    /// layer so it is one undo step. A class this build cannot attach to a
+    /// scene object (a plugin-only class) is refused there.
     fn add_component(
-        scene_db: &SharedScene,
-        object_id: &String,
+        state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
+        object_id: &str,
         class_name: &str,
-        _cx: &mut Context<Self>,
     ) {
-        let class_name = class_name.to_string();
-        if REGISTRY.has_class(&class_name) {
-            if let Some(mut instance) = REGISTRY.create_instance(&class_name) {
-                let props = instance.get_properties();
-                let mut map = serde_json::Map::new();
-                for prop in &props {
-                    let v = (prop.getter)(instance.as_ref());
-                    let json_value = RUNTIME_TYPE_REGISTRY
-                        .serialize_json_for_any(v.as_ref())
-                        .unwrap_or(serde_json::json!(null));
-                    map.insert(prop.name.to_string(), json_value);
-                }
-                {
-                    let mut world = scene_db.write();
-                    crate::scene_edit::components::add_component(
-                        &mut world.world,
-                        object_id,
-                        class_name,
-                        Value::Object(map),
-                    );
-                }
-            }
-        } else if let Some(instance) = engine_backend::EngineBackend::global().and_then(|b| {
-            let guard = b.read();
-            guard.plugin_components().create_instance(&class_name)
-        }) {
-            let props = instance.get_properties();
-            let mut map = serde_json::Map::new();
-            for prop in &props {
-                let v = (prop.getter)(instance.as_ref());
-                let json_value = RUNTIME_TYPE_REGISTRY
-                    .serialize_json_for_any(v.as_ref())
-                    .unwrap_or(serde_json::json!(null));
-                map.insert(prop.name.to_string(), json_value);
-            }
-            {
-                let mut world = scene_db.write();
-                crate::scene_edit::components::add_component(
-                    &mut world.world,
-                    object_id,
-                    class_name,
-                    Value::Object(map),
-                );
-            }
+        let result = crate::commands::execute_command(
+            &mut state_arc.write(),
+            crate::commands::SceneCommand::AddComponent {
+                id: object_id.to_string(),
+                class_name: class_name.to_string(),
+                value: None,
+            },
+        );
+        if !result.changed {
+            tracing::warn!(
+                "Could not add {class_name} to '{object_id}': {}",
+                result.no_op_reason
+            );
         }
     }
 
@@ -431,7 +400,7 @@ impl Render for ObjectTypeFieldsSection {
         };
 
         let component_hierarchy =
-            ComponentHierarchyPanel::new(self.object_id.clone(), self.scene_db.clone());
+            ComponentHierarchyPanel::new(self.object_id.clone());
         let state = self.state_arc.read();
         let component_panel = component_hierarchy
             .render(&attached, &state, self.state_arc.clone(), add_popover, cx)

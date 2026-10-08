@@ -8,9 +8,11 @@
 //!   child object. A child whose prefab parent (`__parent_index`) is also a
 //!   child is nested under it.
 //!
-//! Every planned component carries its slot id as `__slot_id` metadata in
-//! its component record. The editor needs it to save per-slot overrides;
-//! placement resolves it into handles ([`crate::world::ClassPlacement`]).
+//! Every planned component carries its slot id, recorded as typed
+//! provenance on the component instance it becomes. The editor needs it to
+//! save per-slot overrides; placement resolves it into handles
+//! ([`crate::world::ClassPlacement`]). Values come from the class's
+//! [`crate::template::ClassTemplate`], not from here.
 
 use std::collections::HashSet;
 
@@ -18,9 +20,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::component::ClassInstance;
-use crate::overrides::{apply, normalize_component_data, split_meta};
+use crate::overrides::split_meta;
 use crate::registry::ClassDefinition;
-use crate::{PARENT_INDEX_KEY, REMOVED_KEY, SLOT_ID_KEY, TRANSFORM_KEY};
+use crate::{PARENT_INDEX_KEY, REMOVED_KEY, TRANSFORM_KEY};
 
 /// A component's local transform relative to the instance root.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -58,16 +60,15 @@ impl LocalTransform {
     }
 }
 
-/// One component to create.
+/// One component to create: the slot's class default (from the class's
+/// [`crate::template::ClassTemplate`]) with `overrides` applied.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PlannedComponent {
     pub slot_id: String,
     pub class_name: String,
     pub enabled: bool,
-    /// Class default with the instance's override applied, normalized to the
-    /// component's serialized shape, plus `__slot_id` (and `__transform` for
-    /// child components) metadata.
-    pub data: Value,
+    /// The instance's override diff for this slot, if any.
+    pub overrides: Option<Value>,
 }
 
 /// A component placed on its own child object.
@@ -113,11 +114,12 @@ pub fn is_removed_override(value: &Value) -> bool {
     value.get(REMOVED_KEY).and_then(Value::as_bool) == Some(true)
 }
 
-/// Slot defaults of `def` (no overrides applied), normalized, without metadata.
+/// Slot defaults of `def` (no overrides applied), normalized, without
+/// metadata: the cached template's, what override diffs are taken against.
 pub fn slot_default(def: &ClassDefinition, slot_id: &str) -> Option<Value> {
-    let component = def.prefab.slot(slot_id)?;
-    let normalized = normalize_component_data(&component.class_name, &component.data);
-    Some(split_meta(&normalized).1)
+    crate::template::template(def)
+        .slot(slot_id)
+        .map(|slot| slot.default_data.clone())
 }
 
 /// Rewrite `instance`'s override keys that name a replaced slot id to the
@@ -179,11 +181,6 @@ pub fn plan_instance(def: &ClassDefinition, instance: &ClassInstance) -> Instanc
         }
 
         let (meta, _) = split_meta(&component.data);
-        let normalized = normalize_component_data(&component.class_name, &component.data);
-        let (_, mut data) = split_meta(&normalized);
-        if let Some(patch) = override_value {
-            apply(&mut data, patch);
-        }
 
         let transform = meta
             .get(TRANSFORM_KEY)
@@ -205,21 +202,15 @@ pub fn plan_instance(def: &ClassDefinition, instance: &ClassInstance) -> Instanc
             || parent_child_slot.is_some()
             || root_classes.contains(&component.class_name);
 
-        if let Some(map) = data.as_object_mut() {
-            map.insert(SLOT_ID_KEY.into(), Value::String(slot_id.clone()));
-        }
-
+        let overrides = override_value.cloned();
         if is_child {
             let local = transform.unwrap_or_default();
-            if let Some(map) = data.as_object_mut() {
-                map.insert(TRANSFORM_KEY.into(), local.to_value());
-            }
             plan.children.push(PlannedChild {
                 component: PlannedComponent {
                     slot_id: slot_id.clone(),
                     class_name: component.class_name.clone(),
                     enabled: component.enabled,
-                    data,
+                    overrides,
                 },
                 parent_slot: parent_child_slot,
                 local,
@@ -231,7 +222,7 @@ pub fn plan_instance(def: &ClassDefinition, instance: &ClassInstance) -> Instanc
                 slot_id,
                 class_name: component.class_name.clone(),
                 enabled: component.enabled,
-                data,
+                overrides,
             });
             child_slot_of_index.push(None);
         }
@@ -293,7 +284,6 @@ mod tests {
             [("A_1", None), ("C_0", None), ("D_0", Some("C_0"))]
         );
         assert_eq!(plan.children[1].local.position, [1.0, 0.0, 0.0]);
-        assert_eq!(plan.root[0].data["__slot_id"], "A_0");
     }
 
     #[test]
@@ -311,10 +301,16 @@ mod tests {
             .insert("B_0".into(), json!({"__removed": true}));
         let plan = plan_instance(&def, &instance);
         assert_eq!(plan.root.len(), 1);
-        assert_eq!(
-            plan.root[0].data,
-            json!({"v": 1, "w": 9, "__slot_id": "A_0"})
-        );
+        assert_eq!(plan.root[0].overrides, Some(json!({"w": 9})));
+        // The template applies it to the slot default.
+        match crate::template::ClassTemplate::build(def.clone())
+            .slot_value("A_0", plan.root[0].overrides.as_ref())
+        {
+            Some(pulsar_world_registry::InstanceValue::Unresolved(unresolved)) => {
+                assert_eq!(unresolved.data, json!({"v": 1, "w": 9}))
+            }
+            _ => panic!("`A` is not registered: an unresolved payload"),
+        }
         assert_eq!(plan.removed, ["B_0"]);
     }
 
@@ -336,7 +332,10 @@ mod tests {
         // Unknown keys are kept, not dropped.
         assert_eq!(instance.component_overrides["Gone_9"], json!({"v": 7}));
         // And the override now applies.
-        assert_eq!(plan_instance(&def, &instance).root[0].data["v"], 5);
+        assert_eq!(
+            plan_instance(&def, &instance).root[0].overrides,
+            Some(json!({"v": 5}))
+        );
         // Idempotent.
         assert!(!migrate_slot_keys(&def, &mut instance));
     }

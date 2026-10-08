@@ -22,14 +22,15 @@ use crate::errors::ScriptRefError;
 use crate::refs::ComponentRef;
 
 impl ComponentRef {
-    /// Read one property of the referenced component instance as JSON.
+    /// Read one property of the referenced component instance, typed (as
+    /// the property's getter returns it).
     pub fn get_property(
         &self,
         world: &World,
         property: &str,
-    ) -> Result<serde_json::Value, ScriptRefError> {
+    ) -> Result<Box<dyn std::any::Any>, ScriptRefError> {
         self.validate(world)?;
-        pulsar_world_registry::get_component_property(
+        pulsar_world_registry::get_component_property_boxed(
             world,
             self.entity,
             &self.class_name,
@@ -38,17 +39,17 @@ impl ComponentRef {
         )
     }
 
-    /// Write one property of the referenced component instance from JSON.
-    /// The value is checked against the property's type first; nothing is
-    /// written on failure.
+    /// Write one property of the referenced component instance from a
+    /// typed value. Its type is checked against the property's first;
+    /// nothing is written on failure.
     pub fn set_property(
         &self,
         world: &mut World,
         property: &str,
-        value: serde_json::Value,
+        value: Box<dyn std::any::Any>,
     ) -> Result<(), ScriptRefError> {
         self.validate(world)?;
-        pulsar_world_registry::set_component_property(
+        pulsar_world_registry::set_component_property_boxed(
             world,
             self.entity,
             &self.class_name,
@@ -108,21 +109,29 @@ mod tests {
         let chest_ref = ComponentRef::live(actor(chest), "TestGizmo");
 
         door_ref
-            .set_property(&mut world, "charges", serde_json::json!(11))
+            .set_property(&mut world, "charges", Box::new(11))
             .unwrap();
         chest_ref
-            .set_property(&mut world, "charges", serde_json::json!(22))
+            .set_property(&mut world, "charges", Box::new(22))
             .unwrap();
 
         assert_eq!(world.get::<TestGizmo>(door).unwrap().charges, 11);
         assert_eq!(world.get::<TestGizmo>(chest).unwrap().charges, 22);
         assert_eq!(
-            door_ref.get_property(&world, "charges").unwrap(),
-            serde_json::json!(11)
+            door_ref
+                .get_property(&world, "charges")
+                .unwrap()
+                .downcast_ref::<i32>()
+                .copied(),
+            Some(11)
         );
         assert_eq!(
-            chest_ref.get_property(&world, "charges").unwrap(),
-            serde_json::json!(22)
+            chest_ref
+                .get_property(&world, "charges")
+                .unwrap()
+                .downcast_ref::<i32>()
+                .copied(),
+            Some(22)
         );
     }
 
@@ -139,7 +148,7 @@ mod tests {
         let successor = world.spawn(); // may inherit `victim`'s recycled slot
         world.insert(successor, TestGizmo { charges: 99 });
 
-        let result = stale.set_property(&mut world, "charges", serde_json::json!(0));
+        let result = stale.set_property(&mut world, "charges", Box::new(0));
         assert!(
             matches!(result, Err(ScriptRefError::ReferenceDespawned { .. })),
             "stale ref must be refused, got {result:?}"
@@ -161,8 +170,7 @@ mod tests {
         let r = ComponentRef::live(actor(e), "TestGizmo");
         let sub = crate::subscribe::subscribe_component(&mut world, &r).unwrap();
 
-        r.set_property(&mut world, "charges", serde_json::json!(5))
-            .unwrap();
+        r.set_property(&mut world, "charges", Box::new(5)).unwrap();
 
         let events = crate::subscribe::take_change_events_for(&mut world, sub);
         assert_eq!(events.len(), 1);
@@ -196,15 +204,21 @@ mod tests {
         assert_eq!(dup.instance(&world), Some(second));
 
         assert_eq!(
-            live.get_property(&world, "charges").unwrap(),
-            serde_json::json!(100)
+            live.get_property(&world, "charges")
+                .unwrap()
+                .downcast_ref::<i32>()
+                .copied(),
+            Some(100)
         );
         assert_eq!(
-            dup.get_property(&world, "charges").unwrap(),
-            serde_json::json!(200)
+            dup.get_property(&world, "charges")
+                .unwrap()
+                .downcast_ref::<i32>()
+                .copied(),
+            Some(200)
         );
 
-        dup.set_property(&mut world, "charges", serde_json::json!(222))
+        dup.set_property(&mut world, "charges", Box::new(222))
             .unwrap();
         assert_eq!(world.get::<TestGizmo>(second).unwrap().charges, 222);
         assert_eq!(
@@ -274,19 +288,19 @@ mod tests {
         assert_eq!(world.get::<TestGizmo>(e).unwrap().charges, 10);
     }
 
-    /// Wrong JSON type for a property is a typed Marshalling error, and
+    /// A value of the wrong type for a property is a typed error, and
     /// nothing is written on failure.
     #[test]
-    fn wrong_value_type_is_a_marshalling_error_and_writes_nothing() {
+    fn wrong_value_type_is_an_argument_type_error_and_writes_nothing() {
         let mut world = World::new();
         let e = world.spawn();
         world.insert(e, TestGizmo { charges: 1 });
         let r = ComponentRef::live(actor(e), "TestGizmo");
 
         let err = r
-            .set_property(&mut world, "charges", serde_json::json!("nope"))
+            .set_property(&mut world, "charges", Box::new("nope"))
             .unwrap_err();
-        assert!(matches!(err, ScriptRefError::Marshalling { .. }));
+        assert!(matches!(err, ScriptRefError::ArgumentType { .. }));
         assert_eq!(world.get::<TestGizmo>(e).unwrap().charges, 1);
     }
 }

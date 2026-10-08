@@ -12,7 +12,7 @@ mod executor;
 mod types;
 
 pub use executor::execute_command;
-pub use types::{CommandResult, SceneCommand};
+pub use types::{CommandResult, ComponentData, SceneCommand, TypedComponent};
 
 #[cfg(test)]
 mod tests;

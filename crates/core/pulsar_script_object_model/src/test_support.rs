@@ -151,6 +151,8 @@ pulsar_world_registry::inventory::submit! {
         default_value: pulsar_world_registry::values::erased::default_value::<TestGizmo>,
         decode: pulsar_world_registry::values::erased::decode_json::<TestGizmo>,
         clone_value: pulsar_world_registry::values::erased::clone_value::<TestGizmo>,
+        value_as_engine_class: pulsar_world_registry::values::erased::as_engine_class::<TestGizmo>,
+        value_as_engine_class_mut: pulsar_world_registry::values::erased::as_engine_class_mut::<TestGizmo>,
         register_erased: pulsar_scenedb::register_component::<TestGizmo>,
         remove: test_gizmo_remove,
         dispatch: test_gizmo_dispatch,

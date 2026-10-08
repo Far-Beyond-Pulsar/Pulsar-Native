@@ -578,26 +578,35 @@ pub fn class_root_of(world: &World, id: &str) -> Option<Entity> {
     }
 }
 
-/// Class default of one component built from a class slot.
+/// Class default of one component built from a class slot, read from the
+/// class's cached template (decoded once per class definition).
 pub struct SlotDefault {
     pub slot_id: String,
     pub class_name: String,
-    /// The slot's default data, normalized to the component's shape.
-    pub data: Value,
-    /// The default as a reflected instance, for per-property reads.
-    pub instance: Option<Box<dyn pulsar_reflection::EngineClass>>,
+    template: std::sync::Arc<pulsar_class::ClassTemplate>,
 }
 
 impl SlotDefault {
+    /// The slot's default data, normalized to the component's shape (what
+    /// override diffs are taken against).
+    pub fn data(&self) -> Value {
+        self.template
+            .slot(&self.slot_id)
+            .map(|slot| slot.default_data.clone())
+            .unwrap_or(Value::Null)
+    }
+
+    /// The default as a reflected value, for per-property reads.
+    pub fn instance(&self) -> Option<&dyn pulsar_reflection::EngineClass> {
+        let slot = self.template.slot(&self.slot_id)?;
+        let value = slot.value.as_ref().ok()?;
+        pulsar_world_registry::value_engine_class(&slot.class_name, value.as_ref())
+    }
+
     /// The class default of property `prop_name` (typed, as the property's
     /// getter returns it).
     pub fn property(&self, prop_name: &str) -> Option<Box<dyn std::any::Any>> {
-        let instance = self.instance.as_deref()?;
-        instance
-            .get_properties()
-            .into_iter()
-            .find(|p| p.name == prop_name)
-            .map(|p| (p.getter)(instance))
+        self.template.default_property(&self.slot_id, prop_name)
     }
 }
 
@@ -619,29 +628,26 @@ pub fn slot_defaults(
     let Some(def) = registry.definition_for(&instance) else {
         return out;
     };
+    let template = pulsar_class::template(&def);
     let Some(object) = entity(world, id) else {
         return out;
     };
-    for (index, record) in class_world::component_records(world, object)
-        .iter()
+    for (index, component) in engine_backend::scene::attachments::instances(world, object)
+        .into_iter()
         .enumerate()
     {
-        let Some(slot) = class_world::record_slot_id(record) else {
+        let Some(slot) = class_world::instance_slot_id(world, component) else {
             continue;
         };
-        let Some(data) = pulsar_class::plan::slot_default(&def, slot) else {
+        let Some(slot_template) = template.slot(slot) else {
             continue;
         };
-        let instance = pulsar_reflection::REGISTRY
-            .create_instance_from_json(&record.class_name, &data)
-            .and_then(Result::ok);
         out.insert(
             index,
             SlotDefault {
                 slot_id: slot.to_string(),
-                class_name: record.class_name.clone(),
-                data,
-                instance,
+                class_name: slot_template.class_name.clone(),
+                template: std::sync::Arc::clone(&template),
             },
         );
     }

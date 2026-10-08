@@ -26,6 +26,10 @@ fn command_scope(cmd: &SceneCommand) -> Vec<String> {
         | SceneCommand::SetComponentData { id, .. }
         | SceneCommand::RevertClassSlot { id, .. }
         | SceneCommand::ResetClassOverrides { id } => vec![id.clone()],
+        SceneCommand::AddObjectWithComponents { data, .. } => (!data.id.is_empty())
+            .then(|| data.id.clone())
+            .into_iter()
+            .collect(),
         SceneCommand::UpdateObject { data } => vec![data.id.clone()],
         SceneCommand::SetMovability { ids, .. } => ids.clone(),
         SceneCommand::DuplicateObject { source_id, .. } => vec![source_id.clone()],
@@ -33,40 +37,24 @@ fn command_scope(cmd: &SceneCommand) -> Vec<String> {
     }
 }
 
-/// Run a structural component edit on `id` and report whether it changed
-/// anything. The scene-edit component functions mostly return `()`, so the
-/// object's component list (live values included) is compared before and after.
+/// Run a component edit on `id`; `edit` reports whether it changed
+/// anything (each scene-edit component function says so itself, so nothing
+/// is compared or encoded here).
 fn edit_components(
     state: &mut LevelEditorState,
     id: &str,
     no_op_reason: &'static str,
-    edit: impl FnOnce(&mut pulsar_scenedb::World),
+    edit: impl FnOnce(&mut pulsar_scenedb::World) -> bool,
 ) -> CommandResult {
-    let fingerprint = |state: &LevelEditorState| {
-        let world = state.scene.world();
-        world.entity_for(id)?;
-        serde_json::to_value(crate::scene_edit::components::get_components(&world, id)).ok()
-    };
-    let Some(before) = fingerprint(state) else {
+    if state.scene.world().entity_for(id).is_none() {
         return CommandResult::noop("Object not found");
-    };
-    edit(&mut state.scene.world_mut());
-    if fingerprint(state).is_some_and(|after| after != before) {
+    }
+    if edit(&mut state.scene.world_mut()) {
         state.scene.bump_revision(true);
         CommandResult::ok(vec![id.to_string()])
     } else {
         CommandResult::noop(no_op_reason)
     }
-}
-
-/// The `movability` stored in a mesh's (top-level) or light's
-/// (`general.movability`, `#[sub_props]`-nested) component data.
-pub(crate) fn authored_movability(
-    data: &serde_json::Value,
-) -> Option<helio_component::components::ObjectMovability> {
-    data.get("movability")
-        .or_else(|| data.pointer("/general/movability"))
-        .and_then(|value| serde_json::from_value(value.clone()).ok())
 }
 
 // ── Executor ──────────────────────────────────────────────────────────────────
@@ -113,6 +101,34 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 if id.is_empty() {
                     return CommandResult::noop("Object could not be added");
                 }
+                state.scene.bump_revision(true);
+                CommandResult::ok(vec![id])
+            }
+
+            SceneCommand::AddObjectWithComponents {
+                data,
+                parent_id,
+                components,
+            } => {
+                let mut world = state.scene.world_mut();
+                let id = crate::scene_edit::objects::add_object(&mut world, data, parent_id);
+                if id.is_empty() {
+                    return CommandResult::noop("Object could not be added");
+                }
+                for component in components {
+                    let index = crate::scene_edit::components::add_component_value(
+                        &mut world,
+                        &id,
+                        &component.class_name,
+                        Some(component.value),
+                    );
+                    if let (Some(index), false) = (index, component.enabled) {
+                        crate::scene_edit::components::set_component_enabled(
+                            &mut world, &id, index, false,
+                        );
+                    }
+                }
+                drop(world);
                 state.scene.bump_revision(true);
                 CommandResult::ok(vec![id])
             }
@@ -169,17 +185,20 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                     default,
                 );
                 if updated.is_err() {
-                    let Some(json) = json else {
+                    // An unresolved payload: write the default into it.
+                    let written = json.is_some_and(|json| {
+                        crate::scene_edit::components::set_unresolved_property(
+                            &mut state.scene.world_mut(),
+                            id,
+                            class_name,
+                            component_index,
+                            prop_name,
+                            json,
+                        )
+                    });
+                    if !written {
                         return CommandResult::noop("Class default could not be written");
-                    };
-                    crate::scene_edit::components::update_component_property(
-                        &mut state.scene.world_mut(),
-                        id,
-                        class_name,
-                        component_index,
-                        prop_name,
-                        json,
-                    );
+                    }
                 }
                 state.scene.bump_revision(true);
                 CommandResult::ok(vec![id.clone()])
@@ -393,9 +412,8 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 //
                 // `component_index` targets the exact instance being edited
                 // (Pulsar-Native#519): every instance is its own entity with
-                // its own typed value (Pulsar-Native#1035). Only an instance
-                // whose class this build does not register (an unresolved
-                // payload) falls back to the indexed JSON write below.
+                // its own typed value (Pulsar-Native#1035). Only an
+                // unresolved payload falls back to the payload write below.
                 let update_result = crate::scene_edit::components::update_live_component_property(
                     &mut state.scene.world_mut(),
                     id,
@@ -421,16 +439,21 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                             .serialize_json_for_any(value.as_ref())
                         {
                             Ok(value_json) => {
-                                crate::scene_edit::components::update_component_property(
+                                // An unresolved payload: its JSON is the
+                                // only copy of its values.
+                                if crate::scene_edit::components::set_unresolved_property(
                                     &mut state.scene.world_mut(),
                                     id,
                                     class_name,
                                     component_index,
                                     prop_name,
                                     value_json,
-                                );
-                                state.scene.bump_revision(true);
-                                CommandResult::ok(vec![id.clone()])
+                                ) {
+                                    state.scene.bump_revision(true);
+                                    CommandResult::ok(vec![id.clone()])
+                                } else {
+                                    CommandResult::noop("No such property or no change")
+                                }
                             }
                             Err(error) => {
                                 // Not `World`-registered AND not in
@@ -456,9 +479,10 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             SceneCommand::AddComponent {
                 ref id,
                 class_name,
-                data,
+                value,
             } => edit_components(state, id, "Component could not be added", |world| {
-                crate::scene_edit::components::add_component(world, id, class_name, data);
+                crate::scene_edit::components::add_component_value(world, id, &class_name, value)
+                    .is_some()
             }),
 
             SceneCommand::RemoveComponent {
@@ -477,12 +501,16 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 id,
                 "No component at that index, or already in that state",
                 |world| {
-                    crate::scene_edit::components::set_component_enabled(
+                    let instance =
+                        crate::scene_edit::components::instance_at(world, id, component_index);
+                    instance.is_some_and(|instance| {
+                        engine_backend::scene::attachments::is_enabled(world, instance) != enabled
+                    }) && crate::scene_edit::components::set_component_enabled(
                         world,
                         id,
                         component_index,
                         enabled,
-                    );
+                    )
                 },
             ),
 
@@ -490,7 +518,8 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 ref id,
                 component_index,
             } => edit_components(state, id, "No component at that index", |world| {
-                crate::scene_edit::components::duplicate_component(world, id, component_index);
+                crate::scene_edit::components::duplicate_component(world, id, component_index)
+                    .is_some()
             }),
 
             SceneCommand::ReorderComponent {
@@ -523,14 +552,43 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 id,
                 "No component at that index, or no change",
                 |world| {
-                    if component_index < crate::scene_edit::components::component_count(world, id) {
-                        crate::scene_edit::components::update_component(
-                            world,
-                            id,
-                            component_index,
-                            data,
-                        )
-                    }
+                    let value = match data {
+                        super::ComponentData::Value(value) => {
+                            pulsar_world_registry::InstanceValue::Value(value)
+                        }
+                        super::ComponentData::Unresolved(data) => {
+                            // Only an unresolved instance takes a new payload.
+                            let instance = crate::scene_edit::components::instance_at(
+                                world,
+                                id,
+                                component_index,
+                            );
+                            let Some(current) = instance.and_then(|instance| {
+                                world
+                                    .get::<engine_backend::scene::attachments::UnresolvedComponent>(
+                                        instance,
+                                    )
+                                    .cloned()
+                            }) else {
+                                return false;
+                            };
+                            if current.data == data {
+                                return false;
+                            }
+                            pulsar_world_registry::InstanceValue::Unresolved(
+                                engine_backend::scene::attachments::UnresolvedComponent {
+                                    data,
+                                    reason: current.reason,
+                                },
+                            )
+                        }
+                    };
+                    crate::scene_edit::components::set_component_value(
+                        world,
+                        id,
+                        component_index,
+                        value,
+                    )
                 },
             ),
 
@@ -590,17 +648,28 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 {
                     let mut world = state.scene.world_mut();
                     for id in &ids {
-                        let targets: Vec<(usize, String)> = components::get_components(&world, id)
-                            .into_iter()
-                            .enumerate()
-                            .filter(|(_, c)| {
-                                matches!(
-                                    c.class_name.as_str(),
-                                    "StaticMeshComponent" | "LightComponent"
-                                ) && authored_movability(&c.data) != Some(movability)
-                            })
-                            .map(|(index, c)| (index, c.class_name))
-                            .collect();
+                        let targets: Vec<(usize, String)> =
+                            components::get_component_class_names(&world, id)
+                                .into_iter()
+                                .enumerate()
+                                .filter(|(index, class_name)| {
+                                    matches!(
+                                        class_name.as_str(),
+                                        "StaticMeshComponent" | "LightComponent"
+                                    ) && components::read_live_component_property(
+                                        &world,
+                                        id,
+                                        class_name,
+                                        *index,
+                                        "movability",
+                                    )
+                                    .and_then(|value| {
+                                        value
+                                    .downcast_ref::<helio_component::components::ObjectMovability>()
+                                    .copied()
+                                    }) != Some(movability)
+                                })
+                                .collect();
                         for (index, class_name) in targets {
                             // Typed setter; `movability` is a flat property
                             // name on both classes (lights via `#[sub_props]`).

@@ -173,7 +173,14 @@ fn physics_world_edits_survive_object_updates_and_save_projection() {
     let world = &mut scene.world;
     let id = objects::add_object(world, object("PhysicsBody"), None);
     components::add_component(world, &id, "PhysicsComponent".into(), physics_json(true));
-    components::update_component(world, &id, 0, physics_json(false));
+    let mut physics = PhysicsComponent::default();
+    physics.general.collision_enabled = false;
+    assert!(components::set_component_value(
+        world,
+        &id,
+        0,
+        pulsar_world_registry::InstanceValue::Value(Box::new(physics)),
+    ));
     let mut updated = objects::get_object(world, &id).unwrap();
     updated.transform.position = [1.0, 2.0, 3.0];
     assert!(objects::update_object(world, updated));
@@ -220,4 +227,120 @@ fn disabling_and_reenabling_physics_preserves_the_canonical_value() {
     assert!(metadata_only(
         &components::get_components_metadata(world, &id)[0].data
     ));
+}
+
+/// Pulsar-Native#1035, Phase 3: an object's `props` are its own render
+/// props. Component values are not copied into them, so an object edit
+/// written back (`update_object`) and a save carry no stale copies.
+#[test]
+fn object_props_carry_no_component_copies() {
+    use helio_component::components::LightComponent;
+
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let mut data = object("light");
+    data.props
+        .insert("icon_asset".into(), json!("icons/lamp.png"));
+    let id = objects::add_object(world, data, None);
+    let mut light = LightComponent::default();
+    light.intensity.intensity = 42.0;
+    components::add_component_value(world, &id, "LightComponent", Some(Box::new(light)));
+
+    let read = objects::get_object(world, &id).unwrap();
+    assert_eq!(
+        read.props.len(),
+        1,
+        "only the object's own prop: {:?}",
+        read.props
+    );
+    assert!(objects::update_object(world, read));
+    let entity = world.entity_for(&id).unwrap();
+    assert_eq!(
+        world
+            .get::<engine_backend::scene::RenderProps>(entity)
+            .unwrap()
+            .props
+            .len(),
+        1
+    );
+    assert!(objects::get_all_objects(world)
+        .iter()
+        .all(|object| !object.props.contains_key("intensity")));
+}
+
+/// An unresolved instance's payload is readable (the properties card shows
+/// it rather than the class defaults).
+#[test]
+fn an_unresolved_payload_is_readable() {
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let id = objects::add_object(world, object("o"), None);
+    let owner = world.entity_for(&id).unwrap();
+    pulsar_world_registry::attach_unresolved(
+        world,
+        owner,
+        engine_backend::scene::attachments::NewInstance::new("NotInThisBuild"),
+        json!({ "speed": 3 }),
+        "not registered".into(),
+    )
+    .unwrap();
+    assert_eq!(
+        components::unresolved_payload(world, &id, 0),
+        Some(json!({ "speed": 3 }))
+    );
+    components::add_component_value(world, &id, "LightComponent", None);
+    assert_eq!(components::unresolved_payload(world, &id, 1), None, "live");
+}
+
+/// A non-render component's whole editor lifecycle is typed: attached
+/// from its default, edited through its reflected (`#[sub_props]`) setter,
+/// restored by history in place, and encoded only by the save record.
+#[test]
+fn rigidbody_add_edit_undo_and_save_are_typed() {
+    use pulsar_physics::RigidbodyComponent;
+
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let id = objects::add_object(world, object("Crate"), None);
+    components::add_component_value(world, &id, "RigidbodyComponent", None);
+    let instance = components::instance_at(world, &id, 0).unwrap();
+    let before = history::capture_history_subset(world, &[id.clone()]);
+
+    components::update_live_component_property(
+        world,
+        &id,
+        "RigidbodyComponent",
+        0,
+        "mass",
+        Box::new(12.5f32),
+    )
+    .unwrap();
+    assert_eq!(
+        world
+            .get::<RigidbodyComponent>(instance)
+            .unwrap()
+            .general
+            .mass,
+        12.5
+    );
+    assert_eq!(
+        components::get_components(world, &id)[0].data["general"]["mass"],
+        json!(12.5),
+        "the save record carries the typed value in the class shape"
+    );
+
+    history::restore_history_delta(world, &before, &[id.clone()]).unwrap();
+    assert_eq!(
+        components::instance_at(world, &id, 0),
+        Some(instance),
+        "restored in place"
+    );
+    assert_eq!(
+        world
+            .get::<RigidbodyComponent>(instance)
+            .unwrap()
+            .general
+            .mass,
+        RigidbodyComponent::default().general.mass
+    );
 }

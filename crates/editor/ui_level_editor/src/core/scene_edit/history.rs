@@ -4,26 +4,30 @@
 //! and its replication `Snapshot` is shaped for network resync -- every component
 //! needs a registered per-field schema, a poor fit for the free-form JSON in
 //! `RenderProps`. The editor therefore keeps its own snapshots: a capture is the
-//! object list plus every object's component records (with their instance
-//! ids, so a restore keeps component identity), and a restore rebuilds the
-//! scene *in place* in the same world, so the GPU mirror, inspector bridge and the
-//! world's change counter carry straight through.
+//! object list plus typed snapshots of every object's component instances
+//! (clones of their values, with their instance ids), and a restore rebuilds
+//! the scene *in place* in the same world, so the GPU mirror, inspector bridge
+//! and the world's change counter carry straight through. Nothing is encoded
+//! or decoded (Pulsar-Native#1035, Phase 3): a delta restore keeps every
+//! surviving instance's entity and writes its value back as a clone, so undo
+//! never reloads an asset.
 
 use std::collections::HashMap;
 
 use engine_backend::scene::SceneWorldExt;
 use pulsar_scenedb::World;
 
-use super::components::{get_components, replace_components};
+use pulsar_world_registry::InstanceSnapshot;
+
 use super::objects::{clear, collect_dfs, spawn_raw};
-use super::{ComponentInstance, ObjectId, SceneObjectData};
+use super::{ObjectId, SceneObjectData};
 
 /// Opaque capture produced by [`capture_history_snapshot`], consumed by
 /// [`restore_history_snapshot`].
 #[derive(Clone, Debug)]
 pub struct SceneHistorySnapshot {
     objects: Vec<SceneObjectData>,
-    components: HashMap<ObjectId, Vec<ComponentInstance>>,
+    components: HashMap<ObjectId, Vec<InstanceSnapshot>>,
 }
 
 /// The before/after state of only the objects touched by one command.
@@ -79,7 +83,7 @@ pub fn capture_history_snapshot(world: &World) -> SceneHistorySnapshot {
     collect_dfs(world, None, &mut objects);
     let components = objects
         .iter()
-        .map(|obj| (obj.id.clone(), get_components(world, &obj.id)))
+        .map(|obj| (obj.id.clone(), snapshot_components(world, &obj.id)))
         .filter(|(_, components)| !components.is_empty())
         .collect();
     SceneHistorySnapshot {
@@ -112,12 +116,28 @@ pub fn capture_history_subset(world: &World, ids: &[ObjectId]) -> SceneHistorySn
         .collect::<Vec<_>>();
     let components = objects
         .iter()
-        .map(|object| (object.id.clone(), get_components(world, &object.id)))
+        .map(|object| (object.id.clone(), snapshot_components(world, &object.id)))
         .filter(|(_, components)| !components.is_empty())
         .collect();
     SceneHistorySnapshot {
         objects,
         components,
+    }
+}
+
+fn snapshot_components(world: &World, object_id: &str) -> Vec<InstanceSnapshot> {
+    world
+        .entity_for(object_id)
+        .map(|owner| pulsar_world_registry::snapshot_instances(world, owner))
+        .unwrap_or_default()
+}
+
+fn restore_components(world: &mut World, object_id: &str, components: &[InstanceSnapshot]) {
+    let Some(owner) = world.entity_for(object_id) else {
+        return;
+    };
+    if let Err(error) = pulsar_world_registry::restore_instances(world, owner, components) {
+        tracing::error!("Could not restore the components of '{object_id}': {error}");
     }
 }
 
@@ -163,7 +183,7 @@ pub fn restore_history_delta(
             .get(&object.id)
             .map(Vec::as_slice)
             .unwrap_or_default();
-        replace_components(world, &object.id, components);
+        restore_components(world, &object.id, components);
     }
     Ok(())
 }
@@ -201,7 +221,7 @@ pub fn restore_history_snapshot(
         spawn_raw(world, obj)?;
     }
     for (object_id, components) in &snapshot.components {
-        replace_components(world, object_id, components);
+        restore_components(world, object_id, components);
     }
     Ok(())
 }

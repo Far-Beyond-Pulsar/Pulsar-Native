@@ -7,22 +7,20 @@
 //! the object keeps the ordered list (see
 //! [`engine_backend::scene::attachments`]). The editor addresses an instance
 //! by its position in that list. JSON appears only at boundaries: the
-//! records [`get_components`] returns (files, history, tools) and the data
-//! an attach or [`update_component`] decodes once. A class this build does
+//! records [`get_components`] returns (files, tools), the data
+//! [`add_component`] decodes once, and unresolved payloads. A class this build does
 //! not register is attached as an explicit unresolved instance that keeps
 //! its payload. Every function takes the `World` to work on.
 
 use std::any::Any;
-use std::collections::HashMap;
 
 use engine_backend::scene::attachments as attach;
 use engine_backend::scene::SceneWorldExt;
-use pulsar_reflection::apply_scene_props_for_class;
 use pulsar_scenedb::{Entity, World};
 use serde_json::Value;
 
 use super::changes::{record_property_change, record_structural_change};
-use super::{ComponentInstance, ObjectId};
+use super::ComponentInstance;
 
 // ── Addressing ─────────────────────────────────────────────────────────────
 
@@ -84,6 +82,18 @@ pub fn get_components(world: &World, object_id: &str) -> Vec<ComponentInstance> 
 /// world.
 pub fn is_live_instance(world: &World, object_id: &str, class_name: &str, index: usize) -> bool {
     live_instance(world, object_id, class_name, index).is_some()
+}
+
+/// The payload of the instance at `index` when it is unresolved (a class
+/// this build does not register, or data that did not decode).
+pub fn unresolved_payload(world: &World, object_id: &str, index: usize) -> Option<Value> {
+    let instance = instance_at(world, object_id, index)?;
+    Some(
+        world
+            .get::<attach::UnresolvedComponent>(instance)?
+            .data
+            .clone(),
+    )
 }
 
 /// Read a single property straight off the live instance at `index`,
@@ -215,6 +225,69 @@ pub fn after_property_edit(
 
 // ── Attach / remove / enable / reorder ─────────────────────────────────────
 
+/// Attach a new, enabled `class_name` instance holding `value` (a value of
+/// that class), or the class default when `None`. Nothing is decoded.
+/// Refused (nothing attached, an error logged) for an unregistered class or
+/// a value of another class. Returns the new instance's index.
+pub fn add_component_value(
+    world: &mut World,
+    object_id: &str,
+    class_name: &str,
+    value: Option<Box<dyn Any + Send + Sync>>,
+) -> Option<usize> {
+    profiling::profile_scope!("scene_edit::add_component_value");
+    let owner = world.entity_for(object_id)?;
+    let payload = match value {
+        Some(value) => pulsar_world_registry::ComponentPayload::Value(value),
+        None => pulsar_world_registry::ComponentPayload::Default,
+    };
+    match pulsar_world_registry::attach_component(
+        world,
+        owner,
+        attach::NewInstance::new(class_name),
+        payload,
+    ) {
+        Ok(instance) => {
+            record_structural_change(object_id, class_name);
+            attach::instances(world, owner)
+                .iter()
+                .position(|entity| *entity == instance)
+        }
+        Err(error) => {
+            tracing::error!("Could not attach {class_name} to '{object_id}': {error}");
+            None
+        }
+    }
+}
+
+/// Replace the value of the component at `component_index` with `value`,
+/// in place (the instance keeps its entity and id). Nothing is decoded.
+/// Returns whether it was written.
+pub fn set_component_value(
+    world: &mut World,
+    object_id: &str,
+    component_index: usize,
+    value: pulsar_world_registry::InstanceValue,
+) -> bool {
+    profiling::profile_scope!("scene_edit::set_component_value");
+    let Some(instance) = instance_at(world, object_id, component_index) else {
+        return false;
+    };
+    let class_name = attach::meta(world, instance).map(|meta| meta.class_name.clone());
+    match pulsar_world_registry::set_instance_value(world, instance, value) {
+        Ok(()) => {
+            if let Some(class_name) = class_name {
+                record_structural_change(object_id, &class_name);
+            }
+            true
+        }
+        Err(error) => {
+            tracing::warn!("Component {component_index} of '{object_id}' not updated: {error}");
+            false
+        }
+    }
+}
+
 /// Attach a new, enabled `class_name` instance decoded from `data`. Refused
 /// (nothing attached, an error logged) when the class is not registered or
 /// the data does not decode. Returns the new instance's index.
@@ -301,19 +374,22 @@ pub(super) fn clear_components(world: &mut World, object_id: &str) {
     }
 }
 
-pub fn remove_component(world: &mut World, object_id: &str, component_index: usize) {
+/// Detach the component at `component_index`. Returns whether there was one.
+pub fn remove_component(world: &mut World, object_id: &str, component_index: usize) -> bool {
     profiling::profile_scope!("scene_edit::remove_component");
     let Some(instance) = instance_at(world, object_id, component_index) else {
-        return;
+        return false;
     };
     let class_name = attach::meta(world, instance).map(|meta| meta.class_name.clone());
     attach::detach(world, instance);
     if let Some(class_name) = class_name {
         record_structural_change(object_id, &class_name);
     }
+    true
 }
 
 /// Enable or disable a component by index. Its value stays in place.
+/// Returns whether there is a component at `component_index`.
 pub fn set_component_enabled(
     world: &mut World,
     object_id: &str,
@@ -360,30 +436,39 @@ pub fn duplicate_component(
     }
 }
 
-pub fn reorder_component(world: &mut World, object_id: &str, from_index: usize, to_index: usize) {
+/// Move the component at `from_index` to `to_index`. Returns whether the
+/// order changed.
+pub fn reorder_component(
+    world: &mut World,
+    object_id: &str,
+    from_index: usize,
+    to_index: usize,
+) -> bool {
     let Some(owner) = world.entity_for(object_id) else {
-        return;
+        return false;
     };
     let class_name = instance_at(world, object_id, from_index)
         .and_then(|instance| attach::meta(world, instance))
         .map(|meta| meta.class_name.clone());
-    if from_index != to_index && attach::move_instance(world, owner, from_index, to_index) {
-        if let Some(class_name) = class_name {
-            record_structural_change(object_id, &class_name);
-        }
+    if from_index == to_index || !attach::move_instance(world, owner, from_index, to_index) {
+        return false;
     }
+    if let Some(class_name) = class_name {
+        record_structural_change(object_id, &class_name);
+    }
+    true
 }
 
 /// Set the parent of a component (for hierarchical organization). Refused
-/// when it would make a cycle.
+/// when it would make a cycle. Returns whether the parent changed.
 pub fn set_component_parent(
     world: &mut World,
     object_id: &str,
     component_index: usize,
     parent_index: Option<usize>,
-) {
+) -> bool {
     let Some(instance) = instance_at(world, object_id, component_index) else {
-        return;
+        return false;
     };
     let parent = match parent_index {
         Some(index) => {
@@ -391,64 +476,49 @@ pub fn set_component_parent(
                 .and_then(|parent| attach::meta(world, parent))
                 .map(|meta| meta.id)
             else {
-                return;
+                return false;
             };
             Some(parent)
         }
         None => None,
     };
-    attach::set_parent(world, instance, parent);
+    let current = attach::meta(world, instance).and_then(|meta| meta.parent);
+    current != parent && attach::set_parent(world, instance, parent)
 }
 
 // ── Edits ──────────────────────────────────────────────────────────────────
 
-/// Replace the value of the component at `component_index` with `data`,
-/// decoded once. Nothing is written when it does not decode.
-pub fn update_component(world: &mut World, object_id: &str, component_index: usize, data: Value) {
-    profiling::profile_scope!("scene_edit::update_component");
-    let Some(instance) = instance_at(world, object_id, component_index) else {
-        return;
-    };
-    let class_name = attach::meta(world, instance).map(|meta| meta.class_name.clone());
-    match pulsar_world_registry::set_instance_data(world, instance, &data) {
-        Ok(()) => {
-            if let Some(class_name) = class_name {
-                record_structural_change(object_id, &class_name);
-            }
-        }
-        Err(error) => tracing::warn!(
-            "[UPDATE_COMPONENT] {object_id} idx={component_index} not updated: {error}"
-        ),
-    }
-}
-
-/// Set one top-level field of the data of the `class_name` instance at
-/// `component_index`.
-///
-/// For classes with no reflected setter here (plugin-only classes, whose
-/// value is an unresolved payload): a typed class is edited through
-/// [`update_live_component_property`], which handles `#[sub_props]`
-/// nesting. See Pulsar-Native#561.
-pub fn update_component_property(
+/// Set one top-level field of the payload of the unresolved `class_name`
+/// instance at `component_index` (a class this build does not register, or
+/// data that did not decode): the payload is the only copy of its values.
+/// Nothing is decoded; a live instance is edited through
+/// [`update_live_component_property`]. Returns whether the payload changed.
+pub fn set_unresolved_property(
     world: &mut World,
     object_id: &str,
     class_name: &str,
     component_index: usize,
     prop_name: &str,
     new_value: Value,
-) {
-    let Some(record) = instance_at(world, object_id, component_index)
-        .and_then(|instance| pulsar_world_registry::instance_record(world, instance, None))
-        .filter(|record| record.class_name == class_name)
-    else {
-        return;
+) -> bool {
+    let Some(instance) = instance_at(world, object_id, component_index).filter(|instance| {
+        attach::meta(world, *instance).is_some_and(|m| m.class_name == class_name)
+    }) else {
+        return false;
     };
-    let mut data = record.data;
-    if let Some(obj) = data.as_object_mut() {
-        obj.insert(prop_name.to_string(), new_value);
+    let Some(mut unresolved) = world.get::<attach::UnresolvedComponent>(instance).cloned() else {
+        return false;
+    };
+    let Some(map) = unresolved.data.as_object_mut() else {
+        return false;
+    };
+    if map.get(prop_name) == Some(&new_value) {
+        return false;
     }
-    update_component(world, object_id, component_index, data);
+    map.insert(prop_name.to_string(), new_value);
+    world.insert(instance, unresolved);
     record_property_change(object_id, class_name, prop_name);
+    true
 }
 
 /// Edit a single property on ONE specific component instance, correctly handling
@@ -487,30 +557,4 @@ pub fn update_live_component_property(
     )?;
     record_property_change(object_id, class_name, prop_name);
     Ok(())
-}
-
-// ── Read projection ────────────────────────────────────────────────────────
-
-/// Fold each enabled component's scene props into `props` -- a read-side
-/// view for panels and tools; nothing is written back.
-pub(super) fn merge_component_props(
-    world: &World,
-    object_id: &str,
-    props: &mut HashMap<String, Value>,
-) {
-    for component in get_components(world, object_id)
-        .into_iter()
-        .filter(|component| component.enabled)
-    {
-        if apply_scene_props_for_class(&component.class_name, props, Some(&component.data)) {
-            continue;
-        }
-        if let Value::Object(map) = component.data {
-            for (k, v) in map {
-                if !k.starts_with("__") {
-                    props.insert(k, v);
-                }
-            }
-        }
-    }
 }

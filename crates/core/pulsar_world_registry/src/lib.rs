@@ -324,12 +324,14 @@ pub use instances::{
     attach_component, attach_record, attach_record_or_unresolved, attach_records,
     attach_unresolved, attach_value, component_metadata_records, component_records,
     duplicate_instance, duplicate_instances, instance_engine_class, instance_metadata_record,
-    instance_record, replace_records, set_instance_data, AttachError, ComponentPayload,
+    instance_record, replace_records, restore_instances, set_instance_value, snapshot_instance,
+    snapshot_instances, AttachError, ComponentPayload, InstanceSnapshot, InstanceValue,
 };
 pub use marshal::{any_to_json, json_to_any};
 pub use values::{
-    clone_world_component_value, decode_world_component_value, insert_world_component_value,
-    new_world_component_value, set_world_component_property, ComponentValueError,
+    clone_value, clone_world_component_value, decode_world_component_value,
+    insert_world_component_value, new_world_component_value, set_value_property,
+    set_world_component_property, value_engine_class, ComponentValueError,
 };
 // Metadata audit (#645): overload sweep + the deterministic registry
 // snapshot CI golden tests diff against.
@@ -374,6 +376,11 @@ pub struct WorldComponentRegistration {
     pub decode: fn(&Value) -> Result<Box<dyn std::any::Any + Send + Sync>, String>,
     /// Clone a value of this class (`None` if `value` is not this class).
     pub clone_value: fn(&dyn std::any::Any) -> Option<Box<dyn std::any::Any + Send + Sync>>,
+    /// View an owned value of this class (one not in a `World`, e.g. a
+    /// class template's) as `&dyn EngineClass`, for reflected reads.
+    pub value_as_engine_class: fn(&dyn std::any::Any) -> Option<&dyn EngineClass>,
+    /// [`Self::value_as_engine_class`], mutably, for reflected writes.
+    pub value_as_engine_class_mut: fn(&mut dyn std::any::Any) -> Option<&mut dyn EngineClass>,
     /// Register this class with SceneDB for type-erased insertion
     /// (`pulsar_scenedb::register_component::<T>`); idempotent.
     pub register_erased: fn() -> ComponentId,
@@ -942,6 +949,8 @@ mod tests {
             default_value: test_default,
             decode: test_decode,
             clone_value: test_clone,
+            value_as_engine_class: |_| None,
+            value_as_engine_class_mut: |_| None,
             register_erased: pulsar_scenedb::register_component::<TestComponent>,
             remove: test_remove,
             dispatch: test_dispatch,
@@ -1154,6 +1163,8 @@ mod tests {
                 default_value: test_default,
                 decode: test_decode,
                 clone_value: test_clone,
+                value_as_engine_class: |_| None,
+                value_as_engine_class_mut: |_| None,
                 register_erased: pulsar_scenedb::register_component::<NotifyRemovedTestComponent2>,
                 remove: test_remove,
                 dispatch: test_dispatch,

@@ -25,7 +25,9 @@ use serde_json::{json, Value};
 use tool_registry::{PluginToolRegistry, ToolContext, ToolRegistry};
 
 use super::sessions;
-use crate::commands::{execute_command, CommandResult, SceneCommand};
+use crate::commands::{
+    execute_command, CommandResult, ComponentData, SceneCommand, TypedComponent,
+};
 use crate::scene_edit::{self, SceneObjectData};
 use crate::LevelEditorState;
 use engine_backend::scene::{LightType, MeshType, ObjectType, SceneWorldExt};
