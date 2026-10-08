@@ -89,11 +89,11 @@ category = "Rendering"
 world_registered = true
 own_gpu_columns = true
 owner = "helio_component::components::light_component"
-disposition = "render, Phase 2 vertical slice. Phase 1: its generated GPU row (LightComponentGpuMirror, sub-prop mirrors embedded, general.enabled included) is written by the authored value's own SceneDB dispatch on every insert, write, removal and mirror replay; nothing inserts or refreshes a companion. No pass consumes that row yet: lighting reads forward-lit LightComponent rows that editor_rows projects on the CPU"
+disposition = "render: every write derives its LightSourceRow (light_sources, Phase 4); the scene join publishes scene_lights from it and the owner's transform (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
-status = "broken"
-notes = "Phase 0 baseline: the properties panel's own Add component payload (and the legacy flat intensity shape) fails to hydrate, yet the attachment stays enabled with its JSON, so the light looks attached. A class to_json payload hydrates but gets no forward-lit light row when added after the first frame."
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
+status = "verified"
+notes = "Phase 0's failures (payloads that did not hydrate, lights added after the first frame) are covered by the Phase 2 rendered-frame cases (13-phase-2.md)."
 
 [[class]]
 name = "LocalFogVolumeComponent"
@@ -114,9 +114,9 @@ own_gpu_columns = false
 owner = "pulsar_class::native_script"
 disposition = "non-render: native script attachment; typed VM adapters"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "none: script attach and property access are typed"
-status = "unverified"
-notes = "Phase 3: no runtime consumer exists yet (pulsar_game does not read it); the editor's record builders in core/native_scripts.rs are dead-code helpers at the file boundary. Stays unverified until a consumer lands."
+test = "tracked in #1079"
+status = "unfinished"
+notes = "Attach, edit, save and undo are typed; nothing at runtime spawns the native actor it names."
 
 [[class]]
 name = "PhysicsComponent"
@@ -190,11 +190,11 @@ category = "Rendering"
 world_registered = true
 own_gpu_columns = true
 owner = "helio_component::components::static_mesh_component"
-disposition = "render, Phase 2 vertical slice. Its own vertex/index pools mirror to the GPU, but the draw row (gbuffer StaticObjectComponent) and material row are built by helio_bridge's CPU projection, which only sees entities a render subscription or a full projection reaches"
+disposition = "render: its pools and derived draw rows (static_mesh_draw_*) follow every write; the scene join builds draw and material rows on the GPU (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
-status = "broken"
-notes = "Phase 0 baseline: added after the renderer's first frame (asset drop or panel), the mesh hydrates and its pools reach the GPU but it never gets a draw or material row, panel open or closed. A row appears only if the panel is open, the renderer drains the queue first, and a later edit fires. Since Helio f9631fd the component also owns per-slot material assignments (the standalone MaterialOverrideComponent and its alpha-0 default are gone); helio_bridge still projects them into gbuffer material rows on the CPU."
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
+status = "verified"
+notes = "Phase 0's failures (no draw row when added after the first frame, panel ordering) are covered by the Phase 2 rendered-frame cases (13-phase-2.md)."
 
 [[class]]
 name = "VoxelComponent"
@@ -216,7 +216,8 @@ owner = "helio_component::components::voxel_component_runtime"
 disposition = "voxel domain, audited Phase 4: generator settings read by engine_backend voxel_frame when the world revision changes (camera-only frames reuse the read) and handed to the terrain generator as its settings JSON, the generator plugin boundary (helio-pass-voxel-planet landform)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/voxel_component_schema.rs"
-status = "unverified"
+status = "out-of-scope"
+notes = "Voxel work continues on its own branch (Pulsar-Native#994, Helio#314); Phase 4 recorded the audit (15-phase-4.md)."
 
 [[class]]
 name = "VoxelLandformComponent"
@@ -227,7 +228,8 @@ owner = "helio_component::components::voxel_component_runtime"
 disposition = "voxel domain, audited Phase 4: generator settings read by engine_backend voxel_frame when the world revision changes (camera-only frames reuse the read) and handed to the terrain generator as its settings JSON, the generator plugin boundary (helio-pass-voxel-planet landform)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/voxel_component_schema.rs"
-status = "unverified"
+status = "out-of-scope"
+notes = "Voxel work continues on its own branch (Pulsar-Native#994, Helio#314); Phase 4 recorded the audit (15-phase-4.md)."
 
 [[class]]
 name = "VoxelTerrainComponent"
@@ -238,7 +240,8 @@ owner = "helio_component::components::voxel_component_runtime"
 disposition = "voxel domain, audited Phase 4: voxel_frame reads terrain entries, the edit journal and the sun (the first enabled, visible directional light) when the world revision changes; the voxel-planet pass receives a CPU PlanetFrame (Arc<Planet>, sun) and syncs journal edits to the GPU change-driven. Generation and sculpting stay real work; the CPU planet rebuild is synchronous on the render thread, and renderer brush commits bypass append_edits' validation (recorded, not changed)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/voxel_component_schema.rs"
-status = "unverified"
+status = "out-of-scope"
+notes = "Voxel work continues on its own branch (Pulsar-Native#994, Helio#314); Phase 4 recorded the audit (15-phase-4.md)."
 
 [[class]]
 name = "WaterVolumeComponent"
@@ -656,10 +659,10 @@ releases_var_len = true
 registered = false
 writer = "no production writer found"
 owner = "helio_pass_gbuffer::components"
-disposition = "retire or merge: a second declaration of the builtin mesh pools; not registered in production"
+disposition = "Helio demo type: a second declaration of the builtin mesh pools that Pulsar never registers or writes; StaticMeshComponent's pools are canonical"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/scene_inventory/tests/ledger.rs (registered = false)"
+status = "out-of-scope"
 
 [[schema]]
 type = "RenderGroupComponent"
@@ -712,10 +715,10 @@ releases_var_len = false
 registered = false
 writer = "no production writer found"
 owner = "helio_pass_gbuffer::components"
-disposition = "audit: no literal consumer; not registered in production"
+disposition = "portal resolver input (helio-pass-portal-cull); no authored producer while portals are unfinished"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "tracked in #1055"
+status = "unfinished"
 
 [[schema]]
 type = "PortalChainComponent"
@@ -880,10 +883,10 @@ releases_var_len = false
 registered = true
 writer = "no production writer found (registered only)"
 owner = "helio_pass_water_sim::components"
-disposition = "audit the writer and authored source"
+disposition = "water-sim reads it; no authored producer"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "unverified"
+test = "tracked in #1080"
+status = "unfinished"
 
 [[schema]]
 type = "WaterVolumeComponent"
@@ -936,10 +939,10 @@ releases_var_len = false
 registered = true
 writer = "scene object transform writes (World::insert/get_mut on Transform)"
 owner = "pulsar_scene_model::components"
-disposition = "keep: owner transform column; GPU joins must key it by owner entity, not by component row"
+disposition = "keep: the owner transform column; the scene and environment joins read it by owner entity"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "unverified"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer) (moved mesh); crates/core/engine_backend/tests/environment_join_rows.rs (moving an owner)"
+status = "verified"
 
 # ── Lifecycle call sites ─────────────────────────────────────────────────
 # One row per (pattern, file); `count` is checked against the source scan.
@@ -1248,12 +1251,12 @@ buffers = ["scene_lights"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "SceneDB write path of the authored value itself: insert (typed or erased), write guard, removal, despawn and mirror replay, through the dispatch engine_class_derive generates (Phase 1)"
+writer = "the authored value's own SceneDB write path derives LightSourceRow (light_sources); the generated LightComponentGpuMirror is a CPU mapping only (no gpu_rows, Phase 4)"
 owner = "helio_component::components::light_component::component"
-disposition = "authored dispatch for LightComponentGpuMirror (general.enabled included); the row follows every write. Phase 2 makes it the lighting input joined to the owner's transform"
+disposition = "lighting input: LightSourceRow joined with the owner transform into scene_lights"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/light_component_gpu_mirror.rs"
-status = "at-risk"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/renderer/helio/crates/helio-component/src/components/light_component/mapping.rs (tests)"
+status = "verified"
 
 [[schema]]
 type = "PostProcessVolumeComponent"
@@ -1475,7 +1478,7 @@ owner = "pulsar_scene_model::attachments"
 disposition = "keep: each component instance's owner object and enabled flag as a GPU row (Phase 1, D1), the join a GPU consumer uses from an instance's row to its object; Phase 2 consumes it for render rows"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_class_derive/tests/component_instances.rs (mirror replay writes ComponentOwner rows, lavapipe)"
-status = "unverified"
+status = "verified"
 
 [[buffer]]
 key = "PortalChainComponent::portals"
@@ -1504,8 +1507,8 @@ consumers = ["helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-g
 owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
 disposition = "keep: same as builtin_mesh_vertex"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_component_gpu_mirror.rs"
-status = "unverified"
+test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_component_gpu_mirror.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
+status = "verified"
 
 [[buffer]]
 key = "builtin_mesh_vertex"
@@ -1514,8 +1517,8 @@ consumers = ["helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-g
 owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
 disposition = "keep: authored StaticMeshComponent pools are the canonical geometry; retire or merge the second, pass-owned producer"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_component_gpu_mirror.rs"
-status = "unverified"
+test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_component_gpu_mirror.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
+status = "verified"
 
 [[buffer]]
 key = "camera_postprocess"
@@ -1742,10 +1745,10 @@ key = "sublevel_actors"
 producers = ["SubLevelActorComponent"]
 consumers = []
 owner = "gbuffer pass type; writer not identified"
-disposition = "audit: no literal consumer"
+disposition = "portal resolver input; no authored producer while portals are unfinished"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: consumer not identified"
-status = "unverified"
+test = "tracked in #1055"
+status = "unfinished"
 
 [[buffer]]
 key = "volumetric_fog_settings"
@@ -1762,10 +1765,10 @@ key = "water_hitboxes"
 producers = ["WaterHitboxComponent"]
 consumers = ["helio-pass-water-sim"]
 owner = "water-sim pass type; writer not identified"
-disposition = "audit the writer and authored source"
+disposition = "water-sim reads it; no authored producer"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: writer not identified"
-status = "unverified"
+test = "tracked in #1080"
+status = "unfinished"
 
 [[buffer]]
 key = "water_volumes"
@@ -1886,20 +1889,20 @@ crate = "helio-pass-billboard"
 in_default_graph = true
 reads = ["billboard_instances"]
 owner = "helio-default-graphs (mapping); helio-pass-billboard (algorithm)"
-disposition = "consumes billboard_instances; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "at-risk"
+disposition = "runs in the editor graph, but nothing authored feeds it: sprites/billboards (Phase 4)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "tracked in #1060; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "unfinished"
 
 [[pass]]
 crate = "helio-pass-corona"
 in_default_graph = true
 reads = ["corona_emitters"]
 owner = "helio-default-graphs (mapping); helio-pass-corona (algorithm)"
-disposition = "consumes corona_emitters; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "runs in the editor graph, but nothing authored feeds it: corona emitters (Phase 4)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "tracked in #1059; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "unfinished"
 
 [[pass]]
 crate = "helio-pass-debug"
@@ -1916,30 +1919,30 @@ crate = "helio-pass-debug-overlay"
 in_default_graph = true
 reads = []
 owner = "helio-pass-debug-overlay"
-disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored input"
-status = "unverified"
+disposition = "keep: engine-internal (no authored scene input of its own); runs in the editor graph"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-decal"
 in_default_graph = true
 reads = ["decals"]
 owner = "helio-default-graphs (mapping); helio-pass-decal (algorithm)"
-disposition = "consumes decals; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "runs in the editor graph, but nothing authored feeds it: decals (Phase 4)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "tracked in #1058; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "unfinished"
 
 [[pass]]
 crate = "helio-pass-deferred-light"
 in_default_graph = true
 reads = ["reflection_captures", "scene_lights", "water_volumes"]
 owner = "helio-default-graphs (mapping); helio-pass-deferred-light (algorithm)"
-disposition = "consumes reflection_captures, scene_lights, water_volumes; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "at-risk"
+disposition = "keep: reads scene_lights (joined from LightSourceRow) and water_volumes (joined from WaterVolumeSourceRow); reflection_captures has no authored producer yet (#1054)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-depth-prepass"
@@ -1956,80 +1959,80 @@ crate = "helio-pass-dof"
 in_default_graph = true
 reads = []
 owner = "helio-pass-dof"
-disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored input"
-status = "unverified"
+disposition = "keep: engine-internal (no authored scene input of its own); runs in the editor graph"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-flare"
 in_default_graph = true
 reads = ["scene_lights"]
 owner = "helio-default-graphs (mapping); helio-pass-flare (algorithm)"
-disposition = "consumes scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "keep: reads scene_lights, the scene join's output from each LightComponent's derived LightSourceRow and its owner transform (Phases 2 and 4)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-foliage-gbuffer"
 in_default_graph = true
 reads = ["foliage_types", "foliage_wind"]
 owner = "helio-default-graphs (mapping); helio-pass-foliage-gbuffer (algorithm)"
-disposition = "consumes foliage_types, foliage_wind; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "keep: reads the environment join's foliage outputs, derived from FoliageComponent (Phase 4); limitations #1061-#1064"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-foliage-place"
 in_default_graph = true
 reads = ["foliage_layers", "foliage_types"]
 owner = "helio-default-graphs (mapping); helio-pass-foliage-place (algorithm)"
-disposition = "consumes foliage_layers, foliage_types; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "keep: reads the environment join's foliage outputs, derived from FoliageComponent (Phase 4); limitations #1061-#1064"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-forward-lit"
 in_default_graph = true
 reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights"]
 owner = "helio-default-graphs (mapping); helio-pass-forward-lit (algorithm)"
-disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, materials, scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "at-risk"
+disposition = "not in the engine's graph: part of Helio's forward graph, not the engine's deferred graph"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs) (absent from the editor graph)"
+status = "out-of-scope"
 
 [[pass]]
 crate = "helio-pass-fxaa"
 in_default_graph = true
 reads = []
 owner = "helio-pass-fxaa"
-disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored input"
-status = "unverified"
+disposition = "keep: engine-internal (no authored scene input of its own); runs in the editor graph"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-gbuffer"
 in_default_graph = true
 reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights"]
 owner = "helio-default-graphs (mapping); helio-pass-gbuffer (algorithm)"
-disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, materials, scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
-status = "at-risk"
+disposition = "keep: draws the joined mesh rows and the authored mesh pools (Phase 2)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-hiz"
 in_default_graph = true
 reads = []
 owner = "helio-pass-hiz"
-disposition = "fix in Helio: since 0e01e9fd the max pyramid is reused while (unjittered camera generation, scene content signature) holds, so a camera at rest keeps a pyramid built before anything drew and occlusion culling hides every object"
-target_contract = "Helio fix before Phase 2 acceptance; 03-gpu-reflection-and-rendering.md (Mirror lifecycle and frame ordering)"
-test = "crates/renderer/helio/crates/examples/tests/object_batch_skip.rs"
-status = "broken"
+disposition = "keep: no scene input. The reuse bug (a pyramid kept from before anything drew) was fixed in Helio#317 (53931881); camera-at-rest frames draw"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer) (camera at rest); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs); crates/renderer/helio/crates/examples/tests/hiz_static_camera.rs (Helio workspace)"
+status = "verified"
 notes = "Bisected on RTX 3060 / Vulkan: Helio's own object_batch_skip test passes at 49b02e92 and fails from 0e01e9fd through the pinned 05c2f7d7 (object not drawn)."
 
 [[pass]]
@@ -2037,100 +2040,100 @@ crate = "helio-pass-hlfs"
 in_default_graph = true
 reads = ["builtin_mesh_index", "builtin_mesh_vertex", "scene_lights"]
 owner = "helio-default-graphs (mapping); helio-pass-hlfs (algorithm)"
-disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "not in the engine's graph: Helio's separate HLFS graph; the engine never builds it; its World reader is tracked in #1066"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs) (absent from the editor graph)"
+status = "out-of-scope"
 
 [[pass]]
 crate = "helio-pass-indirect-dispatch"
 in_default_graph = true
 reads = []
 owner = "helio-pass-indirect-dispatch"
-disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored input"
-status = "unverified"
+disposition = "keep: engine-internal (no authored scene input of its own); runs in the editor graph"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-light-cull"
 in_default_graph = true
 reads = ["scene_lights"]
 owner = "helio-default-graphs (mapping); helio-pass-light-cull (algorithm)"
-disposition = "consumes scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "at-risk"
+disposition = "keep: reads scene_lights, the scene join's output from each LightComponent's derived LightSourceRow and its owner transform (Phases 2 and 4)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-object-batch"
 in_default_graph = true
 reads = ["materials", "static_objects"]
 owner = "helio-default-graphs (mapping); helio-pass-object-batch (algorithm)"
-disposition = "consumes materials, static_objects; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
-status = "at-risk"
+disposition = "keep: reads the scene join's draw and material rows (static_objects, materials), built on the GPU from authored StaticMeshComponent pools (Phase 2)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-occlusion-cull"
 in_default_graph = true
 reads = []
 owner = "helio-pass-occlusion-cull"
-disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored input"
-status = "unverified"
+disposition = "keep: engine-internal (no authored scene input of its own); runs in the editor graph"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-perf-overlay"
 in_default_graph = true
 reads = ["scene_lights"]
 owner = "helio-default-graphs (mapping); helio-pass-perf-overlay (algorithm)"
-disposition = "consumes scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "keep: engine-internal (no authored scene input of its own); runs in the editor graph"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-planar-reflection"
 in_default_graph = true
 reads = []
 owner = "helio-pass-planar-reflection"
-disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored input"
-status = "unverified"
+disposition = "not in the engine's graph: opt-in (enable_planar_reflections, off by default)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs) (absent from the editor graph)"
+status = "out-of-scope"
 
 [[pass]]
 crate = "helio-pass-portal-cull"
 in_default_graph = true
 reads = ["portal_views"]
 owner = "helio-default-graphs (mapping); helio-pass-portal-cull (algorithm)"
-disposition = "consumes portal_views; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "runs in the editor graph, but nothing authored feeds it: portals (Phase 4)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "tracked in #1055; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "unfinished"
 
 [[pass]]
 crate = "helio-pass-portal-instances"
 in_default_graph = true
 reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "portal_views"]
 owner = "helio-default-graphs (mapping); helio-pass-portal-instances (algorithm)"
-disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, materials, portal_views; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "runs in the editor graph, but nothing authored feeds it: portals (Phase 4)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "tracked in #1055; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "unfinished"
 
 [[pass]]
 crate = "helio-pass-postprocess"
 in_default_graph = true
 reads = ["camera_postprocess", "post_process_volumes"]
 owner = "helio-default-graphs (mapping); helio-pass-postprocess (algorithm)"
-disposition = "consumes camera_postprocess, post_process_volumes; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "keep: reads the environment join's fog / post-process outputs, derived from authored components (Phase 4)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-radiance-cascades"
@@ -2157,60 +2160,60 @@ crate = "helio-pass-shadow"
 in_default_graph = true
 reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials"]
 owner = "helio-default-graphs (mapping); helio-pass-shadow (algorithm)"
-disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, materials; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "at-risk"
+disposition = "keep: draws the authored mesh pools into shadow maps for the joined lights"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-shadow-cull"
 in_default_graph = true
 reads = []
 owner = "helio-pass-shadow-cull"
-disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored input"
-status = "unverified"
+disposition = "keep: engine-internal (no authored scene input of its own); runs in the editor graph"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-shadow-dirty"
 in_default_graph = true
 reads = []
 owner = "helio-pass-shadow-dirty"
-disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored input"
-status = "unverified"
+disposition = "keep: engine-internal (no authored scene input of its own); runs in the editor graph"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-shadow-matrix"
 in_default_graph = true
 reads = ["scene_lights"]
 owner = "helio-default-graphs (mapping); helio-pass-shadow-matrix (algorithm)"
-disposition = "consumes scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "at-risk"
+disposition = "keep: reads scene_lights, the scene join's output from each LightComponent's derived LightSourceRow and its owner transform (Phases 2 and 4)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-simple-cube"
 in_default_graph = true
 reads = []
 owner = "helio-pass-simple-cube"
-disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored input"
-status = "unverified"
+disposition = "not in the engine's graph: Helio's example graph (build_simple_graph)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs) (absent from the editor graph)"
+status = "out-of-scope"
 
 [[pass]]
 crate = "helio-pass-sky"
 in_default_graph = true
 reads = ["sky_components"]
 owner = "helio-default-graphs (mapping); helio-pass-sky (algorithm)"
-disposition = "consumes sky_components; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "runs in the editor graph, but nothing authored feeds it: a sky component (Phase 4)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "tracked in #1057; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "unfinished"
 
 [[pass]]
 crate = "helio-pass-smaa"
@@ -2237,30 +2240,30 @@ crate = "helio-pass-ssr"
 in_default_graph = true
 reads = []
 owner = "helio-pass-ssr"
-disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored input"
-status = "unverified"
+disposition = "not in the engine's graph: opt-in (RendererConfig::enable_ssr, off by default); no scene input"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs) (absent from the editor graph)"
+status = "out-of-scope"
 
 [[pass]]
 crate = "helio-pass-transparent"
 in_default_graph = true
 reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights"]
 owner = "helio-default-graphs (mapping); helio-pass-transparent (algorithm)"
-disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, materials, scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "keep: reads the authored mesh pools, materials and joined lights, all verified upstream; the pass runs in the editor graph"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs); crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-tsr"
 in_default_graph = true
 reads = []
 owner = "helio-pass-tsr"
-disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored input"
-status = "unverified"
+disposition = "not in the engine's graph: replaces FXAA only when tsr_quality is set; the editor graph uses FXAA; no scene input"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs) (absent from the editor graph)"
+status = "out-of-scope"
 
 [[pass]]
 crate = "helio-pass-underwater"
@@ -2277,20 +2280,20 @@ crate = "helio-pass-virtual-geometry"
 in_default_graph = true
 reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights"]
 owner = "helio-default-graphs (mapping); helio-pass-virtual-geometry (algorithm)"
-disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, materials, scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "keep: reads the authored mesh pools, materials and joined lights, all verified upstream; the pass runs in the editor graph"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs); crates/editor/ui_level_editor/tests/render_acceptance.rs (meshes_and_lights_reach_the_frame_from_every_producer)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-volumetric-fog"
 in_default_graph = true
 reads = ["fog_components", "post_process_volumes", "scene_lights"]
 owner = "helio-default-graphs (mapping); helio-pass-volumetric-fog (algorithm)"
-disposition = "consumes fog_components, post_process_volumes, scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "keep: reads the environment join's fog / post-process outputs, derived from authored components (Phase 4)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame); crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-voxel-planet"
@@ -2317,10 +2320,10 @@ crate = "helio-pass-water-sim"
 in_default_graph = true
 reads = ["water_hitboxes", "water_volumes"]
 owner = "helio-default-graphs (mapping); helio-pass-water-sim (algorithm)"
-disposition = "consumes water_hitboxes, water_volumes; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
-test = "none: pass output from authored inputs"
-status = "unverified"
+disposition = "keep: reads water_volumes (joined from WaterVolumeComponent, Phase 4); water_hitboxes has no authored producer (#1080)"
+target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-water-surface"
