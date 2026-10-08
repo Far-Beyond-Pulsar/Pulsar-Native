@@ -33,7 +33,7 @@
 //! - `#[register_world_component(...)]`: wires a `ComponentRuntimeBehavior`
 //!   impl into `pulsar_world_registry`'s `World`-storage bridge --
 //!   a default factory, a JSON boundary decoder, a clone, erased SceneDB
-//!   registration, `remove`/`on_removed`/`dispatch`, and a
+//!   registration, `remove`/`on_removed`, and a
 //!   `property_written` normalization hook. The `#[gpu]` companions above
 //!   are never inserted or refreshed by anyone: the authored struct's own
 //!   SceneDB GPU dispatch derives and writes them on every write. See that
@@ -75,6 +75,7 @@ use syn::{
         engine_class_serialize,
         engine_class_deserialize,
         engine_class_scene_store,
+        engine_class_gpu_rows,
         gpu
     )
 )]
@@ -108,6 +109,12 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
         .attrs
         .iter()
         .any(|a| a.path().is_ident("engine_class_scene_store"));
+    // `#[engine_class(gpu_rows)]` stamps this marker: only then does the
+    // generated GPU companion get a SceneDB row (see `gpu_mirror_codegen`).
+    let gpu_rows = input
+        .attrs
+        .iter()
+        .any(|a| a.path().is_ident("engine_class_gpu_rows"));
 
     // Extract direct #[property] fields and optional #[sub_props] flattening fields.
     let (property_impls, property_fields, sub_props_fields, gpu_leaf_fields): (
@@ -262,7 +269,8 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     } else {
         gpu_leaf_fields
     };
-    let gpu_mirror_tokens = gpu_mirror_codegen(name, &gpu_leaf_fields, &sub_props_fields);
+    let gpu_mirror_tokens =
+        gpu_mirror_codegen(name, &gpu_leaf_fields, &sub_props_fields, gpu_rows);
 
     // Generate auto-property methods (getters and setters). Their metadata
     // rides the property's own category so blueprint palette grouping keeps
@@ -546,9 +554,9 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut add_default = false;
     let mut add_clone = false;
     let mut add_debug = false;
-    let mut register_runtime = false;
     let mut register_scene_props = false;
     let mut add_scene_store = false;
+    let mut add_gpu_rows = false;
     let mut no_register = false;
 
     for arg in args {
@@ -558,10 +566,10 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
             Meta::Path(path) if path.is_ident("default") => add_default = true,
             Meta::Path(path) if path.is_ident("clone") => add_clone = true,
             Meta::Path(path) if path.is_ident("debug") => add_debug = true,
-            Meta::Path(path) if path.is_ident("runtime_behavior") => register_runtime = true,
             Meta::Path(path) if path.is_ident("no_register") => no_register = true,
             Meta::Path(path) if path.is_ident("scene_props_applier") => register_scene_props = true,
             Meta::Path(path) if path.is_ident("scene_store") => add_scene_store = true,
+            Meta::Path(path) if path.is_ident("gpu_rows") => add_gpu_rows = true,
             Meta::NameValue(name_value) if name_value.path.is_ident("category") => {
                 if let Expr::Lit(expr_lit) = &name_value.value {
                     if let Lit::Str(lit_str) = &expr_lit.lit {
@@ -701,6 +709,13 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     } else {
         quote! {}
     };
+    // `gpu_rows`: the generated `#[gpu]` companion is uploaded as a SceneDB
+    // GPU row (see `gpu_mirror_codegen`).
+    let gpu_rows_marker_attr = if add_gpu_rows {
+        quote! { #[engine_class_gpu_rows] }
+    } else {
+        quote! {}
+    };
 
     let sub_props_marker_impl = if no_register {
         let name = &item_struct.ident;
@@ -710,48 +725,6 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let name = &item_struct.ident;
-    // Same deserialize-shim reasoning as `register_runtime_behavior`'s own
-    // codegen below (see its comment): `sync_component` is typed `&Self`,
-    // but `RuntimeBehaviorRegistration.sync` must be a concrete, non-generic
-    // `fn` pointer for `inventory::submit!` and still deals in
-    // `&serde_json::Value` (most callers only have JSON at dispatch time),
-    // so a small per-type shim bridges the two.
-    let runtime_registration = if register_runtime {
-        let shim_fn_name = quote::format_ident!("__pulsar_reflection_sync_shim_{}", name);
-        quote! {
-            #[doc(hidden)]
-            #[allow(non_snake_case)]
-            fn #shim_fn_name(
-                owner: &pulsar_reflection::RuntimeComponentOwner,
-                component_index: usize,
-                component_data: &::serde_json::Value,
-                context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-            ) {
-                let parsed: #name = match ::serde_json::from_value(component_data.clone()) {
-                    Ok(value) => value,
-                    Err(error) => {
-                        context.report_error(format!(
-                            "{} on '{}' is invalid: {error}",
-                            <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                            owner.scene_object_id,
-                        ));
-                        return;
-                    }
-                };
-                <#name as pulsar_reflection::ComponentRuntimeBehavior>::sync_component(owner, component_index, &parsed, context);
-            }
-
-            pulsar_reflection::inventory::submit! {
-                pulsar_reflection::RuntimeBehaviorRegistration {
-                    class_name: <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                    sync: #shim_fn_name,
-                }
-            }
-        }
-    } else {
-        quote! {}
-    };
-
     let scene_props_registration = if register_scene_props {
         quote! {
             pulsar_reflection::inventory::submit! {
@@ -785,177 +758,14 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         #serialize_marker_attr
         #deserialize_marker_attr
         #scene_store_marker_attr
+        #gpu_rows_marker_attr
         #item_struct
         #sub_props_marker_impl
-        #runtime_registration
         #scene_props_registration
     }
     .into()
 }
 
-#[proc_macro_derive(RegisterRuntimeBehavior)]
-pub fn derive_register_runtime_behavior(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    let name = &input.ident;
-    let shim_fn_name = quote::format_ident!("__pulsar_reflection_sync_shim_{}", name);
-
-    let generated = quote! {
-        #[doc(hidden)]
-        #[allow(non_snake_case)]
-        fn #shim_fn_name(
-            owner: &pulsar_reflection::RuntimeComponentOwner,
-            component_index: usize,
-            component_data: &::serde_json::Value,
-            context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-        ) {
-            let parsed: #name = match ::serde_json::from_value(component_data.clone()) {
-                Ok(value) => value,
-                Err(error) => {
-                    context.report_error(format!(
-                        "{} on '{}' is invalid: {error}",
-                        <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                        owner.scene_object_id,
-                    ));
-                    return;
-                }
-            };
-            <#name as pulsar_reflection::ComponentRuntimeBehavior>::sync_component(owner, component_index, &parsed, context);
-        }
-
-        pulsar_reflection::inventory::submit! {
-            pulsar_reflection::RuntimeBehaviorRegistration {
-                class_name: <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                sync: #shim_fn_name,
-            }
-        }
-    };
-
-    generated.into()
-}
-
-#[proc_macro_attribute]
-pub fn register_runtime_behavior(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if !attr.is_empty() {
-        return syn::Error::new_spanned(
-            proc_macro2::TokenStream::from(attr),
-            "#[register_runtime_behavior] does not accept arguments",
-        )
-        .to_compile_error()
-        .into();
-    }
-
-    let impl_block = parse_macro_input!(item as ItemImpl);
-
-    if !impl_block.generics.params.is_empty() {
-        return syn::Error::new_spanned(
-            &impl_block.generics,
-            "#[register_runtime_behavior] does not support generic impl blocks",
-        )
-        .to_compile_error()
-        .into();
-    }
-
-    let Some((_, trait_path, _)) = &impl_block.trait_ else {
-        return syn::Error::new_spanned(
-            &impl_block.self_ty,
-            "#[register_runtime_behavior] must be used on `impl ComponentRuntimeBehavior for Type`",
-        )
-        .to_compile_error()
-        .into();
-    };
-
-    let Some(trait_ident) = trait_path.segments.last().map(|s| &s.ident) else {
-        return syn::Error::new_spanned(
-            trait_path,
-            "invalid trait path for #[register_runtime_behavior]",
-        )
-        .to_compile_error()
-        .into();
-    };
-
-    if trait_ident != "ComponentRuntimeBehavior" {
-        return syn::Error::new_spanned(
-            trait_path,
-            "#[register_runtime_behavior] must target `ComponentRuntimeBehavior` impl",
-        )
-        .to_compile_error()
-        .into();
-    }
-
-    let self_ty = &impl_block.self_ty;
-    let Some(self_ty_ident) = (match &**self_ty {
-        syn::Type::Path(type_path) => type_path.path.segments.last().map(|s| &s.ident),
-        _ => None,
-    }) else {
-        return syn::Error::new_spanned(
-            self_ty,
-            "#[register_runtime_behavior] requires a simple named type (no generics, no qualified paths)",
-        )
-        .to_compile_error()
-        .into();
-    };
-    let shim_fn_name = quote::format_ident!("__pulsar_reflection_sync_shim_{}", self_ty_ident);
-
-    // `RuntimeBehaviorRegistration.sync` is a plain `fn` pointer (`inventory::
-    // submit!` needs a concrete static, not a generic) and still deals in
-    // `&serde_json::Value` (most callers -- e.g. a scene-file loader -- only
-    // have JSON on hand at dispatch time), while `sync_component` itself is
-    // typed `&Self` (see `ComponentRuntimeBehavior`'s doc in pulsar_reflection
-    // for why). This shim is the one deserialize call that bridges the two,
-    // generated here so component authors never hand-write JSON parsing. A
-    // parse failure is reported via `ComponentRuntimeContext::report_error`,
-    // not a panic.
-    let output = quote! {
-        #impl_block
-
-        #[doc(hidden)]
-        #[allow(non_snake_case)]
-        fn #shim_fn_name(
-            owner: &pulsar_reflection::RuntimeComponentOwner,
-            component_index: usize,
-            component_data: &::serde_json::Value,
-            context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-        ) {
-            let parsed: #self_ty = match ::serde_json::from_value(component_data.clone()) {
-                Ok(value) => value,
-                Err(error) => {
-                    context.report_error(format!(
-                        "{} on '{}' is invalid: {error}",
-                        <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                        owner.scene_object_id,
-                    ));
-                    return;
-                }
-            };
-            <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::sync_component(owner, component_index, &parsed, context);
-        }
-
-        pulsar_reflection::inventory::submit! {
-            pulsar_reflection::RuntimeBehaviorRegistration {
-                class_name: <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                sync: #shim_fn_name,
-            }
-        }
-    };
-
-    output.into()
-}
-
-/// Register an inherent `tick(&mut self, context: &mut ComponentContext,
-/// delta_seconds: f32)` method as a
-/// native SceneDB component callback. The generated dispatcher queries the
-/// actual typed World rows and calls the method while holding that live
-/// component borrow; it never creates a serialized or cloned runtime copy.
-///
-/// ```ignore
-/// #[register_component_runtime]
-/// impl VoxelTerrainComponent {
-///     fn tick(&mut self, context: &mut pulsar_world_registry::ComponentContext<'_>, delta_seconds: f32) { /* ... */ }
-///
-///     #[bp_handler("block_broken")]
-///     fn on_block_broken(&mut self, context: &mut pulsar_world_registry::ComponentContext<'_>, block: BlockData) { /* ... */ }
-/// }
-/// ```
 #[proc_macro_attribute]
 pub fn register_component_runtime(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = match syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated
@@ -1658,19 +1468,11 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
 /// from JSON once (a boundary decode) and inserted into `pulsar_scenedb::World`
 /// through SceneDB's erased insert.
 ///
-/// Applied *in addition to* `#[register_runtime_behavior]` (same `impl
-/// ComponentRuntimeBehavior for Type` block, stack both attributes) -- this
-/// is deliberately a separate, opt-in macro so migrating a component onto
-/// `World`-backed storage doesn't touch the already-shipped
-/// `RuntimeBehaviorRegistration`/JSON dispatch path at all. Components that
-/// haven't been migrated yet keep working exactly as before, through that
-/// unchanged path.
-///
-/// Same validation as `#[register_runtime_behavior]` -- see that macro's
-/// implementation for why each check exists; kept as a near-identical
-/// sibling rather than factored together, since the two attributes are
-/// meant to be readable and removable independently as B5 rolls out one
-/// component at a time.
+/// Applied to the component's `impl ComponentRuntimeBehavior for Type`
+/// block, whose `CLASS_NAME` names the class; the block is emitted
+/// unchanged. The JSON runtime-behavior dispatch that block once fed
+/// (`#[register_runtime_behavior]`) was removed in Pulsar-Native#1035
+/// (Phase 4): components reach their consumers through their data.
 #[proc_macro_attribute]
 pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = if attr.is_empty() {
@@ -1741,7 +1543,6 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
     let decode_fn_name = quote::format_ident!("__pulsar_world_decode_{}", self_ty_ident);
     let clone_fn_name = quote::format_ident!("__pulsar_world_clone_{}", self_ty_ident);
     let remove_fn_name = quote::format_ident!("__pulsar_world_remove_{}", self_ty_ident);
-    let dispatch_fn_name = quote::format_ident!("__pulsar_world_dispatch_{}", self_ty_ident);
     let get_fn_name = quote::format_ident!("__pulsar_world_get_engine_class_{}", self_ty_ident);
     let get_mut_fn_name =
         quote::format_ident!("__pulsar_world_get_engine_class_mut_{}", self_ty_ident);
@@ -1749,13 +1550,6 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
     let property_written_fn_name =
         quote::format_ident!("__pulsar_world_property_written_{}", self_ty_ident);
 
-    // Note this macro does NOT emit `#impl_block` -- unlike
-    // `#[register_runtime_behavior]`, it's meant to be stacked alongside
-    // that macro on the same impl block, and only one of the two attributes
-    // on an item should re-emit the original block. Convention here:
-    // `#[register_runtime_behavior]` keeps ownership of emitting the block;
-    // `#[register_world_component]` is written *above* it and must only add
-    // new items.
     let decode_expr = match &args.decode {
         Some(custom) => quote! { #custom(data)? },
         None => quote! {
@@ -1843,26 +1637,6 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
             #property_written_body
         }
 
-        #[doc(hidden)]
-        #[allow(non_snake_case)]
-        fn #dispatch_fn_name(
-            world: &pulsar_scenedb::World,
-            entity: pulsar_scenedb::Entity,
-            owner: &pulsar_reflection::RuntimeComponentOwner,
-            component_index: usize,
-            context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-        ) -> bool {
-            match world.get::<#self_ty>(entity) {
-                Some(component) => {
-                    <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::sync_component(
-                        owner, component_index, component, context,
-                    );
-                    true
-                }
-                None => false,
-            }
-        }
-
         // Direct live access to the real `World`-resident value as `&(mut)
         // dyn EngineClass` -- the properties panel's read and edit paths
         // (Pulsar-Native#561). No JSON, no throwaway instance.
@@ -1900,7 +1674,6 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
                 value_as_engine_class_mut: pulsar_world_registry::values::erased::as_engine_class_mut::<#self_ty>,
                 register_erased: pulsar_scenedb::register_component::<#self_ty>,
                 remove: #remove_fn_ref,
-                dispatch: #dispatch_fn_name,
                 get_as_engine_class: #get_fn_name,
                 get_as_engine_class_mut: #get_mut_fn_name,
                 on_removed: #on_removed_fn_ref,
@@ -2190,6 +1963,7 @@ fn gpu_mirror_codegen(
     name: &syn::Ident,
     gpu_leaf_fields: &[GpuLeafField],
     sub_props_fields: &[&Field],
+    gpu_rows: bool,
 ) -> proc_macro2::TokenStream {
     if gpu_leaf_fields.is_empty() && sub_props_fields.is_empty() {
         // Nothing to mirror -- the trivial, common-case impl.
@@ -2206,6 +1980,57 @@ fn gpu_mirror_codegen(
     let mirror_name = quote::format_ident!("{}GpuMirror", name);
     let dispatch_fn_name = quote::format_ident!("__pulsar_gpu_companion_dispatch_{}", name);
     let clear_fn_name = quote::format_ident!("__pulsar_gpu_companion_clear_{}", name);
+    // Only an opted-in class (`#[engine_class(gpu_rows)]`) uploads its
+    // companion as a SceneDB GPU row; otherwise the companion is a CPU
+    // mapping helper (e.g. `LightComponent`'s, which its derived light row is
+    // built from) and nothing is uploaded that no pass reads
+    // (Pulsar-Native#1035, Phase 4).
+    let gpu_row_registration = if gpu_rows {
+        quote! {
+        // The companion is not a component anyone inserts. `#name`'s own
+        // SceneDB GPU dispatch derives it from the live value and writes its
+        // packed row, so the row follows every insert (typed or erased),
+        // `get_mut` write, removal, despawn and mirror replay of `#name`
+        // through SceneDB's normal write path -- no refresh call, no second
+        // stored copy to keep in step.
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #dispatch_fn_name(
+            mirror: &::pulsar_scenedb::gpu::GpuMirrorHandle,
+            row: u32,
+            data: *const (),
+            is_new_insert: bool,
+        ) {
+            // SAFETY: SceneDB reaches this only through `#name`'s own
+            // `ComponentId`, with a pointer to a live `#name`.
+            let value = unsafe { &*(data as *const #name) };
+            let derived = <#name as pulsar_world_registry::GpuMirrored>::to_gpu_mirror(value);
+            ::pulsar_scenedb::gpu::write_derived_row(mirror, row, &derived, is_new_insert);
+        }
+
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #clear_fn_name(mirror: &::pulsar_scenedb::gpu::GpuMirrorHandle, row: u32) {
+            ::pulsar_scenedb::gpu::clear_derived_row::<#mirror_name>(mirror, row);
+        }
+
+        ::pulsar_scenedb::pulsar_reflection::inventory::submit! {
+            ::pulsar_scenedb::gpu::GpuMirrorRegistration {
+                component_id: ::pulsar_scenedb::component_id::<#name>,
+                dispatch: #dispatch_fn_name,
+            }
+        }
+
+        ::pulsar_scenedb::pulsar_reflection::inventory::submit! {
+            ::pulsar_scenedb::gpu::world_mirror::GpuClearRegistration {
+                component_id: ::pulsar_scenedb::component_id::<#name>,
+                clear: #clear_fn_name,
+            }
+        }
+        }
+    } else {
+        quote! {}
+    };
 
     let leaf_field_defs = gpu_leaf_fields.iter().map(|leaf| {
         let ident = &leaf.ident;
@@ -2277,46 +2102,7 @@ fn gpu_mirror_codegen(
             }
         }
 
-        // The companion is not a component anyone inserts. `#name`'s own
-        // SceneDB GPU dispatch derives it from the live value and writes its
-        // packed row, so the row follows every insert (typed or erased),
-        // `get_mut` write, removal, despawn and mirror replay of `#name`
-        // through SceneDB's normal write path -- no refresh call, no second
-        // stored copy to keep in step.
-        #[doc(hidden)]
-        #[allow(non_snake_case)]
-        fn #dispatch_fn_name(
-            mirror: &::pulsar_scenedb::gpu::GpuMirrorHandle,
-            row: u32,
-            data: *const (),
-            is_new_insert: bool,
-        ) {
-            // SAFETY: SceneDB reaches this only through `#name`'s own
-            // `ComponentId`, with a pointer to a live `#name`.
-            let value = unsafe { &*(data as *const #name) };
-            let derived = <#name as pulsar_world_registry::GpuMirrored>::to_gpu_mirror(value);
-            ::pulsar_scenedb::gpu::write_derived_row(mirror, row, &derived, is_new_insert);
-        }
-
-        #[doc(hidden)]
-        #[allow(non_snake_case)]
-        fn #clear_fn_name(mirror: &::pulsar_scenedb::gpu::GpuMirrorHandle, row: u32) {
-            ::pulsar_scenedb::gpu::clear_derived_row::<#mirror_name>(mirror, row);
-        }
-
-        ::pulsar_scenedb::pulsar_reflection::inventory::submit! {
-            ::pulsar_scenedb::gpu::GpuMirrorRegistration {
-                component_id: ::pulsar_scenedb::component_id::<#name>,
-                dispatch: #dispatch_fn_name,
-            }
-        }
-
-        ::pulsar_scenedb::pulsar_reflection::inventory::submit! {
-            ::pulsar_scenedb::gpu::world_mirror::GpuClearRegistration {
-                component_id: ::pulsar_scenedb::component_id::<#name>,
-                clear: #clear_fn_name,
-            }
-        }
+        #gpu_row_registration
     }
 }
 

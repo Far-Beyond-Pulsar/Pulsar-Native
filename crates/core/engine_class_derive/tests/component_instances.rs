@@ -9,7 +9,7 @@
 //! The GPU half needs an adapter (any Vulkan device, including lavapipe)
 //! and is skipped without one.
 
-use engine_class_derive::{engine_class, register_runtime_behavior, register_world_component};
+use engine_class_derive::{engine_class, register_world_component};
 use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 use pulsar_scenedb::{ComponentChangeKind, World};
@@ -21,6 +21,7 @@ use pulsar_world_registry::{ComponentPayload, GpuMirrored};
 use std::sync::Arc;
 
 #[engine_class(
+    gpu_rows,
     category = "Test",
     default,
     clone,
@@ -38,7 +39,6 @@ pub struct InstanceProbe {
 }
 
 #[register_world_component]
-#[register_runtime_behavior]
 impl ComponentRuntimeBehavior for InstanceProbe {
     const CLASS_NAME: &'static str = "InstanceProbe";
 

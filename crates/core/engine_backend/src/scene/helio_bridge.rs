@@ -7,13 +7,21 @@
 //! objects' transforms and visibility) into the object, material and light
 //! rows its passes draw, on the GPU, whenever they change. This module keeps
 //! no frame projection, render-row subscription, material table or
-//! per-frame input assembly (Pulsar-Native#1035, Phase 2).
+//! per-frame input assembly (Pulsar-Native#1035, Phase 2). Its environment
+//! join ([`environment_join`]) does the same for fog volumes, post-process
+//! volumes, camera post-process settings, water volumes and foliage
+//! (Phase 4).
 use std::sync::Arc;
 
 use helio_component::components::{
-    LightSourceRow, StaticMeshComponent, StaticMeshDraw, LIGHT_SOURCES_BUFFER, MESH_BOUNDS_BUFFER,
-    MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER,
+    CameraPostProcessSourceRow, FoliageSourceRow, GlobalFogSourceRow, LightSourceRow,
+    LocalFogSourceRow, PostProcessVolumeSourceRow, StaticMeshComponent, StaticMeshDraw,
+    WaterVolumeSourceRow, CAMERA_POST_PROCESS_SOURCES_BUFFER, FOLIAGE_SOURCES_BUFFER,
+    GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER, LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER,
+    MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER, POST_PROCESS_VOLUME_SOURCES_BUFFER,
+    WATER_VOLUME_SOURCES_BUFFER,
 };
+use helio_default_graphs::environment_join::{EnvironmentJoin, EnvironmentJoinKeys};
 use helio_default_graphs::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
 use pulsar_scenedb::gpu::{
     BufferKey, EngineGpuContext, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig, SceneGpuStore,
@@ -50,6 +58,32 @@ pub fn scene_join_keys() -> SceneJoinKeys {
 /// billboards.
 pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<SceneJoin> {
     Box::new(SceneJoin::new(device, scene_join_keys(), editor))
+}
+
+/// Where this engine's environment rows live, for Helio's environment join:
+/// the same owner, visibility and transform rows as the scene join, and the
+/// rows fog volumes, post-process volumes and camera post-process
+/// components derive (Pulsar-Native#1035, Phase 4).
+pub fn environment_join_keys() -> EnvironmentJoinKeys {
+    let scene = scene_join_keys();
+    EnvironmentJoinKeys {
+        owners: scene.owners,
+        generations: scene.generations,
+        hidden: scene.hidden,
+        transforms: scene.transforms,
+        global_fog: BufferKey::of(GLOBAL_FOG_SOURCES_BUFFER),
+        local_fog: BufferKey::of(LOCAL_FOG_SOURCES_BUFFER),
+        post_process_volumes: BufferKey::of(POST_PROCESS_VOLUME_SOURCES_BUFFER),
+        camera_post_process: BufferKey::of(CAMERA_POST_PROCESS_SOURCES_BUFFER),
+        water_volumes: BufferKey::of(WATER_VOLUME_SOURCES_BUFFER),
+        foliage: BufferKey::of(FOLIAGE_SOURCES_BUFFER),
+    }
+}
+
+/// Helio's environment join over this engine's rows, for
+/// `RendererBuilder::with_scene_derivation`.
+pub fn environment_join(device: &wgpu::Device) -> Box<EnvironmentJoin> {
+    Box::new(EnvironmentJoin::new(device, environment_join_keys()))
 }
 
 /// Ensure that the authoritative SceneDB world has one GPU mirror for Helio's
@@ -98,11 +132,6 @@ pub fn ensure_gpu_mirror(
     ComponentOwner::register_gpu_columns_growable(&mut gpu_store, 4096, &device);
     ObjectHidden::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     helio_pass_decal::DecalComponent::register_gpu_columns_growable(&mut gpu_store, 256, &device);
-    helio_pass_water_sim::WaterVolumeComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        64,
-        &device,
-    );
     helio_pass_water_sim::WaterHitboxComponent::register_gpu_columns_growable(
         &mut gpu_store,
         256,
@@ -124,12 +153,15 @@ pub fn ensure_gpu_mirror(
         &device,
     );
     crate::scene::Transform::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
-    // The editor viewport's post-process baseline; see `editor_postprocess`.
-    helio_pass_postprocess::CameraPostProcessComponent::register_gpu_columns_growable(
-        &mut gpu_store,
-        4,
-        &device,
-    );
+    // The environment join's inputs (see `environment_join_keys`); the fog
+    // media, post-process volume, camera, water volume and foliage rows the
+    // passes read are its outputs.
+    GlobalFogSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
+    LocalFogSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
+    PostProcessVolumeSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
+    CameraPostProcessSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
+    WaterVolumeSourceRow::register_gpu_columns_growable(&mut gpu_store, 8, &device);
+    FoliageSourceRow::register_gpu_columns_growable(&mut gpu_store, 8, &device);
 
     // SceneDB owns residency budgets and tier configuration. The bridge only
     // installs project settings while constructing the shared store.
@@ -214,5 +246,35 @@ mod tests {
         );
         assert_eq!(size_of::<[f32; 4]>() as u64, join::MESH_BOUNDS_ROW_BYTES);
         assert_eq!(size_of::<u32>() as u64, join::MESH_FLAGS_ROW_BYTES);
+    }
+
+    #[test]
+    fn the_rows_the_environment_join_reads_have_its_layouts() {
+        use helio_default_graphs::environment_join as env;
+        use std::mem::size_of;
+        assert_eq!(
+            size_of::<GlobalFogSourceRow>() as u64,
+            env::GLOBAL_FOG_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<LocalFogSourceRow>() as u64,
+            env::LOCAL_FOG_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<PostProcessVolumeSourceRow>() as u64,
+            env::POST_PROCESS_VOLUME_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<CameraPostProcessSourceRow>() as u64,
+            env::CAMERA_POST_PROCESS_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<WaterVolumeSourceRow>() as u64,
+            env::WATER_VOLUME_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<FoliageSourceRow>() as u64,
+            env::FOLIAGE_SOURCE_ROW_BYTES
+        );
     }
 }

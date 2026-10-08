@@ -17,7 +17,7 @@
 //! scene_store, ...)]`, a different mechanism entirely) each make for their
 //! own mechanism.
 
-use engine_class_derive::{engine_class, register_runtime_behavior, register_world_component};
+use engine_class_derive::{engine_class, register_world_component};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, EngineClass as _, Reflectable,
     RuntimeComponentOwner,
@@ -99,6 +99,7 @@ pub enum ThrowawayKind {
 /// could never work here) is simply excluded from the mirror, not an
 /// error, since it was never marked `#[gpu]` in the first place.
 #[engine_class(
+    gpu_rows,
     category = "Test",
     default,
     clone,
@@ -125,7 +126,7 @@ pub struct ThrowawaySubProps {
 /// The containing struct: one direct `#[gpu]` leaf field PLUS a
 /// `#[sub_props]` field -- proves composition (the sub-props group's own
 /// mirror is embedded, not re-derived here).
-#[engine_class(category = "Test", default, clone, debug, no_register)]
+#[engine_class(gpu_rows, category = "Test", default, clone, debug, no_register)]
 pub struct ThrowawayMirroredComponent {
     #[sub_props]
     pub sub: ThrowawaySubProps,
@@ -136,7 +137,7 @@ pub struct ThrowawayMirroredComponent {
 
 /// No `#[gpu]` fields anywhere -- must get `GpuMirror = NoGpuMirror`, not a
 /// generated (empty) struct of its own.
-#[engine_class(category = "Test", default, clone, debug, no_register)]
+#[engine_class(gpu_rows, category = "Test", default, clone, debug, no_register)]
 pub struct ThrowawayUnmirroredComponent {
     #[property]
     pub label: f32,
@@ -190,7 +191,7 @@ fn throwaway_kind_to_u32(kind: ThrowawayKind) -> u32 {
     }
 }
 
-#[engine_class(category = "Test", default, clone, debug, no_register)]
+#[engine_class(gpu_rows, category = "Test", default, clone, debug, no_register)]
 pub struct ThrowawayOverrideComponent {
     // Upload-time unit conversion -- degrees in the properties panel,
     // radians in the mirror. `f32::to_radians` used directly as the `with`
@@ -359,6 +360,7 @@ fn gpu_mirror_row_follows_a_plain_insert_and_removal() {
 /// generated factory, decoder and erased insert land the same GPU row a
 /// typed insert does, and that a reflected property write reaches it.
 #[engine_class(
+    gpu_rows,
     category = "Test",
     default,
     clone,
@@ -374,7 +376,6 @@ pub struct ThrowawayRegisteredComponent {
 }
 
 #[register_world_component]
-#[register_runtime_behavior]
 impl ComponentRuntimeBehavior for ThrowawayRegisteredComponent {
     const CLASS_NAME: &'static str = "ThrowawayRegisteredComponent";
 
@@ -488,6 +489,7 @@ fn erased_factory_decode_and_property_writes_reach_the_gpu_row() {
 /// A class that derives one field from another: `property_written` keeps
 /// `doubled` in step under the same write guard as the edit.
 #[engine_class(
+    gpu_rows,
     category = "Test",
     default,
     clone,
@@ -511,7 +513,6 @@ fn throwaway_property_written(component: &mut ThrowawayNormalizedComponent, prop
 }
 
 #[register_world_component(property_written = throwaway_property_written)]
-#[register_runtime_behavior]
 impl ComponentRuntimeBehavior for ThrowawayNormalizedComponent {
     const CLASS_NAME: &'static str = "ThrowawayNormalizedComponent";
 
@@ -562,4 +563,35 @@ fn property_written_runs_under_the_same_write_and_reaches_the_gpu_row() {
         single_f32_row(&ctx, &store, Mirror::packed_gpu_component_id(), entity.index()),
         42.0
     );
+}
+
+/// Without `gpu_rows`, the generated companion is a CPU mapping only:
+/// inserting the authored value uploads no row (Pulsar-Native#1035, Phase 4).
+#[engine_class(category = "Test", default, clone, debug, no_register)]
+pub struct ThrowawayCpuOnlyComponent {
+    #[property]
+    #[gpu]
+    pub intensity: f32,
+}
+
+#[test]
+fn without_gpu_rows_the_companion_uploads_nothing() {
+    let ctx = test_context();
+    let store = Arc::new(SceneGpuStore::new(&ctx, scene_cfg()));
+    let mut world = World::new();
+    world.attach_gpu_mirror(GpuMirrorHandle::new(
+        Arc::clone(&store),
+        Arc::clone(ctx.queue()),
+    ));
+    let entity = world.spawn();
+    world.insert(entity, ThrowawayCpuOnlyComponent { intensity: 3.0 });
+    world
+        .flush_gpu_mirror(ctx.queue())
+        .expect("mirror attached");
+
+    type Mirror = <ThrowawayCpuOnlyComponent as GpuMirrored>::GpuMirror;
+    assert!(store.buffer_key_for(Mirror::packed_gpu_component_id()).is_none());
+    // The mapping itself is still there.
+    let mirror = ThrowawayCpuOnlyComponent { intensity: 3.0 }.to_gpu_mirror();
+    assert_eq!(mirror.intensity.0, 3.0);
 }

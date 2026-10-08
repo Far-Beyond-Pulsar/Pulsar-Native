@@ -306,6 +306,9 @@ pub struct HelioRenderer {
     /// Camera height above the voxel ground below it, from the last frame.
     voxel_altitude: Option<f64>,
     last_voxel_errors: Vec<String>,
+    /// What the voxel path reads from the scene, and the world revision it
+    /// was read at: camera-only frames reuse it instead of re-reading.
+    voxel_scene: Option<(u64, VoxelSceneRead)>,
     /// `PULSAR_VOXEL_STATS`: log voxel streaming diagnostics twice a second.
     voxel_stats_log: bool,
     last_voxel_stats_log: Instant,
@@ -318,6 +321,10 @@ struct HelioInner {
     /// Frame-pacing revision; never used as a renderer-side world mirror.
     last_scene_revision: u64,
     has_rendered_frame: bool,
+    /// The post-process baseline last set on this graph's resolver.
+    applied_postprocess: Option<crate::scene::EditorPostProcess>,
+    /// Watches the scene for spline changes; created with the first sync.
+    spline_lines: Option<helio_component::components::SplineLines>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -423,6 +430,7 @@ impl HelioRenderer {
             voxel_stroke_last: None,
             voxel_altitude: None,
             last_voxel_errors: Vec::new(),
+            voxel_scene: None,
             voxel_stats_log: std::env::var_os("PULSAR_VOXEL_STATS").is_some(),
             last_voxel_stats_log: Instant::now(),
         }
@@ -665,6 +673,7 @@ impl HelioRenderer {
                 .with_editor_mode(true)
                 // Meshes and lights: Helio joins the authored rows on the GPU.
                 .with_scene_derivation(crate::scene::scene_join(&device_arc, true))
+                .with_scene_derivation(crate::scene::environment_join(&device_arc))
                 .with_clear_color([0.15, 0.18, 0.25, 1.0])
                 .with_ambient([0.0, 0.0, 0.0], 0.0)
                 .with_vt_tile_size(tile_px);
@@ -687,6 +696,8 @@ impl HelioRenderer {
                 interaction: SceneInteraction::default(),
                 last_scene_revision: 0,
                 has_rendered_frame: false,
+                applied_postprocess: None,
+                spline_lines: None,
             };
             self.inner = Some(inner);
             self.applied_graph_settings = Some(graph_settings.clone());
@@ -796,12 +807,11 @@ impl HelioRenderer {
         self.configure_gizmo_view();
         self.viewport_size = previous_viewport_size;
 
-        // Before idle detection: a changed camera row bumps the scene
-        // revision, so this frame steps SceneDB and uploads it.
-        {
-            profiling::profile_scope!("helio_sync_editor_postprocess");
-            self.sync_editor_postprocess();
-        }
+        // Before idle detection: a changed baseline renders this frame.
+        let postprocess_changed = {
+            profiling::profile_scope!("helio_apply_postprocess_baseline");
+            self.apply_postprocess_baseline()
+        };
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
@@ -839,6 +849,7 @@ impl HelioRenderer {
             && !self.voxel_backends.needs_frame(&inner.renderer)
             && !self.gizmo_dirty
             && !viewport_resized
+            && !postprocess_changed
             && !self.reset_taa_next_frame;
 
         // Clear the sticky input flag when camera actually stopped.
@@ -911,9 +922,14 @@ impl HelioRenderer {
             {
                 // Splines are SceneDB components drawn by Helio's editor debug
                 // pass in world space, so they follow the camera like the grid.
+                // Their lines are rebuilt only when a spline or its owner changed.
                 profiling::profile_scope!("helio_sync_spline_lines");
-                let lines = helio_component::components::spline_debug_lines(&scene_store.world);
-                inner.renderer.debug_set_editor_lines("splines", lines);
+                let spline_lines = inner.spline_lines.get_or_insert_with(|| {
+                    helio_component::components::SplineLines::new(&scene_store.world)
+                });
+                if let Some(lines) = spline_lines.poll(&scene_store.world) {
+                    inner.renderer.debug_set_editor_lines("splines", lines);
+                }
             }
             {
                 profiling::profile_scope!("helio_scene_store_step");
@@ -931,53 +947,23 @@ impl HelioRenderer {
         }
 
         // ── Camera / gizmo / render ─────────────────────────────────────────────
-        let (voxel_entries, mut voxel_errors, authored_sky, authored_meshes, sun) = {
+        let VoxelSceneRead {
+            entries: voxel_entries,
+            errors: mut voxel_errors,
+            authored_sky,
+            authored_meshes,
+            sun,
+        } = {
             let store = self.scene_store.read();
-            let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&store.world);
-            let authored_sky = store
-                .world
-                .query::<&helio_pass_sky::SkyComponent>()
-                .next()
-                .is_some();
-            let authored_meshes = store
-                .world
-                .query::<(
-                    &helio_component::components::StaticMeshComponent,
-                    &pulsar_scene_model::attachments::ComponentOwner,
-                )>()
-                .any(|(_, (_, owner))| owner.is_enabled());
-            // Voxel terrain traces sunlight towards the scene's directional
-            // light: the opposite of the direction it travels, its owner's
-            // rotation of -Y.
-            let sun = store
-                .world
-                .query::<(
-                    &helio_component::components::LightComponent,
-                    &pulsar_scene_model::attachments::ComponentOwner,
-                )>()
-                .filter(|(_, (light, owner))| {
-                    owner.is_enabled()
-                        && light.general.enabled
-                        && light.general.light_type
-                            == helio_component::components::LightType::Directional
-                })
-                .find_map(|(instance, _)| {
-                    pulsar_scene_model::attachments::owner_component::<crate::scene::Transform>(
-                        &store.world,
-                        instance,
-                    )
-                    .copied()
-                })
-                .map(|transform| {
-                    let rotation = glam::Quat::from_euler(
-                        glam::EulerRot::YXZ,
-                        transform.rotation[1].to_radians(),
-                        transform.rotation[0].to_radians(),
-                        transform.rotation[2].to_radians(),
-                    );
-                    (rotation * Vec3::Y).to_array()
-                });
-            (entries, errors, authored_sky, authored_meshes, sun)
+            let revision = store.world.revision();
+            match &self.voxel_scene {
+                Some((read_at, read)) if *read_at == revision => read.clone(),
+                _ => {
+                    let read = VoxelSceneRead::of(&store.world);
+                    self.voxel_scene = Some((revision, read.clone()));
+                    read
+                }
+            }
         };
         let outdoor_sky = self.voxel_backends.uses_outdoor_sky(&voxel_entries);
         self.voxel_altitude = self.voxel_backends.altitude(&voxel_entries, self.cam_pos);
@@ -1365,10 +1351,12 @@ impl HelioRenderer {
         }
     }
 
-    /// Keep the editor camera's post-process row in step with the toolbar's
-    /// Bloom toggle and the project's graphics settings. Also drains the
-    /// legacy feature commands, which carry no state.
-    fn sync_editor_postprocess(&mut self) {
+    /// Keep the post-process resolver's baseline in step with the toolbar's
+    /// Bloom toggle and the project's graphics settings: a renderer setting
+    /// ([`crate::scene::EditorPostProcess`]), so nothing is written into the
+    /// scene. Returns whether it changed this frame. Also drains the legacy
+    /// feature commands, which carry no state.
+    fn apply_postprocess_baseline(&mut self) -> bool {
         while let Ok(command) = self.command_receiver.try_recv() {
             match command {
                 RendererCommand::ToggleFeature(feature) => {
@@ -1379,16 +1367,37 @@ impl HelioRenderer {
         let desired = crate::scene::EditorPostProcess::from_project_settings(
             self.viewport_bloom.load(Ordering::Acquire),
         );
-        let current =
-            crate::scene::editor_postprocess_is_current(&self.scene_store.read().world, desired);
-        if !current {
-            crate::scene::apply_editor_postprocess(&mut self.scene_store.write().world, desired);
-            tracing::info!(
-                bloom = desired.bloom_enabled,
-                intensity = desired.bloom_intensity,
-                "Editor viewport post-process updated"
-            );
+        let Some(inner) = self.inner.as_mut() else {
+            return false;
+        };
+        if inner.applied_postprocess == Some(desired) {
+            return false;
         }
+        let queue = inner.queue.clone();
+        let Some(resolver) = inner
+            .renderer
+            .find_pass_mut::<helio_pass_postprocess::PostProcessVolumeBlendPass>()
+        else {
+            return false;
+        };
+        resolver.set_defaults(&queue, &desired.settings());
+        inner.applied_postprocess = Some(desired);
+        tracing::info!(
+            bloom = desired.bloom_enabled,
+            intensity = desired.bloom_intensity,
+            "Editor viewport post-process updated"
+        );
+        true
+    }
+
+    /// The post-process baseline the editor viewport's resolver holds, once
+    /// the renderer is initialized.
+    pub fn postprocess_defaults(&mut self) -> Option<helio_pass_postprocess::PostProcessSettings> {
+        let inner = self.inner.as_mut()?;
+        inner
+            .renderer
+            .find_pass_mut::<helio_pass_postprocess::PostProcessVolumeBlendPass>()
+            .map(|resolver| resolver.defaults().clone())
     }
 
     pub fn is_initialized(&self) -> bool {
@@ -1780,6 +1789,70 @@ mod camera_frame_tests {
                 "step {step}"
             );
             previous = forward;
+        }
+    }
+}
+
+/// What the voxel path reads from the scene: the voxel entries, whether an
+/// authored sky or any enabled static mesh exists, and the sun direction.
+#[derive(Clone)]
+struct VoxelSceneRead {
+    entries: Vec<crate::scene::voxel_frame::VoxelSceneEntry>,
+    errors: Vec<String>,
+    authored_sky: bool,
+    authored_meshes: bool,
+    sun: Option<[f32; 3]>,
+}
+
+impl VoxelSceneRead {
+    fn of(world: &pulsar_scenedb::World) -> Self {
+        let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(world);
+        let authored_sky = world.query::<&helio_pass_sky::SkyComponent>().next().is_some();
+        let authored_meshes = world
+            .query::<(
+                &helio_component::components::StaticMeshComponent,
+                &pulsar_scene_model::attachments::ComponentOwner,
+            )>()
+            .any(|(_, (_, owner))| owner.is_enabled());
+        // Voxel terrain traces sunlight towards the scene's directional
+        // light: the opposite of the direction it travels, its owner's
+        // rotation of -Y. The light must be lit the way the scene join
+        // lights it: enabled, and its owner visible.
+        let sun = world
+            .query::<(
+                &helio_component::components::LightComponent,
+                &pulsar_scene_model::attachments::ComponentOwner,
+            )>()
+            .filter(|(_, (light, owner))| {
+                owner.is_enabled()
+                    && light.general.enabled
+                    && light.general.light_type
+                        == helio_component::components::LightType::Directional
+                    && world
+                        .get::<pulsar_scene_model::Visibility>(owner.entity())
+                        .is_none_or(|visibility| visibility.visible)
+            })
+            .find_map(|(instance, _)| {
+                pulsar_scene_model::attachments::owner_component::<crate::scene::Transform>(
+                    world, instance,
+                )
+                .copied()
+            })
+            .map(|transform| {
+                let rotation = glam::Quat::from_euler(
+                    glam::EulerRot::YXZ,
+                    transform.rotation[1].to_radians(),
+                    transform.rotation[0].to_radians(),
+                    transform.rotation[2].to_radians(),
+                );
+                (rotation * Vec3::Y).to_array()
+            });
+        Self {
+            entries,
+            errors,
+            authored_sky,
+            authored_meshes,
+            sun,
         }
     }
 }

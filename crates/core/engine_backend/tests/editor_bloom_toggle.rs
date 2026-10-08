@@ -1,9 +1,9 @@
 //! The toolbar's Bloom toggle reaches the renderer: after each rendered frame
-//! the editor camera's `camera_postprocess` row, which Helio resolves on the
-//! GPU, carries the toggle's state.
+//! the post-process resolver's baseline (its defaults, a renderer setting)
+//! carries the toggle's state; nothing is written into the scene
+//! (Pulsar-Native#1035, Phase 4).
 
 use engine_backend::subsystems::render::HelioRenderer;
-use helio_pass_postprocess::CameraPostProcessComponent;
 
 // Large enough for the lens-flare mip chain (it rejects very small targets).
 const SIZE: u32 = 320;
@@ -46,18 +46,15 @@ fn render(renderer: &mut HelioRenderer, device: &wgpu::Device, queue: &wgpu::Que
     device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
 }
 
-/// The resolved `bloom_enabled` of the editor camera's row (view 0).
-fn row_bloom(scene: &engine_backend::scene::SharedScene) -> Option<bool> {
-    let scene = scene.read();
-    scene
-        .world
-        .query::<&CameraPostProcessComponent>()
-        .find(|(_, row)| row.view_id == 0)
-        .map(|(_, row)| row.settings().bloom_enabled != 0)
+/// The bloom flag of the resolver's baseline.
+fn baseline_bloom(renderer: &mut HelioRenderer) -> Option<bool> {
+    renderer
+        .postprocess_defaults()
+        .map(|settings| settings.bloom_enabled)
 }
 
 #[test]
-fn toolbar_bloom_toggle_updates_the_camera_row() {
+fn toolbar_bloom_toggle_updates_the_resolver_baseline() {
     let Some((device, queue)) = device() else {
         eprintln!("skipping: no GPU adapter available");
         return;
@@ -69,8 +66,9 @@ fn toolbar_bloom_toggle_updates_the_camera_row() {
 
     // No project settings registered: the schema defaults (bloom on).
     render(&mut renderer, &device, &queue);
+    render(&mut renderer, &device, &queue);
     assert_eq!(
-        row_bloom(&scene),
+        baseline_bloom(&mut renderer),
         Some(true),
         "the toolbar defaults to bloom on"
     );
@@ -78,19 +76,22 @@ fn toolbar_bloom_toggle_updates_the_camera_row() {
     mailbox.set_viewport_bloom(false);
     render(&mut renderer, &device, &queue);
     assert_eq!(
-        row_bloom(&scene),
+        baseline_bloom(&mut renderer),
         Some(false),
-        "toggle off reaches the row next frame"
+        "toggle off reaches the resolver next frame"
     );
 
     mailbox.set_viewport_bloom(true);
     render(&mut renderer, &device, &queue);
-    assert_eq!(row_bloom(&scene), Some(true), "toggle back on");
+    assert_eq!(baseline_bloom(&mut renderer), Some(true), "toggle back on");
 
-    let rows = scene
-        .read()
-        .world
-        .query::<&CameraPostProcessComponent>()
-        .count();
-    assert_eq!(rows, 1, "the row is updated in place");
+    assert_eq!(
+        scene
+            .read()
+            .world
+            .query::<&helio_component::components::CameraPostProcessComponent>()
+            .count(),
+        0,
+        "the editor writes no camera row into the scene"
+    );
 }

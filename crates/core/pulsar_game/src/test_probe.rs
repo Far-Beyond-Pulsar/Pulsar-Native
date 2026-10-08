@@ -121,7 +121,6 @@ pulsar_world_registry::inventory::submit! {
         value_as_engine_class_mut: pulsar_world_registry::values::erased::as_engine_class_mut::<VmProbe>,
         register_erased: pulsar_scenedb::register_component::<VmProbe>,
         remove: vm_probe_remove,
-        dispatch: |world, entity, _: _, _: usize, _: _| world.get::<VmProbe>(entity).is_some(),
         get_as_engine_class: vm_probe_get,
         get_as_engine_class_mut: vm_probe_get_mut,
         on_removed: |_, _| {},

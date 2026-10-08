@@ -1,20 +1,17 @@
 //! The editor viewport's post-process baseline.
 //!
-//! Helio resolves post-processing on the GPU from its defaults, the camera's
-//! `camera_postprocess` row and post-process volumes. The editor drives the
-//! camera row for its viewport: bloom comes from the project's graphics
-//! settings (`bloom_enabled`, `bloom_intensity`) and the toolbar's Bloom
-//! toggle. Every other setting stays at Helio's default, which is what the
-//! viewport rendered before this row existed. Volumes in the level still
-//! override it.
-//!
-//! The row lives on its own entity without a `StableId`, so it never shows
-//! up in the outliner or in saved levels.
+//! Helio resolves post-processing on the GPU from its defaults, the
+//! camera's `camera_postprocess` rows (authored `CameraPostProcessComponent`s)
+//! and post-process volumes. The editor viewport's toggles are a renderer
+//! setting, not scene data: bloom comes from the project's graphics settings
+//! (`bloom_enabled`, `bloom_intensity`) and the toolbar's Bloom toggle, and
+//! the renderer sets them as the resolver's defaults
+//! (`PostProcessVolumeBlendPass::set_defaults`). Every other setting stays at
+//! Helio's default. Authored camera rows and volumes in the level still
+//! override it (Pulsar-Native#1035, Phase 4: the editor no longer writes a
+//! row of its own into the scene world).
 
-use helio_pass_postprocess::{CameraPostProcessComponent, PostProcessSettings};
-
-/// Camera view the editor viewport renders (Helio's default camera view).
-pub const EDITOR_VIEW_ID: u32 = 0;
+use helio_pass_postprocess::PostProcessSettings;
 
 /// The post-process values the editor controls.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -63,43 +60,13 @@ impl EditorPostProcess {
         Self::resolve(enabled, intensity, viewport_bloom)
     }
 
-    fn settings(self) -> PostProcessSettings {
+    /// The resolver defaults this baseline stands for.
+    pub fn settings(self) -> PostProcessSettings {
         let mut settings = PostProcessSettings::default();
         settings.bloom_enabled = self.bloom_enabled;
         settings.bloom_intensity = self.bloom_intensity;
         settings
     }
-}
-
-fn editor_row(
-    world: &pulsar_scenedb::World,
-) -> Option<(pulsar_scenedb::Entity, CameraPostProcessComponent)> {
-    world
-        .query::<&CameraPostProcessComponent>()
-        .find(|(_, row)| row.view_id == EDITOR_VIEW_ID)
-        .map(|(entity, row)| (entity, *row))
-}
-
-/// Whether the world's editor camera row already holds `desired`.
-pub fn editor_postprocess_is_current(
-    world: &pulsar_scenedb::World,
-    desired: EditorPostProcess,
-) -> bool {
-    editor_row(world).is_some_and(|(_, row)| {
-        row == CameraPostProcessComponent::new(EDITOR_VIEW_ID, &desired.settings())
-    })
-}
-
-/// Write the editor camera row, creating its entity on first use (or after
-/// the world was replaced, e.g. by loading a level).
-pub fn apply_editor_postprocess(world: &mut pulsar_scenedb::World, desired: EditorPostProcess) {
-    let entity = editor_row(world)
-        .map(|(entity, _)| entity)
-        .unwrap_or_else(|| world.spawn());
-    world.insert(
-        entity,
-        CameraPostProcessComponent::new(EDITOR_VIEW_ID, &desired.settings()),
-    );
 }
 
 #[cfg(test)]
@@ -142,25 +109,13 @@ mod tests {
     }
 
     #[test]
-    fn row_is_written_once_and_updated_in_place() {
-        let mut world = pulsar_scenedb::World::new();
-        let on = EditorPostProcess::resolve(true, 1.0, true);
-        let off = EditorPostProcess::resolve(true, 1.0, false);
-        assert!(!editor_postprocess_is_current(&world, on));
-
-        apply_editor_postprocess(&mut world, on);
-        assert!(editor_postprocess_is_current(&world, on));
-        assert!(!editor_postprocess_is_current(&world, off));
-        let row = editor_row(&world).unwrap().1.settings();
-        assert_eq!(row.bloom_enabled, 1);
-
-        apply_editor_postprocess(&mut world, off);
-        assert!(editor_postprocess_is_current(&world, off));
+    fn the_baseline_changes_only_bloom() {
+        let off = EditorPostProcess::resolve(true, 1.0, false).settings();
+        let mut expected = PostProcessSettings::default();
+        expected.bloom_enabled = false;
         assert_eq!(
-            world.query::<&CameraPostProcessComponent>().count(),
-            1,
-            "one row, updated in place"
+            bytemuck::bytes_of(&off.to_gpu()),
+            bytemuck::bytes_of(&expected.to_gpu())
         );
-        assert_eq!(editor_row(&world).unwrap().1.settings().bloom_enabled, 0);
     }
 }
