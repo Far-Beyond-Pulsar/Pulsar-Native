@@ -92,7 +92,7 @@ pub fn attach_component(
     // Cannot fail now: the instance is alive and the value's type was checked.
     insert_world_component_value(&class, world, instance, value)
         .expect("a freshly spawned instance takes a value of its own class");
-    crate::unsupported::report_attach(&class);
+    crate::unfinished::report_attach(&class);
     Ok(instance)
 }
 
