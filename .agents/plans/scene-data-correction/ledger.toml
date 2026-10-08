@@ -1,0 +1,2336 @@
+# SceneDB corrective plan: Phase 0 closure ledger (Pulsar-Native#1035).
+#
+# One row per exposed component class, GPU-bearing schema, GPU buffer key,
+# render pass crate and lifecycle call site. `cargo test -p scene_inventory`
+# recomputes every fact column from the linked registries and the source tree
+# and fails on any missing row, stale row or mismatched fact; a failure prints
+# the row to add with TODO placeholders.
+#
+# Human columns (required on every row):
+#   owner            module or crate that owns the change
+#   disposition      what happens to the row in the corrective plan
+#   target_contract  plan phase and contract document it must satisfy
+#   test             test or reproduction proving it, or "none: <what is missing>"
+#   status           broken | at-risk | unverified | verified | out-of-scope
+#                    broken   = reproduced failure (named in `test`)
+#                    at-risk  = source-level defect against the plan, not reproduced
+#                    verified = behavior proven by the named test
+#
+# See 11-phase-0-closure.md for the decisions and the failure baseline.
+
+[meta]
+pulsar_native = "7b6796323"
+helio = "caf8bdfd"
+scenedb = "e74df984"
+reflection = "2761936b"
+
+# ── Exposed component classes ───────────────────────────────────────────
+# Every REGISTRY class (the editor's Add component list); flags are checked
+# against the linked registries.
+
+[[class]]
+name = "CameraPostProcessComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::camera_post_process_component"
+disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; its generated GPU companion is unregistered; the editor camera row comes from editor_postprocess instead"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: component settings change post-processing"
+status = "at-risk"
+
+[[class]]
+name = "ClassInstance"
+category = "Scripting"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "pulsar_class::component"
+disposition = "non-render: class placement provenance (not offered in Add component); typed defaults and overrides keyed by slot ID"
+target_contract = "Phase 3; 05-persistence-and-undo.md"
+test = "none: class place/override/revert without JSON"
+status = "unverified"
+
+[[class]]
+name = "FoliageComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::foliage_component"
+disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; the foliage buffers are not registered in production"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: foliage placement from authored data"
+status = "at-risk"
+
+[[class]]
+name = "GlobalFogComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::fog_component"
+disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; the global_fog_media buffer and the generated companion are not registered in production"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: fog component changes volumetric fog"
+status = "at-risk"
+
+[[class]]
+name = "LODComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::lod_component"
+disposition = "unsupported: no consumer anywhere and a no-op behavior; must be reported as unsupported or given a renderer consumer"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no consumer exists"
+status = "at-risk"
+
+[[class]]
+name = "LightComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::light_component"
+disposition = "render, Phase 2 vertical slice. Its generated GPU companions (LightComponentGpuMirror and six sub-prop mirrors) are written but never registered, so the writes are dropped; lighting reads forward-lit LightComponent rows that editor_rows projects on the CPU"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "broken"
+notes = "Phase 0 baseline: the properties panel's own Add component payload (and the legacy flat intensity shape) fails to hydrate, yet the attachment stays enabled with its JSON, so the light looks attached. A class to_json payload hydrates but gets no forward-lit light row when added after the first frame."
+
+[[class]]
+name = "LocalFogVolumeComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::fog_component"
+disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; the local_fog_media buffer and the generated companion are not registered in production"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: fog volume changes volumetric fog"
+status = "at-risk"
+
+[[class]]
+name = "NativeScriptComponent"
+category = "Scripting"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "pulsar_class::native_script"
+disposition = "non-render: native script attachment; typed VM adapters"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "none: script attach and property access are typed"
+status = "unverified"
+
+[[class]]
+name = "PhysicsComponent"
+category = "Physics"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "pulsar_physics::components::physics_component"
+disposition = "non-render: physics subsystem data; typed lifecycle only. Its generated GPU companion is unregistered and has no consumer"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "none: typed add/edit/persist without a renderer"
+status = "unverified"
+
+[[class]]
+name = "PortalComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::portal_component"
+disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; the portal buffers are not registered in production"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: portal culls and draws"
+status = "at-risk"
+
+[[class]]
+name = "PostProcessVolumeComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::post_process_volume_component"
+disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; post_process_volumes is not registered in production, so the pass reads its fallback"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: volume changes post-processing"
+status = "at-risk"
+
+[[class]]
+name = "ReflectionCaptureComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::reflection_capture_component"
+disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; two schemas declare reflection_captures and neither is registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: capture reaches deferred-light"
+status = "at-risk"
+
+[[class]]
+name = "RigidbodyComponent"
+category = "Physics"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "pulsar_physics::components::rigidbody_component"
+disposition = "non-render: physics subsystem data; typed lifecycle only. Its generated GPU companion is unregistered and has no consumer"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "none: typed add/edit/persist without a renderer"
+status = "unverified"
+
+[[class]]
+name = "SplineComponent"
+category = "Gameplay"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::spline_component"
+disposition = "editor visualization: the renderer scans the World on each scene sync for spline debug lines; move to a data contract"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: spline lines follow edits without a scan"
+status = "at-risk"
+
+[[class]]
+name = "StaticMeshComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = true
+runtime_behavior = true
+owner = "helio_component::components::static_mesh_component"
+disposition = "render, Phase 2 vertical slice. Its own vertex/index pools mirror to the GPU, but the draw row (gbuffer StaticObjectComponent) and material row are built by helio_bridge's CPU projection, which only sees entities a render subscription or a full projection reaches"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "broken"
+notes = "Phase 0 baseline: added after the renderer's first frame (asset drop or panel), the mesh hydrates and its pools reach the GPU but it never gets a draw or material row, panel open or closed. A row appears only if the panel is open, the renderer drains the queue first, and a later edit fires. Since Helio f9631fd the component also owns per-slot material assignments (the standalone MaterialOverrideComponent and its alpha-0 default are gone); helio_bridge still projects them into gbuffer material rows on the CPU."
+
+[[class]]
+name = "VoxelComponent"
+category = "Voxel"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::voxel_component_runtime"
+disposition = "voxel domain: consumed through engine_backend voxel_frame/voxel_source into the voxel-planet backend; audit as its own domain (generation and sculpting stay real work)"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/voxel_component_schema.rs"
+status = "unverified"
+
+[[class]]
+name = "VoxelFlatTerrainComponent"
+category = "Voxel/Terrain"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::voxel_component_runtime"
+disposition = "voxel domain: generator settings consumed by voxel_source"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/voxel_component_schema.rs"
+status = "unverified"
+
+[[class]]
+name = "VoxelLandformComponent"
+category = "Voxel/Terrain"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::voxel_component_runtime"
+disposition = "voxel domain: generator settings consumed by voxel_source"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/voxel_component_schema.rs"
+status = "unverified"
+
+[[class]]
+name = "VoxelTerrainComponent"
+category = "Voxel/Terrain"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::voxel_component_runtime"
+disposition = "voxel domain: as VoxelComponent; generator settings components are attached by after_property_edit"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/voxel_component_schema.rs"
+status = "unverified"
+
+[[class]]
+name = "WaterVolumeComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = false
+runtime_behavior = true
+owner = "helio_component::components::water_volume_component"
+disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain (water_volumes is registered, but nothing writes it)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: water volume reaches water-sim"
+status = "at-risk"
+
+# ── GPU schemas ──────────────────────────────────────────────────────────
+# Every linked #[derive(SceneStore)] type with #[gpu] fields. `registered`:
+# production code registers its columns (unregistered writes are dropped).
+
+[[schema]]
+type = "CameraPostProcessComponentGpuMirror"
+path = "helio_component::components::camera_post_process_component::CameraPostProcessComponentGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh)"
+owner = "helio_component::components::camera_post_process_component"
+disposition = "remove: companions are replaced by GPU columns of the authored value itself. never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "GlobalFogComponentGpuMirror"
+path = "helio_component::components::fog_component::GlobalFogComponentGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh)"
+owner = "helio_component::components::fog_component"
+disposition = "remove (see CameraPostProcessComponentGpuMirror). never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "LocalFogVolumeComponentGpuMirror"
+path = "helio_component::components::fog_component::LocalFogVolumeComponentGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh)"
+owner = "helio_component::components::fog_component"
+disposition = "remove (see CameraPostProcessComponentGpuMirror). never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "FoliageComponentGpuMirror"
+path = "helio_component::components::foliage_component::component::FoliageComponentGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh)"
+owner = "helio_component::components::foliage_component::component"
+disposition = "remove (see CameraPostProcessComponentGpuMirror). never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "LightComponentGpuMirror"
+path = "helio_component::components::light_component::component::LightComponentGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh)"
+owner = "helio_component::components::light_component::component"
+disposition = "replace: authored light GPU columns become the lighting input (Phase 2). never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "AttenuationLightPropsGpuMirror"
+path = "helio_component::components::light_component::sub_props::attenuation::AttenuationLightPropsGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh) for a nested sub-prop group"
+owner = "helio_component::components::light_component::sub_props::attenuation"
+disposition = "replace with the authored light's columns (Phase 2). never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "ColorLightPropsGpuMirror"
+path = "helio_component::components::light_component::sub_props::color::ColorLightPropsGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh) for a nested sub-prop group"
+owner = "helio_component::components::light_component::sub_props::color"
+disposition = "replace with the authored light's columns (Phase 2). never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "GeneralLightPropsGpuMirror"
+path = "helio_component::components::light_component::sub_props::general::GeneralLightPropsGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh) for a nested sub-prop group"
+owner = "helio_component::components::light_component::sub_props::general"
+disposition = "replace with the authored light's columns (Phase 2). never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "IntensityLightPropsGpuMirror"
+path = "helio_component::components::light_component::sub_props::intensity::IntensityLightPropsGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh) for a nested sub-prop group"
+owner = "helio_component::components::light_component::sub_props::intensity"
+disposition = "replace with the authored light's columns (Phase 2). never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "ShadowLightPropsGpuMirror"
+path = "helio_component::components::light_component::sub_props::shadows::ShadowLightPropsGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh) for a nested sub-prop group"
+owner = "helio_component::components::light_component::sub_props::shadows"
+disposition = "replace with the authored light's columns (Phase 2). never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "VolumetricLightPropsGpuMirror"
+path = "helio_component::components::light_component::sub_props::volumetrics::VolumetricLightPropsGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh) for a nested sub-prop group"
+owner = "helio_component::components::light_component::sub_props::volumetrics"
+disposition = "replace with the authored light's columns (Phase 2). never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "PostProcessVolumeComponentGpuMirror"
+path = "helio_component::components::post_process_volume_component::PostProcessVolumeComponentGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh)"
+owner = "helio_component::components::post_process_volume_component"
+disposition = "remove (see CameraPostProcessComponentGpuMirror). never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "ReflectionCaptureGpuComponent"
+path = "helio_component::components::reflection_capture_component::ReflectionCaptureGpuComponent"
+buffers = ["reflection_captures"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "not found: declared next to ReflectionCaptureComponent, whose behavior queues the deferred-light type instead"
+owner = "helio_component::components::reflection_capture_component"
+disposition = "resolve the duplicate reflection_captures declaration; never registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "StaticMeshComponent"
+path = "helio_component::components::static_mesh_component::StaticMeshComponent"
+buffers = ["builtin_mesh_index", "builtin_mesh_vertex"]
+clears_on_remove = false
+releases_var_len = true
+registered = true
+writer = "hydrate_static_mesh_component and refresh_static_mesh_gpu_mirror (disk reload on refresh)"
+owner = "helio_component::components::static_mesh_component"
+disposition = "keep: canonical authored geometry pools; property-only edits must stop re-reading the mesh file"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "unverified"
+
+[[schema]]
+type = "BillboardComponent"
+path = "helio_pass_billboard::components::billboard::BillboardComponent"
+buffers = ["billboard_instances"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "engine_backend::scene::editor_rows (CPU projection of light icons)"
+owner = "helio_pass_billboard::components::billboard"
+disposition = "replace with an editor-only GPU consumer of authored light rows (Phase 2)"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "CoronaEmitterComponent"
+path = "helio_pass_corona::components::CoronaEmitterComponent"
+buffers = ["corona_emitters"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "no production writer found"
+owner = "helio_pass_corona::components"
+disposition = "decide: derive from authored lights or report unsupported; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "DecalComponent"
+path = "helio_pass_decal::components::DecalComponent"
+buffers = ["decals"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "no production writer found (registered only)"
+owner = "helio_pass_decal::components"
+disposition = "unsupported until an authored decal component exists"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "unverified"
+
+[[schema]]
+type = "ReflectionCaptureComponent"
+path = "helio_pass_deferred_light::components::ReflectionCaptureComponent"
+buffers = ["reflection_captures"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "ReflectionCaptureComponent behavior through PendingWorldWrites (no production drain)"
+owner = "helio_pass_deferred_light::components"
+disposition = "replace the queued write with an authored schema; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "FoliageInteractorComponent"
+path = "helio_pass_foliage_place::components::FoliageInteractorComponent"
+buffers = ["foliage_interactors"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "no production writer found"
+owner = "helio_pass_foliage_place::components"
+disposition = "audit: foliage interaction input; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "FoliageLayerComponent"
+path = "helio_pass_foliage_place::components::FoliageLayerComponent"
+buffers = ["foliage_layers"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "FoliageComponent behavior through PendingWorldWrites (no production drain)"
+owner = "helio_pass_foliage_place::components"
+disposition = "replace with authored foliage data; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "FoliageTypeComponent"
+path = "helio_pass_foliage_place::components::FoliageTypeComponent"
+buffers = ["foliage_types"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "FoliageComponent behavior through PendingWorldWrites (no production drain)"
+owner = "helio_pass_foliage_place::components"
+disposition = "replace with authored foliage data; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "FoliageWindComponent"
+path = "helio_pass_foliage_place::components::FoliageWindComponent"
+buffers = ["foliage_wind"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "FoliageComponent behavior through PendingWorldWrites (no production drain)"
+owner = "helio_pass_foliage_place::components"
+disposition = "replace with authored foliage data; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "LightComponent"
+path = "helio_pass_forward_lit::components::LightComponent"
+buffers = ["scene_lights"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "engine_backend::scene::editor_rows::sync_editor_light_rows (CPU projection)"
+owner = "helio_pass_forward_lit::components"
+disposition = "replace: lighting passes join authored light columns on the GPU (Phase 2)"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "at-risk"
+
+[[schema]]
+type = "MaterialComponent"
+path = "helio_pass_gbuffer::components::MaterialComponent"
+buffers = ["materials"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "engine_backend::scene::helio_bridge::sync_static_mesh_rows (CPU projection, default material)"
+owner = "helio_pass_gbuffer::components"
+disposition = "replace: derive from StaticMeshComponent's per-slot material assignments (Phase 2)"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "MeshComponent"
+path = "helio_pass_gbuffer::components::MeshComponent"
+buffers = ["builtin_mesh_index", "builtin_mesh_vertex"]
+clears_on_remove = false
+releases_var_len = true
+registered = false
+writer = "no production writer found"
+owner = "helio_pass_gbuffer::components"
+disposition = "retire or merge: a second declaration of the builtin mesh pools; not registered in production"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "RenderGroupComponent"
+path = "helio_pass_gbuffer::components::RenderGroupComponent"
+buffers = ["render_groups"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "no production writer found (registered only)"
+owner = "helio_pass_gbuffer::components"
+disposition = "audit: no literal consumer"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "unverified"
+
+[[schema]]
+type = "SectionedObjectComponent"
+path = "helio_pass_gbuffer::components::SectionedObjectComponent"
+buffers = ["sectioned_objects"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "no production writer found (registered only)"
+owner = "helio_pass_gbuffer::components"
+disposition = "audit: no literal consumer"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "unverified"
+
+[[schema]]
+type = "StaticObjectComponent"
+path = "helio_pass_gbuffer::components::StaticObjectComponent"
+buffers = ["static_objects"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "engine_backend::scene::helio_bridge::sync_static_mesh_rows (CPU projection)"
+owner = "helio_pass_gbuffer::components"
+disposition = "replace: draw rows from a GPU join of authored mesh, transform and visibility (Phase 2)"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "at-risk"
+
+[[schema]]
+type = "SubLevelActorComponent"
+path = "helio_pass_gbuffer::components::SubLevelActorComponent"
+buffers = ["sublevel_actors"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "no production writer found"
+owner = "helio_pass_gbuffer::components"
+disposition = "audit: no literal consumer; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "SublevelComponent"
+path = "helio_pass_gbuffer::components::SublevelComponent"
+buffers = ["sublevels"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "no production writer found (registered only)"
+owner = "helio_pass_gbuffer::components"
+disposition = "audit: no literal consumer"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "unverified"
+
+[[schema]]
+type = "PortalChainComponent"
+path = "helio_pass_portal_cull::components::PortalChainComponent"
+buffers = ["PortalChainComponent::portals"]
+clears_on_remove = false
+releases_var_len = true
+registered = false
+writer = "no production writer found"
+owner = "helio_pass_portal_cull::components"
+disposition = "audit with the portal contract; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "PortalComponent"
+path = "helio_pass_portal_cull::components::PortalComponent"
+buffers = ["portals"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "PortalComponent behavior through PendingWorldWrites (no production drain)"
+owner = "helio_pass_portal_cull::components"
+disposition = "replace with authored portal data; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "PortalProjectionCountsComponent"
+path = "helio_pass_portal_cull::components::PortalProjectionCountsComponent"
+buffers = ["portal_projection_counts"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "no production writer found"
+owner = "helio_pass_portal_cull::components"
+disposition = "derived execution output; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "PortalViewComponent"
+path = "helio_pass_portal_cull::components::PortalViewComponent"
+buffers = ["portal_views"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "no production writer found"
+owner = "helio_pass_portal_cull::components"
+disposition = "audit: portal view input; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "CameraPostProcessComponent"
+path = "helio_pass_postprocess::components::CameraPostProcessComponent"
+buffers = ["camera_postprocess"]
+clears_on_remove = true
+releases_var_len = true
+registered = true
+writer = "engine_backend::scene::editor_postprocess (editor camera) and CameraPostProcessComponent behavior through PendingWorldWrites"
+owner = "helio_pass_postprocess::components"
+disposition = "replace with the authored camera component's columns (Phase 4)"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "PostProcessVolumeComponent"
+path = "helio_pass_postprocess::components::PostProcessVolumeComponent"
+buffers = ["post_process_volumes"]
+clears_on_remove = true
+releases_var_len = true
+registered = false
+writer = "PostProcessVolumeComponent behavior through PendingWorldWrites (no production drain)"
+owner = "helio_pass_postprocess::components"
+disposition = "replace with authored volume columns; not registered in production, so the pass reads its fallback"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "SkyComponent"
+path = "helio_pass_sky::components::SkyComponent"
+buffers = ["sky_components"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "renderer-side sky setup (HelioRenderer queries it); no authored component"
+owner = "helio_pass_sky::components"
+disposition = "decide: authored sky/sun component or renderer setting; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "FogComponent"
+path = "helio_pass_volumetric_fog::components::FogComponent"
+buffers = ["fog_components"]
+clears_on_remove = true
+releases_var_len = true
+registered = false
+writer = "fog behaviors through PendingWorldWrites (no production drain)"
+owner = "helio_pass_volumetric_fog::components"
+disposition = "replace with authored fog columns; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "GlobalFogComponent"
+path = "helio_pass_volumetric_fog::components::GlobalFogComponent"
+buffers = ["global_fog_media"]
+clears_on_remove = true
+releases_var_len = true
+registered = false
+writer = "GlobalFogComponent behavior through PendingWorldWrites (no production drain)"
+owner = "helio_pass_volumetric_fog::components"
+disposition = "replace with authored fog columns; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "LocalFogVolumeComponent"
+path = "helio_pass_volumetric_fog::components::LocalFogVolumeComponent"
+buffers = ["local_fog_media"]
+clears_on_remove = true
+releases_var_len = true
+registered = false
+writer = "LocalFogVolumeComponent behavior through PendingWorldWrites (no production drain)"
+owner = "helio_pass_volumetric_fog::components"
+disposition = "replace with authored fog columns; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "VolumetricFogSettingsComponent"
+path = "helio_pass_volumetric_fog::components::VolumetricFogSettingsComponent"
+buffers = ["volumetric_fog_settings"]
+clears_on_remove = true
+releases_var_len = true
+registered = false
+writer = "no production writer found"
+owner = "helio_pass_volumetric_fog::components"
+disposition = "audit the settings input; not registered in production"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "WaterHitboxComponent"
+path = "helio_pass_water_sim::components::WaterHitboxComponent"
+buffers = ["water_hitboxes"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "no production writer found (registered only)"
+owner = "helio_pass_water_sim::components"
+disposition = "audit the writer and authored source"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "unverified"
+
+[[schema]]
+type = "WaterVolumeComponent"
+path = "helio_pass_water_sim::components::WaterVolumeComponent"
+buffers = ["water_volumes"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "WaterVolumeComponent behavior through PendingWorldWrites (no production drain)"
+owner = "helio_pass_water_sim::components"
+disposition = "replace with authored water columns (registered, but never written)"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "PhysicsComponentGpuMirror"
+path = "pulsar_physics::components::physics_component::component::PhysicsComponentGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh)"
+owner = "pulsar_physics::components::physics_component::component"
+disposition = "remove: a non-render component should declare no GPU upload without a consumer. never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "RigidbodyComponentGpuMirror"
+path = "pulsar_physics::components::rigidbody_component::component::RigidbodyComponentGpuMirror"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh)"
+owner = "pulsar_physics::components::rigidbody_component::component"
+disposition = "remove: a non-render component should declare no GPU upload without a consumer. never registered in production, so SceneDB drops every write; no consumer reads it"
+target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "at-risk"
+
+[[schema]]
+type = "Transform"
+path = "pulsar_scene_model::components::Transform"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "scene object transform writes (World::insert/get_mut on Transform)"
+owner = "pulsar_scene_model::components"
+disposition = "keep: owner transform column; GPU joins must key it by owner entity, not by component row"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: schema written, registered and consumed"
+status = "unverified"
+
+# ── Lifecycle call sites ─────────────────────────────────────────────────
+# One row per (pattern, file); `count` is checked against the source scan.
+
+[[site]]
+pattern = "cpu-projection"
+file = "crates/core/engine_backend/src/scene/editor_rows.rs"
+count = 3
+owner = "core::engine_backend::scene::editor_rows"
+disposition = "remove: render passes join authored GPU columns directly (no CPU-built pass rows)"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "at-risk"
+
+[[site]]
+pattern = "cpu-projection"
+file = "crates/core/engine_backend/src/scene/helio_bridge.rs"
+count = 3
+owner = "core::engine_backend::scene::helio_bridge"
+disposition = "remove: render passes join authored GPU columns directly (no CPU-built pass rows)"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "broken"
+notes = "Projection runs only for subscribed or fully-projected entities; see the baseline."
+
+[[site]]
+pattern = "gpu-refresh"
+file = "crates/core/engine_backend/src/scene/helio_bridge.rs"
+count = 1
+owner = "core::engine_backend::scene::helio_bridge"
+disposition = "remove: GPU reflection must follow every SceneDB write intrinsically, never a caller-invoked refresh"
+target_contract = "Phase 1; 02-typed-reflection-and-writes.md, 03-gpu-reflection-and-rendering.md"
+test = "none: mutation-equivalence test (direct vs reflected vs script write)"
+status = "at-risk"
+
+[[site]]
+pattern = "render-arm"
+file = "crates/core/engine_backend/src/scene/helio_bridge.rs"
+count = 2
+owner = "core::engine_backend::scene::helio_bridge"
+disposition = "remove: renderer visibility must not depend on armed subscriptions"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 04-state-notifications.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "at-risk"
+
+[[site]]
+pattern = "subscribe"
+file = "crates/core/engine_backend/src/scene/helio_bridge.rs"
+count = 6
+owner = "core::engine_backend::scene::helio_bridge"
+disposition = "remove: render-row subscriptions"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "at-risk"
+
+[[site]]
+pattern = "json-hydrate"
+file = "crates/core/engine_backend/src/scene/runtime_level.rs"
+count = 1
+owner = "core::engine_backend::scene::runtime_level"
+disposition = "keep at the level-file boundary as a versioned decode into typed inserts; remove the per-component JSON callback contract"
+target_contract = "Phase 3; 05-persistence-and-undo.md"
+test = "none: typed insert path equivalence"
+status = "at-risk"
+
+[[site]]
+pattern = "force-resync"
+file = "crates/core/engine_backend/src/services/gpu_renderer.rs"
+count = 1
+owner = "core::engine_backend::services::gpu_renderer"
+disposition = "remove: no repair path may be required for missing scene rows"
+target_contract = "Phase 5; 07-assets-and-runtime-lifecycle.md"
+test = "none: idle wake-up / level replacement without resync"
+status = "at-risk"
+
+[[site]]
+pattern = "cpu-projection"
+file = "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs"
+count = 3
+owner = "core::engine_backend::subsystems::render::helio_renderer::renderer"
+disposition = "remove: render passes join authored GPU columns directly (no CPU-built pass rows)"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "at-risk"
+
+[[site]]
+pattern = "destructive-drain"
+file = "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs"
+count = 1
+owner = "core::engine_backend::subsystems::render::helio_renderer::renderer"
+disposition = "remove: the renderer drains the shared queue to choose rows to re-project"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "broken"
+notes = "Rows for a late mesh appear only when the renderer, not the panel, drains the edit event."
+
+[[site]]
+pattern = "mirror-replay"
+file = "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs"
+count = 1
+owner = "core::engine_backend::subsystems::render::helio_renderer::renderer"
+disposition = "replace with generic schema-driven replay when a mirror attaches after population"
+target_contract = "Phase 1 (SceneDB upstream); 03-gpu-reflection-and-rendering.md"
+test = "none: populate-before-attach mirror test for every GPU schema"
+status = "at-risk"
+
+[[site]]
+pattern = "render-arm"
+file = "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs"
+count = 1
+owner = "core::engine_backend::subsystems::render::helio_renderer::renderer"
+disposition = "remove: renderer visibility must not depend on armed subscriptions"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 04-state-notifications.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "at-risk"
+
+[[site]]
+pattern = "json-hydrate"
+file = "crates/core/level_migrate/src/main.rs"
+count = 2
+owner = "core::level_migrate::main"
+disposition = "keep-boundary: offline .level repair tool; must call the Phase 3 archive migrations instead of live hydrate"
+target_contract = "Phase 3; 05-persistence-and-undo.md"
+test = "none: typed insert path equivalence"
+status = "unverified"
+
+[[site]]
+pattern = "json-hydrate"
+file = "crates/core/pulsar_class/src/world.rs"
+count = 3
+owner = "core::pulsar_class::world"
+disposition = "class instantiation hydrates prefab components from JSON; keep typed defaults/overrides internally"
+target_contract = "Phase 3; 05-persistence-and-undo.md"
+test = "none: typed insert path equivalence"
+status = "at-risk"
+
+[[site]]
+pattern = "cpu-projection"
+file = "crates/core/pulsar_game/src/embed.rs"
+count = 1
+owner = "core::pulsar_game::embed"
+disposition = "remove: render passes join authored GPU columns directly (no CPU-built pass rows)"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "at-risk"
+
+[[site]]
+pattern = "mirror-replay"
+file = "crates/core/pulsar_game/src/embed.rs"
+count = 1
+owner = "core::pulsar_game::embed"
+disposition = "replace with generic schema-driven replay when a mirror attaches after population"
+target_contract = "Phase 1 (SceneDB upstream); 03-gpu-reflection-and-rendering.md"
+test = "none: populate-before-attach mirror test for every GPU schema"
+status = "at-risk"
+
+[[site]]
+pattern = "change-cursor"
+file = "crates/core/pulsar_game/src/scripting/driver.rs"
+count = 2
+owner = "core::pulsar_game::scripting::driver"
+disposition = "keep: independent ClassInstance cursor; reference pattern for Phase 5"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "none: cursor overflow/rescan test for this consumer"
+status = "unverified"
+
+[[site]]
+pattern = "cpu-projection"
+file = "crates/core/pulsar_game/src/windowed_app.rs"
+count = 2
+owner = "core::pulsar_game::windowed_app"
+disposition = "remove: render passes join authored GPU columns directly (no CPU-built pass rows)"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "at-risk"
+
+[[site]]
+pattern = "mirror-replay"
+file = "crates/core/pulsar_game/src/windowed_app.rs"
+count = 1
+owner = "core::pulsar_game::windowed_app"
+disposition = "replace with generic schema-driven replay when a mirror attaches after population"
+target_contract = "Phase 1 (SceneDB upstream); 03-gpu-reflection-and-rendering.md"
+test = "none: populate-before-attach mirror test for every GPU schema"
+status = "at-risk"
+
+[[site]]
+pattern = "json-hydrate"
+file = "crates/core/pulsar_script_codegen/src/actor.rs"
+count = 1
+owner = "core::pulsar_script_codegen::actor"
+disposition = "generated actor code hydrates components from JSON; generate typed construction"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "none: typed insert path equivalence"
+status = "at-risk"
+
+[[site]]
+pattern = "json-hydrate"
+file = "crates/core/pulsar_script_object_model/src/routing.rs"
+count = 1
+owner = "core::pulsar_script_object_model::routing"
+disposition = "script routing mutates dormant instances through JSON hydrate; use typed instance identity"
+target_contract = "Phase 3; 01-authority-and-identity.md"
+test = "none: typed insert path equivalence"
+status = "at-risk"
+
+[[site]]
+pattern = "destructive-drain"
+file = "crates/core/pulsar_script_object_model/src/subscribe.rs"
+count = 1
+owner = "core::pulsar_script_object_model::subscribe"
+disposition = "remove: rendering and observers must not consume SceneDB's single shared change queue; each remaining subscriber gets independent delivery"
+target_contract = "Phase 2 (renderer), Phase 5 (observers); 04-state-notifications.md"
+test = "none: two-subscriber fan-out test (acceptance: Observer fanout)"
+status = "at-risk"
+
+[[site]]
+pattern = "subscribe"
+file = "crates/core/pulsar_script_object_model/src/subscribe.rs"
+count = 1
+owner = "core::pulsar_script_object_model::subscribe"
+disposition = "remove as a rendering prerequisite; observer subscriptions move to independent cursors"
+target_contract = "Phase 2 (render rows), Phase 5 (observers); 04-state-notifications.md"
+test = "none: rendering with zero subscribers"
+status = "at-risk"
+
+[[site]]
+pattern = "gpu-refresh"
+file = "crates/core/pulsar_world_registry/src/lib.rs"
+count = 1
+owner = "core::pulsar_world_registry::lib"
+disposition = "remove the caller-invoked refresh API once its callers move"
+target_contract = "Phase 1; 02-typed-reflection-and-writes.md, 03-gpu-reflection-and-rendering.md"
+test = "none: mutation-equivalence test (direct vs reflected vs script write)"
+status = "at-risk"
+
+[[site]]
+pattern = "gpu-refresh"
+file = "crates/core/pulsar_world_registry/src/script_natives.rs"
+count = 2
+owner = "core::pulsar_world_registry::script_natives"
+disposition = "remove: GPU reflection must follow every SceneDB write intrinsically, never a caller-invoked refresh"
+target_contract = "Phase 1; 02-typed-reflection-and-writes.md, 03-gpu-reflection-and-rendering.md"
+test = "none: mutation-equivalence test (direct vs reflected vs script write)"
+status = "at-risk"
+
+[[site]]
+pattern = "add-component"
+file = "crates/editor/ui_level_editor/src/ai/tools/components.rs"
+count = 1
+owner = "editor::ui_level_editor::ai::tools::components"
+disposition = "keep JSON at the AI tool protocol boundary; decode into a typed command there and return typed errors"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "none: typed add produces the same state as a direct insert"
+status = "at-risk"
+
+[[site]]
+pattern = "property-edit"
+file = "crates/editor/ui_level_editor/src/ai/tools/components.rs"
+count = 2
+owner = "editor::ui_level_editor::ai::tools::components"
+disposition = "convert to typed reflected patches with intrinsic SceneDB write hooks"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "none: mutation-equivalence test"
+status = "at-risk"
+
+[[site]]
+pattern = "render-arm"
+file = "crates/editor/ui_level_editor/src/core/asset_updates.rs"
+count = 1
+owner = "editor::ui_level_editor::core::asset_updates"
+disposition = "remove: renderer visibility must not depend on armed subscriptions"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 04-state-notifications.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "at-risk"
+
+[[site]]
+pattern = "render-mark"
+file = "crates/editor/ui_level_editor/src/core/asset_updates.rs"
+count = 1
+owner = "editor::ui_level_editor::core::asset_updates"
+disposition = "remove: a synthetic change notification that exists only to wake the CPU projection"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: asset-update path renders without marking"
+status = "at-risk"
+
+[[site]]
+pattern = "add-component"
+file = "crates/editor/ui_level_editor/src/core/commands/executor.rs"
+count = 3
+owner = "editor::ui_level_editor::core::commands::executor"
+disposition = "convert to a typed factory and one validated transaction; JSON only at an external boundary"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "none: typed add produces the same state as a direct insert"
+status = "at-risk"
+
+[[site]]
+pattern = "property-edit"
+file = "crates/editor/ui_level_editor/src/core/commands/executor.rs"
+count = 8
+owner = "editor::ui_level_editor::core::commands::executor"
+disposition = "convert to typed reflected patches with intrinsic SceneDB write hooks"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "none: mutation-equivalence test"
+status = "at-risk"
+
+[[site]]
+pattern = "render-arm"
+file = "crates/editor/ui_level_editor/src/core/commands/executor.rs"
+count = 1
+owner = "editor::ui_level_editor::core::commands::executor"
+disposition = "remove: renderer visibility must not depend on armed subscriptions"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 04-state-notifications.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "broken"
+notes = "AddObject arms an entity before its mesh exists, so the asset-drop mesh is never subscribed."
+
+[[site]]
+pattern = "add-component"
+file = "crates/editor/ui_level_editor/src/core/scene_edit/classes.rs"
+count = 1
+owner = "editor::ui_level_editor::core::scene_edit::classes"
+disposition = "convert to a typed factory and one validated transaction; JSON only at an external boundary"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "none: typed add produces the same state as a direct insert"
+status = "at-risk"
+
+[[site]]
+pattern = "render-props-sync"
+file = "crates/editor/ui_level_editor/src/core/scene_edit/classes.rs"
+count = 3
+owner = "editor::ui_level_editor::core::scene_edit::classes"
+disposition = "remove: RenderProps/attachment JSON stops being live component authority"
+target_contract = "Phase 1/3; 01-authority-and-identity.md"
+test = "none: no JSON round trip on edit (architecture check)"
+status = "at-risk"
+
+[[site]]
+pattern = "destructive-drain"
+file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
+count = 1
+owner = "editor::ui_level_editor::core::scene_edit::components"
+disposition = "remove: rendering and observers must not consume SceneDB's single shared change queue; each remaining subscriber gets independent delivery"
+target_contract = "Phase 2 (renderer), Phase 5 (observers); 04-state-notifications.md"
+test = "none: two-subscriber fan-out test (acceptance: Observer fanout)"
+status = "at-risk"
+
+[[site]]
+pattern = "gpu-refresh"
+file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
+count = 1
+owner = "editor::ui_level_editor::core::scene_edit::components"
+disposition = "remove: GPU reflection must follow every SceneDB write intrinsically, never a caller-invoked refresh"
+target_contract = "Phase 1; 02-typed-reflection-and-writes.md, 03-gpu-reflection-and-rendering.md"
+test = "none: mutation-equivalence test (direct vs reflected vs script write)"
+status = "at-risk"
+
+[[site]]
+pattern = "json-hydrate"
+file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
+count = 5
+owner = "editor::ui_level_editor::core::scene_edit::components"
+disposition = "live editor attach/enable/replace paths serialize and re-hydrate; JSON is retained on failure, so a failed insert still looks attached"
+target_contract = "Phase 1/3; 02-typed-reflection-and-writes.md, 05-persistence-and-undo.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "broken"
+notes = "A failed hydrate keeps the JSON on an enabled attachment, so the component appears attached."
+
+[[site]]
+pattern = "property-edit"
+file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
+count = 5
+owner = "editor::ui_level_editor::core::scene_edit::components"
+disposition = "convert to typed reflected patches with intrinsic SceneDB write hooks"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "none: mutation-equivalence test"
+status = "at-risk"
+
+[[site]]
+pattern = "render-props-sync"
+file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
+count = 8
+owner = "editor::ui_level_editor::core::scene_edit::components"
+disposition = "remove: RenderProps/attachment JSON stops being live component authority"
+target_contract = "Phase 1/3; 01-authority-and-identity.md"
+test = "none: no JSON round trip on edit (architecture check)"
+status = "at-risk"
+
+[[site]]
+pattern = "subscribe"
+file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
+count = 1
+owner = "editor::ui_level_editor::core::scene_edit::components"
+disposition = "remove as a rendering prerequisite; observer subscriptions move to independent cursors"
+target_contract = "Phase 2 (render rows), Phase 5 (observers); 04-state-notifications.md"
+test = "none: rendering with zero subscribers"
+status = "at-risk"
+
+[[site]]
+pattern = "add-component"
+file = "crates/editor/ui_level_editor/src/core/scene_edit/hlfs_cathedral/mod.rs"
+count = 2
+owner = "editor::ui_level_editor::core::scene_edit::hlfs_cathedral"
+disposition = "generated demo-scene builder; typed writes"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "none: typed add produces the same state as a direct insert"
+status = "at-risk"
+
+[[site]]
+pattern = "render-props-sync"
+file = "crates/editor/ui_level_editor/src/core/scene_edit/objects.rs"
+count = 3
+owner = "editor::ui_level_editor::core::scene_edit::objects"
+disposition = "remove: RenderProps/attachment JSON stops being live component authority"
+target_contract = "Phase 1/3; 01-authority-and-identity.md"
+test = "none: no JSON round trip on edit (architecture check)"
+status = "at-risk"
+
+[[site]]
+pattern = "add-component"
+file = "crates/editor/ui_level_editor/src/core/splines.rs"
+count = 1
+owner = "editor::ui_level_editor::core::splines"
+disposition = "convert to a typed factory and one validated transaction; JSON only at an external boundary"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "none: typed add produces the same state as a direct insert"
+status = "at-risk"
+
+[[site]]
+pattern = "property-edit"
+file = "crates/editor/ui_level_editor/src/core/splines.rs"
+count = 1
+owner = "editor::ui_level_editor::core::splines"
+disposition = "convert to typed reflected patches with intrinsic SceneDB write hooks"
+target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
+test = "none: mutation-equivalence test"
+status = "at-risk"
+
+[[site]]
+pattern = "force-resync"
+file = "crates/editor/ui_level_editor/src/ui/panel/handlers/objects.rs"
+count = 2
+owner = "editor::ui_level_editor::ui::panel::handlers::objects"
+disposition = "remove: no repair path may be required for missing scene rows"
+target_contract = "Phase 5; 07-assets-and-runtime-lifecycle.md"
+test = "none: idle wake-up / level replacement without resync"
+status = "at-risk"
+
+[[site]]
+pattern = "force-resync"
+file = "crates/editor/ui_level_editor/src/ui/panel/lifecycle.rs"
+count = 1
+owner = "editor::ui_level_editor::ui::panel::lifecycle"
+disposition = "remove: no repair path may be required for missing scene rows"
+target_contract = "Phase 5; 07-assets-and-runtime-lifecycle.md"
+test = "none: idle wake-up / level replacement without resync"
+status = "at-risk"
+
+[[site]]
+pattern = "add-component"
+file = "crates/editor/ui_level_editor/src/ui/properties/object_type_fields/mod.rs"
+count = 2
+owner = "editor::ui_level_editor::ui::properties::object_type_fields"
+disposition = "properties-panel Add component: builds a flat JSON map from a default instance; insert the typed instance directly"
+target_contract = "Phase 2; 02-typed-reflection-and-writes.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "broken"
+
+[[site]]
+pattern = "panel-drain"
+file = "crates/editor/ui_level_editor/src/ui/properties/object_type_fields/mod.rs"
+count = 1
+owner = "editor::ui_level_editor::ui::properties::object_type_fields"
+disposition = "replace with a per-panel journal cursor that prompts a re-read of current values; delete the single-drainer contract"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "broken"
+notes = "Draining first consumes the event the renderer needed; the late mesh never gets a draw row."
+
+[[site]]
+pattern = "subscribe"
+file = "crates/editor/ui_level_editor/src/ui/properties/object_type_fields/property_renderer.rs"
+count = 1
+owner = "editor::ui_level_editor::ui::properties::object_type_fields::property_renderer"
+disposition = "remove as a rendering prerequisite; observer subscriptions move to independent cursors"
+target_contract = "Phase 2 (render rows), Phase 5 (observers); 04-state-notifications.md"
+test = "none: rendering with zero subscribers"
+status = "at-risk"
+
+[[site]]
+pattern = "add-component"
+file = "crates/editor/ui_level_editor/src/ui/viewport/helio_viewport/assets.rs"
+count = 1
+owner = "editor::ui_level_editor::ui::viewport::helio_viewport::assets"
+disposition = "viewport asset drop: AddObject plus a JSON add_component outside the undo command; make one typed transaction"
+target_contract = "Phase 2; 02-typed-reflection-and-writes.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "broken"
+
+[[site]]
+pattern = "pending-world-writes"
+file = "crates/renderer/helio/crates/helio-component/src/components/camera_post_process_component.rs"
+count = 2
+owner = "helio::helio-component::components::camera_post_process_component"
+disposition = "replace with a direct authored-data contract; the queue has no production drain"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: component reaches its consumer without the queue"
+status = "at-risk"
+
+[[site]]
+pattern = "pending-world-writes"
+file = "crates/renderer/helio/crates/helio-component/src/components/fog_component.rs"
+count = 3
+owner = "helio::helio-component::components::fog_component"
+disposition = "replace with a direct authored-data contract; the queue has no production drain"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: component reaches its consumer without the queue"
+status = "at-risk"
+
+[[site]]
+pattern = "pending-world-writes"
+file = "crates/renderer/helio/crates/helio-component/src/components/foliage_component/runtime.rs"
+count = 2
+owner = "helio::helio-component::components::foliage_component::runtime"
+disposition = "replace with a direct authored-data contract; the queue has no production drain"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: component reaches its consumer without the queue"
+status = "at-risk"
+
+[[site]]
+pattern = "pending-world-writes"
+file = "crates/renderer/helio/crates/helio-component/src/components/portal_component.rs"
+count = 2
+owner = "helio::helio-component::components::portal_component"
+disposition = "replace with a direct authored-data contract; the queue has no production drain"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: component reaches its consumer without the queue"
+status = "at-risk"
+
+[[site]]
+pattern = "pending-world-writes"
+file = "crates/renderer/helio/crates/helio-component/src/components/post_process_volume_component.rs"
+count = 2
+owner = "helio::helio-component::components::post_process_volume_component"
+disposition = "replace with a direct authored-data contract; the queue has no production drain"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: component reaches its consumer without the queue"
+status = "at-risk"
+
+[[site]]
+pattern = "pending-world-writes"
+file = "crates/renderer/helio/crates/helio-component/src/components/reflection_capture_component.rs"
+count = 2
+owner = "helio::helio-component::components::reflection_capture_component"
+disposition = "replace with a direct authored-data contract; the queue has no production drain"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: component reaches its consumer without the queue"
+status = "at-risk"
+
+[[site]]
+pattern = "pending-world-writes"
+file = "crates/renderer/helio/crates/helio-component/src/components/water_volume_component.rs"
+count = 2
+owner = "helio::helio-component::components::water_volume_component"
+disposition = "replace with a direct authored-data contract; the queue has no production drain"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: component reaches its consumer without the queue"
+status = "at-risk"
+
+[[site]]
+pattern = "change-cursor"
+file = "crates/renderer/helio/crates/helio-component/src/static_move_watch.rs"
+count = 2
+owner = "helio::helio-component::static_move_watch"
+disposition = "keep: independent Transform cursor for the play-mode static-move warning (diagnostic observer)"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "none: cursor overflow/rescan test for this consumer"
+status = "unverified"
+
+[[site]]
+pattern = "pending-world-writes"
+file = "crates/renderer/helio/crates/helio-component/src/subsystems.rs"
+count = 2
+owner = "helio::helio-component::subsystems"
+disposition = "delete the queue and its drain after the last producer migrates"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: component reaches its consumer without the queue"
+status = "at-risk"
+
+[[site]]
+pattern = "change-cursor"
+file = "crates/renderer/helio/crates/passes/3d/helio-pass-hlfs/src/scene.rs"
+count = 8
+owner = "helio::passes::3d::helio-pass-hlfs::scene"
+disposition = "migrate: a pass reads the CPU World through cursors; passes must consume GPU columns only"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: HLFS output from GPU inputs"
+status = "at-risk"
+
+[[site]]
+pattern = "behavior-dispatch"
+file = "crates/subsystems/pulsar_scene/src/loader.rs"
+count = 1
+owner = "subsystems::pulsar_scene::loader"
+disposition = "retire generic runtime-behavior dispatch; domain behavior moves to owning systems"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: component works with no dispatcher"
+status = "at-risk"
+
+# ── GPU buffer keys ──────────────────────────────────────────────────────
+# producers: types declaring #[gpu(buffer = ...)]; consumers: packages calling
+# BufferKey::of(...). Both are checked against source. `owner` = who writes rows.
+
+[[buffer]]
+key = "PortalChainComponent::portals"
+producers = ["PortalChainComponent"]
+consumers = []
+owner = "portal-cull pass type (var-len pool)"
+disposition = "audit: the key is a pool name with no literal consumer"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: consumer not identified"
+status = "unverified"
+
+[[buffer]]
+key = "billboard_instances"
+producers = ["BillboardComponent"]
+consumers = ["helio-pass-billboard"]
+owner = "engine_backend::scene::editor_rows (CPU projection of light icons)"
+disposition = "replace with an editor-only GPU consumer of authored light rows"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: light icon follows an edited light"
+status = "at-risk"
+
+[[buffer]]
+key = "builtin_mesh_index"
+producers = ["MeshComponent", "StaticMeshComponent"]
+consumers = ["helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-hlfs", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
+owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
+disposition = "keep: same as builtin_mesh_vertex"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_component_gpu_mirror.rs"
+status = "unverified"
+
+[[buffer]]
+key = "builtin_mesh_vertex"
+producers = ["MeshComponent", "StaticMeshComponent"]
+consumers = ["helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-hlfs", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
+owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
+disposition = "keep: authored StaticMeshComponent pools are the canonical geometry; retire or merge the second, pass-owned producer"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/renderer/helio/crates/helio-component/tests/static_mesh_component_gpu_mirror.rs"
+status = "unverified"
+
+[[buffer]]
+key = "camera_postprocess"
+producers = ["CameraPostProcessComponent"]
+consumers = ["helio-pass-postprocess"]
+owner = "engine_backend::scene::editor_postprocess and PendingWorldWrites (CameraPostProcessComponent behavior)"
+disposition = "replace queued and CPU-built writes with a direct authored contract"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/editor_bloom_toggle.rs"
+status = "at-risk"
+
+[[buffer]]
+key = "corona_emitters"
+producers = ["CoronaEmitterComponent"]
+consumers = ["helio-pass-corona"]
+owner = "no authored Pulsar component found"
+disposition = "decide: derive from lights or mark unsupported"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored source"
+status = "unverified"
+
+[[buffer]]
+key = "decals"
+producers = ["DecalComponent"]
+consumers = ["helio-pass-decal"]
+owner = "no authored Pulsar component found"
+disposition = "unsupported in the editor until an authored decal component exists"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored source"
+status = "unverified"
+
+[[buffer]]
+key = "fog_components"
+producers = ["FogComponent"]
+consumers = ["helio-pass-volumetric-fog"]
+owner = "PendingWorldWrites (fog behaviors)"
+disposition = "replace the undrained queue with a direct authored contract"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: fog component changes volumetric fog"
+status = "at-risk"
+
+[[buffer]]
+key = "foliage_interactors"
+producers = ["FoliageInteractorComponent"]
+consumers = []
+owner = "foliage-place pass type; writer not identified"
+disposition = "audit: no literal consumer"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: consumer not identified"
+status = "unverified"
+
+[[buffer]]
+key = "foliage_layers"
+producers = ["FoliageLayerComponent"]
+consumers = ["helio-pass-foliage-place"]
+owner = "PendingWorldWrites (FoliageComponent behavior)"
+disposition = "replace queued writes with direct authored data"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: foliage placement from authored data"
+status = "at-risk"
+
+[[buffer]]
+key = "foliage_types"
+producers = ["FoliageTypeComponent"]
+consumers = ["helio-pass-foliage-gbuffer", "helio-pass-foliage-place"]
+owner = "PendingWorldWrites (FoliageComponent behavior)"
+disposition = "replace queued writes with direct authored data"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: foliage placement from authored data"
+status = "at-risk"
+
+[[buffer]]
+key = "foliage_wind"
+producers = ["FoliageWindComponent"]
+consumers = ["helio-pass-foliage-gbuffer"]
+owner = "PendingWorldWrites (FoliageComponent behavior)"
+disposition = "replace queued writes with direct authored data"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: foliage wind from authored data"
+status = "at-risk"
+
+[[buffer]]
+key = "global_fog_media"
+producers = ["GlobalFogComponent"]
+consumers = []
+owner = "PendingWorldWrites (GlobalFogComponent behavior)"
+disposition = "audit: no literal BufferKey consumer; map to volumetric-fog inputs or mark unsupported"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: consumer not identified"
+status = "at-risk"
+
+[[buffer]]
+key = "local_fog_media"
+producers = ["LocalFogVolumeComponent"]
+consumers = []
+owner = "PendingWorldWrites (LocalFogVolumeComponent behavior)"
+disposition = "audit: no literal BufferKey consumer; map or mark unsupported"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: consumer not identified"
+status = "at-risk"
+
+[[buffer]]
+key = "materials"
+producers = ["MaterialComponent"]
+consumers = ["helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-object-batch", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
+owner = "engine_backend::scene::helio_bridge (CPU projection, default brown material)"
+disposition = "replace: material rows derive from StaticMeshComponent's material slots; the default material is defined once, by the slot's imported surface"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "none: material override reaches gbuffer"
+status = "at-risk"
+
+[[buffer]]
+key = "portal_projection_counts"
+producers = ["PortalProjectionCountsComponent"]
+consumers = []
+owner = "portal-cull pass type"
+disposition = "derived execution output; confirm there is no authored writer"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: writer not identified"
+status = "unverified"
+
+[[buffer]]
+key = "portal_views"
+producers = ["PortalViewComponent"]
+consumers = ["helio-pass-portal-cull", "helio-pass-portal-instances"]
+owner = "portal-cull pass type"
+disposition = "audit the writer: derived execution output or authored"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: writer not identified"
+status = "unverified"
+
+[[buffer]]
+key = "portals"
+producers = ["PortalComponent"]
+consumers = []
+owner = "portal-cull pass type, written through PendingWorldWrites (PortalComponent behavior)"
+disposition = "replace queued writes; define linkage/liveness inputs; no literal consumer"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: portal culls and draws"
+status = "at-risk"
+
+[[buffer]]
+key = "post_process_volumes"
+producers = ["PostProcessVolumeComponent"]
+consumers = ["helio-pass-postprocess", "helio-pass-volumetric-fog"]
+owner = "PendingWorldWrites (PostProcessVolumeComponent behavior)"
+disposition = "replace the undrained queue with a direct authored contract"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: volume edit changes post-process output"
+status = "at-risk"
+
+[[buffer]]
+key = "reflection_captures"
+producers = ["ReflectionCaptureComponent", "ReflectionCaptureGpuComponent"]
+consumers = ["helio-pass-deferred-light", "helio_component"]
+owner = "helio_component ReflectionCaptureGpuComponent (no writer found) and deferred-light ReflectionCaptureComponent (queued by the ReflectionCaptureComponent behavior); neither registered in production"
+disposition = "resolve: two schemas declare the same buffer key; one authored schema must own it"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: capture reaches deferred-light"
+status = "at-risk"
+
+[[buffer]]
+key = "render_groups"
+producers = ["RenderGroupComponent"]
+consumers = []
+owner = "gbuffer pass type; writer not identified"
+disposition = "audit: no literal consumer"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: consumer not identified"
+status = "unverified"
+
+[[buffer]]
+key = "scene_lights"
+producers = ["LightComponent"]
+consumers = ["helio-default-graphs", "helio-pass-deferred-light", "helio-pass-flare", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-hlfs", "helio-pass-light-cull", "helio-pass-perf-overlay", "helio-pass-radiance-cascades", "helio-pass-shadow-matrix", "helio-pass-transparent", "helio-pass-virtual-geometry", "helio-pass-volumetric-fog"]
+owner = "engine_backend::scene::editor_rows (CPU projection)"
+disposition = "replace: lighting passes join authored LightComponent GPU columns with owner transform/visibility"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "broken"
+
+[[buffer]]
+key = "sectioned_objects"
+producers = ["SectionedObjectComponent"]
+consumers = []
+owner = "gbuffer pass type; writer not identified"
+disposition = "audit: no literal consumer"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: consumer not identified"
+status = "unverified"
+
+[[buffer]]
+key = "sky_components"
+producers = ["SkyComponent"]
+consumers = ["helio-pass-sky"]
+owner = "no authored Pulsar component found (sky configured by the renderer)"
+disposition = "decide: authored sky/sun component or renderer setting"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored source"
+status = "unverified"
+
+[[buffer]]
+key = "sprite_instances"
+producers = ["SpriteComponent"]
+consumers = ["helio-pass-sprite-batch", "helio-pass-sprite-cull"]
+owner = "no authored Pulsar component (2D passes are not in the default graph)"
+disposition = "out of scope for the 3D editor graph until a 2D graph is composed"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored source"
+status = "out-of-scope"
+
+[[buffer]]
+key = "static_objects"
+producers = ["StaticObjectComponent"]
+consumers = ["helio-pass-object-batch"]
+owner = "engine_backend::scene::helio_bridge (CPU projection)"
+disposition = "replace: draw rows are built on the CPU from authored mesh/transform/visibility; the graph must join authored columns on the GPU"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "broken"
+
+[[buffer]]
+key = "sublevel_actors"
+producers = ["SubLevelActorComponent"]
+consumers = []
+owner = "gbuffer pass type; writer not identified"
+disposition = "audit: no literal consumer"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: consumer not identified"
+status = "unverified"
+
+[[buffer]]
+key = "sublevels"
+producers = ["SublevelComponent"]
+consumers = []
+owner = "gbuffer pass type; writer not identified"
+disposition = "audit: no literal consumer"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "none: consumer not identified"
+status = "unverified"
+
+[[buffer]]
+key = "volumetric_fog_settings"
+producers = ["VolumetricFogSettingsComponent"]
+consumers = []
+owner = "volumetric-fog pass type; writer not identified"
+disposition = "audit: no literal consumer; confirm the graph's settings input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: consumer not identified"
+status = "unverified"
+
+[[buffer]]
+key = "water_hitboxes"
+producers = ["WaterHitboxComponent"]
+consumers = ["helio-pass-water-sim"]
+owner = "water-sim pass type; writer not identified"
+disposition = "audit the writer and authored source"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: writer not identified"
+status = "unverified"
+
+[[buffer]]
+key = "water_volumes"
+producers = ["WaterVolumeComponent"]
+consumers = ["helio-pass-deferred-light", "helio-pass-water-sim"]
+owner = "PendingWorldWrites (WaterVolumeComponent behavior)"
+disposition = "replace the undrained queue with a direct authored contract"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: water volume reaches water-sim"
+status = "at-risk"
+
+# ── Render pass crates ───────────────────────────────────────────────────
+# in_default_graph: listed in helio-default-graphs' [dependencies]; reads:
+# buffer keys the crate looks up. Both are checked against source.
+
+[[pass]]
+crate = "helio-pass-radiance-cascades-2d"
+in_default_graph = false
+reads = []
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
+
+[[pass]]
+crate = "helio-pass-sprite-batch"
+in_default_graph = false
+reads = ["sprite_instances"]
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it (reads sprite_instances)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
+
+[[pass]]
+crate = "helio-pass-sprite-cull"
+in_default_graph = false
+reads = ["sprite_instances"]
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it (reads sprite_instances)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
+
+[[pass]]
+crate = "helio-pass-sprite-simulate"
+in_default_graph = false
+reads = []
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
+
+[[pass]]
+crate = "helio-pass-billboard"
+in_default_graph = true
+reads = ["billboard_instances"]
+owner = "helio-default-graphs (mapping); helio-pass-billboard (algorithm)"
+disposition = "consumes billboard_instances; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "at-risk"
+
+[[pass]]
+crate = "helio-pass-corona"
+in_default_graph = true
+reads = ["corona_emitters"]
+owner = "helio-default-graphs (mapping); helio-pass-corona (algorithm)"
+disposition = "consumes corona_emitters; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-debug"
+in_default_graph = false
+reads = []
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
+
+[[pass]]
+crate = "helio-pass-debug-overlay"
+in_default_graph = true
+reads = []
+owner = "helio-pass-debug-overlay"
+disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored input"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-decal"
+in_default_graph = true
+reads = ["decals"]
+owner = "helio-default-graphs (mapping); helio-pass-decal (algorithm)"
+disposition = "consumes decals; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-deferred-light"
+in_default_graph = true
+reads = ["reflection_captures", "scene_lights", "water_volumes"]
+owner = "helio-default-graphs (mapping); helio-pass-deferred-light (algorithm)"
+disposition = "consumes reflection_captures, scene_lights, water_volumes; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "at-risk"
+
+[[pass]]
+crate = "helio-pass-depth-prepass"
+in_default_graph = false
+reads = ["builtin_mesh_index", "builtin_mesh_vertex"]
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it (reads builtin_mesh_index, builtin_mesh_vertex)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
+
+[[pass]]
+crate = "helio-pass-dof"
+in_default_graph = true
+reads = []
+owner = "helio-pass-dof"
+disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored input"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-flare"
+in_default_graph = true
+reads = ["scene_lights"]
+owner = "helio-default-graphs (mapping); helio-pass-flare (algorithm)"
+disposition = "consumes scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-foliage-gbuffer"
+in_default_graph = true
+reads = ["foliage_types", "foliage_wind"]
+owner = "helio-default-graphs (mapping); helio-pass-foliage-gbuffer (algorithm)"
+disposition = "consumes foliage_types, foliage_wind; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-foliage-place"
+in_default_graph = true
+reads = ["foliage_layers", "foliage_types"]
+owner = "helio-default-graphs (mapping); helio-pass-foliage-place (algorithm)"
+disposition = "consumes foliage_layers, foliage_types; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-forward-lit"
+in_default_graph = true
+reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights"]
+owner = "helio-default-graphs (mapping); helio-pass-forward-lit (algorithm)"
+disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, materials, scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "at-risk"
+
+[[pass]]
+crate = "helio-pass-fxaa"
+in_default_graph = true
+reads = []
+owner = "helio-pass-fxaa"
+disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored input"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-gbuffer"
+in_default_graph = true
+reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights"]
+owner = "helio-default-graphs (mapping); helio-pass-gbuffer (algorithm)"
+disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, materials, scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "at-risk"
+
+[[pass]]
+crate = "helio-pass-hiz"
+in_default_graph = true
+reads = []
+owner = "helio-pass-hiz"
+disposition = "fix in Helio: since 0e01e9fd the max pyramid is reused while (unjittered camera generation, scene content signature) holds, so a camera at rest keeps a pyramid built before anything drew and occlusion culling hides every object"
+target_contract = "Helio fix before Phase 2 acceptance; 03-gpu-reflection-and-rendering.md (Mirror lifecycle and frame ordering)"
+test = "crates/renderer/helio/crates/examples/tests/object_batch_skip.rs"
+status = "broken"
+notes = "Bisected on RTX 3060 / Vulkan: Helio's own object_batch_skip test passes at 49b02e92 and fails from 0e01e9fd through the pinned 05c2f7d7 (object not drawn)."
+
+[[pass]]
+crate = "helio-pass-hlfs"
+in_default_graph = true
+reads = ["builtin_mesh_index", "builtin_mesh_vertex", "scene_lights"]
+owner = "helio-default-graphs (mapping); helio-pass-hlfs (algorithm)"
+disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-indirect-dispatch"
+in_default_graph = true
+reads = []
+owner = "helio-pass-indirect-dispatch"
+disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored input"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-light-cull"
+in_default_graph = true
+reads = ["scene_lights"]
+owner = "helio-default-graphs (mapping); helio-pass-light-cull (algorithm)"
+disposition = "consumes scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "at-risk"
+
+[[pass]]
+crate = "helio-pass-object-batch"
+in_default_graph = true
+reads = ["materials", "static_objects"]
+owner = "helio-default-graphs (mapping); helio-pass-object-batch (algorithm)"
+disposition = "consumes materials, static_objects; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/phase0_render_baseline.rs"
+status = "at-risk"
+
+[[pass]]
+crate = "helio-pass-occlusion-cull"
+in_default_graph = true
+reads = []
+owner = "helio-pass-occlusion-cull"
+disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored input"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-perf-overlay"
+in_default_graph = true
+reads = ["scene_lights"]
+owner = "helio-default-graphs (mapping); helio-pass-perf-overlay (algorithm)"
+disposition = "consumes scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-planar-reflection"
+in_default_graph = true
+reads = []
+owner = "helio-pass-planar-reflection"
+disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored input"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-portal-cull"
+in_default_graph = true
+reads = ["portal_views"]
+owner = "helio-default-graphs (mapping); helio-pass-portal-cull (algorithm)"
+disposition = "consumes portal_views; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-portal-instances"
+in_default_graph = true
+reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "portal_views"]
+owner = "helio-default-graphs (mapping); helio-pass-portal-instances (algorithm)"
+disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, materials, portal_views; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-postprocess"
+in_default_graph = true
+reads = ["camera_postprocess", "post_process_volumes"]
+owner = "helio-default-graphs (mapping); helio-pass-postprocess (algorithm)"
+disposition = "consumes camera_postprocess, post_process_volumes; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-radiance-cascades"
+in_default_graph = false
+reads = ["scene_lights"]
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it (reads scene_lights)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
+
+[[pass]]
+crate = "helio-pass-sdf"
+in_default_graph = false
+reads = []
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
+
+[[pass]]
+crate = "helio-pass-shadow"
+in_default_graph = true
+reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials"]
+owner = "helio-default-graphs (mapping); helio-pass-shadow (algorithm)"
+disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, materials; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "at-risk"
+
+[[pass]]
+crate = "helio-pass-shadow-cull"
+in_default_graph = true
+reads = []
+owner = "helio-pass-shadow-cull"
+disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored input"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-shadow-dirty"
+in_default_graph = true
+reads = []
+owner = "helio-pass-shadow-dirty"
+disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored input"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-shadow-matrix"
+in_default_graph = true
+reads = ["scene_lights"]
+owner = "helio-default-graphs (mapping); helio-pass-shadow-matrix (algorithm)"
+disposition = "consumes scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "at-risk"
+
+[[pass]]
+crate = "helio-pass-simple-cube"
+in_default_graph = true
+reads = []
+owner = "helio-pass-simple-cube"
+disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored input"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-sky"
+in_default_graph = true
+reads = ["sky_components"]
+owner = "helio-default-graphs (mapping); helio-pass-sky (algorithm)"
+disposition = "consumes sky_components; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-smaa"
+in_default_graph = false
+reads = []
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
+
+[[pass]]
+crate = "helio-pass-ssao"
+in_default_graph = false
+reads = []
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
+
+[[pass]]
+crate = "helio-pass-ssr"
+in_default_graph = true
+reads = []
+owner = "helio-pass-ssr"
+disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored input"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-transparent"
+in_default_graph = true
+reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights"]
+owner = "helio-default-graphs (mapping); helio-pass-transparent (algorithm)"
+disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, materials, scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-tsr"
+in_default_graph = true
+reads = []
+owner = "helio-pass-tsr"
+disposition = "derived or post work with no scene-buffer input; keep (graph-owned scheduling only)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: no authored input"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-underwater"
+in_default_graph = false
+reads = []
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
+
+[[pass]]
+crate = "helio-pass-virtual-geometry"
+in_default_graph = true
+reads = ["builtin_mesh_index", "builtin_mesh_vertex", "materials", "scene_lights"]
+owner = "helio-default-graphs (mapping); helio-pass-virtual-geometry (algorithm)"
+disposition = "consumes builtin_mesh_index, builtin_mesh_vertex, materials, scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-volumetric-fog"
+in_default_graph = true
+reads = ["fog_components", "post_process_volumes", "scene_lights"]
+owner = "helio-default-graphs (mapping); helio-pass-volumetric-fog (algorithm)"
+disposition = "consumes fog_components, post_process_volumes, scene_lights; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-voxel-planet"
+in_default_graph = false
+reads = []
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
+
+[[pass]]
+crate = "helio-pass-water-caustics"
+in_default_graph = false
+reads = []
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
+
+[[pass]]
+crate = "helio-pass-water-sim"
+in_default_graph = true
+reads = ["water_hitboxes", "water_volumes"]
+owner = "helio-default-graphs (mapping); helio-pass-water-sim (algorithm)"
+disposition = "consumes water_hitboxes, water_volumes; inputs must become graph-mapped authored GPU columns, with no CPU-built rows"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md, 09-component-structure-and-graph-boundary.md"
+test = "none: pass output from authored inputs"
+status = "unverified"
+
+[[pass]]
+crate = "helio-pass-water-surface"
+in_default_graph = false
+reads = []
+owner = "helio-default-graphs"
+disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "none: not in a production graph"
+status = "out-of-scope"
