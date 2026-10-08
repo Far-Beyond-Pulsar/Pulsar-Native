@@ -1,8 +1,7 @@
 # Hosted CI runners have no GPU adapter. These helio_component test binaries
 # require one and panic without it, so the `ci` profile leaves them out by
 # name rather than letting them count as passed. Run them on a GPU machine
-# with `cargo test -p helio_component` (see
-# .agents/plans/scene-data-correction/11-phase-0-closure.md).
+# with `cargo test -p helio_component` (Pulsar-Native#1036).
 [profile.ci]
 default-filter = """
 not (package(helio_component) & (

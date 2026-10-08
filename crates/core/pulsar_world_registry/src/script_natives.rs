@@ -43,7 +43,7 @@ inventory::submit! {
 }
 
 fn world_components() -> Vec<ProvidedComponent> {
-    inventory::iter::<WorldComponentRegistration>
+    crate::runtime::world_components().iter().copied()
         .into_iter()
         .map(|r| ProvidedComponent {
             name: r.class_name,
@@ -60,7 +60,7 @@ fn world_components() -> Vec<ProvidedComponent> {
 
 fn world_component_natives() -> Vec<NativeFn> {
     let mut natives = Vec::new();
-    for registration in inventory::iter::<WorldComponentRegistration> {
+    for registration in crate::runtime::world_components().iter().copied() {
         let class = registration.class_name;
         let ty = Type::Component(class.to_owned());
         if let Some(instance) = REGISTRY.create_instance(class) {

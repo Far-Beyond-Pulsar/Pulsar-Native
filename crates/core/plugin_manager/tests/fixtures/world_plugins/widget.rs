@@ -18,3 +18,10 @@ pub struct PluginWidget {
 
 #[register_world_component]
 impl PluginWidget {}
+
+/// A plugin-defined engine class, registered with reflection alone.
+#[engine_class(category = "Plugin", default, clone, debug)]
+pub struct PluginGadget {
+    #[property]
+    pub level: i32,
+}

@@ -8681,6 +8681,7 @@ dependencies = [
  "pulsar_events",
  "pulsar_reflection",
  "pulsar_script_vm",
+ "pulsar_world_registry",
  "schemars",
  "serde",
  "serde_json",
@@ -9596,7 +9597,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=a98ff98e1b446e0f44f4200c005faa0c1f2842b2#a98ff98e1b446e0f44f4200c005faa0c1f2842b2"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=992378090e211e8cc6aec0299a20ab9c547fd51c#992378090e211e8cc6aec0299a20ab9c547fd51c"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9612,7 +9613,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=a98ff98e1b446e0f44f4200c005faa0c1f2842b2#a98ff98e1b446e0f44f4200c005faa0c1f2842b2"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=992378090e211e8cc6aec0299a20ab9c547fd51c#992378090e211e8cc6aec0299a20ab9c547fd51c"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection_codegen",
@@ -9743,17 +9744,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
-]
-
-[[package]]
-name = "pulsar_world_dylib"
-version = "0.1.0"
-dependencies = [
- "inventory",
- "pulsar_reflection",
- "pulsar_scene_model",
- "pulsar_scenedb",
- "pulsar_world_registry",
 ]
 
 [[package]]
@@ -15798,22 +15788,8 @@ dependencies = [
  "libloading 0.9.0",
  "pulsar_reflection",
  "pulsar_scenedb",
- "pulsar_world_dylib",
  "pulsar_world_registry",
-]
-
-[[package]]
-name = "world_shared_plugin"
-version = "0.0.0"
-dependencies = [
- "engine_class_derive",
- "pulsar_reflection",
- "pulsar_scenedb",
- "pulsar_world_dylib",
- "pulsar_world_registry",
- "serde",
  "serde_json",
- "tracing",
 ]
 
 [[package]]

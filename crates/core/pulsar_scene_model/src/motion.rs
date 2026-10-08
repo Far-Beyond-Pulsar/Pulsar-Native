@@ -29,7 +29,7 @@ pub fn ensure_can_move(world: &World, entity: Entity) -> Result<(), String> {
     if entity == Entity::DANGLING || !world.is_alive(entity) {
         return Err(format!("{entity:?} is not alive"));
     }
-    for gate in inventory::iter::<MotionGate> {
+    for gate in (crate::runtime::runtime().motion_gates)() {
         (gate.check)(world, entity)
             .map_err(|reason| format!("{} forbids moving {entity:?}: {reason}", gate.name))?;
     }

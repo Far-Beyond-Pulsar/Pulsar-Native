@@ -113,7 +113,7 @@ inventory::collect!(ComponentEventRegistration);
 /// Register all link-time component event descriptors on a session hub.
 /// Calling this more than once is safe when descriptors are identical.
 pub fn register_component_events(hub: &pulsar_events::EventHub) -> Result<(), String> {
-    for registration in inventory::iter::<ComponentEventRegistration> {
+    for registration in crate::runtime::events().iter().copied() {
         hub.register(
             (registration.descriptor)(),
             pulsar_events::EventCategory::Gameplay,
@@ -127,7 +127,7 @@ pub fn register_component_events(hub: &pulsar_events::EventHub) -> Result<(), St
 /// signatures in the Blueprint bridge after their Gamma descriptors exist.
 pub fn component_event_registrations() -> impl Iterator<Item = &'static ComponentEventRegistration>
 {
-    inventory::iter::<ComponentEventRegistration>.into_iter()
+    crate::runtime::events().iter().copied().into_iter()
 }
 
 /// Short-lived, per-entity outbox for events emitted by reflected World
@@ -285,6 +285,7 @@ mod engine_class_mut;
 pub mod errors;
 pub mod instances;
 pub mod marshal;
+pub mod runtime;
 pub mod type_shims;
 pub mod unfinished;
 pub mod values;
@@ -397,7 +398,7 @@ pub struct WorldComponentRegistration {
 inventory::collect!(WorldComponentRegistration);
 
 fn find(class_name: &str) -> Option<&'static WorldComponentRegistration> {
-    inventory::iter::<WorldComponentRegistration>
+    crate::runtime::world_components().iter().copied()
         .into_iter()
         .find(|r| r.class_name == class_name)
 }
@@ -405,14 +406,14 @@ fn find(class_name: &str) -> Option<&'static WorldComponentRegistration> {
 /// Same lookup as [`find`], keyed by `ComponentId` instead of class name --
 /// what a drained `ChangeTracker::component_removals` entry actually
 /// carries (see `WorldComponentRegistration::component_type`'s doc). A
-/// linear scan over `inventory::iter`, same as `find` -- the registered-
+/// linear scan over the registered classes, same as `find` -- the registered-
 /// class count is small (dozens, not thousands) and this only runs once
 /// per removal event, not per frame per entity, so it isn't worth a
 /// memoized `HashMap` until that stops being true.
 fn find_by_component_id(
     component_type: ComponentId,
 ) -> Option<&'static WorldComponentRegistration> {
-    inventory::iter::<WorldComponentRegistration>
+    crate::runtime::world_components().iter().copied()
         .into_iter()
         .find(|r| (r.component_type)() == component_type)
 }
@@ -496,7 +497,7 @@ pub fn get_world_component_as_engine_class_mut<'w>(
 /// Every currently-registered `World`-backed class name (the add-component
 /// menu, inventory checks).
 pub fn registered_world_component_classes() -> impl Iterator<Item = &'static str> {
-    inventory::iter::<WorldComponentRegistration>
+    crate::runtime::world_components().iter().copied()
         .into_iter()
         .map(|r| r.class_name)
 }

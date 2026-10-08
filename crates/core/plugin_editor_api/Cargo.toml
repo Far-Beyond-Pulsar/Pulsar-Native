@@ -24,6 +24,9 @@ engine_subsystems = { workspace = true }
 pulsar_reflection = { workspace = true }
 # Asset-update notifications (`asset_events`), shared with the engine.
 pulsar_events = { workspace = true }
+# The world crates' shared runtimes: plugin component classes become World
+# components of the editor once the library is attached (#1083).
+pulsar_world_registry = { workspace = true }
 # Headless script compiles (`ScriptLanguage::compile_project`) link against
 # the engine's native registry.
 pulsar_script_vm = { workspace = true }

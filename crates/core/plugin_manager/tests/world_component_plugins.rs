@@ -1,14 +1,14 @@
-//! Plugin component classes as World components (Pulsar-Native#1081).
+//! Plugin component classes as World components (Pulsar-Native#1083).
 //!
-//! A plugin library linked statically carries its own copy of the engine's
-//! world crates, so its classes register into registries the editor never
-//! reads. Linked through `pulsar_world_dylib`, as the editor is, its classes
-//! register into the editor's registries when it is loaded and are live
-//! components of the editor's `World`.
+//! A plugin library links its own static copy of the engine's world crates,
+//! so its classes register into registries the editor never reads and its
+//! component ids come from its own table. Attached to the editor's world
+//! runtime at load, its copy shares the editor's process-wide world state
+//! (component ids, counters, registries), as every copy of gpui shares
+//! gpui's runtime, and its classes are live components of the editor's
+//! `World`.
 //!
-//! The host and both plugins are fixtures (`tests/fixtures/world_plugins`)
-//! built in one cargo invocation, so the host and the shared plugin name the
-//! same `pulsar_world_dylib`.
+//! The host and the plugin are fixtures (`tests/fixtures/world_plugins`).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,66 +19,69 @@ fn cargo() -> String {
     std::env::var("CARGO").unwrap_or_else(|_| "cargo".into())
 }
 
-/// Build the host and both plugins once; returns `target/debug`.
-fn built() -> &'static Path {
+/// `cargo build` the fixture packages into `target`; returns `target/debug`.
+fn build(target: &str, packages: &[&str], features: &[&str]) -> PathBuf {
+    let target = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(target);
+    let mut command = Command::new(cargo());
+    command.args(["build", "--quiet"]);
+    for package in packages {
+        command.args(["-p", package]);
+    }
+    if !features.is_empty() {
+        command.args(["--features", &features.join(",")]);
+    }
+    let status = command
+        .arg("--target-dir")
+        .arg(&target)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .env_remove("RUSTFLAGS")
+        .env_remove("CARGO_ENCODED_RUSTFLAGS")
+        .status()
+        .expect("running cargo");
+    assert!(status.success(), "building {packages:?} failed");
+    target.join("debug")
+}
+
+/// The host and the plugin, built together in one cargo invocation, as the
+/// editor and its vendored plugins are.
+fn built_together() -> &'static Path {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
-        let target = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("world-plugins");
-        let status = Command::new(cargo())
-            .args([
-                "build",
-                "--quiet",
-                "-p",
-                "world_plugin_host",
-                "-p",
-                "world_static_plugin",
-                "-p",
-                "world_shared_plugin",
-                "--target-dir",
-            ])
-            .arg(&target)
-            .current_dir(env!("CARGO_MANIFEST_DIR"))
-            .env_remove("RUSTFLAGS")
-            .env_remove("CARGO_ENCODED_RUSTFLAGS")
-            .status()
-            .expect("running cargo");
-        assert!(
-            status.success(),
-            "building the world plugin fixtures failed"
-        );
-        target.join("debug")
+        build(
+            "world-plugins",
+            &["world_plugin_host", "world_static_plugin"],
+            &[],
+        )
     })
 }
 
-/// Run the host on `plugin`; its `key=value` report.
-fn host_report(plugin: &str) -> HashMap<String, String> {
-    let dir = built();
-    let libdir = Command::new(std::env::var("RUSTC").unwrap_or_else(|_| "rustc".into()))
-        .args(["--print", "target-libdir"])
+/// The plugin built on its own, with engine crate features the host does
+/// not have: its engine `TypeId`s differ from the host's.
+fn built_separately() -> &'static Path {
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        build(
+            "world-plugins-separate",
+            &["world_static_plugin"],
+            &["world_static_plugin/separate-build"],
+        )
+    })
+}
+
+/// Run the host on the plugin library in `plugin_dir` in `mode`; its
+/// `key=value` report.
+fn host_report(plugin_dir: &Path, mode: &str) -> HashMap<String, String> {
+    let host = built_together().join(format!("world_plugin_host{}", std::env::consts::EXE_SUFFIX));
+    let library = plugin_dir.join(libloading::library_filename("world_static_plugin"));
+    let output = Command::new(host)
+        .arg(&library)
+        .arg(mode)
         .output()
-        .expect("rustc --print target-libdir");
-    let std_dir = PathBuf::from(String::from_utf8(libdir.stdout).unwrap().trim());
-    // The host and the shared plugin load the world dylib and the dynamic
-    // standard library from these directories.
-    let search = std::env::join_paths([dir.join("deps"), dir.to_path_buf(), std_dir]).unwrap();
-    let path_var = if cfg!(windows) {
-        "PATH"
-    } else if cfg!(target_os = "macos") {
-        "DYLD_LIBRARY_PATH"
-    } else {
-        "LD_LIBRARY_PATH"
-    };
-    let library = dir.join(libloading::library_filename(plugin));
-    let output =
-        Command::new(dir.join(format!("world_plugin_host{}", std::env::consts::EXE_SUFFIX)))
-            .arg(&library)
-            .env(path_var, search)
-            .output()
-            .expect("running the host");
+        .expect("running the host");
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         output.status.success(),
-        "host failed on {plugin}:\n{stdout}\n{}",
+        "host failed ({mode}):\n{stdout}\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
     stdout
@@ -93,41 +96,55 @@ fn host_report(plugin: &str) -> HashMap<String, String> {
 /// the class cannot be a component of the host's World.
 #[test]
 fn a_statically_linked_plugin_cannot_register_world_components() {
-    let report = host_report("world_static_plugin");
+    let report = host_report(built_together(), "");
     assert_eq!(report["plugin_sees_class"], "true", "{report:?}");
     assert_eq!(report["host_sees_class"], "false", "{report:?}");
+    assert_eq!(report["host_reflects_class"], "false", "{report:?}");
     assert_eq!(report["same_component_id"], "false", "{report:?}");
 }
 
-/// The fix: linked through `pulsar_world_dylib`, the plugin's class is in
+/// The fix: attached to the host's world runtime, the plugin's class is in
 /// the host's registry with the host's component id, and a live component
 /// of the host's World: created, written through reflection, read back and
 /// journaled like a built-in class.
 #[test]
-fn a_plugin_linked_through_the_world_dylib_registers_live_world_components() {
-    let report = host_report("world_shared_plugin");
+fn a_plugin_attached_to_the_world_runtime_registers_live_world_components() {
+    let report = host_report(built_together(), "attach");
+    assert_eq!(report["attached"], "true", "{report:?}");
     assert_eq!(report["plugin_sees_class"], "true", "{report:?}");
     assert_eq!(report["host_sees_class"], "true", "{report:?}");
+    assert_eq!(report["host_reflects_class"], "true", "{report:?}");
     assert_eq!(report["same_component_id"], "true", "{report:?}");
     assert_eq!(report["live_charge"], "Some(7.5)", "{report:?}");
     assert_eq!(report["journal_changes"], "1", "{report:?}");
+    assert_eq!(report["reloaded_charge"], "Some(3.25)", "{report:?}");
 }
 
-/// The cost of that linkage: the standard library is linked dynamically,
-/// and a binary's `#[global_allocator]` then serves only the generic code
-/// instantiated in that binary. Code compiled into `libstd` and the world
-/// dylib allocates through `libstd`'s default allocator. An editor linked
-/// this way would split its allocations between `TrackingAllocator` (the
-/// memory panel) or the `dhat-heap` profiler and the system allocator.
+/// Component identity does not rest on `TypeId`: a plugin built in another
+/// cargo invocation, whose engine `TypeId`s differ from the host's, shares
+/// the runtime the same way.
 #[test]
-fn a_binary_linked_to_the_world_dylib_keeps_only_part_of_its_allocations() {
-    let report = host_report("world_static_plugin");
+fn a_plugin_built_separately_shares_the_world_runtime() {
+    let report = host_report(built_separately(), "attach");
     assert_eq!(
-        report["library_allocation_reaches_host_allocator"], "false",
-        "{report:?}"
+        report["same_engine_type_ids"], "false",
+        "the builds really differ: {report:?}"
     );
-    assert_eq!(
-        report["host_generic_allocation_reaches_host_allocator"], "true",
-        "{report:?}"
-    );
+    assert_eq!(report["attached"], "true", "{report:?}");
+    assert_eq!(report["host_sees_class"], "true", "{report:?}");
+    assert_eq!(report["host_reflects_class"], "true", "{report:?}");
+    assert_eq!(report["same_component_id"], "true", "{report:?}");
+    assert_eq!(report["live_charge"], "Some(7.5)", "{report:?}");
+    assert_eq!(report["journal_changes"], "1", "{report:?}");
+    assert_eq!(report["reloaded_charge"], "Some(3.25)", "{report:?}");
+}
+
+/// A plugin whose world runtime has another ABI refuses to attach rather
+/// than misread it, and registers nothing in the host.
+#[test]
+fn a_plugin_refuses_a_world_runtime_of_another_abi() {
+    let report = host_report(built_together(), "attach-bad-abi");
+    assert_eq!(report["attached"], "false", "{report:?}");
+    assert_eq!(report["host_sees_class"], "false", "{report:?}");
+    assert_eq!(report["host_reflects_class"], "false", "{report:?}");
 }

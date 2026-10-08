@@ -143,7 +143,7 @@ impl ComponentRuntimeState {
     /// End all active component lifecycles and forget the current scene.
     /// This is used for explicit runtime shutdown and `TickLoop` drop.
     pub fn end_all(&mut self, events: &EventHub) {
-        let mut registrations: Vec<_> = inventory::iter::<ComponentTickRegistration>
+        let mut registrations: Vec<_> = crate::runtime::ticks().iter().copied()
             .into_iter()
             .collect();
         registrations.sort_by_key(|registration| registration.type_name);
@@ -214,7 +214,7 @@ pub fn tick_live_components(
 
     process_component_removals(world, events, state);
 
-    let mut registrations: Vec<_> = inventory::iter::<ComponentTickRegistration>
+    let mut registrations: Vec<_> = crate::runtime::ticks().iter().copied()
         .into_iter()
         .collect();
     registrations.sort_by_key(|registration| registration.type_name);
@@ -282,7 +282,7 @@ pub fn process_component_removals(
         return 0;
     }
 
-    let mut registrations: Vec<_> = inventory::iter::<ComponentTickRegistration>
+    let mut registrations: Vec<_> = crate::runtime::ticks().iter().copied()
         .into_iter()
         .collect();
     registrations.sort_by_key(|registration| registration.type_name);

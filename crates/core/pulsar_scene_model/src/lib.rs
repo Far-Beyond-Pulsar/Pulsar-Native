@@ -12,6 +12,7 @@ pub mod components;
 pub mod instance;
 pub mod motion;
 pub mod payload_catalog;
+pub mod runtime;
 mod transform_script;
 pub mod world_ext;
 

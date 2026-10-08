@@ -15,8 +15,6 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/REFLECTION.md` | Type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
 | `.agents/ECS.md` | SceneDB's archetype ECS — `World`, queries, journals, `Schedule`, actors |
 | `.agents/SCENEDB_MIGRATION.md` | Scene data as built: SceneDB ownership, component instances, data flow, observers, renderer, architecture checks |
-| `.agents/SCENEDB_CORRECTIVE_PLAN.md` | Corrective scope and acceptance: typed components, direct GPU reflection, independent subscriptions |
-| `.agents/plans/scene-data-correction/README.md` | Review packet with proposed SceneDB, reflection, renderer, notification, persistence and module contracts |
 | `.agents/FILE_MANAGER.md` | `ui_file_manager` — flat crate layout, modules, conventions |
 | `.agents/THEMING.md` | Theme JSON schema, syntax highlighting, window backgrounds |
 | `.agents/UI_CRATES.md` | UI crate conventions — flat layout, `components/`/`handlers`/`utils` pattern |

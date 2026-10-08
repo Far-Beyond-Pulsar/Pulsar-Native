@@ -1,5 +1,6 @@
-# A plugin library for plugin_manager's world-component tests (#1081),
-# built by those tests. static plugin: links its own static copy of the engine's world crates, as plugins did
+# A plugin library for plugin_manager's world-component tests (#1083), built
+# by those tests. Like every editor plugin, it links its own static copy of
+# the engine's world crates.
 [package]
 name = "world_static_plugin"
 version = "0.0.0"
@@ -11,6 +12,12 @@ crate-type = ["cdylib"]
 test = false
 doctest = false
 
+[features]
+# Built on its own with this feature, the engine crates resolve with
+# different features than the host's, so their `TypeId`s differ from the
+# host's: a plugin built outside the editor's cargo invocation.
+separate-build = ["pulsar_reflection/prims-serde"]
+
 [dependencies]
 engine_class_derive   = { workspace = true }
 pulsar_reflection     = { workspace = true }
@@ -19,4 +26,3 @@ pulsar_world_registry = { workspace = true }
 serde                 = { workspace = true }
 serde_json            = { workspace = true }
 tracing               = { workspace = true }
-
