@@ -19,7 +19,6 @@ use engine_backend::scene::SceneWorldExt;
 use pulsar_scenedb::{Entity, World};
 use serde_json::Value;
 
-use super::changes::{record_property_change, record_structural_change};
 use super::ComponentInstance;
 
 // ── Addressing ─────────────────────────────────────────────────────────────
@@ -188,7 +187,7 @@ pub fn after_property_edit(
         attach::NewInstance::new(class.clone()),
         pulsar_world_registry::ComponentPayload::Default,
     ) {
-        Ok(_) => record_structural_change(object_id, &class),
+        Ok(_) => {}
         Err(error) => tracing::warn!("Could not attach {class} to '{object_id}': {error}"),
     }
 }
@@ -218,7 +217,6 @@ pub fn add_component_value(
         payload,
     ) {
         Ok(instance) => {
-            record_structural_change(object_id, class_name);
             attach::instances(world, owner)
                 .iter()
                 .position(|entity| *entity == instance)
@@ -243,14 +241,8 @@ pub fn set_component_value(
     let Some(instance) = instance_at(world, object_id, component_index) else {
         return false;
     };
-    let class_name = attach::meta(world, instance).map(|meta| meta.class_name.clone());
     match pulsar_world_registry::set_instance_value(world, instance, value) {
-        Ok(()) => {
-            if let Some(class_name) = class_name {
-                record_structural_change(object_id, &class_name);
-            }
-            true
-        }
+        Ok(()) => true,
         Err(error) => {
             tracing::warn!("Component {component_index} of '{object_id}' not updated: {error}");
             false
@@ -289,7 +281,6 @@ pub fn add_component_instance(
     match pulsar_world_registry::attach_record(world, owner, &component, None) {
         Ok(instance) => {
             restore_parent(world, owner, instance, &component.data);
-            record_structural_change(object_id, &component.class_name);
             attach::instances(world, owner)
                 .iter()
                 .position(|entity| *entity == instance)
@@ -350,11 +341,7 @@ pub fn remove_component(world: &mut World, object_id: &str, component_index: usi
     let Some(instance) = instance_at(world, object_id, component_index) else {
         return false;
     };
-    let class_name = attach::meta(world, instance).map(|meta| meta.class_name.clone());
     attach::detach(world, instance);
-    if let Some(class_name) = class_name {
-        record_structural_change(object_id, &class_name);
-    }
     true
 }
 
@@ -374,10 +361,6 @@ pub fn set_component_enabled(
         return true;
     }
     attach::set_enabled(world, instance, enabled);
-    if let Some(meta) = attach::meta(world, instance) {
-        let class_name = meta.class_name.clone();
-        record_structural_change(object_id, &class_name);
-    }
     true
 }
 
@@ -392,13 +375,7 @@ pub fn duplicate_component(
     let instance = instance_at(world, object_id, component_index)?;
     let insert_index = component_index + 1;
     match pulsar_world_registry::duplicate_instance(world, instance, owner, Some(insert_index)) {
-        Ok(copy) => {
-            if let Some(meta) = attach::meta(world, copy) {
-                let class_name = meta.class_name.clone();
-                record_structural_change(object_id, &class_name);
-            }
-            Some(insert_index)
-        }
+        Ok(_) => Some(insert_index),
         Err(error) => {
             tracing::error!("Could not duplicate a component of '{object_id}': {error}");
             None
@@ -417,14 +394,8 @@ pub fn reorder_component(
     let Some(owner) = world.entity_for(object_id) else {
         return false;
     };
-    let class_name = instance_at(world, object_id, from_index)
-        .and_then(|instance| attach::meta(world, instance))
-        .map(|meta| meta.class_name.clone());
     if from_index == to_index || !attach::move_instance(world, owner, from_index, to_index) {
         return false;
-    }
-    if let Some(class_name) = class_name {
-        record_structural_change(object_id, &class_name);
     }
     true
 }
@@ -487,7 +458,6 @@ pub fn set_unresolved_property(
     }
     map.insert(prop_name.to_string(), new_value);
     world.insert(instance, unresolved);
-    record_property_change(object_id, class_name, prop_name);
     true
 }
 
@@ -525,6 +495,5 @@ pub fn update_live_component_property(
     pulsar_world_registry::set_world_component_property(
         class_name, world, instance, prop_name, new_value,
     )?;
-    record_property_change(object_id, class_name, prop_name);
     Ok(())
 }

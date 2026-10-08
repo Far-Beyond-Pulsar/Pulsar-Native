@@ -233,7 +233,9 @@ impl PropertiesPanelWrapper {
             let ObjectUpdate::Changed(delta) = update else {
                 continue;
             };
-            if delta.entity != object {
+            let header = delta.component == pulsar_scenedb::component_id::<Name>()
+                || delta.component == pulsar_scenedb::component_id::<Visibility>();
+            if delta.entity != object || !(header || delta.component == pulsar_scenedb::component_id::<Transform>()) {
                 if let Some(section) = &self.object_type_fields_section {
                     section.update(cx, |section, cx| section.apply_update(&delta, cx));
                 }
@@ -249,9 +251,7 @@ impl PropertiesPanelWrapper {
                         section.show_transform(transform, window, cx)
                     });
                 }
-            } else if delta.component == pulsar_scenedb::component_id::<Name>()
-                || delta.component == pulsar_scenedb::component_id::<Visibility>()
-            {
+            } else if header {
                 header_changed = true;
             }
         }

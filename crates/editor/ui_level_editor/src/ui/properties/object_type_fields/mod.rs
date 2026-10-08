@@ -309,14 +309,24 @@ impl ObjectTypeFieldsSection {
 impl ObjectTypeFieldsSection {
     /// Apply one change the object's subscription delivered. A live card's
     /// new value replaces its cached values directly; a change to the card
-    /// set (an instance added, removed, reordered or toggled) rebinds.
+    /// set (an instance added, removed, reordered or toggled) or to an
+    /// unresolved payload rebinds; a class-variable change re-reads the
+    /// class caches.
     pub fn apply_update(&mut self, delta: &pulsar_world_registry::ObjectDelta, cx: &mut Context<Self>) {
+        use engine_backend::scene::attachments::{
+            ComponentAttachments, ComponentMeta, ComponentOwner, UnresolvedComponent,
+        };
         use pulsar_scenedb::{component_id, ComponentChangeKind};
-        use engine_backend::scene::attachments::{ComponentAttachments, ComponentMeta, ComponentOwner};
+        if delta.component == component_id::<pulsar_class::ClassInstance>() {
+            self.class_cache_dirty = true;
+            cx.notify();
+            return;
+        }
         let structural = [
             component_id::<ComponentMeta>(),
             component_id::<ComponentOwner>(),
             component_id::<ComponentAttachments>(),
+            component_id::<UnresolvedComponent>(),
         ]
         .contains(&delta.component);
         match self.card_entities.get(&delta.entity).cloned() {
@@ -358,10 +368,6 @@ impl Render for ObjectTypeFieldsSection {
         use ui::popover::Popover;
         use ui::{IconName, Sizable as _};
 
-        // ── Drain change set (once per frame) ──────────────────────────────
-        let property_changes = crate::scene_edit::changes::drain_property_changes();
-        let structural = property_changes.components_added_or_removed();
-
         // ── Detect structural changes without full get_components() ────────
         let current_count = {
             let world = self.scene_db.read();
@@ -372,7 +378,7 @@ impl Render for ObjectTypeFieldsSection {
 
         // Clear cached values for structurally-changed objects so stale
         // entries from removed/renamed components don't persist.
-        if structural || count_changed {
+        if count_changed {
             self.property_metadata_cache.clear();
             // The card set itself changed: every binding/cache entry is
             // suspect (a removed card's binding must go; a re-added one must
@@ -429,28 +435,9 @@ impl Render for ObjectTypeFieldsSection {
 
         // ── Per-component property cards ───────────────────────────────────
         //
-        // Mark cards dirty from the two signals that can have fired since
-        // last render, BEFORE building them:
-        //
-        // Live cards are updated by the object's subscription (the panel
-        // forwards each delivered value to `apply_update`), so nothing is
-        // re-read here. The legacy JSON change set below covers the handful
-        // of classes not registered with the World, whose writes go through
-        // `metadata_db`.
-        if !property_changes.is_empty() {
-            // Legacy JSON-path writes are recorded per (object, class,
-            // property) without an instance index -- mark every card of a
-            // touched class dirty; each re-pulls from its OWN source, so
-            // over-invalidation costs a read, never a wrong value.
-            for (idx, comp) in attached.iter().enumerate() {
-                if property_changes.class_changed(&self.object_id, &comp.class_name) {
-                    self.dirty_classes.insert((comp.class_name.clone(), idx));
-                }
-            }
-            if property_changes.class_changed(&self.object_id, pulsar_class::CLASS_INSTANCE) {
-                self.class_cache_dirty = true;
-            }
-        }
+        // Cards are kept current by the object's subscription: the panel
+        // forwards each delivered change to `apply_update`, so nothing is
+        // re-read here.
         self.refresh_class_caches();
 
         let component_sections = self.render_component_sections(&attached, window, cx);

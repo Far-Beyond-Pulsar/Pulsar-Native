@@ -12,7 +12,6 @@
 //! | [`components`] | attach/remove/enable/reorder component instances, live property edits |
 //! | [`level_io`] | `.level` file save/load |
 //! | [`history`] | undo/redo snapshots (editor-owned; SceneDB has no undo) |
-//! | [`changes`] | which component properties changed, for the properties panel's relevance gate |
 //! | [`classes`] | placed class instances: placement, rebuild, overrides, revert (#921) |
 //!
 //! Every attached component is its own entity holding its typed value
@@ -24,7 +23,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
-pub mod changes;
 pub mod classes;
 pub mod components;
 pub mod history;
@@ -36,7 +34,6 @@ mod hlfs_cathedral;
 #[cfg(test)]
 mod tests;
 
-pub use changes::PropertyChangeSet;
 pub use engine_backend::scene::{LightType, MeshType, ObjectId, ObjectType};
 pub use history::{SceneHistoryDelta, SceneHistorySnapshot};
 
