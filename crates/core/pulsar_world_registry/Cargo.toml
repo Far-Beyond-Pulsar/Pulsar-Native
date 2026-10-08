@@ -2,7 +2,7 @@
 name = "pulsar_world_registry"
 version = "0.1.0"
 edition = "2021"
-description = "Class-name-keyed registry bridging reflection-typed, ComponentRuntimeBehavior-implementing components into pulsar_scenedb::World -- hydrate JSON into a typed World component once per edit (not per render frame), then dispatch sync_component directly off that typed value."
+description = "Class-name-keyed registry of reflection-typed components in pulsar_scenedb::World: factories, boundary decode, clone and erased insert/remove, reflected property and method dispatch, object feeds, change watches and component lifecycles."
 
 [dependencies]
 pulsar_scenedb    = { workspace = true }
@@ -19,6 +19,8 @@ pulsar_script_math = { workspace = true }
 pulsar_scene_model = { workspace = true }
 
 [dev-dependencies]
+pollster = "=1.0.1"
+wgpu = { workspace = true }
 glam = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 

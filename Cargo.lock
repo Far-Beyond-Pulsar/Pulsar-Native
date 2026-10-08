@@ -9711,6 +9711,7 @@ version = "0.1.0"
 dependencies = [
  "glam 0.33.5",
  "inventory",
+ "pollster 1.0.1",
  "pulsar_events",
  "pulsar_reflection",
  "pulsar_scene_model",
@@ -9721,6 +9722,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tracing",
+ "wgpu",
 ]
 
 [[package]]
