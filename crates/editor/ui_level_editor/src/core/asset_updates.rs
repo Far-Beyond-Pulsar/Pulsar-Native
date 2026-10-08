@@ -61,3 +61,59 @@ pub fn handle_asset_update(
     }
     touched
 }
+
+/// Subscribe the editor at `state` to mesh asset updates (a re-import): every
+/// static mesh naming the updated file reloads it.
+pub fn subscribe_mesh_updates(state: Arc<RwLock<LevelEditorState>>) -> AssetSubscription {
+    plugin_editor_api::subscribe_asset_updates(Some(AssetKind::Mesh), move |event| {
+        let reloaded = handle_mesh_update(&state, event);
+        if reloaded > 0 {
+            tracing::info!(
+                meshes = reloaded,
+                "Reloaded meshes after a mesh asset update"
+            );
+        }
+    })
+}
+
+/// Reload every `StaticMeshComponent` whose `mesh_asset` resolves to the
+/// updated file, through the same `mesh_asset` write the properties panel
+/// makes (one write per mesh, its GPU rows following). Returns how many
+/// reloaded.
+pub fn handle_mesh_update(state: &Arc<RwLock<LevelEditorState>>, event: &AssetUpdated) -> usize {
+    use helio_component::components::StaticMeshComponent;
+    let (Some(path), Some(project)) = (event.path.as_ref(), engine_state::get_project_path())
+    else {
+        return 0;
+    };
+    let canonical =
+        |path: &std::path::Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let updated = canonical(path);
+    let project = std::path::PathBuf::from(project);
+    let state = state.read();
+    let mut world = state.scene.world_mut();
+    let matching: Vec<(
+        pulsar_scenedb::Entity,
+        helio_component::components::MeshAssetPath,
+    )> = world
+        .query::<&StaticMeshComponent>()
+        .filter(|(_, mesh)| {
+            !mesh.mesh_asset.as_str().is_empty()
+                && canonical(&helio_component::subsystems::resolve_asset_path(
+                    &project,
+                    mesh.mesh_asset.as_str(),
+                )) == updated
+        })
+        .map(|(instance, mesh)| (instance, mesh.mesh_asset.clone()))
+        .collect();
+    for (instance, mesh_asset) in &matching {
+        let _ = pulsar_world_registry::set_world_component_property(
+            "StaticMeshComponent",
+            &mut world,
+            *instance,
+            "mesh_asset",
+            Box::new(mesh_asset.clone()),
+        );
+    }
+    matching.len()
+}
