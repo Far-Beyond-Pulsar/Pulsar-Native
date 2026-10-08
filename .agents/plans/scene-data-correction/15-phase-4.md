@@ -61,7 +61,7 @@ The water passes read a fixed number of leading rows: `MAX_SIM_VOLUMES`, which i
 - Placed volumes beyond the eighth are not drawn.
 - The pass `WaterVolumeComponent` is no longer registered as a column.
 
-Limitation: the simulation reads wave spring, damping, scale and wind from pass-wide settings (`WaterSimPass` setters). The component's per-volume fields for these are carried in the row but have no effect.
+Limitation: the simulation reads wave spring, damping, scale and wind from pass-wide settings (`WaterSimPass` setters). The component's per-volume fields for these are carried in the row but have no effect (#1065).
 
 **Reflection captures: unfinished (#1054).** Deferred lighting samples a capture only through a baked cubemap layer (`cubemap_index`), and the engine runs no probe baker (`helio-bake` is not a dependency). A placed capture would therefore never contribute.
 - The component keeps its authored settings and writes no rows.
@@ -97,11 +97,11 @@ The foliage passes changed in three ways:
 - **Residency.** Residency now follows the type *and* layer contents; it used to follow only the type buffer's reallocation count, which a packed table never changes. The blade seed follows the types alone, so a tile re-placed because only the layers changed grows the same blades.
 
 Limitations, recorded in the ledger:
-- Grass grows on flat ground at Y 0, because the editor has no terrain capture.
-- Every type grows in every layer.
-- The first component's wind applies to all.
-- Wind does not animate: no frame clock reaches the row.
-- The interactor and material colour fields have no consumer.
+- Grass grows on flat ground at Y 0, because the editor has no terrain capture (#1064).
+- Every type grows in every layer (#1062).
+- The first component's wind applies to all (#1062).
+- Wind does not animate: no frame clock reaches the row (#1061).
+- The interactor and material colour fields have no consumer (#1063).
 
 **Splines: change-driven.** `SplineLines` reads SceneDB's change journal for:
 - spline values and attachment state;
@@ -109,7 +109,7 @@ Limitations, recorded in the ledger:
 
 It rebuilds the editor's spline debug lines only when one of those changes. Previously the renderer walked every spline on each scene sync.
 
-**HLFS: outside the engine.** `HlfsPass` reads its TLAS from the renderer's `RenderEnvironment`, not the World. The World reader is `SceneDbRayTracing`, a host-side adapter in the pass crate that only Helio's examples call; the engine never builds the HLFS graph. A TLAS needs CPU instance inputs, so a host adapter is the right shape. Moving it out of the pass crate is queued as a Helio follow-up.
+**HLFS: outside the engine.** `HlfsPass` reads its TLAS from the renderer's `RenderEnvironment`, not the World. The World reader is `SceneDbRayTracing`, a host-side adapter in the pass crate that only Helio's examples call; the engine never builds the HLFS graph. A TLAS needs CPU instance inputs, so a host adapter is the right shape. Moving it out of the pass crate is tracked in #1066.
 
 **Voxel audit.** The voxel-planet pass reads no scene buffers. The host hands it a CPU `PlanetFrame` (`Arc<Planet>` and the sun), and the pass syncs journal edits to the GPU incrementally, which is real, change-driven work.
 
@@ -189,20 +189,28 @@ Each is reported in the engine (the card and a one-time log, for authored classe
 | Corona (particle emitters) | pass schema only | #1059 |
 | Sprites / billboards | pass draws editor light icons only | #1060 |
 
+## Limitations of supported features
+
+These features work and are verified, but part of their authored data has no effect yet. Each is tracked by a sub-issue of #1035 and noted on its ledger row.
+
+| Limitation | Issue |
+|---|---|
+| Foliage wind does not animate: no frame clock reaches the wind row | #1061 |
+| Foliage types grow in every layer, and the first component's wind applies to all | #1062 |
+| Foliage interactor and material colour fields have no consumer | #1063 |
+| Foliage grows only on flat ground at Y 0: no terrain capture in the editor | #1064 |
+| Per-volume water simulation dynamics (spring, damping, scale, wind) have no effect | #1065 |
+| HLFS's World reader (`SceneDbRayTracing`) lives in the pass crate | #1066 |
+
 ## Left open (recorded, not done here)
 
 - **Ledger rows not yet analysed.** `[[pass]]` rows remain `unverified`: each pass crate's observable output is not yet individually tested. The gbuffer `RenderGroupComponent` / `SectionedObjectComponent` / sublevel rows and `water_hitboxes` stay `unverified`.
-- **Voxels.**
+- **Voxels.** Not filed: voxels are being developed on another branch. The audit's findings stand for that work:
   - The CPU planet rebuild runs on the render thread.
   - Renderer brush commits bypass `append_edits`.
   - There are two CPU planet caches.
   - Generator settings cross as JSON, the plugin boundary.
-- **Foliage.**
-  - Wind does not animate.
-  - Types share layers.
-  - There are no terrain heights in the editor.
-- **Water.** Per-volume simulation dynamics have no effect.
-- **HLFS.** `SceneDbRayTracing` lives in the pass crate; moving it is a Helio follow-up.
+- **Limitations of supported features:** see [the table below](#limitations-of-supported-features).
 - **`pulsar-reflection` submodule.** `RuntimeBehaviorRegistration` and `apply_runtime_behavior_for_class` are unused there.
 - **Pre-existing test failures**, as in Phase 3:
   - the gizmo hover test;
