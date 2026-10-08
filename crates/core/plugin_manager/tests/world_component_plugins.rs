@@ -117,6 +117,7 @@ fn a_plugin_attached_to_the_world_runtime_registers_live_world_components() {
     assert_eq!(report["same_component_id"], "true", "{report:?}");
     assert_eq!(report["live_charge"], "Some(7.5)", "{report:?}");
     assert_eq!(report["journal_changes"], "1", "{report:?}");
+    assert_eq!(report["reloaded_charge"], "Some(3.25)", "{report:?}");
 }
 
 /// Component identity does not rest on `TypeId`: a plugin built in another
@@ -135,6 +136,7 @@ fn a_plugin_built_separately_shares_the_world_runtime() {
     assert_eq!(report["same_component_id"], "true", "{report:?}");
     assert_eq!(report["live_charge"], "Some(7.5)", "{report:?}");
     assert_eq!(report["journal_changes"], "1", "{report:?}");
+    assert_eq!(report["reloaded_charge"], "Some(3.25)", "{report:?}");
 }
 
 /// A plugin whose world runtime has another ABI refuses to attach rather

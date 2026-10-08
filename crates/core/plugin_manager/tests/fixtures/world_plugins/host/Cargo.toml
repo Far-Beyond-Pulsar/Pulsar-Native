@@ -18,3 +18,4 @@ libloading            = { workspace = true }
 pulsar_reflection     = { workspace = true }
 pulsar_scenedb        = { workspace = true }
 pulsar_world_registry = { workspace = true }
+serde_json            = { workspace = true }

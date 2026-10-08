@@ -750,9 +750,11 @@ impl PluginManager {
                 tracing::debug!("    - Component: {}", name);
             }
             // A plugin class is a World component only when its
-            // `#[register_world_component]` registration ran into the host's
-            // registry. A plugin with its own static copy of the world crates
-            // registered into a registry the host never reads (#1081).
+            // `#[register_world_component]` registration reached the host's
+            // registry: the class has one, and the plugin attached to the
+            // editor's world runtimes (#1083). A plugin built before them
+            // registered into its own copy's registry, which the host never
+            // reads (#1081).
             let unregistered: Vec<&str> = component_regs
                 .iter()
                 .map(|(name, _)| name.as_str())
@@ -761,8 +763,8 @@ impl PluginManager {
             if !unregistered.is_empty() {
                 tracing::warn!(
                     "plugin {} provides components that are not World components: {}. \
-                     They registered into the plugin's own copy of the engine's world \
-                     crates and cannot be placed in a level.",
+                     They have no #[register_world_component], or the plugin predates \
+                     the shared world runtimes; they cannot be placed in a level.",
                     plugin_id,
                     unregistered.join(", ")
                 );

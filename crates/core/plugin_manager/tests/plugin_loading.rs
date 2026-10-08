@@ -121,3 +121,13 @@ fn plugins_are_attached_to_the_host_event_bus() {
         Some(plugin_editor_api::pulsar_events::host::ATTACH_ALREADY_LOCAL)
     );
 }
+
+/// #1083: the loader hands a plugin library the host's world runtimes
+/// through the entry point `export_plugin!` exports, and the plugin's world
+/// crates attach to them; attaching again to the same runtimes is a no-op.
+#[test]
+fn plugins_are_attached_to_the_host_world_runtime() {
+    let lib = PermanentLibrary::new(plugin_path()).expect("failed to load plugin fixture");
+    assert_eq!(plugin_manager::attach_world_runtime(&lib), Some(true));
+    assert_eq!(plugin_manager::attach_world_runtime(&lib), Some(true));
+}

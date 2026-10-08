@@ -128,6 +128,38 @@ fn main() {
         let _ = world.read_changes(&mut cursor, &mut changes);
         println!("journal_changes={}", changes.len());
     }
+    if host_sees_class {
+        // Placed on an object, saved as level records, loaded into a fresh
+        // World: the level file's path, through the plugin's own codec.
+        use pulsar_reflection::EngineClass as _;
+        use pulsar_world_registry::pulsar_scene_model::{
+            attachments::NewInstance, ComponentInstance,
+        };
+        let mut world = pulsar_scenedb::World::new();
+        let owner = world.spawn();
+        pulsar_world_registry::attach_component(
+            &mut world,
+            owner,
+            NewInstance::new("PluginWidget"),
+            pulsar_world_registry::ComponentPayload::Json(serde_json::json!({ "charge": 3.25 })),
+        )
+        .expect("place");
+        let saved = serde_json::to_string(&pulsar_world_registry::component_records(&world, owner))
+            .expect("save");
+        let records: Vec<ComponentInstance> = serde_json::from_str(&saved).expect("read");
+        let mut loaded = pulsar_scenedb::World::new();
+        let owner = loaded.spawn();
+        let attached =
+            pulsar_world_registry::attach_records(&mut loaded, owner, &records).expect("load");
+        let reloaded = pulsar_world_registry::instance_engine_class(&loaded, attached[0])
+            .expect("reloaded value");
+        let charge = reloaded
+            .get_properties()
+            .into_iter()
+            .find(|property| property.name == "charge")
+            .and_then(|property| (property.getter)(reloaded).downcast_ref::<f32>().copied());
+        println!("reloaded_charge={charge:?}");
+    }
     // Plugins are never unloaded.
     std::mem::forget(library);
 }

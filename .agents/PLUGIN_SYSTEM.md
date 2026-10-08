@@ -115,16 +115,39 @@ A plugin's `EditorPluginComponents::component_factories` hands the host a
 `Box<dyn EngineClass>` factory, enough for the property panel. A typed World
 component also needs its `#[register_world_component]` registration in the
 host's registry. A plugin statically links its own copy of the world crates
-(`pulsar_scenedb`, `pulsar_reflection`, `pulsar_world_registry`,
-`pulsar_scene_model`), so that registration lands in registries the host
-never reads, and its component ids come from its own table. The loader warns
-about such classes, and they cannot be placed in a level.
+(`pulsar_reflection`, `pulsar_scenedb`, `pulsar_scene_model`,
+`pulsar_world_registry`), so on its own that registration lands in
+registries the host never reads.
 
-Pulsar-Native#1083 fixes this the way WGPUI shares gpui across plugins
-(`crates/ui/wgpui/src/shared_runtime.rs`): each copy keeps its static world
-crates, and their process-wide state (component ids, counters, registries)
-lives in one host-owned world runtime that plugins attach to at load. The UI
-framework is unchanged.
+The world crates share their process-wide state the way WGPUI shares gpui
+across plugins (`crates/ui/wgpui/src/shared_runtime.rs`), Pulsar-Native#1083:
+
+- Each crate has a `runtime` module: a `#[repr(C)]` table of function
+  pointers into the copy that owns the state (component ids, counters,
+  registries), and `attach`, which points this copy at another copy's
+  table and hands it this copy's `inventory` registrations.
+- `pulsar_world_registry::runtime::WorldRuntimes` gathers the four tables.
+  `export_plugin!` exports `_plugin_attach_world_runtime`; the plugin
+  manager calls it with the editor's tables before `_plugin_create`.
+  Reflection attaches first, then SceneDB, the scene model and the registry.
+- Each table carries an ABI fingerprint (version and layouts). A plugin
+  built from other world-crate sources or features refuses the editor's
+  tables, and the loader rejects it (`WorldRuntimeRefused`). A plugin built
+  before #1083 exports no entry point; it loads, and its classes stay local
+  (the loader warns).
+- Component ids follow type name and layout, not `TypeId`, so a plugin
+  built in another cargo invocation shares them.
+- A plugin uses typed access only on its own component types. It reaches
+  engine types by class name through the registries, because a `TypeId`
+  differs between builds. This is how WGPUI hands plugins the theme.
+- New process-wide state in a world crate goes through its runtime. The
+  `world_state` tests in SceneDB and Pulsar-Reflection, and
+  `scene_inventory`'s `world_crate_state_goes_through_the_runtime`, fail on
+  an unlisted `static`, `thread_local!` or `inventory::collect!`.
+
+The UI framework is unchanged. Tests:
+`crates/core/plugin_manager/tests/world_component_plugins.rs` (fixture
+plugins, one built separately) and `plugin_loading.rs`.
 
 ## Plugin loading
 
@@ -135,8 +158,10 @@ framework is unchanged.
    a. Open file, hash it (SHA-256 from open fd for TOCTOU protection)
    b. `libloading::Library::new()` → wrap in `ManuallyDrop`
    c. Call `_plugin_version()` → `VersionInfo::is_compatible()` check
-   d. Call `_plugin_create(theme_ptr)` → get `&'static mut dyn EditorPluginFull`
-   e. Call `on_load()`, register file types, editors, statusbar buttons
+   d. Call `_plugin_attach_world_runtime(world_runtimes)`; a refusal rejects the plugin
+   e. Call `_plugin_attach_event_bus(bus)`
+   f. Call `_plugin_create(theme_ptr)` → get `&'static mut dyn EditorPluginFull`
+   g. Call `on_load()`, register file types, editors, statusbar buttons
 5. `initialize_global(manager)` — store in `OnceCell`
 
 ## Built-in vs DLL plugins
