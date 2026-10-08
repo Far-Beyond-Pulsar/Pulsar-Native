@@ -20,6 +20,26 @@ fn object(name: &str) -> SceneObjectData {
     }
 }
 
+/// The live typed intensity of the light at `index` (not its save record).
+fn light_intensity(world: &pulsar_scenedb::World, id: &str, index: usize) -> f32 {
+    let instance = components::instance_at(world, id, index).unwrap();
+    world
+        .get::<helio_component::components::LightComponent>(instance)
+        .unwrap()
+        .intensity
+        .intensity
+}
+
+/// The live typed collision flag of the physics component at `index`.
+fn collision_enabled(world: &pulsar_scenedb::World, id: &str, index: usize) -> bool {
+    let instance = components::instance_at(world, id, index).unwrap();
+    world
+        .get::<PhysicsComponent>(instance)
+        .unwrap()
+        .general
+        .collision_enabled
+}
+
 /// Whether a metadata record's data holds only record metadata keys.
 fn metadata_only(data: &Value) -> bool {
     data.as_object()
@@ -56,20 +76,14 @@ fn light_edits_remain_canonical_through_object_edits_and_history() {
 
     let projected = objects::get_object(world, &id).unwrap();
     assert!(objects::update_object(world, projected));
-    assert_eq!(
-        components::get_components(world, &id)[0].data["intensity"]["intensity"],
-        json!(321.0)
-    );
+    assert_eq!(light_intensity(world, &id, 0), 321.0);
     assert!(metadata_only(
         &components::get_components_metadata(world, &id)[0].data
     ));
     let snapshot = history::capture_history_snapshot(world);
     objects::clear(world);
     history::restore_history_snapshot(world, &snapshot).unwrap();
-    assert_eq!(
-        components::get_components(world, &id)[0].data["intensity"]["intensity"],
-        json!(321.0)
-    );
+    assert_eq!(light_intensity(world, &id, 0), 321.0);
 }
 
 #[test]
@@ -89,26 +103,14 @@ fn duplicate_lights_keep_distinct_values_when_the_live_instance_changes() {
             serde_json::to_value(light).unwrap(),
         );
     }
-    assert_eq!(
-        components::get_components(world, &id)[0].data["intensity"]["intensity"],
-        json!(10.0)
-    );
+    assert_eq!(light_intensity(world, &id, 0), 10.0);
     assert!(components::set_component_enabled(world, &id, 0, false));
-    assert_eq!(
-        components::get_components(world, &id)[1].data["intensity"]["intensity"],
-        json!(20.0)
-    );
+    assert_eq!(light_intensity(world, &id, 1), 20.0);
     assert!(components::set_component_enabled(world, &id, 0, true));
     components::reorder_component(world, &id, 1, 0);
-    assert_eq!(
-        components::get_components(world, &id)[0].data["intensity"]["intensity"],
-        json!(20.0)
-    );
+    assert_eq!(light_intensity(world, &id, 0), 20.0);
     components::remove_component(world, &id, 0);
-    assert_eq!(
-        components::get_components(world, &id)[0].data["intensity"]["intensity"],
-        json!(10.0)
-    );
+    assert_eq!(light_intensity(world, &id, 0), 10.0);
 }
 
 #[test]
@@ -153,10 +155,7 @@ fn physics_component_data_is_owned_by_the_scene_db_world() {
     let metadata = components::get_components_metadata(world, &id);
     assert_eq!(metadata.len(), 1);
     assert!(metadata_only(&metadata[0].data));
-    assert_eq!(
-        components::get_components(world, &id)[0].data["general"]["collision_enabled"],
-        json!(false)
-    );
+    assert_eq!(collision_enabled(world, &id, 0), false);
     let entity = components::instance_at(world, &id, 0).unwrap();
     assert!(
         !world
@@ -185,10 +184,7 @@ fn physics_world_edits_survive_object_updates_and_save_projection() {
     updated.transform.position = [1.0, 2.0, 3.0];
     assert!(objects::update_object(world, updated));
 
-    assert_eq!(
-        components::get_components(world, &id)[0].data["general"]["collision_enabled"],
-        json!(false)
-    );
+    assert_eq!(collision_enabled(world, &id, 0), false);
     assert!(metadata_only(
         &components::get_components_metadata(world, &id)[0].data
     ));
@@ -220,10 +216,7 @@ fn disabling_and_reenabling_physics_preserves_the_canonical_value() {
     ));
 
     assert!(components::set_component_enabled(world, &id, 0, true));
-    assert_eq!(
-        components::get_components(world, &id)[0].data["general"]["collision_enabled"],
-        json!(false)
-    );
+    assert_eq!(collision_enabled(world, &id, 0), false);
     assert!(metadata_only(
         &components::get_components_metadata(world, &id)[0].data
     ));
