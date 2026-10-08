@@ -344,3 +344,55 @@ fn rigidbody_add_edit_undo_and_save_are_typed() {
         RigidbodyComponent::default().general.mass
     );
 }
+
+/// Phase 5 (Pulsar-Native#1035): any number of panels watch the same card
+/// through their own cursors. An edit reaches each of them whichever polls
+/// first, a third reader (a script) takes nothing from them, and a history
+/// restore reports every card so each re-reads.
+#[test]
+fn every_watcher_sees_an_edit_whichever_polls_first() {
+    use helio_component::components::LightComponent;
+    use pulsar_world_registry::ComponentWatch;
+
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let id = objects::add_object(world, object("light"), None);
+    components::add_component(
+        world,
+        &id,
+        "LightComponent".into(),
+        serde_json::to_value(LightComponent::default()).unwrap(),
+    );
+    let card = ("LightComponent".to_string(), 0);
+    let mut panel_a = ComponentWatch::new();
+    let mut panel_b = ComponentWatch::new();
+    let mut script = ComponentWatch::new();
+    for watch in [&mut panel_a, &mut panel_b, &mut script] {
+        assert!(components::watch_component(
+            watch,
+            world,
+            card.clone(),
+            &id,
+            "LightComponent",
+            0
+        ));
+    }
+
+    let instance = components::instance_at(world, &id, 0).unwrap();
+    world
+        .get_mut::<LightComponent>(instance)
+        .unwrap()
+        .intensity
+        .intensity = 42.0;
+
+    assert_eq!(script.poll(world), vec![card.clone()]);
+    assert_eq!(panel_b.poll(world), vec![card.clone()]);
+    assert_eq!(panel_a.poll(world), vec![card.clone()]);
+    assert!(panel_a.poll(world).is_empty());
+
+    let snapshot = history::capture_history_snapshot(world);
+    objects::clear(world);
+    history::restore_history_snapshot(world, &snapshot).unwrap();
+    assert_eq!(panel_a.poll(world), vec![card.clone()]);
+    assert_eq!(panel_b.poll(world), vec![card]);
+}

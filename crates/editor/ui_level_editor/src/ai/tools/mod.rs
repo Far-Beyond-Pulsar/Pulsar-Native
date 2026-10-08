@@ -645,7 +645,7 @@ mod tests {
         let listed = call("level_editor_list_objects", json!({}));
         assert_eq!(listed["total_matches"], 1);
         assert_eq!(listed["items"][0]["position"], json!([1.0, 2.0, 3.0]));
-        assert!(state.read().scene.pending_renderer_resync);
+        assert!(state.read().scene.pending_selection_sync);
 
         // Component structure edits.
         call(

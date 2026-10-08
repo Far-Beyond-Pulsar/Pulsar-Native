@@ -282,7 +282,7 @@ fn component_properties() {
 
     let mut h = Harness::new();
     let e = spawn_health(&mut h, 21.0);
-    h.world.subscribe::<Health>(e).unwrap();
+    let mut cursor = h.world.open_change_cursor::<Health>();
     let out = h
         .run(
             &program,
@@ -293,7 +293,9 @@ fn component_properties() {
     assert_eq!(out, float(42.0));
     assert_eq!(h.world.get::<Health>(e).unwrap().value, 42.0);
     // Property writes go through SceneDB's change hooks.
-    assert_eq!(h.world.take_component_change_events().len(), 1);
+    let mut changes = Vec::new();
+    let _ = h.world.read_changes(&mut cursor, &mut changes);
+    assert_eq!(changes.len(), 1);
 }
 
 #[test]

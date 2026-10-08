@@ -24,6 +24,8 @@ This packet turns the confirmed SceneDB/rendering failures into a set of archite
 | [13-phase-2.md](13-phase-2.md) | Phase 2: the GPU scene join for meshes and lights; the CPU projection and render subscriptions removed |
 | [14-phase-3.md](14-phase-3.md) | Phase 3: typed history, commands, class templates and script producers; explicit load migrations |
 | [15-phase-4.md](15-phase-4.md) | Phase 4: render components reach a pass through derived rows and graph-owned joins, or are reported unfinished with a tracking issue (#1053–#1060; limitations #1061–#1066); the queue and behavior dispatch deleted |
+| [16-phase-5.md](16-phase-5.md) | Phase 5: panels and scripts read changes through their own cursors (`ComponentWatch`); cursors bound to their World; the forced resync deleted; undo/redo, level replacement and viewports need no repair path |
+| [voxel-branch-porting.md](voxel-branch-porting.md) | Notes for rebasing the voxel branches (Pulsar-Native#994, Helio#314) onto the corrected path: what to replace, what to keep, what to decide |
 | [ledger.toml](ledger.toml) | Closure ledger checked by `cargo test -p scene_inventory` |
 
 ## How to review

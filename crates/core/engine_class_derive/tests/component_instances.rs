@@ -98,10 +98,8 @@ fn factory_decode_and_typed_inserts_are_equivalent() {
     );
     assert_eq!(fields(from_json), fields(typed));
 
-    // A reflected property write on the erased instance fires the same
-    // subscription and journal entries a typed guarded write does.
-    world.subscribe::<InstanceProbe>(from_json).unwrap();
-    world.subscribe::<InstanceProbe>(typed).unwrap();
+    // A reflected property write on the erased instance records the same
+    // journal entries a typed guarded write does.
     let mut cursor = world.open_change_cursor::<InstanceProbe>();
     pulsar_world_registry::set_world_component_property(
         CLASS,
@@ -116,14 +114,12 @@ fn factory_decode_and_typed_inserts_are_equivalent() {
         world.get::<InstanceProbe>(from_json).map(|p| p.value),
         Some(5.0)
     );
-    let events = world.take_component_change_events();
-    assert_eq!(events.len(), 2);
-    assert!(events
-        .iter()
-        .all(|e| e.kind == ComponentChangeKind::Mutated));
     let mut changes = Vec::new();
-    world.read_changes(&mut cursor, &mut changes);
+    let _ = world.read_changes(&mut cursor, &mut changes);
     assert_eq!(changes.len(), 2);
+    assert!(changes
+        .iter()
+        .all(|c| c.kind == ComponentChangeKind::Mutated));
 
     // Detaching removes the value with the instance; the object stays.
     assert!(attachments::detach(&mut world, from_json));

@@ -56,7 +56,7 @@ pub struct LevelEditorPanel {
     viewport: Entity<HelioViewport>,
     gpu_engine: Arc<Mutex<GpuRenderer>>, // Full GPU renderer from backend
     // Cheap, `gpu_engine`-lock-free handle for one-shot editor commands
-    // (gizmo mode, deselect, force-full-resync) -- see `HelioEditorMailbox`'s
+    // (gizmo mode, deselect) -- see `HelioEditorMailbox`'s
     // doc. Fetched once at construction, not re-locked per command.
     helio_mailbox: Option<HelioEditorMailbox>,
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
