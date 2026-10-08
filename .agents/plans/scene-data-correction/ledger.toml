@@ -193,10 +193,10 @@ world_registered = true
 own_gpu_columns = false
 runtime_behavior = true
 owner = "helio_component::components::spline_component"
-disposition = "editor visualization: the renderer scans the World on each scene sync for spline debug lines; move to a data contract"
+disposition = "editor visualization, Phase 4: SplineLines reads SceneDB's change journal and rebuilds the debug lines only when a spline, or its owner's transform, visibility, selection or enabled state, changes; nothing scans the World on a sync without such a change"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: spline lines follow edits without a scan"
-status = "at-risk"
+test = "crates/renderer/helio/crates/helio-component/src/components/spline_component.rs (spline_lines_rebuild_only_when_a_spline_or_its_owner_changes)"
+status = "verified"
 
 [[class]]
 name = "StaticMeshComponent"

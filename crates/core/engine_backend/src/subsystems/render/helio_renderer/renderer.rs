@@ -320,6 +320,8 @@ struct HelioInner {
     has_rendered_frame: bool,
     /// The post-process baseline last set on this graph's resolver.
     applied_postprocess: Option<crate::scene::EditorPostProcess>,
+    /// Watches the scene for spline changes; created with the first sync.
+    spline_lines: Option<helio_component::components::SplineLines>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -691,6 +693,7 @@ impl HelioRenderer {
                 last_scene_revision: 0,
                 has_rendered_frame: false,
                 applied_postprocess: None,
+                spline_lines: None,
             };
             self.inner = Some(inner);
             self.applied_graph_settings = Some(graph_settings.clone());
@@ -915,9 +918,14 @@ impl HelioRenderer {
             {
                 // Splines are SceneDB components drawn by Helio's editor debug
                 // pass in world space, so they follow the camera like the grid.
+                // Their lines are rebuilt only when a spline or its owner changed.
                 profiling::profile_scope!("helio_sync_spline_lines");
-                let lines = helio_component::components::spline_debug_lines(&scene_store.world);
-                inner.renderer.debug_set_editor_lines("splines", lines);
+                let spline_lines = inner.spline_lines.get_or_insert_with(|| {
+                    helio_component::components::SplineLines::new(&scene_store.world)
+                });
+                if let Some(lines) = spline_lines.poll(&scene_store.world) {
+                    inner.renderer.debug_set_editor_lines("splines", lines);
+                }
             }
             {
                 profiling::profile_scope!("helio_scene_store_step");
