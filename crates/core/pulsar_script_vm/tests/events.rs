@@ -145,11 +145,12 @@ fn declared_events_are_verified_locally() {
         "{err}"
     );
 
-    // Bad declarations.
+    // Bad declarations. Registered value types (`Vec3`) are valid fields;
+    // a component reference is not.
     let mut asm = Asm::new();
     asm.module.events.push(EventDecl {
         name: "E".into(),
-        fields: vec![EventField::new("v", Type::object("Vec3"))],
+        fields: vec![EventField::new("v", Type::Component("Light".into()))],
     });
     assert!(link(&asm, None)
         .err()

@@ -57,7 +57,12 @@ pub(crate) fn begin_pie(
     let save_result = {
         let state = shared_state.read();
         let world = state.scene.world();
-        crate::scene_edit::level_io::save_to_file(&world, &scene_path)
+        crate::scene_edit::level_io::save_to_file_with_settings(
+            &world,
+            &scene_path,
+            None,
+            state.scene.world_settings.clone(),
+        )
     };
     if let Err(e) = save_result {
         window.push_notification(

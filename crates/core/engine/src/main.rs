@@ -47,6 +47,9 @@ use ui_log_viewer::TrackingAllocator;
 // what includes it in the build (feature `blueprint`).
 #[cfg(feature = "blueprint")]
 use blueprint_editor_plugin as _;
+// Force-link the built-in Trait Editor so its `LinkedEditorProvider` inventory
+// registration is retained in the final binary, as with the Blueprint editor.
+use trait_editor_plugin as _;
 #[cfg(feature = "typescript")]
 use plugin_typescript as _;
 

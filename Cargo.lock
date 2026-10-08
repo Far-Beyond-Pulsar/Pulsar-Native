@@ -1142,6 +1142,7 @@ dependencies = [
  "blueprint_graph",
  "bytemuck",
  "chrono",
+ "editor_task_queue",
  "engine_backend",
  "engine_fs",
  "fontdue",
@@ -1156,15 +1157,18 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_script_codegen",
  "pulsar_script_vm",
+ "rstar 0.12.2",
  "schemars",
  "serde",
  "serde_json",
  "smol",
+ "syn 2.0.119",
  "tool_registry",
  "tool_registry_macros",
  "tracing",
  "ui",
  "ui_common",
+ "ui_types_common",
  "uuid",
  "wgpu",
  "windows 0.62.2",
@@ -6758,6 +6762,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "mockaco-core"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=46a5807da4d5d86b7334ccf7cc2577f022b7bc12#46a5807da4d5d86b7334ccf7cc2577f022b7bc12"
+
+[[package]]
+name = "mockaco-diff"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=46a5807da4d5d86b7334ccf7cc2577f022b7bc12#46a5807da4d5d86b7334ccf7cc2577f022b7bc12"
+dependencies = [
+ "mockaco-core",
+ "similar 3.2.0",
+]
+
+[[package]]
+name = "mockaco-gpui"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=46a5807da4d5d86b7334ccf7cc2577f022b7bc12#46a5807da4d5d86b7334ccf7cc2577f022b7bc12"
+dependencies = [
+ "mockaco-core",
+ "mockaco-diff",
+ "mockaco-renderer",
+]
+
+[[package]]
+name = "mockaco-renderer"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=46a5807da4d5d86b7334ccf7cc2577f022b7bc12#46a5807da4d5d86b7334ccf7cc2577f022b7bc12"
+dependencies = [
+ "mockaco-core",
+]
+
+[[package]]
 name = "mockall"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9341,6 +9377,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "trait_editor_plugin",
  "ui",
  "ui_common",
  "ui_core",
@@ -10976,6 +11013,9 @@ dependencies = [
  "futures",
  "gpui-ce",
  "log",
+ "mockaco-core",
+ "mockaco-diff",
+ "mockaco-gpui",
  "parking_lot",
  "plugin_editor_api",
  "rust-i18n",
@@ -10990,6 +11030,7 @@ dependencies = [
  "ui_common",
  "ui_types_common",
  "uuid",
+ "wgpui-base",
 ]
 
 [[package]]
@@ -13149,6 +13190,22 @@ checksum = "ab27f167b093214c68413a2e0bcd318f0591af475597405ff68138ba0a433379"
 dependencies = [
  "cc",
  "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "trait_editor_plugin"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "engine_fs",
+ "gpui-ce",
+ "plugin_editor_api",
+ "plugin_manager",
+ "serde",
+ "serde_json",
+ "tracing",
+ "ui",
+ "ui_types_common",
 ]
 
 [[package]]

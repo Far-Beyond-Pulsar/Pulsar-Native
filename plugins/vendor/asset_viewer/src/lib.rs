@@ -51,6 +51,8 @@ impl EditorPlugin for AssetViewerPlugin {
                 color: gpui::rgb(0x00BCD4).into(),
                 structure: FileStructure::Standalone,
                 default_content: json!(""),
+                creation_directory: None,
+
                 categories: vec!["3D Models".to_string()],
             },
             FileTypeDefinition {
@@ -61,6 +63,8 @@ impl EditorPlugin for AssetViewerPlugin {
                 color: gpui::rgb(0xE91E63).into(),
                 structure: FileStructure::Standalone,
                 default_content: json!(""),
+                creation_directory: None,
+
                 categories: vec![t!("AssetViewer.Images").to_string()],
             },
         ]
