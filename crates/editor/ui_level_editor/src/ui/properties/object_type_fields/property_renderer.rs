@@ -416,6 +416,16 @@ impl ObjectTypeFieldsSection {
                                         .child(class_name.clone()),
                                 ),
                         )
+                        // A class the engine keeps but does not consume says
+                        // so (Pulsar-Native#1035, Phase 4).
+                        .children(pulsar_world_registry::unsupported_reason(class_name).map(
+                            |reason| {
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().warning)
+                                    .child(format!("Not supported by this engine: {reason}."))
+                            },
+                        ))
                         .children(uncategorized)
                         .into_any_element(),
                 )

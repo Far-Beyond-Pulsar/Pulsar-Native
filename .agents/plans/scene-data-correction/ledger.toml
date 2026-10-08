@@ -33,7 +33,7 @@ name = "CameraPostProcessComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::camera_post_process_component"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into camera_postprocess, which post-processing reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
@@ -45,7 +45,7 @@ name = "ClassInstance"
 category = "Scripting"
 world_registered = true
 own_gpu_columns = false
-runtime_behavior = true
+runtime_behavior = false
 owner = "pulsar_class::component"
 disposition = "non-render: class placement provenance (not offered in Add component). Phase 3: slot defaults are typed in a cached ClassTemplate (decoded once per class definition); overrides stay persisted as JSON diffs keyed by slot ID and are applied through reflected setters"
 target_contract = "Phase 3; 05-persistence-and-undo.md"
@@ -57,7 +57,7 @@ name = "FoliageComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::foliage_component"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and packs its type, layer and wind into the foliage passes' tables. Grass grows on flat ground at Y 0 (no terrain capture in the editor). Limits: types share layers, the first component's wind applies to all, wind does not animate, and the interactor and material colour fields have no consumer"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
@@ -69,7 +69,7 @@ name = "GlobalFogComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::fog_component"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into global_fog_media, which volumetric fog reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
@@ -81,19 +81,19 @@ name = "LODComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = false
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::lod_component"
-disposition = "unsupported: no consumer anywhere and a no-op behavior; must be reported as unsupported or given a renderer consumer"
+disposition = "unsupported, Phase 4: nothing consumes LOD settings; meshes draw their imported level of detail. Declared with declare_unsupported_component!: the properties card shows the reason and the first attach logs it once"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no consumer exists"
-status = "at-risk"
+test = "crates/renderer/helio/crates/helio-component/tests/unsupported_components.rs"
+status = "unsupported"
 
 [[class]]
 name = "LightComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::light_component"
 disposition = "render, Phase 2 vertical slice. Phase 1: its generated GPU row (LightComponentGpuMirror, sub-prop mirrors embedded, general.enabled included) is written by the authored value's own SceneDB dispatch on every insert, write, removal and mirror replay; nothing inserts or refreshes a companion. No pass consumes that row yet: lighting reads forward-lit LightComponent rows that editor_rows projects on the CPU"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -106,7 +106,7 @@ name = "LocalFogVolumeComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::fog_component"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into local_fog_media, which volumetric fog reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
@@ -118,7 +118,7 @@ name = "NativeScriptComponent"
 category = "Scripting"
 world_registered = true
 own_gpu_columns = false
-runtime_behavior = true
+runtime_behavior = false
 owner = "pulsar_class::native_script"
 disposition = "non-render: native script attachment; typed VM adapters"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
@@ -130,8 +130,8 @@ notes = "Phase 3: no runtime consumer exists yet (pulsar_game does not read it);
 name = "PhysicsComponent"
 category = "Physics"
 world_registered = true
-own_gpu_columns = true
-runtime_behavior = true
+own_gpu_columns = false
+runtime_behavior = false
 owner = "pulsar_physics::components::physics_component"
 disposition = "non-render: physics subsystem data; typed lifecycle only. Its generated GPU companion is unregistered and has no consumer"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
@@ -143,19 +143,19 @@ name = "PortalComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = false
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::portal_component"
-disposition = "unsupported, Phase 4: Helio draws linked portal pairs from projection rows at dense reserved entity slots; this component authors no peer and the editor world cannot provide those slots. The behavior no longer queues rows; the class is reported unsupported in Stage 4"
+disposition = "unsupported, Phase 4: Helio draws linked portal pairs from projection rows at dense reserved entity slots; this component authors no peer and the editor world cannot provide those slots. Declared with declare_unsupported_component!: the properties card shows the reason and the first attach logs it once"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: unsupported (reported in Stage 4)"
-status = "at-risk"
+test = "crates/renderer/helio/crates/helio-component/tests/unsupported_components.rs"
+status = "unsupported"
 
 [[class]]
 name = "PostProcessVolumeComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::post_process_volume_component"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and places it into post_process_volumes, which post-processing reads. The behavior no longer queues rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
@@ -167,19 +167,19 @@ name = "ReflectionCaptureComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = false
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::reflection_capture_component"
-disposition = "unsupported, Phase 4: deferred lighting samples a capture only through a baked cubemap layer and the engine runs no probe baker. The behavior no longer queues rows and the duplicate GPU schema is gone; the class is reported unsupported in Stage 4"
+disposition = "unsupported, Phase 4: a capture contributes only through a baked cubemap layer and the engine runs no probe baker. Declared with declare_unsupported_component!: the properties card shows the reason and the first attach logs it once"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: unsupported (reported in Stage 4)"
-status = "at-risk"
+test = "crates/renderer/helio/crates/helio-component/tests/unsupported_components.rs"
+status = "unsupported"
 
 [[class]]
 name = "RigidbodyComponent"
 category = "Physics"
 world_registered = true
-own_gpu_columns = true
-runtime_behavior = true
+own_gpu_columns = false
+runtime_behavior = false
 owner = "pulsar_physics::components::rigidbody_component"
 disposition = "non-render: physics subsystem data; typed lifecycle only. Its generated GPU companion is unregistered and has no consumer"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
@@ -191,7 +191,7 @@ name = "SplineComponent"
 category = "Gameplay"
 world_registered = true
 own_gpu_columns = false
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::spline_component"
 disposition = "editor visualization, Phase 4: SplineLines reads SceneDB's change journal and rebuilds the debug lines only when a spline, or its owner's transform, visibility, selection or enabled state, changes; nothing scans the World on a sync without such a change"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
@@ -203,7 +203,7 @@ name = "StaticMeshComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::static_mesh_component"
 disposition = "render, Phase 2 vertical slice. Its own vertex/index pools mirror to the GPU, but the draw row (gbuffer StaticObjectComponent) and material row are built by helio_bridge's CPU projection, which only sees entities a render subscription or a full projection reaches"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -216,19 +216,19 @@ name = "VoxelComponent"
 category = "Voxel"
 world_registered = true
 own_gpu_columns = false
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::voxel_component_runtime"
-disposition = "voxel domain, audited Phase 4: the payload store and VoxelSourceSession are real work, but no renderer consumes a free-standing VoxelComponent (its entry has no compatible voxel renderer, and live chunks on a terrain are rejected). Reported unsupported for rendering in Stage 4"
+disposition = "unsupported, Phase 4: no voxel renderer draws a free-standing voxel component (its entry has no compatible renderer; live chunks on a terrain are rejected); its payload store and sessions stay real work. Declared with declare_unsupported_component!: the properties card shows the reason and the first attach logs it once"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/voxel_component_schema.rs"
-status = "unverified"
+test = "crates/renderer/helio/crates/helio-component/tests/unsupported_components.rs"
+status = "unsupported"
 
 [[class]]
 name = "VoxelFlatTerrainComponent"
 category = "Voxel/Terrain"
 world_registered = true
 own_gpu_columns = false
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::voxel_component_runtime"
 disposition = "voxel domain, audited Phase 4: generator settings read by engine_backend voxel_frame when the world revision changes (camera-only frames reuse the read) and handed to the terrain generator as its settings JSON, the generator plugin boundary (helio-pass-voxel-planet landform)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
@@ -240,7 +240,7 @@ name = "VoxelLandformComponent"
 category = "Voxel/Terrain"
 world_registered = true
 own_gpu_columns = false
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::voxel_component_runtime"
 disposition = "voxel domain, audited Phase 4: generator settings read by engine_backend voxel_frame when the world revision changes (camera-only frames reuse the read) and handed to the terrain generator as its settings JSON, the generator plugin boundary (helio-pass-voxel-planet landform)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
@@ -252,7 +252,7 @@ name = "VoxelTerrainComponent"
 category = "Voxel/Terrain"
 world_registered = true
 own_gpu_columns = false
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::voxel_component_runtime"
 disposition = "voxel domain, audited Phase 4: voxel_frame reads terrain entries, the edit journal and the sun (the first enabled, visible directional light) when the world revision changes; the voxel-planet pass receives a CPU PlanetFrame (Arc<Planet>, sun) and syncs journal edits to the GPU change-driven. Generation and sculpting stay real work; the CPU planet rebuild is synchronous on the render thread, and renderer brush commits bypass append_edits' validation (recorded, not changed)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
@@ -264,7 +264,7 @@ name = "WaterVolumeComponent"
 category = "Rendering"
 world_registered = true
 own_gpu_columns = true
-runtime_behavior = true
+runtime_behavior = false
 owner = "helio_component::components::water_volume_component"
 disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates, places and packs it into water_volumes, which water simulation, surface, caustics and deferred lighting read. Per-volume wind, spring, damping and wave scale are carried but the simulation uses pass-wide values"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
@@ -352,12 +352,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "the authored component's SceneDB GPU dispatch (engine_class_derive, write_derived_row): every insert, write, removal and mirror replay of the authored value; never a component (Phase 1)"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "helio_component::components::camera_post_process_component"
-disposition = "keep as the authored class's GPU layout. Phase 1 made it internal: written only through the authored value's own dispatch (auto-registered on first write or replay), no longer a caller-maintained component. No consumer reads it yet (Phase 4 graph mapping)"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "GlobalFogComponentGpuMirror"
@@ -366,12 +366,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "the authored component's SceneDB GPU dispatch (engine_class_derive, write_derived_row): every insert, write, removal and mirror replay of the authored value; never a component (Phase 1)"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "helio_component::components::fog_component"
-disposition = "keep as the authored class's GPU layout (see CameraPostProcessComponentGpuMirror). No consumer reads it yet (Phase 4 graph mapping)"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "LocalFogVolumeComponentGpuMirror"
@@ -380,12 +380,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "the authored component's SceneDB GPU dispatch (engine_class_derive, write_derived_row): every insert, write, removal and mirror replay of the authored value; never a component (Phase 1)"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "helio_component::components::fog_component"
-disposition = "keep as the authored class's GPU layout (see CameraPostProcessComponentGpuMirror). No consumer reads it yet (Phase 4 graph mapping)"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "FoliageComponentGpuMirror"
@@ -394,12 +394,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "the authored component's SceneDB GPU dispatch (engine_class_derive, write_derived_row): every insert, write, removal and mirror replay of the authored value; never a component (Phase 1)"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "helio_component::components::foliage_component::component"
-disposition = "keep as the authored class's GPU layout (see CameraPostProcessComponentGpuMirror). No consumer reads it yet (Phase 4 graph mapping)"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "LightComponentGpuMirror"
@@ -408,12 +408,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "the authored component's SceneDB GPU dispatch (engine_class_derive, write_derived_row): every insert, write, removal and mirror replay of the authored value; never a component (Phase 1)"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "helio_component::components::light_component::component"
-disposition = "keep as the generic reflection of LightComponent's #[gpu] fields; the lighting input is the derived LightSourceRow (the same to_helio_gpu_light mapping), so this row has no consumer. Phase 4 decides whether the companion stays"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written and consumed"
-status = "unverified"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "AttenuationLightPropsGpuMirror"
@@ -422,12 +422,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh) for a nested sub-prop group"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "helio_component::components::light_component::sub_props::attenuation"
-disposition = "keep: embedded in LightComponentGpuMirror (the row the authored light writes). The sub-props group is never inserted as a component, so its own derived registration is inert"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "ColorLightPropsGpuMirror"
@@ -436,12 +436,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh) for a nested sub-prop group"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "helio_component::components::light_component::sub_props::color"
-disposition = "keep: embedded in LightComponentGpuMirror (the row the authored light writes). The sub-props group is never inserted as a component, so its own derived registration is inert"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "GeneralLightPropsGpuMirror"
@@ -450,12 +450,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh) for a nested sub-prop group"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "helio_component::components::light_component::sub_props::general"
-disposition = "keep: embedded in LightComponentGpuMirror (the row the authored light writes). The sub-props group is never inserted as a component, so its own derived registration is inert"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "IntensityLightPropsGpuMirror"
@@ -464,12 +464,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh) for a nested sub-prop group"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "helio_component::components::light_component::sub_props::intensity"
-disposition = "keep: embedded in LightComponentGpuMirror (the row the authored light writes). The sub-props group is never inserted as a component, so its own derived registration is inert"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "ShadowLightPropsGpuMirror"
@@ -478,12 +478,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh) for a nested sub-prop group"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "helio_component::components::light_component::sub_props::shadows"
-disposition = "keep: embedded in LightComponentGpuMirror (the row the authored light writes). The sub-props group is never inserted as a component, so its own derived registration is inert"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "VolumetricLightPropsGpuMirror"
@@ -492,12 +492,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "generated GPU companion written by GpuMirrored::sync_gpu_mirror (hydrate and the caller-invoked refresh) for a nested sub-prop group"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "helio_component::components::light_component::sub_props::volumetrics"
-disposition = "keep: embedded in LightComponentGpuMirror (the row the authored light writes). The sub-props group is never inserted as a component, so its own derived registration is inert"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "PostProcessVolumeComponentGpuMirror"
@@ -506,12 +506,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "the authored component's SceneDB GPU dispatch (engine_class_derive, write_derived_row): every insert, write, removal and mirror replay of the authored value; never a component (Phase 1)"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "helio_component::components::post_process_volume_component"
-disposition = "keep as the authored class's GPU layout (see CameraPostProcessComponentGpuMirror). No consumer reads it yet (Phase 4 graph mapping)"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "StaticMeshComponent"
@@ -550,10 +550,10 @@ releases_var_len = false
 registered = false
 writer = "no production writer found"
 owner = "helio_pass_corona::components"
-disposition = "decide: derive from authored lights or report unsupported; not registered in production"
+disposition = "outside the engine (Phase 4): no authored component; corona is reported unsupported (decision 4), the pass reads its fallback"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: schema written, registered and consumed"
-status = "at-risk"
+status = "out-of-scope"
 
 [[schema]]
 type = "DecalComponent"
@@ -564,10 +564,10 @@ releases_var_len = false
 registered = true
 writer = "no production writer found (registered only)"
 owner = "helio_pass_decal::components"
-disposition = "unsupported until an authored decal component exists"
+disposition = "outside the engine (Phase 4): no authored decal component (decision 4); the buffer is registered so the pass binds an empty table"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: schema written, registered and consumed"
-status = "unverified"
+status = "out-of-scope"
 
 [[schema]]
 type = "ReflectionCaptureComponent"
@@ -578,10 +578,10 @@ releases_var_len = false
 registered = false
 writer = "none in the engine (Phase 4 removed the queued write)"
 owner = "helio_pass_deferred_light::components"
-disposition = "keep as the pass row layout; the engine reports reflection captures unsupported (no probe baker)"
+disposition = "outside the engine (Phase 4): ReflectionCaptureComponent is reported unsupported (no probe baker)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: unsupported (reported in Stage 4)"
-status = "at-risk"
+status = "out-of-scope"
 
 [[schema]]
 type = "FoliageInteractorComponent"
@@ -592,10 +592,10 @@ releases_var_len = false
 registered = false
 writer = "none (Phase 4 removed the queued write)"
 owner = "helio_pass_foliage_place::components"
-disposition = "unconsumed: no foliage shader reads interactor rows"
+disposition = "outside the engine (Phase 4): no foliage shader reads interactor rows"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: schema written, registered and consumed"
-status = "at-risk"
+status = "out-of-scope"
 
 [[schema]]
 type = "FoliageLayerComponent"
@@ -760,10 +760,10 @@ releases_var_len = true
 registered = false
 writer = "no production writer found"
 owner = "helio_pass_portal_cull::components"
-disposition = "audit with the portal contract; not registered in production"
+disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: schema written, registered and consumed"
-status = "at-risk"
+status = "out-of-scope"
 
 [[schema]]
 type = "PortalComponent"
@@ -774,10 +774,10 @@ releases_var_len = false
 registered = false
 writer = "PortalComponent behavior through PendingWorldWrites (no production drain)"
 owner = "helio_pass_portal_cull::components"
-disposition = "replace with authored portal data; not registered in production"
+disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: schema written, registered and consumed"
-status = "at-risk"
+status = "out-of-scope"
 
 [[schema]]
 type = "PortalProjectionCountsComponent"
@@ -788,10 +788,10 @@ releases_var_len = false
 registered = false
 writer = "no production writer found"
 owner = "helio_pass_portal_cull::components"
-disposition = "derived execution output; not registered in production"
+disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: schema written, registered and consumed"
-status = "at-risk"
+status = "out-of-scope"
 
 [[schema]]
 type = "PortalViewComponent"
@@ -802,10 +802,10 @@ releases_var_len = false
 registered = false
 writer = "no production writer found"
 owner = "helio_pass_portal_cull::components"
-disposition = "audit: portal view input; not registered in production"
+disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: schema written, registered and consumed"
-status = "at-risk"
+status = "out-of-scope"
 
 [[schema]]
 type = "CameraPostProcessComponent"
@@ -844,10 +844,10 @@ releases_var_len = false
 registered = false
 writer = "renderer-side sky setup (HelioRenderer queries it); no authored component"
 owner = "helio_pass_sky::components"
-disposition = "decide: authored sky/sun component or renderer setting; not registered in production"
+disposition = "outside the engine (Phase 4): the sky is a project/renderer setting and the sun comes from the directional light (decision 2); no authored sky component"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: schema written, registered and consumed"
-status = "at-risk"
+status = "out-of-scope"
 
 [[schema]]
 type = "FogComponent"
@@ -858,10 +858,10 @@ releases_var_len = true
 registered = false
 writer = "fog behaviors through PendingWorldWrites (no production drain)"
 owner = "helio_pass_volumetric_fog::components"
-disposition = "replace with authored fog columns; not registered in production"
+disposition = "outside the engine (Phase 4): legacy fog row with no authored source; fog reaches the pass through global_fog_media/local_fog_media (Phase 4)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: schema written, registered and consumed"
-status = "at-risk"
+status = "out-of-scope"
 
 [[schema]]
 type = "GlobalFogComponent"
@@ -900,10 +900,10 @@ releases_var_len = true
 registered = false
 writer = "no production writer found"
 owner = "helio_pass_volumetric_fog::components"
-disposition = "audit the settings input; not registered in production"
+disposition = "outside the engine (Phase 4): no authored source; the pass uses its default settings and the post-process resolver's fog range"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: schema written, registered and consumed"
-status = "at-risk"
+status = "out-of-scope"
 
 [[schema]]
 type = "WaterHitboxComponent"
@@ -940,12 +940,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "the authored component's SceneDB GPU dispatch (engine_class_derive, write_derived_row): every insert, write, removal and mirror replay of the authored value; never a component (Phase 1)"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "pulsar_physics::components::physics_component::component"
-disposition = "remove: a non-render component should declare no GPU upload without a consumer. Since Phase 1 the authored value's dispatch writes it (auto-registered); no consumer reads it"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "RigidbodyComponentGpuMirror"
@@ -954,12 +954,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "the authored component's SceneDB GPU dispatch (engine_class_derive, write_derived_row): every insert, write, removal and mirror replay of the authored value; never a component (Phase 1)"
+writer = "none: the generated companion uploads a GPU row only for an #[engine_class(gpu_rows)] class (Phase 4); no engine class opts in"
 owner = "pulsar_physics::components::rigidbody_component::component"
-disposition = "remove: a non-render component should declare no GPU upload without a consumer. Since Phase 1 the authored value's dispatch writes it (auto-registered); no consumer reads it"
+disposition = "keep as a CPU mapping type (LightComponent's derived LightSourceRow is built from its mirror); nothing is uploaded"
 target_contract = "Phase 1; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs (without_gpu_rows_the_companion_uploads_nothing)"
+status = "verified"
 
 [[schema]]
 type = "Transform"
@@ -1251,16 +1251,6 @@ test = "none: cursor overflow/rescan test for this consumer"
 status = "unverified"
 
 [[site]]
-pattern = "pending-world-writes"
-file = "crates/renderer/helio/crates/helio-component/src/subsystems.rs"
-count = 2
-owner = "helio::helio-component::subsystems"
-disposition = "delete the queue and its drain after the last producer migrates"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: component reaches its consumer without the queue"
-status = "at-risk"
-
-[[site]]
 pattern = "change-cursor"
 file = "crates/renderer/helio/crates/passes/3d/helio-pass-hlfs/src/scene.rs"
 count = 8
@@ -1269,20 +1259,6 @@ disposition = "out of the engine (Phase 4 audit): HlfsPass reads its TLAS from t
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: HLFS output from GPU inputs"
 status = "out-of-scope"
-
-[[site]]
-pattern = "behavior-dispatch"
-file = "crates/subsystems/pulsar_scene/src/loader.rs"
-count = 1
-owner = "subsystems::pulsar_scene::loader"
-disposition = "retire generic runtime-behavior dispatch; domain behavior moves to owning systems"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: component works with no dispatcher"
-status = "at-risk"
-
-# ── GPU buffer keys ──────────────────────────────────────────────────────
-# producers: types declaring #[gpu(buffer = ...)]; consumers: packages calling
-# BufferKey::of(...). Both are checked against source. `owner` = who writes rows.
 
 [[site]]
 pattern = "change-cursor"
@@ -1301,12 +1277,12 @@ buffers = ["camera_postprocess"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "SceneDB write path of the authored value itself: insert (typed or erased), write guard, removal, despawn and mirror replay, through the dispatch engine_class_derive generates (Phase 1)"
+writer = "the authored value's SceneDB GPU dispatch is its derived CameraPostProcessSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing (Phase 4)"
 owner = "helio_component::components::camera_post_process_component"
-disposition = "authored dispatch for CameraPostProcessComponentGpuMirror. Its row is written; no pass consumes it (the camera post-process input is still the pass-owned row behind PendingWorldWrites)"
+disposition = "keep: the authored type's GPU row is CameraPostProcessSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
 
 [[schema]]
 type = "GlobalFogComponent"
@@ -1315,12 +1291,12 @@ buffers = ["global_fog_media"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "SceneDB write path of the authored value itself: insert (typed or erased), write guard, removal, despawn and mirror replay, through the dispatch engine_class_derive generates (Phase 1)"
+writer = "the authored value's SceneDB GPU dispatch is its derived GlobalFogSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing (Phase 4)"
 owner = "helio_component::components::fog_component"
-disposition = "authored dispatch for GlobalFogComponentGpuMirror; written, not consumed (Phase 4 fog mapping)"
+disposition = "keep: the authored type's GPU row is GlobalFogSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
 
 [[schema]]
 type = "LocalFogVolumeComponent"
@@ -1329,12 +1305,12 @@ buffers = ["local_fog_media"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "SceneDB write path of the authored value itself: insert (typed or erased), write guard, removal, despawn and mirror replay, through the dispatch engine_class_derive generates (Phase 1)"
+writer = "the authored value's SceneDB GPU dispatch is its derived LocalFogSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing (Phase 4)"
 owner = "helio_component::components::fog_component"
-disposition = "authored dispatch for LocalFogVolumeComponentGpuMirror; written, not consumed (Phase 4 fog mapping)"
+disposition = "keep: the authored type's GPU row is LocalFogSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
 
 [[schema]]
 type = "FoliageComponent"
@@ -1343,12 +1319,12 @@ buffers = []
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "SceneDB write path of the authored value itself: insert (typed or erased), write guard, removal, despawn and mirror replay, through the dispatch engine_class_derive generates (Phase 1)"
+writer = "the authored value's SceneDB GPU dispatch is its derived FoliageSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing (Phase 4)"
 owner = "helio_component::components::foliage_component::component"
-disposition = "authored dispatch for FoliageComponentGpuMirror; written, not consumed (Phase 4 foliage mapping)"
+disposition = "keep: the authored type's GPU row is FoliageSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
 
 [[schema]]
 type = "LightComponent"
@@ -1371,124 +1347,12 @@ buffers = ["post_process_volumes"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "SceneDB write path of the authored value itself: insert (typed or erased), write guard, removal, despawn and mirror replay, through the dispatch engine_class_derive generates (Phase 1)"
+writer = "the authored value's SceneDB GPU dispatch is its derived PostProcessVolumeSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing (Phase 4)"
 owner = "helio_component::components::post_process_volume_component"
-disposition = "authored dispatch for PostProcessVolumeComponentGpuMirror; written, not consumed (Phase 4 post-process mapping)"
+disposition = "keep: the authored type's GPU row is PostProcessVolumeSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs"
-status = "at-risk"
-
-[[schema]]
-type = "PhysicsComponent"
-path = "pulsar_physics::components::physics_component::component::PhysicsComponent"
-buffers = []
-clears_on_remove = true
-releases_var_len = false
-registered = false
-writer = "SceneDB write path of the authored value itself: insert (typed or erased), write guard, removal, despawn and mirror replay, through the dispatch engine_class_derive generates (Phase 1)"
-owner = "pulsar_physics::components::physics_component::component"
-disposition = "remove: a non-render component should declare no GPU upload without a consumer (its #[gpu] fields now upload through this dispatch)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs"
-status = "at-risk"
-
-[[schema]]
-type = "RigidbodyComponent"
-path = "pulsar_physics::components::rigidbody_component::component::RigidbodyComponent"
-buffers = []
-clears_on_remove = true
-releases_var_len = false
-registered = false
-writer = "SceneDB write path of the authored value itself: insert (typed or erased), write guard, removal, despawn and mirror replay, through the dispatch engine_class_derive generates (Phase 1)"
-owner = "pulsar_physics::components::rigidbody_component::component"
-disposition = "remove: a non-render component should declare no GPU upload without a consumer (its #[gpu] fields now upload through this dispatch)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_class_derive/tests/gpu_mirror_derive.rs"
-status = "at-risk"
-
-[[schema]]
-type = "AttenuationLightProps"
-path = "helio_component::components::light_component::sub_props::attenuation::AttenuationLightProps"
-buffers = []
-clears_on_remove = true
-releases_var_len = false
-registered = false
-writer = "none: a sub-props group of LightComponent, never inserted as a component"
-owner = "helio_component::components::light_component::sub_props::attenuation"
-disposition = "inert: engine_class_derive registers a dispatch for every struct with a GPU companion and cannot tell a sub-props group from a component. Its data reaches the GPU embedded in LightComponent's row"
-target_contract = "Phase 1; 02-typed-reflection-and-writes.md"
-test = "none: never inserted, so the registration never runs"
-status = "out-of-scope"
-
-[[schema]]
-type = "ColorLightProps"
-path = "helio_component::components::light_component::sub_props::color::ColorLightProps"
-buffers = []
-clears_on_remove = true
-releases_var_len = false
-registered = false
-writer = "none: a sub-props group of LightComponent, never inserted as a component"
-owner = "helio_component::components::light_component::sub_props::color"
-disposition = "inert: engine_class_derive registers a dispatch for every struct with a GPU companion and cannot tell a sub-props group from a component. Its data reaches the GPU embedded in LightComponent's row"
-target_contract = "Phase 1; 02-typed-reflection-and-writes.md"
-test = "none: never inserted, so the registration never runs"
-status = "out-of-scope"
-
-[[schema]]
-type = "GeneralLightProps"
-path = "helio_component::components::light_component::sub_props::general::GeneralLightProps"
-buffers = []
-clears_on_remove = true
-releases_var_len = false
-registered = false
-writer = "none: a sub-props group of LightComponent, never inserted as a component"
-owner = "helio_component::components::light_component::sub_props::general"
-disposition = "inert: engine_class_derive registers a dispatch for every struct with a GPU companion and cannot tell a sub-props group from a component. Its data reaches the GPU embedded in LightComponent's row"
-target_contract = "Phase 1; 02-typed-reflection-and-writes.md"
-test = "none: never inserted, so the registration never runs"
-status = "out-of-scope"
-
-[[schema]]
-type = "IntensityLightProps"
-path = "helio_component::components::light_component::sub_props::intensity::IntensityLightProps"
-buffers = []
-clears_on_remove = true
-releases_var_len = false
-registered = false
-writer = "none: a sub-props group of LightComponent, never inserted as a component"
-owner = "helio_component::components::light_component::sub_props::intensity"
-disposition = "inert: engine_class_derive registers a dispatch for every struct with a GPU companion and cannot tell a sub-props group from a component. Its data reaches the GPU embedded in LightComponent's row"
-target_contract = "Phase 1; 02-typed-reflection-and-writes.md"
-test = "none: never inserted, so the registration never runs"
-status = "out-of-scope"
-
-[[schema]]
-type = "ShadowLightProps"
-path = "helio_component::components::light_component::sub_props::shadows::ShadowLightProps"
-buffers = []
-clears_on_remove = true
-releases_var_len = false
-registered = false
-writer = "none: a sub-props group of LightComponent, never inserted as a component"
-owner = "helio_component::components::light_component::sub_props::shadows"
-disposition = "inert: engine_class_derive registers a dispatch for every struct with a GPU companion and cannot tell a sub-props group from a component. Its data reaches the GPU embedded in LightComponent's row"
-target_contract = "Phase 1; 02-typed-reflection-and-writes.md"
-test = "none: never inserted, so the registration never runs"
-status = "out-of-scope"
-
-[[schema]]
-type = "VolumetricLightProps"
-path = "helio_component::components::light_component::sub_props::volumetrics::VolumetricLightProps"
-buffers = []
-clears_on_remove = true
-releases_var_len = false
-registered = false
-writer = "none: a sub-props group of LightComponent, never inserted as a component"
-owner = "helio_component::components::light_component::sub_props::volumetrics"
-disposition = "inert: engine_class_derive registers a dispatch for every struct with a GPU companion and cannot tell a sub-props group from a component. Its data reaches the GPU embedded in LightComponent's row"
-target_contract = "Phase 1; 02-typed-reflection-and-writes.md"
-test = "none: never inserted, so the registration never runs"
-status = "out-of-scope"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
 
 [[schema]]
 type = "GlobalFogSourceRow"
@@ -1703,10 +1567,10 @@ key = "PortalChainComponent::portals"
 producers = ["PortalChainComponent"]
 consumers = []
 owner = "portal-cull pass type (var-len pool)"
-disposition = "audit: the key is a pool name with no literal consumer"
+disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: consumer not identified"
-status = "unverified"
+status = "out-of-scope"
 
 [[buffer]]
 key = "billboard_instances"
@@ -1753,40 +1617,40 @@ key = "corona_emitters"
 producers = ["CoronaEmitterComponent"]
 consumers = ["helio-pass-corona"]
 owner = "no authored Pulsar component found"
-disposition = "decide: derive from lights or mark unsupported"
+disposition = "outside the engine (Phase 4): no authored component; corona is reported unsupported (decision 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: no authored source"
-status = "unverified"
+status = "out-of-scope"
 
 [[buffer]]
 key = "decals"
 producers = ["DecalComponent"]
 consumers = ["helio-pass-decal"]
 owner = "no authored Pulsar component found"
-disposition = "unsupported in the editor until an authored decal component exists"
+disposition = "outside the engine (Phase 4): no authored decal component (decision 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: no authored source"
-status = "unverified"
+status = "out-of-scope"
 
 [[buffer]]
 key = "fog_components"
 producers = ["FogComponent"]
 consumers = ["helio-pass-volumetric-fog"]
 owner = "PendingWorldWrites (fog behaviors)"
-disposition = "replace the undrained queue with a direct authored contract"
+disposition = "outside the engine (Phase 4): legacy fog rows with no authored source; fog uses global_fog_media/local_fog_media (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: fog component changes volumetric fog"
-status = "at-risk"
+status = "out-of-scope"
 
 [[buffer]]
 key = "foliage_interactors"
 producers = ["FoliageInteractorComponent"]
 consumers = []
 owner = "no writer: the engine derives no interactor rows (Phase 4)"
-disposition = "unconsumed: no foliage shader reads interactor rows; FoliageComponent's interactor fields have no effect"
+disposition = "outside the engine (Phase 4): no foliage shader reads interactor rows"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: no consumer"
-status = "unverified"
+status = "out-of-scope"
 
 [[buffer]]
 key = "foliage_layers"
@@ -1853,30 +1717,30 @@ key = "portal_projection_counts"
 producers = ["PortalProjectionCountsComponent"]
 consumers = []
 owner = "portal-cull pass type"
-disposition = "derived execution output; confirm there is no authored writer"
+disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: writer not identified"
-status = "unverified"
+status = "out-of-scope"
 
 [[buffer]]
 key = "portal_views"
 producers = ["PortalViewComponent"]
 consumers = ["helio-pass-portal-cull", "helio-pass-portal-instances"]
 owner = "portal-cull pass type; written by Helio's PortalProjectionBridge at dense reserved entity slots (Helio examples); no engine writer"
-disposition = "unsupported in the engine: PortalComponent authors no peer and the editor world cannot provide dense slots; reporting lands with Stage 4"
+disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: unsupported (reported in Stage 4)"
-status = "unverified"
+status = "out-of-scope"
 
 [[buffer]]
 key = "portals"
 producers = ["PortalComponent"]
 consumers = []
 owner = "portal-cull pass type, written through PendingWorldWrites (PortalComponent behavior)"
-disposition = "replace queued writes; define linkage/liveness inputs; no literal consumer"
+disposition = "outside the engine (Phase 4): PortalComponent is reported unsupported (no peer link; dense projection slots)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: portal culls and draws"
-status = "at-risk"
+status = "out-of-scope"
 
 [[buffer]]
 key = "post_process_volumes"
@@ -1893,10 +1757,10 @@ key = "reflection_captures"
 producers = ["ReflectionCaptureComponent"]
 consumers = ["helio-pass-deferred-light"]
 owner = "helio_pass_deferred_light::components::ReflectionCaptureComponent (the only schema); no engine writer"
-disposition = "unsupported in the engine: a capture contributes only with a baked cubemap layer and the engine runs no probe baker. The authored component writes no rows (Phase 4); reporting it lands with Stage 4"
+disposition = "outside the engine (Phase 4): ReflectionCaptureComponent is reported unsupported (no probe baker)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: unsupported (reported in Stage 4)"
-status = "at-risk"
+status = "out-of-scope"
 
 [[buffer]]
 key = "render_groups"
@@ -1933,10 +1797,10 @@ key = "sky_components"
 producers = ["SkyComponent"]
 consumers = ["helio-pass-sky"]
 owner = "no authored Pulsar component found (sky configured by the renderer)"
-disposition = "decide: authored sky/sun component or renderer setting"
+disposition = "outside the engine (Phase 4): the sky is a project/renderer setting (decision 2)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: no authored source"
-status = "unverified"
+status = "out-of-scope"
 
 [[buffer]]
 key = "sprite_instances"
@@ -1983,10 +1847,10 @@ key = "volumetric_fog_settings"
 producers = ["VolumetricFogSettingsComponent"]
 consumers = []
 owner = "volumetric-fog pass type; writer not identified"
-disposition = "audit: no literal consumer; confirm the graph's settings input"
+disposition = "outside the engine (Phase 4): no authored source; the pass uses its defaults"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "none: consumer not identified"
-status = "unverified"
+status = "out-of-scope"
 
 [[buffer]]
 key = "water_hitboxes"

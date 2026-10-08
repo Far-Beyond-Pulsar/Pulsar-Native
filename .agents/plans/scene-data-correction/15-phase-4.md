@@ -1,6 +1,6 @@
 # Phase 4: every render component reaches a pass, or is reported unsupported
 
-Status: **in progress** (Pulsar-Native#1035). Builds on Phase 3 ([14-phase-3.md](14-phase-3.md)).
+Status: **complete** (Pulsar-Native#1035), pending review. Builds on Phase 3 ([14-phase-3.md](14-phase-3.md)).
 
 Phase 4 exit (from the plan): each supported render component has an actual GPU consumer and observable effect, and each unsupported capability is explicitly reported. No exposed component silently succeeds through an undrained queue or a no-op runtime behavior. `PendingWorldWrites` and the inert renderer behavior dispatch are deleted.
 
@@ -123,3 +123,73 @@ Recorded, not changed:
 - Renderer brush commits bypass `append_edits`' validation and block events.
 - Two CPU planet caches exist (the renderer's and `voxel_world::WORLDS`).
 - A free-standing `VoxelComponent` has no renderer. Stage 4 reports it unsupported.
+
+## Stage 4: the queue and dispatch deleted; unsupported reporting
+
+**`PendingWorldWrites` is deleted.** Every producer stopped queueing in Stages 1 to 3. The queue had no production drain.
+
+**The runtime-behavior dispatch is deleted.** Nothing in production called `apply_runtime_behavior_for_class`. Its only caller was `pulsar_scene::SceneLoader`, a legacy import adapter with no callers of its own, and every `sync_component` body was already empty. Removed:
+- `SceneLoader`;
+- every `#[register_runtime_behavior]`;
+- the macro itself, its derive and the `engine_class(runtime_behavior)` flag;
+- `pulsar_world_registry`'s typed `dispatch` path, which was also uncalled.
+
+`ComponentRuntimeBehavior` stays only to carry `CLASS_NAME` for `#[register_world_component]`. Its trait and `RuntimeBehaviorRegistration` live in the `pulsar-reflection` submodule. That repository is outside this change, so they remain there, unused.
+
+**Unsupported reporting** (decision 1). `pulsar_world_registry::declare_unsupported_component!(class, reason)` registers a class the engine keeps but does not consume. Its data still attaches, edits, saves and loads normally. On top of that:
+- the properties card shows `Not supported by this engine: <reason>.` under the class name;
+- attaching the first instance logs the reason once per class. This is the deviation recorded in Stage 1: the log fires at attach, not in the renderer.
+
+Declared unsupported:
+- `LODComponent`: nothing consumes it;
+- `ReflectionCaptureComponent`: no probe baker;
+- `PortalComponent`: no peer link, and no dense projection slots;
+- free-standing `VoxelComponent`: no renderer.
+
+Decals, corona and sprites (decision 4), and the sky (decision 2), have no authored component, so there is no card to warn on. Their pass rows are recorded `out-of-scope`. The ledger gains an `unsupported` status that requires a named test.
+
+**Unconsumed GPU uploads removed** (decision 5). Every `#[engine_class]` with `#[gpu]` fields or `#[sub_props]` used to generate a GPU companion, register a SceneDB dispatch for it, and auto-register and upload its row on the first insert. That covered `LightComponentGpuMirror`, the physics and rigidbody companions, and the zero-byte companions of the environment components. None of those rows had a reader. The companion now uploads only for a class that opts in with `#[engine_class(gpu_rows)]`; no engine class does. The companion type and `GpuMirrored::to_gpu_mirror` mapping stay as CPU helpers: `LightSourceRow` is built from the light's mirror. Tests:
+- `engine_class_derive`'s mirror tests opt in;
+- `without_gpu_rows_the_companion_uploads_nothing` checks the default;
+- helio-component's `light_component_gpu_mirror.rs`, which tested the now-removed row, is deleted. The light's real input, `LightSourceRow`, is covered by `scene_join_rows` and the frame tests.
+
+**Ledger.**
+- Every class row has `runtime_behavior = false`, and physics and rigidbody have no GPU columns.
+- The authored environment schemas are verified by the join tests.
+- The four unsupported classes are `unsupported`, tested by `helio-component/tests/unsupported_components.rs`.
+- Pass rows with no authored source in the engine are `out-of-scope`, each with its reason: sky, decals, corona, legacy fog, volumetric fog settings, reflection captures, portals and foliage interactors.
+
+## Phase 4 exit
+
+- **Every supported render component has a consumer and an observable effect, checked by a frame test:**
+  - global and local fog;
+  - post-process volumes;
+  - camera post-process;
+  - water volumes;
+  - foliage (blades drawn);
+  - meshes and lights (Phase 2);
+  - splines (editor lines, change-driven).
+- **Every unsupported capability is reported** on its card and in the log, or recorded `out-of-scope` where no authored component exists.
+- **No exposed component succeeds silently through an undrained queue or a no-op behavior:** `PendingWorldWrites` and the dispatch are gone.
+
+## Left open (recorded, not done here)
+
+- **Ledger rows not yet analysed.** `[[pass]]` rows remain `unverified`: each pass crate's observable output is not yet individually tested. The gbuffer `RenderGroupComponent` / `SectionedObjectComponent` / sublevel rows and `water_hitboxes` stay `unverified`.
+- **Voxels.**
+  - The CPU planet rebuild runs on the render thread.
+  - Renderer brush commits bypass `append_edits`.
+  - There are two CPU planet caches.
+  - Generator settings cross as JSON, the plugin boundary.
+- **Foliage.**
+  - Wind does not animate.
+  - Types share layers.
+  - There are no terrain heights in the editor.
+- **Water.** Per-volume simulation dynamics have no effect.
+- **HLFS.** `SceneDbRayTracing` lives in the pass crate; moving it is a Helio follow-up.
+- **`pulsar-reflection` submodule.** `RuntimeBehaviorRegistration` and `apply_runtime_behavior_for_class` are unused there.
+- **Pre-existing test failures**, as in Phase 3:
+  - the gizmo hover test;
+  - the light mapping intensity test;
+  - the `toggle_button` doctests;
+  - `voxel_block_api` when run in parallel (process-wide cache keyed by entity bits).
+

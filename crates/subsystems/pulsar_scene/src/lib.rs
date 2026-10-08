@@ -1,12 +1,12 @@
-//! Pulsar scene file format and (legacy) Helio renderer loader.
+//! Pulsar scene file format and shared scene-record helpers.
 //!
 //! # Usage (runtime)
 //!
-//! Runtime loading does NOT go through [`SceneLoader`] anymore
-//! (Pulsar-Native#637): standalone games and PIE hydrate the level file
-//! into the shared `WorldSceneStore`/SceneDb world via
-//! `engine_backend::scene::RuntimeLevel`, so renderer and gameplay see ONE
-//! copy of scene state. `SceneLoader` remains for import/legacy conversion.
+//! Standalone games and PIE hydrate the level file into the shared
+//! `WorldSceneStore`/SceneDb world via `engine_backend::scene::RuntimeLevel`
+//! (Pulsar-Native#637), so renderer and gameplay see ONE copy of scene
+//! state. The legacy loader that dispatched records straight into a Helio
+//! scene was removed in Pulsar-Native#1035 (Phase 4).
 //!
 //! ```rust,ignore
 //! use engine_backend::scene::RuntimeLevel;
@@ -45,5 +45,5 @@ pub use format::{
 };
 pub use loader::{
     build_transform_parts, component_instances_from_props,
-    migrate_legacy_material_override_records, SceneLoader,
+    migrate_legacy_material_override_records,
 };
