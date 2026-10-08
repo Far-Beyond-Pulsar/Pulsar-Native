@@ -112,13 +112,32 @@ The two items Phase 6 left unchecked:
 
 ## Revisions
 
-- SceneDB: `7d14a4c3e9612ff1afc94dfacb348f6405c29b6f`, pinned by the root `Cargo.toml` (dependency and `[patch]`) and by Helio's own `Cargo.toml`.
+- SceneDB: `a98ff98e1b446e0f44f4200c005faa0c1f2842b2`, pinned by the root `Cargo.toml` (dependency and `[patch]`) and by Helio's own `Cargo.toml`. `7d14a4c` is the get_mut fix; `a98ff98` adds the CI fixes below.
 - Helio submodule: see the Pulsar-Native branch head. The Phase 7 commits:
-  - `0f6c5b5a` and `2ea90c69` (pins);
+  - `0f6c5b5a`, `2ea90c69` and `a7b4c240` (pins);
   - `5ec13ddd` (decoders);
   - `14dedf5a` (debug camera);
   - `6e816c5e` (asset test);
-  - `3fa05688` (import event).
+  - `3fa05688` (import event);
+  - `08715022` (graph materials, from main's PSGC update).
+
+## Merge with main
+
+Pulsar `main` was merged into the top of the stack (18 commits). Three conflicts:
+- **`engine_backend/src/scene/helio_bridge.rs`.** Main's PSGC material-graph update (4980a8842) edited the CPU mesh projection that Phase 2 replaced with the GPU scene join; material resolution has lived in Helio's `StaticMeshDraw` since then. The update's two modules move to `helio_component::material_graph` and `::material_textures` (Helio `08715022`), and `StaticMeshDraw` uses them. Main's `material_graph_rendering` test now drives those modules: 13 pass, including the GPU pixel tests.
+- **`ui_level_editor/src/state/scene.rs`.** Main's `world_settings` field is kept.
+- **The Helio submodule.** Main's commit is an ancestor of ours.
+
+Failures on main that also blocked this stack, fixed here:
+- `plugin_editor_api`'s `surface_animation` tests did not compile (missing `ui::PixelsExt` import).
+- `pulsar_script_vm` `events::declared_events_are_verified_locally` used `Vec3` as an invalid event field; registered value types are valid, so the invalid example is now a component reference.
+- `pulsar_package` smoke fixtures were stale (module format 3, compiler writes 5); regenerated.
+- SceneDB (`a98ff98`): four GPU test targets had no `required-features = ["gpu"]` (the `build` and `no-default-features` jobs did not compile). `DirtyTrackedSceneBuffer::reserve` grew its CPU shadow before the GPU buffer checked the device ceiling, so reserving `u32::MAX` rows aborted on a 16 GB allocation (`world_gpu_mirror_reservation_shrink`, the `all-features` job); the GPU buffer now grows first.
+
+Failures on main that remain, outside these repositories:
+- `ui` (WGPUI-Component) `cached_scrollable_panels` does not compile: it uses `gpui::headless` and `TestAppContext::with_real_text_system`, which no WGPUI branch has. CI's `cargo check --workspace --all-targets` fails on it.
+- `scripts/plugin-pins.sh check`: main's `table_editor` pins Pulsar `62bb5c1` (not in this repository) and `shader_editor` pins `bbe5ecd` (not on main). The pins live in those plugin repositories.
+- `plugin_editor_api` `surface_ticks_do_not_rebuild_views_and_stop_when_hidden` now compiles and fails (the leaf view re-renders on each tick against the pinned WGPUI).
 
 ## Sweep
 
