@@ -59,10 +59,10 @@ world_registered = true
 own_gpu_columns = true
 runtime_behavior = true
 owner = "helio_component::components::foliage_component"
-disposition = "render, Phase 4. behavior queues pass rows into PendingWorldWrites, which has no production drain; the foliage buffers are not registered in production"
+disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and packs its type, layer and wind into the foliage passes' tables. Grass grows on flat ground at Y 0 (no terrain capture in the editor). Limits: types share layers, the first component's wind applies to all, wind does not animate, and the interactor and material colour fields have no consumer"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: foliage placement from authored data"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+status = "verified"
 
 [[class]]
 name = "GlobalFogComponent"
@@ -590,9 +590,9 @@ buffers = ["foliage_interactors"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "no production writer found"
+writer = "none (Phase 4 removed the queued write)"
 owner = "helio_pass_foliage_place::components"
-disposition = "audit: foliage interaction input; not registered in production"
+disposition = "unconsumed: no foliage shader reads interactor rows"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "none: schema written, registered and consumed"
 status = "at-risk"
@@ -604,12 +604,12 @@ buffers = ["foliage_layers"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "FoliageComponent behavior through PendingWorldWrites (no production drain)"
+writer = "helio-default-graphs environment join from FoliageComponent's source rows (Phase 4); no component is inserted"
 owner = "helio_pass_foliage_place::components"
-disposition = "replace with authored foliage data; not registered in production"
+disposition = "keep as the pass row layout of foliage_layers; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+status = "verified"
 
 [[schema]]
 type = "FoliageTypeComponent"
@@ -618,12 +618,12 @@ buffers = ["foliage_types"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "FoliageComponent behavior through PendingWorldWrites (no production drain)"
+writer = "helio-default-graphs environment join from FoliageComponent's source rows (Phase 4); no component is inserted"
 owner = "helio_pass_foliage_place::components"
-disposition = "replace with authored foliage data; not registered in production"
+disposition = "keep as the pass row layout of foliage_types; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+status = "verified"
 
 [[schema]]
 type = "FoliageWindComponent"
@@ -632,12 +632,12 @@ buffers = ["foliage_wind"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "FoliageComponent behavior through PendingWorldWrites (no production drain)"
+writer = "helio-default-graphs environment join from FoliageComponent's source rows (Phase 4); no component is inserted"
 owner = "helio_pass_foliage_place::components"
-disposition = "replace with authored foliage data; not registered in production"
+disposition = "keep as the pass row layout of foliage_wind; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "none: schema written, registered and consumed"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+status = "verified"
 
 [[schema]]
 type = "LightComponent"
@@ -1241,16 +1241,6 @@ test = "none: rendering with zero subscribers"
 status = "at-risk"
 
 [[site]]
-pattern = "pending-world-writes"
-file = "crates/renderer/helio/crates/helio-component/src/components/foliage_component/runtime.rs"
-count = 2
-owner = "helio::helio-component::components::foliage_component::runtime"
-disposition = "replace with a direct authored-data contract; the queue has no production drain"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: component reaches its consumer without the queue"
-status = "at-risk"
-
-[[site]]
 pattern = "change-cursor"
 file = "crates/renderer/helio/crates/helio-component/src/static_move_watch.rs"
 count = 2
@@ -1574,6 +1564,20 @@ target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
 status = "verified"
 
+[[schema]]
+type = "FoliageSourceRow"
+path = "helio_component::components::environment_rows::FoliageSourceRow"
+buffers = ["foliage_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "FoliageComponent's derived GPU registration (type row, layer, wind row; zero when disabled), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's foliage input (Phase 4)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
+
 [[buffer]]
 key = "Transform::packed"
 producers = []
@@ -1768,41 +1772,41 @@ status = "at-risk"
 key = "foliage_interactors"
 producers = ["FoliageInteractorComponent"]
 consumers = []
-owner = "foliage-place pass type; writer not identified"
-disposition = "audit: no literal consumer"
+owner = "no writer: the engine derives no interactor rows (Phase 4)"
+disposition = "unconsumed: no foliage shader reads interactor rows; FoliageComponent's interactor fields have no effect"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: consumer not identified"
+test = "none: no consumer"
 status = "unverified"
 
 [[buffer]]
 key = "foliage_layers"
 producers = ["FoliageLayerComponent"]
-consumers = ["helio-pass-foliage-place"]
-owner = "PendingWorldWrites (FoliageComponent behavior)"
-disposition = "replace queued writes with direct authored data"
+consumers = ["helio-default-graphs", "helio-pass-foliage-place"]
+owner = "helio-default-graphs environment join (execution output, placed foliage packed into the leading rows in instance order)"
+disposition = "keep: a world-aligned square centred on the owner, spanning the authored altitudes; tiles re-place when the layers change, with the type table's seed"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: foliage placement from authored data"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+status = "verified"
 
 [[buffer]]
 key = "foliage_types"
 producers = ["FoliageTypeComponent"]
-consumers = ["helio-pass-foliage-gbuffer", "helio-pass-foliage-place"]
-owner = "PendingWorldWrites (FoliageComponent behavior)"
-disposition = "replace queued writes with direct authored data"
+consumers = ["helio-default-graphs", "helio-pass-foliage-gbuffer", "helio-pass-foliage-place"]
+owner = "helio-default-graphs environment join (execution output, placed foliage packed into the leading rows in instance order)"
+disposition = "keep: placement draws types from the live leading rows; both foliage passes run only while a row has a density (async liveness)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: foliage placement from authored data"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+status = "verified"
 
 [[buffer]]
 key = "foliage_wind"
 producers = ["FoliageWindComponent"]
-consumers = ["helio-pass-foliage-gbuffer"]
-owner = "PendingWorldWrites (FoliageComponent behavior)"
-disposition = "replace queued writes with direct authored data"
+consumers = ["helio-default-graphs", "helio-pass-foliage-gbuffer"]
+owner = "helio-default-graphs environment join (execution output, placed foliage packed into the leading rows in instance order)"
+disposition = "keep: the first placed component's wind; the wind clock is not advanced (no frame time reaches the row), so blades do not sway"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: foliage wind from authored data"
-status = "at-risk"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+status = "verified"
 
 [[buffer]]
 key = "global_fog_media"
@@ -2044,6 +2048,16 @@ producers = ["WaterVolumeSourceRow"]
 consumers = []
 owner = "helio_component::components::environment_rows"
 disposition = "keep: WaterVolumeComponent in its owner's space, derived on every write; the environment join packs it into water_volumes"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "foliage_sources"
+producers = ["FoliageSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: FoliageComponent's type, layer and wind, derived on every write; the environment join packs them into foliage_types, foliage_layers and foliage_wind"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
 status = "verified"
