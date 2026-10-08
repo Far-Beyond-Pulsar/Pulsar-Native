@@ -1399,6 +1399,28 @@ impl HelioRenderer {
             .map(|inner| inner.renderer.debug_depth_texture())
     }
 
+    /// The default graph's passes, in execution order, and whether each
+    /// recorded CPU work in the last frame (Helio's timing snapshot).
+    /// Read-only diagnostics: lets a test show every pass of the graph runs.
+    pub fn debug_pass_activity(&self) -> Vec<(String, bool)> {
+        let Some(inner) = self.inner.as_ref() else {
+            return Vec::new();
+        };
+        let timed = &inner.renderer.timing_snapshot().passes;
+        inner
+            .renderer
+            .graph_timeline()
+            .passes
+            .into_iter()
+            .map(|pass| {
+                let ran = timed
+                    .iter()
+                    .any(|t| t.name == pass.name && t.cpu_ms.is_some());
+                (pass.name, ran)
+            })
+            .collect()
+    }
+
     // ── SceneDB-backed editor integration ───────────────────────────────────
 
     pub fn queue_gizmo_mode(&self, mode: GizmoMode) {
