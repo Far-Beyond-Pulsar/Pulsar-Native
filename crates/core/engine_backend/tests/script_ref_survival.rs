@@ -105,7 +105,6 @@ pulsar_world_registry::inventory::submit! {
         value_as_engine_class_mut: pulsar_world_registry::values::erased::as_engine_class_mut::<BridgeGizmo>,
         register_erased: pulsar_scenedb::register_component::<BridgeGizmo>,
         remove: bridge_gizmo_remove,
-        dispatch: |world, entity, _owner, _idx, _ctx| world.get::<BridgeGizmo>(entity).is_some(),
         get_as_engine_class: bridge_gizmo_get,
         get_as_engine_class_mut: bridge_gizmo_get_mut,
         on_removed: noop_on_removed,
