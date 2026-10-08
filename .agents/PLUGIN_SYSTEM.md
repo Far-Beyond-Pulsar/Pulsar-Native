@@ -125,7 +125,8 @@ plugin that both link it (`use pulsar_world_dylib as _;`) share one copy, so
 the plugin's classes register into the host's World when it loads. Both must
 be built by one cargo invocation of the engine workspace (same compiler,
 sources and features). `plugin_manager/tests/world_component_plugins.rs`
-covers both cases. The editor binary does not link the library yet; see
+covers both cases. The editor binary does not link the library yet
+(Pulsar-Native#1083, together with a shared UI-framework library); see
 `.agents/plans/scene-data-correction/18-phase-7.md` for what that costs.
 
 ## Plugin loading

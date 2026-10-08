@@ -1,6 +1,6 @@
 # Phase 7: the acceptance gaps
 
-Status: **complete except for the editor wiring of plugin components** (Pulsar-Native#1035, #1081), pending review. Builds on Phase 6 ([17-phase-6.md](17-phase-6.md)).
+Status: **complete**; the editor wiring of plugin components is deferred to Pulsar-Native#1083 (Pulsar-Native#1035, #1081), pending review. Builds on Phase 6 ([17-phase-6.md](17-phase-6.md)).
 
 Phase 6 left the acceptance matrix partly unmet; its gaps were filed as Pulsar-Native#1081. Phase 7 writes the missing tests. Six of them found real defects, and Phase 7 fixes each one:
 
@@ -72,7 +72,7 @@ Tests (`plugin_manager/tests/world_component_plugins.rs`): the fixtures under `t
 
 **Requirements.** The host and the plugin must name the same build of the dylib: same compiler, same sources and the same features of every crate inside it. In practice they must be built in one cargo invocation of this workspace, as the test builds its fixtures. A mismatched plugin fails to load with an undefined-symbol error. The binary needs the dylib and the toolchain's `libstd-*.so` at run time (`cargo run` and `cargo test` set the search path).
 
-**Not wired into the editor yet.** Linking `pulsar_engine` to the dylib would also:
+**Not wired into the editor: deferred to Pulsar-Native#1083**, together with the shared library the UI framework will need. Linking `pulsar_engine` to the dylib would also:
 1. **Split the editor's allocations.** The dylib links the standard library dynamically. A binary's `#[global_allocator]` then serves only the generic code instantiated in that binary; code in `libstd` and in the dylib allocates through `libstd`'s default. `TrackingAllocator` (the memory panel) and the `dhat-heap` profiler would see part of the heap. Pinned by `a_binary_linked_to_the_world_dylib_keeps_only_part_of_its_allocations`.
 2. **Change the release format.** The release ships one executable per target. It would have to ship the dylib and `libstd` beside it, with an `$ORIGIN` rpath on Linux and the libraries inside the macOS `.app`.
 3. **Risk Windows debug builds.** A debug build of the dylib exports about 83,000 symbols on Linux; a Windows DLL is limited to 65,535. A release build exports about 10,000. Not checked on Windows here.
@@ -102,7 +102,7 @@ The two items Phase 6 left unchecked:
 
 ## Not done here
 
-- **Plugin components in the shipped editor.** See [Plugin components](#plugin-components-shared-world-library): the shared library works and is tested, but the editor binary does not link it yet.
+- **Plugin components in the shipped editor:** Pulsar-Native#1083. See [Plugin components](#plugin-components-shared-world-library). The shared library works and is tested, but the editor binary does not link it yet.
 - **GPU checks on hardware and DX12.** This environment has Mesa lavapipe only.
 - **`gpu_rows` padding.** An `#[engine_class(gpu_rows)]` mirror with a field narrower than its slot (a `bool`) uploads that slot's uninitialized padding. No production class uses `gpu_rows`; production GPU rows come from `#[derive(SceneStore)]`, whose `Pod` bound forbids padding.
 - **Carried from Phase 6:**
@@ -122,4 +122,35 @@ The two items Phase 6 left unchecked:
 
 ## Sweep
 
-SWEEP_PLACEHOLDER
+Run on the final pins (SceneDB `7d14a4c`, Helio `2ea90c69`), Mesa lavapipe, `--no-fail-fast`. About 560 tests passed in all.
+
+**Pulsar**, by group:
+
+| Packages | Targets | Passed | Failed |
+|---|---|---|---|
+| `pulsar_world_registry`, `pulsar_scene_model`, `pulsar_class`, `pulsar_script_object_model`, `pulsar_script_vm`, `pulsar_physics`, `pulsar_scene`, `scene_inventory` | 28 | 193 | 2 |
+| `engine_class_derive` (with `pulsar_reflection/prims-gpui`; it does not compile alone without it, as before) | 6 | 20 | 0 |
+| `engine_backend`, `helio_component`, `pulsar_package` | 25 | 163 | 4 |
+| `pulsar_game` (including the runtime parity test) | 5 | 58 | 0 |
+| `ui_level_editor` (all eight `render_acceptance` tests and `mesh_reimport`) | 4 | 121 | 2 doctests |
+| `plugin_manager` `world_component_plugins` | 1 | 3 | 0 |
+
+Failures fixed here and rerun green:
+- The `scene_inventory` ledger: the `mirror-replay` rows still named `embed.rs` and `windowed_app.rs`. They now name `game_renderer.rs`. The ledger (7) and architecture (4) checks pass.
+- `pulsar_package` `cook::tests::levels_lose_editor_data_and_absolute_paths` and `smoke::packaged_game_runs_from_a_clean_directory`. They expected the `props.mesh_asset` copy that the Phase 3 load migration removes. They now check that the path is in the component and the copy is gone.
+
+`pulsar_package` was not in earlier sweeps.
+
+Failing, not caused by this work:
+- the gizmo hover test (`press_captures_without_hover_and_drag_continues_off_handle`);
+- `pulsar_script_vm` `events::declared_events_are_verified_locally`;
+- the two `toggle_button` doctests;
+- `pulsar_package` `smoke::fixture_modules_are_current`, which fails on main too: the committed fixture modules are format 3, the compiler writes 5.
+
+**SceneDB** (`--features gpu`):
+- the new `world_gpu_mirror_lifecycle.rs` passes;
+- the same two lavapipe failures as Phase 6 remain (`alloc_gate_gpu`, `world_gpu_mirror_reservation_shrink`).
+
+**Helio**:
+- `helio-component` passes, as do the new asset and import tests;
+- `limited_native` and `voxel_pass_graph` fail the same way at the old pins.
