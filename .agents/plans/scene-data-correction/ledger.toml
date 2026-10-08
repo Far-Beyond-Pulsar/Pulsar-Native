@@ -1284,6 +1284,16 @@ status = "at-risk"
 # producers: types declaring #[gpu(buffer = ...)]; consumers: packages calling
 # BufferKey::of(...). Both are checked against source. `owner` = who writes rows.
 
+[[site]]
+pattern = "change-cursor"
+file = "crates/renderer/helio/crates/helio-component/src/components/spline_component.rs"
+count = 6
+owner = "helio::helio-component::components::spline_component"
+disposition = "keep: SplineLines' own cursors (spline values, attachment state, owner transform, visibility, selection) make the editor's spline lines change-driven (Phase 4)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/renderer/helio/crates/helio-component/src/components/spline_component.rs (spline_lines_rebuild_only_when_a_spline_or_its_owner_changes)"
+status = "verified"
+
 [[schema]]
 type = "CameraPostProcessComponent"
 path = "helio_component::components::camera_post_process_component::CameraPostProcessComponent"
