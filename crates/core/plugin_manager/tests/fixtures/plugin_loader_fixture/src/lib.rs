@@ -16,3 +16,6 @@ pub extern "C" fn _plugin_init_globals(_theme: *const c_void) {}
 
 // The host event bus entry point every `export_plugin!` plugin exports (#930).
 plugin_editor_api::pulsar_events::export_host_bus_attach!();
+
+// The world runtime entry point every `export_plugin!` plugin exports (#1083).
+plugin_editor_api::pulsar_world_registry::export_world_runtime_attach!();

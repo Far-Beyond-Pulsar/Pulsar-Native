@@ -15789,6 +15789,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_world_registry",
+ "serde_json",
 ]
 
 [[package]]
