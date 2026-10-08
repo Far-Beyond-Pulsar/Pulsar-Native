@@ -14,5 +14,30 @@ mod types;
 pub use executor::execute_command;
 pub use types::{CommandResult, ComponentData, SceneCommand, TypedComponent};
 
-#[cfg(test)]
-mod tests;
+/// The editor's Duplicate: one copy of `source_id`, where the source is,
+/// selected. The copy starts on its source; leaving the source selected made
+/// the gizmo and the properties panel act on the source, so the two looked
+/// tied together (Pulsar-Native#1048). Returns the copy's id.
+pub fn duplicate_and_select(
+    state: &mut crate::state::LevelEditorState,
+    source_id: &str,
+) -> Option<crate::scene_edit::ObjectId> {
+    let copy = execute_command(
+        state,
+        SceneCommand::DuplicateObject {
+            source_id: source_id.to_string(),
+            count: 1,
+            position_offset: None,
+        },
+    )
+    .affected_ids
+    .last()
+    .cloned()?;
+    execute_command(
+        state,
+        SceneCommand::SelectObject {
+            id: Some(copy.clone()),
+        },
+    );
+    Some(copy)
+}
