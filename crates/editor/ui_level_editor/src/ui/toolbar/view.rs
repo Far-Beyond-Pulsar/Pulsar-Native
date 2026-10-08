@@ -28,12 +28,12 @@ use gpui::*;
 use ui::dock::PanelEvent;
 use ui::input::{InputEvent, InputState, TextInput};
 
-use super::ToolbarPanel;
 use super::snap_controls::{SnapKind, SnapPanel};
-use crate::LevelEditorState;
+use super::ToolbarPanel;
 use crate::state::EditorMode;
 use crate::tool_modes::ToolModeId;
 use crate::ui::frame_pump::spawn_frame_pump;
+use crate::LevelEditorState;
 
 /// Every piece of [`LevelEditorState`] the toolbar's element tree depends on.
 ///

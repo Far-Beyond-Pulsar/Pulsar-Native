@@ -19,6 +19,7 @@ pub fn standalone_file_type(
         structure: FileStructure::Standalone,
         default_content,
         categories: vec![],
+        creation_directory: None,
     }
 }
 
@@ -45,5 +46,6 @@ pub fn folder_file_type(
         },
         default_content,
         categories: vec![],
+        creation_directory: None,
     }
 }

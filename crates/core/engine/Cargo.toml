@@ -54,6 +54,7 @@ dotenv = "0.15"
 window_manager.workspace = true
 # Registers itself at link time (see plugin_manager::LinkedEditorProvider).
 blueprint_editor_plugin = { path = "../../../plugins/vendor/blueprint_editor", features = ["builtin"], optional = true }
+trait_editor_plugin = { path = "../../../plugins/trait_editor", features = ["builtin"] }
 plugin_typescript = { workspace = true, optional = true }
 pulsar_std = { workspace = true }
 tracing-appender = "0.2.4"
