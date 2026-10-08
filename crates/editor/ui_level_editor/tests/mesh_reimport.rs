@@ -67,7 +67,7 @@ fn a_reimported_mesh_reloads_every_mesh_naming_it() {
     std::fs::copy(primitive("SM_Cylinder.fbx"), meshes.join("other.fbx")).unwrap();
     engine_state::EngineContext::new().set_global();
     engine_state::set_project_path(project.path().display().to_string());
-    let sphere = StaticMeshComponent::for_mesh_asset("meshes/other.fbx")
+    let cylinder = StaticMeshComponent::for_mesh_asset("meshes/other.fbx")
         .vertices
         .len();
     std::fs::copy(primitive("SM_Sphere.fbx"), meshes.join("sphere.fbx")).unwrap();
@@ -110,7 +110,7 @@ fn a_reimported_mesh_reloads_every_mesh_naming_it() {
     assert_eq!(vertices(&state, &b), sphere_vertices, "b reloaded");
     assert_eq!(
         vertices(&state, &other),
-        sphere,
+        cylinder,
         "a mesh naming another file is untouched"
     );
 }
