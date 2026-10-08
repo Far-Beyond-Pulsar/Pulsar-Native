@@ -84,6 +84,7 @@ fn relative_camera_source_schema_compatible(store: &pulsar_scenedb::gpu::SceneGp
         "LightComponentGpuMirror::packed" => helio_component::components::LightComponentGpuMirror::packed_gpu_component_id(),
         "camera_postprocess" => helio_pass_postprocess::CameraPostProcessComponent::packed_gpu_component_id(),
         "atmospheres" => helio_pass_sky::AtmosphereComponent::packed_gpu_component_id(),
+        "post_process_volumes" => helio_pass_postprocess::PostProcessVolumeComponent::packed_gpu_component_id(),
         "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles" => {
             return store.buffer_registry().element_type(key) == Some(Some(std::any::TypeId::of::<pulsar_scenedb::gpu::VarLenHandle>()));
         }
@@ -106,6 +107,7 @@ fn relative_camera_source_compatible(key: &str, kind: &str, mode: Option<pulsar_
         | "water_volumes" | "water_hitboxes" | "render_groups" | "sublevels"
         | "sublevel_actors" | "sectioned_objects" | "materials" | "Transform::packed"
         | "LightComponentGpuMirror::packed" | "camera_postprocess" | "atmospheres"
+        | "post_process_volumes"
         | "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles" =>
             kind == "row" && mode == Some(MirrorMode::DirtyTracked),
         "builtin_mesh_vertex" | "builtin_mesh_index" =>
@@ -115,15 +117,22 @@ fn relative_camera_source_compatible(key: &str, kind: &str, mode: Option<pulsar_
 }
 
 fn relative_camera_world_compatible(world: &pulsar_scenedb::World) -> bool {
+    relative_camera_world_incompatibilities(world).is_empty()
+}
+
+/// What keeps the scene's world out of camera-relative frames: positional
+/// lights, and every component type not reviewed for a moved origin.
+fn relative_camera_world_incompatibilities(world: &pulsar_scenedb::World) -> Vec<String> {
     use pulsar_scenedb::component_id;
     use crate::scene::{ComponentAttachments, Name, ObjectType, Parent, RenderProps, Selected, SiblingIndex, StableId, Transform, Visibility};
     // The two lighting rows must agree that this is a directional source:
     // positional lights and their world-space culling/shadows are not rebased.
+    let mut found = Vec::new();
     if world.query::<&helio_pass_forward_lit::LightComponent>().any(|(_, light)|
         light.light_type != helio::LightType::Directional as u32)
         || world.query::<&helio_component::components::LightComponent>().any(|(_, light)|
             light.general.light_type != helio_component::components::LightType::Directional)
-    { return false }
+    { found.push("positional light".to_string()) }
     let allowed = [
         component_id::<StableId>(), component_id::<Name>(), component_id::<Parent>(),
         component_id::<SiblingIndex>(), component_id::<Selected>(), component_id::<Transform>(),
@@ -144,11 +153,20 @@ fn relative_camera_world_compatible(world: &pulsar_scenedb::World) -> bool {
         // centre on the GPU.
         component_id::<helio_component::AtmosphereComponent>(),
         component_id::<helio_pass_sky::AtmosphereComponent>(),
+        // Volume blending and volumetric fog rebase volume bounds by the
+        // world origin.
+        component_id::<helio_component::PostProcessVolumeComponent>(),
+        component_id::<helio_pass_postprocess::PostProcessVolumeComponent>(),
     ];
-    world.archetypes.iter().filter(|archetype| !archetype.entities.is_empty()).all(|archetype|
-        archetype.key.0.iter().all(|id| allowed.contains(id)
-            || crate::scene::editor_rows::is_editor_light_row_marker(*id))
-    )
+    for archetype in world.archetypes.iter().filter(|archetype| !archetype.entities.is_empty()) {
+        for &id in archetype.key.0.iter() {
+            if !allowed.contains(&id) && !crate::scene::editor_rows::is_editor_light_row_marker(id) {
+                let name = pulsar_scenedb::component::type_name(id).to_string();
+                if !found.contains(&name) { found.push(name); }
+            }
+        }
+    }
+    found
 }
 
 fn native_frame_camera(eye: DVec3, forward: Vec3, up: Vec3, aspect: f32, near: f32, far: f32, relative: bool) -> Camera {
@@ -1236,19 +1254,23 @@ impl HelioRenderer {
             (entries, errors, authored_meshes, sun)
         };
         phases.mark("project");
-        let camera_relative = self.voxel_backends.uses_camera_relative_frames(&voxel_entries) && {
+        let wants_relative = self.voxel_backends.uses_camera_relative_frames(&voxel_entries);
+        let camera_relative = wants_relative && {
             let store = self.scene_store.read();
             self.relative_camera_gate.compatible(&store.world)
         };
         if self.last_camera_relative != Some(camera_relative) {
-            if self.last_camera_relative.is_some() {
-                // A switch of coordinate space discards temporal history and
-                // changes how the planet and sky are placed: visible as a
-                // flash. It must only follow a real scene change.
+            // A switch of coordinate space discards temporal history and
+            // changes how the planet and sky are placed: visible as a flash.
+            // It must only follow a real scene change. A large world refused
+            // camera-relative frames from the start renders in f32 world
+            // coordinates far from the origin (jitter, blocks, broken view
+            // rays): name what refused it.
+            if self.last_camera_relative.is_some() || (wants_relative && !camera_relative) {
                 let store = self.scene_store.read();
                 tracing::warn!(
                     camera_relative,
-                    world = relative_camera_world_compatible(&store.world),
+                    world = ?relative_camera_world_incompatibilities(&store.world),
                     incompatible = ?relative_camera_incompatible_sources(&store.world),
                     "VOXEL_CAMERA_SPACE changed"
                 );
@@ -2146,7 +2168,11 @@ mod native_relative_camera_tests {
             "version":"2.1", "objects":[
                 object("voxel_planet",serde_json::json!("Empty"),serde_json::json!([
                     component("VoxelTerrainComponent",serde_json::to_value(helio_component::VoxelTerrainComponent::default()).unwrap()),
-                    component("VoxelTerrainLayersComponent",serde_json::to_value(helio_component::VoxelTerrainLayersComponent::default()).unwrap())
+                    component("VoxelTerrainLayersComponent",serde_json::to_value(helio_component::VoxelTerrainLayersComponent::default()).unwrap()),
+                    component("AtmosphereComponent",serde_json::to_value(helio_component::AtmosphereComponent::default()).unwrap())
+                ])),
+                object("post_process",serde_json::json!("Empty"),serde_json::json!([
+                    component("PostProcessVolumeComponent",serde_json::to_value(helio_component::PostProcessVolumeComponent::default()).unwrap())
                 ])),
                 object("sun",serde_json::json!({"Light":"Directional"}),serde_json::json!([
                     component("LightComponent",serde_json::to_value(sun).unwrap())
@@ -2157,10 +2183,13 @@ mod native_relative_camera_tests {
         let shared = level.scene();
         let mut scene = shared.write();
         crate::scene::editor_rows::sync_editor_light_rows(&mut scene.world,true,None);
+        assert!(crate::scene::component_rows::sync_component_rows(&mut scene.world,None,std::path::Path::new(".")).is_empty());
+        assert_eq!(scene.world.query::<&helio_pass_sky::AtmosphereComponent>().count(),1);
+        assert_eq!(scene.world.query::<&helio_pass_postprocess::PostProcessVolumeComponent>().count(),1);
         assert_eq!(scene.world.query::<&helio_component::VoxelTerrainComponent>().count(),1);
         assert_eq!(scene.world.query::<&helio_component::VoxelTerrainLayersComponent>().count(),1);
         assert_eq!(scene.world.query::<&helio_pass_billboard::BillboardComponent>().count(),1);
-        assert!(relative_camera_world_compatible(&scene.world));
+        assert!(relative_camera_world_compatible(&scene.world), "{:?}", relative_camera_world_incompatibilities(&scene.world));
         // A new, unreviewed world-space consumer fails closed even before its
         // buffer is registered; retiring its last live row restores eligibility.
         struct UnknownWorldSpaceProvider;
@@ -2181,7 +2210,7 @@ mod native_relative_camera_tests {
         use pulsar_scenedb::MirrorMode;
         assert!(relative_camera_source_compatible("static_objects","row",Some(MirrorMode::DirtyTracked)));
         assert!(!relative_camera_source_compatible("static_objects","resource",None));
-        for key in ["reflection_captures","portal_views","corona_emitters","foliage_layers","post_process_volumes","custom_render_source"] {
+        for key in ["reflection_captures","portal_views","corona_emitters","foliage_layers","custom_render_source"] {
             assert!(!relative_camera_source_compatible(key,"row",Some(MirrorMode::DirtyTracked)),"{key}");
         }
     }

@@ -490,6 +490,7 @@ pub fn ensure_gpu_mirror(
     crate::scene::Transform::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // The editor viewport's post-process baseline; see `editor_postprocess`.
     helio_pass_sky::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, &device);
+    helio_pass_postprocess::PostProcessVolumeComponent::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     helio_pass_postprocess::CameraPostProcessComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4,
