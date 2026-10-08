@@ -124,16 +124,6 @@ fn test_gizmo_on_removed(
 ) {
 }
 
-fn test_gizmo_dispatch(
-    world: &World,
-    entity: Entity,
-    _owner: &pulsar_reflection::RuntimeComponentOwner,
-    _component_index: usize,
-    _context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-) -> bool {
-    world.get::<TestGizmo>(entity).is_some()
-}
-
 fn test_gizmo_test_methods() -> Vec<pulsar_reflection::MethodMetadata> {
     <TestGizmo as EngineClass>::get_methods()
 }
@@ -155,7 +145,6 @@ pulsar_world_registry::inventory::submit! {
         value_as_engine_class_mut: pulsar_world_registry::values::erased::as_engine_class_mut::<TestGizmo>,
         register_erased: pulsar_scenedb::register_component::<TestGizmo>,
         remove: test_gizmo_remove,
-        dispatch: test_gizmo_dispatch,
         get_as_engine_class: test_gizmo_get,
         get_as_engine_class_mut: test_gizmo_get_mut,
         on_removed: test_gizmo_on_removed,
