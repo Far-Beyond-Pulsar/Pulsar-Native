@@ -99,6 +99,17 @@ class instantiation, scripts and the editor clone and write typed values.
   SceneDB replays existing rows on attach.
 - Helio has no renderer-owned scene registry; the legacy `Scene`/`SceneActor`
   API is gone ([HELIO_SCENE_API_MIGRATION.md](HELIO_SCENE_API_MIGRATION.md)).
+- The standalone game and the Play-in-Editor viewport build their renderer
+  with `pulsar_game::game_renderer`: the same joins and graph as the editor
+  viewport, over the same `SharedScene`.
+
+## Assets
+
+A mesh asset loads synchronously inside the write that names it (the
+boundary decoder, or the `mesh_asset` property write), so there is no
+in-flight load to cancel or complete stale. Components of one asset share one
+GPU geometry allocation. A re-import publishes `AssetUpdated(Mesh)`; the level
+editor reloads every static mesh naming that file through the same write.
 
 ## Architecture checks
 
