@@ -13,6 +13,7 @@ use super::{ComponentInstance, ObjectId, SceneObjectData};
 use super::components::{get_components, replace_components};
 use super::objects::{add_object, clear, get_all_objects};
 use super::{LevelEditorCameraState, LevelEditorFileState, LevelFile, LevelMetadata};
+use crate::world_settings_data::WorldSettingsData;
 
 /// Serialize the scene to a JSON level file.
 pub fn save_to_file<P: AsRef<Path>>(world: &World, path: P) -> Result<(), String> {
@@ -25,7 +26,24 @@ pub fn save_to_file_with_editor_camera<P: AsRef<Path>>(
     path: P,
     editor_camera: Option<LevelEditorCameraState>,
 ) -> Result<(), String> {
-    save_with_classes(world, path, editor_camera, &project_registry())
+    let settings = read_existing_world_settings(path.as_ref());
+    save_with_classes_and_settings(world, path, editor_camera, settings, &project_registry())
+}
+
+/// Save a level with an explicit snapshot of its world settings.
+pub fn save_to_file_with_settings<P: AsRef<Path>>(
+    world: &World,
+    path: P,
+    editor_camera: Option<LevelEditorCameraState>,
+    world_settings: WorldSettingsData,
+) -> Result<(), String> {
+    save_with_classes_and_settings(
+        world,
+        path,
+        editor_camera,
+        world_settings,
+        &project_registry(),
+    )
 }
 
 /// The objects and component lists a save writes.
@@ -96,10 +114,30 @@ pub(crate) fn save_with_classes<P: AsRef<Path>>(
     editor_camera: Option<LevelEditorCameraState>,
     registry: &ClassRegistry,
 ) -> Result<(), String> {
+    let settings = read_existing_world_settings(path.as_ref());
+    save_with_classes_and_settings(world, path, editor_camera, settings, registry)
+}
+
+pub(crate) fn save_with_classes_and_settings<P: AsRef<Path>>(
+    world: &World,
+    path: P,
+    editor_camera: Option<LevelEditorCameraState>,
+    world_settings: WorldSettingsData,
+    registry: &ClassRegistry,
+) -> Result<(), String> {
     write_level(
-        snapshot_level(world, registry, editor_camera),
+        snapshot_level(world, registry, editor_camera, world_settings),
         path.as_ref(),
     )
+}
+
+fn read_existing_world_settings(path: &Path) -> WorldSettingsData {
+    virtual_fs::read_file(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|value| value.get("world_settings").cloned())
+        .and_then(|settings| serde_json::from_value(settings).ok())
+        .unwrap_or_default()
 }
 
 /// Everything a save needs from the world, captured in one pass.
@@ -115,6 +153,7 @@ pub struct LevelSnapshot {
     /// for deciding which legacy blueprint bindings still need carrying over.
     class_names: HashMap<ObjectId, String>,
     editor_camera: Option<LevelEditorCameraState>,
+    world_settings: WorldSettingsData,
 }
 
 /// Capture what [`write_level`] writes. `registry` should be the project's
@@ -124,6 +163,7 @@ pub fn snapshot_level(
     world: &World,
     registry: &ClassRegistry,
     editor_camera: Option<LevelEditorCameraState>,
+    world_settings: WorldSettingsData,
 ) -> LevelSnapshot {
     profiling::profile_scope!("scene_edit::snapshot_level");
     let (objects, components) = level_contents(world, registry);
@@ -143,6 +183,7 @@ pub fn snapshot_level(
         components,
         class_names,
         editor_camera,
+        world_settings,
     }
 }
 
@@ -154,6 +195,7 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
         components,
         class_names,
         editor_camera,
+        world_settings,
     } = snapshot;
     if let Some(parent_dir) = path.parent() {
         virtual_fs::create_dir_all(parent_dir)
@@ -190,6 +232,7 @@ pub fn write_level(snapshot: LevelSnapshot, path: &Path) -> Result<(), String> {
             modified: now,
             editor_version: env!("CARGO_PKG_VERSION").into(),
         },
+        world_settings,
         editor: editor_camera
             .map(|camera| LevelEditorFileState {
                 camera: Some(camera),
@@ -235,7 +278,15 @@ pub fn load_from_file_with_editor_camera<P: AsRef<Path>>(
     world: &mut World,
     path: P,
 ) -> Result<Option<LevelEditorCameraState>, String> {
-    load_with_classes(world, path, &project_registry())
+    load_from_file_with_editor_camera_and_settings(world, path).map(|(camera, _)| camera)
+}
+
+/// Load a scene and return its persisted editor camera and world settings.
+pub fn load_from_file_with_editor_camera_and_settings<P: AsRef<Path>>(
+    world: &mut World,
+    path: P,
+) -> Result<(Option<LevelEditorCameraState>, WorldSettingsData), String> {
+    load_with_classes_and_settings(world, path, &project_registry())
 }
 
 /// [`load_from_file_with_editor_camera`] with an explicit class registry.
@@ -248,6 +299,14 @@ pub(crate) fn load_with_classes<P: AsRef<Path>>(
     path: P,
     registry: &ClassRegistry,
 ) -> Result<Option<LevelEditorCameraState>, String> {
+    load_with_classes_and_settings(world, path, registry).map(|(camera, _)| camera)
+}
+
+pub(crate) fn load_with_classes_and_settings<P: AsRef<Path>>(
+    world: &mut World,
+    path: P,
+    registry: &ClassRegistry,
+) -> Result<(Option<LevelEditorCameraState>, WorldSettingsData), String> {
     profiling::profile_scope!("scene_edit::load_from_file");
     let bytes =
         virtual_fs::read_file(path.as_ref()).map_err(|e| format!("Failed to read file: {e}"))?;
@@ -300,7 +359,10 @@ pub(crate) fn load_with_classes<P: AsRef<Path>>(
         path.as_ref().display(),
         level_file.version
     );
-    Ok(level_file.editor.and_then(|editor| editor.camera))
+    Ok((
+        level_file.editor.and_then(|editor| editor.camera),
+        level_file.world_settings,
+    ))
 }
 
 #[cfg(test)]

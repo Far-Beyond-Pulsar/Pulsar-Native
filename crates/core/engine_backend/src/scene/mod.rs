@@ -35,6 +35,10 @@ pub mod editor_rows;
 // Shared WorldSceneStore <-> helio::Renderer operations (#637): GPU seam
 // attach + per-frame static-mesh/light frame assembly.
 pub mod helio_bridge;
+#[cfg(feature = "render")]
+mod material_graph;
+#[cfg(feature = "render")]
+mod material_textures;
 
 // Re-export new system types for convenience
 #[cfg(feature = "render")]

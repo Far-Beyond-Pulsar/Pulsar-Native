@@ -9,6 +9,7 @@
 
 use crate::scene_edit::history::VoxelEditJournal;
 use crate::scene_edit::{self, ObjectId, SceneHistoryDelta, SceneHistorySnapshot, SceneObjectData};
+use crate::world_settings_data::WorldSettingsData;
 use engine_backend::scene::SceneWorldExt;
 use engine_backend::scene::SharedScene;
 use parking_lot::{
@@ -55,6 +56,8 @@ pub struct SceneDomain {
     /// The scene — single source of truth for all scene data. Panels read and
     /// edit its `World` directly (see [`Self::world`] / [`Self::world_mut`]).
     pub scene: SharedScene,
+    /// Settings persisted alongside the current level's scene data.
+    pub world_settings: WorldSettingsData,
     /// Bumped whenever the whole scene is rebuilt in place (undo/redo, leaving
     /// play mode). Subscriptions die with the entities they watched, so anything
     /// caching against them must re-arm when this moves.
@@ -99,6 +102,7 @@ impl Default for SceneDomain {
     fn default() -> Self {
         Self {
             scene: Arc::new(RwLock::new(engine_backend::scene::new_scene())),
+            world_settings: WorldSettingsData::default(),
             rebuild_epoch: 0,
             snapshot: None,
             play_entities: None,
@@ -125,6 +129,7 @@ impl SceneDomain {
     pub(crate) fn clone_for_tool_query(&self) -> Self {
         Self {
             scene: Arc::clone(&self.scene),
+            world_settings: self.world_settings.clone(),
             rebuild_epoch: self.rebuild_epoch,
             snapshot: None,
             play_entities: None,
