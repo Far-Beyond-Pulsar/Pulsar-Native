@@ -880,6 +880,10 @@ fn history_level_replacement_and_viewports_need_no_resync() {
             "a viewport opened later",
             observe("second", harness.frames(&mut second, || {})),
         );
+        assert_drawn(
+            "first viewport, after the second opened",
+            observe("first_again", harness.frames(&mut first, || {})),
+        );
         execute_command(&mut state, SceneCommand::RemoveObject { id });
         assert_not_drawn(
             "removal, second viewport first",
