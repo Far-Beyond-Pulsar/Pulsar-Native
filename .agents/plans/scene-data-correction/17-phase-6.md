@@ -194,4 +194,22 @@ Evidence named in the phase records (12–17), checked to exist. **Gaps** are re
 
 ## Sweep
 
-Running; results are added when the sweep finishes.
+Run on the final pins (SceneDB `1981d7c`, Helio `61612f94`), Mesa lavapipe.
+
+**Pulsar**: `pulsar_world_registry`, `pulsar_scene_model`, `pulsar_class`, `pulsar_script_object_model`, `pulsar_script_vm`, `pulsar_game`, `pulsar_physics`, `pulsar_scene`, `engine_backend`, `helio_component`, `ui_level_editor` and `scene_inventory`, run with `--no-fail-fast`:
+- 52 test targets; 49 pass, 520 tests passed in all.
+- All five rendered-frame tests pass, including `every_pass_of_the_editor_graph_runs`. So do the `scene_inventory` ledger and architecture checks.
+- The light mapping test (`mirror_carries_color_and_intensity_with_a_zeroed_position_placeholder`) passes. It had failed since Phase 3 and was fixed here.
+- `voxel_block_api` passes.
+- 3 targets fail, all recorded in earlier phases and unrelated to this work:
+  - the gizmo hover test (`press_captures_without_hover_and_drag_continues_off_handle`);
+  - `pulsar_script_vm` `events::declared_events_are_verified_locally`;
+  - the two `toggle_button` doctests.
+
+**SceneDB**: `cargo test -p pulsar_scenedb --features gpu`:
+- 53 targets pass.
+- 2 fail. Both fail on unmodified code too:
+  - `alloc_gate_gpu` `view_token_buffers_upload_alloc_count_independent_of_token_count`;
+  - `world_gpu_mirror_reservation_shrink`, which aborts on a 16 GB allocation under lavapipe.
+
+**Not run**: `wgpui-component` tests (they do not compile on main); Helio's own examples (not workspace members).
