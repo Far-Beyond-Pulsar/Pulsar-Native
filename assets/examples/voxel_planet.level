@@ -229,12 +229,14 @@
             "tunnel_wavelength_m": 160.0,
             "cavern_wavelength_m": 160.0,
             "cavern_share": 0.04,
-            "cover_m": 4.0
+            "cover_m": 6.0,
+            "entrance_share": 0.05,
+            "entrance_spacing_m": 80.0
           },
           "overhangs": {
             "enabled": true,
             "height_m": 6.0,
-            "wavelength_m": 24.0,
+            "wavelength_m": 6.0,
             "region_km": 3.0,
             "share": 0.3
           },
