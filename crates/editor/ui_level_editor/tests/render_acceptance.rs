@@ -1415,3 +1415,66 @@ fn splines_reach_the_frame() {
         "a removed spline is still drawn"
     );
 }
+
+/// Cost and architecture (Pulsar-Native#1035 acceptance, #1081): once a
+/// scene settles, an unchanged scene encodes no frame and writes nothing to
+/// the world, however often the viewport asks; one edit wakes the renderer,
+/// which settles back to idle.
+#[test]
+fn an_idle_scene_encodes_nothing_and_an_edit_wakes_it() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let mut state = LevelEditorState::new();
+    drop_matte_mesh(&mut state);
+    let light = add_light(
+        &mut state,
+        [0.0, radius * 1.5, radius * 2.0],
+        helio_component::components::LightType::Point,
+        BRIGHT,
+    );
+    let mut renderer = harness.renderer(&state);
+    harness.frames(&mut renderer, || {});
+
+    let view = harness.texture.create_view(&Default::default());
+    let mut encode = |renderer: &mut HelioRenderer| {
+        let encoded = renderer
+            .render_frame(&harness.device, &harness.queue, &view, SIZE, SIZE, FORMAT)
+            .is_some();
+        harness.device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        encoded
+    };
+    // Settle whatever the forced frames left pending.
+    let mut settled = false;
+    for _ in 0..16 {
+        if !encode(&mut renderer) {
+            settled = true;
+            break;
+        }
+    }
+    assert!(settled, "the renderer never went idle");
+
+    let revision = state.scene.world().revision();
+    let idle: Vec<bool> = (0..20).map(|_| encode(&mut renderer)).collect();
+    assert!(idle.iter().all(|encoded| !encoded), "an idle scene encoded a frame: {idle:?}");
+    assert_eq!(state.scene.world().revision(), revision, "idle frames wrote to the world");
+
+    set_light(&mut state, &light, "intensity", Box::new(BRIGHT * 2.0));
+    assert!(encode(&mut renderer), "the edit did not wake the renderer");
+    let after: Vec<bool> = (0..16).map(|_| encode(&mut renderer)).collect();
+    let woken = after.iter().take_while(|encoded| **encoded).count();
+    println!("PHASE7 frames after one edit before idle: {}", 1 + woken);
+    assert!(
+        after.iter().skip(woken).all(|encoded| !encoded),
+        "the renderer did not settle back to idle: {after:?}"
+    );
+}
