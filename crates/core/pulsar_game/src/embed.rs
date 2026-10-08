@@ -22,8 +22,7 @@ use std::cell::RefCell;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use engine_backend::scene::{ensure_gpu_mirror, environment_join, scene_join};
-use helio::{Camera, Renderer, RendererBuilder, RendererConfig};
+use helio::{Camera, Renderer, RendererConfig};
 use parking_lot::RwLock;
 use pulsar_pie_abi::{
     EngineContext as PieContext, InputEvent, LogFn, INIT_ERR, INIT_OK, LOG_ERROR, LOG_INFO,
@@ -366,26 +365,18 @@ impl EmbeddedGame {
 
         // ── Renderer seam onto the shared world (#637/#634) ──────────────────
         // The world already holds the level (the host hydrated it before Play,
-        // and under v2 we adopted that very store). SceneDB's GPU mirror must
-        // be attached BEFORE the renderer is constructed: `RendererBuilder::new`
-        // requires a `SceneDbHandle` up front (SceneDB is the sole scene
-        // authority). When the editor's own viewport already wired the
-        // mirror, this is idempotent and just returns that same handle.
+        // and under v2 we adopted that very store). The renderer is the
+        // standalone game's (`crate::game_renderer`) on the host's device; its
+        // GPU mirror is the editor viewport's when that already attached one.
         let scene_store = Arc::clone(&tick_loop.scene_store);
-        let scene_db_handle =
-            ensure_gpu_mirror(&mut scene_store.write(), device.clone(), queue.clone());
-
-        let config = RendererConfig::new(width, height, color_format);
-        let renderer = RendererBuilder::new(config, scene_db_handle)
-            .with_external_device()
-            .with_editor_mode(false)
-            .with_scene_derivation(scene_join(&device, false))
-            .with_scene_derivation(environment_join(&device))
-            .with_ambient([0.0, 0.0, 0.0], 0.0)
-            .with_pass_build_context(Box::new(
-                helio_default_graphs::build_default_graph_external_with_context,
-            ))
-            .build(device.clone(), queue.clone(), width, height, color_format);
+        let renderer = crate::game_renderer::build_game_renderer(
+            device.clone(),
+            queue.clone(),
+            &scene_store,
+            RendererConfig::new(width, height, color_format),
+            false,
+            crate::game_renderer::DeviceOwner::Host,
+        );
 
         // Under v2 the world comes pre-hydrated by the host, so the old
         // editor-camera file seeding is gone too -- camera selection prefers

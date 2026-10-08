@@ -24,6 +24,7 @@ pub mod scripting;
 // Window / rendering integration
 pub mod camera_selection;
 pub mod freecam;
+pub mod game_renderer;
 pub mod window;
 pub mod windowed_app;
 

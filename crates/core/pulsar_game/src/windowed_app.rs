@@ -18,9 +18,8 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-use engine_backend::scene::{ensure_gpu_mirror, environment_join, scene_join, RuntimeLevel};
-use helio::{required_wgpu_features, required_wgpu_limits, Camera, Renderer, RendererConfig};
-use parking_lot::RwLock;
+use engine_backend::scene::RuntimeLevel;
+use helio::{required_wgpu_features, required_wgpu_limits, Camera, Renderer};
 
 use crate::camera_selection::select_world_camera;
 use crate::freecam::FreeCam;
@@ -89,99 +88,20 @@ impl GameWindow {
         surface.configure(&device, &surface_config);
 
         // Build the Helio renderer. `pulsar_game` owns its device (unlike the
-        // editor's wgpui-hosted viewport, which shares GPUI's device via
-        // `RendererBuilder::with_external_device`), so we use the plain `build`
-        // constructor with the owning-device default.
-        //
-        // SceneDB's GPU mirror must be attached to the shared world BEFORE
-        // the renderer is constructed: `RendererBuilder::new` requires a
-        // `SceneDbHandle` up front (SceneDB is the sole scene authority).
-        // Idempotent: a second window sharing this `scene_store` gets back
-        // the same mirror rather than a second one.
-        let scene_db_handle =
-            ensure_gpu_mirror(&mut scene_store.write(), device.clone(), queue.clone());
-        let project_setting = |key: &str| {
-            engine_state::settings::global_config().get(
-                engine_state::settings::NS_PROJECT,
-                "rendering",
-                key,
-            )
-        };
-        let project_string = |key: &str, fallback: &str| {
-            project_setting(key)
-                .ok()
-                .and_then(|value| value.as_str().ok().map(str::to_owned))
-                .unwrap_or_else(|| fallback.to_owned())
-        };
-        let project_bool = |key: &str, fallback: bool| {
-            project_setting(key)
-                .ok()
-                .and_then(|value| value.as_bool().ok())
-                .unwrap_or(fallback)
-        };
-        let render_scale = project_setting("render_scale")
-            .ok()
-            .and_then(|value| value.as_float().ok())
-            .filter(|value| value.is_finite())
-            .unwrap_or(0.75) as f32;
-        let mut render_config =
-            RendererConfig::new(surface_config.width, surface_config.height, surface_format)
-                .with_render_scale(render_scale.clamp(0.25, 1.0))
-                .with_ssr(project_bool("screen_space_reflections", false))
-                .with_planar_reflections(project_bool("planar_reflections", false));
-        render_config = render_config.with_shadow_quality(
-            match project_string("shadow_quality", "medium").as_str() {
-                "low" => helio::ShadowQuality::Low,
-                "high" => helio::ShadowQuality::High,
-                "ultra" => helio::ShadowQuality::Ultra,
-                _ => helio::ShadowQuality::Medium,
-            },
-        );
-        render_config.shadow_atlas_size = project_setting("shadow_atlas_size")
-            .ok()
-            .and_then(|value| {
-                value
-                    .as_str()
-                    .ok()
-                    .and_then(|value| value.parse::<u32>().ok())
-                    .or_else(|| {
-                        value
-                            .as_int()
-                            .ok()
-                            .and_then(|value| u32::try_from(value).ok())
-                    })
-            })
-            .filter(|size| matches!(size, 512 | 1024 | 2048 | 4096))
-            .unwrap_or(1024);
-        render_config = match project_string("tsr_quality", "off").as_str() {
-            "performance" => render_config.with_tsr_quality(helio::TsrQuality::Performance),
-            "balanced" => render_config.with_tsr_quality(helio::TsrQuality::Balanced),
-            "quality" => render_config.with_tsr_quality(helio::TsrQuality::Quality),
-            "native" => render_config.with_tsr_quality(helio::TsrQuality::Native),
-            _ => render_config.without_tsr(),
-        };
-        render_config = match project_string("render_mode", "deferred").as_str() {
-            "forward_opaque" => render_config.with_render_mode(helio::RenderMode::ForwardOpaque),
-            "forward_only" => render_config.with_render_mode(helio::RenderMode::ForwardOnly),
-            _ => render_config.with_render_mode(helio::RenderMode::Deferred),
-        };
-        let renderer = helio::RendererBuilder::new(render_config, scene_db_handle)
-            .with_editor_mode(desc.editor_mode)
-            .with_scene_derivation(scene_join(&device, desc.editor_mode))
-            .with_scene_derivation(environment_join(&device))
-            // Kill the default helio ambient ([0.05, 0.05, 0.08] @ 1.0).
-            // All illumination comes from lights in the scene file — same as editor.
-            .with_ambient([0.0, 0.0, 0.0], 0.0)
-            .with_pass_build_context(Box::new(
-                helio_default_graphs::build_default_graph_external_with_context,
-            ))
-            .build(
-                device.clone(),
-                queue.clone(),
+        // editor's wgpui-hosted viewport, which shares GPUI's device), and
+        // takes its settings from the project (`crate::game_renderer`).
+        let renderer = crate::game_renderer::build_game_renderer(
+            device.clone(),
+            queue.clone(),
+            scene_store,
+            crate::game_renderer::project_renderer_config(
                 surface_config.width,
                 surface_config.height,
                 surface_format,
-            );
+            ),
+            desc.editor_mode,
+            crate::game_renderer::DeviceOwner::Game,
+        );
 
         Self {
             handle,
