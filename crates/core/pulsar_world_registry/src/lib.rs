@@ -316,7 +316,7 @@ pub use instances::{
 };
 pub use marshal::{any_to_json, json_to_any};
 pub use values::{
-    clone_value, clone_world_component_value, decode_world_component_value,
+    clone_value, clone_world_component_value, decode_json, decode_world_component_value,
     insert_world_component_value, new_world_component_value, set_value_property,
     set_world_component_property, value_engine_class, ComponentValueError,
 };

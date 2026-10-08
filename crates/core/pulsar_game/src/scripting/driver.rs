@@ -355,6 +355,9 @@ pub struct ScriptDriver {
     rescan_registry: bool,
     config: ScriptingConfig,
     cursor: Option<ChangeCursor>,
+    /// `ComponentOwner` changes: an instance enabled or disabled. Opened
+    /// with `cursor`.
+    owner_cursor: Option<ChangeCursor>,
     tracked: HashMap<Entity, Tracked>,
     /// Each tracked object's `ClassInstance` component instance -> the
     /// object, so a change on an instance already despawned still names
@@ -408,6 +411,7 @@ impl ScriptDriver {
             rescan_registry: false,
             config,
             cursor: None,
+            owner_cursor: None,
             tracked: HashMap::new(),
             holders: HashMap::new(),
             by_instance: HashMap::new(),
@@ -963,31 +967,43 @@ impl ScriptDriver {
             self.globals_started = true;
             self.start_globals(world, report);
         }
-        let dirty = match self.cursor.as_mut() {
-            None => {
-                // Opened before the scan under the same world borrow: every
-                // later change is in the journal, nothing is missed.
-                self.cursor = Some(world.open_change_cursor::<ClassInstance>());
-                None
-            }
-            Some(cursor) => {
+        let dirty = match (self.cursor.as_mut(), self.owner_cursor.as_mut()) {
+            (Some(cursor), Some(owner_cursor)) => {
                 self.scratch.clear();
-                match world.read_changes(cursor, &mut self.scratch) {
-                    ChangeRead::Complete => {
+                let instances = world.read_changes(cursor, &mut self.scratch);
+                let changed_instances = self.scratch.len();
+                let owners = world.read_changes(owner_cursor, &mut self.scratch);
+                match (instances, owners) {
+                    (ChangeRead::Complete, ChangeRead::Complete) => {
                         let mut seen = HashSet::new();
                         Some(
                             self.scratch
                                 .iter()
-                                .map(|change| self.object_of_holder(world, change.entity))
+                                .enumerate()
+                                // An owner change concerns a script only on a
+                                // `ClassInstance` holder (enabled/disabled).
+                                .filter(|(i, change)| {
+                                    *i < changed_instances
+                                        || world.get::<ClassInstance>(change.entity).is_some()
+                                        || self.holders.contains_key(&change.entity)
+                                })
+                                .map(|(_, change)| self.object_of_holder(world, change.entity))
                                 .filter(|entity| seen.insert(*entity))
                                 .collect::<Vec<_>>(),
                         )
                     }
-                    ChangeRead::Overflowed => {
-                        tracing::info!("ClassInstance change journal overflowed; rescanning");
+                    _ => {
+                        tracing::info!("A ClassInstance or ComponentOwner journal overflowed; rescanning");
                         None
                     }
                 }
+            }
+            _ => {
+                // Opened before the scan under the same world borrow: every
+                // later change is in the journal, nothing is missed.
+                self.cursor = Some(world.open_change_cursor::<ClassInstance>());
+                self.owner_cursor = Some(world.open_change_cursor::<attachments::ComponentOwner>());
+                None
             }
         };
         match dirty {
@@ -1047,7 +1063,10 @@ impl ScriptDriver {
             .is_alive(entity)
             .then(|| pulsar_class::world::class_instance_entity(world, entity))
             .flatten();
-        let Some(instance) = holder.and_then(|holder| world.get::<ClassInstance>(holder).cloned())
+        // A disabled `ClassInstance` runs no script, like an absent one.
+        let Some(instance) = holder
+            .filter(|holder| attachments::is_enabled(world, *holder))
+            .and_then(|holder| world.get::<ClassInstance>(holder).cloned())
         else {
             self.stop(world, entity, report);
             return;

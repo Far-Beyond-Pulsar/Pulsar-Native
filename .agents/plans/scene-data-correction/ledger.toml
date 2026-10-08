@@ -989,32 +989,22 @@ status = "verified"
 
 [[site]]
 pattern = "mirror-replay"
-file = "crates/core/pulsar_game/src/embed.rs"
+file = "crates/core/pulsar_game/src/game_renderer.rs"
 count = 1
-owner = "core::pulsar_game::embed"
-disposition = "keep: attaches the one shared mirror. Phase 1 removed its fixed snapshot-and-reinsert list; SceneDB's attach_gpu_mirror now writes every existing GPU-bearing component of every schema (SceneDB 358ec86)"
+owner = "core::pulsar_game::game_renderer"
+disposition = "keep: attaches the one shared mirror, for both the standalone window and the embedded (PIE) game, which shared this code from Phase 7 on. Phase 1 removed its fixed snapshot-and-reinsert list; SceneDB's attach_gpu_mirror now writes every existing GPU-bearing component of every schema (SceneDB 358ec86)"
 target_contract = "Phase 1 (SceneDB upstream); 03-gpu-reflection-and-rendering.md"
-test = "SceneDB crates/pulsar_scenedb/tests/world_gpu_mirror_replay.rs"
+test = "SceneDB crates/pulsar_scenedb/tests/world_gpu_mirror_replay.rs; pulsar_game/tests/runtime_render_parity.rs"
 status = "verified"
 
 [[site]]
 pattern = "change-cursor"
 file = "crates/core/pulsar_game/src/scripting/driver.rs"
-count = 2
+count = 4
 owner = "core::pulsar_game::scripting::driver"
-disposition = "keep: independent ClassInstance cursor; reference pattern for Phase 5"
+disposition = "keep: independent ClassInstance and ComponentOwner cursors (a placement changed, or its ClassInstance enabled/disabled); reference pattern for Phase 5"
 target_contract = "Phase 5; 04-state-notifications.md"
-test = "crates/core/pulsar_game/src/scripting/tests.rs (an_overflowed_class_instance_journal_rescans, a_replaced_world_is_rescanned)"
-status = "verified"
-
-[[site]]
-pattern = "mirror-replay"
-file = "crates/core/pulsar_game/src/windowed_app.rs"
-count = 1
-owner = "core::pulsar_game::windowed_app"
-disposition = "keep: attaches the one shared mirror. Phase 1 removed its fixed snapshot-and-reinsert list; SceneDB's attach_gpu_mirror now writes every existing GPU-bearing component of every schema (SceneDB 358ec86)"
-target_contract = "Phase 1 (SceneDB upstream); 03-gpu-reflection-and-rendering.md"
-test = "SceneDB crates/pulsar_scenedb/tests/world_gpu_mirror_replay.rs"
+test = "crates/core/pulsar_game/src/scripting/tests.rs (an_overflowed_class_instance_journal_rescans, a_replaced_world_is_rescanned, disabling_a_class_instance_stops_its_script_and_enabling_restarts_it)"
 status = "verified"
 
 [[site]]

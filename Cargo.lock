@@ -4233,7 +4233,7 @@ dependencies = [
  "log",
  "presser",
  "thiserror 2.0.20",
- "windows 0.54.0",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -5298,6 +5298,7 @@ dependencies = [
  "pulsar_world_registry",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.20",
  "tracing",
  "twox-hash",
@@ -9486,7 +9487,9 @@ version = "0.1.0"
 dependencies = [
  "blueprint_editor_plugin",
  "clap",
+ "engine_backend",
  "engine_state",
+ "helio_component",
  "plugin_editor_api",
  "plugin_typescript",
  "pulsar_class",
@@ -9593,7 +9596,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=1981d7ccf5607ffe816d6f123f09934ec06ad7c2#1981d7ccf5607ffe816d6f123f09934ec06ad7c2"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=a98ff98e1b446e0f44f4200c005faa0c1f2842b2#a98ff98e1b446e0f44f4200c005faa0c1f2842b2"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9609,7 +9612,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
-source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=1981d7ccf5607ffe816d6f123f09934ec06ad7c2#1981d7ccf5607ffe816d6f123f09934ec06ad7c2"
+source = "git+https://github.com//Far-Beyond-Pulsar/SceneDB?rev=a98ff98e1b446e0f44f4200c005faa0c1f2842b2#a98ff98e1b446e0f44f4200c005faa0c1f2842b2"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection_codegen",
@@ -9743,11 +9746,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_world_dylib"
+version = "0.1.0"
+dependencies = [
+ "inventory",
+ "pulsar_reflection",
+ "pulsar_scene_model",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+]
+
+[[package]]
 name = "pulsar_world_registry"
 version = "0.1.0"
 dependencies = [
  "glam 0.33.5",
  "inventory",
+ "pollster 1.0.1",
  "pulsar_events",
  "pulsar_reflection",
  "pulsar_scene_model",
@@ -9756,8 +9771,10 @@ dependencies = [
  "pulsar_script_vm",
  "serde",
  "serde_json",
+ "serde_path_to_error",
  "thiserror 2.0.20",
  "tracing",
+ "wgpu",
 ]
 
 [[package]]
@@ -11398,7 +11415,7 @@ version = "3.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32824fab5e16e6c4d86dc1ba84489390419a39f97699852b66480bb87d297ed8"
 dependencies = [
- "dirs 5.0.1",
+ "dirs 6.0.0",
 ]
 
 [[package]]
@@ -15773,6 +15790,44 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "world_plugin_host"
+version = "0.0.0"
+dependencies = [
+ "libloading 0.9.0",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_world_dylib",
+ "pulsar_world_registry",
+]
+
+[[package]]
+name = "world_shared_plugin"
+version = "0.0.0"
+dependencies = [
+ "engine_class_derive",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_world_dylib",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "world_static_plugin"
+version = "0.0.0"
+dependencies = [
+ "engine_class_derive",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_world_registry",
+ "serde",
+ "serde_json",
+ "tracing",
+]
 
 [[package]]
 name = "write16"

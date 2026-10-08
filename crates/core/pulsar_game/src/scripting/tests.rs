@@ -482,6 +482,56 @@ fn placing_a_class_instance_during_play_starts_it_next_tick() {
     assert!(instances(&game).is_empty());
 }
 
+/// Instance lifecycle (Pulsar-Native#1035 acceptance, #1081): disabling a
+/// placed class's `ClassInstance` ends its script at the next tick, like a
+/// removal; enabling it again starts a new one.
+#[test]
+fn disabling_a_class_instance_stops_its_script_and_enabling_restarts_it() {
+    use pulsar_world_registry::pulsar_scene_model::attachments;
+
+    let project = project();
+    let level = level(project.path(), &[("floor", None, None)]);
+    let (mut game, log) = pie(project.path(), &level);
+    game.tick_once();
+    let def = ClassRegistry::scan(project.path())
+        .by_name("Minion")
+        .unwrap()
+        .load_definition()
+        .unwrap();
+    let placed = {
+        let mut store = game.scene_store.write();
+        pulsar_class::world::instantiate_class(
+            &mut store.world,
+            &def,
+            ClassInstance::default(),
+            SpawnObject::new("Minion").with_id("placed"),
+        )
+        .unwrap()
+        .root()
+    };
+    game.tick_once();
+    assert_eq!(events(&log), [ev("begin", "placed")]);
+
+    let holder = {
+        let store = game.scene_store.read();
+        pulsar_class::world::class_instance_entity(&store.world, placed).unwrap()
+    };
+    attachments::set_enabled(&mut game.scene_store.write().world, holder, false);
+    game.tick_once();
+    assert_eq!(events(&log).len(), 2);
+    assert_eq!(events(&log)[1].0, "end", "disabled: end_play ran");
+    assert!(instances(&game).is_empty());
+
+    // Other ticks while disabled start nothing.
+    game.tick_once();
+    assert_eq!(events(&log).len(), 2);
+
+    attachments::set_enabled(&mut game.scene_store.write().world, holder, true);
+    game.tick_once();
+    assert_eq!(events(&log)[2], ev("begin", "placed"), "enabled again");
+    assert_eq!(instances(&game), [minion("placed")]);
+}
+
 /// Phase 5 (Pulsar-Native#1035): the driver's `ClassInstance` cursor
 /// overflowing must not lose an instance placed before the flood -- the
 /// driver rescans the world instead.

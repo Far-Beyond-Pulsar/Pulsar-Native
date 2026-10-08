@@ -266,3 +266,118 @@ fn the_join_follows_the_engines_authored_rows() {
     let out = join.run(&mut scene);
     assert!(join.mesh_rows(&out, instance).is_empty(), "removed");
 }
+
+/// Instance lifecycle (Pulsar-Native#1035 acceptance, #1081): several light
+/// instances on one object, edited through the reflected property path, a
+/// script component reference and a duplicate, each land in their own
+/// joined light row, equal to a typed insert of the same value. A slot
+/// recycled for a new instance is a new instance: the old handle no longer
+/// resolves, and the row carries the new value.
+#[test]
+fn every_path_addresses_one_instance_and_a_reused_index_is_a_new_one() {
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let light = |intensity: f32| {
+        let mut light = LightComponent::default();
+        light.general.enabled = true;
+        light.intensity.intensity = intensity;
+        light
+    };
+    let mut scene = SceneDb::new();
+    let lamp = place(&mut scene, "lamps", [0.0, 5.0, 2.0]);
+    let reference = place(&mut scene, "reference", [0.0, 5.0, 2.0]);
+    let first = pulsar_world_registry::attach_value(&mut scene.world, lamp, light(10.0)).unwrap();
+    let second = pulsar_world_registry::attach_value(&mut scene.world, lamp, light(20.0)).unwrap();
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        join: engine_backend::scene::scene_join(&device, true),
+        device,
+        queue,
+    };
+
+    // The reflected property path (properties panel, AI tools).
+    pulsar_world_registry::set_world_component_property(
+        "LightComponent",
+        &mut scene.world,
+        second,
+        "intensity",
+        Box::new(40.0_f32),
+    )
+    .unwrap();
+    // A script's reference to the lamp's first light.
+    let script_ref = pulsar_script_object_model::ActorRef::new(lamp).component("LightComponent", 0);
+    assert_eq!(script_ref.instance(&scene.world), Some(first));
+    script_ref
+        .set_property(&mut scene.world, "intensity", Box::new(30.0_f32))
+        .unwrap();
+    // A duplicate is its own instance with its own value.
+    let copy =
+        pulsar_world_registry::duplicate_instance(&mut scene.world, second, lamp, None).unwrap();
+    scene
+        .world
+        .get_mut::<LightComponent>(copy)
+        .unwrap()
+        .intensity
+        .intensity = 50.0;
+    assert_ne!(
+        attachments::meta(&scene.world, copy).unwrap().id,
+        attachments::meta(&scene.world, second).unwrap().id,
+        "a duplicate has its own identity"
+    );
+
+    let references: Vec<Entity> = [30.0, 40.0, 50.0]
+        .map(|intensity| {
+            pulsar_world_registry::attach_value(&mut scene.world, reference, light(intensity))
+                .unwrap()
+        })
+        .to_vec();
+    let out = join.run(&mut scene);
+    let row = |instance: Entity| bytemuck::bytes_of(&join.light_row(&out, instance)).to_vec();
+    for (instance, typed) in [first, second, copy].into_iter().zip(&references) {
+        assert_eq!(
+            row(instance),
+            row(*typed),
+            "{instance:?} matches a typed insert"
+        );
+    }
+    assert_ne!(row(first), row(second));
+    assert_ne!(row(second), row(copy));
+
+    // Recycle the first light's slot.
+    attachments::detach(&mut scene.world, first);
+    let reused = pulsar_world_registry::attach_value(&mut scene.world, lamp, light(70.0)).unwrap();
+    assert_eq!(reused.index(), first.index(), "the freed slot is reused");
+    assert_ne!(reused, first, "with a new generation");
+    assert!(scene.world.get::<LightComponent>(first).is_none());
+    assert!(
+        pulsar_world_registry::set_world_component_property(
+            "LightComponent",
+            &mut scene.world,
+            first,
+            "intensity",
+            Box::new(1.0_f32),
+        )
+        .is_err(),
+        "the stale handle writes nothing"
+    );
+    let typed =
+        pulsar_world_registry::attach_value(&mut scene.world, reference, light(70.0)).unwrap();
+    let out = join.run(&mut scene);
+    let row = |instance: Entity| bytemuck::bytes_of(&join.light_row(&out, instance)).to_vec();
+    assert_eq!(
+        row(reused),
+        row(typed),
+        "the recycled row carries the new instance"
+    );
+    assert_eq!(
+        scene
+            .world
+            .get::<LightComponent>(reused)
+            .unwrap()
+            .intensity
+            .intensity,
+        70.0
+    );
+}

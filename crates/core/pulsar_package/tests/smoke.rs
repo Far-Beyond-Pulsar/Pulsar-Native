@@ -444,10 +444,13 @@ fn packaged_game_runs_from_a_clean_directory() {
         "762f7d93-1e8c-44dd-b20d-0707e5506e5f",
         "class GUID resolved"
     );
+    // The mesh path lives in the component; the load migration drops the
+    // stale `props` copy (Pulsar-Native#1035 Phase 3).
     assert_eq!(
-        level["objects"][1]["props"]["mesh_asset"],
+        level["objects"][1]["component_instances"][0]["data"]["mesh_asset"],
         "assets/meshes/glass_red.mesh"
     );
+    assert!(level["objects"][1]["props"].get("mesh_asset").is_none());
     let scripting: serde_json::Value =
         serde_json::from_slice(&pak.read("Pulsar/scripting.json").unwrap()).unwrap();
     assert_eq!(

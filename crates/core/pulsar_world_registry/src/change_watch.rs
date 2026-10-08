@@ -199,6 +199,75 @@ mod tests {
         assert_eq!(script.poll(&world), vec!["a"], "removal invalidates too");
     }
 
+    /// Observer fanout (Pulsar-Native#1035 acceptance, #1081): watchers
+    /// polling at different rates (every write, every seventh, once at the
+    /// end) each learn of every key written since their previous poll, and
+    /// an object feed receives every write's value, whatever the others do.
+    #[test]
+    fn watchers_at_different_poll_rates_miss_nothing() {
+        let mut world = World::new();
+        let entities: Vec<_> = (0..3).map(|_| world.spawn()).collect();
+        for &e in &entities {
+            world.insert(e, crate::tests::TestComponent { value: 0 });
+        }
+        let keys = ["a", "b", "c"];
+        let mut watchers: Vec<ComponentWatch<&str>> =
+            (0..3).map(|_| ComponentWatch::new()).collect();
+        for watcher in &mut watchers {
+            for (key, &e) in keys.iter().zip(&entities) {
+                watcher.watch(
+                    &world,
+                    *key,
+                    e,
+                    component_id::<crate::tests::TestComponent>(),
+                );
+            }
+        }
+        let feed = crate::ObjectFeed::subscribe(&mut world, entities[1], || {}).unwrap();
+
+        // Each watcher's keys written since its last poll.
+        let mut pending: Vec<std::collections::BTreeSet<&str>> = vec![Default::default(); 3];
+        let periods = [1usize, 7, usize::MAX];
+        let mut written_b = Vec::new();
+        for step in 0..100usize {
+            let target = (step * 7 + step / 3) % 3;
+            world
+                .get_mut::<crate::tests::TestComponent>(entities[target])
+                .unwrap()
+                .value = step as i32;
+            if target == 1 {
+                written_b.push(step as i32);
+            }
+            for (watcher, (pending, &period)) in
+                watchers.iter_mut().zip(pending.iter_mut().zip(&periods))
+            {
+                pending.insert(keys[target]);
+                if (step + 1) % period == 0 {
+                    let got: std::collections::BTreeSet<_> =
+                        watcher.poll(&world).into_iter().collect();
+                    assert_eq!(&got, pending, "period {period} at step {step}");
+                    pending.clear();
+                }
+            }
+        }
+        for (watcher, pending) in watchers.iter_mut().zip(&pending) {
+            let got: std::collections::BTreeSet<_> = watcher.poll(&world).into_iter().collect();
+            assert_eq!(&got, pending, "final poll");
+        }
+        let delivered: Vec<i32> = feed
+            .take()
+            .into_iter()
+            .filter_map(|update| match update {
+                crate::ObjectUpdate::Changed(delta) => delta
+                    .value?
+                    .downcast_ref::<crate::tests::TestComponent>()
+                    .map(|c| c.value),
+                crate::ObjectUpdate::Despawned => None,
+            })
+            .collect();
+        assert_eq!(delivered, written_b, "the feed sees every write's value");
+    }
+
     #[test]
     fn other_entities_and_components_stay_quiet() {
         let mut world = World::new();

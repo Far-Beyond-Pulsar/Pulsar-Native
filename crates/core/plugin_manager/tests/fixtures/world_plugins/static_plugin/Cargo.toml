@@ -1,0 +1,22 @@
+# A plugin library for plugin_manager's world-component tests (#1081),
+# built by those tests. static plugin: links its own static copy of the engine's world crates, as plugins did
+[package]
+name = "world_static_plugin"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+test = false
+doctest = false
+
+[dependencies]
+engine_class_derive   = { workspace = true }
+pulsar_reflection     = { workspace = true }
+pulsar_scenedb        = { workspace = true }
+pulsar_world_registry = { workspace = true }
+serde                 = { workspace = true }
+serde_json            = { workspace = true }
+tracing               = { workspace = true }
+

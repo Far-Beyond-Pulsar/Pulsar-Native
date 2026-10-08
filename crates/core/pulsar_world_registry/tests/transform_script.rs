@@ -257,3 +257,87 @@ fn getters_are_side_effect_free_but_not_deterministic() {
         );
     }
 }
+
+/// Mutation equivalence (Pulsar-Native#1035 acceptance, #1081): a script's
+/// write reaches the transform's GPU row exactly as a typed write of the
+/// same value does, with no refresh call.
+#[test]
+fn a_script_write_reaches_the_gpu_row_like_a_typed_write() {
+    use pulsar_scenedb::gpu::{
+        BufferKey, EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore,
+    };
+
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let Ok(adapter) = pollster::block_on(instance.request_adapter(&Default::default())) else {
+        return;
+    };
+    let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+    let ctx = EngineGpuContext::new(Arc::new(device), Arc::new(queue));
+    let store = Arc::new(SceneGpuStore::new(
+        &ctx,
+        SceneGpuConfig {
+            classes: vec![],
+            tombstone_headroom: 0,
+            max_cells_metadata: 0,
+        },
+    ));
+    let mut world = World::new();
+    world.attach_gpu_mirror(GpuMirrorHandle::new(
+        Arc::clone(&store),
+        Arc::clone(ctx.queue()),
+    ));
+
+    let scripted = object(&mut world);
+    let typed = object(&mut world);
+    world.flush_gpu_mirror(ctx.queue()).unwrap();
+
+    run(
+        &call_with_vec3("set_position", vec3_const(5.0, 6.0, 7.0)),
+        &mut world,
+        scripted,
+    )
+    .unwrap();
+    run(
+        &call_with_vec3("set_scale", vec3_const(2.0, 2.0, 2.0)),
+        &mut world,
+        scripted,
+    )
+    .unwrap();
+    {
+        let mut t = world.get_mut::<Transform>(typed).unwrap();
+        t.position = [5.0, 6.0, 7.0];
+        t.scale = [2.0, 2.0, 2.0];
+    }
+    world.flush_gpu_mirror(ctx.queue()).unwrap();
+
+    // `Transform::packed`: position, rotation, scale; 36 bytes per entity.
+    let handle = store
+        .resolve_buffer_handle(BufferKey::of("Transform::packed"))
+        .unwrap();
+    let rows = 1 + scripted.index().max(typed.index()) as u64;
+    let staging = ctx.device().create_buffer(&wgpu::BufferDescriptor {
+        label: None,
+        size: rows * 36,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder = ctx.device().create_command_encoder(&Default::default());
+    encoder.copy_buffer_to_buffer(&handle.buffer, 0, &staging, 0, rows * 36);
+    ctx.queue().submit([encoder.finish()]);
+    staging
+        .slice(..)
+        .map_async(wgpu::MapMode::Read, |r| r.unwrap());
+    ctx.device()
+        .poll(wgpu::PollType::wait_indefinitely())
+        .unwrap();
+    let words: Vec<f32> = staging
+        .slice(..)
+        .get_mapped_range()
+        .unwrap()
+        .chunks_exact(4)
+        .map(|w| f32::from_ne_bytes(w.try_into().unwrap()))
+        .collect();
+    let row = |e: Entity| words[e.index() as usize * 9..e.index() as usize * 9 + 9].to_vec();
+    assert_eq!(row(scripted), row(typed));
+    assert_eq!(row(scripted), [5.0, 6.0, 7.0, 0.0, 0.0, 0.0, 2.0, 2.0, 2.0]);
+}

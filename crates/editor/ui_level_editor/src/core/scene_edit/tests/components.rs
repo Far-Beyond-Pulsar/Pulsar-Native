@@ -397,3 +397,48 @@ fn every_panel_feed_receives_edits_with_their_values() {
     }
     assert_eq!(script.poll(world), vec!["light"]);
 }
+
+/// Observer fanout (Pulsar-Native#1035 acceptance, #1081): what the
+/// properties panel relies on across a level load. Loading clears the
+/// `World` in place, so the selected object's feed is told it despawned and
+/// hears nothing more; the selection's id then resolves to the loaded
+/// object, whose new feed carries its edits.
+#[test]
+fn a_level_load_ends_the_feed_and_the_selection_follows_the_loaded_object() {
+    use engine_backend::scene::{SceneWorldExt, Transform};
+    use pulsar_world_registry::{ObjectFeed, ObjectUpdate};
+
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("level.json");
+    let mut scene = new_scene();
+    let world = &mut scene.world;
+    let id = objects::add_object(world, object("selected"), None);
+    super::super::level_io::save_to_file(world, &path).unwrap();
+
+    let before = world.entity_for(&id).unwrap();
+    let feed = ObjectFeed::subscribe(world, before, || {}).unwrap();
+    super::super::level_io::load_from_file(world, &path).unwrap();
+    let updates = feed.take();
+    assert!(
+        matches!(updates.last(), Some(ObjectUpdate::Despawned)),
+        "the load despawned the followed object"
+    );
+
+    // The panel re-resolves its selected id and follows the loaded object.
+    let after = world
+        .entity_for(&id)
+        .expect("the loaded level has the object");
+    assert!(!world.is_alive(before));
+    let next = ObjectFeed::subscribe(world, after, || {}).unwrap();
+    world.get_mut::<Transform>(after).unwrap().position = [4.0, 5.0, 6.0];
+    assert!(
+        feed.take().is_empty(),
+        "the old feed ended with the old object"
+    );
+    let position = next.take().into_iter().find_map(|u| match u {
+        ObjectUpdate::Changed(d) => d.value?.downcast_ref::<Transform>().map(|t| t.position),
+        ObjectUpdate::Despawned => None,
+    });
+    assert_eq!(position, Some([4.0, 5.0, 6.0]));
+    next.unsubscribe(world);
+}

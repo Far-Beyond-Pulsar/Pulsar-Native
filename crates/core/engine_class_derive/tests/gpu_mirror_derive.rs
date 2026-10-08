@@ -574,3 +574,153 @@ fn without_gpu_rows_the_companion_uploads_nothing() {
     let mirror = ThrowawayCpuOnlyComponent { intensity: 3.0 }.to_gpu_mirror();
     assert_eq!(mirror.intensity.0, 3.0);
 }
+
+/// A registered class edited through every authoring path: a nested
+/// `#[sub_props]` field, a collection, and a reflected method.
+#[engine_class(
+    gpu_rows,
+    category = "Test",
+    default,
+    clone,
+    debug,
+    serialize,
+    deserialize,
+    no_register
+)]
+pub struct ThrowawayEquivalenceComponent {
+    #[sub_props]
+    pub sub: ThrowawaySubProps,
+    #[property]
+    pub weights: Vec<f32>,
+    #[property]
+    #[gpu]
+    pub total: f32,
+}
+
+fn throwaway_equivalence_written(
+    component: &mut ThrowawayEquivalenceComponent,
+    property: Option<&str>,
+) {
+    if matches!(property, None | Some("weights")) {
+        component.total = component.weights.iter().sum();
+    }
+}
+
+#[register_world_component(property_written = throwaway_equivalence_written)]
+impl ThrowawayEquivalenceComponent {}
+
+#[pulsar_scenedb::component_methods]
+impl ThrowawayEquivalenceComponent {
+    /// Multiply every weight by `factor`.
+    #[reflect_method]
+    fn scale_weights(&mut self, factor: f32) {
+        for weight in &mut self.weights {
+            *weight *= factor;
+        }
+        self.total = self.weights.iter().sum();
+    }
+}
+
+/// Mutation equivalence (Pulsar-Native#1035 acceptance, #1081): a nested
+/// sub-props edit, a collection edit and a reflected method call leave the
+/// same authoritative value and the same GPU row as a typed insert of it,
+/// with no refresh call.
+#[test]
+fn nested_collection_and_method_writes_match_a_typed_insert() {
+    let ctx = test_context();
+    let store = Arc::new(SceneGpuStore::new(&ctx, scene_cfg()));
+    let mut world = World::new();
+    world.attach_gpu_mirror(GpuMirrorHandle::new(
+        Arc::clone(&store),
+        Arc::clone(ctx.queue()),
+    ));
+    const CLASS: &str = "ThrowawayEquivalenceComponent";
+
+    let typed = world.spawn();
+    world.insert(
+        typed,
+        ThrowawayEquivalenceComponent {
+            sub: ThrowawaySubProps {
+                enabled: true,
+                kind: ThrowawayKind::Alpha,
+                color: [1.0, 2.0, 3.0, 4.0],
+                label: String::new(),
+            },
+            weights: vec![2.0, 4.0, 6.0],
+            total: 12.0,
+        },
+    );
+
+    let edited = world.spawn();
+    world.insert(edited, ThrowawayEquivalenceComponent::default());
+    // Nested: `sub.color` and `sub.enabled` by their flattened names.
+    pulsar_world_registry::set_world_component_property(
+        CLASS,
+        &mut world,
+        edited,
+        "color",
+        Box::new([1.0_f32, 2.0, 3.0, 4.0]),
+    )
+    .unwrap();
+    pulsar_world_registry::set_world_component_property(
+        CLASS,
+        &mut world,
+        edited,
+        "enabled",
+        Box::new(true),
+    )
+    .unwrap();
+    // Collection: the whole list, normalized under the same write.
+    pulsar_world_registry::set_world_component_property(
+        CLASS,
+        &mut world,
+        edited,
+        "weights",
+        Box::new(vec![1.0_f32, 2.0, 3.0]),
+    )
+    .unwrap();
+    assert_eq!(
+        world.get::<ThrowawayEquivalenceComponent>(edited).map(|c| c.total),
+        Some(6.0)
+    );
+    // Method: the script/Blueprint path for reflected methods.
+    world
+        .call_component_method(
+            edited,
+            pulsar_scenedb::component_id::<ThrowawayEquivalenceComponent>(),
+            "scale_weights",
+            &mut [Box::new(2.0_f32)],
+        )
+        .unwrap();
+    world.flush_gpu_mirror(ctx.queue()).expect("mirror attached");
+
+    let (a, b) = (
+        world.get::<ThrowawayEquivalenceComponent>(typed).unwrap(),
+        world.get::<ThrowawayEquivalenceComponent>(edited).unwrap(),
+    );
+    assert_eq!(a.weights, b.weights);
+    assert_eq!(a.total, b.total);
+    assert_eq!(a.sub.color, b.sub.color);
+    assert_eq!(a.sub.enabled, b.sub.enabled);
+
+    // `total` leaf first, then `sub` (enabled, kind, color).
+    const ROW_BYTES: u64 = 4 + (4 + 4 + 16);
+    type Mirror = <ThrowawayEquivalenceComponent as GpuMirrored>::GpuMirror;
+    let handle = store
+        .resolve_buffer_handle(
+            store
+                .buffer_key_for(Mirror::packed_gpu_component_id())
+                .expect("registered"),
+        )
+        .expect("resolvable");
+    let row = |entity: pulsar_scenedb::Entity| {
+        readback(&ctx, &handle.buffer, entity.index() as u64 * ROW_BYTES, ROW_BYTES)
+    };
+    // Bytes 5..8 are the padding after `enabled`'s one byte: `GpuRepr<bool>`
+    // copies the value's own representation, so they carry no data.
+    let meaningful = |bytes: Vec<u8>| [&bytes[..5], &bytes[8..]].concat();
+    let (typed_row, edited_row) = (meaningful(row(typed)), meaningful(row(edited)));
+    assert_eq!(typed_row, edited_row, "the GPU rows carry the same values");
+    assert_eq!(f32::from_ne_bytes(edited_row[..4].try_into().unwrap()), 12.0);
+    assert_eq!(edited_row[4], 1, "sub.enabled");
+}

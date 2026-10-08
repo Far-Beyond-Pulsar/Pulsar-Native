@@ -3,10 +3,9 @@
 //! GPU tests require an adapter; absence is a failure, never a silent pass.
 #![cfg(feature = "render")]
 
-#[path = "../src/scene/material_graph.rs"]
-mod material_graph;
-#[path = "../src/scene/material_textures.rs"]
-mod material_textures;
+// Material resolution lives with the mesh component (Pulsar-Native#1035
+// Phase 2): `StaticMeshDraw` lowers graph slots through these modules.
+use helio_component::{material_graph, material_textures};
 
 use psgc::*;
 use std::collections::HashMap;

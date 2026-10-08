@@ -699,6 +699,40 @@ mod tests {
         assert_eq!(light.intensity.intensity, 1002.0);
     }
 
+    /// Persistence compatibility (Pulsar-Native#1035 acceptance, #1081): a
+    /// registered component whose data does not decode fails the load with
+    /// an error naming the object, the component class and the property.
+    #[test]
+    fn a_load_error_names_object_component_and_property() {
+        let mut data = serde_json::to_value(LightComponent::default()).unwrap();
+        data["intensity"]["intensity"] = serde_json::json!("bright");
+        let instances = serde_json::json!([
+            { "index": 0, "class_name": "LightComponent", "data": data }
+        ]);
+        let file = level_with_sun_components(Value::Null, Some(instances));
+        let error = RuntimeLevel::from_scene_file(file)
+            .err()
+            .expect("an undecodable light refuses the level");
+        let RuntimeLevelError::ComponentHydration {
+            object_id,
+            class_name,
+            message,
+        } = &error
+        else {
+            panic!("unexpected error: {error}");
+        };
+        assert_eq!(object_id, "sun");
+        assert_eq!(class_name, "LightComponent");
+        assert!(
+            message.contains("intensity.intensity: invalid type"),
+            "{message}"
+        );
+        let shown = error.to_string();
+        for part in ["sun", "LightComponent", "intensity.intensity"] {
+            assert!(shown.contains(part), "{shown}");
+        }
+    }
+
     /// #637: unregistered classes stay attached as unresolved JSON.
     #[test]
     fn unregistered_classes_stay_metadata_json() {
