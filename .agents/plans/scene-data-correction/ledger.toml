@@ -1045,8 +1045,8 @@ count = 2
 owner = "core::pulsar_game::scripting::driver"
 disposition = "keep: independent ClassInstance cursor; reference pattern for Phase 5"
 target_contract = "Phase 5; 04-state-notifications.md"
-test = "none: cursor overflow/rescan test for this consumer"
-status = "unverified"
+test = "crates/core/pulsar_game/src/scripting/tests.rs (an_overflowed_class_instance_journal_rescans, a_replaced_world_is_rescanned)"
+status = "verified"
 
 [[site]]
 pattern = "mirror-replay"
@@ -1067,26 +1067,6 @@ disposition = "keep: the JSON record boundary for component instances (attach_re
 target_contract = "Phase 3; 05-persistence-and-undo.md"
 test = "crates/core/engine_class_derive/tests/component_instances.rs"
 status = "verified"
-
-[[site]]
-pattern = "destructive-drain"
-file = "crates/core/pulsar_script_object_model/src/subscribe.rs"
-count = 1
-owner = "core::pulsar_script_object_model::subscribe"
-disposition = "remove: rendering and observers must not consume SceneDB's single shared change queue; each remaining subscriber gets independent delivery"
-target_contract = "Phase 2 (renderer), Phase 5 (observers); 04-state-notifications.md"
-test = "none: two-subscriber fan-out test (acceptance: Observer fanout)"
-status = "at-risk"
-
-[[site]]
-pattern = "subscribe"
-file = "crates/core/pulsar_script_object_model/src/subscribe.rs"
-count = 1
-owner = "core::pulsar_script_object_model::subscribe"
-disposition = "remove as a rendering prerequisite; observer subscriptions move to independent cursors"
-target_contract = "Phase 2 (render rows), Phase 5 (observers); 04-state-notifications.md"
-test = "none: rendering with zero subscribers"
-status = "at-risk"
 
 [[site]]
 pattern = "add-component"
@@ -1129,16 +1109,6 @@ test = "crates/editor/ui_level_editor/src/core/commands/tests.rs"
 status = "verified"
 
 [[site]]
-pattern = "destructive-drain"
-file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
-count = 1
-owner = "editor::ui_level_editor::core::scene_edit::components"
-disposition = "remove: rendering and observers must not consume SceneDB's single shared change queue; each remaining subscriber gets independent delivery"
-target_contract = "Phase 2 (renderer), Phase 5 (observers); 04-state-notifications.md"
-test = "none: two-subscriber fan-out test (acceptance: Observer fanout)"
-status = "at-risk"
-
-[[site]]
 pattern = "record-attach"
 file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
 count = 2
@@ -1148,16 +1118,6 @@ target_contract = "Phase 3; 02-typed-reflection-and-writes.md, 05-persistence-an
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs; crates/editor/ui_level_editor/src/core/commands/tests.rs"
 status = "verified"
 notes = "Phase 0's failure (a failed hydrate kept enabled JSON, so the component looked attached) is gone: the baseline's legacy flat light payload is now refused and nothing is attached."
-
-[[site]]
-pattern = "subscribe"
-file = "crates/editor/ui_level_editor/src/core/scene_edit/components.rs"
-count = 1
-owner = "editor::ui_level_editor::core::scene_edit::components"
-disposition = "remove as a rendering prerequisite; observer subscriptions move to independent cursors"
-target_contract = "Phase 2 (render rows), Phase 5 (observers); 04-state-notifications.md"
-test = "none: rendering with zero subscribers"
-status = "at-risk"
 
 [[site]]
 pattern = "add-component"
@@ -1220,35 +1180,14 @@ test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (panel add)"
 status = "verified"
 
 [[site]]
-pattern = "panel-drain"
-file = "crates/editor/ui_level_editor/src/ui/properties/object_type_fields/mod.rs"
-count = 1
-owner = "editor::ui_level_editor::ui::properties::object_type_fields"
-disposition = "replace with a per-panel journal cursor that prompts a re-read of current values; delete the single-drainer contract"
-target_contract = "Phase 5; 04-state-notifications.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs"
-status = "broken"
-notes = "Draining first consumes the event the renderer needed; the late mesh never gets a draw row."
-
-[[site]]
-pattern = "subscribe"
-file = "crates/editor/ui_level_editor/src/ui/properties/object_type_fields/property_renderer.rs"
-count = 1
-owner = "editor::ui_level_editor::ui::properties::object_type_fields::property_renderer"
-disposition = "remove as a rendering prerequisite; observer subscriptions move to independent cursors"
-target_contract = "Phase 2 (render rows), Phase 5 (observers); 04-state-notifications.md"
-test = "none: rendering with zero subscribers"
-status = "at-risk"
-
-[[site]]
 pattern = "change-cursor"
 file = "crates/renderer/helio/crates/helio-component/src/static_move_watch.rs"
 count = 2
 owner = "helio::helio-component::static_move_watch"
 disposition = "keep: independent Transform cursor for the play-mode static-move warning (diagnostic observer)"
 target_contract = "Phase 5; 04-state-notifications.md"
-test = "none: cursor overflow/rescan test for this consumer"
-status = "unverified"
+test = "crates/renderer/helio/crates/helio-component/src/static_move_watch.rs (an_overflow_skips_the_evicted_moves_and_carries_on, a_replaced_world_is_followed_from_the_next_poll)"
+status = "verified"
 
 [[site]]
 pattern = "change-cursor"
@@ -1268,6 +1207,16 @@ owner = "helio::helio-component::components::spline_component"
 disposition = "keep: SplineLines' own cursors (spline values, attachment state, owner transform, visibility, selection) make the editor's spline lines change-driven (Phase 4)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/renderer/helio/crates/helio-component/src/components/spline_component.rs (spline_lines_rebuild_only_when_a_spline_or_its_owner_changes)"
+status = "verified"
+
+[[site]]
+pattern = "change-cursor"
+file = "crates/core/pulsar_world_registry/src/change_watch.rs"
+count = 1
+owner = "core::pulsar_world_registry::change_watch"
+disposition = "keep: ComponentWatch, the per-subscriber watch the properties panel and scripts use instead of the destructive shared queue (Phase 5); invalidation per key, resync on overflow or a replaced World"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "crates/core/pulsar_world_registry/src/change_watch.rs (two_watchers_see_the_same_changes_in_any_read_order, a_replaced_world_resyncs_every_key_once, an_overflowed_journal_resyncs_its_keys); crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs (every_watcher_sees_an_edit_whichever_polls_first)"
 status = "verified"
 
 [[schema]]

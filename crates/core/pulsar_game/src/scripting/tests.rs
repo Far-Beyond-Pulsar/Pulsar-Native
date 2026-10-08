@@ -482,6 +482,64 @@ fn placing_a_class_instance_during_play_starts_it_next_tick() {
     assert!(instances(&game).is_empty());
 }
 
+/// Phase 5 (Pulsar-Native#1035): the driver's `ClassInstance` cursor
+/// overflowing must not lose an instance placed before the flood -- the
+/// driver rescans the world instead.
+#[test]
+fn an_overflowed_class_instance_journal_rescans() {
+    let project = project();
+    let level = level(project.path(), &[("floor", None, None)]);
+    let (mut game, log) = pie(project.path(), &level);
+    game.tick_once();
+
+    let def = ClassRegistry::scan(project.path())
+        .by_name("Minion")
+        .unwrap()
+        .load_definition()
+        .unwrap();
+    {
+        let mut store = game.scene_store.write();
+        pulsar_class::world::instantiate_class(
+            &mut store.world,
+            &def,
+            ClassInstance::default(),
+            SpawnObject::new("Minion").with_id("placed"),
+        )
+        .unwrap();
+        // Evict the placement from the journal before the driver reads it.
+        let junk = store.world.spawn();
+        for _ in 0..=pulsar_scenedb::change_journal::DEFAULT_JOURNAL_CAPACITY {
+            store.world.insert(junk, ClassInstance::default());
+        }
+        store.world.despawn(junk);
+    }
+    game.tick_once();
+    assert_eq!(events(&log), [ev("begin", "placed")]);
+    assert_eq!(instances(&game), [minion("placed")]);
+}
+
+/// Phase 5 (Pulsar-Native#1035): a level replacing the shared world
+/// mid-play is followed from the next tick: the driver's cursor notices it
+/// belongs to the old world and rescans the new one.
+#[test]
+fn a_replaced_world_is_rescanned() {
+    let project = project();
+    let empty = level(project.path(), &[("floor", None, None)]);
+    let (mut game, log) = pie(project.path(), &empty);
+    game.tick_once();
+    assert!(events(&log).is_empty());
+
+    let next = level(project.path(), &[("m1", None, Some((MINION, "Minion")))]);
+    let loaded =
+        RuntimeLevel::load_with_classes(&next, &ClassRegistry::scan(project.path())).unwrap();
+    let world = std::mem::replace(&mut loaded.scene().write().world, World::new());
+    game.scene_store.write().world = world;
+
+    game.tick_once();
+    assert_eq!(events(&log), [ev("begin", "m1")]);
+    assert_eq!(instances(&game), [minion("m1")]);
+}
+
 /// A level with no class instances runs no scripts, even though the
 /// project has compiled classes (no `__vm_default` instances).
 #[test]

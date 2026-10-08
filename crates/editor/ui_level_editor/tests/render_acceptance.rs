@@ -611,24 +611,27 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
             );
         }
 
-        // ── The properties panel open and draining the shared queue first ──
+        // ── The properties panel open and polling its watch first ──────────
         {
             let mut state = LevelEditorState::new();
             let mut renderer = harness.renderer(&state);
             harness.frames(&mut renderer, || {});
             let id = drop_mesh(&mut state);
-            let _card = components::subscribe_component(
-                &mut state.scene.world_mut(),
+            let mut card = pulsar_world_registry::ComponentWatch::new();
+            assert!(components::watch_component(
+                &mut card,
+                &state.scene.world(),
+                ("StaticMeshComponent".to_string(), 0),
                 &id,
                 "StaticMeshComponent",
                 0,
-            );
+            ));
             let frame = harness.frames(&mut renderer, || {
-                components::take_world_component_events(&mut state.scene.world_mut());
+                card.poll(&state.scene.world());
             });
             assert_drawn(
-                &format!("[{mode}] editor mesh, panel draining first"),
-                observe("panel_drains", frame),
+                &format!("[{mode}] editor mesh, panel polling first"),
+                observe("panel_polls", frame),
             );
         }
 

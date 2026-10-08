@@ -204,8 +204,7 @@ impl ObjectTypeFieldsSection {
                 let editor_key = format!("{class_name}#{idx}");
 
                 // Every instance holds its own typed value in `World`
-                // (Pulsar-Native#1035); a live card reads and subscribes to
-                // it. Only an unresolved payload (a class this build does
+                // (Pulsar-Native#1035); a live card reads and watches it. Only an unresolved payload (a class this build does
                 // not register) reads its own JSON.
                 let live = {
                     let world = scene_db.read();
@@ -221,8 +220,8 @@ impl ObjectTypeFieldsSection {
                 //
                 // Clean card + cached snapshot: lend the cached values to the
                 // row builder below, zero `World` traffic. Dirty or never-
-                // pulled card: arm its World subscription (live cards, once
-                // per mounted card) and pull fresh values from whichever
+                // pulled card: watch it (live cards, once per mounted
+                // card) and pull fresh values from whichever
                 // source backs THIS instance.
                 let card_dirty = self.dirty_classes.remove(&card_key);
                 let mut values = if card_dirty {
@@ -234,26 +233,27 @@ impl ObjectTypeFieldsSection {
                     self.world_value_cache.remove(&card_key)
                 };
                 if values.is_none() {
+                    let scene = scene_db.read();
+                    let world = &scene.world;
+                    // Watch before reading, so a write landing in between
+                    // shows up on the next poll.
                     if live
-                        && !self.world_subs.contains_key(&card_key)
+                        && !self.world_watch.is_watching(&card_key)
                         && !self.unsubscribable_classes.contains(class_name.as_str())
                     {
                         if pulsar_world_registry::component_id_for_class(class_name).is_none() {
                             self.unsubscribable_classes.insert(class_name.clone());
-                        } else if let Some(sub) = {
-                            let mut world = scene_db.write();
-                            crate::scene_edit::components::subscribe_component(
-                                &mut world.world,
+                        } else {
+                            crate::scene_edit::components::watch_component(
+                                &mut self.world_watch,
+                                world,
+                                card_key.clone(),
                                 &object_id,
                                 class_name,
                                 idx,
-                            )
-                        } {
-                            self.world_subs.insert(card_key.clone(), sub);
+                            );
                         }
                     }
-                    let scene = scene_db.read();
-                    let world = &scene.world;
                     values = Some(if live {
                         read_card_values_fresh(
                             world,

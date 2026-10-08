@@ -160,21 +160,20 @@ mod tests {
         );
     }
 
-    /// #640 acceptance: subscription events observe exactly the writes made
-    /// through the ref (event-level assertions live in subscribe.rs).
+    /// #640 acceptance: a change watch observes the writes made through the
+    /// ref (the detailed assertions live in subscribe.rs).
     #[test]
-    fn set_property_is_observable_through_subscriptions() {
+    fn set_property_is_observable_through_a_change_watch() {
         let mut world = World::new();
         let e = world.spawn();
         world.insert(e, TestGizmo { charges: 0 });
         let r = ComponentRef::live(actor(e), "TestGizmo");
-        let sub = crate::subscribe::subscribe_component(&mut world, &r).unwrap();
+        let mut watch = crate::subscribe::ComponentRefWatch::new();
+        assert!(watch.watch(&world, &r));
 
         r.set_property(&mut world, "charges", Box::new(5)).unwrap();
 
-        let events = crate::subscribe::take_change_events_for(&mut world, sub);
-        assert_eq!(events.len(), 1);
-        assert_eq!(events[0].entity, e);
+        assert_eq!(watch.changed(&world), vec![r.clone()]);
     }
 
     /// Attach a `TestGizmo` instance to `owner` through the registry, the
