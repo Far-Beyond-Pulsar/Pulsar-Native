@@ -90,8 +90,9 @@ pub fn new_scene() -> pulsar_scenedb::SceneDb {
 /// Close this frame's change window: drop everything the world's change
 /// tracker recorded since the last call and start a new frame.
 ///
-/// Nothing in the engine consumes the tracker's history yet (replication
-/// will drain it itself), and an undrained tracker grows with every write,
+/// Nothing in the engine consumes the tracker's history (replication will
+/// drain it itself; component lifecycles and other incremental readers use
+/// change-journal cursors), and an undrained tracker grows with every write,
 /// forever: component deltas, spawns, despawns and removals. It also slows
 /// every change record down, since each one searches the frame's list.
 /// Called once per frame by the game tick and the renderer; calling it
