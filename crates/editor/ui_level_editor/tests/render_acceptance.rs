@@ -776,6 +776,122 @@ fn meshes_and_lights_reach_the_frame_from_every_producer() {
 /// camera's post-process baseline, added through the editor's command path
 /// as component instances, change the rendered frame through the full
 /// default graph, and stop changing it when their instance is disabled.
+/// Phase 5 (Pulsar-Native#1035): the scene lifecycle needs no repair path.
+/// Undo and redo, replacing the level, and a second viewport on the same
+/// scene all reach the frame through the ordinary revision step -- there is
+/// no forced resync to call.
+#[test]
+fn history_level_replacement_and_viewports_need_no_resync() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, typed_mesh().bounds_local[3]);
+    let reference = {
+        let state = LevelEditorState::new();
+        let mut renderer = harness.renderer(&state);
+        harness.frames(&mut renderer, || {})
+    };
+    let observe = |name: &str, frame: Frame| {
+        frame.dump(&format!("lifecycle_{name}"));
+        frame.difference(&reference)
+    };
+
+    // ── Undo and redo restore the world in place ───────────────────────
+    {
+        let mut state = LevelEditorState::new();
+        let mut renderer = harness.renderer(&state);
+        harness.frames(&mut renderer, || {});
+        let id = drop_mesh(&mut state);
+        assert_drawn(
+            "placed",
+            observe("placed", harness.frames(&mut renderer, || {})),
+        );
+
+        execute_command(&mut state, SceneCommand::RemoveObject { id: id.clone() });
+        assert_not_drawn(
+            "removed",
+            observe("removed", harness.frames(&mut renderer, || {})),
+        );
+        assert!(state.scene.undo());
+        assert_drawn(
+            "undo restores it",
+            observe("undo", harness.frames(&mut renderer, || {})),
+        );
+        assert!(state.scene.redo());
+        assert_not_drawn(
+            "redo removes it",
+            observe("redo", harness.frames(&mut renderer, || {})),
+        );
+    }
+
+    // ── Opening a level into the running editor ────────────────────────
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mesh.level");
+        {
+            let mut authored = LevelEditorState::new();
+            drop_mesh(&mut authored);
+            ui_level_editor::scene_edit::level_io::save_to_file(&authored.scene.world(), &path)
+                .unwrap();
+        }
+        let mut state = LevelEditorState::new();
+        let mut renderer = harness.renderer(&state);
+        harness.frames(&mut renderer, || {});
+        ui_level_editor::scene_edit::level_io::load_from_file(&mut state.scene.world_mut(), &path)
+            .unwrap();
+        assert_drawn(
+            "opened level",
+            observe("opened", harness.frames(&mut renderer, || {})),
+        );
+
+        let empty = dir.path().join("empty.level");
+        ui_level_editor::scene_edit::level_io::save_to_file(
+            &LevelEditorState::new().scene.world(),
+            &empty,
+        )
+        .unwrap();
+        ui_level_editor::scene_edit::level_io::load_from_file(&mut state.scene.world_mut(), &empty)
+            .unwrap();
+        assert_not_drawn(
+            "replaced by an empty level",
+            observe("replaced", harness.frames(&mut renderer, || {})),
+        );
+    }
+
+    // ── Two viewports on one scene ─────────────────────────────────────
+    {
+        let mut state = LevelEditorState::new();
+        let mut first = harness.renderer(&state);
+        harness.frames(&mut first, || {});
+        let id = drop_mesh(&mut state);
+        assert_drawn(
+            "first viewport",
+            observe("first", harness.frames(&mut first, || {})),
+        );
+        let mut second = harness.renderer(&state);
+        assert_drawn(
+            "a viewport opened later",
+            observe("second", harness.frames(&mut second, || {})),
+        );
+        execute_command(&mut state, SceneCommand::RemoveObject { id });
+        assert_not_drawn(
+            "removal, second viewport first",
+            observe("second_removed", harness.frames(&mut second, || {})),
+        );
+        assert_not_drawn(
+            "removal, first viewport after",
+            observe("first_removed", harness.frames(&mut first, || {})),
+        );
+    }
+}
+
 #[test]
 fn environment_components_reach_the_frame() {
     use helio_component::components::{

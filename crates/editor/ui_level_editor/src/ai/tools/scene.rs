@@ -89,7 +89,7 @@ fn step_history(ctx: &ToolContext, steps: Option<u32>, redo: bool) -> Result<Val
     }
     if applied > 0 {
         state.scene.bump_revision(true);
-        state.scene.pending_renderer_resync = true;
+        state.scene.pending_selection_sync = true;
     }
     Ok(json!({
         "applied": applied,

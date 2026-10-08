@@ -309,11 +309,11 @@ impl LevelEditorPanel {
                     crate::ui::panel::pie::finish_stop(&mut s, false);
                 }
                 // Undo/redo from a caller without a renderer handle (the AI
-                // tools). Cleared only once the resync is actually queued.
-                if poll_state.read().scene.pending_renderer_resync {
+                // tools) may have changed the selection. Cleared only once
+                // the gizmo follows it.
+                if poll_state.read().scene.pending_selection_sync {
                     if let Ok(mut engine) = poll_gpu.try_lock() {
-                        poll_state.write().scene.pending_renderer_resync = false;
-                        engine.force_full_resync();
+                        poll_state.write().scene.pending_selection_sync = false;
                         engine.sync_selection_to_helio();
                     }
                 }

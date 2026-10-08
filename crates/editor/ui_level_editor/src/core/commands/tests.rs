@@ -68,6 +68,42 @@ mod undo_redo_tests {
         assert!(!state.scene.can_redo());
     }
 
+    fn object_count(state: &LevelEditorState) -> usize {
+        crate::scene_edit::objects::get_all_objects(&state.scene.world()).len()
+    }
+
+    /// Each history entry keeps the ids of both sides: redoing a removal
+    /// removes the object again, and undoing a redone add removes it again.
+    #[test]
+    fn redo_and_undo_keep_working_after_a_round_trip() {
+        let mut state = LevelEditorState::new();
+        let id = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: object("Cube"),
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone();
+        execute_command(&mut state, SceneCommand::RemoveObject { id });
+        assert_eq!(object_count(&state), 0);
+
+        assert!(state.scene.undo());
+        assert_eq!(object_count(&state), 1, "undo restores the removed object");
+        assert!(state.scene.redo());
+        assert_eq!(object_count(&state), 0, "redo removes it again");
+        assert!(state.scene.undo());
+        assert_eq!(object_count(&state), 1);
+
+        assert!(state.scene.undo());
+        assert_eq!(object_count(&state), 0, "undo the add");
+        assert!(state.scene.redo());
+        assert_eq!(object_count(&state), 1, "redo the add");
+        assert!(state.scene.undo());
+        assert_eq!(object_count(&state), 0, "undo a redone add");
+    }
+
     #[test]
     fn a_new_mutating_command_clears_the_redo_stack() {
         let mut state = LevelEditorState::new();

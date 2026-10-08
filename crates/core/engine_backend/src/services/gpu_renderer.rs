@@ -203,7 +203,7 @@ impl GpuRenderer {
     }
 
     /// Cheap, lock-free-of-`gpu_engine` handle bundle for one-shot editor
-    /// commands (gizmo mode, deselect, force-full-resync) -- see
+    /// commands (gizmo mode, deselect) -- see
     /// `HelioEditorMailbox`'s doc. Fetched once at panel construction.
     pub fn editor_mailbox(
         &self,
@@ -300,18 +300,6 @@ impl GpuRenderer {
         }
     }
 
-    /// Force the next scene sync to be a full (non-delta) pass. Callers must
-    /// call this after replacing `pulsar_scenedb::SceneDb`'s contents wholesale
-    /// rather than through its normal mutators -- undo/redo
-    /// (Pulsar-Native#554) being the motivating case. See
-    /// `HelioRenderer::force_full_resync`'s doc for why this can't be
-    /// skipped.
-    pub fn force_full_resync(&mut self) {
-        if let Some(r) = &mut self.helio_renderer {
-            r.force_full_resync();
-        }
-    }
-
     /// Send a fire-and-forget command to the renderer thread (e.g. ToggleFeature).
     pub fn send_renderer_command(
         &self,
@@ -399,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn editor_mailbox_queue_deselect_and_force_full_resync_set_their_flags() {
+    fn editor_mailbox_queue_deselect_sets_its_flag() {
         use std::sync::atomic::Ordering;
 
         let renderer = GpuRendererBuilder::new(1, 1).build();
@@ -408,7 +396,6 @@ mod tests {
             .expect("editor mailbox should exist");
 
         mailbox.queue_deselect();
-        mailbox.queue_force_full_resync();
 
         // `tests` is a child module of `gpu_renderer`, so it can reach
         // `GpuRenderer`'s private `helio_renderer` field directly to prove
@@ -418,6 +405,5 @@ mod tests {
         // underlying `AtomicBool`s the render thread would see.
         let inner = renderer.helio_renderer.as_ref().unwrap();
         assert!(inner.pending_deselect.load(Ordering::Acquire));
-        assert!(inner.pending_force_full_resync.load(Ordering::Acquire));
     }
 }

@@ -79,10 +79,10 @@ pub struct SceneDomain {
     /// Monotonic revision counter — bumped on every mutation so pollers
     /// (and the observer system) can detect external changes.
     pub revision: u64,
-    /// Set by callers without a renderer handle (the AI tools) after undo/redo;
-    /// the panel poller takes it and forces a full renderer resync, the same
-    /// thing the Undo/Redo actions do directly.
-    pub pending_renderer_resync: bool,
+    /// Set by callers without a renderer handle (the AI tools) after undo/redo,
+    /// which may change the selection; the panel poller takes it and points
+    /// the gizmo at the restored selection.
+    pub pending_selection_sync: bool,
     /// Undo history (Pulsar-Native#554) — one entry per mutating
     /// `SceneCommand` (`commands.rs::execute_command` pushes onto this),
     /// oldest first. Bounded at [`MAX_UNDO_HISTORY`].
@@ -107,7 +107,7 @@ impl Default for SceneDomain {
             current_scene: None,
             has_unsaved_changes: false,
             revision: 0,
-            pending_renderer_resync: false,
+            pending_selection_sync: false,
             undo_stack: VecDeque::with_capacity(MAX_UNDO_HISTORY),
             redo_stack: VecDeque::with_capacity(MAX_UNDO_HISTORY),
             voxel_undo: VecDeque::new(),
@@ -133,7 +133,7 @@ impl SceneDomain {
             current_scene: self.current_scene.clone(),
             has_unsaved_changes: self.has_unsaved_changes,
             revision: self.revision,
-            pending_renderer_resync: self.pending_renderer_resync,
+            pending_selection_sync: self.pending_selection_sync,
             undo_stack: VecDeque::new(),
             redo_stack: VecDeque::new(),
             voxel_undo: VecDeque::new(),
@@ -223,15 +223,8 @@ impl SceneDomain {
     // `execute_command` -- they have their own pre/post semantics (push onto
     // the *other* stack) that don't fit that flow.
     //
-    // Note for callers driving the renderer (`panel.rs`'s `on_undo`/
-    // `on_redo`): a successful restore replaces `WorldSceneStore` wholesale,
-    // which the renderer's delta-sync path (`HelioRenderer::sync_scene_delta`)
-    // can't correctly diff against its own `known_ids`/cache state -- it was
-    // never told about entities that silently stopped existing because the
-    // whole store swapped rather than being individually despawned. Callers
-    // MUST force a full resync afterward (`GpuRenderer::force_full_resync`)
-    // or removed objects can be left behind in the Helio scene. See that
-    // method's doc.
+    // Restores write through the World like any edit, so the renderer and
+    // every change watch follow them; nothing needs a resync afterward.
 
     /// Capture the scene's current state for later restore. Exposed so
     /// `execute_command` can capture *before* running a command (the state
@@ -276,9 +269,8 @@ impl SceneDomain {
     }
 
     /// Undo the last mutating command. Returns `true` if something was
-    /// undone (the caller should then force a renderer resync -- see this
-    /// section's top doc -- and bump the revision/mark unsaved, which this
-    /// method deliberately leaves to the caller since it has no `cx` to
+    /// undone (the caller should then bump the revision/mark unsaved, which
+    /// this method deliberately leaves to the caller since it has no `cx` to
     /// notify with here).
     pub fn undo(&mut self) -> bool {
         if let Some(journal) = self.voxel_undo.pop_back() {
@@ -298,9 +290,11 @@ impl SceneDomain {
             self.undo_stack.push_back(delta);
             return false;
         }
+        // Redo returns to the state just left. Keeping `before` keeps the
+        // ids it names in scope, so redoing a removal removes the object.
         self.redo_stack.push_back(SceneHistoryDelta {
-            before: current,
-            after: delta.after,
+            before: delta.before,
+            after: current,
         });
         if self.redo_stack.len() > MAX_UNDO_HISTORY {
             self.redo_stack.pop_front();
@@ -328,9 +322,11 @@ impl SceneDomain {
             self.redo_stack.push_back(delta);
             return false;
         }
+        // Undo returns to the state just left; `after` keeps its ids in
+        // scope, so undoing a redone add removes the object.
         self.undo_stack.push_back(SceneHistoryDelta {
-            before: delta.before,
-            after: current,
+            before: current,
+            after: delta.after,
         });
         if self.undo_stack.len() > MAX_UNDO_HISTORY {
             self.undo_stack.pop_front();
