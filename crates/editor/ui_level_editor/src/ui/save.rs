@@ -176,7 +176,8 @@ fn save_blocking(
     };
     let snapshot = {
         let scene = scene.read();
-        level_io::snapshot_level(&scene.world, &registry, editor_camera)
+        let settings = state.read().scene.world_settings.clone();
+        level_io::snapshot_level(&scene.world, &registry, editor_camera, settings)
     };
 
     // Write in save order; a snapshot older than one already written to the

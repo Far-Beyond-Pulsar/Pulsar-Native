@@ -33,6 +33,10 @@ pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 // Shared SceneDb <-> helio::Renderer seam (#637): GPU mirror attach
 // and Helio's scene join over the authored rows.
 pub mod helio_bridge;
+#[cfg(feature = "render")]
+mod material_graph;
+#[cfg(feature = "render")]
+mod material_textures;
 
 #[cfg(feature = "render")]
 pub use helio_bridge::{

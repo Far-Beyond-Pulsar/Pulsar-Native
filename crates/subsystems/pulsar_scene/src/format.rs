@@ -39,6 +39,12 @@ pub struct SceneFile {
     #[serde(default, skip_serializing)]
     pub editor: Value,
 
+    /// Editor-authored per-level settings. The editor owns the typed schema;
+    /// the runtime keeps this value opaque so a SceneFile load/save round-trip
+    /// does not discard settings added by newer editor versions.
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub world_settings: Value,
+
     // ── Blueprint class bindings (#650, legacy) ───────────────────────────
     /// **Legacy** (#921): placed classes are now a `ClassInstance` component
     /// on the object (`pulsar_class`). Loaders still read this section and

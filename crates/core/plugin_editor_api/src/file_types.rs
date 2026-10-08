@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::identifiers::FileTypeId;
 
+/// Replaced with one RFC 3339 UTC timestamp when a file type's default content
+/// is instantiated by the file manager.
+pub const CREATION_TIMESTAMP_PLACEHOLDER: &str = "${creation_timestamp}";
+
 // ============================================================================
 // File Type Definitions
 // ============================================================================
@@ -61,4 +65,10 @@ pub struct FileTypeDefinition {
     /// Examples: vec!["Data"], vec!["Data", "SQLite"], vec!["Scripts", "Web"]
     /// Leave empty for top-level menu items
     pub categories: Vec<String>,
+
+    /// Optional project-relative directory where new assets of this type are
+    /// created, regardless of the folder currently selected in the file manager.
+    /// This is useful for project assets with a canonical location, such as
+    /// type definitions under `types/traits`.
+    pub creation_directory: Option<String>,
 }
