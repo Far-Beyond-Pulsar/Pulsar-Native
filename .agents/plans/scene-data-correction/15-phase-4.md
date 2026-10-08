@@ -81,3 +81,45 @@ Tests:
 - `environment_components_reach_the_frame` has a water case. The pool changes the frame, and moving it away or disabling it restores the frame. Depth never changes.
 - The sweep shows only the known failures (see Stage 1).
 
+
+## Stage 3: foliage, splines, HLFS, voxel audit
+
+**Foliage: supported.** `FoliageComponent` derives `FoliageSourceRow` (`foliage_sources`): its foliage type row, a layer (half extent, infinite flag, altitude range) and its wind row. One source row feeds three join tables, each packed into leading rows:
+- `foliage_types`: up to 64 rows.
+- `foliage_layers`: up to 64 rows. Each layer is a world-aligned square centred on the owner, scaled by the owner's X and Z scale, spanning the authored altitudes.
+- `foliage_wind`: one row, from the first placed component.
+
+The join gained two abilities: a table can read a slice of a wider source row, and it can gate on one of the row's words (here, density). Tables that are not placed from transforms no longer re-derive when an unrelated object moves.
+
+The foliage passes changed in three ways:
+- **Type selection.** Placement draws a candidate's type from the leading rows that have a density (a per-workgroup scan), so a packed table's empty rows do not dilute density.
+- **Liveness gate.** Both passes run only while a type row is live (`foliage_type_liveness`, an async readback), so an all-empty table costs nothing, as an absent column did.
+- **Residency.** Residency now follows the type *and* layer contents; it used to follow only the type buffer's reallocation count, which a packed table never changes. The blade seed follows the types alone, so a tile re-placed because only the layers changed grows the same blades.
+
+Limitations, recorded in the ledger:
+- Grass grows on flat ground at Y 0, because the editor has no terrain capture.
+- Every type grows in every layer.
+- The first component's wind applies to all.
+- Wind does not animate: no frame clock reaches the row.
+- The interactor and material colour fields have no consumer.
+
+**Splines: change-driven.** `SplineLines` reads SceneDB's change journal for:
+- spline values and attachment state;
+- spline owners' transforms, visibility and selection.
+
+It rebuilds the editor's spline debug lines only when one of those changes. Previously the renderer walked every spline on each scene sync.
+
+**HLFS: outside the engine.** `HlfsPass` reads its TLAS from the renderer's `RenderEnvironment`, not the World. The World reader is `SceneDbRayTracing`, a host-side adapter in the pass crate that only Helio's examples call; the engine never builds the HLFS graph. A TLAS needs CPU instance inputs, so a host adapter is the right shape. Moving it out of the pass crate is queued as a Helio follow-up.
+
+**Voxel audit.** The voxel-planet pass reads no scene buffers. The host hands it a CPU `PlanetFrame` (`Arc<Planet>` and the sun), and the pass syncs journal edits to the GPU incrementally, which is real, change-driven work.
+
+Changed in this stage:
+- **Scene read cached by revision.** The renderer's voxel scene read (terrain entries, generator settings, sky and mesh flags, sun) used to run on every frame, including camera-only ones. It is now cached by world revision.
+- **Sun visibility.** The voxel sun ignores directional lights whose owner is hidden, matching the scene join.
+
+Recorded, not changed:
+- Generator settings reach the generator as a JSON string. That is the generator plugin boundary, now serialised only when the world changes.
+- The CPU planet rebuild runs synchronously on the render thread.
+- Renderer brush commits bypass `append_edits`' validation and block events.
+- Two CPU planet caches exist (the renderer's and `voxel_world::WORLDS`).
+- A free-standing `VoxelComponent` has no renderer. Stage 4 reports it unsupported.
