@@ -989,16 +989,6 @@ test = "crates/core/engine_backend/src/scene/runtime_level.rs a_legacy_flat_ligh
 status = "verified"
 
 [[site]]
-pattern = "force-resync"
-file = "crates/core/engine_backend/src/services/gpu_renderer.rs"
-count = 1
-owner = "core::engine_backend::services::gpu_renderer"
-disposition = "remove: no repair path may be required for missing scene rows"
-target_contract = "Phase 5; 07-assets-and-runtime-lifecycle.md"
-test = "none: idle wake-up / level replacement without resync"
-status = "at-risk"
-
-[[site]]
 pattern = "mirror-replay"
 file = "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs"
 count = 1
@@ -1148,26 +1138,6 @@ disposition = "converted (Phase 3): curves are read and written as typed SplineC
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
 test = "crates/editor/ui_level_editor/src/core/splines.rs curves_are_scene_objects_and_edits_are_undoable"
 status = "verified"
-
-[[site]]
-pattern = "force-resync"
-file = "crates/editor/ui_level_editor/src/ui/panel/handlers/objects.rs"
-count = 2
-owner = "editor::ui_level_editor::ui::panel::handlers::objects"
-disposition = "remove: no repair path may be required for missing scene rows"
-target_contract = "Phase 5; 07-assets-and-runtime-lifecycle.md"
-test = "none: idle wake-up / level replacement without resync"
-status = "at-risk"
-
-[[site]]
-pattern = "force-resync"
-file = "crates/editor/ui_level_editor/src/ui/panel/lifecycle.rs"
-count = 1
-owner = "editor::ui_level_editor::ui::panel::lifecycle"
-disposition = "remove: no repair path may be required for missing scene rows"
-target_contract = "Phase 5; 07-assets-and-runtime-lifecycle.md"
-test = "none: idle wake-up / level replacement without resync"
-status = "at-risk"
 
 [[site]]
 pattern = "add-component"

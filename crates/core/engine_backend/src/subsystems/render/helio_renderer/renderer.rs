@@ -106,15 +106,15 @@ pub struct VoxelBrushRequest {
 }
 
 /// Cheap, `Clone`-able handle bundle for issuing editor commands
-/// (gizmo-mode change, deselect, force-full-resync) without ever taking
+/// (gizmo-mode change, deselect) without ever taking
 /// `gpu_engine`'s blocking `std::sync::Mutex`.
 ///
 /// `panel.rs` previously did `self.gpu_engine.lock()` for several one-shot
-/// UI actions (tool switch, undo/redo, escape-to-deselect) -- a blocking
+/// UI actions (tool switch, escape-to-deselect) -- a blocking
 /// call that could stall the UI thread for as long as the render thread
 /// holds `gpu_engine` (unconditionally, every frame, for the whole
-/// `render_frame` call). Each of `queue_gizmo`/`queue_deselect`/
-/// `queue_force_full_resync` below only ever touches its own small
+/// `render_frame` call). Each of `queue_gizmo`/`queue_deselect` below only
+/// ever touches its own small
 /// `Arc<Mutex<...>>`/`Arc<AtomicBool>` mailbox (or `scene_store`'s already
 /// cheap mailbox state) -- never `gpu_engine` -- so none of them can block on
 /// the render thread's
@@ -124,7 +124,6 @@ pub struct HelioEditorMailbox {
     pending_gizmo_mode: Arc<Mutex<Option<GizmoMode>>>,
     pending_camera_state: Arc<Mutex<Option<EditorCameraState>>>,
     pending_deselect: Arc<AtomicBool>,
-    pending_force_full_resync: Arc<AtomicBool>,
     viewport_bloom: Arc<AtomicBool>,
     static_drag_warning: Arc<Mutex<Option<StaticDragWarning>>>,
 }
@@ -169,14 +168,6 @@ impl HelioEditorMailbox {
     /// Request that the SceneDB selection is cleared next frame.
     pub fn queue_deselect(&self) {
         self.pending_deselect.store(true, Ordering::Relaxed);
-    }
-
-    /// Request a fresh SceneDB step at the start of the next render frame.
-    /// See HelioRenderer::pending_force_full_resync's doc for why this
-    /// must never be silently dropped.
-    pub fn queue_force_full_resync(&self) {
-        self.pending_force_full_resync
-            .store(true, Ordering::Relaxed);
     }
 
     /// Show or hide bloom in the viewport (the toolbar's Bloom toggle). The
@@ -236,12 +227,6 @@ pub struct HelioRenderer {
     /// Left-click/left-release events queued by the UI thread, drained in
     /// order at the top of every `render_frame` -- see [`PendingPointerEvent`].
     pub pending_pointer_events: Arc<Mutex<Vec<PendingPointerEvent>>>,
-    /// When true, the render thread should call `force_full_resync()` next
-    /// frame. Unlike `pending_deselect` this is correctness-load-bearing,
-    /// not just UX (see `force_full_resync`'s own doc) -- undo/redo route
-    /// through this instead of a `gpu_engine.lock()` that could silently
-    /// drop the request the same way the old click/release path could.
-    pub pending_force_full_resync: Arc<AtomicBool>,
     /// The toolbar's Bloom toggle; see [`HelioEditorMailbox::set_viewport_bloom`].
     pub viewport_bloom: Arc<AtomicBool>,
     /// Written by the render thread when a gizmo drag starts on a fixed-
@@ -399,7 +384,6 @@ impl HelioRenderer {
             pending_camera_state: Arc::new(Mutex::new(None)),
             pending_deselect: Arc::new(AtomicBool::new(false)),
             pending_pointer_events: Arc::new(Mutex::new(Vec::new())),
-            pending_force_full_resync: Arc::new(AtomicBool::new(false)),
             // Matches the toolbar's default until the UI reports its state.
             viewport_bloom: Arc::new(AtomicBool::new(true)),
             static_drag_warning: Arc::new(Mutex::new(None)),
@@ -834,13 +818,13 @@ impl HelioRenderer {
         // before Helio reads it.
 
         let needs_initial_scene_sync = !inner.has_rendered_frame;
-        let force_scene_sync = self.pending_force_full_resync.swap(false, Ordering::AcqRel);
-        let has_pending_scene = needs_initial_scene_sync
-            || force_scene_sync
-            || scene_revision != inner.last_scene_revision;
+        // Every scene change -- edits, undo/redo, opening a level -- goes
+        // through the World's normal write path and advances its revision,
+        // so the revision alone wakes the renderer; there is no resync.
+        let has_pending_scene =
+            needs_initial_scene_sync || scene_revision != inner.last_scene_revision;
         let has_pending_editor = self.pending_deselect.load(Ordering::Acquire)
-            || self.pending_gizmo_mode.lock().is_ok_and(|g| g.is_some())
-            || self.pending_force_full_resync.load(Ordering::Acquire);
+            || self.pending_gizmo_mode.lock().is_ok_and(|g| g.is_some());
         let camera_stopped = self.cam_local_velocity.length_squared() <= CAMERA_IDLE_EPSILON
             && !self.had_camera_input;
         let is_idle = camera_stopped
@@ -879,13 +863,6 @@ impl HelioRenderer {
                 inner.interaction.set_mode(mode);
                 self.gizmo_dirty = true;
             }
-        }
-        // Inlined rather than calling `self.force_full_resync()` -- `inner`
-        // above is already a live `&mut` borrow of `self.inner` at this
-        // point, and `force_full_resync` needs the same borrow itself.
-        if force_scene_sync {
-            inner.last_scene_revision = 0;
-            inner.has_rendered_frame = false;
         }
 
         // ── Early out when idle ─────────────────────────────────────────────────
@@ -1502,21 +1479,8 @@ impl HelioRenderer {
         }
     }
 
-    pub fn queue_force_full_resync(&self) {
-        self.pending_force_full_resync
-            .store(true, Ordering::Release);
-    }
-
     pub fn get_scene_db_selected_id(&self) -> Option<String> {
         self.scene_store.read().world.selected_id()
-    }
-
-    pub fn force_full_resync(&mut self) {
-        if let Some(inner) = &mut self.inner {
-            inner.last_scene_revision = 0;
-            inner.has_rendered_frame = false;
-            inner.interaction.cancel_drag();
-        }
     }
 
     pub fn editor_mailbox(&self) -> HelioEditorMailbox {
@@ -1524,7 +1488,6 @@ impl HelioRenderer {
             pending_gizmo_mode: self.pending_gizmo_mode.clone(),
             pending_camera_state: self.pending_camera_state.clone(),
             pending_deselect: self.pending_deselect.clone(),
-            pending_force_full_resync: self.pending_force_full_resync.clone(),
             viewport_bloom: self.viewport_bloom.clone(),
             static_drag_warning: self.static_drag_warning.clone(),
         }
