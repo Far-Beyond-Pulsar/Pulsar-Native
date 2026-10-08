@@ -37,14 +37,14 @@ macro_rules! declare_unfinished_component {
 
 /// `class_name`'s declaration, if it is unfinished.
 pub fn unfinished_component(class_name: &str) -> Option<&'static UnfinishedComponentRegistration> {
-    inventory::iter::<UnfinishedComponentRegistration>
+    crate::runtime::unfinished().iter().copied()
         .into_iter()
         .find(|registration| registration.class_name == class_name)
 }
 
 /// Every declared unfinished class, for listings and audits.
 pub fn unfinished_components() -> impl Iterator<Item = &'static UnfinishedComponentRegistration> {
-    inventory::iter::<UnfinishedComponentRegistration>.into_iter()
+    crate::runtime::unfinished().iter().copied().into_iter()
 }
 
 static REPORTED: Mutex<Option<HashSet<String>>> = Mutex::new(None);

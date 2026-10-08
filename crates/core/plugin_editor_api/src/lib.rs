@@ -139,3 +139,4 @@ pub use serde_json::Value as JsonValue;
 /// built-in events). `export_plugin!` wires every plugin library to the
 /// host's bus through it (Pulsar-Native#930).
 pub use pulsar_events;
+pub use pulsar_world_registry;

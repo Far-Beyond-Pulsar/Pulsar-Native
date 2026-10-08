@@ -5,7 +5,6 @@
 //! source of truth to keep in step with the world (and nothing to rebuild when a
 //! world is swapped, undone or reloaded).
 
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use pulsar_scenedb::{Entity, World};
 
@@ -15,12 +14,11 @@ use crate::components::{
 use crate::ObjectType;
 
 /// Monotonic source for [`SiblingIndex`] values and generated ids. Process
-/// wide on purpose: it only has to keep spawn order stable and ids unique, and
-/// it never needs to agree between worlds.
-static NEXT_ORDINAL: AtomicU64 = AtomicU64::new(1);
-
+/// wide on purpose (shared by every linked copy, through
+/// [`crate::runtime`]): it only has to keep spawn order stable and ids
+/// unique, and it never needs to agree between worlds.
 fn next_ordinal() -> u64 {
-    NEXT_ORDINAL.fetch_add(1, Ordering::Relaxed)
+    (crate::runtime::runtime().next_ordinal)()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

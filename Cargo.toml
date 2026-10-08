@@ -21,11 +21,10 @@ members = [
     # `cargo test -p helio_component` because it could not build its
     # dev-dependencies.
     "crates/renderer/helio/crates/helio-component",
-    # Fixtures for plugin_manager's world-component plugin tests (#1081):
+    # Fixtures for plugin_manager's world-component plugin tests (#1083):
     # members so they build against this workspace's patched SceneDB and
     # Pulsar-Reflection, as editor plugins do.
     "crates/core/plugin_manager/tests/fixtures/world_plugins/host",
-    "crates/core/plugin_manager/tests/fixtures/world_plugins/shared_plugin",
     "crates/core/plugin_manager/tests/fixtures/world_plugins/static_plugin",
 ]
 
@@ -149,8 +148,8 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "a98ff98e1b446e0f44f4200c005faa0c1f2842b2", features = ["gpu"] }
-pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "a98ff98e1b446e0f44f4200c005faa0c1f2842b2" }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "992378090e211e8cc6aec0299a20ab9c547fd51c", features = ["gpu"] }
+pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "992378090e211e8cc6aec0299a20ab9c547fd51c" }
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
@@ -497,5 +496,5 @@ pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/p
 # object subscriptions, with process-unique ids, replacing the destructive per-key queue; Phase 7: a read-only get_mut guard uploads nothing).
 # NOT YET MERGED upstream: merge those branches and repin to the merged rev
 # before this lands.
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "a98ff98e1b446e0f44f4200c005faa0c1f2842b2" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "a98ff98e1b446e0f44f4200c005faa0c1f2842b2" }
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "992378090e211e8cc6aec0299a20ab9c547fd51c" }
+pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "992378090e211e8cc6aec0299a20ab9c547fd51c" }
