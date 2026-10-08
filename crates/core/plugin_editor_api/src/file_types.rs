@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::identifiers::FileTypeId;
 
+/// Replaced with one RFC 3339 UTC timestamp when a file type's default content
+/// is instantiated by the file manager.
+pub const CREATION_TIMESTAMP_PLACEHOLDER: &str = "${creation_timestamp}";
+
 // ============================================================================
 // File Type Definitions
 // ============================================================================

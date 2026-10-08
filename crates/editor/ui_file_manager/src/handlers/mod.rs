@@ -101,11 +101,28 @@ pub fn handle_create_asset(
     action: &CreateAsset,
     cx: &mut Context<FileManagerDrawer>,
 ) {
-    let ft = d
+    let mut ft = d
         .registered_file_types
         .iter()
         .find(|x| x.id.as_str() == action.file_type_id)
         .cloned();
+    if let Some(file_type) = ft.as_mut() {
+        let created_at = chrono::Utc::now().to_rfc3339();
+        instantiate_creation_timestamp(&mut file_type.default_content, &created_at);
+        if let plugin_editor_api::FileStructure::FolderBased {
+            template_structure, ..
+        } = &mut file_type.structure
+        {
+            for template in template_structure {
+                if let plugin_editor_api::PathTemplate::File { content, .. } = template {
+                    *content = content.replace(
+                        plugin_editor_api::CREATION_TIMESTAMP_PLACEHOLDER,
+                        &created_at,
+                    );
+                }
+            }
+        }
+    }
     let creation_directory = ft
         .as_ref()
         .and_then(|file_type| file_type.creation_directory.clone());
@@ -231,6 +248,29 @@ pub fn handle_create_asset(
         }
         d.mark_directory_cache_dirty();
         cx.notify();
+    }
+}
+
+/// Resolve template values at asset creation time, so timestamps describe the
+/// created asset rather than the moment its editor registered the file type.
+fn instantiate_creation_timestamp(value: &mut serde_json::Value, created_at: &str) {
+    match value {
+        serde_json::Value::String(text)
+            if text == plugin_editor_api::CREATION_TIMESTAMP_PLACEHOLDER =>
+        {
+            *text = created_at.to_owned();
+        }
+        serde_json::Value::Array(items) => {
+            for item in items {
+                instantiate_creation_timestamp(item, created_at);
+            }
+        }
+        serde_json::Value::Object(fields) => {
+            for field in fields.values_mut() {
+                instantiate_creation_timestamp(field, created_at);
+            }
+        }
+        _ => {}
     }
 }
 

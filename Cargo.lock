@@ -6754,6 +6754,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "mockaco-core"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=46a5807da4d5d86b7334ccf7cc2577f022b7bc12#46a5807da4d5d86b7334ccf7cc2577f022b7bc12"
+
+[[package]]
+name = "mockaco-diff"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=46a5807da4d5d86b7334ccf7cc2577f022b7bc12#46a5807da4d5d86b7334ccf7cc2577f022b7bc12"
+dependencies = [
+ "mockaco-core",
+ "similar 3.2.0",
+]
+
+[[package]]
+name = "mockaco-gpui"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=46a5807da4d5d86b7334ccf7cc2577f022b7bc12#46a5807da4d5d86b7334ccf7cc2577f022b7bc12"
+dependencies = [
+ "mockaco-core",
+ "mockaco-diff",
+ "mockaco-renderer",
+]
+
+[[package]]
+name = "mockaco-renderer"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Mockaco?rev=46a5807da4d5d86b7334ccf7cc2577f022b7bc12#46a5807da4d5d86b7334ccf7cc2577f022b7bc12"
+dependencies = [
+ "mockaco-core",
+]
+
+[[package]]
 name = "mockall"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10931,6 +10963,9 @@ dependencies = [
  "futures",
  "gpui-ce",
  "log",
+ "mockaco-core",
+ "mockaco-diff",
+ "mockaco-gpui",
  "parking_lot",
  "plugin_editor_api",
  "rust-i18n",
@@ -10945,6 +10980,7 @@ dependencies = [
  "ui_common",
  "ui_types_common",
  "uuid",
+ "wgpui-base",
 ]
 
 [[package]]
