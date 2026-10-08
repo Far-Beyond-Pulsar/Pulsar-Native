@@ -1350,3 +1350,68 @@ fn mesh_and_light_variations_reach_the_frame() {
         );
     }
 }
+
+/// Real render output (Pulsar-Native#1035 acceptance, #1081): a spline added
+/// through the editor is drawn by the editor debug pass, follows its owner,
+/// and disappears when disabled or removed.
+#[test]
+fn splines_reach_the_frame() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let radius = 50.0;
+    let harness = Harness::new(device, queue, radius);
+    let mut state = LevelEditorState::new();
+    let mut renderer = harness.renderer(&state);
+    let reference = harness.frames(&mut renderer, || {});
+
+    let id = add_object(&mut state, "Spline", ObjectType::Empty);
+    let point = |position: [f32; 3]| json!({ "position": position });
+    components::add_component(
+        &mut state.scene.world_mut(),
+        &id,
+        "SplineComponent".to_string(),
+        json!({
+            "points": [
+                point([-radius, 0.0, 0.0]),
+                point([0.0, radius * 0.5, 0.0]),
+                point([radius, 0.0, 0.0]),
+            ],
+        }),
+    );
+    assert!(
+        components::instance_at(&state.scene.world(), &id, 0).is_some(),
+        "the spline attached"
+    );
+    let drawn = harness.frames(&mut renderer, || {});
+    reference.dump("spline_reference");
+    drawn.dump("spline_drawn");
+    let change = drawn.difference(&reference);
+    println!("PHASE7 spline: {change:?}");
+    assert!(change.color_pixels > 0, "the spline was not drawn ({change:?})");
+
+    move_to(&mut state, &id, [0.0, radius * 0.6, 0.0]);
+    let moved = harness.frames(&mut renderer, || {});
+    assert!(moved.difference(&drawn).color_pixels > 0, "the spline did not follow its owner");
+
+    assert!(components::set_component_enabled(&mut state.scene.world_mut(), &id, 0, false));
+    let disabled = harness.frames(&mut renderer, || {});
+    assert!(
+        disabled.difference(&reference).color_pixels < change.color_pixels / 4,
+        "a disabled spline is still drawn"
+    );
+    assert!(components::set_component_enabled(&mut state.scene.world_mut(), &id, 0, true));
+    assert!(harness.frames(&mut renderer, || {}).difference(&reference).color_pixels > 0);
+
+    components::remove_component(&mut state.scene.world_mut(), &id, 0);
+    let removed = harness.frames(&mut renderer, || {});
+    assert!(
+        removed.difference(&reference).color_pixels < change.color_pixels / 4,
+        "a removed spline is still drawn"
+    );
+}
