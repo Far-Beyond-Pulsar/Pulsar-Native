@@ -40,6 +40,10 @@ pub use script_ref_bridge::{entity_with_stable_id, first_entity_named};
 
 #[cfg(feature = "render")]
 pub mod editor_rows;
+// Rows authored by components' runtime behavior (atmosphere, post-process
+// volumes, fog, reflection captures, water, portals, foliage).
+#[cfg(feature = "render")]
+pub mod component_rows;
 #[cfg(feature = "render")]
 // Shared WorldSceneStore <-> helio::Renderer operations (#637): GPU seam
 // attach + per-frame static-mesh/light frame assembly.

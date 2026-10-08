@@ -83,6 +83,7 @@ fn relative_camera_source_schema_compatible(store: &pulsar_scenedb::gpu::SceneGp
         "Transform::packed" => crate::scene::Transform::packed_gpu_component_id(),
         "LightComponentGpuMirror::packed" => helio_component::components::LightComponentGpuMirror::packed_gpu_component_id(),
         "camera_postprocess" => helio_pass_postprocess::CameraPostProcessComponent::packed_gpu_component_id(),
+        "atmospheres" => helio_pass_sky::AtmosphereComponent::packed_gpu_component_id(),
         "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles" => {
             return store.buffer_registry().element_type(key) == Some(Some(std::any::TypeId::of::<pulsar_scenedb::gpu::VarLenHandle>()));
         }
@@ -104,7 +105,7 @@ fn relative_camera_source_compatible(key: &str, kind: &str, mode: Option<pulsar_
         | "scene_lights" | "billboard_instances" | "static_objects" | "decals"
         | "water_volumes" | "water_hitboxes" | "render_groups" | "sublevels"
         | "sublevel_actors" | "sectioned_objects" | "materials" | "Transform::packed"
-        | "LightComponentGpuMirror::packed" | "camera_postprocess"
+        | "LightComponentGpuMirror::packed" | "camera_postprocess" | "atmospheres"
         | "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles" =>
             kind == "row" && mode == Some(MirrorMode::DirtyTracked),
         "builtin_mesh_vertex" | "builtin_mesh_index" =>
@@ -139,6 +140,10 @@ fn relative_camera_world_compatible(world: &pulsar_scenedb::World) -> bool {
         component_id::<helio_pass_billboard::BillboardComponent>(),
         component_id::<helio_pass_gbuffer::MaterialComponent>(),
         component_id::<helio_pass_postprocess::CameraPostProcessComponent>(),
+        // The atmosphere pass subtracts the world origin from the planet's
+        // centre on the GPU.
+        component_id::<helio_component::AtmosphereComponent>(),
+        component_id::<helio_pass_sky::AtmosphereComponent>(),
     ];
     world.archetypes.iter().filter(|archetype| !archetype.entities.is_empty()).all(|archetype|
         archetype.key.0.iter().all(|id| allowed.contains(id)
@@ -1124,6 +1129,8 @@ impl HelioRenderer {
             };
             let mut dirty_meshes = HashSet::new();
             let mut dirty_lights = HashSet::new();
+            let mut dirty_component_rows = HashSet::new();
+            let component_row_sources = crate::scene::component_rows::component_row_sources();
             let mesh_components = [
                 pulsar_scenedb::component_id::<helio_component::components::StaticMeshComponent>(),
                 pulsar_scenedb::component_id::<crate::scene::Transform>(),
@@ -1144,6 +1151,9 @@ impl HelioRenderer {
                 if light_components.contains(&event.component) {
                     dirty_lights.insert(event.entity);
                 }
+                if component_row_sources.contains(&event.component) {
+                    dirty_component_rows.insert(event.entity);
+                }
             }
             let full_projection = !self.render_row_subscriptions_armed || !inner.has_rendered_frame;
             let mesh_dirty = (!full_projection).then_some(&dirty_meshes);
@@ -1159,6 +1169,20 @@ impl HelioRenderer {
             {
                 profiling::profile_scope!("helio_sync_static_mesh_rows");
                 crate::scene::sync_static_mesh_rows(&mut scene_store, mesh_dirty);
+            }
+            {
+                profiling::profile_scope!("helio_sync_component_rows");
+                let project_root = engine_state::get_project_path().map(std::path::PathBuf::from).unwrap_or_default();
+                let errors = crate::scene::component_rows::sync_component_rows(
+                    &mut scene_store.world,
+                    (!full_projection).then_some(&dirty_component_rows),
+                    &project_root,
+                );
+                if !errors.is_empty() {
+                    if let Ok(mut pending) = self.pending_errors.lock() {
+                        pending.extend(errors);
+                    }
+                }
             }
             if full_projection {
                 crate::scene::arm_render_row_subscriptions(&mut scene_store.world);
@@ -1194,14 +1218,9 @@ impl HelioRenderer {
         phases.mark("inspector");
 
         // ── Camera / gizmo / render ─────────────────────────────────────────────
-        let (voxel_entries, mut voxel_errors, authored_sky, authored_meshes, sun) = {
+        let (voxel_entries, mut voxel_errors, authored_meshes, sun) = {
             let store = self.scene_store.read();
             let (entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&store.world);
-            let authored_sky = store
-                .world
-                .query::<&helio_pass_sky::SkyComponent>()
-                .next()
-                .is_some();
             let authored_meshes = store.world
                 .query::<&helio_pass_gbuffer::StaticObjectComponent>().next().is_some();
             // Voxel terrain traces sunlight towards the scene's directional
@@ -1214,11 +1233,10 @@ impl HelioRenderer {
                     let d = light.direction_outer;
                     [-d[0], -d[1], -d[2]]
                 });
-            (entries, errors, authored_sky, authored_meshes, sun)
+            (entries, errors, authored_meshes, sun)
         };
         phases.mark("project");
-        let outdoor_sky = self.voxel_backends.uses_outdoor_sky(&voxel_entries);
-        let camera_relative = outdoor_sky && {
+        let camera_relative = self.voxel_backends.uses_camera_relative_frames(&voxel_entries) && {
             let store = self.scene_store.read();
             self.relative_camera_gate.compatible(&store.world)
         };
@@ -1243,7 +1261,7 @@ impl HelioRenderer {
             let flight_ready = inner.has_rendered_frame
                 && !self.voxel_backends.needs_frame(&inner.renderer)
                 && self.pending_view_direction.is_none()
-                && self.voxel_backends.planetary_sky(&voxel_entries, self.cam_pos, sun).is_some();
+                && self.voxel_altitude.is_some();
             let flight_interrupted = had_input || (external_camera && self.native_voxel_flight.running());
             if let Some(pose) = self.native_voxel_flight.advance(now, flight_ready,
                 flight_interrupted, self.cam_pos, self.voxel_altitude,
@@ -1255,7 +1273,7 @@ impl HelioRenderer {
             }
         }
         phases.mark("flight");
-        self.voxel_up = self.voxel_backends.ambient_up(&voxel_entries, self.cam_pos);
+        self.voxel_up = self.voxel_backends.local_up(&voxel_entries, self.cam_pos);
         phases.mark("up");
         let target = self.voxel_up.map_or(Vec3::Y, |up| up.as_vec3()).normalize_or(Vec3::Y);
         match self.pending_view_direction.take() {
@@ -1318,26 +1336,6 @@ impl HelioRenderer {
         }
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
-        if outdoor_sky {
-            inner.renderer.set_ambient([0.55, 0.68, 0.88], 1.25);
-        } else {
-            inner.renderer.set_ambient([0.0, 0.0, 0.0], 0.0);
-        }
-        // Hemisphere fill around a terrain's local vertical, with a
-        // sunlit-ground bounce from below; plain ambient otherwise.
-        let ambient_up = outdoor_sky
-            .then(|| self.voxel_backends.ambient_up(&voxel_entries, self.cam_pos))
-            .flatten();
-        inner.renderer.set_ambient_hemisphere(
-            ambient_up.map_or([0.0, 1.0, 0.0], |up| up.as_vec3().to_array()),
-            ambient_up.map(|_| [0.3, 0.34, 0.2]),
-        );
-        inner
-            .renderer
-            .set_fallback_sky_enabled(outdoor_sky && !authored_sky);
-        inner.renderer.set_planetary_sky(
-            (!authored_sky).then(|| self.voxel_backends.planetary_sky(&voxel_entries, self.cam_pos, sun)).flatten(),
-        );
         if self.voxel_stats_log && self.last_voxel_stats_log.elapsed().as_secs_f32() >= 0.5 {
             self.last_voxel_stats_log = Instant::now();
             for line in self.voxel_backends.diagnostics(&inner.renderer) {

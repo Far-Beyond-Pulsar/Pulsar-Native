@@ -88,16 +88,13 @@ pub trait VoxelRenderBackend: Send {
     fn temporal_quality(&self, _size: [u32; 2]) -> Option<helio_pass_tsr::TsrQuality> {
         None
     }
-    /// Outdoor backends may use the sky pass's default atmosphere when the
-    /// scene has no explicitly authored sky component.
-    fn outdoor_sky(&self) -> bool {
+    /// Worlds whose coordinates outgrow f32 precision render camera-relative
+    /// frames (world origin at the eye) when every scene source allows it.
+    fn camera_relative_frames(&self) -> bool {
         false
     }
-    fn planetary_sky(&self, _source: &VoxelSceneEntry, _eye: DVec3, _sun: Option<[f32; 3]>) -> Option<helio_pass_sky::PlanetarySky> {
-        None
-    }
-    /// Local vertical at `eye` for hemisphere ambient (a planet's radial).
-    fn ambient_up(&self, _source: &VoxelSceneEntry, _eye: DVec3) -> Option<DVec3> {
+    /// Local vertical at `eye` (a planet's radial): the camera's up.
+    fn local_up(&self, _source: &VoxelSceneEntry, _eye: DVec3) -> Option<DVec3> {
         None
     }
     /// Height of `eye` above the source's ground directly below it, if the
@@ -204,7 +201,7 @@ impl VoxelBackendRegistry {
             .collect()
     }
 
-    pub fn uses_outdoor_sky(&self, entries: &[VoxelSceneEntry]) -> bool {
+    pub fn uses_camera_relative_frames(&self, entries: &[VoxelSceneEntry]) -> bool {
         let mut selected = self.backends.iter().filter(|backend| {
             entries.iter().any(|entry| {
                 if entry.renderer_id.is_empty() {
@@ -214,7 +211,7 @@ impl VoxelBackendRegistry {
                 }
             })
         });
-        selected.any(|backend| backend.outdoor_sky())
+        selected.any(|backend| backend.camera_relative_frames())
     }
 
     pub fn configure_appearance(&self, renderer: &mut helio::Renderer, entries: &[VoxelSceneEntry]) -> Vec<String> {
@@ -230,17 +227,7 @@ impl VoxelBackendRegistry {
     }
 
     /// Local vertical of the first visible source that defines one.
-    pub fn planetary_sky(&self, entries: &[VoxelSceneEntry], eye: DVec3, sun: Option<[f32; 3]>) -> Option<helio_pass_sky::PlanetarySky> {
-        // Hiding the terrain mesh does not remove its camera environment.
-        entries.iter().find_map(|entry| {
-            self.backends.iter().filter(|backend| {
-                entry.renderer_id == backend.renderer_id() || (entry.renderer_id.is_empty() && backend.supports(entry))
-            }).find_map(|backend| backend.planetary_sky(entry, eye, sun))
-        })
-    }
-
-    /// Local vertical of the first visible source that defines one.
-    pub fn ambient_up(&self, entries: &[VoxelSceneEntry], eye: DVec3) -> Option<DVec3> {
+    pub fn local_up(&self, entries: &[VoxelSceneEntry], eye: DVec3) -> Option<DVec3> {
         entries.iter().filter(|entry| entry.visible).find_map(|entry| {
             self.backends
                 .iter()
@@ -248,7 +235,7 @@ impl VoxelBackendRegistry {
                     entry.renderer_id == backend.renderer_id()
                         || (entry.renderer_id.is_empty() && backend.supports(entry))
                 })
-                .find_map(|backend| backend.ambient_up(entry, eye))
+                .find_map(|backend| backend.local_up(entry, eye))
         })
     }
 
@@ -665,7 +652,7 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         })
     }
 
-    fn outdoor_sky(&self) -> bool {
+    fn camera_relative_frames(&self) -> bool {
         true
     }
 
@@ -690,18 +677,11 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
         self.cached_planet(source).map(|planet| planet.surface_point(direction, clearance))
     }
 
-    fn ambient_up(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<DVec3> {
+    fn local_up(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<DVec3> {
         match source.world.shape {
             VoxelWorldShape::Sphere => eye.try_normalize(),
             VoxelWorldShape::Plane | VoxelWorldShape::InfinitePlane => Some(DVec3::Y),
         }
-    }
-
-    fn planetary_sky(&self, source: &VoxelSceneEntry, eye: DVec3, sun: Option<[f32; 3]>) -> Option<helio_pass_sky::PlanetarySky> {
-        if source.world.shape != VoxelWorldShape::Sphere { return None; }
-        let sun = sun.map(Vec3::from_array).and_then(Vec3::try_normalize)
-            .unwrap_or(Vec3::new(0.35, 0.75, 0.45).normalize());
-        Some(helio_pass_sky::PlanetarySky::earth_like(eye.to_array(), source.world.planet_radius, sun.to_array()))
     }
 
     fn camera_clip_range(&self, source: &VoxelSceneEntry, eye: DVec3) -> Option<(f32, f32)> {
@@ -926,25 +906,6 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn planetary_environment_uses_scaled_world_eye_and_scene_sun_even_if_terrain_is_hidden() {
-        let mut scene = World::new();
-        let entity = scene.spawn();
-        scene.insert(entity, planet_terrain());
-        let (mut entries, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
-        assert!(errors.is_empty());
-        entries[0].visible = false;
-        entries[0].world.planet_radius = 12_742_000.0;
-        let mut registry = VoxelBackendRegistry::new();
-        registry.register(Box::new(PlanetVoxelBackend::new())).unwrap();
-        let eye = DVec3::X * 12_745_000.0;
-        let sky = registry.planetary_sky(&entries, eye, Some([2.0, 0.0, 0.0])).unwrap();
-        assert_eq!(sky.eye_m, eye.to_array());
-        assert_eq!(sky.radius_m, 12_742_000.0);
-        assert_eq!(sky.sun_direction, [1.0, 0.0, 0.0]);
-        entries[0].world.shape = VoxelWorldShape::Plane;
-        assert!(registry.planetary_sky(&entries, eye, None).is_none());
-    }
     use crate::scene::Visibility;
     use helio_component::VoxelTerrainComponent;
     use helio_voxel_data::VoxelStoredPayload;
@@ -1088,7 +1049,7 @@ mod tests {
         let (hidden, errors) = crate::scene::voxel_frame::project_voxel_entries(&scene);
         assert!(errors.is_empty());
         assert!(!hidden[0].visible);
-        assert!(registry.uses_outdoor_sky(&hidden));
+        assert!(registry.uses_camera_relative_frames(&hidden));
         assert!(registry.publish_frame(&hidden, view(eye)).is_empty());
         assert!(frame.lock().unwrap().is_none());
     }
@@ -1312,7 +1273,7 @@ mod tests {
                 let edge = f64::from(planet.grid().cells()) * planet.grid().voxel_size();
                 assert!((edge - 2_048.0).abs() < 200.0, "{edge}");
             }
-            assert_eq!(registry.ambient_up(&entries, eye), Some(DVec3::Y));
+            assert_eq!(registry.local_up(&entries, eye), Some(DVec3::Y));
             // Digging straight down removes the cell below the eye.
             let ground = planet.surface_point(DVec3::new(10.0, 0.0, -20.0), 3.0);
             let target = planet.raycast(ground, -DVec3::Y, 100.0).unwrap().cell;

@@ -246,6 +246,47 @@
           "rock": "Stone",
           "rules": []
         }
+      },
+      {
+        "class_name": "AtmosphereComponent",
+        "enabled": true,
+        "data": {
+          "enabled": true,
+          "placement": "PlanetAtOwner",
+          "planet_radius_km": 6371.0,
+          "thickness_km": 100.0,
+          "ground_albedo": [
+            0.3,
+            0.3,
+            0.3
+          ],
+          "sun_angular_radius_deg": 0.26786,
+          "rayleigh_scattering": [
+            0.005802,
+            0.013558,
+            0.0331
+          ],
+          "rayleigh_scale_height_km": 8.0,
+          "mie_scattering": [
+            0.003996,
+            0.003996,
+            0.003996
+          ],
+          "mie_absorption": [
+            0.0044,
+            0.0044,
+            0.0044
+          ],
+          "mie_scale_height_km": 1.2,
+          "mie_anisotropy": 0.8,
+          "ozone_absorption": [
+            0.00065,
+            0.001881,
+            8.5e-05
+          ],
+          "ozone_center_km": 25.0,
+          "ozone_width_km": 30.0
+        }
       }
     ],
     "voxel_sun": [
@@ -263,7 +304,7 @@
             "lighting_channel_2": false
           },
           "intensity": {
-            "intensity": 1.0,
+            "intensity": 3.0,
             "intensity_units": "Lumens",
             "exposure_compensation": 0.0,
             "inverse_squared_falloff": true,
@@ -274,8 +315,8 @@
           "color": {
             "color": [
               1.0,
-              0.96,
-              0.85,
+              1.0,
+              1.0,
               1.0
             ],
             "use_temperature": false,

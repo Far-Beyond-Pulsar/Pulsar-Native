@@ -32,6 +32,16 @@ pub fn arm_render_row_subscriptions(world: &mut pulsar_scenedb::World) {
     for entity in light_entities {
         arm_render_row_subscriptions_for_entity(world, entity);
     }
+    // Meshes and lights were armed above, row sources included.
+    let objects: Vec<_> = world
+        .query::<&crate::scene::StableId>()
+        .map(|(entity, _)| entity)
+        .filter(|&entity| world.get::<StaticMeshComponent>(entity).is_none()
+            && world.get::<helio_component::components::LightComponent>(entity).is_none())
+        .collect();
+    for entity in objects {
+        super::component_rows::arm_component_row_subscriptions(world, entity);
+    }
 }
 
 /// Arm subscriptions for one newly-created entity without revisiting the rest
@@ -54,6 +64,7 @@ pub fn arm_render_row_subscriptions_for_entity(
         let _ = world.subscribe::<Transform>(entity);
         let _ = world.subscribe::<Visibility>(entity);
     }
+    super::component_rows::arm_component_row_subscriptions(world, entity);
 }
 
 /// Report `entity`'s render-relevant components as changed to the render-row
@@ -478,6 +489,7 @@ pub fn ensure_gpu_mirror(
     );
     crate::scene::Transform::register_gpu_columns_growable(&mut gpu_store, 1024, &device);
     // The editor viewport's post-process baseline; see `editor_postprocess`.
+    helio_pass_sky::AtmosphereComponent::register_gpu_columns_growable(&mut gpu_store, 4, &device);
     helio_pass_postprocess::CameraPostProcessComponent::register_gpu_columns_growable(
         &mut gpu_store,
         4,
