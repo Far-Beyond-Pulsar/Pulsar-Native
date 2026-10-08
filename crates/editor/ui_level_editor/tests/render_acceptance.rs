@@ -1154,3 +1154,199 @@ fn every_pass_of_the_editor_graph_runs() {
         );
     }
 }
+
+/// Sum of a frame's RGB: how much light reaches the camera.
+fn brightness(frame: &Frame) -> u64 {
+    frame
+        .color
+        .chunks_exact(4)
+        .map(|px| px[0] as u64 + px[1] as u64 + px[2] as u64)
+        .sum()
+}
+
+fn transform(state: &mut LevelEditorState, id: &str, rotation: Option<[f32; 3]>, scale: Option<[f32; 3]>) {
+    let result = execute_command(
+        state,
+        SceneCommand::SetTransform {
+            id: id.to_string(),
+            position: None,
+            rotation,
+            scale,
+        },
+    );
+    assert!(result.changed, "transform edit was refused");
+}
+
+/// Add a light at `position` through the properties panel's path (Add
+/// Component, then reflected property edits) and return its object id.
+fn add_light(
+    state: &mut LevelEditorState,
+    position: [f32; 3],
+    light_type: helio_component::components::LightType,
+    intensity: f32,
+) -> String {
+    let id = add_object(state, "Light", ObjectType::Light(LightType::Point));
+    move_to(state, &id, position);
+    assert!(
+        execute_command(
+            state,
+            SceneCommand::AddComponent {
+                id: id.clone(),
+                class_name: "LightComponent".into(),
+                value: None,
+            },
+        )
+        .changed
+    );
+    set_light(state, &id, "light_type", Box::new(light_type));
+    set_light(state, &id, "intensity", Box::new(intensity));
+    id
+}
+
+fn set_light(state: &mut LevelEditorState, id: &str, property: &str, value: Box<dyn std::any::Any + Send>) {
+    let result = execute_command(
+        state,
+        SceneCommand::SetComponentProperty {
+            id: id.to_string(),
+            class_name: "LightComponent".into(),
+            component_index: 0,
+            prop_name: property.into(),
+            value,
+        },
+    );
+    assert!(result.changed, "light {property} edit was refused");
+}
+
+/// Mesh/light regression (Pulsar-Native#1035 acceptance, #1081): scale,
+/// every light type, intensity, direction, a light's shadow casting, and the
+/// inspector open or closed, through the editor's producers to the frame.
+#[test]
+fn mesh_and_light_variations_reach_the_frame() {
+    use helio_component::components::LightType as Kind;
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+    let reference = {
+        let state = LevelEditorState::new();
+        let mut renderer = harness.renderer(&state);
+        harness.frames(&mut renderer, || {})
+    };
+
+    // ── Scale: a smaller mesh covers less of the frame ───────────────────
+    {
+        let mut state = LevelEditorState::new();
+        let id = drop_mesh(&mut state);
+        let mut renderer = harness.renderer(&state);
+        let full = harness.frames(&mut renderer, || {}).difference(&reference);
+        transform(&mut state, &id, None, Some([0.5, 0.5, 0.5]));
+        let half = harness.frames(&mut renderer, || {}).difference(&reference);
+        println!("PHASE7 scale: full {full:?}, half {half:?}");
+        assert_drawn("scaled mesh", half);
+        assert!(
+            half.depth_texels * 2 < full.depth_texels,
+            "half scale should cover well under half the texels ({half:?} vs {full:?})"
+        );
+    }
+
+    // ── Light types, intensity and direction ──────────────────────────────
+    let above = [0.0, radius * 1.5, radius * 2.0];
+    for (kind, intensity) in [(Kind::Point, BRIGHT), (Kind::Spot, BRIGHT), (Kind::Directional, 20.0)] {
+        let mut state = LevelEditorState::new();
+        drop_matte_mesh(&mut state);
+        let mut renderer = harness.renderer(&state);
+        let unlit = harness.frames(&mut renderer, || {});
+        // Lights shine along their owner's -Y: down, onto the mesh.
+        let id = add_light(&mut state, above, kind, intensity);
+        let lit = harness.frames(&mut renderer, || {});
+        let change = lit.difference(&unlit);
+        println!("PHASE7 {kind:?} light vs unlit: {change:?}");
+        assert!(change.color_pixels > 0, "{kind:?} light did not light the scene");
+
+        set_light(&mut state, &id, "intensity", Box::new(intensity * 4.0));
+        let brighter = harness.frames(&mut renderer, || {});
+        assert!(
+            brighter.difference(&lit).color_pixels > 0 && brighter.difference(&unlit).color_pixels >= change.color_pixels,
+            "{kind:?}: raising the intensity changed nothing"
+        );
+        if kind != Kind::Point {
+            // Turned to shine straight up, away from the mesh.
+            transform(&mut state, &id, Some([180.0, 0.0, 0.0]), None);
+            let away = harness.frames(&mut renderer, || {});
+            println!(
+                "PHASE7 {kind:?} brightness: down {}, up {}",
+                brightness(&brighter),
+                brightness(&away)
+            );
+            assert!(
+                brightness(&away) < brightness(&brighter),
+                "{kind:?}: turning the light away did not darken the mesh"
+            );
+        }
+    }
+
+    // ── A light's shadow casting ──────────────────────────────────────────
+    {
+        let mut state = LevelEditorState::new();
+        let floor = drop_matte_mesh(&mut state);
+        move_to(&mut state, &floor, [0.0, -radius, 0.0]);
+        transform(&mut state, &floor, None, Some([3.0, 0.05, 3.0]));
+        let blocker = drop_matte_mesh(&mut state);
+        transform(&mut state, &blocker, None, Some([0.4, 0.4, 0.4]));
+        let id = add_light(&mut state, [0.0, radius * 2.5, 0.0], Kind::Point, BRIGHT);
+        let mut renderer = harness.renderer(&state);
+        let shadowed = harness.frames(&mut renderer, || {});
+        set_light(&mut state, &id, "cast_shadows", Box::new(false));
+        let unshadowed = harness.frames(&mut renderer, || {});
+        let change = unshadowed.difference(&shadowed);
+        println!(
+            "PHASE7 cast_shadows off vs on: {change:?}, brightness {} -> {}",
+            brightness(&shadowed),
+            brightness(&unshadowed)
+        );
+        assert!(change.color_pixels > 0, "turning the light's shadows off changed nothing");
+        assert!(
+            brightness(&unshadowed) > brightness(&shadowed),
+            "without shadows the floor under the blocker should be lit"
+        );
+    }
+
+    // ── Inspector open or closed: the same frame ──────────────────────────
+    {
+        let scene = |state: &mut LevelEditorState| {
+            drop_matte_mesh(state);
+            add_light(state, above, Kind::Point, BRIGHT)
+        };
+        let mut closed_state = LevelEditorState::new();
+        scene(&mut closed_state);
+        let mut renderer = harness.renderer(&closed_state);
+        let closed = harness.frames(&mut renderer, || {});
+
+        let mut open_state = LevelEditorState::new();
+        let id = scene(&mut open_state);
+        let feed = {
+            let mut world = open_state.scene.world_mut();
+            let entity = world.entity_for(&id).unwrap();
+            pulsar_world_registry::ObjectFeed::subscribe(&mut world, entity, || {}).unwrap()
+        };
+        let mut renderer = harness.renderer(&open_state);
+        let open = harness.frames(&mut renderer, || {
+            feed.take();
+        });
+        let change = open.difference(&closed);
+        println!("PHASE7 inspector open vs closed: {change:?}");
+        assert_eq!(change.depth_texels, 0, "the inspector changed the depth");
+        assert!(
+            change.color_pixels < (SIZE * SIZE / 200) as usize,
+            "the inspector changed the frame ({change:?})"
+        );
+    }
+}
