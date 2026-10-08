@@ -7,7 +7,6 @@ use pulsar_class::world::{
     is_generated_child, placement, slot_map, store_class_instance,
 };
 use pulsar_class::{ClassInstance, ClassRegistry, CLASS_INSTANCE};
-use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
 use pulsar_scene_model::{ComponentInstance, SceneWorldExt, SpawnObject, Transform};
 use pulsar_scenedb::{Entity, World};
 use serde_json::json;
@@ -21,16 +20,7 @@ pub struct TestLamp {
 }
 
 #[register_world_component]
-impl ComponentRuntimeBehavior for TestLamp {
-    const CLASS_NAME: &'static str = "TestLamp";
-    fn sync_component(
-        _owner: &RuntimeComponentOwner,
-        _index: usize,
-        _component: &Self,
-        _context: &mut dyn ComponentRuntimeContext,
-    ) {
-    }
-}
+impl TestLamp {}
 
 fn write_class(project: &std::path::Path, name: &str, prefab: serde_json::Value) {
     let dir = project.join("src").join("classes").join(name);

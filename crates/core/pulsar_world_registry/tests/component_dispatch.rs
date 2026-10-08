@@ -174,7 +174,6 @@ pulsar_world_registry::inventory::submit! {
         remove: gizmo_remove,
         get_as_engine_class: gizmo_get,
         get_as_engine_class_mut: gizmo_get_mut,
-        on_removed: |_owner, _context| {},
         property_written: pulsar_world_registry::values::erased::no_property_written,
     }
 }

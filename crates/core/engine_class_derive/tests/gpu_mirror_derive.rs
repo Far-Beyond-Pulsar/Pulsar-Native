@@ -18,10 +18,7 @@
 //! own mechanism.
 
 use engine_class_derive::{engine_class, register_world_component};
-use pulsar_reflection::{
-    ComponentRuntimeBehavior, ComponentRuntimeContext, EngineClass as _, Reflectable,
-    RuntimeComponentOwner,
-};
+use pulsar_reflection::{EngineClass as _, Reflectable};
 use pulsar_scenedb::World;
 use pulsar_scenedb::gpu::{
     EngineGpuContext, GpuColumnSet, GpuMirrorHandle, RegionClassConfig, SceneGpuConfig,
@@ -376,17 +373,7 @@ pub struct ThrowawayRegisteredComponent {
 }
 
 #[register_world_component]
-impl ComponentRuntimeBehavior for ThrowawayRegisteredComponent {
-    const CLASS_NAME: &'static str = "ThrowawayRegisteredComponent";
-
-    fn sync_component(
-        _owner: &RuntimeComponentOwner,
-        _component_index: usize,
-        _component: &Self,
-        _context: &mut dyn ComponentRuntimeContext,
-    ) {
-    }
-}
+impl ThrowawayRegisteredComponent {}
 
 fn single_f32_row(ctx: &EngineGpuContext, store: &SceneGpuStore, id: pulsar_scenedb::ComponentId, row: u32) -> f32 {
     let handle = store
@@ -513,17 +500,7 @@ fn throwaway_property_written(component: &mut ThrowawayNormalizedComponent, prop
 }
 
 #[register_world_component(property_written = throwaway_property_written)]
-impl ComponentRuntimeBehavior for ThrowawayNormalizedComponent {
-    const CLASS_NAME: &'static str = "ThrowawayNormalizedComponent";
-
-    fn sync_component(
-        _owner: &RuntimeComponentOwner,
-        _component_index: usize,
-        _component: &Self,
-        _context: &mut dyn ComponentRuntimeContext,
-    ) {
-    }
-}
+impl ThrowawayNormalizedComponent {}
 
 #[test]
 fn property_written_runs_under_the_same_write_and_reaches_the_gpu_row() {

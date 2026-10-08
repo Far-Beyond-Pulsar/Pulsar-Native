@@ -126,7 +126,7 @@ pub const SITE_PATTERNS: &[SitePattern] = &[
             "dispatch_world_component",
         ],
         regex: r"\bapply_runtime_behavior_for_class\s*\(|\bdispatch_world_component\w*\s*\(",
-        meaning: "Generic ComponentRuntimeBehavior dispatch",
+        meaning: "Generic per-component runtime behavior dispatch (removed)",
     },
     SitePattern {
         id: "force-resync",
@@ -332,7 +332,7 @@ pub fn sites(root: &Path) -> BTreeMap<(String, String), usize> {
 /// Classes declared with `#[register_world_component]` in production source:
 /// `class name -> file`.
 pub fn declared_world_components(root: &Path) -> BTreeMap<String, String> {
-    let target = Regex::new(r"impl\s+ComponentRuntimeBehavior\s+for\s+(\w+)").unwrap();
+    let target = Regex::new(r"^\s*impl\s+(\w+)\s*\{").unwrap();
     let mut out = BTreeMap::new();
     for file in production_files(root) {
         let mut pending = false;

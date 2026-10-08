@@ -75,7 +75,6 @@ pub struct ClassRow {
     pub category: String,
     pub world_registered: bool,
     pub own_gpu_columns: bool,
-    pub runtime_behavior: bool,
     #[serde(flatten)]
     pub d: Disposition,
 }
@@ -197,15 +196,14 @@ pub fn check_classes(ledger: &Ledger, linked: &Linked) -> Vec<String> {
         let category = class.category.clone().unwrap_or_default();
         match rows.get(class.name.as_str()) {
             None => problems.push(format!(
-                "linked class `{}` has no ledger row:\n[[class]]\nname = {:?}\ncategory = {:?}\nworld_registered = {}\nown_gpu_columns = {}\nruntime_behavior = {}\n{TODO}\n",
-                class.name, class.name, category, class.world_registered, class.own_gpu_columns, class.runtime_behavior
+                "linked class `{}` has no ledger row:\n[[class]]\nname = {:?}\ncategory = {:?}\nworld_registered = {}\nown_gpu_columns = {}\n{TODO}\n",
+                class.name, class.name, category, class.world_registered, class.own_gpu_columns
             )),
             Some(row) => {
                 let facts = [
                     ("category", row.category != category, format!("{category:?}")),
                     ("world_registered", row.world_registered != class.world_registered, class.world_registered.to_string()),
                     ("own_gpu_columns", row.own_gpu_columns != class.own_gpu_columns, class.own_gpu_columns.to_string()),
-                    ("runtime_behavior", row.runtime_behavior != class.runtime_behavior, class.runtime_behavior.to_string()),
                 ];
                 for (field, differs, actual) in facts {
                     if differs {

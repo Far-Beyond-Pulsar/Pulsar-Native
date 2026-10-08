@@ -88,12 +88,6 @@ fn bridge_gizmo_remove(world: &mut World, entity: pulsar_scenedb::Entity) {
     let _ = world.remove::<BridgeGizmo>(entity);
 }
 
-fn noop_on_removed(
-    _owner: &pulsar_reflection::RuntimeComponentOwner,
-    _context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-) {
-}
-
 pulsar_world_registry::inventory::submit! {
     pulsar_world_registry::WorldComponentRegistration {
         class_name: "BridgeGizmo",
@@ -107,7 +101,6 @@ pulsar_world_registry::inventory::submit! {
         remove: bridge_gizmo_remove,
         get_as_engine_class: bridge_gizmo_get,
         get_as_engine_class_mut: bridge_gizmo_get_mut,
-        on_removed: noop_on_removed,
         property_written: pulsar_world_registry::values::erased::no_property_written,
     }
 }

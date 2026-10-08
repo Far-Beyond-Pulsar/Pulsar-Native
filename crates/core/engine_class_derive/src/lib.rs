@@ -30,10 +30,10 @@
 //!   right choice when the struct's `Vec<T>` `#[gpu]` field payload itself
 //!   IS the component (`StaticMeshComponent::vertices`/`indices`), not a
 //!   translation of some other editor-facing shape.
-//! - `#[register_world_component(...)]`: wires a `ComponentRuntimeBehavior`
-//!   impl into `pulsar_world_registry`'s `World`-storage bridge --
-//!   a default factory, a JSON boundary decoder, a clone, erased SceneDB
-//!   registration, `remove`/`on_removed`, and a
+//! - `#[register_world_component(...)]`: on an inherent `impl Type {}`,
+//!   wires the component into `pulsar_world_registry`'s `World`-storage
+//!   bridge -- a default factory, a JSON boundary decoder, a clone, erased
+//!   SceneDB registration, `remove`, and a
 //!   `property_written` normalization hook. The `#[gpu]` companions above
 //!   are never inserted or refreshed by anyone: the authored struct's own
 //!   SceneDB GPU dispatch derives and writes them on every write. See that
@@ -1407,9 +1407,6 @@ pub fn component_events(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// - `remove = path` -- `fn(&mut pulsar_scenedb::World,
 ///   pulsar_scenedb::Entity)`, replacing the generated
 ///   `world.remove::<Self>(entity)`.
-/// - `on_removed = path` -- `fn(&pulsar_reflection::RuntimeComponentOwner,
-///   &mut dyn pulsar_reflection::ComponentRuntimeContext)`, the
-///   consumer-side teardown hook (generated as a no-op).
 /// - `property_written = path` -- `fn(&mut Self, Option<&str>)`, run under
 ///   the same write guard right after a reflected property setter
 ///   (`Some(name)`) or method (`None`), so the class can re-establish data it
@@ -1422,7 +1419,6 @@ pub fn component_events(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// compile error at the registration.
 struct RegisterWorldComponentArgs {
     decode: Option<syn::Path>,
-    on_removed: Option<syn::Path>,
     custom_remove: Option<syn::Path>,
     property_written: Option<syn::Path>,
 }
@@ -1431,7 +1427,6 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut args = RegisterWorldComponentArgs {
             decode: None,
-            on_removed: None,
             custom_remove: None,
             property_written: None,
         };
@@ -1440,14 +1435,13 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
             let _: syn::Token![=] = input.parse()?;
             let slot = match key.to_string().as_str() {
                 "decode" => &mut args.decode,
-                "on_removed" => &mut args.on_removed,
                 "remove" => &mut args.custom_remove,
                 "property_written" => &mut args.property_written,
                 other => {
                     return Err(syn::Error::new(
                         key.span(),
                         format!(
-                            "unknown #[register_world_component] option `{other}` (expected `decode`, `remove`, `on_removed`, or `property_written`)"
+                            "unknown #[register_world_component] option `{other}` (expected `decode`, `remove`, or `property_written`)"
                         ),
                     ));
                 }
@@ -1468,17 +1462,15 @@ impl syn::parse::Parse for RegisterWorldComponentArgs {
 /// from JSON once (a boundary decode) and inserted into `pulsar_scenedb::World`
 /// through SceneDB's erased insert.
 ///
-/// Applied to the component's `impl ComponentRuntimeBehavior for Type`
-/// block, whose `CLASS_NAME` names the class; the block is emitted
-/// unchanged. The JSON runtime-behavior dispatch that block once fed
-/// (`#[register_runtime_behavior]`) was removed in Pulsar-Native#1035
-/// (Phase 4): components reach their consumers through their data.
+/// Applied to an inherent `impl Type {}` block (emitted unchanged); the
+/// class is named after the type. Components reach their consumers through
+/// their data: there is no per-component runtime behavior to register
+/// (Pulsar-Native#1035, Phases 4 and 6).
 #[proc_macro_attribute]
 pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = if attr.is_empty() {
         RegisterWorldComponentArgs {
             decode: None,
-            on_removed: None,
             custom_remove: None,
             property_written: None,
         }
@@ -1500,28 +1492,10 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         .into();
     }
 
-    let Some((_, trait_path, _)) = &impl_block.trait_ else {
+    if impl_block.trait_.is_some() {
         return syn::Error::new_spanned(
             &impl_block.self_ty,
-            "#[register_world_component] must be used on `impl ComponentRuntimeBehavior for Type`",
-        )
-        .to_compile_error()
-        .into();
-    };
-
-    let Some(trait_ident) = trait_path.segments.last().map(|s| &s.ident) else {
-        return syn::Error::new_spanned(
-            trait_path,
-            "invalid trait path for #[register_world_component]",
-        )
-        .to_compile_error()
-        .into();
-    };
-
-    if trait_ident != "ComponentRuntimeBehavior" {
-        return syn::Error::new_spanned(
-            trait_path,
-            "#[register_world_component] must target `ComponentRuntimeBehavior` impl",
+            "#[register_world_component] goes on an inherent `impl Type {}` block",
         )
         .to_compile_error()
         .into();
@@ -1539,6 +1513,7 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         .to_compile_error()
         .into();
     };
+    let class_name = syn::LitStr::new(&self_ty_ident.to_string(), self_ty_ident.span());
     let default_fn_name = quote::format_ident!("__pulsar_world_default_{}", self_ty_ident);
     let decode_fn_name = quote::format_ident!("__pulsar_world_decode_{}", self_ty_ident);
     let clone_fn_name = quote::format_ident!("__pulsar_world_clone_{}", self_ty_ident);
@@ -1546,7 +1521,6 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
     let get_fn_name = quote::format_ident!("__pulsar_world_get_engine_class_{}", self_ty_ident);
     let get_mut_fn_name =
         quote::format_ident!("__pulsar_world_get_engine_class_mut_{}", self_ty_ident);
-    let on_removed_fn_name = quote::format_ident!("__pulsar_world_on_removed_{}", self_ty_ident);
     let property_written_fn_name =
         quote::format_ident!("__pulsar_world_property_written_{}", self_ty_ident);
 
@@ -1555,22 +1529,6 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
         None => quote! {
             ::serde_json::from_value::<#self_ty>(data.clone()).map_err(|error| error.to_string())?
         },
-    };
-
-    let (on_removed_fn_def, on_removed_fn_ref) = match &args.on_removed {
-        None => (
-            quote! {
-                #[doc(hidden)]
-                #[allow(non_snake_case)]
-                fn #on_removed_fn_name(
-                    _owner: &pulsar_reflection::RuntimeComponentOwner,
-                    _context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
-                ) {
-                }
-            },
-            quote! { #on_removed_fn_name },
-        ),
-        Some(custom) => (quote! {}, quote! { #custom }),
     };
 
     let (remove_fn_def, remove_fn_ref) = match &args.custom_remove {
@@ -1599,7 +1557,6 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
     };
 
     let output = quote! {
-        #on_removed_fn_def
         #remove_fn_def
 
         #[doc(hidden)]
@@ -1665,7 +1622,7 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
 
         pulsar_world_registry::inventory::submit! {
             pulsar_world_registry::WorldComponentRegistration {
-                class_name: <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
+                class_name: #class_name,
                 component_type: pulsar_scenedb::component_id::<#self_ty>,
                 default_value: #default_fn_name,
                 decode: #decode_fn_name,
@@ -1676,7 +1633,6 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
                 remove: #remove_fn_ref,
                 get_as_engine_class: #get_fn_name,
                 get_as_engine_class_mut: #get_mut_fn_name,
-                on_removed: #on_removed_fn_ref,
                 property_written: #property_written_fn_name,
             }
         }

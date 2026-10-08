@@ -10,7 +10,6 @@
 //! and is skipped without one.
 
 use engine_class_derive::{engine_class, register_world_component};
-use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
 use pulsar_scenedb::gpu::{EngineGpuContext, GpuMirrorHandle, SceneGpuConfig, SceneGpuStore};
 use pulsar_scenedb::{ComponentChangeKind, World};
 use pulsar_world_registry::pulsar_scene_model::attachments::{
@@ -39,17 +38,7 @@ pub struct InstanceProbe {
 }
 
 #[register_world_component]
-impl ComponentRuntimeBehavior for InstanceProbe {
-    const CLASS_NAME: &'static str = "InstanceProbe";
-
-    fn sync_component(
-        _owner: &RuntimeComponentOwner,
-        _component_index: usize,
-        _component: &Self,
-        _context: &mut dyn ComponentRuntimeContext,
-    ) {
-    }
-}
+impl InstanceProbe {}
 
 const CLASS: &str = "InstanceProbe";
 

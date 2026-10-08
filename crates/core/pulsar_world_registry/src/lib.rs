@@ -1,5 +1,4 @@
-//! Bridges reflection-typed, [`pulsar_reflection::ComponentRuntimeBehavior`]-
-//! implementing components into `pulsar_scenedb::World` (Pulsar-Native#555/
+//! Bridges reflection-typed components into `pulsar_scenedb::World` (Pulsar-Native#555/
 //! #556, Phase B4/B5 of the SceneDB + Helio + reflection/properties-panel
 //! unification -- see [Pulsar-Native#561](https://github.com/Far-Beyond-Pulsar/Pulsar-Native/issues/561)).
 //!
@@ -18,15 +17,6 @@
 //!   insert; nothing class-specific happens at insertion.
 //! - **`remove`**: drop the typed value when the component is deleted,
 //!   disabled, or its owning object is despawned.
-//! - **`on_removed`**: the consumer-side teardown counterpart to `hydrate` --
-//!   dispatched (with full `ComponentRuntimeContext`) off `World`'s own
-//!   attached `ChangeTracker`, which already records every component
-//!   removal automatically (`ChangeTracker::drain_component_removals`, no
-//!   manual bookkeeping in this crate or its callers), so a component that
-//!   created external state in `sync_component` (a Helio light, a cached
-//!   GPU actor) can drop it too -- without SceneDB or `World` ever needing
-//!   to know that state, or even the concept of a "class", exists. See
-//!   [`notify_world_component_removed_by_component_id`]'s doc.
 //! - **[`GpuMirrored`]**: the GPU companion layout auto-derived by
 //!   `engine_class_derive` for any `#[property]` field marked `#[gpu]`
 //!   (packed/fixed-size scalars). It is not a component: the authored type's
@@ -59,8 +49,9 @@
 //! crate's typed `dispatch` had no production caller left; Pulsar-Native#1035
 //! (Phase 4) removed every registration and the typed path. Components reach
 //! their consumers through their data (SceneDB GPU rows and graph-owned
-//! derivations); `ComponentRuntimeBehavior` remains only as the carrier of
-//! `CLASS_NAME` for `#[register_world_component]`.
+//! derivations). Phase 6 dropped the `ComponentRuntimeBehavior` stubs that
+//! only carried a class name: `#[register_world_component]` names the class
+//! after the type.
 
 // Re-exported so `#[register_world_component]` (`engine_class_derive`) can
 // emit `pulsar_world_registry::inventory::submit! { .. }` in the calling
@@ -80,9 +71,8 @@ pub use component_lifecycle::{
     ComponentRuntimeState,
 };
 
-/// Generated native component lifecycle entry. Unlike the legacy
-/// `ComponentRuntimeBehavior::sync_component` bridge, this callback runs on
-/// the live typed SceneDB value and never deserializes or stores a shadow.
+/// Generated native component lifecycle entry. The callback runs on the
+/// live typed SceneDB value and never deserializes or stores a shadow.
 pub struct ComponentTickRegistration {
     /// Rust type name used only for deterministic local callback ordering;
     /// it is not an event id and is never sent across the DLL boundary.
@@ -336,7 +326,7 @@ pub use change_watch::ComponentWatch;
 pub use object_feed::{ObjectDelta, ObjectFeed, ObjectUpdate};
 pub use audit::{find_overloaded_methods, metadata_snapshot_json, MetadataAuditError};
 
-use pulsar_reflection::{ComponentRuntimeContext, EngineClass, RuntimeComponentOwner};
+use pulsar_reflection::EngineClass;
 use pulsar_scenedb::{ComponentId, Entity, World};
 use serde_json::Value;
 
@@ -355,15 +345,10 @@ pub struct WorldComponentRegistration {
     /// time instead ([`find_by_component_id`]) -- cheap, `component_id::<T>`
     /// caches its own result after the first call regardless of caller.
     ///
-    /// This is the identity `World::remove`/`World::despawn` actually record
-    /// into the attached `ChangeTracker`'s `component_removals` list
-    /// (`SceneDB`, `Entity` + `ComponentId`, no notion of "class name" at
-    /// that layer at all). Lets
-    /// [`notify_world_component_removed_by_component_id`] translate a
-    /// drained removal straight back to this registration with no name
-    /// lookup in between -- `World`/SceneDB never need to know a class name
-    /// exists, and this crate never needs a second, parallel removal-
-    /// tracking mechanism of its own (see that fn's doc).
+    /// This is the identity SceneDB's change journals and object
+    /// subscriptions report (`Entity` + `ComponentId`, no notion of a class
+    /// name at that layer); [`find_by_component_id`] maps it back to this
+    /// registration.
     pub component_type: fn() -> ComponentId,
     /// Construct this class's default value, owned and type-erased -- the
     /// generic factory.
@@ -397,27 +382,6 @@ pub struct WorldComponentRegistration {
     /// hooks (GPU mirror, change tracker, subscriptions, journals) fire when
     /// the guard drops, after the edit (#841).
     pub get_as_engine_class_mut: for<'w> fn(&'w mut World, Entity) -> Option<EngineClassMut<'w>>,
-    /// Called when this class's component is going away -- removed from a
-    /// still-alive object, disabled, or the object itself despawned -- so
-    /// whatever external (non-`World`) state the component's own
-    /// `sync_component` created (a Helio light, a GPU actor, a cache entry)
-    /// gets torn down too.
-    ///
-    /// Deliberately *not* a `World`-mutating call: by the time this runs the
-    /// typed value may already be gone from `World` (see
-    /// `WorldSceneStore::take_pending_component_removals`'s doc for why this
-    /// has to be queued at removal time and drained later, with full
-    /// `ComponentRuntimeContext`, rather than called inline from wherever
-    /// the removal itself happens). This is the missing symmetric half of
-    /// `hydrate`: `hydrate` is "this class's data now exists, adopt it";
-    /// `on_removed` is "this class's data is gone, drop whatever you built
-    /// from it" -- the same component author owns both, and SceneDB/`World`
-    /// stays out of the conversation entirely (it doesn't know a `LightId`
-    /// or a `Scene` exists). Defaults to a no-op (`register_world_component`
-    /// generates one when no `on_removed = ...` override is given) --
-    /// correct for any class whose `sync_component` never created
-    /// consumer-side state that would otherwise leak.
-    pub on_removed: fn(&RuntimeComponentOwner, &mut dyn ComponentRuntimeContext),
     /// Re-establish data this class derives from its own fields after a
     /// reflected write: `Some(name)` after a property setter, `None` after a
     /// reflected method (which may have written anything). Runs inside the
@@ -486,20 +450,6 @@ pub fn hydrate_world_component_for_class(
         .map_err(|error| error.to_string())
 }
 
-/// Whether `entity` currently carries a live-typed component of `class_name`
-/// in the `World`. Unregistered classes report `false` (they have no live
-/// representation at all).
-///
-/// This is the idempotence gate scripted hydration needs: generated actors
-/// seed prefab defaults ONLY when the scene hasn't already hydrated the
-/// component onto the entity, so per-instance scene values always win
-/// (#651). Read-only by construction -- it borrows through the same bridge
-/// the properties panel's read path uses.
-pub fn world_component_present_for_class(class_name: &str, world: &World, entity: Entity) -> bool {
-    find(class_name)
-        .is_some_and(|registration| (registration.get_as_engine_class)(world, entity).is_some())
-}
-
 /// Remove `class_name`'s typed component from `entity`, if that class is
 /// registered here. Returns `false` if `class_name` isn't registered.
 pub fn remove_world_component_for_class(
@@ -510,67 +460,6 @@ pub fn remove_world_component_for_class(
     match find(class_name) {
         Some(registration) => {
             (registration.remove)(world, entity);
-            true
-        }
-        None => false,
-    }
-}
-
-/// Dispatch `class_name`'s `on_removed` hook -- the consumer-side teardown
-/// counterpart to `hydrate`. Returns `false` if `class_name` isn't
-/// registered here (nothing to notify; the JSON-only/legacy dispatch path
-/// has no consumer-side state to tear down in the first place).
-///
-/// Callers don't need to check whether `entity` still has this component in
-/// `World` first -- `on_removed` only ever needs `owner`'s tag/position, not
-/// a live `World` lookup, so it's safe to call after the typed value (or
-/// `entity` itself) is already gone. In practice callers reach this class
-/// name via [`notify_world_component_removed_by_component_id`] below, which
-/// is what a real removal event (`World`'s attached `ChangeTracker`) hands
-/// you -- this `class_name`-keyed spelling exists for callers that already
-/// have the name some other way (tests, anything working off the JSON/class
-/// registry side).
-pub fn notify_world_component_removed(
-    class_name: &str,
-    owner: &RuntimeComponentOwner,
-    context: &mut dyn ComponentRuntimeContext,
-) -> bool {
-    match find(class_name) {
-        Some(registration) => {
-            (registration.on_removed)(owner, context);
-            true
-        }
-        None => false,
-    }
-}
-
-/// Dispatch `on_removed` for whichever registered class owns
-/// `component_type` -- the direct consumer of a
-/// `pulsar_scenedb::ChangeTracker::drain_component_removals()` entry.
-///
-/// This is the actual removal-detection mechanism (Pulsar-Native#561's
-/// "zero dupe state" cleanup): `World::remove`/`World::despawn` already
-/// record every component removal into the `SharedChangeTracker` attached
-/// at `WorldSceneStore` construction, automatically, for every mutation, no
-/// `_tracked` call or manual bookkeeping needed anywhere (same "attach
-/// once, every write already knows" shape `#[gpu]` mirroring already uses).
-/// A caller (`HelioRenderer`'s sync pass) drains that list once per sync
-/// pass and calls this per entry -- SceneDB/`World` never need to know a
-/// "class" or "component trait" concept exists at all; this crate is the
-/// only place that translates a bare `ComponentId` back into "which
-/// registered class is this, and what does removal mean to it".
-///
-/// Returns `false` if `component_type` isn't a registered class (nothing to
-/// notify -- e.g. a plain bookkeeping component like `Parent`/`Transform`
-/// with no `#[register_world_component]` at all).
-pub fn notify_world_component_removed_by_component_id(
-    component_type: ComponentId,
-    owner: &RuntimeComponentOwner,
-    context: &mut dyn ComponentRuntimeContext,
-) -> bool {
-    match find_by_component_id(component_type) {
-        Some(registration) => {
-            (registration.on_removed)(owner, context);
             true
         }
         None => false,
@@ -897,9 +786,6 @@ mod tests {
         let _ = world.remove::<TestComponent>(entity);
     }
 
-    fn test_on_removed(_owner: &RuntimeComponentOwner, _context: &mut dyn ComponentRuntimeContext) {
-    }
-
     fn test_property_written(_value: &mut dyn EngineClass, _property: Option<&str>) {}
 
     inventory::submit! {
@@ -915,38 +801,7 @@ mod tests {
             remove: test_remove,
             get_as_engine_class: test_get,
             get_as_engine_class_mut: test_get_mut,
-            on_removed: test_on_removed,
             property_written: test_property_written,
-        }
-    }
-
-    struct DummyContext {
-        subsystems: pulsar_reflection::Subsystems,
-    }
-
-    impl ComponentRuntimeContext for DummyContext {
-        fn subsystems_mut(&mut self) -> &mut pulsar_reflection::Subsystems {
-            &mut self.subsystems
-        }
-        fn project_root(&self) -> &std::path::Path {
-            std::path::Path::new(".")
-        }
-        fn report_error(&mut self, _message: String) {}
-    }
-
-    fn dummy_context() -> DummyContext {
-        DummyContext {
-            subsystems: pulsar_reflection::Subsystems::new(),
-        }
-    }
-
-    fn dummy_owner(props: &HashMap<String, Value>) -> RuntimeComponentOwner<'_> {
-        RuntimeComponentOwner {
-            scene_object_id: "test",
-            position: [0.0; 3],
-            rotation: [0.0; 3],
-            scale: [1.0; 3],
-            props,
         }
     }
 
@@ -1070,90 +925,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn notify_removed_dispatches_the_registered_hook() {
-        // `on_removed` deliberately takes no `World`/`Entity` at all (see its
-        // doc) -- the only way to observe it fired is a side channel.
-        thread_local! {
-            static FIRED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-        }
-        fn recording_on_removed(
-            _owner: &RuntimeComponentOwner,
-            _context: &mut dyn ComponentRuntimeContext,
-        ) {
-            FIRED.with(|f| f.set(true));
-        }
-
-        // A distinct component TYPE (not just a distinct class name) --
-        // `component_type` must be unique per registration for the
-        // by-ComponentId lookup test below to mean anything.
-        #[derive(Clone)]
-        struct NotifyRemovedTestComponent2;
-
-        // A second registration, distinct class name, so this test's
-        // `inventory::submit!` doesn't collide with `TestComponent`'s.
-        inventory::submit! {
-            WorldComponentRegistration {
-                class_name: "NotifyRemovedTestComponent",
-                component_type: pulsar_scenedb::component_id::<NotifyRemovedTestComponent2>,
-                default_value: test_default,
-                decode: test_decode,
-                clone_value: test_clone,
-                value_as_engine_class: |_| None,
-                value_as_engine_class_mut: |_| None,
-                register_erased: pulsar_scenedb::register_component::<NotifyRemovedTestComponent2>,
-                remove: test_remove,
-                    get_as_engine_class: test_get,
-                get_as_engine_class_mut: test_get_mut,
-                on_removed: recording_on_removed,
-                property_written: test_property_written,
-            }
-        }
-
-        let props = HashMap::new();
-        let owner = dummy_owner(&props);
-        let mut ctx = dummy_context();
-
-        assert!(
-            !FIRED.with(|f| f.get()),
-            "must not have fired before notify is called"
-        );
-        assert!(notify_world_component_removed(
-            "NotifyRemovedTestComponent",
-            &owner,
-            &mut ctx
-        ));
-        assert!(
-            FIRED.with(|f| f.get()),
-            "notify must invoke the registered on_removed hook"
-        );
-
-        assert!(!notify_world_component_removed(
-            "NotRegistered",
-            &owner,
-            &mut ctx
-        ));
-
-        FIRED.with(|f| f.set(false));
-        assert!(notify_world_component_removed_by_component_id(
-            pulsar_scenedb::component_id::<NotifyRemovedTestComponent2>(),
-            &owner,
-            &mut ctx,
-        ));
-        assert!(
-            FIRED.with(|f| f.get()),
-            "the ComponentId-keyed lookup must find the same registration"
-        );
-
-        // A ComponentId nothing registered (this test's own bare marker
-        // type) must be a clean no-op, not a panic.
-        struct NeverRegistered;
-        assert!(!notify_world_component_removed_by_component_id(
-            pulsar_scenedb::component_id::<NeverRegistered>(),
-            &owner,
-            &mut ctx,
-        ));
-    }
 
     #[test]
     fn unregistered_class_is_a_clean_no_op_everywhere() {

@@ -123,7 +123,6 @@ pulsar_world_registry::inventory::submit! {
         remove: vm_probe_remove,
         get_as_engine_class: vm_probe_get,
         get_as_engine_class_mut: vm_probe_get_mut,
-        on_removed: |_, _| {},
         property_written: pulsar_world_registry::values::erased::no_property_written,
     }
 }
