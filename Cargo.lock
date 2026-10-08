@@ -1157,6 +1157,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_script_codegen",
  "pulsar_script_vm",
+ "rstar 0.12.2",
  "schemars",
  "serde",
  "serde_json",
