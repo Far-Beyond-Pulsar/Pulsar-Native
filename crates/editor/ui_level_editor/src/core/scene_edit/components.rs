@@ -151,34 +151,25 @@ pub fn with_world_component<T>(
     Some(f(value))
 }
 
-// ── World subscriptions (Pulsar-Native#575, SceneDB#47) ────────────────────
+// ── Change watching (Pulsar-Native#575, Pulsar-Native#1035) ────────────────
 
-/// Arm a world change subscription for the live instance at `index` -- the
-/// properties panel's subscribe-once-per-card replacement for
-/// poll-every-render. `None` when there is no such live instance.
-pub fn subscribe_component(
-    world: &mut World,
+/// Watch the live instance at `index` under `key` -- the properties panel's
+/// watch-once-per-card replacement for poll-every-render. Reads only; each
+/// watch has its own cursors, so any number of panels can watch at once.
+/// `false` when there is no such live instance or its class has no World
+/// component. Watch first, then read the current values.
+pub fn watch_component<K: Clone + Eq + std::hash::Hash>(
+    watch: &mut pulsar_world_registry::ComponentWatch<K>,
+    world: &World,
+    key: K,
     object_id: &str,
     class_name: &str,
     index: usize,
-) -> Option<pulsar_scenedb::SubscriptionId> {
-    let cid = pulsar_world_registry::component_id_for_class(class_name)?;
-    let instance = live_instance(world, object_id, class_name, index)?;
-    world.subscribe_id(instance, cid)
-}
-
-/// Disarm a previously armed subscription. Idempotent.
-pub fn unsubscribe_component(world: &mut World, sub: pulsar_scenedb::SubscriptionId) {
-    world.unsubscribe(sub);
-}
-
-/// Drain every pending component-change event (SceneDB#47's batched delivery).
-/// Call once per frame.
-///
-/// SINGLE-DRAINER CONTRACT: this empties a shared queue -- exactly one consumer
-/// per frame does the draining (the properties panel's component-card host).
-pub fn take_world_component_events(world: &mut World) -> Vec<pulsar_scenedb::ComponentChangeEvent> {
-    world.take_component_change_events()
+) -> bool {
+    match live_instance(world, object_id, class_name, index) {
+        Some(instance) => watch.watch_class(world, key, instance, class_name),
+        None => false,
+    }
 }
 
 /// Follow-ups to a successful property edit of the instance at `index`.

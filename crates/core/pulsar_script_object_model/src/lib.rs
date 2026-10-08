@@ -37,7 +37,7 @@
 //! | [`refs`] | `ActorRef`/`ComponentRef` value types + liveness validation |
 //! | [`errors`] | the typed error taxonomy (#641) |
 //! | [`access`] | property/method accessors |
-//! | [`subscribe`] | change-notification helpers over SceneDB#47 subscriptions |
+//! | [`subscribe`] | change watching over SceneDB change journals |
 //! | [`resolution`] | StableId <-> Entity serialization + resolution (#639) |
 //! | [`reflect`] | identity types through reflection registries (#642) |
 //! | [`dispatch`] | demo dynamic-dispatch methods taking/returning refs (#642) |

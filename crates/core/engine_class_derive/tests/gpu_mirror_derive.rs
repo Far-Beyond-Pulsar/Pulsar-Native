@@ -537,7 +537,7 @@ fn property_written_runs_under_the_same_write_and_reaches_the_gpu_row() {
     ));
     let entity = world.spawn();
     world.insert(entity, ThrowawayNormalizedComponent::default());
-    world.subscribe::<ThrowawayNormalizedComponent>(entity).unwrap();
+    let mut cursor = world.open_change_cursor::<ThrowawayNormalizedComponent>();
 
     pulsar_world_registry::set_world_component_property(
         "ThrowawayNormalizedComponent",
@@ -553,8 +553,10 @@ fn property_written_runs_under_the_same_write_and_reaches_the_gpu_row() {
         world.get::<ThrowawayNormalizedComponent>(entity).map(|c| c.doubled),
         Some(42.0)
     );
+    let mut changes = Vec::new();
+    let _ = world.read_changes(&mut cursor, &mut changes);
     assert_eq!(
-        world.take_component_change_events().len(),
+        changes.len(),
         1,
         "the edit and its normalization are one write"
     );

@@ -288,6 +288,7 @@ impl<'a> ComponentEventWriter<'a> {
 }
 
 pub mod audit;
+pub mod change_watch;
 pub mod dispatch;
 mod engine_class_mut;
 pub mod errors;
@@ -330,6 +331,7 @@ pub use values::{
 };
 // Metadata audit (#645): overload sweep + the deterministic registry
 // snapshot CI golden tests diff against.
+pub use change_watch::ComponentWatch;
 pub use audit::{find_overloaded_methods, metadata_snapshot_json, MetadataAuditError};
 
 use pulsar_reflection::{ComponentRuntimeContext, EngineClass, RuntimeComponentOwner};
@@ -450,13 +452,12 @@ fn find_by_component_id(
 }
 
 /// Resolve a registered class's `pulsar_scenedb::ComponentId` -- the erased
-/// identity `World` subscriptions are keyed by (SceneDB#47's
-/// `World::subscribe_id`). This is the subscribe-path counterpart to
-/// [`find_by_component_id`] (the drain-path lookup): an editor caller that
+/// identity change cursors and [`ComponentWatch`] are keyed by. The
+/// watch-path counterpart to [`find_by_component_id`]: an editor caller that
 /// only knows a class NAME (the properties panel's reflection metadata) can
-/// arm a subscription without ever naming the Rust type. Returns `None` for
+/// watch an instance without ever naming the Rust type. Returns `None` for
 /// classes not registered here -- those have no live `World` representation,
-/// so there is nothing to subscribe to.
+/// so there is nothing to watch.
 pub fn component_id_for_class(class_name: &str) -> Option<ComponentId> {
     find(class_name).map(|r| (r.component_type)())
 }
@@ -993,8 +994,8 @@ mod tests {
             &serde_json::json!({"value": 1}),
         )
         .unwrap();
-        world.subscribe::<TestComponent>(entity).unwrap();
-        world.take_component_change_events();
+        let mut cursor = world.open_change_cursor::<TestComponent>();
+        let mut changes = Vec::new();
 
         {
             let guard =
@@ -1002,10 +1003,8 @@ mod tests {
                     .unwrap();
             let _ = guard.to_json();
         }
-        assert!(
-            world.take_component_change_events().is_empty(),
-            "a read is not a mutation"
-        );
+        let _ = world.read_changes(&mut cursor, &mut changes);
+        assert!(changes.is_empty(), "a read is not a mutation");
 
         let mut guard =
             get_world_component_as_engine_class_mut("TestComponent", &mut world, entity).unwrap();
@@ -1015,9 +1014,9 @@ mod tests {
             .unwrap()
             .value = 7;
         drop(guard);
-        let events = world.take_component_change_events();
-        assert_eq!(events.len(), 1, "{events:?}");
-        assert_eq!(events[0].kind, ComponentChangeKind::Mutated);
+        let _ = world.read_changes(&mut cursor, &mut changes);
+        assert_eq!(changes.len(), 1, "{changes:?}");
+        assert_eq!(changes[0].kind, ComponentChangeKind::Mutated);
         assert_eq!(
             world.get::<TestComponent>(entity),
             Some(&TestComponent { value: 7 })

@@ -154,15 +154,16 @@ fn scripts_move_an_object_through_transform_methods() {
 }
 
 #[test]
-fn writes_notify_subscribers_like_any_other_mutation() {
+fn writes_are_journaled_like_any_other_mutation() {
     let mut world = World::new();
     let e = object(&mut world);
     let program = call_with_vec3("set_position", vec3_const(9.0, 9.0, 9.0));
-    world.subscribe::<Transform>(e).unwrap();
+    let mut cursor = world.open_change_cursor::<Transform>();
     run(&program, &mut world, e).unwrap();
-    let events = world.take_component_change_events();
-    assert_eq!(events.len(), 1, "{events:?}");
-    assert_eq!(events[0].kind, ComponentChangeKind::Mutated);
+    let mut changes = Vec::new();
+    let _ = world.read_changes(&mut cursor, &mut changes);
+    assert_eq!(changes.len(), 1, "{changes:?}");
+    assert_eq!(changes[0].kind, ComponentChangeKind::Mutated);
 }
 
 #[test]
