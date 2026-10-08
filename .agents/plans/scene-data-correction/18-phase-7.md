@@ -141,6 +141,19 @@ Failures on main that remain, outside these repositories:
 
 ## Sweep
 
+**After the merge with main** (SceneDB `a98ff98`, Helio `a7b4c240`, Mesa lavapipe):
+- Packages: `pulsar_world_registry`, `pulsar_scene_model`, `pulsar_class`, `pulsar_script_object_model`, `pulsar_physics`, `pulsar_scene`, `scene_inventory`, `pulsar_package`, `plugin_manager`, `plugin_editor_api`, `pulsar_script_vm`, `engine_backend`, `helio_component`, `pulsar_game` and `ui_level_editor`.
+- Results: 70 targets, 572 tests passed. Every acceptance test passes, as do main's `material_graph_rendering` and the ledger and architecture checks.
+- Failing, all in code identical to main's:
+  - the gizmo hover test;
+  - the two `toggle_button` doctests;
+  - `plugin_editor_api` `surface_ticks_do_not_rebuild_views_and_stop_when_hidden`;
+  - `voxel_block_api` `the_cached_world_follows_the_journal_and_the_settings` (main's voxel code is outdated; left for the voxel work).
+- The packaging CI job's steps pass locally: script VM and runtime tests, the smoke test, `pulsar package`, and the Blueprint compile.
+- SceneDB's `build`, `no-default-features` and `all-features` jobs pass locally.
+
+**Before the merge:**
+
 Run on the final pins (SceneDB `7d14a4c`, Helio `2ea90c69`), Mesa lavapipe, `--no-fail-fast`. About 560 tests passed in all.
 
 **Pulsar**, by group:
