@@ -638,3 +638,98 @@ fn properties_panel_invalidation_report(cx: &mut TestAppContext) {
     );
     render_stats::set_force_enabled(false);
 }
+
+/// A sculpt stamp changes only the terrain's edit journal, which no card
+/// shows: the properties section repaints nothing (it used to rebuild and
+/// lay out every card, the terrain layer stack's dozens of rows included,
+/// on every stamp). A change to a shown property still repaints it.
+#[gpui::test]
+fn sculpt_stamps_do_not_rebuild_the_properties_section(cx: &mut TestAppContext) {
+    use helio_component::VoxelTerrainComponent;
+
+    cx.update(|cx| ui::init(cx));
+    // A selected terrain with its layer stack (the heaviest card), built
+    // from their serialized values.
+    let state = scene_with_components(&[]);
+    {
+        let state = state.read();
+        let id = state.scene.selected_object().expect("selected").to_string();
+        let mut world = state.scene.world_mut();
+        for (class, value) in [
+            (
+                "VoxelTerrainComponent",
+                serde_json::to_value(VoxelTerrainComponent::plane(512.0)).unwrap(),
+            ),
+            (
+                "VoxelTerrainLayersComponent",
+                serde_json::to_value(helio_component::VoxelTerrainLayersComponent::earth())
+                    .unwrap(),
+            ),
+        ] {
+            crate::scene_edit::components::add_component(&mut world, &id, class.into(), value);
+        }
+    }
+    let window = cx.open_window(size(px(380.), px(1000.)), |window, cx| {
+        let panel = cx.new(|cx| PropertiesPanelWrapper::new(state.clone(), window, cx));
+        Host { panel }
+    });
+    cx.run_until_parked();
+    let panel = window
+        .root(cx)
+        .expect("root view")
+        .read_with(cx, |host, _| host.panel.clone());
+    let mut f = Fixture {
+        cx: VisualTestContext::from_window(window.into(), cx),
+        panel,
+    };
+    render_stats::set_force_enabled(true);
+    for _ in 0..3 {
+        dirty_frame(&mut f);
+    }
+    idle_frame(&mut f);
+    let edit_terrain = |change: &dyn Fn(&mut VoxelTerrainComponent)| {
+        let state = state.read();
+        let mut world = state.scene.world_mut();
+        let terrains: Vec<_> = world
+            .query::<&VoxelTerrainComponent>()
+            .into_iter()
+            .map(|(entity, _)| entity)
+            .collect();
+        assert_eq!(terrains.len(), 1);
+        let mut terrain = world.get_mut::<VoxelTerrainComponent>(terrains[0]).unwrap();
+        change(&mut terrain);
+    };
+    let section_rebuilds = |f: &mut Fixture| {
+        f.cx.run_until_parked();
+        idle_frame(f);
+        render_stats::snapshot()
+            .counters
+            .iter()
+            .filter(|(name, _)| name.starts_with("view cache: rebuilt") && name.contains("ObjectTypeFieldsSection"))
+            .map(|(_, n)| *n)
+            .sum::<u64>()
+    };
+
+    render_stats::reset();
+    for x in 0..5 {
+        edit_terrain(&|terrain| {
+            terrain.edits.push(helio_voxel_data::VoxelBrushEdit {
+                center: [f64::from(x), 0.0, 0.0],
+                radius: 1.0,
+                shape: helio_voxel_data::VoxelBrushShape::Sphere,
+                op: helio_voxel_data::VoxelBrushOp::Remove,
+                material: 0,
+            });
+            terrain.source_revision += 1;
+        });
+    }
+    let stamps = section_rebuilds(&mut f);
+
+    render_stats::reset();
+    edit_terrain(&|terrain| terrain.voxel_size *= 2.0);
+    let shown = section_rebuilds(&mut f);
+    render_stats::set_force_enabled(false);
+    eprintln!("section rebuilds: stamps {stamps}, shown change {shown}");
+    assert_eq!(stamps, 0, "sculpt stamps rebuilt the properties section");
+    assert!(shown > 0, "a shown property change must repaint its card");
+}

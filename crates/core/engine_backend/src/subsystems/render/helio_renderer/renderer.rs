@@ -302,11 +302,20 @@ pub(super) fn apply_voxel_brush_commit(
 /// A brush sample: the pointer ray when it was taken, and the pick that
 /// asked the renderer for the terrain hit under it.
 struct PendingBrush {
-    pick: Option<u64>,
+    pick: u64,
+    /// The renderer's answer once it arrived: the hit (distance, cell size)
+    /// or none (sky, or a column regenerating under the stroke).
+    answer: Option<Option<(f64, f64)>>,
+    requested: Instant,
+    stroke: u64,
     origin: DVec3,
     direction: DVec3,
     request: VoxelBrushRequest,
 }
+
+/// How long a brush sample waits for the renderer's hit before it walks the
+/// exact terrain without one.
+const PICK_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(150);
 
 /// Scripted sculpting through the editor's own brush queue: after 12 s to
 /// load, it looks down (`=1`) or keeps the view and strokes the distant
@@ -379,6 +388,7 @@ impl NativeSculpt {
                 norm_x: x,
                 norm_y: y,
                 request,
+                start: started,
             },
             started && !self.far,
         ))
@@ -458,12 +468,45 @@ pub enum PendingPointerEvent {
         norm_x: f32,
         norm_y: f32,
     },
+    /// A sculpt stroke sample. `start` begins a stroke (pointer down); the
+    /// drag samples after it are latest-wins, since the renderer fills the
+    /// gap from the stroke's previous stamp.
     VoxelBrush {
         norm_x: f32,
         norm_y: f32,
         request: VoxelBrushRequest,
+        start: bool,
     },
     LeftRelease,
+}
+
+impl PendingPointerEvent {
+    /// Hover positions and stroke drag samples: only the latest matters.
+    fn latest_wins(&self) -> bool {
+        matches!(
+            self,
+            Self::MouseMove { .. } | Self::VoxelBrush { start: false, .. }
+        )
+    }
+
+    /// Queue `event`. A latest-wins event replaces the queued one of its
+    /// kind when only latest-wins events follow it, so a high-Hz drag that
+    /// interleaves hover moves and brush samples queues one of each per
+    /// frame, never a backlog; order-sensitive events stay in order.
+    pub fn queue(events: &mut Vec<Self>, event: Self) {
+        if event.latest_wins() {
+            for queued in events.iter_mut().rev() {
+                if !queued.latest_wins() {
+                    break;
+                }
+                if std::mem::discriminant(queued) == std::mem::discriminant(&event) {
+                    *queued = event;
+                    return;
+                }
+            }
+        }
+        events.push(event);
+    }
 }
 
 /// One sculpt-tool stroke sample, applied where the pointer ray first hits
@@ -665,8 +708,11 @@ pub struct HelioRenderer {
     /// N frames so a fast idle loop doesn't hammer the timing API.
     profiler_frame_counter: u32,
     voxel_backends: VoxelBackendRegistry,
-    /// Last applied stamp of the sculpt stroke in progress (cleared on release).
-    voxel_stroke_last: Option<VoxelBrushCommit>,
+    /// The current sculpt stroke (counted up at each pointer down) and the
+    /// last stamp applied, with its stroke: a stroke's stamps are filled in
+    /// between, never joined to another stroke's.
+    voxel_stroke: u64,
+    voxel_stroke_last: Option<(u64, VoxelBrushCommit)>,
     /// Brush samples waiting for the renderer's hit under them, in order.
     voxel_brush_picks: std::collections::VecDeque<PendingBrush>,
     /// Camera height above the voxel ground below it, from the last frame.
@@ -805,6 +851,7 @@ impl HelioRenderer {
             gizmo_dirty: true,
             profiler_frame_counter: 0,
             voxel_backends,
+            voxel_stroke: 0,
             voxel_stroke_last: None,
             voxel_brush_picks: Default::default(),
             voxel_altitude: None,
@@ -1142,7 +1189,6 @@ impl HelioRenderer {
                 if let Some((event, look_down)) = sculpt.next(now) {
                     if look_down {
                         self.cam_pitch = -0.75;
-                        self.voxel_stroke_last = None;
                     }
                     if let Ok(mut events) = self.pending_pointer_events.lock() {
                         events.push(event);
@@ -1185,8 +1231,9 @@ impl HelioRenderer {
                         norm_x,
                         norm_y,
                         request,
+                        start,
                     } => {
-                        self.handle_voxel_brush(norm_x, norm_y, request);
+                        self.handle_voxel_brush(norm_x, norm_y, request, start);
                     }
                 }
             }
@@ -2025,8 +2072,11 @@ impl HelioRenderer {
     /// A brush sample under the pointer: it asks the renderer for the
     /// terrain hit there and is applied when the answer arrives (a few
     /// frames later), with an exact walk of a few cells around it.
-    fn handle_voxel_brush(&mut self, norm_x: f32, norm_y: f32, request: VoxelBrushRequest) {
+    fn handle_voxel_brush(&mut self, norm_x: f32, norm_y: f32, request: VoxelBrushRequest, start: bool) {
         profiling::profile_scope!("voxel_brush");
+        if start {
+            self.voxel_stroke += 1;
+        }
         let (width, height) = self.viewport_size;
         let aspect = width.max(1) as f32 / height.max(1) as f32;
         let (forward, right, up) = self.camera_basis();
@@ -2040,44 +2090,42 @@ impl HelioRenderer {
             return;
         }
         let brush = PendingBrush {
-            pick: None,
+            pick: 0,
+            answer: None,
+            requested: Instant::now(),
+            stroke: self.voxel_stroke,
             origin: self.cam_pos,
             direction,
             request,
         };
         match self.voxel_backends.request_pick([norm_x, norm_y]) {
-            Some(id) => {
-                // A drag samples every frame; never let answers fall behind.
-                while self.voxel_brush_picks.len() >= 8 {
-                    self.voxel_brush_picks.pop_front();
-                }
-                self.voxel_brush_picks.push_back(PendingBrush {
-                    pick: Some(id),
-                    ..brush
-                });
-            }
+            Some(pick) => self.voxel_brush_picks.push_back(PendingBrush { pick, ..brush }),
             // Nothing drawn to pick yet: a bounded exact walk.
             None => self.apply_voxel_brush(&brush, None),
         }
     }
 
-    /// Apply the brush samples whose renderer hits arrived, in order.
+    /// Apply brush samples in order as their renderer hits arrive. A sample
+    /// is never dropped: one whose pick missed (sky, or the column under the
+    /// previous stamp still regenerating) or got no answer in time walks the
+    /// exact terrain within a bounded reach instead.
     fn resolve_voxel_brushes(&mut self) {
         if self.voxel_brush_picks.is_empty() {
             return;
         }
         for pick in self.voxel_backends.take_picks() {
-            let Some(at) = self
-                .voxel_brush_picks
-                .iter()
-                .position(|b| b.pick == Some(pick.id))
-            else {
-                continue;
-            };
-            let brush = self.voxel_brush_picks.remove(at).expect("found above");
-            if let Some(near) = pick.hit {
-                self.apply_voxel_brush(&brush, Some(near));
+            if let Some(brush) = self.voxel_brush_picks.iter_mut().find(|b| b.pick == pick.id) {
+                brush.answer = Some(pick.hit);
             }
+        }
+        while let Some(front) = self.voxel_brush_picks.front() {
+            let near = match front.answer {
+                Some(hit) => hit,
+                None if front.requested.elapsed() >= PICK_TIMEOUT => None,
+                None => break,
+            };
+            let brush = self.voxel_brush_picks.pop_front().expect("front checked above");
+            self.apply_voxel_brush(&brush, near);
         }
     }
 
@@ -2103,8 +2151,8 @@ impl HelioRenderer {
                 let fill = self
                     .voxel_stroke_last
                     .as_ref()
-                    .filter(|last| last.id == commit.id)
-                    .map(|last| super::voxel_backend::stroke_fill(&last.edit, &commit.edit, voxel))
+                    .filter(|(stroke, last)| *stroke == brush.stroke && last.id == commit.id)
+                    .map(|(_, last)| super::voxel_backend::stroke_fill(&last.edit, &commit.edit, voxel))
                     .unwrap_or_default();
                 let mut scene = self.scene_store.write();
                 for edit in fill {
@@ -2115,7 +2163,7 @@ impl HelioRenderer {
                     self.gizmo_dirty |= apply_voxel_brush_commit(&mut scene.world, stamp);
                 }
                 self.gizmo_dirty |= apply_voxel_brush_commit(&mut scene.world, commit.clone());
-                self.voxel_stroke_last = Some(commit);
+                self.voxel_stroke_last = Some((brush.stroke, commit));
             }
             Ok(_) => {}
             Err(error) => {
@@ -2283,7 +2331,6 @@ impl HelioRenderer {
 
     pub fn handle_left_release(&mut self) {
         self.gizmo_dirty = true;
-        self.voxel_stroke_last = None;
         if let Some(inner) = &mut self.inner {
             inner.interaction.cancel_drag();
         }

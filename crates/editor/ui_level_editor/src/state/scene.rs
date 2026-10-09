@@ -352,7 +352,11 @@ impl SceneDomain {
                 terrain.edits.extend(entry.edits.iter().cloned());
                 terrain.source_revision = entry.after_revision;
             } else {
-                if terrain.edits.len() < entry.before_len + entry.edits.len() {
+                // Edits folded into the journal's base (a save) are no
+                // longer undoable.
+                if terrain.edits.len() < entry.before_len + entry.edits.len()
+                    || terrain.edits.base_len() > entry.before_len
+                {
                     return false;
                 }
                 while terrain.edits.len() > entry.before_len {

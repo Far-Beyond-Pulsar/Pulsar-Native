@@ -148,22 +148,15 @@ pub(super) fn handle_mouse_move(
             // A drag stroke keeps only the latest brush position queued.
             if let Some(events) = &pointer_events_move {
                 if let Ok(mut events) = events.lock() {
-                    let brush =
+                    engine_backend::subsystems::render::PendingPointerEvent::queue(
+                        &mut events,
                         engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush {
                             norm_x,
                             norm_y,
                             request,
-                        };
-                    if matches!(
-                        events.last(),
-                        Some(
-                            engine_backend::subsystems::render::PendingPointerEvent::VoxelBrush { .. }
-                        )
-                    ) {
-                        *events.last_mut().expect("checked above") = brush;
-                    } else {
-                        events.push(brush);
-                    }
+                            start: false,
+                        },
+                    );
                 }
             }
             return;
@@ -176,20 +169,10 @@ pub(super) fn handle_mouse_move(
     // one or more frames behind the cursor.
     if let Some(events) = &pointer_events_move {
         if let Ok(mut events) = events.lock() {
-            let next = engine_backend::subsystems::render::PendingPointerEvent::MouseMove {
-                norm_x,
-                norm_y,
-            };
-            if matches!(
-                events.last(),
-                Some(engine_backend::subsystems::render::PendingPointerEvent::MouseMove { .. })
-            ) {
-                if let Some(last) = events.last_mut() {
-                    *last = next;
-                }
-            } else {
-                events.push(next);
-            }
+            engine_backend::subsystems::render::PendingPointerEvent::queue(
+                &mut events,
+                engine_backend::subsystems::render::PendingPointerEvent::MouseMove { norm_x, norm_y },
+            );
         }
     }
 }
@@ -464,6 +447,7 @@ pub(super) fn handle_left_mouse_down(
                             norm_x,
                             norm_y,
                             request,
+                            start: true,
                         },
                     );
                 }

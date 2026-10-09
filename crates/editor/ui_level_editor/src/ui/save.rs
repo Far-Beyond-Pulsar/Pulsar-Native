@@ -178,6 +178,9 @@ fn save_blocking(
             state.editor.terrain.foliage_sets.clone(),
         )
     };
+    if kind == SaveKind::Level {
+        compact_voxel_journals(&scene);
+    }
     let snapshot = {
         let scene = scene.read();
         let mut snapshot =
@@ -198,6 +201,30 @@ fn save_blocking(
     level_io::write_level(snapshot, path)?;
     last_written.insert(path.to_path_buf(), number);
     Ok(SaveOutcome::Saved)
+}
+
+/// Fold old voxel edits into their journals' bases, so the level saves
+/// what they left rather than every brush (`VoxelEditJournal::compact`).
+/// The bases are built off the scene lock; a journal that changed meanwhile
+/// still takes its base when it starts with it.
+fn compact_voxel_journals(scene: &engine_backend::scene::SharedScene) {
+    use helio_component::voxel_world;
+    profiling::profile_scope!("level_editor::save::compact_voxel_edits");
+    let pending = voxel_world::journals_to_compact(&scene.read().world);
+    for (entity, recipe, edits) in pending {
+        match voxel_world::compact_journal(recipe, &edits, voxel_world::LISTED_EDITS) {
+            Ok(Some(base)) => {
+                let mut scene = scene.write();
+                let terrain =
+                    scene.world.get_mut::<helio_component::VoxelTerrainComponent>(entity);
+                if let Some(mut terrain) = terrain {
+                    terrain.edits.compact(base);
+                }
+            }
+            Ok(None) => {}
+            Err(error) => tracing::warn!("Voxel edits kept unfolded: {error}"),
+        }
+    }
 }
 
 #[cfg(test)]

@@ -504,11 +504,7 @@ fn build_planet(
     entry: &VoxelSceneEntry,
     generator: &VoxelGeneratorConfig,
 ) -> Result<Planet, String> {
-    let mut planet = Planet::new(world_recipe(entry, generator))?;
-    for edit in entry.edits.iter() {
-        planet.apply(planet_brush(edit))?;
-    }
-    Ok(planet)
+    helio_component::voxel_world::journal_planet(world_recipe(entry, generator), &entry.edits)
 }
 
 /// Built planet for one source revision.
@@ -608,25 +604,38 @@ impl PlanetVoxelBackend {
         }
         profiling::profile_scope!("voxel_world_update");
         let started = std::time::Instant::now();
+        let same_world = |c: &CachedPlanet| {
+            c.id == entry.id
+                && c.voxel_size == entry.voxel_size
+                && c.world == entry.world
+                && c.generator == generator
+        };
         let extended = self
             .cached
             .as_ref()
             .is_some_and(|c| c.id == entry.id && entry.edits.starts_with(&c.edits));
         let built = match &self.cached {
             // A sculpt stroke appends brushes to an otherwise equal source.
-            Some(cached)
-                if cached.id == entry.id
-                    && cached.voxel_size == entry.voxel_size
-                    && cached.world == entry.world
-                    && cached.generator == generator
-                    && entry.edits.starts_with(&cached.edits) =>
-            {
+            Some(cached) if same_world(cached) && entry.edits.starts_with(&cached.edits) => {
                 let mut planet = (*cached.planet).clone();
                 entry
                     .edits
                     .iter_from(cached.edits.len())
                     .try_for_each(|edit| planet.apply(planet_brush(edit)).map(|_| ()))
                     .map(|_| planet)
+            }
+            // An undo removes the latest brushes: undone in the world when
+            // it still can (`Edits::undoable`), not rebuilt from every edit.
+            Some(cached)
+                if same_world(cached)
+                    && cached.edits.starts_with(&entry.edits)
+                    && cached.edits.len() - entry.edits.len() <= cached.planet.edits().undoable() =>
+            {
+                let mut planet = (*cached.planet).clone();
+                for _ in entry.edits.len()..cached.edits.len() {
+                    planet.undo().expect("within the undoable brushes");
+                }
+                Ok(planet)
             }
             _ => build_planet(entry, &generator),
         };
@@ -1286,7 +1295,7 @@ mod tests {
         assert_eq!(commit.id, entries[0].id);
         let replay = |edits: &VoxelEditJournal| {
             let mut planet = Planet::new(PlanetRecipe::default()).unwrap();
-            for edit in edits.iter() {
+            for edit in edits.listed() {
                 planet.apply(planet_brush(edit)).unwrap();
             }
             planet

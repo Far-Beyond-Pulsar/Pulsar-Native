@@ -4751,6 +4751,7 @@ dependencies = [
  "bytemuck",
  "helio",
  "helio-core",
+ "helio-mats",
  "helio-pass-billboard",
  "helio-pass-corona",
  "helio-pass-debug-overlay",
@@ -4789,6 +4790,7 @@ dependencies = [
  "image",
  "log",
  "pulsar_scenedb",
+ "twox-hash",
  "wgpu",
 ]
 
@@ -4972,12 +4974,8 @@ dependencies = [
  "bytemuck",
  "glam 0.33.5",
  "helio-core",
- "helio-mats",
  "helio-pass-gbuffer",
- "helio-pass-object-batch",
  "helio-pass-shadow-matrix",
- "pulsar_scenedb",
- "twox-hash",
  "wgpu",
 ]
 

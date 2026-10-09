@@ -387,6 +387,39 @@ mod tests {
     }
 
     #[test]
+    fn drag_samples_and_hover_moves_coalesce_while_clicks_keep_order() {
+        use crate::subsystems::render::{PendingPointerEvent as E, VoxelBrushRequest};
+        let request = VoxelBrushRequest {
+            op: helio_voxel_data::VoxelBrushOp::Remove,
+            shape: helio_voxel_data::VoxelBrushShape::Sphere,
+            radius: 1.0,
+            material: 0,
+            single_block: false,
+        };
+        let brush = |x: f32, start: bool| E::VoxelBrush { norm_x: x, norm_y: 0.5, request, start };
+        let mut queue = Vec::new();
+        E::queue(&mut queue, brush(0.0, true));
+        // A high-Hz drag between two frames: hover moves and brush samples
+        // interleave.
+        for n in 1..=50 {
+            E::queue(&mut queue, E::MouseMove { norm_x: n as f32, norm_y: 0.5 });
+            E::queue(&mut queue, brush(n as f32, false));
+        }
+        assert_eq!(queue.len(), 3, "{queue:?}");
+        assert!(matches!(queue[0], E::VoxelBrush { start: true, norm_x, .. } if norm_x == 0.0));
+        assert!(matches!(queue[1], E::MouseMove { norm_x, .. } if norm_x == 50.0));
+        assert!(matches!(queue[2], E::VoxelBrush { start: false, norm_x, .. } if norm_x == 50.0));
+        // Nothing latest-wins jumps a release or a stroke start.
+        E::queue(&mut queue, E::LeftRelease);
+        E::queue(&mut queue, brush(60.0, true));
+        E::queue(&mut queue, brush(61.0, false));
+        E::queue(&mut queue, E::MouseMove { norm_x: 61.0, norm_y: 0.5 });
+        assert_eq!(queue.len(), 7, "{queue:?}");
+        assert!(matches!(queue[3], E::LeftRelease));
+        assert!(matches!(queue[5], E::VoxelBrush { start: false, norm_x, .. } if norm_x == 61.0));
+    }
+
+    #[test]
     fn editor_mailbox_queue_deselect_sets_its_flag() {
         use std::sync::atomic::Ordering;
 

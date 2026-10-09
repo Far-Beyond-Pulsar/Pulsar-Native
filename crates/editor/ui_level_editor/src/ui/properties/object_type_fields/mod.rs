@@ -301,6 +301,23 @@ impl ObjectTypeFieldsSection {
     }
 }
 
+/// Whether two snapshots of a card's displayed values are equal, compared
+/// by their reflected JSON (a value that cannot be serialized counts as
+/// changed).
+fn displayed_values_equal(a: &[Box<dyn Any>], b: &[Box<dyn Any>]) -> bool {
+    let registry = &pulsar_reflection::RUNTIME_TYPE_REGISTRY;
+    a.len() == b.len()
+        && a.iter().zip(b).all(|(a, b)| {
+            match (
+                registry.serialize_json_for_any(a.as_ref()),
+                registry.serialize_json_for_any(b.as_ref()),
+            ) {
+                (Ok(a), Ok(b)) => a == b,
+                _ => false,
+            }
+        })
+}
+
 impl ObjectTypeFieldsSection {
     /// Apply one change the object's subscription delivered. A live card's
     /// new value replaces its cached values directly; a change to the card
@@ -341,14 +358,23 @@ impl ObjectTypeFieldsSection {
                 let Some(class) = pulsar_world_registry::value_engine_class(&card.0, value) else {
                     return;
                 };
-                let values = entry
+                let values: Vec<Box<dyn Any>> = entry
                     .properties
                     .iter()
                     .map(|prop| (prop.getter)(class))
                     .collect();
+                // A change to fields the card does not show (a terrain's
+                // edit journal on every sculpt stamp) repaints nothing: the
+                // section rebuild it would cost lays out every card.
+                let unchanged = self
+                    .world_value_cache
+                    .get(&card)
+                    .is_some_and(|shown| displayed_values_equal(shown, &values));
                 self.world_value_cache.insert(card.clone(), values);
                 self.dirty_classes.remove(&card);
-                cx.notify();
+                if !unchanged {
+                    cx.notify();
+                }
             }
             Some(_) => {
                 self.property_metadata_cache.clear();

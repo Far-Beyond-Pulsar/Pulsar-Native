@@ -185,6 +185,10 @@ impl VoxelStroke {
             else {
                 continue;
             };
+            // A save folded the stroke's start into the base: not undoable.
+            if terrain.edits.base_len() > terrain_before.before_len {
+                continue;
+            }
             entries.push(crate::scene_edit::history::VoxelEditJournalEntry {
                 id: terrain_before.id,
                 instance: terrain_before.instance,

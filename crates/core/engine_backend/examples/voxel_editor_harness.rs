@@ -280,7 +280,7 @@ fn main() {
                     // Across the lower half of the view, as a hand would.
                     let t = f as f32 / frames.max(1) as f32;
                     let (x, y) = (0.2 + 0.6 * t, 0.7 + 0.08 * (t * 9.0).sin());
-                    queue.lock().expect("pointer queue").push(PendingPointerEvent::VoxelBrush { norm_x: x, norm_y: y, request });
+                    queue.lock().expect("pointer queue").push(PendingPointerEvent::VoxelBrush { norm_x: x, norm_y: y, request, start: f == 0 });
                     if let Some(ms) = h.frame() {
                         times.push(ms);
                     }
