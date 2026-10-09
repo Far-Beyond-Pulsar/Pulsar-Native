@@ -35,15 +35,12 @@ use ui::{
 };
 use ui_common::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 
-use super::widgets::{
-    checkbox_row, collapsible_header, panel_header, stepper_row, tool_grid, SharedState, ToolSpec,
-};
+use super::widgets::{checkbox_row, section, stepper_row, tool_grid, SharedState, ToolSpec};
 use crate::state::foliage_sets::{
     FoliageSelection, FoliageSetLibrary, MemberId, MemberPlacement, SetId,
 };
 use crate::state::terrain::{FoliageTool, TerrainDomain};
 use gpui::prelude::FluentBuilder as _;
-use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Everything the panel draws, for the frame pump's cheap diff.
@@ -89,7 +86,6 @@ pub struct FoliageSetsPanel {
     rename_for: Option<SetId>,
     /// Filters the sets list by set or mesh name (Unreal's "Search Foliage").
     search_input: Entity<InputState>,
-    collapsed: HashSet<&'static str>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -106,7 +102,10 @@ impl FoliageSetsPanel {
                 }
             },
         );
-        let search_input = cx.new(|cx| InputState::new(window, cx));
+        let search_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("LevelEditor.FoliagePanel.Search").to_string())
+        });
         let search_subscription = cx.subscribe_in(
             &search_input,
             window,
@@ -127,37 +126,8 @@ impl FoliageSetsPanel {
             rename_input,
             rename_for: None,
             search_input,
-            collapsed: HashSet::new(),
             _subscriptions: vec![subscription, search_subscription],
         }
-    }
-
-    fn toggle_section(&mut self, id: &'static str) {
-        if !self.collapsed.remove(id) {
-            self.collapsed.insert(id);
-        }
-    }
-
-    fn header(
-        &self,
-        theme: &ui::Theme,
-        cx: &mut Context<Self>,
-        id: &'static str,
-        label_key: &'static str,
-        trailing: Option<AnyElement>,
-    ) -> AnyElement {
-        collapsible_header(
-            theme,
-            id,
-            label_key,
-            self.collapsed.contains(id),
-            trailing,
-            cx.listener(move |this, _, _, cx| {
-                this.toggle_section(id);
-                cx.notify();
-            }),
-        )
-        .into_any_element()
     }
 
     fn start_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -274,15 +244,13 @@ impl Render for FoliageSetsPanel {
         let theme = cx.theme().clone();
         let library = &snapshot.library;
 
-        let search = self.search_input.read(cx).text().to_string().to_lowercase();
-        let visible = |set: &crate::state::foliage_sets::FoliageSet| {
-            search.is_empty()
-                || set.name.to_lowercase().contains(&search)
-                || set
-                    .members
-                    .iter()
-                    .any(|m| m.mesh.to_lowercase().contains(&search))
-        };
+        let search = self
+            .search_input
+            .read(cx)
+            .text()
+            .to_string()
+            .trim()
+            .to_lowercase();
 
         let tool = |id: &'static str,
                     icon: IconName,
@@ -303,148 +271,236 @@ impl Render for FoliageSetsPanel {
             Button::new("foliage_add_set")
                 .icon(IconName::Plus)
                 .label(t!("LevelEditor.FoliagePanel.AddSet"))
-                .xsmall()
+                .small()
                 .primary()
+                .tooltip("Create a foliage set")
                 .on_click(move |_, _, _| {
                     state.write().editor.terrain.foliage_sets.add_set();
                 })
-                .into_any_element()
         };
-
-        // The terrain workspace owns the shared mode header and navigation;
-        // this view contributes only its scrollable foliage controls.
-        let root = v_flex().size_full().min_h_0().bg(theme.sidebar);
 
         let mut content = v_flex()
             .id("foliage-panel-scroll")
-            .flex_1()
+            .size_full()
             .min_h_0()
+            .flex_1()
             .overflow_y_scroll()
             .p_3()
-            .gap_2()
-            // ── Tools ──
-            .child(tool_grid(
-                &theme,
-                state.clone(),
-                vec![
-                    tool(
-                        "paint",
-                        IconName::Leaf,
-                        "LevelEditor.FoliagePanel.Tool.Paint",
-                        FoliageTool::Paint,
-                    ),
-                    tool(
-                        "erase",
-                        IconName::Bin,
-                        "LevelEditor.FoliagePanel.Tool.Erase",
-                        FoliageTool::Erase,
-                    ),
-                ],
-            ))
-            // ── Brush Options ──
-            .child(self.header(
-                &theme,
-                cx,
-                "brush",
-                "LevelEditor.FoliagePanel.Section.BrushOptions",
-                None,
-            ))
-            .when(!self.collapsed.contains("brush"), |el| {
-                el.child(
-                    v_flex()
-                        .w_full()
-                        .gap_2()
-                        .px_1()
-                        .child(stepper_row(
-                            state.clone(),
-                            cx,
-                            "foliage_radius".into(),
-                            t!("LevelEditor.TerrainPanel.BrushSize").to_string(),
-                            snapshot.radius_m,
-                            1.0,
-                            64.0,
-                            0.5,
-                            TerrainDomain::set_foliage_radius,
-                        ))
-                        .child(stepper_row(
-                            state.clone(),
-                            cx,
-                            "foliage_paint_density".into(),
-                            t!("LevelEditor.FoliagePanel.PaintDensity").to_string(),
-                            snapshot.paint_density,
-                            0.0,
-                            1.0,
-                            0.05,
-                            |domain, value| domain.foliage_paint_density.set(value),
-                        ))
-                        .child(stepper_row(
-                            state.clone(),
-                            cx,
-                            "foliage_erase_density".into(),
-                            t!("LevelEditor.FoliagePanel.EraseDensity").to_string(),
-                            snapshot.erase_density,
-                            0.0,
-                            1.0,
-                            0.05,
-                            |domain, value| domain.foliage_erase_density.set(value),
-                        )),
-                )
-            })
-            // ── Sets ──
-            .child(self.header(
-                &theme,
-                cx,
-                "sets",
-                "LevelEditor.FoliagePanel.Section.Sets",
-                Some(add_set),
-            ))
-            .when(!self.collapsed.contains("sets"), |el| {
-                el.child(
-                    h_flex()
-                        .w_full()
-                        .items_center()
-                        .gap_1()
-                        .px_2()
-                        .rounded(px(4.0))
-                        .border_1()
-                        .border_color(theme.border.opacity(0.6))
-                        .bg(theme.muted.opacity(0.14))
-                        .child(
-                            Icon::new(IconName::Search)
-                                .size_3p5()
-                                .text_color(theme.muted_foreground),
-                        )
-                        .child(TextInput::new(&self.search_input).flex_1()),
-                )
-            });
+            .gap_3()
+            .child(
+                v_flex()
+                    .w_full()
+                    .gap_2()
+                    .p_3()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(theme.border.opacity(0.65))
+                    .bg(theme.muted.opacity(0.06))
+                    .child(section(
+                        &theme,
+                        "LevelEditor.FoliagePanel.Section.BrushOptions",
+                    ))
+                    .child(tool_grid(
+                        &theme,
+                        state.clone(),
+                        vec![
+                            tool(
+                                "paint",
+                                IconName::Leaf,
+                                "LevelEditor.FoliagePanel.Tool.Paint",
+                                FoliageTool::Paint,
+                            ),
+                            tool(
+                                "erase",
+                                IconName::Bin,
+                                "LevelEditor.FoliagePanel.Tool.Erase",
+                                FoliageTool::Erase,
+                            ),
+                        ],
+                    ))
+                    .child(stepper_row(
+                        state.clone(),
+                        cx,
+                        "foliage_radius".into(),
+                        t!("LevelEditor.TerrainPanel.BrushSize").to_string(),
+                        snapshot.radius_m,
+                        1.0,
+                        64.0,
+                        0.5,
+                        TerrainDomain::set_foliage_radius,
+                    ))
+                    .child(stepper_row(
+                        state.clone(),
+                        cx,
+                        "foliage_paint_density".into(),
+                        t!("LevelEditor.FoliagePanel.PaintDensity").to_string(),
+                        snapshot.paint_density,
+                        0.0,
+                        1.0,
+                        0.05,
+                        |domain, value| domain.foliage_paint_density.set(value),
+                    ))
+                    .child(stepper_row(
+                        state.clone(),
+                        cx,
+                        "foliage_erase_density".into(),
+                        t!("LevelEditor.FoliagePanel.EraseDensity").to_string(),
+                        snapshot.erase_density,
+                        0.0,
+                        1.0,
+                        0.05,
+                        |domain, value| domain.foliage_erase_density.set(value),
+                    )),
+            )
+            .child(
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .justify_between()
+                    .gap_2()
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(theme.muted_foreground)
+                                    .child(
+                                        t!("LevelEditor.FoliagePanel.Section.Sets")
+                                            .to_string()
+                                            .to_uppercase(),
+                                    ),
+                            )
+                            .child(
+                                div().text_xs().text_color(theme.muted_foreground).child(
+                                    t!(
+                                        "LevelEditor.FoliagePanel.Summary",
+                                        sets => library.sets.len(),
+                                        active => library.paintable_members().count()
+                                    )
+                                    .to_string(),
+                                ),
+                            ),
+                    )
+                    .child(add_set),
+            )
+            .child(
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .gap_2()
+                    .px_2()
+                    .py_1()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(theme.border.opacity(0.65))
+                    .bg(theme.background.opacity(0.35))
+                    .child(
+                        Icon::new(IconName::Search)
+                            .size_3p5()
+                            .text_color(theme.muted_foreground),
+                    )
+                    .child(TextInput::new(&self.search_input).flex_1()),
+            );
 
-        if !self.collapsed.contains("sets") {
-            if library.sets.is_empty() {
+        if library.sets.is_empty() {
+            content = content.child(
+                v_flex()
+                    .w_full()
+                    .items_center()
+                    .justify_center()
+                    .gap_2()
+                    .p_5()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(theme.border.opacity(0.6))
+                    .bg(theme.muted.opacity(0.06))
+                    .child(
+                        Icon::new(IconName::Leaf)
+                            .size_6()
+                            .text_color(theme.muted_foreground),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child(t!("LevelEditor.FoliagePanel.NoSets").to_string()),
+                    ),
+            );
+        } else {
+            let mut visible_count = 0;
+            for set in &library.sets {
+                let set_matches = search.is_empty()
+                    || set.name.to_lowercase().contains(&search)
+                    || set.members.iter().any(|member| {
+                        member.mesh.to_lowercase().contains(&search)
+                            || member.display_name().to_lowercase().contains(&search)
+                    });
+                if set_matches {
+                    visible_count += 1;
+                    content =
+                        content.child(self.render_set(set.id, library, &state, &theme, &search));
+                }
+            }
+            if visible_count == 0 {
                 content = content.child(
                     div()
-                        .text_xs()
+                        .w_full()
+                        .p_4()
+                        .rounded_md()
+                        .bg(theme.muted.opacity(0.08))
+                        .text_sm()
                         .text_color(theme.muted_foreground)
-                        .child(t!("LevelEditor.FoliagePanel.NoSets").to_string()),
+                        .child("No foliage sets or meshes match this search."),
                 );
-            }
-            for set in library.sets.iter().filter(|s| visible(s)) {
-                content = content.child(self.render_set(set.id, library, &state, &theme));
             }
         }
 
-        // ── Inspector ──
-        content = content
-            .child(self.header(
-                &theme,
-                cx,
-                "inspector",
-                "LevelEditor.FoliagePanel.Section.Inspector",
-                None,
-            ))
-            .when(!self.collapsed.contains("inspector"), |el| {
-                el.child(self.render_inspector(library, &state, &theme, cx))
-            });
-        root.child(content)
+        let selection_label = match library.selection {
+            Some(FoliageSelection::Set(id)) => library
+                .set(id)
+                .map(|set| format!("Set · {}", set.name))
+                .unwrap_or_default(),
+            Some(FoliageSelection::Member(set_id, member_id)) => library
+                .set(set_id)
+                .and_then(|set| set.members.iter().find(|member| member.id == member_id))
+                .map(|member| format!("Mesh · {}", member.display_name()))
+                .unwrap_or_default(),
+            None => t!("LevelEditor.FoliagePanel.SelectPrompt").to_string(),
+        };
+        content = content.child(
+            v_flex()
+                .w_full()
+                .gap_2()
+                .p_3()
+                .rounded_md()
+                .border_1()
+                .border_color(theme.border.opacity(0.65))
+                .bg(theme.muted.opacity(0.06))
+                .child(
+                    v_flex()
+                        .gap_1()
+                        .child(section(
+                            &theme,
+                            "LevelEditor.FoliagePanel.Section.Inspector",
+                        ))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .child(selection_label),
+                        ),
+                )
+                .child(self.render_inspector(library, &state, &theme, cx)),
+        );
+
+        v_flex()
+            .size_full()
+            .min_h_0()
+            .bg(theme.sidebar)
+            .child(content)
     }
 }
 
@@ -455,6 +511,7 @@ impl FoliageSetsPanel {
         library: &FoliageSetLibrary,
         state: &SharedState,
         theme: &ui::Theme,
+        search: &str,
     ) -> impl IntoElement {
         let set = library.set(set_id).expect("rendering an existing set");
         let selected = library.selection == Some(FoliageSelection::Set(set_id));
@@ -486,61 +543,124 @@ impl FoliageSetsPanel {
                     }
                 })
         };
-        let name = {
-            let state = state.clone();
-            let button = Button::new(format!("set_select_{}", set_id.0))
-                .label(set.name.clone())
-                .ghost()
-                .small()
-                .on_click(move |_, _, _| {
-                    state.write().editor.terrain.foliage_sets.selection =
-                        Some(FoliageSelection::Set(set_id));
-                });
-            if selected {
-                button.primary()
-            } else {
-                button
-            }
-        };
+        let set_name = set.name.clone();
+        let select_state = state.clone();
+        let active_count = set
+            .members
+            .iter()
+            .filter(|member| member.is_paintable())
+            .count();
+        let member_summary = format!(
+            "{} · {}/{} active",
+            set.members.len(),
+            active_count,
+            set.members.len()
+        );
         let remove = {
             let state = state.clone();
             Button::new(format!("set_remove_{}", set_id.0))
                 .icon(IconName::X)
                 .ghost()
                 .xsmall()
+                .tooltip("Remove set")
                 .on_click(move |_, _, _| {
                     state.write().editor.terrain.foliage_sets.remove_set(set_id);
                 })
         };
 
-        let mut block = v_flex().w_full().gap_1().child(
-            h_flex()
-                .w_full()
-                .items_center()
-                .gap_1()
-                .child(chevron)
-                .child(enabled)
-                .child(div().flex_1().child(name))
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(theme.muted_foreground)
-                        .child(set.members.len().to_string()),
-                )
-                .child(remove),
-        );
+        let mut block = v_flex()
+            .w_full()
+            .gap_2()
+            .p_2()
+            .rounded_md()
+            .border_1()
+            .border_color(if selected {
+                theme.primary.opacity(0.85)
+            } else {
+                theme.border.opacity(0.7)
+            })
+            .bg(if selected {
+                theme.primary.opacity(0.08)
+            } else {
+                theme.background.opacity(0.25)
+            })
+            .child(
+                h_flex()
+                    .w_full()
+                    .min_w_0()
+                    .items_center()
+                    .gap_1()
+                    .child(chevron)
+                    .child(enabled)
+                    .child(
+                        div()
+                            .id(format!("set_select_{}", set_id.0))
+                            .flex_1()
+                            .min_w_0()
+                            .cursor_pointer()
+                            .on_click(move |_, _, _| {
+                                select_state.write().editor.terrain.foliage_sets.selection =
+                                    Some(FoliageSelection::Set(set_id));
+                            })
+                            .child(
+                                v_flex()
+                                    .min_w_0()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .child(set_name),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(theme.muted_foreground)
+                                            .child(member_summary),
+                                    ),
+                            ),
+                    )
+                    .child(remove),
+            );
 
         if set.expanded {
-            let mut members = v_flex().w_full().gap_1().pl_6();
-            if set.members.is_empty() {
+            let show_all_members = search.is_empty() || set.name.to_lowercase().contains(search);
+            let visible_members: Vec<_> = set
+                .members
+                .iter()
+                .filter(|member| {
+                    show_all_members
+                        || member.mesh.to_lowercase().contains(search)
+                        || member.display_name().to_lowercase().contains(search)
+                })
+                .collect();
+            let mut members = v_flex()
+                .w_full()
+                .gap_1()
+                .ml_3()
+                .pl_2()
+                .border_l_1()
+                .border_color(theme.border.opacity(0.65));
+            if visible_members.is_empty() && set.members.is_empty() {
                 members = members.child(
                     div()
+                        .px_2()
+                        .py_1()
                         .text_xs()
                         .text_color(theme.muted_foreground)
                         .child(t!("LevelEditor.FoliagePanel.NoMembers").to_string()),
                 );
+            } else if visible_members.is_empty() {
+                members = members.child(
+                    div()
+                        .px_2()
+                        .py_1()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child("No meshes in this set match the search."),
+                );
             }
-            for member in &set.members {
+            for member in visible_members {
                 members =
                     members.child(self.render_member(set_id, member.id, library, state, theme));
             }
@@ -551,6 +671,8 @@ impl FoliageSetsPanel {
                     .label(t!("LevelEditor.FoliagePanel.AddMesh"))
                     .ghost()
                     .xsmall()
+                    .w_full()
+                    .tooltip("Add a mesh to this set")
                     .on_click(move |_, _, _| {
                         state
                             .write()
@@ -604,28 +726,14 @@ impl FoliageSetsPanel {
         } else {
             member.display_name()
         };
-        let name = {
-            let state = state.clone();
-            let button = Button::new(format!("member_select_{}", member_id.0))
-                .label(label)
-                .ghost()
-                .small()
-                .on_click(move |_, _, _| {
-                    state.write().editor.terrain.foliage_sets.selection =
-                        Some(FoliageSelection::Member(set_id, member_id));
-                });
-            if selected {
-                button.primary()
-            } else {
-                button
-            }
-        };
+        let select_state = state.clone();
         let remove = {
             let state = state.clone();
             Button::new(format!("member_remove_{}", member_id.0))
                 .icon(IconName::X)
                 .ghost()
                 .xsmall()
+                .tooltip("Remove mesh")
                 .on_click(move |_, _, _| {
                     state
                         .write()
@@ -637,14 +745,50 @@ impl FoliageSetsPanel {
         };
 
         h_flex()
+            .id(format!("member_select_{}", member_id.0))
             .w_full()
+            .min_w_0()
             .items_center()
             .gap_1()
+            .px_1()
+            .py_1()
+            .rounded(px(5.0))
+            .border_1()
+            .border_color(if selected {
+                theme.primary.opacity(0.65)
+            } else {
+                theme.border.opacity(0.4)
+            })
+            .bg(if selected {
+                theme.primary.opacity(0.12)
+            } else {
+                theme.background.opacity(0.18)
+            })
+            .cursor_pointer()
+            .on_click(move |_, _, _| {
+                select_state.write().editor.terrain.foliage_sets.selection =
+                    Some(FoliageSelection::Member(set_id, member_id));
+            })
             .child(enabled)
-            .child(div().flex_1().child(name))
+            .child(Icon::new(IconName::Cube).size_4().text_color(if selected {
+                theme.primary
+            } else {
+                theme.muted_foreground
+            }))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_sm()
+                    .text_ellipsis()
+                    .child(label),
+            )
             .child(
                 div()
                     .text_xs()
+                    .px_1()
+                    .rounded(px(3.0))
+                    .bg(theme.muted.opacity(0.18))
                     .text_color(theme.muted_foreground)
                     .child(format!("{:.0}", member.placement.density)),
             )
@@ -667,14 +811,23 @@ impl FoliageSetsPanel {
 
             Some(FoliageSelection::Set(_)) => v_flex()
                 .w_full()
-                .gap_1()
+                .gap_2()
                 .child(
                     div()
-                        .text_xs()
+                        .text_sm()
+                        .font_weight(FontWeight::MEDIUM)
                         .text_color(theme.muted_foreground)
                         .child(t!("LevelEditor.FoliagePanel.SetName").to_string()),
                 )
-                .child(TextInput::new(&self.rename_input))
+                .child(
+                    div()
+                        .w_full()
+                        .rounded(px(5.0))
+                        .border_1()
+                        .border_color(theme.border.opacity(0.7))
+                        .bg(theme.background.opacity(0.35))
+                        .child(TextInput::new(&self.rename_input)),
+                )
                 .into_any_element(),
 
             Some(FoliageSelection::Member(set_id, member_id)) => {
@@ -718,16 +871,15 @@ impl FoliageSetsPanel {
         };
 
         let mesh_row = match self.picker.clone() {
-            Some(picker) => h_flex()
+            Some(picker) => v_flex()
                 .w_full()
-                .items_center()
-                .justify_between()
-                .gap_2()
+                .gap_1()
                 .child(
                     div()
                         .text_xs()
+                        .font_weight(FontWeight::MEDIUM)
                         .text_color(theme.muted_foreground)
-                        .child(format!("{}:", t!("LevelEditor.FoliagePanel.Mesh"))),
+                        .child(t!("LevelEditor.FoliagePanel.Mesh").to_string()),
                 )
                 .child(
                     Popover::<MeshAssetPicker>::new(format!("foliage-mesh-picker-{}", member_id.0))
@@ -735,7 +887,9 @@ impl FoliageSetsPanel {
                         .trigger(
                             Button::new(format!("foliage_mesh_btn_{}", member_id.0))
                                 .label(mesh_label)
+                                .icon(IconName::Cube)
                                 .small()
+                                .w_full()
                                 .ghost()
                                 .dropdown_caret(true),
                         )
@@ -766,6 +920,10 @@ impl FoliageSetsPanel {
             .w_full()
             .gap_2()
             .child(mesh_row)
+            .child(section(
+                theme,
+                "LevelEditor.FoliagePanel.Section.Distribution",
+            ))
             .child(stepper_row(
                 state.clone(),
                 cx,
@@ -777,6 +935,7 @@ impl FoliageSetsPanel {
                 1.0,
                 edit(set_id, member_id, |p, v| p.set_density(v)),
             ))
+            .child(section(theme, "LevelEditor.FoliagePanel.Section.Scale"))
             .child(stepper_row(
                 state.clone(),
                 cx,
@@ -799,6 +958,7 @@ impl FoliageSetsPanel {
                 0.05,
                 edit(set_id, member_id, |p, v| p.set_scale_max(v)),
             ))
+            .child(section(theme, "LevelEditor.FoliagePanel.Section.Surface"))
             .child(stepper_row(
                 state.clone(),
                 cx,
