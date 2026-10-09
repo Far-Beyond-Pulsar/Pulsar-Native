@@ -586,13 +586,19 @@ pub fn duplicate_object(world: &mut World, id: &str) -> Option<ObjectId> {
     }
     let copy = world.entity_for(&new_id)?;
     clear_components(world, &new_id);
-    if let Err(error) = pulsar_world_registry::duplicate_instances(
-        world,
-        source,
-        copy,
-        |_, _| true,
-        !from_generated_child,
+    // What a level holds only one of (its sky) is not copied.
+    let keep = |world: &World, instance| match engine_backend::scene::level_rules::check_copy(
+        world, instance,
     ) {
+        Ok(()) => true,
+        Err(reason) => {
+            tracing::warn!("Not copied with '{id}': {reason}");
+            false
+        }
+    };
+    if let Err(error) =
+        pulsar_world_registry::duplicate_instances(world, source, copy, keep, !from_generated_child)
+    {
         tracing::error!("Could not copy the components of '{id}': {error}");
     }
     Some(new_id)

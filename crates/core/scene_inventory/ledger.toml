@@ -34,7 +34,7 @@ category = "Rendering"
 world_registered = true
 own_gpu_columns = true
 owner = "helio_component::components::atmosphere_component"
-disposition = "render, Phase 4. Its derived AtmosphereSourceRow is written on every insert, write, removal and replay; the environment join gates it on the instance and its owner and places it into atmospheres (a planet at its owner centred on the owner), which the atmosphere pass reads"
+disposition = "render, Phase 4. Its derived AtmosphereSourceRow is written on every insert, write, removal and replay; the environment join gates it on the instance and its owner and places it into atmospheres (a planet at its owner centred on the owner), which the atmosphere pass reads. It is the level's one sky: a second is refused when added, and extras in a level file are disabled on load (#1057)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
 status = "verified"
@@ -843,20 +843,6 @@ disposition = "keep as the pass row layout of atmospheres; produced by the join,
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
 status = "verified"
-
-[[schema]]
-type = "SkyComponent"
-path = "helio_pass_sky::components::SkyComponent"
-buffers = ["sky_components"]
-clears_on_remove = true
-releases_var_len = false
-registered = false
-writer = "none: no authored component, and the renderer no longer reads it"
-owner = "helio_pass_sky::components"
-disposition = "unfinished (Phase 4; tracked in #1057): no authored sky component; the sky is a project/renderer setting and the sun follows the directional light (decision 2)"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "tracked in #1057"
-status = "unfinished"
 
 [[schema]]
 type = "FogComponent"
@@ -1751,16 +1737,6 @@ test = "crates/core/scene_inventory/tests/ledger.rs"
 status = "out-of-scope"
 
 [[buffer]]
-key = "sky_components"
-producers = ["SkyComponent"]
-consumers = ["helio-pass-sky"]
-owner = "no authored Pulsar component found (sky configured by the renderer)"
-disposition = "unfinished (Phase 4; tracked in #1057): no authored sky component (decision 2)"
-target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "tracked in #1057"
-status = "unfinished"
-
-[[buffer]]
 key = "sprite_instances"
 producers = ["SpriteComponent"]
 consumers = ["helio-pass-sprite-batch", "helio-pass-sprite-cull"]
@@ -2268,12 +2244,12 @@ status = "out-of-scope"
 [[pass]]
 crate = "helio-pass-sky"
 in_default_graph = true
-reads = ["atmospheres", "scene_lights", "sky_components"]
+reads = ["atmospheres", "scene_lights"]
 owner = "helio-default-graphs (mapping); helio-pass-sky (algorithm)"
-disposition = "runs in the editor graph. Its atmosphere passes read the authored AtmosphereComponent through the environment join (atmospheres) and the sun from the scene join's lights; the procedural SkyPass still has no authored component (sky_components, Phase 4)"
+disposition = "runs in the editor graph. The sky is the level's one AtmosphereComponent (#1057), read through the environment join (atmospheres), with the sun from the scene join's lights; without one the sky is the graph's black background. The procedural SkyPass and its sky_components rows are retired"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "tracked in #1057; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (the_sky_is_the_levels_atmosphere)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-smaa"

@@ -1,6 +1,7 @@
 use super::{CommandResult, SceneCommand};
 use crate::scene_edit::history::capture_history_subset;
 use crate::state::LevelEditorState;
+use engine_backend::scene::level_rules;
 use engine_backend::scene::SceneWorldExt;
 
 fn command_scope(cmd: &SceneCommand) -> Vec<String> {
@@ -110,6 +111,20 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 parent_id,
                 components,
             } => {
+                let planned: Vec<_> = components
+                    .iter()
+                    .map(|component| level_rules::NewComponent {
+                        class_name: &component.class_name,
+                        value: Some(component.value.as_ref() as &dyn std::any::Any),
+                        enabled: component.enabled,
+                    })
+                    .collect();
+                if let Err(reason) =
+                    level_rules::check_new_components(&state.scene.world(), &planned)
+                {
+                    return CommandResult::noop(reason);
+                }
+                drop(planned);
                 let mut world = state.scene.world_mut();
                 let id = crate::scene_edit::objects::add_object(&mut world, data, parent_id);
                 if id.is_empty() {
@@ -480,10 +495,26 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 ref id,
                 class_name,
                 value,
-            } => edit_components(state, id, "Component could not be added", |world| {
-                crate::scene_edit::components::add_component_value(world, id, &class_name, value)
+            } => {
+                let refused = level_rules::check_new_component(
+                    &state.scene.world(),
+                    &class_name,
+                    value.as_deref().map(|value| value as &dyn std::any::Any),
+                    true,
+                );
+                if let Err(reason) = refused {
+                    return CommandResult::noop(reason);
+                }
+                edit_components(state, id, "Component could not be added", |world| {
+                    crate::scene_edit::components::add_component_value(
+                        world,
+                        id,
+                        &class_name,
+                        value,
+                    )
                     .is_some()
-            }),
+                })
+            }
 
             SceneCommand::RemoveComponent {
                 ref id,
@@ -517,10 +548,20 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             SceneCommand::DuplicateComponent {
                 ref id,
                 component_index,
-            } => edit_components(state, id, "No component at that index", |world| {
-                crate::scene_edit::components::duplicate_component(world, id, component_index)
-                    .is_some()
-            }),
+            } => {
+                let refused = {
+                    let world = state.scene.world();
+                    crate::scene_edit::components::instance_at(&world, id, component_index)
+                        .map(|instance| level_rules::check_copy(&world, instance))
+                };
+                if let Some(Err(reason)) = refused {
+                    return CommandResult::noop(reason);
+                }
+                edit_components(state, id, "No component at that index", |world| {
+                    crate::scene_edit::components::duplicate_component(world, id, component_index)
+                        .is_some()
+                })
+            }
 
             SceneCommand::ReorderComponent {
                 ref id,

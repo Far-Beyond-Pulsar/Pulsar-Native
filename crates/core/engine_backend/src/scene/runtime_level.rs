@@ -215,6 +215,8 @@ impl RuntimeLevel {
         for id in &report.unresolved {
             tracing::warn!(object = %id, "Placed class instance has no class in this project");
         }
+        // A level holds one sky; extras are kept but disabled, logged.
+        crate::scene::level_rules::enforce_on_load(world);
         // What the migration could not turn into a ClassInstance (a second
         // class bound to one object) has no script instance any more.
         for (stable_id, bindings) in &file.blueprint_bindings {

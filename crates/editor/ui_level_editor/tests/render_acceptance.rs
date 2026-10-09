@@ -1674,3 +1674,77 @@ fn an_idle_scene_encodes_nothing_and_an_edit_wakes_it() {
         "the renderer did not settle back to idle: {after:?}"
     );
 }
+
+/// Mean RGB sum over the top quarter of a frame: above the horizon from the
+/// harness camera, where only the sky can be.
+fn sky_brightness(frame: &Frame) -> f64 {
+    let rows = (SIZE / 4) as usize;
+    let pixels = &frame.color[..rows * SIZE as usize * 4];
+    let sum: u64 = pixels
+        .chunks_exact(4)
+        .map(|p| p[0] as u64 + p[1] as u64 + p[2] as u64)
+        .sum();
+    sum as f64 / (rows * SIZE as usize) as f64
+}
+
+/// The sky is the level's AtmosphereComponent (#1057): without one the sky
+/// is black, even with a sun; World Settings' "Create Sky" adds one and the
+/// sky lights up; disabling or removing it makes the sky black again.
+#[test]
+fn the_sky_is_the_levels_atmosphere() {
+    use ui_level_editor::scene_edit::sky;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, 1.0);
+
+    let mut state = LevelEditorState::new();
+    // A sun high overhead, its icon far outside the view.
+    add_light(
+        &mut state,
+        [1.0e4, 0.0, 0.0],
+        helio_component::components::LightType::Directional,
+        SUN,
+    );
+    let mut renderer = harness.renderer(&state);
+    let without = harness.frames(&mut renderer, || {});
+    without.dump("sky_without_atmosphere");
+    let black = sky_brightness(&without);
+
+    let created = sky::create_sky(&mut state);
+    assert!(created.changed, "{}", created.no_op_reason);
+    let with = harness.frames(&mut renderer, || {});
+    with.dump("sky_with_atmosphere");
+    let lit = sky_brightness(&with);
+    println!("SKY without atmosphere {black:.2}, with {lit:.2}");
+    assert!(
+        black < 1.0,
+        "the sky is not black without an atmosphere: {black}"
+    );
+    assert!(lit > 30.0, "the atmosphere did not light the sky: {lit}");
+
+    let found = sky::level_sky(&state.scene.world()).expect("the level has a sky");
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &found.object_id,
+        found.component_index,
+        false
+    ));
+    let disabled = sky_brightness(&harness.frames(&mut renderer, || {}));
+    println!("SKY disabled {disabled:.2}");
+    assert!(
+        disabled < 1.0,
+        "a disabled atmosphere still lights the sky: {disabled}"
+    );
+}
+
+/// Illuminance of the acceptance tests' sun (lux).
+const SUN: f32 = 20.0;

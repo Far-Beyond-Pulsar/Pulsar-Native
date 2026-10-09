@@ -2,4 +2,5 @@
 
 mod classes;
 mod components;
+mod level_rules;
 mod objects;
