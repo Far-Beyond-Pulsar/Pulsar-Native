@@ -17,6 +17,8 @@ pub struct CollisionPhysicsProps {
     pub create_physics_state: bool,
     #[property(category = "Collision")]
     pub complex_as_simple: bool,
+    /// The channels this body is on, a bit set of `u64::from(CollisionChannel)`
+    /// (`CollisionChannel::WaterSim`, bit 8: it disturbs simulated water).
     #[property(min = 0.0, max = 65535.0, step = 1.0, category = "Collision")]
     pub collision_channel: u64,
     #[property(category = "Collision")]
@@ -84,6 +86,7 @@ impl CollisionPhysicsProps {
                                 5 => CollisionChannel::PhysicsActor,
                                 6 => CollisionChannel::Trigger,
                                 7 => CollisionChannel::Character,
+                                9 => CollisionChannel::WaterSim,
                                 _ => CollisionChannel::Custom,
                             };
                             let response = match response {
@@ -154,6 +157,7 @@ fn deserialize_channel_collision_response_json(
         5 => CollisionChannel::PhysicsActor,
         6 => CollisionChannel::Trigger,
         7 => CollisionChannel::Character,
+        9 => CollisionChannel::WaterSim,
         _ => CollisionChannel::Custom,
     };
     let response = match response {

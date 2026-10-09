@@ -31,6 +31,8 @@ pub mod history;
 pub mod level_io;
 pub mod objects;
 pub mod sky;
+pub mod sprite;
+pub mod wind;
 
 #[cfg(test)]
 mod hlfs_cathedral;

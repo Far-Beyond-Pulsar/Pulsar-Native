@@ -37,6 +37,16 @@ struct Join {
 
 impl Join {
     fn run(&mut self, scene: &mut SceneDb) -> SceneBufferProjection {
+        self.run_after(scene, None)
+    }
+
+    /// Run the join after `before` (the scene join, whose lights the water
+    /// rows read), as the renderer orders them.
+    fn run_after(
+        &mut self,
+        scene: &mut SceneDb,
+        before: Option<&mut Box<dyn SceneDerivation>>,
+    ) -> SceneBufferProjection {
         scene.step();
         let mirror = scene.world.gpu_mirror().expect("mirror attached").clone();
         let mut inputs = SceneBufferProjection::from_store_all(mirror.store());
@@ -54,6 +64,19 @@ impl Join {
             },
         );
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        if let Some(before) = before {
+            let output = before.derive(
+                &SceneDerivationContext {
+                    device: &self.device,
+                    queue: &self.queue,
+                    inputs: &inputs,
+                },
+                &mut encoder,
+            );
+            for (key, handle) in output.buffers {
+                inputs.insert(key, handle);
+            }
+        }
         let output = self.join.derive(
             &SceneDerivationContext {
                 device: &self.device,
@@ -618,4 +641,533 @@ fn decals_are_placed_in_their_owners_box() {
         0.0,
         "disabled instance"
     );
+}
+
+/// Particle emitters (#1059): an enabled emitter of a visible owner becomes
+/// a Corona emitter row, packed into the leading rows, placed at its owner
+/// and given its own range of the shared particle pool, sized by its
+/// `max_particles`; the ranges are disjoint and aligned, a full pool clamps
+/// the last ones, and hidden owners or disabled instances give theirs up.
+#[test]
+fn particle_emitters_take_disjoint_ranges_of_the_particle_pool() {
+    use helio_component::components::{CoronaEmitterSourceRow, ParticleEmitterComponent};
+    use helio_default_graphs::environment_join::{
+        CORONA_POOL_PARTICLES, CORONA_RANGE_ALIGNMENT, MAX_CORONA_EMITTERS,
+    };
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let emitter = |scene: &mut SceneDb, name: &str, x: f32, max_particles: u32| {
+        let owner = place(scene, name, at([x, 2.0, -1.0]));
+        let emitter = ParticleEmitterComponent {
+            max_particles,
+            ..Default::default()
+        };
+        let instance =
+            pulsar_world_registry::attach_value(&mut scene.world, owner, emitter).unwrap();
+        (owner, instance)
+    };
+    let (a, _) = emitter(&mut scene, "a", 1.0, 300);
+    let (_, b) = emitter(&mut scene, "b", 2.0, 1000);
+    let (_, c) = emitter(&mut scene, "c", 3.0, 1);
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        join: engine_backend::scene::environment_join(&device),
+        device,
+        queue,
+    };
+    // Placed rows by their owner's X: (offset, count).
+    let ranges = |join: &Join, out: &SceneBufferProjection| {
+        let rows: Vec<CoronaEmitterSourceRow> = join.read(out, "corona_emitters");
+        assert_eq!(rows.len(), MAX_CORONA_EMITTERS as usize);
+        let mut placed = Vec::new();
+        for (slot, row) in rows.iter().enumerate() {
+            if row.motion[11] == 0.0 {
+                assert!(
+                    rows[slot..].iter().all(|row| row.motion[11] == 0.0),
+                    "placed rows are packed into the leading rows"
+                );
+                break;
+            }
+            // Placed at the owner: its translation and scale.
+            assert_eq!(&row.transform[12..16], &[row.transform[12], 2.0, -1.0, 1.0]);
+            assert_eq!(row.transform[0], 1.0);
+            // The emitter's identity: its source row + 1.
+            assert_ne!(row.range[3], 0);
+            assert!(
+                rows[..slot]
+                    .iter()
+                    .all(|other| other.range[3] != row.range[3]),
+                "identities are distinct"
+            );
+            placed.push((row.transform[12], row.range[1], row.range[2]));
+        }
+        placed
+    };
+    let disjoint = |placed: &[(f32, u32, u32)]| {
+        for (i, &(_, offset, count)) in placed.iter().enumerate() {
+            assert_eq!(offset % CORONA_RANGE_ALIGNMENT, 0, "aligned: {placed:?}");
+            assert!(
+                offset + count <= CORONA_POOL_PARTICLES,
+                "in the pool: {placed:?}"
+            );
+            for &(_, other, other_count) in &placed[i + 1..] {
+                assert!(
+                    offset + count <= other || other + other_count <= offset,
+                    "overlapping ranges: {placed:?}"
+                );
+            }
+        }
+    };
+
+    let out = join.run(&mut scene);
+    let placed = ranges(&join, &out);
+    assert_eq!(
+        placed,
+        vec![(1.0, 0, 300), (2.0, 512, 1000), (3.0, 1536, 1)]
+    );
+    disjoint(&placed);
+
+    // A hidden owner and a disabled instance give their ranges up; the
+    // others pack down.
+    scene.world.get_mut::<Visibility>(a).unwrap().visible = false;
+    attachments::set_enabled(&mut scene.world, c, false);
+    let out = join.run(&mut scene);
+    assert_eq!(ranges(&join, &out), vec![(2.0, 0, 1000)]);
+    attachments::set_enabled(&mut scene.world, b, false);
+    let out = join.run(&mut scene);
+    assert_eq!(ranges(&join, &out), Vec::new());
+    scene.world.get_mut::<Visibility>(a).unwrap().visible = true;
+    attachments::set_enabled(&mut scene.world, b, true);
+    attachments::set_enabled(&mut scene.world, c, true);
+
+    // A full pool: the most one emitter may request, five times over
+    // (with the three above), clamps the last ranges to what is left.
+    let largest = 262_144; // helio_pass_corona::CORONA_MAX_PARTICLES_PER_EMITTER
+    for x in 4..9 {
+        emitter(&mut scene, "large", x as f32, largest);
+    }
+    let out = join.run(&mut scene);
+    let placed = ranges(&join, &out);
+    assert_eq!(placed.len(), 8);
+    disjoint(&placed);
+    let total: u32 = placed.iter().map(|range| range.2).sum();
+    assert!(total <= CORONA_POOL_PARTICLES);
+    assert_eq!(placed[3].2, largest);
+    let last = placed[7];
+    assert_eq!(
+        last.2, 0,
+        "nothing is left for the last emitter: {placed:?}"
+    );
+    assert!(
+        placed[6].2 < largest && placed[6].2 > 0,
+        "the one that reaches the end is clamped to it: {placed:?}"
+    );
+}
+
+/// The foliage passes' one wind row (#1123): the first foliage component's
+/// own wind without a global wind; the level's global wind (a
+/// `WindComponent`) over it, even a calm one, whatever the owner's
+/// visibility; a component that opts out of the global wind over both; a
+/// disabled global wind gives the components their own wind back.
+#[test]
+fn foliage_sways_in_the_global_wind_unless_it_opts_out() {
+    use helio_component::components::WindComponent;
+    type WindRow = helio_pass_foliage_place::components::FoliageWindComponent;
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let grass = |wind_speed: f32| {
+        let mut foliage = FoliageComponent::default();
+        foliage.general.enabled = true;
+        foliage.wind.wind_speed = wind_speed;
+        foliage
+    };
+    let meadow = place(&mut scene, "meadow", at([0.0; 3]));
+    pulsar_world_registry::attach_value(&mut scene.world, meadow, grass(2.0)).unwrap();
+    let lawn = place(&mut scene, "lawn", at([50.0, 0.0, 0.0]));
+    let lawn = pulsar_world_registry::attach_value(&mut scene.world, lawn, grass(5.0)).unwrap();
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        join: engine_backend::scene::environment_join(&device),
+        device,
+        queue,
+    };
+    let speed = |join: &Join, out: &SceneBufferProjection| {
+        let rows: Vec<WindRow> = join.read(out, "foliage_wind");
+        assert_eq!(rows.len(), 1);
+        rows[0].direction_speed
+    };
+
+    let out = join.run(&mut scene);
+    assert_eq!(
+        speed(&join, &out)[3],
+        2.0,
+        "no global wind: the first own wind"
+    );
+
+    let breeze = place(&mut scene, "wind", at([0.0; 3]));
+    let global = WindComponent {
+        direction: [0.0, 0.0, -3.0],
+        speed: 9.0,
+        ..Default::default()
+    };
+    let wind = pulsar_world_registry::attach_value(&mut scene.world, breeze, global).unwrap();
+    let out = join.run(&mut scene);
+    assert_eq!(speed(&join, &out), [0.0, 0.0, -1.0, 9.0], "the global wind");
+    scene.world.get_mut::<Visibility>(breeze).unwrap().visible = false;
+    let out = join.run(&mut scene);
+    assert_eq!(speed(&join, &out)[3], 9.0, "visibility does not apply");
+    scene.world.get_mut::<WindComponent>(wind).unwrap().speed = 0.0;
+    let out = join.run(&mut scene);
+    assert_eq!(
+        speed(&join, &out)[3],
+        0.0,
+        "a calm global wind is still the wind"
+    );
+
+    scene
+        .world
+        .get_mut::<FoliageComponent>(lawn)
+        .unwrap()
+        .wind
+        .use_global_wind = false;
+    let out = join.run(&mut scene);
+    assert_eq!(
+        speed(&join, &out)[3],
+        5.0,
+        "an opted-out component's own wind"
+    );
+    scene
+        .world
+        .get_mut::<FoliageComponent>(lawn)
+        .unwrap()
+        .wind
+        .use_global_wind = true;
+
+    attachments::set_enabled(&mut scene.world, wind, false);
+    let out = join.run(&mut scene);
+    assert_eq!(speed(&join, &out)[3], 2.0, "a disabled global wind");
+}
+
+/// Water (#1065): every placed volume takes the scene's sun (its first
+/// directional light, oriented by its owner) in place of an authored one,
+/// and the level's global wind unless it opts out; its own spring, damping
+/// and wave scale reach its row.
+#[test]
+fn water_takes_the_scenes_sun_and_the_global_wind() {
+    use helio_component::components::{LightComponent, LightType, WindComponent};
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let water = |use_global_wind: bool| WaterVolumeComponent {
+        size: [10.0, 4.0, 10.0],
+        wave_spring: 1.4,
+        wave_damping: 0.95,
+        wave_scale: 2.0,
+        use_global_wind,
+        wind_direction_x: 0.0,
+        wind_direction_z: 1.0,
+        wind_strength: 3.0,
+        ..Default::default()
+    };
+    let lake = place(&mut scene, "lake", at([0.0; 3]));
+    pulsar_world_registry::attach_value(&mut scene.world, lake, water(true)).unwrap();
+    let pond = place(&mut scene, "pond", at([50.0, 0.0, 0.0]));
+    let pond = pulsar_world_registry::attach_value(&mut scene.world, pond, water(false)).unwrap();
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut scene_join: Box<dyn SceneDerivation> =
+        engine_backend::scene::scene_join(&device, false);
+    let mut join = Join {
+        join: engine_backend::scene::environment_join(&device),
+        device,
+        queue,
+    };
+    let water_rows =
+        |join: &mut Join, scene: &mut SceneDb, scene_join: &mut Box<dyn SceneDerivation>| {
+            let out = join.run_after(scene, Some(scene_join));
+            let rows: Vec<WaterRow> = join.read(&out, "water_volumes");
+            (rows, out)
+        };
+
+    let (rows, _) = water_rows(&mut join, &mut scene, &mut scene_join);
+    assert_eq!(
+        rows[0].sim_dynamics,
+        [1.4, 0.95, 2.0, 0.0],
+        "its own dynamics"
+    );
+    assert_eq!(
+        rows[0].sun_direction,
+        [0.0, 1.0, 0.0, 0.0],
+        "no sun: straight up"
+    );
+    assert_eq!(
+        rows[0].wind_params,
+        [0.0, 1.0, 3.0, 0.0],
+        "no global wind: its own"
+    );
+    assert_eq!(rows[1].wind_params, [0.0, 1.0, 3.0, 1.0]);
+
+    // A directional light, tilted by its owner, is the water's sun.
+    let sun = place(
+        &mut scene,
+        "sun",
+        Transform {
+            rotation: [-60.0, 30.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    let mut light = LightComponent::default();
+    light.general.enabled = true;
+    light.general.light_type = LightType::Directional;
+    let light = pulsar_world_registry::attach_value(&mut scene.world, sun, light).unwrap();
+    let (rows, out) = water_rows(&mut join, &mut scene, &mut scene_join);
+    let lit: helio::GpuLight =
+        join.read::<helio::GpuLight>(&out, "scene_lights")[light.index() as usize];
+    let toward = -glam::Vec3::from_slice(&lit.direction_outer[..3]).normalize();
+    assert!(
+        toward.y > 0.1 && toward.x.abs() > 0.1,
+        "a tilted sun: {toward:?}"
+    );
+    for row in &rows[..2] {
+        assert!(
+            close(row.sun_direction, toward.to_array()) && row.sun_direction[3] == 1.0,
+            "the water's sun is the directional light: {:?} vs {toward:?}",
+            row.sun_direction
+        );
+    }
+
+    // The global wind blows over the lake, not over the pond that opts out.
+    let breeze = place(&mut scene, "wind", at([0.0; 3]));
+    let wind = WindComponent {
+        direction: [3.0, 0.0, 0.0],
+        speed: 6.0,
+        ..Default::default()
+    };
+    let wind = pulsar_world_registry::attach_value(&mut scene.world, breeze, wind).unwrap();
+    let (rows, _) = water_rows(&mut join, &mut scene, &mut scene_join);
+    let strength = 6.0 * helio_default_graphs::environment_join::WATER_WIND_STRENGTH_PER_SPEED;
+    assert_eq!(
+        rows[0].wind_params,
+        [1.0, 0.0, strength, 0.0],
+        "the global wind"
+    );
+    assert_eq!(rows[1].wind_params, [0.0, 1.0, 3.0, 1.0], "its own wind");
+    assert!(
+        rows[2..].iter().all(|row| row.wind_params == [0.0; 4]),
+        "unplaced rows stay zero"
+    );
+
+    // A calm global wind calms the lake; without one it has its own again.
+    scene.world.get_mut::<WindComponent>(wind).unwrap().speed = 0.0;
+    let (rows, _) = water_rows(&mut join, &mut scene, &mut scene_join);
+    assert_eq!(rows[0].wind_params[2], 0.0, "a calm global wind");
+    attachments::set_enabled(&mut scene.world, wind, false);
+    let (rows, _) = water_rows(&mut join, &mut scene, &mut scene_join);
+    assert_eq!(
+        rows[0].wind_params,
+        [0.0, 1.0, 3.0, 0.0],
+        "a disabled global wind"
+    );
+
+    // The pond's own wind follows its edits; switching the light off leaves
+    // the water without a sun.
+    scene
+        .world
+        .get_mut::<WaterVolumeComponent>(pond)
+        .unwrap()
+        .wind_strength = 7.0;
+    attachments::set_enabled(&mut scene.world, light, false);
+    let (rows, _) = water_rows(&mut join, &mut scene, &mut scene_join);
+    assert_eq!(rows[1].wind_params[2], 7.0);
+    assert_eq!(rows[0].sun_direction, [0.0, 1.0, 0.0, 0.0]);
+}
+
+/// Water interaction (#1080): a body on the `WaterSim` collision channel
+/// becomes a water hitbox bounded by its owner's meshes at the owner's
+/// transform; a body off the channel, or one with no mesh, does not. Its
+/// old bounds are an empty box at its centre (the simulation tracks where
+/// it was) and its row carries its identity.
+#[test]
+fn bodies_on_the_water_sim_channel_become_water_hitboxes() {
+    use helio_component::components::StaticMeshComponent;
+    use pulsar_physics::{CollisionChannel, PhysicsComponent};
+    type HitboxRow = helio_pass_water_sim::GpuWaterHitbox;
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mesh = StaticMeshComponent {
+        indices: vec![0, 1, 2],
+        bounds_local: [0.0, 0.5, 0.0, 1.0],
+        ..Default::default()
+    };
+    let body = |water: bool| {
+        let mut physics = PhysicsComponent::default();
+        if water {
+            physics.collision.collision_channel |= u64::from(CollisionChannel::WaterSim);
+        }
+        physics
+    };
+    let mut scene = SceneDb::new();
+    // Off the channel, with a mesh: no hitbox.
+    let crate_box = place(&mut scene, "crate", at([-10.0, 0.0, 0.0]));
+    pulsar_world_registry::attach_value(&mut scene.world, crate_box, mesh.clone()).unwrap();
+    pulsar_world_registry::attach_value(&mut scene.world, crate_box, body(false)).unwrap();
+    // On the channel, with no mesh: nothing to bound.
+    let ghost = place(&mut scene, "ghost", at([20.0, 0.0, 0.0]));
+    pulsar_world_registry::attach_value(&mut scene.world, ghost, body(true)).unwrap();
+    // On the channel, with a mesh, scaled 2x.
+    let boat = place(
+        &mut scene,
+        "boat",
+        Transform {
+            position: [4.0, 1.0, -2.0],
+            rotation: [0.0; 3],
+            scale: [2.0, 2.0, 2.0],
+        },
+    );
+    pulsar_world_registry::attach_value(&mut scene.world, boat, mesh.clone()).unwrap();
+    let hull = pulsar_world_registry::attach_value(&mut scene.world, boat, body(true)).unwrap();
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        join: engine_backend::scene::environment_join(&device),
+        device,
+        queue,
+    };
+    let close3 = |a: [f32; 4], b: [f32; 3]| a[..3].iter().zip(b).all(|(a, b)| (a - b).abs() < 1e-4);
+
+    let out = join.run(&mut scene);
+    let rows: Vec<HitboxRow> = join.read(&out, "water_hitboxes");
+    assert_eq!(
+        rows.len(),
+        helio_default_graphs::environment_join::MAX_WATER_HITBOXES as usize
+    );
+    // The mesh's sphere (centre 1 above the owner after scaling, radius 2).
+    assert!(
+        close3(rows[0].new_min, [2.0, 0.0, -4.0]) && close3(rows[0].new_max, [6.0, 4.0, 0.0]),
+        "the boat is bounded by its mesh at its owner: {:?} {:?}",
+        rows[0].new_min,
+        rows[0].new_max
+    );
+    assert!(close3(rows[0].old_min, [4.0, 2.0, -2.0]) && rows[0].old_min == rows[0].old_max);
+    assert_eq!(
+        rows[0].params,
+        [
+            pulsar_physics::WATER_HITBOX_EDGE_SOFTNESS,
+            pulsar_physics::WATER_HITBOX_STRENGTH,
+            (hull.index() + 1) as f32,
+            0.0
+        ]
+    );
+    assert!(
+        rows[1..].iter().all(|row| row.params == [0.0; 4]),
+        "no hitbox off the channel or without a mesh"
+    );
+
+    // The hitbox follows its owner; a hidden body still pushes water.
+    scene.world.get_mut::<Transform>(boat).unwrap().position = [4.0, -1.0, -2.0];
+    scene.world.get_mut::<Visibility>(boat).unwrap().visible = false;
+    let out = join.run(&mut scene);
+    let rows: Vec<HitboxRow> = join.read(&out, "water_hitboxes");
+    assert!(
+        close3(rows[0].new_min, [2.0, -2.0, -4.0]),
+        "{:?}",
+        rows[0].new_min
+    );
+
+    // Off the channel, it stops.
+    scene
+        .world
+        .get_mut::<PhysicsComponent>(hull)
+        .unwrap()
+        .collision
+        .collision_channel = 0;
+    let out = join.run(&mut scene);
+    let rows: Vec<HitboxRow> = join.read(&out, "water_hitboxes");
+    assert!(
+        rows.iter().all(|row| row.params == [0.0; 4]),
+        "off the channel"
+    );
+}
+
+/// 2D sprites (#1060): the join places a sprite at its owner's X and Y,
+/// turned by the owner's roll and scaled by its X and Y scale (the owner's
+/// Z does not apply), keeps its Z index as the sort depth, and drops it
+/// while its owner is hidden or it is disabled.
+#[test]
+fn sprites_are_placed_in_2d_by_their_owner() {
+    use helio_component::components::SpriteComponent;
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let owner = place(
+        &mut scene,
+        "sprite",
+        Transform {
+            position: [120.0, -40.0, 999.0],
+            rotation: [0.0, 0.0, 90.0],
+            scale: [2.0, 0.5, 1.0],
+        },
+    );
+    let sprite = SpriteComponent {
+        tint: [0.0, 1.0, 0.0, 1.0],
+        width: 30.0,
+        height: 10.0,
+        z_index: 4,
+        ..Default::default()
+    };
+    let instance = pulsar_world_registry::attach_value(&mut scene.world, owner, sprite).unwrap();
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        join: engine_backend::scene::environment_join(&device),
+        device,
+        queue,
+    };
+    // `helio_pass_sprite_batch::SpriteComponent`: position, size, rotation,
+    // depth, padding, UV rectangle, tint, then the texture slot.
+    let row = |join: &Join, out: &SceneBufferProjection| -> [f32; 20] {
+        join.row::<[f32; 20]>(out, "sprite_instances", instance)
+    };
+
+    let out = join.run(&mut scene);
+    let placed = row(&join, &out);
+    assert_eq!(
+        placed[..4],
+        [120.0, -40.0, 60.0, 5.0],
+        "owner X/Y and X/Y scale"
+    );
+    assert!(
+        (placed[4] - std::f32::consts::FRAC_PI_2).abs() < 1e-5,
+        "owner roll"
+    );
+    assert_eq!(placed[5], 4.0, "the Z index is the sort depth");
+    assert_eq!(placed[8..12], [0.0, 0.0, 1.0, 1.0]);
+    assert_eq!(placed[12..16], [0.0, 1.0, 0.0, 1.0]);
+    assert_eq!(placed[16].to_bits(), u32::MAX, "no image");
+
+    scene.world.get_mut::<Visibility>(owner).unwrap().visible = false;
+    let out = join.run(&mut scene);
+    assert_eq!(row(&join, &out), [0.0; 20], "a hidden owner hides it");
+    scene.world.get_mut::<Visibility>(owner).unwrap().visible = true;
+    scene
+        .world
+        .get_mut::<SpriteComponent>(instance)
+        .unwrap()
+        .enabled = false;
+    let out = join.run(&mut scene);
+    assert_eq!(row(&join, &out), [0.0; 20], "disabled");
 }

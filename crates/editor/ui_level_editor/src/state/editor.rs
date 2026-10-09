@@ -61,6 +61,11 @@ pub struct EditorDomain {
     pub feature_shadows_enabled: bool,
     pub feature_bloom_enabled: bool,
     pub feature_materials_enabled: bool,
+    /// The viewport's Realtime toggle (#1123, #1109): animation (foliage
+    /// wind, particles, shader-graph `time`) runs on wall time while it is
+    /// on, and the viewport keeps rendering while such content is live; off,
+    /// that animation is frozen. Play-in-Editor runs on the game clock.
+    pub realtime_viewport: bool,
 
     // ── Tool Modes ────────────────────────────────────────────────────────
     pub tool_mode_registry: crate::tool_modes::ToolModeRegistry,
@@ -104,6 +109,7 @@ impl Default for EditorDomain {
             feature_shadows_enabled: true,
             feature_bloom_enabled: true,
             feature_materials_enabled: true,
+            realtime_viewport: true,
             tool_mode_registry,
             spline: super::spline::SplineDomain::default(),
             terrain: super::terrain::TerrainDomain::default(),
@@ -131,6 +137,7 @@ impl EditorDomain {
             feature_shadows_enabled: self.feature_shadows_enabled,
             feature_bloom_enabled: self.feature_bloom_enabled,
             feature_materials_enabled: self.feature_materials_enabled,
+            realtime_viewport: self.realtime_viewport,
             tool_mode_registry: self.tool_mode_registry.clone(),
             terrain: self.terrain.clone(),
             spline: self.spline.clone(),

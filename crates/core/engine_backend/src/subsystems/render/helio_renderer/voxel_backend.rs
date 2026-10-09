@@ -173,7 +173,9 @@ pub trait VoxelRenderBackend: Send {
     fn supports(&self, _source: &VoxelSceneEntry) -> bool {
         false
     }
-    fn pass_factory(&self) -> VoxelPassFactory;
+    /// The backend's GBuffer pass, if it draws with one (a backend that
+    /// uploads ordinary mesh rows has none).
+    fn pass_factory(&self) -> Option<VoxelPassFactory>;
     fn publish_frame(
         &mut self,
         sources: &[&VoxelSceneEntry],
@@ -220,7 +222,7 @@ impl VoxelBackendRegistry {
     pub fn pass_factories(&self) -> Vec<VoxelPassFactory> {
         self.backends
             .iter()
-            .map(|backend| backend.pass_factory())
+            .filter_map(|backend| backend.pass_factory())
             .collect()
     }
 
@@ -908,9 +910,11 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             .is_some_and(|generator| terrain::find(&generator.id, generator.version).is_some())
     }
 
-    fn pass_factory(&self) -> VoxelPassFactory {
+    fn pass_factory(&self) -> Option<VoxelPassFactory> {
         let frame = Arc::clone(&self.frame);
-        Arc::new(move |_, _, _, _| Box::new(PlanetPass::new(Arc::clone(&frame))))
+        Some(Arc::new(move |_, _, _, _| {
+            Box::new(PlanetPass::new(Arc::clone(&frame)))
+        }))
     }
 
     fn needs_frame(&self, renderer: &helio::Renderer) -> bool {

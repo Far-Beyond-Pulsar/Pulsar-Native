@@ -275,3 +275,135 @@ fn every_runtime_renders_the_same_level() {
         );
     }
 }
+
+/// The game clock drives the game's animation (#1109, #1123): as the
+/// Play-in-Editor game does (`pulsar_game::embed`), every frame ticks the
+/// game loop and hands the renderer the tick's delta. A running game's
+/// particles move from frame to frame; paused, the clock reports a zero
+/// delta and the frame stops changing; a single step moves it on by one
+/// tick, and resuming runs it again.
+#[test]
+fn the_game_clock_drives_animation_and_pause_freezes_it() {
+    use pulsar_game::tick::TickLoop;
+    use pulsar_game::TickMode;
+
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    // No assets, so no project: the engine context the other test sets
+    // stays as it is (tests share the process).
+    let project = tempfile::tempdir().unwrap();
+    let level = json!({
+        "version": "2.1",
+        "objects": [{
+            "id": "fountain", "name": "Fountain", "object_type": "Empty",
+            "transform": { "position": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0], "scale": [1.0, 1.0, 1.0] },
+            "parent": null, "visible": true, "locked": false, "props": {}
+        }],
+        "components": { "fountain": [{
+            "index": 0, "class_name": "ParticleEmitterComponent", "enabled": true,
+            "data": {
+                "max_particles": 2000, "emit_rate": 3000.0, "lifetime": 30.0,
+                "lifetime_variation": 0.0, "shape": "Sphere", "spawn_radius": 0.5,
+                "velocity": [0.0, 0.6, 0.0], "velocity_variation": [0.6, 0.6, 0.6],
+                "start_size": 0.08, "end_size": 0.08,
+                "start_color": [1.0, 0.4, 0.1, 1.0], "end_color": [1.0, 0.4, 0.1, 1.0]
+            }
+        }]},
+        "metadata": {}
+    });
+    let path = project.path().join("fountain.level");
+    std::fs::write(&path, level.to_string()).unwrap();
+
+    let mut game = TickLoop::new(
+        TickMode::Fixed {
+            dt: std::time::Duration::from_secs_f64(1.0 / 30.0),
+        },
+        1,
+    );
+    game.scene_store = RuntimeLevel::load(&path).expect("level loads").scene();
+    let scene = game.scene_store.clone();
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("game-clock-target"),
+        size: wgpu::Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: FORMAT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let target = Target {
+        device,
+        queue,
+        texture,
+    };
+    let view = target.texture.create_view(&Default::default());
+    let mut renderer = build_game_renderer(
+        Arc::clone(&target.device),
+        Arc::clone(&target.queue),
+        &scene,
+        helio::RendererConfig::new(SIZE, SIZE, FORMAT),
+        false,
+        DeviceOwner::Host,
+    );
+    // Temporal filters and rasterization deterministic: what changes is the
+    // game clock's doing.
+    renderer.set_frame_delta_override(Some(1.0 / 30.0));
+    renderer.set_camera_jitter_override(Some([0.0, 0.0]));
+    let camera = helio::Camera::perspective_look_at(
+        glam::Vec3::new(0.0, 1.0, 5.0),
+        glam::Vec3::new(0.0, 0.5, 0.0),
+        glam::Vec3::Y,
+        std::f32::consts::FRAC_PI_4,
+        1.0,
+        0.1,
+        100.0,
+    );
+    let mut frames = |game: &mut TickLoop, count: usize| {
+        for _ in 0..count {
+            // The embedded game's frame: tick, the game clock to the
+            // renderer, step the world, render.
+            let time = game.tick_once();
+            renderer.set_frame_clock_delta(Some(time.delta.as_secs_f32()));
+            scene.write().step();
+            renderer.render(&camera, &view).expect("render");
+            target
+                .device
+                .poll(wgpu::PollType::wait_indefinitely())
+                .unwrap();
+        }
+        target.read()
+    };
+
+    let running = frames(&mut game, 20);
+    let later = frames(&mut game, 2);
+    let moved = changed(&running, &later);
+    println!("GAME CLOCK running: {moved} pixels changed over two frames");
+    assert!(moved > 100, "the running game's particles did not move");
+
+    game.set_paused(true);
+    // Let the temporal history settle on the frozen frame.
+    let paused = frames(&mut game, 30);
+    let still = changed(&paused, &frames(&mut game, 8));
+    println!("GAME CLOCK paused: {still} pixels changed over eight frames");
+    assert_eq!(still, 0, "animation ran while the game was paused");
+
+    game.step(1);
+    let stepped = frames(&mut game, 1);
+    let step = changed(&paused, &stepped);
+    println!("GAME CLOCK stepped: {step} pixels changed");
+    assert!(step > 0, "a step did not advance the animation");
+
+    game.set_paused(false);
+    let resumed = frames(&mut game, 2);
+    assert!(
+        changed(&stepped, &resumed) > 100,
+        "the resumed game's particles did not move"
+    );
+}

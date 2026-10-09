@@ -40,6 +40,39 @@ test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_f
 status = "verified"
 
 [[class]]
+name = "WindComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = true
+owner = "helio_component::components::wind_component"
+disposition = "render (#1123). The level's global wind, one per level (engine_backend::scene::level_rules), edited in World Settings. Its derived GlobalWindSourceRow is written on every insert, write, removal and replay; the environment join places it as the foliage passes' wind row over the foliage components' own wind (visibility does not apply). Its motion is the renderer's frame clock"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); crates/core/engine_backend/tests/environment_join_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
+status = "verified"
+
+[[class]]
+name = "ParticleEmitterComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = true
+owner = "helio_component::components::particle_emitter_component"
+disposition = "render (#1059). Its derived CoronaEmitterSourceRow is written on every insert, write, removal and replay; the environment join gates it on the instance and its owner's visibility, places it at the owner and allocates its range of the Corona particle pool (sized by max_particles, clamped when the pool is full). Sprites are the Corona pass's built-in atlas cells"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+status = "verified"
+
+[[class]]
+name = "SpriteComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = true
+owner = "helio_component::components::sprite_component"
+disposition = "render, 2D (#1060). Its derived SpriteSourceRow is written on every insert, write, removal and replay (its image registered in the scene texture store); the environment join gates it on the instance and its owner's visibility and places it into sprite_instances at the owner's X/Y, turned by its roll and scaled by its X/Y scale. The default graphs draw sprites as the final 2D overlay after post-processing, ordered by z_index, with their own orthographic camera (1 unit = 1 output pixel, origin at the view's centre); no 3D pass reads them. The editor places one from the hierarchy (scene_edit::sprite::create_sprite)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
+
+[[class]]
 name = "DecalComponent"
 category = "Rendering"
 world_registered = true
@@ -78,9 +111,9 @@ category = "Rendering"
 world_registered = true
 own_gpu_columns = true
 owner = "helio_component::components::foliage_component"
-disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and packs its type, layer and wind into the foliage passes' tables. Grass grows on flat ground at Y 0, no terrain capture in the editor (#1064). Limits, each tracked: types share layers and the first component's wind applies to all (#1062), wind does not animate (#1061), and the interactor and material colour fields have no consumer (#1063)"
+disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates and packs its type, layer and wind into the foliage passes' tables. Blades sway in the level's global wind (WindComponent) by their per-band response, on the renderer's frame clock (#1123, #1109); a component may opt out for its own wind (use_global_wind), and a level without a global wind uses the components' own. Grass grows on flat ground at Y 0, no terrain capture in the editor (#1064). Limits, each tracked: types share layers and one wind applies to all foliage (#1123), and the interactor and material colour fields have no consumer (#1063)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame, foliage_sways_in_the_global_wind_on_the_frame_clock)"
 status = "verified"
 
 [[class]]
@@ -144,11 +177,11 @@ notes = "Attach, edit, save and undo are typed; nothing at runtime spawns the na
 name = "PhysicsComponent"
 category = "Physics"
 world_registered = true
-own_gpu_columns = false
+own_gpu_columns = true
 owner = "pulsar_physics::components::physics_component"
-disposition = "non-render: physics subsystem data; typed lifecycle only. Its generated GPU companion is unregistered and has no consumer"
+disposition = "physics subsystem data; SceneDB is the physics world (nothing is synced to a separate one). A body on the WaterSim collision channel (#1080) derives a WaterHitboxSourceRow on every insert, write, removal and replay, which the environment join bounds by the owner's meshes into water_hitboxes; its generated GPU companion uploads nothing"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs physics_world_edits_survive_object_updates_and_save_projection, disabling_and_reenabling_physics_preserves_the_canonical_value"
+test = "crates/editor/ui_level_editor/src/core/scene_edit/tests/components.rs physics_world_edits_survive_object_updates_and_save_projection, disabling_and_reenabling_physics_preserves_the_canonical_value; crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
 status = "verified"
 
 [[class]]
@@ -224,10 +257,10 @@ category = "Voxel"
 world_registered = true
 own_gpu_columns = false
 owner = "helio_component::components::voxel_component_runtime"
-disposition = "unfinished, Phase 4 (tracked in #1056): no voxel renderer draws a free-standing voxel component (its entry has no compatible renderer; live chunks on a terrain are rejected); its payload store and sessions stay real work. Declared with declare_unfinished_component!: the properties card shows the reason and issue, and the first attach logs them once"
+disposition = "render, Phase 4 (#1056): the voxel mesh renderer (helio.voxel-mesh) greedy-meshes the payload store's 8³ chunks change-driven (a changed chunk and the neighbours whose border it changed; large batches on a worker thread, results of chunks changed meanwhile dropped by chunk revision) and writes the instance's mesh rows: a generated StaticMeshComponent's content-interned geometry and its StaticMeshDraw, one section per palette slot coloured from its material ID. The scene join draws them with the owner's whole transform (G-buffer, shadows, picking); removal or despawn clears them (a clear registration on VoxelComponent). An uninitialized store draws its initial cube. Live chunks on a terrain stay rejected by the planet renderer"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/renderer/helio/crates/helio-component/tests/unfinished_components.rs; tracked in #1056"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (voxel_objects_reach_the_frame_as_meshes); crates/core/engine_backend/src/subsystems/render/helio_renderer/voxel_mesh_backend.rs (a_default_object_meshes_its_cube_and_edits_remesh_only_touched_chunks, large_volumes_mesh_off_thread_and_drop_results_of_chunks_edited_meanwhile); crates/renderer/helio/crates/helio-component/src/components/voxel_mesh.rs (a_cube_is_six_quads, an_l_shape_is_ten_quads, an_empty_chunk_has_no_quads)"
+status = "verified"
 
 [[class]]
 name = "VoxelTerrainLayersComponent"
@@ -258,9 +291,9 @@ category = "Rendering"
 world_registered = true
 own_gpu_columns = true
 owner = "helio_component::components::water_volume_component"
-disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates, places and packs it into water_volumes, which water simulation, surface, caustics and deferred lighting read. Per-volume wind, spring, damping and wave scale are carried but the simulation uses pass-wide values (#1065)"
+disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates, places and packs it into water_volumes, which water simulation, surface, caustics and deferred lighting read. The simulation reads each volume's own spring, damping, wave scale, wave speed and wind from its row and steps on the renderer's frame clock (#1065); the wind is the level's global wind unless the volume opts out (use_global_wind), and the sun is the scene's directional light, written into the row by the join (the authored sun_direction is retired by a load migration)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs (water_volumes_are_packed_into_the_leading_rows, water_takes_the_scenes_sun_and_the_global_wind); crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame, water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock)"
 status = "verified"
 
 # ── GPU schemas ──────────────────────────────────────────────────────────
@@ -540,12 +573,26 @@ buffers = ["corona_emitters"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "no production writer found"
+writer = "helio-default-graphs environment join from ParticleEmitterComponent's source rows (#1059)"
 owner = "helio_pass_corona::components"
-disposition = "unfinished (Phase 4; tracked in #1059): no authored emitter component (decision 4); the pass reads its fallback"
+disposition = "keep as the pass row layout of corona_emitters; produced by the join (transform from the owner, particle range from the pool, emitter identity), not registered as a column. The spawn cursor is the pass's own state"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "tracked in #1059"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+status = "verified"
+
+[[schema]]
+type = "SpriteComponent"
+path = "helio_pass_sprite_batch::SpriteComponent"
+buffers = ["sprite_instances"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "helio-default-graphs environment join from SpriteComponent's source rows (#1060)"
+owner = "helio_pass_sprite_batch"
+disposition = "keep as the pass row layout of sprite_instances; produced by the join (the 2D placement from the owner), not registered as a column"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
 
 [[schema]]
 type = "DecalComponent"
@@ -814,6 +861,34 @@ test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor
 status = "verified"
 
 [[schema]]
+type = "SpriteComponent"
+path = "helio_component::components::sprite_component::SpriteComponent"
+buffers = ["sprite_instances"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "the authored value's SceneDB GPU dispatch is its derived SpriteSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing"
+owner = "helio_component::components::sprite_component"
+disposition = "keep: the authored type's GPU row is SpriteSourceRow, the environment join's input; the scanner attributes sprite_instances to it by name, but the row it writes is sprite_sources"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
+
+[[schema]]
+type = "SpriteSourceRow"
+path = "helio_component::components::environment_rows::SpriteSourceRow"
+buffers = ["sprite_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "SpriteComponent's derived GPU registration (the pass row at the 2D origin with its image's texture store slot; zero while disabled), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's sprite input (#1060)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
+
+[[schema]]
 type = "DecalComponent"
 path = "helio_component::components::decal_component::DecalComponent"
 buffers = ["decals"]
@@ -825,6 +900,62 @@ owner = "helio_component::components::decal_component"
 disposition = "keep: the authored type's GPU row is DecalSourceRow, the environment join's input"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (decals_reach_the_frame_and_scripts_set_their_opacity); crates/core/engine_backend/tests/environment_join_rows.rs (decals_are_placed_in_their_owners_box)"
+status = "verified"
+
+[[schema]]
+type = "WindComponent"
+path = "helio_component::components::wind_component::WindComponent"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "the authored value's SceneDB GPU dispatch is its derived GlobalWindSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing"
+owner = "helio_component::components::wind_component"
+disposition = "keep: the authored type's GPU row is GlobalWindSourceRow, the environment join's input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); crates/core/engine_backend/tests/environment_join_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
+status = "verified"
+
+[[schema]]
+type = "GlobalWindSourceRow"
+path = "helio_component::components::environment_rows::GlobalWindSourceRow"
+buffers = ["wind_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "WindComponent's derived GPU registration (the foliage wind row marked global; zero while disabled), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's global wind input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); crates/core/engine_backend/tests/environment_join_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
+status = "verified"
+
+[[schema]]
+type = "ParticleEmitterComponent"
+path = "helio_component::components::particle_emitter_component::ParticleEmitterComponent"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "the authored value's SceneDB GPU dispatch is its derived CoronaEmitterSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing"
+owner = "helio_component::components::particle_emitter_component"
+disposition = "keep: the authored type's GPU row is CoronaEmitterSourceRow, the environment join's input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+status = "verified"
+
+[[schema]]
+type = "CoronaEmitterSourceRow"
+path = "helio_component::components::environment_rows::CoronaEmitterSourceRow"
+buffers = ["corona_emitter_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "ParticleEmitterComponent's derived GPU registration (the pass row in the owner's space with its requested particles; zero while disabled), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's corona_emitters input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
 status = "verified"
 
 [[schema]]
@@ -945,13 +1076,13 @@ path = "helio_pass_water_sim::components::WaterHitboxComponent"
 buffers = ["water_hitboxes"]
 clears_on_remove = true
 releases_var_len = false
-registered = true
-writer = "no production writer found (registered only)"
+registered = false
+writer = "helio-default-graphs environment join from the WaterHitboxSourceRows of PhysicsComponents on the WaterSim channel, bounded by their owners' meshes (#1080); no component is inserted"
 owner = "helio_pass_water_sim::components"
-disposition = "water-sim reads it; no authored producer"
+disposition = "keep as the pass row layout of water_hitboxes; produced by the join, no longer registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "tracked in #1080"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+status = "verified"
 
 [[schema]]
 type = "WaterVolumeComponent"
@@ -965,6 +1096,34 @@ owner = "helio_pass_water_sim::components"
 disposition = "keep as the pass row layout of water_volumes; produced by the join, no longer registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
+
+[[schema]]
+type = "PhysicsComponent"
+path = "pulsar_physics::components::physics_component::component::PhysicsComponent"
+buffers = []
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "the authored value's SceneDB GPU dispatch is its derived WaterHitboxSourceRow (pulsar_physics water), on every insert, write, removal and replay; the generated companion uploads nothing"
+owner = "pulsar_physics::components::physics_component"
+disposition = "keep: the authored type's GPU row is WaterHitboxSourceRow, the environment join's water hitbox input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+status = "verified"
+
+[[schema]]
+type = "WaterHitboxSourceRow"
+path = "pulsar_physics::components::physics_component::water::WaterHitboxSourceRow"
+buffers = ["water_hitbox_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "PhysicsComponent's derived GPU registration (edge softness, strength and the interaction flag; zero unless enabled, colliding and on the WaterSim channel), on every insert, write, removal and replay"
+owner = "pulsar_physics::components::physics_component::water"
+disposition = "keep: the environment join's water hitbox input (#1080)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
 status = "verified"
 
 [[schema]]
@@ -1560,7 +1719,7 @@ key = "billboard_instances"
 producers = ["BillboardComponent"]
 consumers = ["helio-default-graphs", "helio-pass-billboard"]
 owner = "helio-default-graphs scene join (editor mode)"
-disposition = "keep: editor light icons are a GPU output of the join over authored light rows (Phase 2); authored sprites are unfinished (decision 4; tracked in #1060)"
+disposition = "keep: editor light icons are a GPU output of the join over authored light rows (Phase 2); authored 2D sprites are SpriteComponent, drawn by the sprite overlay, not billboards (#1060)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
 test = "crates/renderer/helio/crates/helio-default-graphs/tests/scene_join.rs"
 status = "verified"
@@ -1598,12 +1757,32 @@ status = "verified"
 [[buffer]]
 key = "corona_emitters"
 producers = ["CoronaEmitterComponent"]
-consumers = ["helio-pass-corona"]
-owner = "no authored Pulsar component found"
-disposition = "unfinished (Phase 4; tracked in #1059): no authored emitter component (decision 4)"
+consumers = ["helio-default-graphs", "helio-pass-corona"]
+owner = "helio-default-graphs environment join (execution output, packed into MAX_CORONA_EMITTERS rows)"
+disposition = "keep: the join places each enabled ParticleEmitterComponent of a visible owner at the owner and gives it the next contiguous, aligned range of the Corona particle pool (a GPU prefix sum of max_particles, clamped to the pool) (#1059)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "tracked in #1059"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+status = "verified"
+
+[[buffer]]
+key = "wind_sources"
+producers = ["GlobalWindSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the level's WindComponent, derived on every write; the environment join reads it into foliage_wind and over the wind of every water_volumes row that does not opt out (#1065)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); crates/core/engine_backend/tests/environment_join_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
+status = "verified"
+
+[[buffer]]
+key = "corona_emitter_sources"
+producers = ["CoronaEmitterSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: ParticleEmitterComponent in its owner's space, derived on every write; the environment join reads it into corona_emitters"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool)"
+status = "verified"
 
 [[buffer]]
 key = "decals"
@@ -1660,9 +1839,9 @@ key = "foliage_wind"
 producers = ["FoliageWindComponent"]
 consumers = ["helio-default-graphs", "helio-pass-foliage-gbuffer"]
 owner = "helio-default-graphs environment join (execution output, placed foliage packed into the leading rows in instance order)"
-disposition = "keep: the first placed component's wind; the wind clock is not advanced (no frame time reaches the row), so blades do not sway (#1061); per-component wind is #1062"
+disposition = "keep: one wind row for all foliage: the first placed foliage component that opts out of the global wind, else the level's global wind (WindComponent), else the first placed component's own wind (#1123). Its clock words are unused: the foliage passes read the renderer's frame clock (#1109)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame)"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs (foliage_types_layers_and_wind_are_packed, foliage_sways_in_the_global_wind_unless_it_opts_out); crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock)"
 status = "verified"
 
 [[buffer]]
@@ -1778,12 +1957,22 @@ status = "out-of-scope"
 [[buffer]]
 key = "sprite_instances"
 producers = ["SpriteComponent"]
-consumers = ["helio-pass-sprite-batch", "helio-pass-sprite-cull"]
-owner = "no authored Pulsar component (2D passes are not in the default graph)"
-disposition = "out of scope for the 3D editor graph until a 2D graph is composed"
+consumers = ["helio-default-graphs", "helio-pass-sprite-batch", "helio-pass-sprite-cull"]
+owner = "helio-default-graphs environment join (execution output)"
+disposition = "keep: authored 2D sprites, joined on the GPU from sprite_sources and the owner transform/visibility; the default graphs' 2D overlay culls, Z-sorts and draws them after post-processing (#1060)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored source"
-status = "out-of-scope"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
+
+[[buffer]]
+key = "sprite_sources"
+producers = ["SpriteSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: SpriteComponent at the 2D origin, derived on every write; the environment join reads it into sprite_instances"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
 
 [[buffer]]
 key = "static_objects"
@@ -1818,12 +2007,22 @@ status = "out-of-scope"
 [[buffer]]
 key = "water_hitboxes"
 producers = ["WaterHitboxComponent"]
-consumers = ["helio-pass-water-sim"]
-owner = "water-sim pass type; writer not identified"
-disposition = "water-sim reads it; no authored producer"
+consumers = ["helio-default-graphs", "helio-pass-water-sim"]
+owner = "helio-default-graphs environment join (execution output)"
+disposition = "keep: bodies on the WaterSim collision channel, joined on the GPU from water_hitbox_sources, the owner transform and its meshes' bounds and packed into the simulation's fixed rows; the simulation keeps each body's previous bounds itself (#1080)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "tracked in #1080"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+status = "verified"
+
+[[buffer]]
+key = "water_hitbox_sources"
+producers = ["WaterHitboxSourceRow"]
+consumers = []
+owner = "pulsar_physics::components::physics_component::water"
+disposition = "keep: PhysicsComponent's water interaction, derived on every write; the environment join reads it into water_hitboxes"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (bodies_on_the_water_sim_channel_push_the_water); crates/core/engine_backend/tests/environment_join_rows.rs (bodies_on_the_water_sim_channel_become_water_hitboxes)"
+status = "verified"
 
 [[buffer]]
 key = "water_volumes"
@@ -1941,23 +2140,23 @@ status = "out-of-scope"
 
 [[pass]]
 crate = "helio-pass-sprite-batch"
-in_default_graph = false
+in_default_graph = true
 reads = ["sprite_instances"]
 owner = "helio-default-graphs"
-disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it (reads sprite_instances)"
+disposition = "keep: the default graphs' final 2D overlay after post-processing (cull + Z sort, then draw with its own orthographic camera); reads sprite_instances (joined from SpriteComponent, #1060) and records nothing while it holds no sprite"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: not in a production graph"
-status = "out-of-scope"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-sprite-cull"
-in_default_graph = false
+in_default_graph = true
 reads = ["sprite_instances"]
 owner = "helio-default-graphs"
-disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it (reads sprite_instances)"
+disposition = "keep: the default graphs' final 2D overlay after post-processing (cull + Z sort, then draw with its own orthographic camera); reads sprite_instances (joined from SpriteComponent, #1060) and records nothing while it holds no sprite"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: not in a production graph"
-status = "out-of-scope"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-sprite-simulate"
@@ -1984,10 +2183,10 @@ crate = "helio-pass-corona"
 in_default_graph = true
 reads = ["corona_emitters"]
 owner = "helio-default-graphs (mapping); helio-pass-corona (algorithm)"
-disposition = "runs in the editor graph, but nothing authored feeds it: corona emitters (Phase 4)"
+disposition = "runs in the editor graph: authored ParticleEmitterComponents reach it through the environment join (corona_emitters, #1059). Emitters draw from one shared particle pool by their join-allocated ranges; the particle-wide passes dispatch indirectly over the used range (no CPU readback); a row whose emitter or range changes restarts its particles. Depth sort is off (no CPU-built sort steps for GPU-allocated ranges)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "tracked in #1059; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
-status = "unfinished"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitters_reach_the_frame_from_one_pool); crates/core/engine_backend/tests/environment_join_rows.rs (particle_emitters_take_disjoint_ranges_of_the_particle_pool); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-debug"
@@ -2064,9 +2263,9 @@ crate = "helio-pass-foliage-gbuffer"
 in_default_graph = true
 reads = ["foliage_types", "foliage_wind"]
 owner = "helio-default-graphs (mapping); helio-pass-foliage-gbuffer (algorithm)"
-disposition = "keep: reads the environment join's foliage outputs, derived from FoliageComponent (Phase 4); limitations #1061-#1064"
+disposition = "keep: reads the environment join's foliage outputs, derived from FoliageComponent and the level's WindComponent (Phase 4); the wind's clock is the renderer's frame clock (#1109, #1123); limitations #1063, #1064 and one wind for all foliage (#1123)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
-test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_reaches_the_frame, foliage_sways_in_the_global_wind_on_the_frame_clock); crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"
 
 [[pass]]
@@ -2405,7 +2604,7 @@ crate = "helio-pass-water-sim"
 in_default_graph = true
 reads = ["water_hitboxes", "water_volumes"]
 owner = "helio-default-graphs (mapping); helio-pass-water-sim (algorithm)"
-disposition = "keep: reads water_volumes (joined from WaterVolumeComponent, Phase 4); water_hitboxes has no authored producer (#1080)"
+disposition = "keep: reads water_volumes (joined from WaterVolumeComponent, Phase 4) and water_hitboxes (joined from PhysicsComponents on the WaterSim channel, #1080)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "verified"

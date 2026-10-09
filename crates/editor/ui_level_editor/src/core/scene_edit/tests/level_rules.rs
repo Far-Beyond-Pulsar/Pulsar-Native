@@ -1,11 +1,11 @@
 //! What a level may hold only one of, through the editor's producers: one
-//! sky (#1057) and one directional light.
+//! sky (#1057), one global wind (#1123) and one directional light.
 
 use engine_backend::scene::level_rules;
 use helio_component::components::{AtmosphereComponent, LightComponent, LightType};
 
 use crate::commands::{execute_command, SceneCommand, TypedComponent};
-use crate::scene_edit::{components, objects, sky, ObjectType, SceneObjectData, Transform};
+use crate::scene_edit::{components, objects, sky, wind, ObjectType, SceneObjectData, Transform};
 use crate::state::LevelEditorState;
 
 fn object(name: &str) -> SceneObjectData {
@@ -212,6 +212,84 @@ fn a_level_file_with_two_skies_loads_with_the_first_one_enabled() {
     assert_eq!(enabled, [true, false]);
     let found = sky::level_sky(&loaded.world).unwrap();
     assert_eq!(found.object_name, sky::SKY_OBJECT_NAME);
+}
+
+/// The global wind (#1123): World Settings creates the level's one wind and
+/// edits it in place; a second is refused, through every producer, and a
+/// level file with two loads with the first one enabled.
+#[test]
+fn a_level_has_one_global_wind() {
+    use helio_component::components::WindComponent;
+    let mut state = LevelEditorState::new();
+    assert_eq!(wind::level_wind(&state.scene.world()), None);
+    let created = wind::create_wind(&mut state);
+    assert!(created.changed, "{}", created.no_op_reason);
+    let found = wind::level_wind(&state.scene.world()).expect("the level has a wind");
+    assert_eq!(found.object_id, created.affected_ids[0]);
+    assert_eq!(found.object_name, wind::WIND_OBJECT_NAME);
+    assert!(found.enabled);
+    let edit = execute_command(
+        &mut state,
+        SceneCommand::SetComponentProperty {
+            id: found.object_id.clone(),
+            class_name: "WindComponent".into(),
+            component_index: 0,
+            prop_name: "speed".into(),
+            value: Box::new(7.5f32),
+        },
+    );
+    assert!(edit.changed, "{}", edit.no_op_reason);
+    let instance = components::instance_at(&state.scene.world(), &found.object_id, 0).unwrap();
+    assert_eq!(
+        state
+            .scene
+            .world()
+            .get::<WindComponent>(instance)
+            .unwrap()
+            .speed,
+        7.5
+    );
+
+    let again = wind::create_wind(&mut state);
+    assert!(!again.changed);
+    assert_eq!(again.no_op_reason, level_rules::ONE_WIND);
+    let other = add_object(&mut state, "Other");
+    let result = execute_command(
+        &mut state,
+        SceneCommand::AddComponent {
+            id: other.clone(),
+            class_name: "WindComponent".into(),
+            value: None,
+        },
+    );
+    assert_eq!(result.no_op_reason, level_rules::ONE_WIND);
+    let result = execute_command(
+        &mut state,
+        SceneCommand::DuplicateComponent {
+            id: found.object_id.clone(),
+            component_index: 0,
+        },
+    );
+    assert_eq!(result.no_op_reason, level_rules::ONE_WIND);
+
+    // Only a file can hold two: write the second past the rules.
+    {
+        let mut world = state.scene.world_mut();
+        let owner = engine_backend::scene::SceneWorldExt::entity_for(&*world, &other).unwrap();
+        pulsar_world_registry::attach_value(&mut world, owner, WindComponent::default()).unwrap();
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("two_winds.level");
+    crate::scene_edit::level_io::save_to_file(&state.scene.world(), &path).unwrap();
+    let mut loaded = engine_backend::scene::new_scene();
+    crate::scene_edit::level_io::load_from_file(&mut loaded.world, &path).unwrap();
+    let enabled: Vec<bool> = level_rules::winds(&loaded.world)
+        .iter()
+        .map(|instance| engine_backend::scene::attachments::is_enabled(&loaded.world, *instance))
+        .collect();
+    assert_eq!(enabled, [true, false]);
+    let found = wind::level_wind(&loaded.world).unwrap();
+    assert_eq!(found.object_name, wind::WIND_OBJECT_NAME);
 }
 
 fn light(light_type: LightType, enabled: bool) -> LightComponent {

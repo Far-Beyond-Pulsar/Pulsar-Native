@@ -55,6 +55,18 @@ impl FeatureToggles {
                 gpu_engine.clone(),
                 "bloom",
             ))
+            // Animation on wall time (foliage wind, particles, shader-graph
+            // `time`); off freezes it. Reaches the renderer through the
+            // toolbar's mailbox update (`view.rs`).
+            .child(Self::render_toggle_button(
+                "toggle_realtime",
+                "Realtime",
+                state.editor.realtime_viewport,
+                ui::IconName::Clock,
+                state_arc.clone(),
+                gpu_engine.clone(),
+                "realtime",
+            ))
     }
 
     fn render_toggle_button(
@@ -88,6 +100,7 @@ impl FeatureToggles {
                     "bloom" => {
                         state.editor.feature_bloom_enabled = !state.editor.feature_bloom_enabled
                     }
+                    "realtime" => state.editor.realtime_viewport = !state.editor.realtime_viewport,
                     _ => {}
                 }
                 drop(state);

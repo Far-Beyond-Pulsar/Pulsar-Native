@@ -5,6 +5,9 @@
 //!   the atmosphere pass draws the first enabled row, so a second one would
 //!   only fight the first. Adding one to a level that has one (enabled or
 //!   not) is refused ([`ONE_ATMOSPHERE`]).
+//! - **One global wind** (#1123). The level's wind is its
+//!   [`WindComponent`]; foliage sways in the first enabled one. Adding a
+//!   second is refused ([`ONE_WIND`]), as for the sky.
 //! - **One directional light.** The atmosphere's sun, the voxel sun and the
 //!   renderer's sun direction all take the first directional light, so a
 //!   level casts at most one: an enabled `LightComponent` instance whose
@@ -23,7 +26,7 @@ use pulsar_scene_model::attachments;
 use pulsar_scene_model::SceneWorldExt;
 use pulsar_scenedb::{Entity, World};
 
-use helio_component::{AtmosphereComponent, LightComponent, LightType};
+use helio_component::{AtmosphereComponent, LightComponent, LightType, WindComponent};
 
 /// The sky's class name.
 pub const ATMOSPHERE_CLASS: &str = "AtmosphereComponent";
@@ -31,6 +34,13 @@ pub const ATMOSPHERE_CLASS: &str = "AtmosphereComponent";
 /// Why adding an atmosphere was refused.
 pub const ONE_ATMOSPHERE: &str =
     "This level already has a sky (an AtmosphereComponent); a level has one. Edit it in World Settings.";
+
+/// The global wind's class name.
+pub const WIND_CLASS: &str = "WindComponent";
+
+/// Why adding a wind was refused.
+pub const ONE_WIND: &str =
+    "This level already has a global wind (a WindComponent); a level has one. Edit it in World Settings.";
 
 /// Why a second directional light was refused.
 pub const ONE_DIRECTIONAL_LIGHT: &str =
@@ -107,6 +117,25 @@ pub fn level_atmosphere(world: &World) -> Option<(Entity, Entity)> {
     Some((instance, attachments::owner_of(world, instance)?))
 }
 
+/// Every attached [`WindComponent`] instance, enabled or not, in level
+/// order.
+pub fn winds(world: &World) -> Vec<Entity> {
+    let mut found: Vec<Entity> = world
+        .query::<&WindComponent>()
+        .map(|(instance, _)| instance)
+        .filter(|instance| attachments::owner_of(world, *instance).is_some())
+        .collect();
+    sort_in_level_order(world, &mut found);
+    found
+}
+
+/// The level's global wind: its first [`WindComponent`] instance and that
+/// instance's owner object.
+pub fn level_wind(world: &World) -> Option<(Entity, Entity)> {
+    let instance = *winds(world).first()?;
+    Some((instance, attachments::owner_of(world, instance)?))
+}
+
 /// One component a caller is about to add: its class, its value (`None`
 /// for the class default) and whether it will be enabled.
 #[derive(Clone, Copy)]
@@ -123,12 +152,19 @@ pub fn check_new_components(
     components: &[NewComponent<'_>],
 ) -> Result<(), &'static str> {
     let mut atmospheres = atmospheres(world).len();
+    let mut winds = winds(world).len();
     let mut suns = directional_lights(world).len();
     for component in components {
         if is_atmosphere(component.class_name, component.value) {
             atmospheres += 1;
             if atmospheres > 1 {
                 return Err(ONE_ATMOSPHERE);
+            }
+        }
+        if is_wind(component.class_name, component.value) {
+            winds += 1;
+            if winds > 1 {
+                return Err(ONE_WIND);
             }
         }
         // A light added as the class default is a point light.
@@ -164,11 +200,14 @@ pub fn check_new_component(
 }
 
 /// Whether a copy of `source` (an attached instance) may be added to the
-/// level: a level's only sky, or its casting directional light, cannot be
-/// duplicated (the copy keeps the source's enabled state).
+/// level: a level's only sky or wind, or its casting directional light,
+/// cannot be duplicated (the copy keeps the source's enabled state).
 pub fn check_copy(world: &World, source: Entity) -> Result<(), &'static str> {
     if world.get::<AtmosphereComponent>(source).is_some() {
         return Err(ONE_ATMOSPHERE);
+    }
+    if world.get::<WindComponent>(source).is_some() {
+        return Err(ONE_WIND);
     }
     if directional_lights(world).contains(&source) {
         return Err(ONE_DIRECTIONAL_LIGHT);
@@ -202,6 +241,11 @@ pub fn check_instance(world: &World, instance: Entity) -> Result<(), &'static st
     {
         return Err(ONE_ATMOSPHERE);
     }
+    if world.get::<WindComponent>(instance).is_some()
+        && winds(world).iter().any(|other| *other != instance)
+    {
+        return Err(ONE_WIND);
+    }
     let suns = directional_lights(world);
     if suns.contains(&instance) && suns.len() > 1 {
         return Err(ONE_DIRECTIONAL_LIGHT);
@@ -216,6 +260,13 @@ fn is_atmosphere(class_name: &str, value: Option<&dyn Any>) -> bool {
     }
 }
 
+fn is_wind(class_name: &str, value: Option<&dyn Any>) -> bool {
+    match value {
+        Some(value) => value.is::<WindComponent>(),
+        None => class_name == WIND_CLASS,
+    }
+}
+
 /// What [`enforce_on_load`] changed: an instance it disabled, why, and the
 /// object it is on.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,8 +277,8 @@ pub struct Demotion {
 }
 
 /// Repair a freshly loaded level that breaks a rule, keeping the first
-/// instance (file order) and disabling the rest (extra skies, extra casting
-/// directional lights); each is logged as a
+/// instance (file order) and disabling the rest (extra skies, extra winds,
+/// extra casting directional lights); each is logged as a
 /// warning naming its object. Disabling keeps the authored value: the
 /// instance stays attached and is saved as it was, only switched off.
 pub fn enforce_on_load(world: &mut World) -> Vec<Demotion> {
@@ -239,6 +290,14 @@ pub fn enforce_on_load(world: &mut World) -> Vec<Demotion> {
         .collect();
     for instance in extra_atmospheres {
         demote(world, instance, ONE_ATMOSPHERE, &mut demoted);
+    }
+    let extra_winds: Vec<Entity> = winds(world)
+        .into_iter()
+        .filter(|instance| attachments::is_enabled(world, *instance))
+        .skip(1)
+        .collect();
+    for instance in extra_winds {
+        demote(world, instance, ONE_WIND, &mut demoted);
     }
     // Every light keeps its type and values; only the instances past the
     // first casting directional light are switched off, so exactly one
