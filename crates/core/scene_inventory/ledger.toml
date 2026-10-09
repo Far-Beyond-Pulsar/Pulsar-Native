@@ -123,9 +123,9 @@ category = "Scripting"
 world_registered = true
 own_gpu_columns = false
 owner = "pulsar_class::native_script"
-disposition = "non-render: native script attachment; typed VM adapters"
+disposition = "non-render: native script attachment; typed VM adapters. Declared with declare_unfinished_component! (tracked in #1079): the properties card shows the reason and issue, and the first attach logs them once"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "tracked in #1079"
+test = "crates/core/pulsar_class/src/native_script.rs (native_script_component_is_declared_unfinished); crates/core/scene_inventory/tests/ledger.rs (unfinished_rows_match_unfinished_declarations); tracked in #1079"
 status = "unfinished"
 notes = "Attach, edit, save and undo are typed; nothing at runtime spawns the native actor it names."
 
@@ -1170,13 +1170,13 @@ status = "verified"
 
 [[site]]
 pattern = "change-cursor"
-file = "crates/renderer/helio/crates/passes/3d/helio-pass-hlfs/src/scene.rs"
+file = "crates/renderer/helio/crates/helio-default-graphs/src/ray_tracing.rs"
 count = 8
-owner = "helio::passes::3d::helio-pass-hlfs::scene"
-disposition = "out of the engine (Phase 4 audit): HlfsPass reads its TLAS from the renderer's RenderEnvironment, not the World. SceneDbRayTracing is a host-side helper that only Helio's examples call (the engine never builds the HLFS graph); a TLAS needs CPU instance inputs, so a host adapter is the right shape. Moving it out of the pass crate is tracked in #1066"
+owner = "helio::helio-default-graphs::ray_tracing"
+disposition = "out of the engine (Phase 4 audit): HlfsPass reads its TLAS from the renderer's RenderEnvironment, not the World. SceneDbRayTracing is a host-side helper that only Helio's examples call (the engine never builds the HLFS graph); a TLAS needs CPU instance inputs, so a host adapter is the right shape. #1066 moved it out of the pass crate into helio-default-graphs, which already owns the SceneDB-to-pass adapters; the pass crate no longer depends on SceneDB"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "tracked in #1066"
-status = "unfinished"
+test = "crates/renderer/helio/crates/passes/3d/helio-pass-hlfs/tests/gpu_hlfs_rt.rs (scenedb_projection, non_deforming; #[ignore], need a ray-query adapter)"
+status = "verified"
 
 [[site]]
 pattern = "change-cursor"
@@ -1543,7 +1543,7 @@ status = "verified"
 [[buffer]]
 key = "builtin_mesh_index"
 producers = ["MeshComponent", "StaticMeshComponent"]
-consumers = ["helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-hlfs", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
+consumers = ["helio-default-graphs", "helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
 owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
 disposition = "keep: same as builtin_mesh_vertex"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -1553,7 +1553,7 @@ status = "verified"
 [[buffer]]
 key = "builtin_mesh_vertex"
 producers = ["MeshComponent", "StaticMeshComponent"]
-consumers = ["helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-hlfs", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
+consumers = ["helio-default-graphs", "helio-pass-depth-prepass", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-portal-instances", "helio-pass-shadow", "helio-pass-transparent", "helio-pass-virtual-geometry"]
 owner = "helio_component (StaticMeshComponent pools); also declared by gbuffer's MeshComponent"
 disposition = "keep: authored StaticMeshComponent pools are the canonical geometry; retire or merge the second, pass-owned producer"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -2098,9 +2098,9 @@ notes = "Bisected on RTX 3060 / Vulkan: Helio's own object_batch_skip test passe
 [[pass]]
 crate = "helio-pass-hlfs"
 in_default_graph = true
-reads = ["builtin_mesh_index", "builtin_mesh_vertex", "scene_lights"]
-owner = "helio-default-graphs (mapping); helio-pass-hlfs (algorithm)"
-disposition = "not in the engine's graph: Helio's separate HLFS graph; the engine never builds it; its World reader is tracked in #1066"
+reads = ["scene_lights"]
+owner = "helio-default-graphs (mapping and its World reader, SceneDbRayTracing); helio-pass-hlfs (algorithm)"
+disposition = "not in the engine's graph: Helio's separate HLFS graph; the engine never builds it; its World reader moved to helio-default-graphs::ray_tracing (#1066)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs) (absent from the editor graph)"
 status = "out-of-scope"

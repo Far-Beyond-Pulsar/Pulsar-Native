@@ -121,7 +121,7 @@ pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
         "bake_scene_from_world: an explicit one-shot bake input, not the frame path",
     ),
     (
-        "crates/renderer/helio/crates/passes/3d/helio-pass-hlfs/src/scene.rs",
+        "crates/renderer/helio/crates/helio-default-graphs/src/ray_tracing.rs",
         3,
         "HLFS acceleration structure: one full build, then change cursors",
     ),
