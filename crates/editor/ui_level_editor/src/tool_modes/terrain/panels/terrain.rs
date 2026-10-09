@@ -300,34 +300,29 @@ impl TerrainPanel {
                 "LevelEditor.FoliagePanel.Title",
             ),
         ];
-        let make_row = |items: &[(Tab, IconName, &'static str)], cx: &mut Context<Self>| {
-            let mut row = h_flex().w_full().gap_1();
-            for (tab, icon, label_key) in items {
-                let tab = *tab;
-                let button = Button::new(format!("terrain_tab_{}", tab as u8))
-                    .icon(icon.clone())
-                    .label(t!(*label_key))
-                    .small()
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.tab = tab;
-                        cx.notify();
-                    }));
-                row = row.child(div().flex_1().child(if self.tab == tab {
-                    button.primary().w_full()
-                } else {
-                    button.ghost().w_full()
-                }));
-            }
-            row
-        };
-        v_flex()
+        let mut bar = h_flex()
             .w_full()
-            .gap_1()
+            .gap(px(2.0))
             .p(px(2.0))
             .rounded(px(6.0))
-            .bg(cx.theme().muted.opacity(0.1))
-            .child(make_row(&tabs[..2], cx))
-            .child(make_row(&tabs[2..], cx))
+            .bg(cx.theme().muted.opacity(0.1));
+        for (tab, icon, label_key) in tabs {
+            let button = Button::new(format!("terrain_tab_{}", tab as u8))
+                .icon(icon)
+                .label(t!(label_key))
+                .small()
+                .w_full()
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.tab = tab;
+                    cx.notify();
+                }));
+            bar = bar.child(div().flex_1().min_w_0().child(if self.tab == tab {
+                button.primary()
+            } else {
+                button.ghost()
+            }));
+        }
+        bar
     }
 
     // ── Manage ──────────────────────────────────────────────────────────
