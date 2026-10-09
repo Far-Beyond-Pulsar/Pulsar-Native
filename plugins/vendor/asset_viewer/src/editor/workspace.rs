@@ -53,6 +53,7 @@ impl AssetViewerPanel {
 pub struct ViewportPanel {
     editor: WeakEntity<AssetViewerPanel>,
     focus_handle: FocusHandle,
+    density_hover_band: Option<u32>,
 }
 
 impl ViewportPanel {
@@ -64,6 +65,7 @@ impl ViewportPanel {
         Self {
             editor,
             focus_handle: cx.focus_handle(),
+            density_hover_band: None,
         }
     }
 }
@@ -79,7 +81,13 @@ impl Focusable for ViewportPanel {
 impl Render for ViewportPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some(editor_entity) = self.editor.upgrade() {
+            // Capture the viewport before the editor update shadows its context.
+            let viewport_entity: Entity<ViewportPanel> = cx.entity();
+            let density_hover_band = self.density_hover_band;
             editor_entity.update(cx, |editor, cx| {
+                // Keep the render state on the viewport entity, which owns
+                // these hover events, then sync it before rendering the mesh.
+                editor.density_hover_band = density_hover_band;
                 editor.render_content(window, cx);
                 // A shader-graph material can animate: keep frames coming
                 // so its `time` node advances.
@@ -204,8 +212,8 @@ impl Render for ViewportPanel {
                                 .child("Bad")
                                 .child(
                                     v_flex()
-                                        .w(px(14.0))
-                                        .h(px(72.0))
+                                        .w(px(28.0))
+                                        .h(px(168.0))
                                         .children([
                                             (0xf2080a, "red"),
                                             (0xff6100, "orange"),
@@ -216,25 +224,23 @@ impl Render for ViewportPanel {
                                             (0x8c14ff, "violet"),
                                         ].into_iter().enumerate().map(|(index, (color, _name))| {
                                             let band = 6 - index as u32;
-                                            let editor_entity = editor_entity.clone();
-                                            let viewport_entity = cx.entity().clone();
+                                            let viewport_entity = viewport_entity.clone();
                                             div()
-                                                .flex_1()
+                                                // GPUI registers hover handlers only for elements with persistent state.
+                                                .id(("density-legend-swatch", index))
+                                                .h(px(24.0))
                                                 .w_full()
+                                                .cursor_pointer()
                                                 .bg(gpui::rgb(color))
-                                                .on_hover(cx.listener(move |_, hovered: &bool, _, cx| {
+                                                .on_hover(move |hovered: &bool, _, app| {
                                                     let selected = if *hovered { Some(band) } else { None };
-                                                    let _ = editor_entity.update(cx, |panel, cx| {
-                                                        if selected.is_some() || panel.density_hover_band == Some(band) {
-                                                            panel.density_hover_band = selected;
+                                                    let _ = viewport_entity.update(app, |viewport, cx| {
+                                                        if selected.is_some() || viewport.density_hover_band == Some(band) {
+                                                            viewport.density_hover_band = selected;
                                                             cx.notify();
                                                         }
                                                     });
-                                                    // The WGPU surface is rendered from this viewport panel. Notifying
-                                                    // only the editor entity updates the controls, but does not schedule
-                                                    // a new viewport render (and therefore never uploads the new uniform).
-                                                    let _ = viewport_entity.update(cx, |_, cx| cx.notify());
-                                                }))
+                                                })
                                         })),
                                 )
                                 .child("Good")
@@ -243,7 +249,7 @@ impl Render for ViewportPanel {
                             div().into_any_element()
                         })
                         .child(if mode == MeshRenderMode::VertexDensity {
-                            editor.density_hover_band.map_or_else(
+                            density_hover_band.map_or_else(
                                 || div().into_any_element(),
                                 |band| {
                                     let name = ["violet", "blue", "cyan", "green", "yellow", "orange", "red"]
@@ -257,15 +263,15 @@ impl Render for ViewportPanel {
                                     );
                                     v_flex()
                                         .absolute()
-                                        .bottom(px(12.0))
-                                        .left(px(72.0))
-                                        .px_2()
-                                        .py_1()
+                                        .bottom(px(40.0 + band as f32 * 24.0))
+                                        .left(px(76.0))
+                                        .px_3()
+                                        .py_2()
                                         .bg(cx.theme().background.opacity(0.96))
                                         .rounded(cx.theme().radius)
                                         .border_1()
                                         .border_color(cx.theme().border)
-                                        .text_xs()
+                                        .text_base()
                                         .child(range_text)
                                         .into_any_element()
                                 },

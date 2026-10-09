@@ -222,6 +222,9 @@ fn density_shader_source() -> String {
         else if t < 4.0 / 6.0 { color = mix(green, yellow, (t - 3.0 / 6.0) * 6.0); }
         else if t < 5.0 / 6.0 { color = mix(yellow, orange, (t - 4.0 / 6.0) * 6.0); }
         else { color = mix(orange, red, (t - 5.0 / 6.0) * 6.0); }
+        if hovered_band > 0u {
+            color *= 0.7;
+        }
         return vec4(color, 1.0);
     }
 "#,
