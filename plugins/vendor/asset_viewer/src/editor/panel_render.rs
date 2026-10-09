@@ -208,14 +208,17 @@ pub(crate) fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
-/// Estimate local geometric vertex packing with a small spatial hash. Counts
-/// use a 3x3x3 neighborhood, then a log scale limits outlier influence.
+/// Estimate local geometric vertex packing with a fine spatial hash and a
+/// distance-weighted radius. This gives a smooth value at every vertex while
+/// keeping dense hotspots tighter than a broad cell-count heat map.
 fn local_vertex_density(source_vertices: &[f32], vertex_count: usize) -> Vec<f32> {
     if vertex_count == 0 {
         return Vec::new();
     }
 
-    let cell_width = 1.0 / 32.0;
+    let cell_width = 1.0 / 64.0;
+    let radius = cell_width * 2.0;
+    let radius_squared = radius * radius;
     let mut bounds_min = [f32::INFINITY; 3];
     for vertex in source_vertices.chunks_exact(SOURCE_VERTEX_FLOATS) {
         for axis in 0..3 {
@@ -236,30 +239,43 @@ fn local_vertex_density(source_vertices: &[f32], vertex_count: usize) -> Vec<f32
         buckets.entry(cell).or_default().push(index);
     }
 
-    let mut counts = vec![0u32; vertex_count];
+    let mut counts = vec![0.0f32; vertex_count];
     for (index, [x, y, z]) in cells.iter().copied().enumerate() {
-        let mut count = 0;
-        for dz in -1..=1 {
-            for dy in -1..=1 {
-                for dx in -1..=1 {
+        let vertex = &source_vertices[index * SOURCE_VERTEX_FLOATS..];
+        let mut count = 0.0;
+        for dz in -2..=2 {
+            for dy in -2..=2 {
+                for dx in -2..=2 {
                     if let Some(bucket) = buckets.get(&[x + dx, y + dy, z + dz]) {
-                        count += bucket.len() as u32;
+                        for &neighbor_index in bucket {
+                            let neighbor =
+                                &source_vertices[neighbor_index * SOURCE_VERTEX_FLOATS..];
+                            let distance_squared = (0..3)
+                                .map(|axis| {
+                                    let delta = vertex[axis] - neighbor[axis];
+                                    delta * delta
+                                })
+                                .sum::<f32>();
+                            if distance_squared < radius_squared {
+                                count += 1.0 - distance_squared.sqrt() / radius;
+                            }
+                        }
                     }
                 }
             }
         }
-        counts[index] = count.max(1);
+        counts[index] = count.max(1.0);
     }
 
     let mut sorted_counts = counts.clone();
-    sorted_counts.sort_unstable();
-    let low_reference = sorted_counts[((sorted_counts.len() - 1) * 10) / 100].max(1);
-    let high_reference = sorted_counts[((sorted_counts.len() - 1) * 95) / 100].max(1);
-    let log_low = (1.0 + low_reference as f32).ln();
-    let log_span = ((1.0 + high_reference as f32).ln() - log_low).max(1e-5);
+    sorted_counts.sort_by(f32::total_cmp);
+    let low_reference = sorted_counts[((sorted_counts.len() - 1) * 10) / 100].max(1.0);
+    let high_reference = sorted_counts[((sorted_counts.len() - 1) * 95) / 100].max(1.0);
+    let log_low = (1.0 + low_reference).ln();
+    let log_span = ((1.0 + high_reference).ln() - log_low).max(1e-5);
     counts
         .into_iter()
-        .map(|count| (((1.0 + count as f32).ln() - log_low) / log_span).clamp(0.0, 1.0))
+        .map(|count| (((1.0 + count).ln() - log_low) / log_span).clamp(0.0, 1.0))
         .collect()
 }
 
