@@ -137,3 +137,9 @@ bump-plugin-pins rev="HEAD":
 check-plugin-pins:
     bash scripts/plugin-pins.sh check
 
+# ── Submodule pins ────────────────────────────────────────────────────────────
+# Fail unless every submodule pins a commit on its upstream default branch (or
+# is listed in .github/submodule-pin-exceptions.txt); what CI runs.
+check-submodule-pins:
+    bash scripts/submodule-pins.sh check
+
