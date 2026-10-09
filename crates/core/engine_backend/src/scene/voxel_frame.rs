@@ -25,6 +25,7 @@ pub struct VoxelEntryId {
 /// CPU description of one live SceneDB voxel source, independent of a renderer.
 #[derive(Clone)]
 pub struct VoxelSceneEntry {
+    pub appearance_parameters: String,
     pub id: VoxelEntryId,
     /// Editor visibility is independent of whether this source owns the
     /// camera environment (for example a planet's atmosphere).
@@ -192,6 +193,96 @@ pub fn initialize_empty_cube(entry: &VoxelSceneEntry) -> Result<bool, String> {
     }
 }
 
+/// Fingerprint of the ground a terrain entry's generator makes (0 without
+/// a generator): its edits belong to it (`VoxelEditJournal::made_on`).
+pub fn terrain_fingerprint(entry: &VoxelSceneEntry) -> u64 {
+    let Some(generator) = &entry.generator else { return 0 };
+    helio_component::voxel_world::world_recipe(
+        entry.world.shape,
+        entry.world.planet_radius,
+        entry.world.plane_size,
+        entry.voxel_size,
+        helio_pass_voxel_planet::TerrainSource {
+            generator: generator.id.clone(),
+            version: generator.version,
+            seed: generator.seed,
+            settings: generator.parameters.clone(),
+        },
+    )
+    .fingerprint()
+}
+
+/// Edits belong to the terrain they were made on: a terrain whose form,
+/// generator, seed or settings changed drops the edits made on the old one
+/// (and saves without them). Returns how many edits were dropped.
+pub fn sync_edit_journals(world: &mut World) -> usize {
+    let stale: Vec<(Entity, u64)> = attachments::enabled_components::<VoxelTerrainComponent>(world)
+        .filter_map(|(instance, _, component)| {
+            let fingerprint = terrain_fingerprint(&terrain_entry(world, instance, component).ok()?);
+            (fingerprint != 0 && component.edits.terrain() != fingerprint).then_some((instance, fingerprint))
+        })
+        .collect();
+    let mut dropped = 0;
+    for (entity, fingerprint) in stale {
+        if let Some(mut terrain) = world.get_mut::<VoxelTerrainComponent>(entity) {
+            let count = terrain.edits.made_on(fingerprint);
+            if count > 0 {
+                tracing::info!("Voxel terrain {}: its ground changed; {count} edits made on the old ground were dropped", entity.bits());
+                terrain.source_revision = terrain.source_revision.wrapping_add(1);
+            }
+            dropped += count;
+        }
+    }
+    dropped
+}
+
+/// Runs [`sync_edit_journals`] when a terrain or its layer settings changed:
+/// change cursors over both, so frames that change neither cost nothing.
+pub struct EditJournalSync {
+    cursors: [pulsar_scenedb::ChangeCursor; 2],
+    /// The world revision at the last poll; a smaller one means the world
+    /// was replaced, and the cursors with it.
+    revision: u64,
+    synced: bool,
+    scratch: Vec<pulsar_scenedb::ComponentChange>,
+}
+
+impl EditJournalSync {
+    pub fn new(world: &World) -> Self {
+        Self {
+            cursors: [
+                world.open_change_cursor::<VoxelTerrainComponent>(),
+                world.open_change_cursor::<helio_component::VoxelTerrainLayersComponent>(),
+            ],
+            revision: world.revision(),
+            synced: false,
+            scratch: Vec::new(),
+        }
+    }
+
+    /// Drops edits made on ground a terrain no longer has, when anything
+    /// that shapes the ground changed since the last poll. Returns how many
+    /// edits were dropped.
+    pub fn poll(&mut self, world: &mut World) -> usize {
+        if world.revision() < self.revision {
+            *self = Self::new(world);
+        }
+        self.revision = world.revision();
+        let mut changed = !self.synced;
+        for cursor in &mut self.cursors {
+            self.scratch.clear();
+            changed |= world.read_changes(cursor, &mut self.scratch)
+                == pulsar_scenedb::ChangeRead::Overflowed
+                || !self.scratch.is_empty();
+        }
+        if !changed {
+            return 0;
+        }
+        self.synced = true;
+        sync_edit_journals(world)
+    }
+}
+
 pub fn project_voxel_entries(world: &World) -> (Vec<VoxelSceneEntry>, Vec<String>) {
     profiling::profile_scope!("voxel_project_entries");
     let mut entries = Vec::new();
@@ -298,6 +389,7 @@ pub(super) fn object_entry(
                 .map_err(|_| "default_material_slot must fit in one byte")?,
         }),
         world: VoxelWorldForm::default(),
+        appearance_parameters: String::new(),
         edits: VoxelEditJournal::default(),
     })
 }
@@ -387,7 +479,18 @@ pub(super) fn terrain_entry(
             planet_radius: component.planet_radius * scale,
             plane_size: component.plane_size * scale,
         },
+        appearance_parameters: component.appearance_parameters.clone(),
         edits: component.edits.clone(),
+    })
+    .map(|mut entry| {
+        // Edits made on other ground are not this terrain's (the scene step
+        // drops them from the journal: `sync_edit_journals`).
+        let fingerprint = terrain_fingerprint(&entry);
+        if entry.edits.terrain() != 0 && entry.edits.terrain() != fingerprint {
+            entry.edits = VoxelEditJournal::default();
+            entry.edits.made_on(fingerprint);
+        }
+        entry
     })
 }
 
@@ -520,6 +623,79 @@ mod tests {
         let (entries, errors) = project_voxel_entries(&world);
         assert_eq!(entries.len(), 1);
         assert!(errors[0].contains("default_material_slot"));
+    }
+
+    /// Edits belong to the ground they were made on: changing the seed or
+    /// the layer stack drops them; the form's unused size does not.
+    #[test]
+    fn edits_are_dropped_when_the_ground_changes() {
+        use helio_component::{VoxelLayerKind, VoxelTerrainLayer, VoxelTerrainLayersComponent};
+        let mut world = World::new();
+        let object = world.spawn();
+        let entity =
+            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainComponent::planet(1_000.0))
+                .unwrap();
+        let layers =
+            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainLayersComponent::default())
+                .unwrap();
+        let edit = helio_voxel_data::VoxelBrushEdit {
+            center: [0.0, 1_000.0, 0.0],
+            radius: 1.0,
+            shape: helio_voxel_data::VoxelBrushShape::Sphere,
+            op: helio_voxel_data::VoxelBrushOp::Remove,
+            material: 0,
+        };
+        let edits = |world: &World| world.get::<VoxelTerrainComponent>(entity).unwrap().edits.len();
+        let projected = |world: &World| project_voxel_entries(world).0[0].edits.len();
+        world.get_mut::<VoxelTerrainComponent>(entity).unwrap().edits.push(edit);
+        // A new journal adopts the terrain it is on.
+        assert_eq!(sync_edit_journals(&mut world), 0);
+        assert_eq!((edits(&world), projected(&world)), (1, 1));
+        world.get_mut::<VoxelTerrainComponent>(entity).unwrap().plane_size = 77.0;
+        assert_eq!(sync_edit_journals(&mut world), 0, "a planet does not use the plane size");
+        // Another seed: other ground. The projection already shows none.
+        world.get_mut::<VoxelTerrainComponent>(entity).unwrap().seed += 1;
+        assert_eq!(projected(&world), 0);
+        assert_eq!(sync_edit_journals(&mut world), 1);
+        assert_eq!(edits(&world), 0);
+        // So does another layer stack.
+        world.get_mut::<VoxelTerrainComponent>(entity).unwrap().edits.push(edit);
+        assert_eq!(sync_edit_journals(&mut world), 0);
+        world.get_mut::<VoxelTerrainLayersComponent>(layers).unwrap().stack.layers.push(VoxelTerrainLayer::new(VoxelLayerKind::Craters));
+        assert_eq!(sync_edit_journals(&mut world), 1);
+        assert_eq!((edits(&world), projected(&world)), (0, 0));
+    }
+
+    #[test]
+    fn journals_are_checked_only_when_a_terrain_or_its_layers_change() {
+        use helio_component::{VoxelLayerKind, VoxelTerrainLayer, VoxelTerrainLayersComponent};
+        let mut world = World::new();
+        let object = world.spawn();
+        let terrain =
+            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainComponent::planet(1_000.0))
+                .unwrap();
+        let layers =
+            pulsar_world_registry::attach_value(&mut world, object, VoxelTerrainLayersComponent::default())
+                .unwrap();
+        let mut sync = EditJournalSync::new(&world);
+        let edit = helio_voxel_data::VoxelBrushEdit {
+            center: [0.0, 1_000.0, 0.0],
+            radius: 1.0,
+            shape: helio_voxel_data::VoxelBrushShape::Sphere,
+            op: helio_voxel_data::VoxelBrushOp::Remove,
+            material: 0,
+        };
+        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().edits.push(edit);
+        assert_eq!(sync.poll(&mut world), 0, "the journal adopts its ground");
+        assert_eq!(sync.poll(&mut world), 0);
+        // Another stack is other ground: its edits go.
+        world.get_mut::<VoxelTerrainLayersComponent>(layers).unwrap().stack.layers.push(VoxelTerrainLayer::new(VoxelLayerKind::Craters));
+        assert_eq!(sync.poll(&mut world), 1);
+        assert_eq!(world.get::<VoxelTerrainComponent>(terrain).unwrap().edits.len(), 0);
+        // Dropping them wrote the terrain; the re-check finds nothing more.
+        assert_eq!(sync.poll(&mut world), 0);
+        world.get_mut::<VoxelTerrainComponent>(terrain).unwrap().edits.push(edit);
+        assert_eq!(sync.poll(&mut world), 0, "edits on the current ground stay");
     }
 
     #[test]

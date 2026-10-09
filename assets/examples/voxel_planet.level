@@ -42,6 +42,34 @@
           0.0
         ],
         "rotation": [
+          58.0,
+          -56.7,
+          0.0
+        ],
+        "scale": [
+          1.0,
+          1.0,
+          1.0
+        ]
+      },
+      "visible": true,
+      "locked": false,
+      "parent": null,
+      "children": [],
+      "scene_path": "Sun",
+      "props": {}
+    },
+    {
+      "id": "post_process",
+      "name": "Post Process",
+      "object_type": "Empty",
+      "transform": {
+        "position": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation": [
           0.0,
           0.0,
           0.0
@@ -56,7 +84,7 @@
       "locked": false,
       "parent": null,
       "children": [],
-      "scene_path": "Sun",
+      "scene_path": "Post Process",
       "props": {}
     }
   ],
@@ -81,32 +109,185 @@
           "max_chunk_lod": 20,
           "lod_scale": 2,
           "renderer_id": "helio.voxel-terrain",
-          "generator_id": "helio.landform",
+          "generator_id": "helio.terrain",
           "generator_version": 1,
-          "seed": 7,
+          "seed": 75,
           "generator_parameters": "",
           "material_ids": [
             0
           ],
           "editable": true,
           "source_revision": 0,
-          "edits": []
+          "edits": {
+            "terrain": 0,
+            "edits": []
+          }
         }
       },
       {
-        "class_name": "VoxelLandformComponent",
+        "class_name": "VoxelTerrainLayersComponent",
         "enabled": true,
         "data": {
-          "continent_km": 3000.0,
-          "ocean_depth_m": 2400.0,
-          "lowland_m": 180.0,
-          "mountain_m": 2400.0,
-          "mountain_km": 20.0,
+          "layers": [
+            {
+              "kind": "Warp",
+              "enabled": true,
+              "mask": "Everywhere",
+              "height_m": 100.0,
+              "base_m": 0.0,
+              "scale_km": 40.0,
+              "octaves": 4,
+              "persistence": 0.5,
+              "coverage": 0.5,
+              "region_km": 100.0,
+              "ratio": 0.0,
+              "ratio2": 0.0,
+              "ratio3": 0.0
+            },
+            {
+              "kind": "Continents",
+              "enabled": true,
+              "mask": "Everywhere",
+              "height_m": 2400.0,
+              "base_m": 180.0,
+              "scale_km": 3000.0,
+              "octaves": 4,
+              "persistence": 0.5,
+              "coverage": 0.5,
+              "region_km": 100.0,
+              "ratio": 0.0,
+              "ratio2": 0.0,
+              "ratio3": 0.0
+            },
+            {
+              "kind": "Mountains",
+              "enabled": true,
+              "mask": "Land",
+              "height_m": 2400.0,
+              "base_m": 0.0,
+              "scale_km": 20.0,
+              "octaves": 7,
+              "persistence": 0.47,
+              "coverage": 0.45,
+              "region_km": 240.0,
+              "ratio": 0.0,
+              "ratio2": 0.0,
+              "ratio3": 0.0
+            },
+            {
+              "kind": "Erosion",
+              "enabled": true,
+              "mask": "Everywhere",
+              "height_m": 40.0,
+              "base_m": 0.0,
+              "scale_km": 1.6,
+              "octaves": 6,
+              "persistence": 0.5,
+              "coverage": 0.5,
+              "region_km": 100.0,
+              "ratio": 0.5,
+              "ratio2": 0.0,
+              "ratio3": 0.0
+            },
+            {
+              "kind": "Hills",
+              "enabled": true,
+              "mask": "AboveDeepSea",
+              "height_m": 140.0,
+              "base_m": 0.0,
+              "scale_km": 9.0,
+              "octaves": 5,
+              "persistence": 0.6,
+              "coverage": 0.5,
+              "region_km": 100.0,
+              "ratio": 0.0,
+              "ratio2": 0.0,
+              "ratio3": 0.0
+            },
+            {
+              "kind": "Roughness",
+              "enabled": true,
+              "mask": "AboveDeepSea",
+              "height_m": 100.0,
+              "base_m": 0.0,
+              "scale_km": 0.512,
+              "octaves": 9,
+              "persistence": 0.5,
+              "coverage": 0.5,
+              "region_km": 100.0,
+              "ratio": 0.035,
+              "ratio2": 0.0,
+              "ratio3": 0.0
+            }
+          ],
+          "caves": {
+            "enabled": true,
+            "depth_m": 120.0,
+            "share": 0.45,
+            "region_km": 6.0,
+            "tunnel_radius_m": 2.5,
+            "tunnel_wavelength_m": 160.0,
+            "cavern_wavelength_m": 160.0,
+            "cavern_share": 0.04,
+            "cover_m": 6.0,
+            "entrance_share": 0.05,
+            "entrance_spacing_m": 80.0
+          },
+          "overhangs": {
+            "enabled": true,
+            "height_m": 6.0,
+            "wavelength_m": 6.0,
+            "region_km": 3.0,
+            "share": 0.3
+          },
+          "materials": "Earthlike",
           "snowline_m": 3000.0,
-          "hill_m": 140.0,
-          "hill_km": 9.0,
-          "roughness": 0.035,
-          "warp_km": 40.0
+          "soil_depth_m": 0.7,
+          "surface": "Grass",
+          "soil": "Dirt",
+          "rock": "Stone",
+          "rules": []
+        }
+      },
+      {
+        "class_name": "AtmosphereComponent",
+        "enabled": true,
+        "data": {
+          "enabled": true,
+          "placement": "PlanetAtOwner",
+          "planet_radius_km": 6371.0,
+          "thickness_km": 100.0,
+          "ground_albedo": [
+            0.3,
+            0.3,
+            0.3
+          ],
+          "sun_angular_radius_deg": 0.26786,
+          "rayleigh_scattering": [
+            0.005802,
+            0.013558,
+            0.0331
+          ],
+          "rayleigh_scale_height_km": 8.0,
+          "mie_scattering": [
+            0.003996,
+            0.003996,
+            0.003996
+          ],
+          "mie_absorption": [
+            0.0044,
+            0.0044,
+            0.0044
+          ],
+          "mie_scale_height_km": 1.2,
+          "mie_anisotropy": 0.8,
+          "ozone_absorption": [
+            0.00065,
+            0.001881,
+            8.5e-05
+          ],
+          "ozone_center_km": 25.0,
+          "ozone_width_km": 30.0
         }
       }
     ],
@@ -125,7 +306,7 @@
             "lighting_channel_2": false
           },
           "intensity": {
-            "intensity": 1.0,
+            "intensity": 3.0,
             "intensity_units": "Lumens",
             "exposure_compensation": 0.0,
             "inverse_squared_falloff": true,
@@ -136,8 +317,8 @@
           "color": {
             "color": [
               1.0,
-              0.96,
-              0.85,
+              1.0,
+              1.0,
               1.0
             ],
             "use_temperature": false,
@@ -203,6 +384,189 @@
           }
         }
       }
+    ],
+    "post_process": [
+      {
+        "class_name": "PostProcessVolumeComponent",
+        "enabled": true,
+        "data": {
+          "enabled": true,
+          "size": [
+            2000.0,
+            2000.0,
+            2000.0
+          ],
+          "priority": 0.0,
+          "blend_radius": 200.0,
+          "blend_weight": 1.0,
+          "unbound": true,
+          "override_exposure": false,
+          "override_bloom": false,
+          "override_color_grading": true,
+          "override_tonemap": true,
+          "override_vignette": true,
+          "override_chromatic_aberration": false,
+          "override_film_grain": false,
+          "override_depth_of_field": false,
+          "override_motion_blur": false,
+          "override_hdr_output": false,
+          "override_volumetric_fog": false,
+          "override_lens_flare": false,
+          "exposure_mode": "Manual",
+          "exposure_compensation": 0.0,
+          "exposure_min": -4.0,
+          "exposure_max": 4.0,
+          "exposure_speed_up": 0.5,
+          "exposure_speed_down": 1.0,
+          "bloom_enabled": false,
+          "bloom_intensity": 0.3,
+          "bloom_threshold": 1.0,
+          "bloom_knee": 0.1,
+          "bloom_radius": 1.0,
+          "bloom_tint": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "color_saturation": [
+            0.85,
+            0.85,
+            0.85
+          ],
+          "color_contrast": [
+            1.15,
+            1.15,
+            1.15
+          ],
+          "color_gamma": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "color_gain": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "color_offset": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "white_balance_enabled": false,
+          "white_temp": 6500.0,
+          "white_tint": 0.0,
+          "tonemap_operator": "Aces",
+          "tonemap_exposure": 1.1,
+          "tonemap_white_point": 1.0,
+          "vignette_enabled": true,
+          "vignette_intensity": 0.2,
+          "vignette_smoothness": 0.5,
+          "vignette_roundness": 0.5,
+          "vignette_color": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "ca_enabled": false,
+          "ca_intensity": 0.0,
+          "ca_start_offset": 0.0,
+          "grain_enabled": false,
+          "grain_intensity": 0.0,
+          "grain_response": 1.0,
+          "grain_size": 1.0,
+          "dof_enabled": false,
+          "dof_focal_distance": 100.0,
+          "dof_focal_region": 50.0,
+          "dof_near_transition": 100.0,
+          "dof_far_transition": 100.0,
+          "dof_scale": 1.0,
+          "dof_max_bokeh_size": 10.0,
+          "dof_aperture_blades": 5,
+          "dof_aperture_rotation": 0.0,
+          "dof_sensor_diagonal": 43.3,
+          "motion_blur_enabled": false,
+          "motion_blur_amount": 0.0,
+          "motion_blur_max": 64.0,
+          "blend_weight_bloom": 1.0,
+          "blend_weight_dof": 1.0,
+          "blend_weight_motion_blur": 1.0,
+          "blend_weight_vignette": 1.0,
+          "blend_weight_ca": 1.0,
+          "blend_weight_grain": 1.0,
+          "blend_weight_exposure": 1.0,
+          "hdr_output_mode": "Ldr",
+          "hdr_max_nits": 1000.0,
+          "hdr_ui_brightness": 200.0,
+          "fog_enabled": false,
+          "fog_mode": "Uniform",
+          "fog_density": 0.02,
+          "fog_height_falloff": 0.05,
+          "fog_start_distance": 0.0,
+          "fog_max_distance": 1000.0,
+          "fog_height": 0.0,
+          "fog_scattering_anisotropy": 0.0,
+          "fog_color": [
+            0.5,
+            0.6,
+            0.7
+          ],
+          "fog_emissive": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "lift_color": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "gamma_color": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "gain_color": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "shadows_max": 0.3,
+          "highlights_min": 0.7,
+          "shadow_highlight_balance": 0.5,
+          "hue_shift": 0.0,
+          "lut_intensity": 1.0,
+          "lens_flare": {
+            "enabled": false,
+            "quality": "Economical",
+            "profile": "Spherical",
+            "intensity": 0.3,
+            "threshold": 2.0,
+            "soft_knee": 1.0,
+            "ghost_count": 4,
+            "ghost_intensity": 1.0,
+            "halo_intensity": 0.5,
+            "glare_intensity": 0.3,
+            "streak_intensity": 0.5,
+            "dispersion": 0.01,
+            "aperture_f_number": 2.8,
+            "focal_length_mm": 50.0,
+            "sensor_width_mm": 36.0,
+            "vignette": 1.0,
+            "starburst_intensity": 0.3,
+            "starburst_length": 0.25,
+            "aperture_blades": 6,
+            "aperture_rotation_degrees": 0.0,
+            "coating_strength": 0.8,
+            "ghost_rim": 0.5,
+            "dirt_intensity": 0.0,
+            "light_sources": true,
+            "light_intensity": 1.0,
+            "field_margin": 0.35,
+            "response_time": 0.06
+          }
+        }
+      }
     ]
   },
   "metadata": {
@@ -214,11 +578,11 @@
     "camera": {
       "position": [
         0.0,
-        6371758.7,
+        6371631.0,
         0.0
       ],
-      "yaw": 0.0,
-      "pitch": -0.15
+      "yaw": -3.052,
+      "pitch": -0.07
     }
   }
 }

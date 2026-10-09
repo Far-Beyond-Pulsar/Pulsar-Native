@@ -9,17 +9,17 @@
 //! no frame projection, render-row subscription, material table or
 //! per-frame input assembly (Pulsar-Native#1035, Phase 2). Its environment
 //! join ([`environment_join`]) does the same for fog volumes, post-process
-//! volumes, camera post-process settings, water volumes and foliage
-//! (Phase 4).
+//! volumes, camera post-process settings, water volumes, foliage and
+//! atmospheres (Phase 4).
 use std::sync::Arc;
 
 use helio_component::components::{
-    CameraPostProcessSourceRow, FoliageSourceRow, GlobalFogSourceRow, LightSourceRow,
+    AtmosphereSourceRow, CameraPostProcessSourceRow, FoliageSourceRow, GlobalFogSourceRow, LightSourceRow,
     LocalFogSourceRow, PostProcessVolumeSourceRow, StaticMeshComponent, StaticMeshDraw,
     WaterVolumeSourceRow, CAMERA_POST_PROCESS_SOURCES_BUFFER, FOLIAGE_SOURCES_BUFFER,
     GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER, LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER,
     MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER, POST_PROCESS_VOLUME_SOURCES_BUFFER,
-    WATER_VOLUME_SOURCES_BUFFER,
+    WATER_VOLUME_SOURCES_BUFFER, ATMOSPHERE_SOURCES_BUFFER,
 };
 use helio_default_graphs::environment_join::{EnvironmentJoin, EnvironmentJoinKeys};
 use helio_default_graphs::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
@@ -62,8 +62,8 @@ pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<SceneJoin> {
 
 /// Where this engine's environment rows live, for Helio's environment join:
 /// the same owner, visibility and transform rows as the scene join, and the
-/// rows fog volumes, post-process volumes and camera post-process
-/// components derive (Pulsar-Native#1035, Phase 4).
+/// rows fog volumes, post-process volumes, camera post-process, water,
+/// foliage and atmosphere components derive (Pulsar-Native#1035, Phase 4).
 pub fn environment_join_keys() -> EnvironmentJoinKeys {
     let scene = scene_join_keys();
     EnvironmentJoinKeys {
@@ -77,6 +77,7 @@ pub fn environment_join_keys() -> EnvironmentJoinKeys {
         camera_post_process: BufferKey::of(CAMERA_POST_PROCESS_SOURCES_BUFFER),
         water_volumes: BufferKey::of(WATER_VOLUME_SOURCES_BUFFER),
         foliage: BufferKey::of(FOLIAGE_SOURCES_BUFFER),
+        atmospheres: BufferKey::of(ATMOSPHERE_SOURCES_BUFFER),
     }
 }
 
@@ -147,6 +148,7 @@ pub fn ensure_gpu_mirror(
     CameraPostProcessSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
     WaterVolumeSourceRow::register_gpu_columns_growable(&mut gpu_store, 8, &device);
     FoliageSourceRow::register_gpu_columns_growable(&mut gpu_store, 8, &device);
+    AtmosphereSourceRow::register_gpu_columns_growable(&mut gpu_store, 4, &device);
 
     // SceneDB owns residency budgets and tier configuration. The bridge only
     // installs project settings while constructing the shared store.
@@ -260,6 +262,10 @@ mod tests {
         assert_eq!(
             size_of::<FoliageSourceRow>() as u64,
             env::FOLIAGE_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<AtmosphereSourceRow>() as u64,
+            env::ATMOSPHERE_SOURCE_ROW_BYTES
         );
     }
 }

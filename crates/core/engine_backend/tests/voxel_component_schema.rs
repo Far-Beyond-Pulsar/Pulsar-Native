@@ -1,4 +1,4 @@
-use helio_component::{VoxelComponent, VoxelTerrainComponent};
+use helio_component::{VoxelComponent, VoxelTerrainComponent, VoxelTerrainLayersComponent};
 use pulsar_reflection::EngineClass;
 
 #[test]
@@ -20,6 +20,7 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
     assert!(older_voxel.renderer_id.is_empty());
 
     let terrain = VoxelTerrainComponent::default();
+    assert!(terrain.appearance_parameters.is_empty());
     assert_eq!(terrain.domain_mode, 1);
     // New terrain rows start as a 4 km plane of Helio's terrain generator.
     assert_eq!(
@@ -31,7 +32,7 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
     let terrain_restored: VoxelTerrainComponent =
         serde_json::from_value(terrain_json).expect("restore terrain component");
     assert_eq!(terrain_restored.generator.id, terrain.generator.id);
-    assert_eq!(terrain_restored.generator.version, 1);
+    assert_eq!(terrain_restored.generator.version, helio_voxel_data::VOXEL_TERRAIN_GENERATOR_VERSION);
     assert_eq!(terrain_restored.chunk_edge_voxels, 8);
     assert_eq!(terrain_restored.max_chunk_lod, 16);
     assert_eq!(terrain_restored.lod_scale, 2);
@@ -41,8 +42,11 @@ fn voxel_components_default_and_round_trip_as_scene_component_data() {
         .as_object_mut()
         .unwrap()
         .remove("generator_version");
+    older_json.as_object_mut().unwrap().remove("appearance_parameters");
     let older: VoxelTerrainComponent = serde_json::from_value(older_json).unwrap();
-    assert_eq!(older.generator.version, 1);
+    // Files without a version use the generator's registered version.
+    assert_eq!(older.generator.version, 0);
+    assert!(older.appearance_parameters.is_empty());
 }
 
 #[test]
@@ -63,6 +67,7 @@ fn the_inspector_shows_world_generation_and_editing_only() {
             "voxel_size",
             "generator",
             "seed",
+            "appearance_parameters",
             "editable"
         ]
     );
@@ -144,6 +149,7 @@ fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
     let mut terrain = VoxelTerrainComponent::default();
     terrain.generator.id = "test.generator".into();
     terrain.seed = 1234;
+    terrain.appearance_parameters = r#"{"detail":[0.6,0.12,0.04,0.0]}"#.into();
     let terrain_json = serde_json::to_value(&terrain).unwrap();
     assert!(pulsar_world_registry::hydrate_world_component_for_class(
         "VoxelTerrainComponent",
@@ -157,6 +163,7 @@ fn voxel_components_hydrate_as_typed_scenedb_world_rows() {
         .expect("typed SceneDB component");
     assert_eq!(hydrated.generator.id, "test.generator");
     assert_eq!(hydrated.seed, 1234);
+    assert_eq!(hydrated.appearance_parameters, terrain.appearance_parameters);
 
     let voxel = VoxelComponent::default();
     let voxel_json = serde_json::to_value(&voxel).unwrap();
@@ -273,4 +280,55 @@ fn live_batch_publish_snapshot_and_import_round_trip_through_scenedb_rows() {
         })
     ));
     assert_eq!(writer.snapshot().unwrap().revision(), 1);
+}
+
+/// The layer stack component serializes to the generator's settings JSON:
+/// each preset is the generator's preset, and its layers are reflected.
+#[test]
+fn terrain_layers_component_is_the_generator_settings() {
+    use helio_pass_voxel_planet::layers::TerrainLayers;
+    for (component, stack) in [
+        (VoxelTerrainLayersComponent::earth(), TerrainLayers::earth()),
+        (VoxelTerrainLayersComponent::moon(), TerrainLayers::moon()),
+        (VoxelTerrainLayersComponent::flat(2.0), TerrainLayers::flat_at(2.0)),
+        (VoxelTerrainLayersComponent::desert(), TerrainLayers::desert()),
+    ] {
+        let json = serde_json::to_value(&component).unwrap();
+        let parsed: TerrainLayers = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(parsed, stack, "{json}");
+        let restored: VoxelTerrainLayersComponent = serde_json::from_value(serde_json::to_value(&stack).unwrap()).unwrap();
+        assert_eq!(serde_json::to_value(&restored).unwrap(), json);
+    }
+    // Empty settings are the Earth preset, like the generator's.
+    let empty: VoxelTerrainLayersComponent = serde_json::from_str("{}").unwrap();
+    assert_eq!(serde_json::to_value(empty).unwrap(), serde_json::to_value(VoxelTerrainLayersComponent::earth()).unwrap());
+    // One property: the whole stack, edited (and undone) as one value.
+    let properties = VoxelTerrainLayersComponent::default().get_properties();
+    assert_eq!(properties.iter().map(|p| p.name).collect::<Vec<_>>(), ["stack"]);
+}
+
+/// A layer added, or switched to another kind, in the inspector starts from
+/// that kind's defaults (the generator's table), keeping its toggle and mask.
+#[test]
+fn layers_take_their_kinds_defaults() {
+    use helio_component::components::voxel_stack_editor::set_layer;
+    use helio_component::{VoxelLayerKind, VoxelLayerMask, VoxelTerrainLayer};
+    use helio_pass_voxel_planet::layers::{Layer, LayerKind};
+    for kind in ["Hills", "Warp", "Continents", "Mountains", "Roughness", "Erosion", "Craters", "Basins", "Plateau"] {
+        let ours: VoxelLayerKind = serde_json::from_value(kind.into()).unwrap();
+        let theirs: LayerKind = serde_json::from_value(kind.into()).unwrap();
+        assert_eq!(serde_json::to_value(VoxelTerrainLayer::new(ours)).unwrap(), serde_json::to_value(Layer::new(theirs)).unwrap(), "{kind}");
+    }
+    let craters = VoxelTerrainLayer::new(VoxelLayerKind::Craters);
+    assert!(craters.ratio > 0.0 && craters.octaves > 4, "craters have depth: {craters:?}");
+
+    let mut layer = VoxelTerrainLayer { mask: VoxelLayerMask::Land, enabled: false, ..VoxelTerrainLayer::new(VoxelLayerKind::Hills) };
+    // A field edit keeps the kind and just stores the value.
+    let edited = VoxelTerrainLayer { height_m: 7.0, ..layer.clone() };
+    assert!(!set_layer(&mut layer, edited));
+    assert_eq!(layer.height_m, 7.0);
+    // A kind edit brings the new kind's numbers, not the old ones.
+    let edited = VoxelTerrainLayer { kind: VoxelLayerKind::Craters, ..layer.clone() };
+    assert!(set_layer(&mut layer, edited));
+    assert_eq!(layer, VoxelTerrainLayer { mask: VoxelLayerMask::Land, enabled: false, ..craters });
 }

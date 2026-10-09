@@ -292,13 +292,7 @@ fn main() {
             .and_then(|value| value.as_str().ok().map(str::to_owned))
             .unwrap_or_else(|| default.to_owned())
     };
-    let renderer_backends = match renderer_string("backend_preference", "auto").as_str() {
-        "vulkan" => wgpu::Backends::VULKAN,
-        "dx12" => wgpu::Backends::DX12,
-        "metal" => wgpu::Backends::METAL,
-        "gl" => wgpu::Backends::GL,
-        _ => wgpu::Backends::all(),
-    };
+    let renderer_backends = engine_state::settings::renderer_backends();
     let power_preference = match renderer_string("gpu_preference", "high_performance").as_str() {
         "low_power" => wgpu::PowerPreference::LowPower,
         "auto" => wgpu::PowerPreference::None,

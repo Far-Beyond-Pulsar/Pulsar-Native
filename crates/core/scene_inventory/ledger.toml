@@ -29,6 +29,17 @@ reflection = "2761936b"
 # against the linked registries.
 
 [[class]]
+name = "AtmosphereComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = true
+owner = "helio_component::components::atmosphere_component"
+disposition = "render, Phase 4. Its derived AtmosphereSourceRow is written on every insert, write, removal and replay; the environment join gates it on the instance and its owner and places it into atmospheres (a planet at its owner centred on the owner), which the atmosphere pass reads"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
+status = "verified"
+
+[[class]]
 name = "CameraPostProcessComponent"
 category = "Rendering"
 world_registered = true
@@ -208,28 +219,15 @@ test = "crates/renderer/helio/crates/helio-component/tests/unfinished_components
 status = "unfinished"
 
 [[class]]
-name = "VoxelFlatTerrainComponent"
+name = "VoxelTerrainLayersComponent"
 category = "Voxel/Terrain"
 world_registered = true
 own_gpu_columns = false
 owner = "helio_component::components::voxel_component_runtime"
-disposition = "voxel domain, audited Phase 4: generator settings read by engine_backend voxel_frame when the world revision changes (camera-only frames reuse the read) and handed to the terrain generator as its settings JSON, the generator plugin boundary (helio-pass-voxel-planet landform)"
+disposition = "voxel domain: the built-in generator's layer stack (helio.terrain), resolved as the terrain's sibling instance (resolve_instance) and handed to the generator as its settings JSON when the world revision changes; its scripting surface (use_preset, add_layer, the layer setters) rebuilds the world from the changed settings"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/voxel_component_schema.rs"
-status = "out-of-scope"
-notes = "Voxel work continues on its own branch (Pulsar-Native#994, Helio#314); Phase 4 recorded the audit (15-phase-4.md)."
-
-[[class]]
-name = "VoxelLandformComponent"
-category = "Voxel/Terrain"
-world_registered = true
-own_gpu_columns = false
-owner = "helio_component::components::voxel_component_runtime"
-disposition = "voxel domain, audited Phase 4: generator settings read by engine_backend voxel_frame when the world revision changes (camera-only frames reuse the read) and handed to the terrain generator as its settings JSON, the generator plugin boundary (helio-pass-voxel-planet landform)"
-target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
-test = "crates/core/engine_backend/tests/voxel_component_schema.rs"
-status = "out-of-scope"
-notes = "Voxel work continues on its own branch (Pulsar-Native#994, Helio#314); Phase 4 recorded the audit (15-phase-4.md)."
+test = "crates/core/engine_backend/tests/voxel_component_schema.rs; crates/core/engine_backend/tests/voxel_block_api.rs"
+status = "verified"
 
 [[class]]
 name = "VoxelTerrainComponent"
@@ -805,13 +803,55 @@ test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor
 status = "verified"
 
 [[schema]]
+type = "AtmosphereComponent"
+path = "helio_component::components::atmosphere_component::AtmosphereComponent"
+buffers = ["atmospheres"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "the authored value's SceneDB GPU dispatch is its derived AtmosphereSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing"
+owner = "helio_component::components::atmosphere_component"
+disposition = "keep: the authored type's GPU row is AtmosphereSourceRow, the environment join's input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
+status = "verified"
+
+[[schema]]
+type = "AtmosphereSourceRow"
+path = "helio_component::components::environment_rows::AtmosphereSourceRow"
+buffers = ["atmosphere_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "AtmosphereComponent's derived GPU registration (the pass row in the owner's space, enabled from the authored flag), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's atmospheres input"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
+status = "verified"
+
+[[schema]]
+type = "AtmosphereComponent"
+path = "helio_pass_sky::atmosphere::AtmosphereComponent"
+buffers = ["atmospheres"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "helio-default-graphs environment join from AtmosphereComponent's source rows"
+owner = "helio_pass_sky::atmosphere"
+disposition = "keep as the pass row layout of atmospheres; produced by the join, not registered as a column"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
+status = "verified"
+
+[[schema]]
 type = "SkyComponent"
 path = "helio_pass_sky::components::SkyComponent"
 buffers = ["sky_components"]
 clears_on_remove = true
 releases_var_len = false
 registered = false
-writer = "renderer-side sky setup (HelioRenderer queries it); no authored component"
+writer = "none: no authored component, and the renderer no longer reads it"
 owner = "helio_pass_sky::components"
 disposition = "unfinished (Phase 4; tracked in #1057): no authored sky component; the sky is a project/renderer setting and the sun follows the directional light (decision 2)"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
@@ -995,6 +1035,16 @@ owner = "core::pulsar_game::game_renderer"
 disposition = "keep: attaches the one shared mirror, for both the standalone window and the embedded (PIE) game, which shared this code from Phase 7 on. Phase 1 removed its fixed snapshot-and-reinsert list; SceneDB's attach_gpu_mirror now writes every existing GPU-bearing component of every schema (SceneDB 358ec86)"
 target_contract = "Phase 1 (SceneDB upstream); 03-gpu-reflection-and-rendering.md"
 test = "SceneDB crates/pulsar_scenedb/tests/world_gpu_mirror_replay.rs; pulsar_game/tests/runtime_render_parity.rs"
+status = "verified"
+
+[[site]]
+pattern = "change-cursor"
+file = "crates/core/engine_backend/src/scene/voxel_frame.rs"
+count = 3
+owner = "core::engine_backend::scene::voxel_frame (EditJournalSync)"
+disposition = "keep: independent VoxelTerrainComponent and VoxelTerrainLayersComponent cursors; the renderer's scene step re-checks edit journals against their ground only when a terrain or its layers changed (a replaced world reopens them)"
+target_contract = "Phase 5; 04-state-notifications.md"
+test = "crates/core/engine_backend/src/scene/voxel_frame.rs (journals_are_checked_only_when_a_terrain_or_its_layers_change, edits_are_dropped_when_the_ground_changes)"
 status = "verified"
 
 [[site]]
@@ -1683,7 +1733,7 @@ status = "out-of-scope"
 [[buffer]]
 key = "scene_lights"
 producers = ["LightComponent"]
-consumers = ["helio-default-graphs", "helio-pass-deferred-light", "helio-pass-flare", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-hlfs", "helio-pass-light-cull", "helio-pass-perf-overlay", "helio-pass-radiance-cascades", "helio-pass-shadow-matrix", "helio-pass-transparent", "helio-pass-virtual-geometry", "helio-pass-volumetric-fog"]
+consumers = ["helio-default-graphs", "helio-pass-deferred-light", "helio-pass-flare", "helio-pass-forward-lit", "helio-pass-gbuffer", "helio-pass-hlfs", "helio-pass-light-cull", "helio-pass-perf-overlay", "helio-pass-radiance-cascades", "helio-pass-shadow-matrix", "helio-pass-sky", "helio-pass-transparent", "helio-pass-virtual-geometry", "helio-pass-volumetric-fog"]
 owner = "helio-default-graphs scene join (execution output)"
 disposition = "keep: light rows are joined on the GPU from LightSourceRow and the owner transform/visibility; shadow-matrix assigns atlas slots in them (Phase 2)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
@@ -1802,6 +1852,26 @@ owner = "helio_component::components::environment_rows"
 disposition = "keep: PostProcessVolumeComponent in its owner's space, derived on every write; the environment join reads it into post_process_volumes"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs"
+status = "verified"
+
+[[buffer]]
+key = "atmosphere_sources"
+producers = ["AtmosphereSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: AtmosphereComponent in its owner's space, derived on every write; the environment join reads it into atmospheres"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
+status = "verified"
+
+[[buffer]]
+key = "atmospheres"
+producers = ["AtmosphereComponent"]
+consumers = ["helio-default-graphs", "helio-pass-sky"]
+owner = "helio-default-graphs environment join (execution output, one row per component instance)"
+disposition = "keep: the join copies each placed, enabled AtmosphereComponent row and centres a planet placed at its owner on the owner's position; the atmosphere pass uses the first enabled row"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs (atmospheres_follow_their_owner_and_their_enabled_state)"
 status = "verified"
 
 [[buffer]]
@@ -2198,9 +2268,9 @@ status = "out-of-scope"
 [[pass]]
 crate = "helio-pass-sky"
 in_default_graph = true
-reads = ["sky_components"]
+reads = ["atmospheres", "scene_lights", "sky_components"]
 owner = "helio-default-graphs (mapping); helio-pass-sky (algorithm)"
-disposition = "runs in the editor graph, but nothing authored feeds it: a sky component (Phase 4)"
+disposition = "runs in the editor graph. Its atmosphere passes read the authored AtmosphereComponent through the environment join (atmospheres) and the sun from the scene join's lights; the procedural SkyPass still has no authored component (sky_components, Phase 4)"
 target_contract = "Phase 6; 03-gpu-reflection-and-rendering.md"
 test = "tracked in #1057; crates/editor/ui_level_editor/tests/render_acceptance.rs (every_pass_of_the_editor_graph_runs)"
 status = "unfinished"

@@ -12,7 +12,7 @@ pub fn register(cfg: &'static ConfigManager) {
     )
     .setting(
         "backend_preference",
-        SchemaEntry::new("Graphics API backend", "auto")
+        SchemaEntry::new("Graphics API backend (Automatic prefers Vulkan)", "auto")
             .label("Graphics Backend")
             .page("Renderer / Device")
             .field_type(FieldType::Dropdown {

@@ -3147,6 +3147,7 @@ dependencies = [
  "tokio",
  "toml 1.1.4+spec-1.1.0",
  "tracing",
+ "tracing-subscriber",
  "ui",
  "ui_gen_macros",
  "uuid",
@@ -3231,6 +3232,7 @@ dependencies = [
  "tracing",
  "ui_types_common",
  "uuid",
+ "wgpu",
  "window_manager",
 ]
 
@@ -4672,6 +4674,7 @@ dependencies = [
  "helio-mats",
  "helio-pass-billboard",
  "helio-pass-corona",
+ "helio-pass-deferred-light",
  "helio-pass-foliage-place",
  "helio-pass-forward-lit",
  "helio-pass-gbuffer",
@@ -4855,6 +4858,7 @@ dependencies = [
  "helio-mats",
  "helio-pass-radiance-cascades",
  "helio-pass-shadow-matrix",
+ "helio-pass-sky",
  "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_scenedb_derive",
@@ -5304,6 +5308,7 @@ dependencies = [
  "helio-mats",
  "helio-pass-foliage-place",
  "helio-pass-postprocess",
+ "helio-pass-sky",
  "helio-pass-volumetric-fog",
  "helio-pass-voxel-planet",
  "helio-pass-water-sim",
@@ -6251,6 +6256,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "lhash"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "744a4c881f502e98c2241d2e5f50040ac73b30194d64452bb6260393b53f0dc9"
+
+[[package]]
 name = "libc"
 version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6510,6 +6521,15 @@ name = "mac"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
+
+[[package]]
+name = "mach-dxcompiler-rs"
+version = "0.1.6+2026.09.16-48d5a66.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "699d5b85d279d172f6ea742c6c47342fdd7c388872cea2e137e2c6721ef2e6d6"
+dependencies = [
+ "lhash",
+]
 
 [[package]]
 name = "mach2"
@@ -9430,6 +9450,8 @@ dependencies = [
 name = "pulsar_game"
 version = "0.1.0"
 dependencies = [
+ "blueprint_compiler",
+ "blueprint_graph",
  "engine_backend",
  "engine_class_derive",
  "engine_fs",
@@ -14941,6 +14963,7 @@ dependencies = [
  "libc",
  "libloading 0.8.9",
  "log",
+ "mach-dxcompiler-rs",
  "naga",
  "naga-types",
  "ndk-sys",
