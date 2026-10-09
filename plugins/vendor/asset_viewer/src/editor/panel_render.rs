@@ -56,17 +56,8 @@ fn encode(c: vec3<f32>) -> vec3<f32> {
     return c;
 }
 
-// UV debug view: a U/V gradient under a checker (8 cells per UV unit), tinted
-// red outside 0..1 so overlap and out-of-range islands stand out.
-fn uv_view(uv: vec2<f32>) -> vec3<f32> {
-    let cell = vec2<i32>(floor(uv * 8.0));
-    let checker = f32((cell.x + cell.y) & 1);
-    var color = vec3(fract(uv.x), fract(uv.y), 0.25) * (0.7 + 0.3 * checker);
-    if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
-        color = mix(color, vec3(1.0, 0.2, 0.2), 0.5);
-    }
-    return color;
-}
+@group(1) @binding(0) var uv_grid: texture_2d<f32>;
+@group(1) @binding(1) var uv_grid_sampler: sampler;
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
@@ -76,10 +67,10 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         return vec4(normalize(world_normal) * 0.5 + vec3(0.5), 1.0);
     }
     if uniforms.render_mode.x == 4u {
-        return vec4(uv_view(input.uv0), 1.0);
+        return textureSample(uv_grid, uv_grid_sampler, input.uv0);
     }
     if uniforms.render_mode.x == 5u {
-        return vec4(uv_view(input.uv1), 1.0);
+        return textureSample(uv_grid, uv_grid_sampler, input.uv1);
     }
     if uniforms.render_mode.x == 1u {
         return vec4(encode(uniforms.base_color.rgb), 1.0);
@@ -297,14 +288,72 @@ impl AssetViewerPanel {
             self.depth_texture = Some(depth);
             self.depth_view = Some(dv);
 
-            self.setup_mesh_pipeline(&device, &config);
+            self.setup_mesh_pipeline(&device, &queue, &config);
             self.load_and_upload_mesh(&device, &queue);
             self.rebuild_graph_draws();
         }
         self.needs_rebuild = false;
     }
 
-    fn setup_mesh_pipeline(&mut self, device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) {
+    fn setup_mesh_pipeline(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        config: &wgpu::SurfaceConfiguration,
+    ) {
+        // Keep the reference grid in repository assets and embed its bytes so
+        // the built-in viewer does not depend on the working directory.
+        const UV_GRID_BYTES: &[u8] = include_bytes!("../../../../../assets/UV_Grid_Sm.jpg");
+        let decoded = image::load_from_memory(UV_GRID_BYTES)
+            .expect("embedded UV grid image is valid")
+            .to_rgba8();
+        let (grid_width, grid_height) = decoded.dimensions();
+        let grid_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("embedded UV grid"),
+            size: wgpu::Extent3d {
+                width: grid_width,
+                height: grid_height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &grid_texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            decoded.as_raw(),
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(grid_width * 4),
+                rows_per_image: Some(grid_height),
+            },
+            wgpu::Extent3d {
+                width: grid_width,
+                height: grid_height,
+                depth_or_array_layers: 1,
+            },
+        );
+        let grid_view = grid_texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let grid_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("UV grid sampler"),
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            ..Default::default()
+        });
+        self.uv_grid_texture = Some(grid_texture);
+        self.uv_grid_view = Some(grid_view);
+        self.uv_grid_sampler = Some(grid_sampler);
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("mesh uniform buffer"),
             size: UNIFORM_SLOT_STRIDE * MAX_DRAW_SLOTS,
@@ -326,6 +375,46 @@ impl AssetViewerPanel {
                 count: None,
             }],
         });
+        let uv_grid_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("mesh UV grid bind group layout"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        self.uv_grid_bgl = Some(uv_grid_bgl.clone());
+        self.uv_grid_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("mesh UV grid bind group"),
+            layout: &uv_grid_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        self.uv_grid_view.as_ref().unwrap(),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(
+                        self.uv_grid_sampler.as_ref().unwrap(),
+                    ),
+                },
+            ],
+        }));
 
         let empty_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("mesh empty layout"),
@@ -382,7 +471,7 @@ impl AssetViewerPanel {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("mesh pipeline layout"),
-            bind_group_layouts: &[Some(&bgl)],
+            bind_group_layouts: &[Some(&bgl), Some(&uv_grid_bgl)],
             immediate_size: 0,
         });
 
@@ -616,7 +705,12 @@ impl AssetViewerPanel {
 
     /// Native `.mesh` assets: already triangulated and merged, so no scene
     /// walk — just normalize into the viewport's unit box.
-    fn load_native_mesh(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, path: &std::path::Path) {
+    fn load_native_mesh(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        path: &std::path::Path,
+    ) {
         let Some(asset) = helio_component::subsystems::load_mesh_asset_upload(path) else {
             log::error!("Failed to load native mesh {:?}", path);
             return;
@@ -1395,7 +1489,8 @@ impl AssetViewerPanel {
             rpass.set_vertex_buffer(0, vb.slice(..));
             rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
             for (draw, (range, _, slot)) in draws.iter().enumerate() {
-                let offset = draw.min(MAX_DRAW_SLOTS as usize - 1) as u32 * UNIFORM_SLOT_STRIDE as u32;
+                let offset =
+                    draw.min(MAX_DRAW_SLOTS as usize - 1) as u32 * UNIFORM_SLOT_STRIDE as u32;
                 let graph = self
                     .graph_draws
                     .get(*slot)
@@ -1415,6 +1510,7 @@ impl AssetViewerPanel {
                 } else {
                     rpass.set_pipeline(pipeline);
                     rpass.set_bind_group(0, bg, &[offset]);
+                    rpass.set_bind_group(1, self.uv_grid_bind_group.as_ref().unwrap(), &[]);
                 }
                 rpass.draw_indexed(range.clone(), 0, 0..1);
             }
