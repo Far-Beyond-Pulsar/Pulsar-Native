@@ -219,6 +219,54 @@ impl Render for ViewportPanel {
                         } else {
                             div().into_any_element()
                         })
+                        .child(if let Some(progress) = editor.density_progress {
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(
+                                    v_flex()
+                                        .w(px(280.0))
+                                        .gap_2()
+                                        .p_3()
+                                        .bg(cx.theme().background.opacity(0.95))
+                                        .rounded(cx.theme().radius)
+                                        .border_1()
+                                        .border_color(cx.theme().border)
+                                        .child("Computing density of the mesh...")
+                                        .child(
+                                            div()
+                                                .w_full()
+                                                .h(px(10.0))
+                                                .rounded(px(5.0))
+                                                .bg(cx.theme().secondary)
+                                                .child(
+                                                    div()
+                                                        .w(px(250.0 * progress.clamp(0.0, 1.0)))
+                                                        .h_full()
+                                                        .rounded(px(5.0))
+                                                        .bg(cx.theme().accent),
+                                                ),
+                                        )
+                                        .child(format!("{}%", (progress * 100.0) as u32)),
+                                )
+                                .into_any_element()
+                        } else if let Some(error) = &editor.density_error {
+                            div()
+                                .absolute()
+                                .bottom(px(12.0))
+                                .left(px(12.0))
+                                .p_2()
+                                .bg(cx.theme().background.opacity(0.95))
+                                .text_color(cx.theme().danger)
+                                .rounded(cx.theme().radius)
+                                .child(error.clone())
+                                .into_any_element()
+                        } else {
+                            div().into_any_element()
+                        })
                         .into_any_element()
                 } else {
                     div()
@@ -268,8 +316,7 @@ fn render_mode_button(
         .selected(selected)
         .on_click(move |_, _, cx| {
             editor.update(cx, |editor, cx| {
-                editor.render_mode = mode;
-                cx.notify();
+                editor.set_render_mode(mode, cx);
             });
         })
 }
