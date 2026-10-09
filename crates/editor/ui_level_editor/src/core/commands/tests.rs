@@ -727,4 +727,31 @@ mod undo_redo_tests {
         assert!(crate::scene_edit::objects::get_all_objects(&state.scene.world()).is_empty());
         assert!(!state.scene.can_undo());
     }
+
+    /// The editor's Duplicate (toolbar, hierarchy, shortcut) leaves the copy
+    /// selected. The copy starts on its source, so with the source still
+    /// selected the gizmo moved the source and the copy stayed behind: the
+    /// two looked tied together.
+    #[test]
+    fn duplicating_selects_the_copy() {
+        let mut state = LevelEditorState::new();
+        let source = execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: object("Cube"),
+                parent_id: None,
+            },
+        )
+        .affected_ids[0]
+            .clone();
+        execute_command(
+            &mut state,
+            SceneCommand::SelectObject {
+                id: Some(source.clone()),
+            },
+        );
+        let copy = duplicate_and_select(&mut state, &source).expect("a copy");
+        assert_ne!(copy, source);
+        assert_eq!(state.scene.selected_object(), Some(copy));
+    }
 }

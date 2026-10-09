@@ -124,6 +124,9 @@ impl SceneInteraction {
             return None;
         }
 
+        // Of objects hit at the same distance (a duplicate starts on its
+        // source), the selected one stays picked; then the lowest id.
+        let selected = world.selected_entity();
         world
             .query::<&StableId>()
             .filter_map(|(entity, id)| {
@@ -133,15 +136,19 @@ impl SceneInteraction {
                     return None;
                 }
                 let transform = *world.get::<Transform>(entity)?;
-                let (min, max) = world_bounds(&object_type, transform);
-                ray_aabb(origin, direction, min, max).map(|distance| (distance, id.0.clone()))
+                let (min, max) = object_bounds(world, entity, &object_type, transform);
+                ray_aabb(origin, direction, min, max)
+                    .map(|distance| (distance, Some(entity) != selected, id.0.clone()))
             })
-            .min_by(|(left, left_id), (right, right_id)| {
-                left.partial_cmp(right)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    .then_with(|| left_id.cmp(right_id))
-            })
-            .map(|(_, stable_id)| stable_id)
+            .min_by(
+                |(left, left_other, left_id), (right, right_other, right_id)| {
+                    left.partial_cmp(right)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then_with(|| left_other.cmp(right_other))
+                        .then_with(|| left_id.cmp(right_id))
+                },
+            )
+            .map(|(_, _, stable_id)| stable_id)
     }
 
     fn selected(&self, world: &World) -> Option<(Entity, Transform)> {
@@ -739,6 +746,41 @@ fn local_half_extent(object_type: &ObjectType) -> Vec3 {
     }
 }
 
+/// World-space box of what the object draws: its enabled mesh instances'
+/// local bounding spheres, or, without one, a unit box for its type.
+fn object_bounds(
+    world: &World,
+    entity: Entity,
+    object_type: &ObjectType,
+    transform: Transform,
+) -> (Vec3, Vec3) {
+    let meshes = crate::scene::attachments::enabled_components_of::<
+        helio_component::components::StaticMeshComponent,
+    >(world, entity);
+    let mut local: Option<(Vec3, Vec3)> = None;
+    for (_, mesh) in meshes {
+        let [x, y, z, radius] = mesh.bounds_local;
+        // No geometry loaded yet: the type's box below.
+        if !(radius > 0.0) {
+            continue;
+        }
+        let (center, extent) = (Vec3::new(x, y, z), Vec3::splat(radius));
+        let (min, max) = (center - extent, center + extent);
+        local = Some(match local {
+            Some((lo, hi)) => (lo.min(min), hi.max(max)),
+            None => (min, max),
+        });
+    }
+    let Some((min, max)) = local else {
+        return world_bounds(object_type, transform);
+    };
+    let rotation = rotation_matrix(transform);
+    let scale = Vec3::from_array(transform.scale);
+    let center = rotation * ((min + max) * 0.5 * scale) + Vec3::from_array(transform.position);
+    let extents = rotation.abs() * ((max - min) * 0.5 * scale.abs());
+    (center - extents, center + extents)
+}
+
 fn world_bounds(object_type: &ObjectType, transform: Transform) -> (Vec3, Vec3) {
     let half = local_half_extent(object_type);
     let rotation = rotation_matrix(transform);
@@ -828,7 +870,15 @@ mod tests {
         interaction.update_hover(&world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
         assert_eq!(interaction.hovered, Some(Handle::Axis(0)));
         interaction.update_drag(&mut world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
-        assert!(world.get::<Transform>(entity).unwrap().position[0] > length * 3.0);
+        // The cursor is 3.3 handle lengths along the axis from where the drag
+        // started; the moved position lands on the location snap grid.
+        let step = f32::from_bits(LOCATION_SNAP.load(Ordering::Relaxed));
+        let expected = (3.3 * length / step).round() * step;
+        let x = world.get::<Transform>(entity).unwrap().position[0];
+        assert!(
+            (x - expected).abs() < 1e-3 && x > 0.0,
+            "dragged off the handle to x = {x}, expected {expected}"
+        );
         interaction.cancel_drag();
         let final_transform = *world.get::<Transform>(entity).unwrap();
         interaction.update_drag(&mut world, Vec3::ZERO, start.normalize(), Vec3::ZERO);
@@ -1069,6 +1119,57 @@ mod tests {
         assert_eq!(
             interaction.pick(&world, Vec3::ZERO, -Vec3::Z),
             Some("near".into())
+        );
+    }
+
+    /// A mesh object attached a `StaticMeshComponent` whose local bounding
+    /// sphere has `radius`, at `z`.
+    fn spawn_mesh(world: &mut World, id: &str, z: f32, radius: f32) -> Entity {
+        spawn_cube(world, id, z);
+        let owner = world.entity_for(id).unwrap();
+        let mesh = helio_component::components::StaticMeshComponent {
+            bounds_local: [0.0, 0.0, 0.0, radius],
+            ..Default::default()
+        };
+        pulsar_world_registry::attach_value(world, owner, mesh).unwrap();
+        owner
+    }
+
+    /// A click on a mesh's visible extent picks it, not only a click within
+    /// a unit box around its origin.
+    #[test]
+    fn a_mesh_is_picked_anywhere_in_its_bounds() {
+        let mut world = World::new();
+        spawn_mesh(&mut world, "wide", -10.0, 5.0);
+        let towards_its_side = Vec3::new(3.0, 0.0, -10.0);
+        assert_eq!(
+            SceneInteraction::default().pick(&world, Vec3::ZERO, towards_its_side),
+            Some("wide".into())
+        );
+        // Outside its bounds nothing is hit.
+        assert_eq!(
+            SceneInteraction::default().pick(&world, Vec3::ZERO, Vec3::new(12.0, 0.0, -10.0)),
+            None
+        );
+    }
+
+    /// A duplicate starts on its source. A click there keeps the selected
+    /// one of the two, so the copy the editor selected can be picked and
+    /// dragged instead of always resolving to the same object.
+    #[test]
+    fn overlapping_objects_keep_the_selected_one() {
+        let mut world = World::new();
+        spawn_mesh(&mut world, "a", -10.0, 1.0);
+        let copy = spawn_mesh(&mut world, "b", -10.0, 1.0);
+        let interaction = SceneInteraction::default();
+        assert_eq!(
+            interaction.pick(&world, Vec3::ZERO, -Vec3::Z),
+            Some("a".into())
+        );
+        world.select(Some(copy));
+        assert_eq!(
+            interaction.pick(&world, Vec3::ZERO, -Vec3::Z),
+            Some("b".into())
         );
     }
 

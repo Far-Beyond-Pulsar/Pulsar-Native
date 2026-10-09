@@ -179,16 +179,8 @@ impl HierarchyItem for SceneObjectItem {
             .icon(IconName::Copy)
             .tooltip("Duplicate object")
             .on_click(move |_, _, cx| {
-                use crate::commands::{execute_command, SceneCommand};
                 let mut state = duplicate_state.write();
-                execute_command(
-                    &mut state,
-                    SceneCommand::DuplicateObject {
-                        source_id: duplicate_id.clone(),
-                        count: 1,
-                        position_offset: None,
-                    },
-                );
+                crate::commands::duplicate_and_select(&mut state, &duplicate_id);
                 drop(state);
                 cx.stop_propagation();
             });
@@ -289,14 +281,7 @@ impl HierarchyItem for SceneObjectItem {
         .menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
             let _ = app;
             let mut state = duplicate_state.write();
-            execute_command(
-                &mut state,
-                SceneCommand::DuplicateObject {
-                    source_id: duplicate_id.clone(),
-                    count: 1,
-                    position_offset: None,
-                },
-            );
+            crate::commands::duplicate_and_select(&mut state, &duplicate_id);
         })
         .menu_handler_with_icon("Delete", IconName::Trash, move |_, app| {
             let _ = app;

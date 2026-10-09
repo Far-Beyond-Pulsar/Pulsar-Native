@@ -40,7 +40,8 @@ jobs:
             pkg-config libssl-dev libglib2.0-dev libgtk-3-dev \
             libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
             libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev \
-            clang libclang-dev
+            clang libclang-dev \
+            mesa-vulkan-drivers
 
       - name: cargo check
         run: cargo check --workspace --exclude pulsar_docs --all-targets
@@ -296,7 +297,8 @@ jobs:
             pkg-config libssl-dev libglib2.0-dev libgtk-3-dev \
             libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
             libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev \
-            clang libclang-dev
+            clang libclang-dev \
+            mesa-vulkan-drivers
 
       # Script VM pieces packaged games rely on: binary modules, limits,
       # checked arithmetic, capabilities.

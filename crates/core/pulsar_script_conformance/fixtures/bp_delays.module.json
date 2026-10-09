@@ -1,5 +1,5 @@
 {
-  "format_version": 3,
+  "format_version": 5,
   "name": "bp_delays",
   "constants": [
     {
@@ -396,6 +396,28 @@
               "node": "ev"
             }
           }
+        ],
+        "register_sources": [
+          {
+            "register": 0,
+            "node": "a_get",
+            "pin": "value"
+          },
+          {
+            "register": 2,
+            "node": "a_append",
+            "pin": "result"
+          },
+          {
+            "register": 11,
+            "node": "b_get",
+            "pin": "value"
+          },
+          {
+            "register": 13,
+            "node": "b_append",
+            "pin": "result"
+          }
         ]
       }
     },
@@ -691,6 +713,18 @@
               "file": "graph_save.json",
               "node": "rt"
             }
+          }
+        ],
+        "register_sources": [
+          {
+            "register": 15,
+            "node": "rdone_get",
+            "pin": "value"
+          },
+          {
+            "register": 17,
+            "node": "rdone_append",
+            "pin": "result"
           }
         ]
       }
@@ -1084,6 +1118,28 @@
               "file": "graph_save.json",
               "node": "two"
             }
+          }
+        ],
+        "register_sources": [
+          {
+            "register": 8,
+            "node": "lx_get",
+            "pin": "value"
+          },
+          {
+            "register": 10,
+            "node": "lx_append",
+            "pin": "result"
+          },
+          {
+            "register": 19,
+            "node": "ly_get",
+            "pin": "value"
+          },
+          {
+            "register": 21,
+            "node": "ly_append",
+            "pin": "result"
           }
         ]
       }

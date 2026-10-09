@@ -1,5 +1,5 @@
 {
-  "format_version": 3,
+  "format_version": 5,
   "name": "bp_state",
   "constants": [
     {
@@ -337,6 +337,28 @@
               "file": "graph_save.json",
               "node": "ctl"
             }
+          }
+        ],
+        "register_sources": [
+          {
+            "register": 0,
+            "node": "ctl",
+            "pin": "open"
+          },
+          {
+            "register": 1,
+            "node": "ctl",
+            "pin": "close"
+          },
+          {
+            "register": 5,
+            "node": "lg_get",
+            "pin": "value"
+          },
+          {
+            "register": 7,
+            "node": "lg_append",
+            "pin": "result"
           }
         ]
       }
@@ -1384,6 +1406,88 @@
               "node": "ev"
             }
           }
+        ],
+        "register_sources": [
+          {
+            "register": 5,
+            "node": "lo_get",
+            "pin": "value"
+          },
+          {
+            "register": 7,
+            "node": "lo_append",
+            "pin": "result"
+          },
+          {
+            "register": 10,
+            "node": "la_get",
+            "pin": "value"
+          },
+          {
+            "register": 12,
+            "node": "la_append",
+            "pin": "result"
+          },
+          {
+            "register": 13,
+            "node": "lb_get",
+            "pin": "value"
+          },
+          {
+            "register": 15,
+            "node": "lb_append",
+            "pin": "result"
+          },
+          {
+            "register": 23,
+            "node": "ln_get",
+            "pin": "value"
+          },
+          {
+            "register": 25,
+            "node": "ln_append",
+            "pin": "result"
+          },
+          {
+            "register": 35,
+            "node": "m0_get",
+            "pin": "value"
+          },
+          {
+            "register": 37,
+            "node": "m0_append",
+            "pin": "result"
+          },
+          {
+            "register": 40,
+            "node": "m1_get",
+            "pin": "value"
+          },
+          {
+            "register": 42,
+            "node": "m1_append",
+            "pin": "result"
+          },
+          {
+            "register": 45,
+            "node": "m2_get",
+            "pin": "value"
+          },
+          {
+            "register": 47,
+            "node": "m2_append",
+            "pin": "result"
+          },
+          {
+            "register": 50,
+            "node": "m3_get",
+            "pin": "value"
+          },
+          {
+            "register": 52,
+            "node": "m3_append",
+            "pin": "result"
+          }
         ]
       }
     },
@@ -1569,6 +1673,23 @@
               "file": "graph_save.json",
               "node": "rst"
             }
+          }
+        ],
+        "register_sources": [
+          {
+            "register": 0,
+            "node": "rst",
+            "pin": "reset"
+          },
+          {
+            "register": 5,
+            "node": "lr_get",
+            "pin": "value"
+          },
+          {
+            "register": 7,
+            "node": "lr_append",
+            "pin": "result"
           }
         ]
       }

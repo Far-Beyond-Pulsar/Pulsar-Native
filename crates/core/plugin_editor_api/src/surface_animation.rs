@@ -93,7 +93,21 @@ mod tests {
         }
     }
 
-    fn setup(cx: &mut TestAppContext) -> (gpui::WindowHandle<Root>, Entity<Leaf>) {
+    /// The window's root view: it re-renders on every full draw, which the
+    /// test harness performs even for the display-only frames a surface tick
+    /// requests. `Root` is hosted as a cached view, as editor panels are, so
+    /// it re-renders only when something invalidates it.
+    struct Shell {
+        root: Entity<Root>,
+    }
+
+    impl Render for Shell {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            AnyView::from(self.root.clone()).cached(StyleRefinement::default().size_full())
+        }
+    }
+
+    fn setup(cx: &mut TestAppContext) -> (Entity<Root>, Entity<Leaf>) {
         let leaf = cx.new(|_| Leaf {
             animation: Default::default(),
             renders: Default::default(),
@@ -101,17 +115,21 @@ mod tests {
             revision: 0,
             animate: true,
         });
-        let window = cx.open_window(size(px(400.), px(300.)), {
+        let root = cx.new({
             let leaf = leaf.clone();
-            move |_, _| Root {
+            move |_| Root {
                 leaf,
                 renders: Default::default(),
                 visible: true,
                 width: 200.,
             }
         });
+        cx.open_window(size(px(400.), px(300.)), {
+            let root = root.clone();
+            move |_, _| Shell { root }
+        });
         cx.run_until_parked();
-        (window, leaf)
+        (root, leaf)
     }
 
     fn tick(cx: &mut TestAppContext) {
@@ -121,10 +139,10 @@ mod tests {
 
     #[gpui::test]
     fn surface_ticks_do_not_rebuild_views_and_stop_when_hidden(cx: &mut TestAppContext) {
-        let (window, leaf) = setup(cx);
+        let (root, leaf) = setup(cx);
         let samples = leaf.read_with(cx, |leaf, _| leaf.samples.clone());
         let leaf_renders = leaf.read_with(cx, |leaf, _| leaf.renders.get());
-        let root_renders = window.read_with(cx, |root, _| root.renders.get()).unwrap();
+        let root_renders = root.read_with(cx, |root, _| root.renders.get());
         let initial = samples.borrow().len();
         for _ in 0..4 {
             tick(cx);
@@ -135,28 +153,24 @@ mod tests {
             leaf_renders
         );
         assert_eq!(
-            window.read_with(cx, |root, _| root.renders.get()).unwrap(),
+            root.read_with(cx, |root, _| root.renders.get()),
             root_renders
         );
 
-        window
-            .update(cx, |root, _, cx| {
-                root.visible = false;
-                cx.notify();
-            })
-            .unwrap();
+        root.update(cx, |root, cx| {
+            root.visible = false;
+            cx.notify();
+        });
         cx.run_until_parked();
         let hidden = samples.borrow().len();
         for _ in 0..3 {
             tick(cx);
         }
         assert_eq!(samples.borrow().len(), hidden);
-        window
-            .update(cx, |root, _, cx| {
-                root.visible = true;
-                cx.notify();
-            })
-            .unwrap();
+        root.update(cx, |root, cx| {
+            root.visible = true;
+            cx.notify();
+        });
         cx.run_until_parked();
         let shown = samples.borrow().len();
         tick(cx);
@@ -165,7 +179,7 @@ mod tests {
 
     #[gpui::test]
     fn edits_replace_pending_inputs_and_resize_updates_geometry(cx: &mut TestAppContext) {
-        let (window, leaf) = setup(cx);
+        let (root, leaf) = setup(cx);
         let samples = leaf.read_with(cx, |leaf, _| leaf.samples.clone());
         leaf.update(cx, |leaf, cx| {
             leaf.revision = 1;
@@ -178,12 +192,10 @@ mod tests {
         }
         assert_eq!(&*samples.borrow(), &[(1, 200.); 3]);
 
-        window
-            .update(cx, |root, _, cx| {
-                root.width = 250.;
-                cx.notify();
-            })
-            .unwrap();
+        root.update(cx, |root, cx| {
+            root.width = 250.;
+            cx.notify();
+        });
         cx.run_until_parked();
         tick(cx);
         assert_eq!(samples.borrow().last(), Some(&(1, 250.)));
