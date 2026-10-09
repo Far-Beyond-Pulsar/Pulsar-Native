@@ -155,6 +155,14 @@ pub struct AssetViewerPanel {
     pub frame_counter: u32,
 }
 
+impl Drop for AssetViewerPanel {
+    fn drop(&mut self) {
+        if let Some(cancelled) = &self.density_cancel {
+            cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+}
+
 impl AssetViewerPanel {
     pub fn set_render_mode(&mut self, mode: MeshRenderMode, cx: &mut Context<Self>) {
         if self.render_mode == mode {

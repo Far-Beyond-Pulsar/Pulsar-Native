@@ -319,19 +319,38 @@ fn local_vertex_density(
         };
     }
 
+    let positive_floor = density
+        .iter()
+        .copied()
+        .filter(|value| *value > 0.0 && value.is_finite())
+        .min_by(f32::total_cmp)
+        .unwrap_or(0.0);
+    if positive_floor == 0.0 {
+        progress.store(1000, Ordering::Relaxed);
+        return Some(vec![0.0; vertex_count]);
+    }
+    for value in &mut density {
+        if *value <= 0.0 || !value.is_finite() {
+            *value = positive_floor;
+        }
+    }
+
     let mut sorted_density = density.clone();
     sorted_density.sort_by(f32::total_cmp);
+    if cancelled.load(Ordering::Relaxed) {
+        return None;
+    }
     let low_reference = sorted_density[((sorted_density.len() - 1) * 10) / 100].max(1e-8);
     let high_reference = sorted_density[((sorted_density.len() - 1) * 95) / 100].max(low_reference);
-    let log_low = (1.0 + low_reference).ln();
-    let log_span = ((1.0 + high_reference).ln() - log_low).max(1e-5);
+    let log_low = low_reference.ln();
+    let log_span = (high_reference.ln() - log_low).max(1e-5);
     let normalized = density
         .into_iter()
         .map(|value| {
             if value <= 0.0 {
                 0.0
             } else {
-                (((1.0 + value).ln() - log_low) / log_span).clamp(0.0, 1.0)
+                ((value.ln() - log_low) / log_span).clamp(0.0, 1.0)
             }
         })
         .collect();
