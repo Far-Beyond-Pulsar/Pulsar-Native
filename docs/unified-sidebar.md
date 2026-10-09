@@ -9,13 +9,21 @@ Sidebar**, or with **Toggle Unified Sidebar** in the command palette.
 
 ## What it does
 
-| | |
-|---|---|
-| ![Tab bar](images/unified-sidebar/0-tab-bar.png) | **Off.** The usual tab strip. |
-| ![Rail](images/unified-sidebar/1-collapsed-rail.png) | **Collapsed rail.** The strip is gone and the page fills the editor area. A 48 px rail shows one icon per open editor, with groups separated by a line and the active editor highlighted. Click an icon to switch to that editor. |
-| ![Hover](images/unified-sidebar/2-hover-drawer.png) | **Hover.** Hovering the rail opens the sidebar *over* the editor. The viewport does not move or resize. Moving the pointer off the rail and the sidebar closes it after 220 ms, so crossing from one to the other never flickers. Choosing an editor closes it too. |
-| ![Assets](images/unified-sidebar/3-folder-assets.png) | **Folder assets.** Choose a folder under **Content** to list its assets in the bottom file drawer. In this mode the drawer leaves out its own folder tree, since the sidebar has one. Opening an asset opens its editor tab, as before. |
-| ![Kept open](images/unified-sidebar/4-kept-open.png) | **Kept open.** The pin at the top, or **Keep Sidebar Open** in settings, puts the sidebar in its own column beside the editor. |
+- **Off.** The usual tab strip.
+- **Collapsed rail.** The strip is gone and the page fills the editor area.
+  A 48 px rail shows one icon per open editor, with groups separated by a
+  line and the active editor highlighted. Click an icon to switch to that
+  editor.
+- **Hover.** Hovering the rail opens the sidebar *over* the editor. The
+  viewport does not move or resize. Moving the pointer off the rail and the
+  sidebar closes it after 220 ms, so crossing from one to the other never
+  flickers. Choosing an editor closes it too.
+- **Folder assets.** Choose a folder under **Content** to list its assets in
+  the bottom file drawer. In this mode the drawer leaves out its own folder
+  tree, since the sidebar has one. Opening an asset opens its editor tab, as
+  before.
+- **Kept open.** The pin at the top, or **Keep Sidebar Open** in settings,
+  puts the sidebar in its own column beside the editor.
 
 The sidebar has two sections:
 
@@ -62,7 +70,7 @@ checks each state above:
 - Keeping the sidebar open moves the editor over by the sidebar's width.
 - Turning the sidebar off brings the strip back.
 
-The screenshots above come from the same walk:
+`sidebar_screenshots` walks the same steps and saves a PNG of each state:
 
 ```
 PULSAR_SIDEBAR_SHOTS=/tmp/shots cargo test -p ui_core --lib -- nav_sidebar::tests::sidebar_screenshots
