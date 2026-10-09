@@ -1,6 +1,6 @@
 //! Whether the scene holds content that moves on its own (Pulsar-Native
-//! #1123, #1109): foliage in a wind, particle emitters, surfaces whose
-//! shader graph reads `time`. While the viewport is realtime such content
+//! #1123, #1109): foliage in a wind, particle emitters, water (#1065),
+//! surfaces whose shader graph reads `time`. While the viewport is realtime such content
 //! changes every frame with no scene write, so the editor renderer keeps
 //! rendering instead of going idle.
 //!
@@ -8,7 +8,8 @@
 //! re-checked only when the world's revision changes, never per frame.
 
 use helio_component::components::{
-    slot_reads_time, FoliageComponent, ParticleEmitterComponent, StaticMeshComponent, WindComponent,
+    slot_reads_time, FoliageComponent, ParticleEmitterComponent, StaticMeshComponent,
+    WaterVolumeComponent, WindComponent,
 };
 use pulsar_scene_model::attachments;
 use pulsar_scenedb::World;
@@ -34,16 +35,25 @@ impl AnimatedContent {
 }
 
 /// Animated content in `world`: an enabled particle emitter, foliage in a
-/// wind faster than calm, or a mesh drawn with a shader graph that reads
-/// the frame clock.
+/// wind faster than calm, an enabled water volume, or a mesh drawn with a
+/// shader graph that reads the frame clock.
 pub(super) fn animated(world: &World) -> bool {
-    particles(world) || foliage_in_wind(world) || animated_graph_materials(world)
+    particles(world) || foliage_in_wind(world) || water(world) || animated_graph_materials(world)
 }
 
 fn particles(world: &World) -> bool {
     world
         .query::<&ParticleEmitterComponent>()
         .any(|(instance, emitter)| emitter.enabled && attachments::is_enabled(world, instance))
+}
+
+/// Water simulates on the frame clock: its waves travel in a wind, and
+/// ripples from bodies moving through it (#1080) spread and settle over
+/// many frames after the edit that made them. Any enabled volume counts.
+fn water(world: &World) -> bool {
+    world
+        .query::<&WaterVolumeComponent>()
+        .any(|(instance, water)| water.enabled && attachments::is_enabled(world, instance))
 }
 
 /// The foliage passes' one wind (as the environment join picks it): a

@@ -280,9 +280,9 @@ category = "Rendering"
 world_registered = true
 own_gpu_columns = true
 owner = "helio_component::components::water_volume_component"
-disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates, places and packs it into water_volumes, which water simulation, surface, caustics and deferred lighting read. Per-volume wind, spring, damping and wave scale are carried but the simulation uses pass-wide values (#1065)"
+disposition = "render, Phase 4. Its derived source row is written on every insert, write, removal and replay; the environment join gates, places and packs it into water_volumes, which water simulation, surface, caustics and deferred lighting read. The simulation reads each volume's own spring, damping, wave scale, wave speed and wind from its row and steps on the renderer's frame clock (#1065); the wind is the level's global wind unless the volume opts out (use_global_wind), and the sun is the scene's directional light, written into the row by the join (the authored sun_direction is retired by a load migration)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+test = "crates/core/engine_backend/tests/environment_join_rows.rs (water_volumes_are_packed_into_the_leading_rows, water_takes_the_scenes_sun_and_the_global_wind); crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame, water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock)"
 status = "verified"
 
 # ── GPU schemas ──────────────────────────────────────────────────────────
@@ -1688,7 +1688,7 @@ key = "wind_sources"
 producers = ["GlobalWindSourceRow"]
 consumers = []
 owner = "helio_component::components::environment_rows"
-disposition = "keep: the level's WindComponent, derived on every write; the environment join reads it into foliage_wind"
+disposition = "keep: the level's WindComponent, derived on every write; the environment join reads it into foliage_wind and over the wind of every water_volumes row that does not opt out (#1065)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
 test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (foliage_sways_in_the_global_wind_on_the_frame_clock); crates/core/engine_backend/tests/environment_join_rows.rs (foliage_sways_in_the_global_wind_unless_it_opts_out)"
 status = "verified"

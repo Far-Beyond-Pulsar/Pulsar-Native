@@ -331,6 +331,7 @@ fn migrate_scene_file(file: &mut SceneFile, registry: &pulsar_class::ClassRegist
             nested = records.nested.len(),
             mesh_asset_props = records.mesh_asset_props.len(),
             stripped_props = records.stripped_props.len(),
+            retired_fields = records.retired_fields.len(),
             "Migrated legacy component records"
         );
     }

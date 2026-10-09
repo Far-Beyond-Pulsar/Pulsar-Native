@@ -37,6 +37,16 @@ struct Join {
 
 impl Join {
     fn run(&mut self, scene: &mut SceneDb) -> SceneBufferProjection {
+        self.run_after(scene, None)
+    }
+
+    /// Run the join after `before` (the scene join, whose lights the water
+    /// rows read), as the renderer orders them.
+    fn run_after(
+        &mut self,
+        scene: &mut SceneDb,
+        before: Option<&mut Box<dyn SceneDerivation>>,
+    ) -> SceneBufferProjection {
         scene.step();
         let mirror = scene.world.gpu_mirror().expect("mirror attached").clone();
         let mut inputs = SceneBufferProjection::from_store_all(mirror.store());
@@ -54,6 +64,19 @@ impl Join {
             },
         );
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        if let Some(before) = before {
+            let output = before.derive(
+                &SceneDerivationContext {
+                    device: &self.device,
+                    queue: &self.queue,
+                    inputs: &inputs,
+                },
+                &mut encoder,
+            );
+            for (key, handle) in output.buffers {
+                inputs.insert(key, handle);
+            }
+        }
         let output = self.join.derive(
             &SceneDerivationContext {
                 device: &self.device,
@@ -831,4 +854,140 @@ fn foliage_sways_in_the_global_wind_unless_it_opts_out() {
     attachments::set_enabled(&mut scene.world, wind, false);
     let out = join.run(&mut scene);
     assert_eq!(speed(&join, &out)[3], 2.0, "a disabled global wind");
+}
+
+/// Water (#1065): every placed volume takes the scene's sun (its first
+/// directional light, oriented by its owner) in place of an authored one,
+/// and the level's global wind unless it opts out; its own spring, damping
+/// and wave scale reach its row.
+#[test]
+fn water_takes_the_scenes_sun_and_the_global_wind() {
+    use helio_component::components::{LightComponent, LightType, WindComponent};
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let water = |use_global_wind: bool| WaterVolumeComponent {
+        size: [10.0, 4.0, 10.0],
+        wave_spring: 1.4,
+        wave_damping: 0.95,
+        wave_scale: 2.0,
+        use_global_wind,
+        wind_direction_x: 0.0,
+        wind_direction_z: 1.0,
+        wind_strength: 3.0,
+        ..Default::default()
+    };
+    let lake = place(&mut scene, "lake", at([0.0; 3]));
+    pulsar_world_registry::attach_value(&mut scene.world, lake, water(true)).unwrap();
+    let pond = place(&mut scene, "pond", at([50.0, 0.0, 0.0]));
+    let pond = pulsar_world_registry::attach_value(&mut scene.world, pond, water(false)).unwrap();
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut scene_join: Box<dyn SceneDerivation> =
+        engine_backend::scene::scene_join(&device, false);
+    let mut join = Join {
+        join: engine_backend::scene::environment_join(&device),
+        device,
+        queue,
+    };
+    let water_rows =
+        |join: &mut Join, scene: &mut SceneDb, scene_join: &mut Box<dyn SceneDerivation>| {
+            let out = join.run_after(scene, Some(scene_join));
+            let rows: Vec<WaterRow> = join.read(&out, "water_volumes");
+            (rows, out)
+        };
+
+    let (rows, _) = water_rows(&mut join, &mut scene, &mut scene_join);
+    assert_eq!(
+        rows[0].sim_dynamics,
+        [1.4, 0.95, 2.0, 0.0],
+        "its own dynamics"
+    );
+    assert_eq!(
+        rows[0].sun_direction,
+        [0.0, 1.0, 0.0, 0.0],
+        "no sun: straight up"
+    );
+    assert_eq!(
+        rows[0].wind_params,
+        [0.0, 1.0, 3.0, 0.0],
+        "no global wind: its own"
+    );
+    assert_eq!(rows[1].wind_params, [0.0, 1.0, 3.0, 1.0]);
+
+    // A directional light, tilted by its owner, is the water's sun.
+    let sun = place(
+        &mut scene,
+        "sun",
+        Transform {
+            rotation: [-60.0, 30.0, 0.0],
+            ..Transform::default()
+        },
+    );
+    let mut light = LightComponent::default();
+    light.general.enabled = true;
+    light.general.light_type = LightType::Directional;
+    let light = pulsar_world_registry::attach_value(&mut scene.world, sun, light).unwrap();
+    let (rows, out) = water_rows(&mut join, &mut scene, &mut scene_join);
+    let lit: helio::GpuLight =
+        join.read::<helio::GpuLight>(&out, "scene_lights")[light.index() as usize];
+    let toward = -glam::Vec3::from_slice(&lit.direction_outer[..3]).normalize();
+    assert!(
+        toward.y > 0.1 && toward.x.abs() > 0.1,
+        "a tilted sun: {toward:?}"
+    );
+    for row in &rows[..2] {
+        assert!(
+            close(row.sun_direction, toward.to_array()) && row.sun_direction[3] == 1.0,
+            "the water's sun is the directional light: {:?} vs {toward:?}",
+            row.sun_direction
+        );
+    }
+
+    // The global wind blows over the lake, not over the pond that opts out.
+    let breeze = place(&mut scene, "wind", at([0.0; 3]));
+    let wind = WindComponent {
+        direction: [3.0, 0.0, 0.0],
+        speed: 6.0,
+        ..Default::default()
+    };
+    let wind = pulsar_world_registry::attach_value(&mut scene.world, breeze, wind).unwrap();
+    let (rows, _) = water_rows(&mut join, &mut scene, &mut scene_join);
+    let strength = 6.0 * helio_default_graphs::environment_join::WATER_WIND_STRENGTH_PER_SPEED;
+    assert_eq!(
+        rows[0].wind_params,
+        [1.0, 0.0, strength, 0.0],
+        "the global wind"
+    );
+    assert_eq!(rows[1].wind_params, [0.0, 1.0, 3.0, 1.0], "its own wind");
+    assert!(
+        rows[2..].iter().all(|row| row.wind_params == [0.0; 4]),
+        "unplaced rows stay zero"
+    );
+
+    // A calm global wind calms the lake; without one it has its own again.
+    scene.world.get_mut::<WindComponent>(wind).unwrap().speed = 0.0;
+    let (rows, _) = water_rows(&mut join, &mut scene, &mut scene_join);
+    assert_eq!(rows[0].wind_params[2], 0.0, "a calm global wind");
+    attachments::set_enabled(&mut scene.world, wind, false);
+    let (rows, _) = water_rows(&mut join, &mut scene, &mut scene_join);
+    assert_eq!(
+        rows[0].wind_params,
+        [0.0, 1.0, 3.0, 0.0],
+        "a disabled global wind"
+    );
+
+    // The pond's own wind follows its edits; switching the light off leaves
+    // the water without a sun.
+    scene
+        .world
+        .get_mut::<WaterVolumeComponent>(pond)
+        .unwrap()
+        .wind_strength = 7.0;
+    attachments::set_enabled(&mut scene.world, light, false);
+    let (rows, _) = water_rows(&mut join, &mut scene, &mut scene_join);
+    assert_eq!(rows[1].wind_params[2], 7.0);
+    assert_eq!(rows[0].sun_direction, [0.0, 1.0, 0.0, 0.0]);
 }

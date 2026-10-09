@@ -17,6 +17,8 @@
 //! 4. Props a registered scene-props projector manages (copies of component
 //!    values the editor used to fold into `props`, and save) are removed:
 //!    component values live only in their instances.
+//! 5. Fields a class retired ([`RETIRED_FIELDS`]) are removed from its
+//!    data, so a saved value no longer carries data nothing reads.
 //!
 //! Data that still does not decode after this is invalid for its class; the
 //! loaders report it (the editor keeps it as an unresolved payload, the
@@ -32,6 +34,12 @@ use crate::template::layout;
 const MATERIAL_OVERRIDE: &str = "MaterialOverrideComponent";
 const STATIC_MESH: &str = "StaticMeshComponent";
 
+/// Fields classes no longer have: `(class, field)`.
+pub const RETIRED_FIELDS: &[(&str, &str)] = &[
+    // Water takes its sun from the level's directional light (#1065).
+    ("WaterVolumeComponent", "sun_direction"),
+];
+
 /// What the record migrations changed, per object id.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct RecordMigrations {
@@ -44,6 +52,8 @@ pub struct RecordMigrations {
     pub mesh_asset_props: Vec<String>,
     /// `(object id, keys)` of projected component values removed from props.
     pub stripped_props: Vec<(String, Vec<String>)>,
+    /// `(object id, class, fields)` of retired fields removed from data.
+    pub retired_fields: Vec<(String, String, Vec<String>)>,
 }
 
 impl RecordMigrations {
@@ -52,6 +62,7 @@ impl RecordMigrations {
             || !self.nested.is_empty()
             || !self.mesh_asset_props.is_empty()
             || !self.stripped_props.is_empty()
+            || !self.retired_fields.is_empty()
     }
 }
 
@@ -79,6 +90,9 @@ pub fn migrate_component_records(root: &mut Value) -> RecordMigrations {
             for entry in entries.iter_mut() {
                 if let Some(class) = nest_flat_properties(entry) {
                     report.nested.push((id.clone(), class));
+                }
+                if let Some((class, fields)) = strip_retired_fields(entry) {
+                    report.retired_fields.push((id.clone(), class, fields));
                 }
             }
         }
@@ -158,6 +172,19 @@ fn nest_flat_properties(entry: &mut Value) -> Option<String> {
     Some(class)
 }
 
+/// Migration 5. Returns the class and the fields removed from `entry`'s
+/// data, if any.
+fn strip_retired_fields(entry: &mut Value) -> Option<(String, Vec<String>)> {
+    let class = entry.get("class_name")?.as_str()?.to_string();
+    let data = entry.get_mut("data")?.as_object_mut()?;
+    let removed: Vec<String> = RETIRED_FIELDS
+        .iter()
+        .filter(|(retired_class, field)| *retired_class == class && data.remove(*field).is_some())
+        .map(|(_, field)| field.to_string())
+        .collect();
+    (!removed.is_empty()).then_some((class, removed))
+}
+
 /// Migration 3. A `StaticMeshComponent` entry for `object`'s non-empty
 /// `props.mesh_asset`, in the class's own shape.
 fn mesh_from_props(object: &Value) -> Option<Value> {
@@ -225,6 +252,30 @@ mod tests {
             list[0]["data"]["legacy_material_override"],
             json!({ "roughness": 0.3 })
         );
+    }
+
+    #[test]
+    fn retired_fields_leave_the_data() {
+        let mut root = json!({
+            "objects": [{ "id": "a", "props": {}, "component_instances": [
+                { "class_name": "WaterVolumeComponent",
+                  "data": { "size": [1.0, 1.0, 1.0], "sun_direction": [0.5, 1.0, 0.5] } }
+            ]}]
+        });
+        let report = migrate_component_records(&mut root);
+        assert_eq!(
+            report.retired_fields,
+            [(
+                "a".to_string(),
+                "WaterVolumeComponent".to_string(),
+                vec!["sun_direction".to_string()]
+            )]
+        );
+        assert_eq!(
+            root["objects"][0]["component_instances"][0]["data"],
+            json!({ "size": [1.0, 1.0, 1.0] })
+        );
+        assert!(!migrate_component_records(&mut root).changed());
     }
 
     #[test]

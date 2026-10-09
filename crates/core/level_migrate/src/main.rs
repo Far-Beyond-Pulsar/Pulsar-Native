@@ -183,6 +183,9 @@ fn print_record_migrations(records: &pulsar_class::records::RecordMigrations) {
     for (object, keys) in &records.stripped_props {
         println!("  component copies removed from props: {object} {keys:?}");
     }
+    for (object, class, fields) in &records.retired_fields {
+        println!("  retired fields removed: {object} ({class}) {fields:?}");
+    }
 }
 
 /// The project a level belongs to: the first ancestor with `src/classes`.

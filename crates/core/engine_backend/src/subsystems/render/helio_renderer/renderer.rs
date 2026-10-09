@@ -2021,6 +2021,19 @@ impl HelioRenderer {
             .map(|inner| inner.renderer.debug_depth_texture())
     }
 
+    /// The water simulation's height field as of the last encoded frame
+    /// (Helio's `WaterSimPass::sim_texture`: layer `volume row * 3 +
+    /// cascade`); `None` before the renderer is initialized. Read-only
+    /// diagnostics: lets a test read the simulated water back.
+    pub fn debug_water_sim_texture(&self) -> Option<&wgpu::Texture> {
+        self.inner.as_ref().and_then(|inner| {
+            inner
+                .renderer
+                .find_pass::<helio_pass_water_sim::WaterSimPass>()
+                .map(|pass| pass.sim_texture())
+        })
+    }
+
     /// The default graph's passes, in execution order, and whether each
     /// recorded CPU work in the last frame (Helio's timing snapshot).
     /// Read-only diagnostics: lets a test show every pass of the graph runs.

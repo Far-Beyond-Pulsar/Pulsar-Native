@@ -107,8 +107,8 @@ pub const RENDERER_QUERY_SITES: &[(&str, usize, &str)] = &[
     ),
     (
         "crates/core/engine_backend/src/subsystems/render/helio_renderer/animated_content.rs",
-        4,
-        "keep-awake: whether particles, foliage in a wind or time-reading graph materials are live, re-checked only when the world revision changes",
+        5,
+        "keep-awake: whether particles, foliage in a wind, water or time-reading graph materials are live, re-checked only when the world revision changes",
     ),
     (
         "crates/core/engine_backend/src/subsystems/render/helio_renderer/renderer.rs",

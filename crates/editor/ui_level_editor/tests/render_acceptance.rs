@@ -2257,6 +2257,21 @@ fn a_realtime_viewport_keeps_rendering_animated_content() {
         "a disabled emitter kept rendering"
     );
 
+    // Water simulates on the frame clock (#1065).
+    let water = add(
+        &mut state,
+        "Lake",
+        TypedComponent::new(helio_component::components::WaterVolumeComponent::default()),
+    );
+    assert!(keeps_rendering(&mut renderer), "live water went idle");
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &water,
+        0,
+        false
+    ));
+    assert!(goes_idle(&mut renderer), "disabled water kept rendering");
+
     // Foliage in the global wind.
     let mut foliage = FoliageComponent::default();
     foliage.general.enabled = true;
@@ -2279,5 +2294,190 @@ fn a_realtime_viewport_keeps_rendering_animated_content() {
         state.scene.world().revision(),
         revision + 1,
         "animated frames wrote to the world"
+    );
+}
+
+/// The R channel (height) of one layer of the water simulation's
+/// RGBA16F array texture.
+fn water_heights(harness: &Harness, renderer: &HelioRenderer, layer: u32) -> Vec<f32> {
+    let texture = renderer
+        .debug_water_sim_texture()
+        .expect("the editor graph simulates water");
+    let size = texture.size();
+    let row = size.width * 8;
+    let padded =
+        row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let buffer = harness.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("water-sim-readback"),
+        size: (padded * size.height) as u64,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder = harness.device.create_command_encoder(&Default::default());
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d {
+                x: 0,
+                y: 0,
+                z: layer,
+            },
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(padded),
+                rows_per_image: Some(size.height),
+            },
+        },
+        wgpu::Extent3d {
+            width: size.width,
+            height: size.height,
+            depth_or_array_layers: 1,
+        },
+    );
+    harness.queue.submit([encoder.finish()]);
+    let slice = buffer.slice(..);
+    slice.map_async(wgpu::MapMode::Read, |r| r.expect("map readback"));
+    harness
+        .device
+        .poll(wgpu::PollType::wait_indefinitely())
+        .unwrap();
+    let mapped = slice.get_mapped_range().expect("mapped range");
+    let heights = mapped
+        .chunks_exact(padded as usize)
+        .flat_map(|line| {
+            line[..row as usize]
+                .chunks_exact(8)
+                .map(|texel| f16_to_f32(u16::from_le_bytes([texel[0], texel[1]])))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    drop(mapped);
+    buffer.unmap();
+    heights
+}
+
+fn f16_to_f32(bits: u16) -> f32 {
+    let sign = if bits & 0x8000 != 0 { -1.0 } else { 1.0 };
+    let exponent = i32::from((bits >> 10) & 0x1f);
+    let mantissa = f32::from(bits & 0x03ff);
+    sign * match exponent {
+        0 => mantissa * 2f32.powi(-24),
+        0x1f => f32::INFINITY,
+        _ => (1.0 + mantissa / 1024.0) * 2f32.powi(exponent - 15),
+    }
+}
+
+/// Mean absolute height: how far a layer is from flat water.
+fn roughness(heights: &[f32]) -> f32 {
+    heights.iter().map(|h| h.abs()).sum::<f32>() / heights.len() as f32
+}
+
+/// Water dynamics (#1065): each volume simulates with its own wind, read
+/// back from the simulation: a windy lake moves while a calm pond beside it
+/// stays flat, the pond's waves start when its own wind does (nothing on
+/// the pass is touched), and the simulation advances on the frame clock, so
+/// it stands still with Realtime off.
+#[test]
+fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
+    use helio_component::components::WaterVolumeComponent;
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, 1.0);
+    let mut state = LevelEditorState::new();
+    let water = |wind_strength: f32| WaterVolumeComponent {
+        size: [20.0, 4.0, 20.0],
+        use_global_wind: false,
+        wind_direction_x: 1.0,
+        wind_direction_z: 0.3,
+        wind_strength,
+        ..Default::default()
+    };
+    let add = |state: &mut LevelEditorState, name: &str, x: f32, water: WaterVolumeComponent| {
+        execute_command(
+            state,
+            SceneCommand::AddObjectWithComponents {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: name.to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform {
+                        position: [x, 0.0, 0.0],
+                        ..Transform::default()
+                    },
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+                components: vec![TypedComponent::new(water)],
+            },
+        )
+        .affected_ids[0]
+            .clone()
+    };
+    // The lake takes the first water row (layers 0..3), the pond the
+    // second (layers 3..6).
+    add(&mut state, "lake", 0.0, water(5.0));
+    let mut renderer = harness.renderer(&state);
+    renderer.set_frame_delta_override(Some(1.0 / 60.0));
+    harness.frames(&mut renderer, || {});
+    let pond = add(&mut state, "pond", 100.0, water(0.0));
+    harness.frames(&mut renderer, || {});
+    harness.frames(&mut renderer, || {});
+
+    let lake_waves = roughness(&water_heights(&harness, &renderer, 0));
+    let pond_waves = roughness(&water_heights(&harness, &renderer, 3));
+    println!("WATER lake {lake_waves} pond {pond_waves}");
+    assert!(lake_waves > 1e-4, "the windy lake is flat: {lake_waves}");
+    assert_eq!(pond_waves, 0.0, "the calm pond moved");
+
+    // The pond's own wind rises: its waves start.
+    let instance = first_instance(&state, &pond);
+    state
+        .scene
+        .world_mut()
+        .get_mut::<WaterVolumeComponent>(instance)
+        .unwrap()
+        .wind_strength = 5.0;
+    harness.frames(&mut renderer, || {});
+    harness.frames(&mut renderer, || {});
+    let pond_waves = roughness(&water_heights(&harness, &renderer, 3));
+    println!("WATER pond in its own wind {pond_waves}");
+    assert!(
+        pond_waves > 1e-4,
+        "the pond's wind did not move it: {pond_waves}"
+    );
+
+    // Realtime off freezes the frame clock, and the water with it.
+    renderer.set_viewport_realtime(false);
+    harness.frames(&mut renderer, || {});
+    let before = water_heights(&harness, &renderer, 0);
+    harness.frames(&mut renderer, || {});
+    let after = water_heights(&harness, &renderer, 0);
+    assert!(before == after, "the water moved with Realtime off");
+    renderer.set_viewport_realtime(true);
+    harness.frames(&mut renderer, || {});
+    assert!(
+        water_heights(&harness, &renderer, 0) != after,
+        "Realtime back on did not resume the water"
     );
 }
