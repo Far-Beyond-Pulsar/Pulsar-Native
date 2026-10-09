@@ -2631,3 +2631,205 @@ fn bodies_on_the_water_sim_channel_push_the_water() {
         "the water did not rise where the body left"
     );
 }
+
+/// The final image's RGBA at pixel `(x, y)`.
+fn pixel(frame: &Frame, x: u32, y: u32) -> [u8; 4] {
+    let i = ((y * SIZE + x) * 4) as usize;
+    frame.color[i..i + 4].try_into().unwrap()
+}
+
+#[track_caller]
+fn assert_color(what: &str, actual: [u8; 4], expected: [u8; 3]) {
+    let close = (0..3).all(|i| actual[i].abs_diff(expected[i]) <= 8);
+    assert!(close, "{what}: {actual:?}, expected {expected:?}");
+}
+
+/// 2D sprites (#1060): an authored sprite draws at its 2D position (pixels
+/// from the centre of the view, Y up) on top of the 3D scene; between two
+/// overlapping sprites the higher Z index is on top, and changing it
+/// changes which; a textured sprite shows its image; moving the 3D camera
+/// does not move a sprite, moving its owner does, and disabling sprites
+/// restores the 3D frame.
+#[test]
+fn sprites_draw_in_2d_over_the_3d_scene() {
+    use helio_component::components::SpriteComponent;
+    use ui_level_editor::scene_edit::sprite::create_sprite;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, typed_mesh().bounds_local[3]);
+    let mut state = LevelEditorState::new();
+    drop_mesh(&mut state);
+    let mut renderer = harness.renderer(&state);
+    let scene = harness.frames(&mut renderer, || {});
+    scene.dump("sprites_scene");
+    let centre = SIZE / 2;
+    assert!(
+        pixel(&scene, centre, centre)[..3] != [255, 0, 0],
+        "the mesh under the sprite is not red"
+    );
+
+    let square = |tint: [f32; 4], z_index: i32| SpriteComponent {
+        tint,
+        width: 40.0,
+        height: 40.0,
+        z_index,
+        ..Default::default()
+    };
+    let red = create_sprite(&mut state, [0.0, 0.0], square([1.0, 0.0, 0.0, 1.0], 0)).affected_ids
+        [0]
+    .clone();
+    let green = create_sprite(&mut state, [15.0, 0.0], square([0.0, 1.0, 0.0, 1.0], 1))
+        .affected_ids[0]
+        .clone();
+    let frame = harness.frames(&mut renderer, || {});
+    frame.dump("sprites_two");
+    assert_color(
+        "the red sprite over the mesh",
+        pixel(&frame, centre - 10, centre),
+        [255, 0, 0],
+    );
+    assert_color(
+        "the overlap (green above red)",
+        pixel(&frame, centre + 8, centre),
+        [0, 255, 0],
+    );
+    assert_color(
+        "the green sprite alone",
+        pixel(&frame, centre + 30, centre),
+        [0, 255, 0],
+    );
+    // Outside both sprites the 3D frame is untouched.
+    for (x, y) in [
+        (centre - 40, centre),
+        (centre, centre - 40),
+        (centre + 50, centre + 30),
+    ] {
+        assert_eq!(
+            pixel(&frame, x, y),
+            pixel(&scene, x, y),
+            "beside the sprites at {x},{y}"
+        );
+    }
+
+    // The Z index orders them.
+    let red_sprite = first_instance(&state, &red);
+    state
+        .scene
+        .world_mut()
+        .get_mut::<SpriteComponent>(red_sprite)
+        .unwrap()
+        .z_index = 2;
+    let frame = harness.frames(&mut renderer, || {});
+    assert_color(
+        "the overlap (red above green)",
+        pixel(&frame, centre + 8, centre),
+        [255, 0, 0],
+    );
+
+    // The 3D camera moves the mesh, not the sprites.
+    renderer.set_editor_camera_state(EditorCameraState {
+        yaw: harness.camera.yaw + 0.4,
+        ..harness.camera
+    });
+    let turned = harness.frames(&mut renderer, || {});
+    turned.dump("sprites_turned");
+    assert!(
+        turned.difference(&frame).depth_texels > 0,
+        "the camera move did not move the 3D scene"
+    );
+    for (x, y) in [
+        (centre - 10, centre),
+        (centre + 8, centre),
+        (centre + 30, centre),
+    ] {
+        assert_eq!(
+            pixel(&turned, x, y),
+            pixel(&frame, x, y),
+            "a sprite moved with the camera at {x},{y}"
+        );
+    }
+    renderer.set_editor_camera_state(harness.camera);
+
+    // Its owner places it: up and to the left is up and to the left.
+    move_to(&mut state, &red, [-60.0, 30.0, 0.0]);
+    let frame = harness.frames(&mut renderer, || {});
+    assert_color(
+        "the moved red sprite",
+        pixel(&frame, centre - 60, centre - 30),
+        [255, 0, 0],
+    );
+    assert_color(
+        "where the red sprite was",
+        pixel(&frame, centre, centre),
+        [0, 255, 0],
+    );
+
+    // An image: a 2x1 sheet, blue then yellow.
+    let dir = std::env::temp_dir().join(format!("pulsar-sprite-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let image = dir.join("blue_yellow.png");
+    image::save_buffer(
+        &image,
+        &[0, 0, 255, 255, 255, 255, 0, 255],
+        2,
+        1,
+        image::ColorType::Rgba8,
+    )
+    .unwrap();
+    let textured = create_sprite(
+        &mut state,
+        [60.0, -60.0],
+        SpriteComponent {
+            texture: image.to_string_lossy().into_owned(),
+            ..square([1.0, 1.0, 1.0, 1.0], 0)
+        },
+    )
+    .affected_ids[0]
+        .clone();
+    let frame = harness.frames(&mut renderer, || {});
+    frame.dump("sprites_textured");
+    assert_color(
+        "the image's left half",
+        pixel(&frame, centre + 50, centre + 60),
+        [0, 0, 255],
+    );
+    assert_color(
+        "the image's right half",
+        pixel(&frame, centre + 70, centre + 60),
+        [255, 255, 0],
+    );
+
+    // Disabled, the 3D frame is back.
+    for id in [&red, &green, &textured] {
+        let instance = first_instance(&state, id);
+        state
+            .scene
+            .world_mut()
+            .get_mut::<SpriteComponent>(instance)
+            .unwrap()
+            .enabled = false;
+    }
+    let frame = harness.frames(&mut renderer, || {});
+    for (x, y) in [
+        (centre - 60, centre - 30),
+        (centre - 10, centre),
+        (centre + 8, centre),
+        (centre + 50, centre + 60),
+    ] {
+        assert_eq!(
+            pixel(&frame, x, y),
+            pixel(&scene, x, y),
+            "a disabled sprite at {x},{y}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

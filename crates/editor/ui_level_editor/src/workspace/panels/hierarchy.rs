@@ -7,7 +7,7 @@ use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
-    v_flex, ActiveTheme, IconName, Sizable,
+    h_flex, v_flex, ActiveTheme, IconName, Sizable,
 };
 
 /// Hierarchy Panel
@@ -120,6 +120,26 @@ impl Render for HierarchyPanelWrapper {
                 // which this panel's frame pump observes and turns into exactly
                 // one invalidate.
             })
+            .into_any_element();
+        // A 2D sprite at the centre of the view (#1060).
+        let sprite_state = self.state.clone();
+        let add_sprite_button = Button::new("add_sprite")
+            .icon(IconName::Image)
+            .ghost()
+            .xsmall()
+            .tooltip("Add 2D Sprite")
+            .on_click(move |_, _, _cx| {
+                crate::scene_edit::sprite::create_sprite(
+                    &mut sprite_state.write(),
+                    [0.0, 0.0],
+                    Default::default(),
+                );
+            })
+            .into_any_element();
+        let add_button = h_flex()
+            .gap_0p5()
+            .child(add_button)
+            .child(add_sprite_button)
             .into_any_element();
 
         let wrapper_entity = cx.entity().downgrade();

@@ -20,7 +20,8 @@ use helio_component::components::{
     GLOBAL_FOG_SOURCES_BUFFER, LIGHT_SOURCES_BUFFER, LOCAL_FOG_SOURCES_BUFFER, MESH_BOUNDS_BUFFER,
     MESH_FLAGS_BUFFER, MESH_SECTIONS_BUFFER, POST_PROCESS_VOLUME_SOURCES_BUFFER,
     WATER_VOLUME_SOURCES_BUFFER, ATMOSPHERE_SOURCES_BUFFER, CORONA_EMITTER_SOURCES_BUFFER,
-    DECAL_SOURCES_BUFFER, GlobalWindSourceRow, WIND_SOURCES_BUFFER,
+    DECAL_SOURCES_BUFFER, GlobalWindSourceRow, WIND_SOURCES_BUFFER, SpriteSourceRow,
+    SPRITE_SOURCES_BUFFER,
 };
 use helio_default_graphs::environment_join::{EnvironmentJoin, EnvironmentJoinKeys};
 use helio_default_graphs::scene_join::{SceneJoin, SceneJoinKeys, ENTITY_GENERATIONS_KEY};
@@ -65,8 +66,9 @@ pub fn scene_join(device: &wgpu::Device, editor: bool) -> Box<SceneJoin> {
 /// the same owner, visibility, transform and mesh bounds rows as the scene
 /// join, and the rows fog volumes, post-process volumes, camera
 /// post-process, water, foliage, global wind, atmosphere, decal and particle
-/// emitter components derive (Pulsar-Native#1035, Phase 4), and the water
-/// interaction rows physics bodies on the `WaterSim` channel derive (#1080).
+/// emitter components derive (Pulsar-Native#1035, Phase 4), the water
+/// interaction rows physics bodies on the `WaterSim` channel derive (#1080)
+/// and the 2D sprite rows (#1060).
 pub fn environment_join_keys() -> EnvironmentJoinKeys {
     let scene = scene_join_keys();
     EnvironmentJoinKeys {
@@ -86,6 +88,7 @@ pub fn environment_join_keys() -> EnvironmentJoinKeys {
         wind: BufferKey::of(WIND_SOURCES_BUFFER),
         water_hitboxes: BufferKey::of(pulsar_physics::WATER_HITBOX_SOURCES_BUFFER),
         mesh_bounds: scene.mesh_bounds,
+        sprites: BufferKey::of(SPRITE_SOURCES_BUFFER),
     }
 }
 
@@ -155,6 +158,8 @@ pub fn ensure_gpu_mirror(
     DecalSourceRow::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     CoronaEmitterSourceRow::register_gpu_columns_growable(&mut gpu_store, 16, &device);
     GlobalWindSourceRow::register_gpu_columns_growable(&mut gpu_store, 2, &device);
+    // 2D sprites; the join places them as the sprite overlay's rows.
+    SpriteSourceRow::register_gpu_columns_growable(&mut gpu_store, 64, &device);
     // Bodies that push simulated water; the join bounds them by their
     // owners' meshes into the water simulation's hitbox rows.
     pulsar_physics::WaterHitboxSourceRow::register_gpu_columns_growable(
@@ -283,6 +288,10 @@ mod tests {
         assert_eq!(
             size_of::<pulsar_physics::WaterHitboxSourceRow>() as u64,
             env::WATER_HITBOX_SOURCE_ROW_BYTES
+        );
+        assert_eq!(
+            size_of::<SpriteSourceRow>() as u64,
+            env::SPRITE_SOURCE_ROW_BYTES
         );
     }
 }

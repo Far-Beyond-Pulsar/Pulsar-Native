@@ -94,6 +94,7 @@ fn relative_camera_source_schema_compatible(
         "decal_sources" => c::DecalSourceRow::packed_gpu_component_id(),
         "corona_emitter_sources" => c::CoronaEmitterSourceRow::packed_gpu_component_id(),
         "wind_sources" => c::GlobalWindSourceRow::packed_gpu_component_id(),
+        "sprite_sources" => c::SpriteSourceRow::packed_gpu_component_id(),
         "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles" => {
             return store.buffer_registry().element_type(key)
                 == Some(Some(std::any::TypeId::of::<pulsar_scenedb::gpu::VarLenHandle>()));
@@ -132,7 +133,7 @@ fn relative_camera_source_compatible(
         | "water_hitbox_sources" | "global_fog_sources" | "local_fog_sources"
         | "post_process_volume_sources" | "camera_postprocess_sources"
         | "water_volume_sources" | "foliage_sources" | "atmosphere_sources"
-        | "corona_emitter_sources" | "wind_sources" | "static_mesh_draw_bounds" | "static_mesh_draw_flags"
+        | "corona_emitter_sources" | "wind_sources" | "sprite_sources" | "static_mesh_draw_bounds" | "static_mesh_draw_flags"
         | "builtin_mesh_vertex::handles" | "builtin_mesh_index::handles"
         | "static_mesh_draw_sections::handles" => {
             kind == "row" && mode == Some(MirrorMode::DirtyTracked)
@@ -195,6 +196,8 @@ fn relative_camera_world_incompatibilities(
         component_id::<helio_component::CameraPostProcessComponent>(),
         // The global wind: a direction and speed, no position.
         component_id::<helio_component::components::WindComponent>(),
+        // 2D sprites: screen space, drawn by their own camera.
+        component_id::<helio_component::components::SpriteComponent>(),
     ];
     for archetype in world
         .archetypes

@@ -62,6 +62,17 @@ test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitt
 status = "verified"
 
 [[class]]
+name = "SpriteComponent"
+category = "Rendering"
+world_registered = true
+own_gpu_columns = true
+owner = "helio_component::components::sprite_component"
+disposition = "render, 2D (#1060). Its derived SpriteSourceRow is written on every insert, write, removal and replay (its image registered in the scene texture store); the environment join gates it on the instance and its owner's visibility and places it into sprite_instances at the owner's X/Y, turned by its roll and scaled by its X/Y scale. The default graphs draw sprites as the final 2D overlay after post-processing, ordered by z_index, with their own orthographic camera (1 unit = 1 output pixel, origin at the view's centre); no 3D pass reads them. The editor places one from the hierarchy (scene_edit::sprite::create_sprite)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
+
+[[class]]
 name = "DecalComponent"
 category = "Rendering"
 world_registered = true
@@ -570,6 +581,20 @@ test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (particle_emitt
 status = "verified"
 
 [[schema]]
+type = "SpriteComponent"
+path = "helio_pass_sprite_batch::SpriteComponent"
+buffers = ["sprite_instances"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "helio-default-graphs environment join from SpriteComponent's source rows (#1060)"
+owner = "helio_pass_sprite_batch"
+disposition = "keep as the pass row layout of sprite_instances; produced by the join (the 2D placement from the owner), not registered as a column"
+target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
+
+[[schema]]
 type = "DecalComponent"
 path = "helio_pass_decal::components::DecalComponent"
 buffers = ["decals"]
@@ -833,6 +858,34 @@ owner = "helio_pass_postprocess::components"
 disposition = "keep as the pass row layout of post_process_volumes; produced by the join, never registered as a column"
 target_contract = "Phase 4; 03-gpu-reflection-and-rendering.md"
 test = "crates/core/engine_backend/tests/environment_join_rows.rs; crates/editor/ui_level_editor/tests/render_acceptance.rs (environment_components_reach_the_frame)"
+status = "verified"
+
+[[schema]]
+type = "SpriteComponent"
+path = "helio_component::components::sprite_component::SpriteComponent"
+buffers = ["sprite_instances"]
+clears_on_remove = true
+releases_var_len = false
+registered = false
+writer = "the authored value's SceneDB GPU dispatch is its derived SpriteSourceRow (environment_rows), on every insert, write, removal and replay; the generated companion uploads nothing"
+owner = "helio_component::components::sprite_component"
+disposition = "keep: the authored type's GPU row is SpriteSourceRow, the environment join's input; the scanner attributes sprite_instances to it by name, but the row it writes is sprite_sources"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
+
+[[schema]]
+type = "SpriteSourceRow"
+path = "helio_component::components::environment_rows::SpriteSourceRow"
+buffers = ["sprite_sources"]
+clears_on_remove = true
+releases_var_len = false
+registered = true
+writer = "SpriteComponent's derived GPU registration (the pass row at the 2D origin with its image's texture store slot; zero while disabled), on every insert, write, removal and replay"
+owner = "helio_component::components::environment_rows"
+disposition = "keep: the environment join's sprite input (#1060)"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
 status = "verified"
 
 [[schema]]
@@ -1666,7 +1719,7 @@ key = "billboard_instances"
 producers = ["BillboardComponent"]
 consumers = ["helio-default-graphs", "helio-pass-billboard"]
 owner = "helio-default-graphs scene join (editor mode)"
-disposition = "keep: editor light icons are a GPU output of the join over authored light rows (Phase 2); authored sprites are unfinished (decision 4; tracked in #1060)"
+disposition = "keep: editor light icons are a GPU output of the join over authored light rows (Phase 2); authored 2D sprites are SpriteComponent, drawn by the sprite overlay, not billboards (#1060)"
 target_contract = "Phase 2; 03-gpu-reflection-and-rendering.md"
 test = "crates/renderer/helio/crates/helio-default-graphs/tests/scene_join.rs"
 status = "verified"
@@ -1904,12 +1957,22 @@ status = "out-of-scope"
 [[buffer]]
 key = "sprite_instances"
 producers = ["SpriteComponent"]
-consumers = ["helio-pass-sprite-batch", "helio-pass-sprite-cull"]
-owner = "no authored Pulsar component (2D passes are not in the default graph)"
-disposition = "out of scope for the 3D editor graph until a 2D graph is composed"
+consumers = ["helio-default-graphs", "helio-pass-sprite-batch", "helio-pass-sprite-cull"]
+owner = "helio-default-graphs environment join (execution output)"
+disposition = "keep: authored 2D sprites, joined on the GPU from sprite_sources and the owner transform/visibility; the default graphs' 2D overlay culls, Z-sorts and draws them after post-processing (#1060)"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: no authored source"
-status = "out-of-scope"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
+
+[[buffer]]
+key = "sprite_sources"
+producers = ["SpriteSourceRow"]
+consumers = []
+owner = "helio_component::components::environment_rows"
+disposition = "keep: SpriteComponent at the 2D origin, derived on every write; the environment join reads it into sprite_instances"
+target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
 
 [[buffer]]
 key = "static_objects"
@@ -2077,23 +2140,23 @@ status = "out-of-scope"
 
 [[pass]]
 crate = "helio-pass-sprite-batch"
-in_default_graph = false
+in_default_graph = true
 reads = ["sprite_instances"]
 owner = "helio-default-graphs"
-disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it (reads sprite_instances)"
+disposition = "keep: the default graphs' final 2D overlay after post-processing (cull + Z sort, then draw with its own orthographic camera); reads sprite_instances (joined from SpriteComponent, #1060) and records nothing while it holds no sprite"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: not in a production graph"
-status = "out-of-scope"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-sprite-cull"
-in_default_graph = false
+in_default_graph = true
 reads = ["sprite_instances"]
 owner = "helio-default-graphs"
-disposition = "not composed by helio-default-graphs; out of scope until a graph adopts it (reads sprite_instances)"
+disposition = "keep: the default graphs' final 2D overlay after post-processing (cull + Z sort, then draw with its own orthographic camera); reads sprite_instances (joined from SpriteComponent, #1060) and records nothing while it holds no sprite"
 target_contract = "Phase 4; 09-component-structure-and-graph-boundary.md"
-test = "none: not in a production graph"
-status = "out-of-scope"
+test = "crates/editor/ui_level_editor/tests/render_acceptance.rs (sprites_draw_in_2d_over_the_3d_scene); crates/core/engine_backend/tests/environment_join_rows.rs (sprites_are_placed_in_2d_by_their_owner)"
+status = "verified"
 
 [[pass]]
 crate = "helio-pass-sprite-simulate"

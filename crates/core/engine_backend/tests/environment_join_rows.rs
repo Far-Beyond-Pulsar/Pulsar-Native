@@ -1100,3 +1100,74 @@ fn bodies_on_the_water_sim_channel_become_water_hitboxes() {
         "off the channel"
     );
 }
+
+/// 2D sprites (#1060): the join places a sprite at its owner's X and Y,
+/// turned by the owner's roll and scaled by its X and Y scale (the owner's
+/// Z does not apply), keeps its Z index as the sort depth, and drops it
+/// while its owner is hidden or it is disabled.
+#[test]
+fn sprites_are_placed_in_2d_by_their_owner() {
+    use helio_component::components::SpriteComponent;
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    let mut scene = SceneDb::new();
+    let owner = place(
+        &mut scene,
+        "sprite",
+        Transform {
+            position: [120.0, -40.0, 999.0],
+            rotation: [0.0, 0.0, 90.0],
+            scale: [2.0, 0.5, 1.0],
+        },
+    );
+    let sprite = SpriteComponent {
+        tint: [0.0, 1.0, 0.0, 1.0],
+        width: 30.0,
+        height: 10.0,
+        z_index: 4,
+        ..Default::default()
+    };
+    let instance = pulsar_world_registry::attach_value(&mut scene.world, owner, sprite).unwrap();
+
+    engine_backend::scene::ensure_gpu_mirror(&mut scene, Arc::clone(&device), Arc::clone(&queue));
+    let mut join = Join {
+        join: engine_backend::scene::environment_join(&device),
+        device,
+        queue,
+    };
+    // `helio_pass_sprite_batch::SpriteComponent`: position, size, rotation,
+    // depth, padding, UV rectangle, tint, then the texture slot.
+    let row = |join: &Join, out: &SceneBufferProjection| -> [f32; 20] {
+        join.row::<[f32; 20]>(out, "sprite_instances", instance)
+    };
+
+    let out = join.run(&mut scene);
+    let placed = row(&join, &out);
+    assert_eq!(
+        placed[..4],
+        [120.0, -40.0, 60.0, 5.0],
+        "owner X/Y and X/Y scale"
+    );
+    assert!(
+        (placed[4] - std::f32::consts::FRAC_PI_2).abs() < 1e-5,
+        "owner roll"
+    );
+    assert_eq!(placed[5], 4.0, "the Z index is the sort depth");
+    assert_eq!(placed[8..12], [0.0, 0.0, 1.0, 1.0]);
+    assert_eq!(placed[12..16], [0.0, 1.0, 0.0, 1.0]);
+    assert_eq!(placed[16].to_bits(), u32::MAX, "no image");
+
+    scene.world.get_mut::<Visibility>(owner).unwrap().visible = false;
+    let out = join.run(&mut scene);
+    assert_eq!(row(&join, &out), [0.0; 20], "a hidden owner hides it");
+    scene.world.get_mut::<Visibility>(owner).unwrap().visible = true;
+    scene
+        .world
+        .get_mut::<SpriteComponent>(instance)
+        .unwrap()
+        .enabled = false;
+    let out = join.run(&mut scene);
+    assert_eq!(row(&join, &out), [0.0; 20], "disabled");
+}

@@ -4782,6 +4782,8 @@ dependencies = [
  "helio-pass-shadow-matrix",
  "helio-pass-simple-cube",
  "helio-pass-sky",
+ "helio-pass-sprite-batch",
+ "helio-pass-sprite-cull",
  "helio-pass-ssr",
  "helio-pass-transparent",
  "helio-pass-tsr",
@@ -5161,6 +5163,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-pass-sprite-batch"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.5",
+ "helio-core",
+ "helio-mats",
+ "log",
+ "pulsar_reflection",
+ "pulsar_scenedb",
+ "pulsar_scenedb_derive",
+ "serde_json",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-sprite-cull"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "log",
+ "pulsar_scenedb",
+ "wgpu",
+]
+
+[[package]]
 name = "helio-pass-ssr"
 version = "0.1.0"
 dependencies = [
@@ -5310,6 +5339,7 @@ dependencies = [
  "helio-pass-foliage-place",
  "helio-pass-postprocess",
  "helio-pass-sky",
+ "helio-pass-sprite-batch",
  "helio-pass-volumetric-fog",
  "helio-pass-voxel-planet",
  "helio-pass-water-sim",
