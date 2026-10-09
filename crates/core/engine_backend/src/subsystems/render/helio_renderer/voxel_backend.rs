@@ -934,13 +934,13 @@ impl VoxelRenderBackend for PlanetVoxelBackend {
             return Ok(None);
         };
         let d = direction.normalize();
-        // The exact walk covers a few cells around the renderer's hit (the
-        // cell it drew there can be about a cell off the exact surface), or
-        // a bounded reach without one: walking 0.1 m cells to a distant
-        // mountain or the horizon took seconds to tens of seconds.
+        // The search covers a few cells around the renderer's hit (the cell
+        // it drew there can be about a cell off the exact surface), coarse
+        // to fine from the level that drew it: from orbit the window spans
+        // kilometres of 0.1 m cells. Without a hit, the exact walk has a
+        // bounded reach: walking 0.1 m cells to a distant mountain or the
+        // horizon took seconds to tens of seconds.
         let hit = match near {
-            // Searched coarse to fine from the level that drew the hit: from
-            // orbit the window spans kilometres of 0.1 m cells.
             Some((distance, cell)) => {
                 let margin = cell * 3.0 + 1.0;
                 let level = (cell / planet.grid().voxel_size()).max(1.0).log2().round() as u32;

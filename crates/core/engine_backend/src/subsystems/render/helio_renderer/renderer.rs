@@ -2152,21 +2152,9 @@ impl HelioRenderer {
         self.pending_deselect.store(true, Ordering::Release);
     }
 
-    pub fn queue_left_click(&self, norm_x: f32, norm_y: f32) {
-        if let Ok(mut events) = self.pending_pointer_events.lock() {
-            events.push(PendingPointerEvent::LeftClick { norm_x, norm_y });
-        }
-    }
-
-    pub fn queue_left_release(&self) {
-        if let Ok(mut events) = self.pending_pointer_events.lock() {
-            events.push(PendingPointerEvent::LeftRelease);
-        }
-    }
-
     /// A brush sample under the pointer: it asks the renderer for the
     /// terrain hit there and is applied when the answer arrives (a few
-    /// frames later), with an exact walk of a few cells around it.
+    /// frames later), searched coarse to fine around it.
     fn handle_voxel_brush(&mut self, norm_x: f32, norm_y: f32, request: VoxelBrushRequest, start: bool) {
         profiling::profile_scope!("voxel_brush");
         if start {
