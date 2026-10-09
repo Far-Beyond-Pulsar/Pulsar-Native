@@ -1,4 +1,6 @@
-//! Persisted level-wide gameplay and simulation settings.
+//! Level-wide settings: the level's sky (its one `AtmosphereComponent`,
+//! [`sky_section`]), its global wind (its one `WindComponent`,
+//! [`wind_section`]) and the persisted gameplay and simulation settings.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -15,6 +17,9 @@ use ui::{
 
 use crate::state::LevelEditorState;
 use crate::WorldSettingsPanel;
+
+mod sky_section;
+mod wind_section;
 
 /// Canonical game-mode trait asset path in project-relative form.
 pub const GAME_MODE_TRAIT_PATH: &str = "types/traits/game_mode.trait.json";
@@ -36,6 +41,16 @@ pub struct WorldSettingsPanelImpl {
     fixed_timestep_input: Entity<InputState>,
     game_mode_picker: Entity<SearchableList<String>>,
     catalog_state: BlueprintCatalogState,
+    /// The Sky section's property rows (#1057).
+    sky_property_state: ui_common::PropertyStateManager,
+    atmosphere_properties: Option<Arc<sky_section::ClassProperties>>,
+    /// Why the last "Create Sky" did nothing, if it did nothing.
+    sky_message: Option<String>,
+    /// The Wind section's property rows (#1123).
+    wind_property_state: ui_common::PropertyStateManager,
+    wind_properties: Option<Arc<sky_section::ClassProperties>>,
+    /// Why the last "Create Wind" did nothing, if it did nothing.
+    wind_message: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -129,6 +144,12 @@ impl WorldSettingsPanelImpl {
             fixed_timestep_input,
             game_mode_picker,
             catalog_state: BlueprintCatalogState::Loading,
+            sky_property_state: ui_common::PropertyStateManager::new(),
+            atmosphere_properties: None,
+            sky_message: None,
+            wind_property_state: ui_common::PropertyStateManager::new(),
+            wind_properties: None,
+            wind_message: None,
             _subscriptions: subscriptions,
         };
         panel.load_blueprint_catalog(cx);
@@ -235,6 +256,8 @@ impl WorldSettingsPanelImpl {
             window,
             cx,
         );
+        let sky_section = self.render_sky_section(window, cx);
+        let wind_section = self.render_wind_section(window, cx);
         let state = self.state.read();
         let settings = &state.scene.world_settings;
         let selected = settings
@@ -260,6 +283,10 @@ impl WorldSettingsPanelImpl {
                         .w_full()
                         .p_4()
                         .gap_4()
+                        .child(self.render_section_title("Sky"))
+                        .child(sky_section)
+                        .child(self.render_section_title("Wind"))
+                        .child(wind_section)
                         .child(self.render_section_title("General"))
                         .child(self.render_numeric_row(
                             "Time Scale",

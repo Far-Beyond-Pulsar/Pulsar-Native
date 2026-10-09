@@ -38,3 +38,27 @@ impl NativeScriptComponent {
 // job (#922); the component is data only for now.
 #[register_world_component]
 impl NativeScriptComponent {}
+
+// Reported unfinished (Pulsar-Native#1035, Phase 4; tracked in #1079): the
+// properties card shows the reason and issue, and attaching one logs them once.
+pulsar_world_registry::declare_unfinished_component!(
+    NATIVE_SCRIPT_COMPONENT,
+    "nothing at runtime spawns the native actor it names yet",
+    "https://github.com/Far-Beyond-Pulsar/Pulsar-Native/issues/1079",
+);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_script_component_is_declared_unfinished() {
+        let unfinished = pulsar_world_registry::unfinished_component(NATIVE_SCRIPT_COMPONENT)
+            .expect("NativeScriptComponent is declared unfinished");
+        assert!(!unfinished.reason.is_empty());
+        assert_eq!(
+            unfinished.issue,
+            "https://github.com/Far-Beyond-Pulsar/Pulsar-Native/issues/1079"
+        );
+    }
+}

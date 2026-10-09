@@ -32,6 +32,7 @@ residency, tracing) is documented in Helio's
 | Canonical world | Helio `helio-pass-voxel-planet` | Grid, terrain generators, edits, `Planet` queries and ray casts, the render pass. |
 | Scene projection | `engine_backend/src/scene/voxel_frame.rs` | Enabled SceneDB rows -> `VoxelSceneEntry` (configuration + shared capabilities, no payload copies). |
 | Backend registry | `engine_backend/.../helio_renderer/voxel_backend.rs` | `VoxelRenderBackend` trait, `VoxelBackendRegistry`, the built-in `PlanetVoxelBackend` (`helio.voxel-terrain`). |
+| Voxel objects | `engine_backend/.../helio_renderer/voxel_mesh_backend.rs`, Helio `helio-component` (`components/voxel_mesh.rs`) | `MeshVoxelBackend` (`helio.voxel-mesh`): a free-standing `VoxelComponent` greedy-meshed into mesh rows the scene join draws. |
 | Viewport renderer | `engine_backend/.../helio_renderer/renderer.rs` | Camera (planet-aware frame, altitude speed, ground collision), camera-relative frames, publishing views, brush and pick rays. |
 | Editor | `ui_level_editor` (`state/voxel.rs`, `tool_modes/voxel_sculpt.rs`, dispatcher, panel handlers) | Sculpt tool, strokes and undo, focus, generator picker, settings components. |
 
@@ -169,8 +170,44 @@ via `supports`; ambiguity is an error). Methods and why they exist:
 | `temporal_quality` | TSR quality per viewport size. |
 | `diagnostics` | One-line streaming state for logs (`PULSAR_VOXEL_STATS`). |
 
-Register extra backends with `HelioRenderer::register_voxel_backend` before
-the first frame.
+`pass_factory` returns `None` for a backend that draws without a pass of
+its own. Register extra backends with `HelioRenderer::register_voxel_backend`
+before the first frame.
+
+**Voxel objects** (`MeshVoxelBackend`, `helio.voxel-mesh`) draw a
+free-standing `VoxelComponent` (#1056) without a voxel pass: the selection
+takes every object entry without a generator. Each 8³ chunk of the payload
+store is greedy-meshed on the CPU (faces between solid samples and air,
+coplanar faces of one palette slot merged; the six face neighbours decide
+the border). The object's chunk meshes are joined into one mesh in its
+local space (sample `(0,0,0)`'s corner at the owner's origin) with one
+section per palette slot, and uploaded as the instance's mesh rows: the rows
+a `StaticMeshComponent` at that entity would write, from a generated one
+whose geometry interns under its content id (`MeshAssetPath::generated`).
+Helio's scene join draws them like any mesh instance, with the owner's whole
+transform (rotation and non-uniform scale included), into the G-buffer,
+shadows (as a movable object) and picking.
+
+- **Change-driven.** The store's revision says when to look; a chunk is
+  re-meshed only when its payload changed, or a face neighbour's solid
+  border against it did. Up to 64 chunks a frame mesh on the render thread
+  (an edit); more (a newly shown large volume) go to a `voxel-mesher`
+  thread, and a result whose chunk changed again meanwhile is dropped by the
+  chunk's revision. The last complete mesh stays on screen until every
+  chunk is current. `needs_frame` asks for frames while chunks are meshing
+  or a store changed, so edits through `VoxelSourceSession` show without a
+  scene write.
+- **Materials.** The palette names SceneDB material records, which a mesh
+  section cannot resolve (it carries its material inline), so each slot
+  draws with a default surface coloured from its material ID (ID 0 grey,
+  others distinct hues).
+- **Lifetime.** The rows belong to the component: removing it or despawning
+  its entity clears them and releases the geometry (a clear registration on
+  `VoxelComponent`). An object that is hidden, disabled or invalid is
+  cleared by the backend. A store that has never been written draws its
+  initial cube without writing it.
+- Voxel objects are world-space meshes: a scene with one keeps world
+  coordinates (no camera-relative frames).
 
 ## Editor
 
@@ -281,9 +318,13 @@ and gameplay agree on every block. On generated terrain the older
   generator picker), `--test voxel_component_schema` (inspector properties),
   `cargo test -p engine_backend --lib voxel` (backend: altitude, lift out of
   ground, stroke fill, settings components, unknown generator, paint and
-  single blocks) and `--lib camera_frame_tests` (level horizon, round trips,
+  single blocks; voxel objects: touched-chunk re-meshing, the worker and
+  stale results, the initial cube) and `--lib camera_frame_tests` (level horizon, round trips,
   smooth transport over the planet); `ui_level_editor` sculpt stroke tests
-  (a stroke is one undo step).
+  (a stroke is one undo step). The greedy mesher's quad counts are
+  `cargo test -p helio_component --lib voxel_mesh`; `render_acceptance`'s
+  `voxel_objects_reach_the_frame_as_meshes` draws a voxel object at its
+  owner, rotated, scaled, edited, casting a shadow and removed.
 - Renderer-side performance and correctness are measured in Helio
   (`voxel_flight`; `HELIO_VOXEL_FLIGHT_TRIP` replays an editor trip,
   `HELIO_VOXEL_FLIGHT_REPLAY=<engine.log>` replays the logged camera pose of
@@ -302,7 +343,9 @@ and gameplay agree on every block. On generated terrain the older
   `voxel_component_runtime.rs`, and name that component in its info so the
   picker attaches it.
 - **A voxel renderer**: implement `VoxelRenderBackend`, register it before
-  the first frame, and select it by `renderer_id` on the component.
+  the first frame, and select it by `renderer_id` on the component. A
+  renderer that produces geometry can write mesh rows like
+  `helio_component::voxel_mesh::write_voxel_mesh_rows` instead of a pass.
 - **A tool**: dispatch `VoxelBrushRequest`s through the editor dispatcher
   like `tool_modes/voxel_sculpt.rs`; commits come back from `edit_ray` and
   are appended to the journal with the scene history, so undo works.
@@ -316,7 +359,8 @@ publication batches, revision checks, immutable snapshots, editing and
 generator worker APIs. `VoxelSourceWriter` publishes to a component-owned
 store; `VoxelSourceSession` (`scene/voxel_source.rs`) resolves a typed
 SceneDB row and owns its publication and edit workers. Component
-serialization contains authored configuration, not live payload bytes. The
-`helio.voxel-terrain` backend does not consume live chunk payloads; it
-reports an error rather than ignoring them. See
-[the source API example](voxel-component-api-example.md).
+serialization contains authored configuration, not live payload bytes. A
+`VoxelComponent`'s live chunks are drawn by the voxel object renderer
+(see [Backends](#backends)). The `helio.voxel-terrain` backend does not
+consume live chunk payloads on a terrain; it reports an error rather than
+ignoring them. See [the source API example](voxel-component-api-example.md).

@@ -140,6 +140,22 @@ impl ViewportPanel {
             self.gpu_overlay.borrow_mut().take();
         }
 
+        // Bottom-right: editor and renderer diagnostics. Its timer refreshes
+        // the isolated overlay in place without invalidating the viewport.
+        if state.overlays.state.show_nerds_overlay {
+            overlays = overlays.child(div().absolute().bottom_2().right_2().child(
+                render_nerds_overlay(
+                    state_arc,
+                    gpu_engine,
+                    self.input_state.clone(),
+                    &self.nerds_overlay,
+                    cx,
+                ),
+            ));
+        } else {
+            self.nerds_overlay.borrow_mut().take();
+        }
+
         overlays
     }
 }

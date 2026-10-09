@@ -44,6 +44,8 @@ pub struct Linked {
     /// World registrations whose class name has no reflection class.
     pub world_only: Vec<String>,
     pub schemas: Vec<LinkedSchema>,
+    /// Classes declared with `declare_unfinished_component!`, sorted.
+    pub unfinished: Vec<String>,
 }
 
 pub fn short_type_name(path: &str) -> String {
@@ -108,9 +110,16 @@ pub fn collect() -> Linked {
         .collect();
     schemas.sort_by(|a, b| a.path.cmp(&b.path));
 
+    let mut unfinished: Vec<String> = pulsar_world_registry::unfinished_components()
+        .map(|registration| registration.class_name.to_string())
+        .collect();
+    unfinished.sort_unstable();
+    unfinished.dedup();
+
     Linked {
         classes,
         world_only,
         schemas,
+        unfinished,
     }
 }

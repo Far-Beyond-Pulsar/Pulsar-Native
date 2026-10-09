@@ -34,6 +34,12 @@ pub struct VoxelSceneEntry {
     pub domain: VoxelDomain,
     pub source_revision: u64,
     pub editable: bool,
+    /// World position of the source's sample origin. A terrain must sit
+    /// unrotated with a uniform scale, which `voxel_size` and the world
+    /// form include. A free-standing object ([`Self::is_object`]) may be
+    /// rotated and scaled freely: its renderer places it with the owner's
+    /// whole transform, so its `voxel_size` is the edge in the owner's
+    /// local space.
     pub origin: [f64; 3],
     pub voxel_size: f64,
     /// Logical width of a chunk address at LOD zero, in base voxel units.
@@ -81,6 +87,12 @@ pub struct VoxelGeneratorConfig {
 }
 
 impl VoxelSceneEntry {
+    /// A free-standing `VoxelComponent` (not a terrain): a bounded volume
+    /// of live chunks, drawn at and with its owner's transform.
+    pub fn is_object(&self) -> bool {
+        self.id.kind == 0
+    }
+
     /// Build the CPU generator input from the reflected terrain configuration.
     /// The registered generator interprets `parameters` and produces a
     /// format-tagged payload; no engine-side material-cell conversion occurs.
@@ -104,6 +116,36 @@ impl VoxelSceneEntry {
 pub struct VoxelCubeInit {
     pub dimensions: [u32; 3],
     pub material_slot: u8,
+}
+
+/// The LOD-zero chunks of an initial cube: `dimensions` samples from the
+/// origin filled with `material_slot`, edge chunks padded with air.
+pub fn initial_cube_chunks(init: VoxelCubeInit) -> Vec<(VoxelChunkKey, [u8; 512])> {
+    let mut chunks = Vec::new();
+    for z in 0..init.dimensions[2].div_ceil(8) {
+        for y in 0..init.dimensions[1].div_ceil(8) {
+            for x in 0..init.dimensions[0].div_ceil(8) {
+                let mut samples = [0u8; 512];
+                for lz in 0..8 {
+                    for ly in 0..8 {
+                        for lx in 0..8 {
+                            if x * 8 + lx < init.dimensions[0]
+                                && y * 8 + ly < init.dimensions[1]
+                                && z * 8 + lz < init.dimensions[2]
+                            {
+                                samples[(lz * 64 + ly * 8 + lx) as usize] = init.material_slot;
+                            }
+                        }
+                    }
+                }
+                chunks.push((
+                    VoxelChunkKey::new(i64::from(x), i64::from(y), i64::from(z), 0),
+                    samples,
+                ));
+            }
+        }
+    }
+    chunks
 }
 
 /// Initialize a deserialized object before source edits. This runs off-frame.
@@ -131,30 +173,7 @@ pub fn initialize_empty_cube(entry: &VoxelSceneEntry) -> Result<bool, String> {
     {
         return Err("initial cube dimensions or material slot are invalid".into());
     }
-    let mut chunks = Vec::new();
-    for z in 0..init.dimensions[2].div_ceil(8) {
-        for y in 0..init.dimensions[1].div_ceil(8) {
-            for x in 0..init.dimensions[0].div_ceil(8) {
-                let mut samples = [0u8; 512];
-                for lz in 0..8 {
-                    for ly in 0..8 {
-                        for lx in 0..8 {
-                            if x * 8 + lx < init.dimensions[0]
-                                && y * 8 + ly < init.dimensions[1]
-                                && z * 8 + lz < init.dimensions[2]
-                            {
-                                samples[(lz * 64 + ly * 8 + lx) as usize] = init.material_slot;
-                            }
-                        }
-                    }
-                }
-                chunks.push((
-                    VoxelChunkKey::new(i64::from(x), i64::from(y), i64::from(z), 0),
-                    samples,
-                ));
-            }
-        }
-    }
+    let chunks = initial_cube_chunks(init);
     let ops: Vec<_> = chunks
         .iter()
         .map(|(key, samples)| {
@@ -338,12 +357,31 @@ fn origin_scale(world: &World, instance: Entity) -> Result<([f64; 3], f64), &'st
     Ok((transform.position.map(f64::from), f64::from(sx)))
 }
 
+/// World position of `instance`'s owner object. Its rotation and scale
+/// (finite, positive on every axis) place a free-standing volume too, but
+/// the renderer applies those itself.
+fn object_origin(world: &World, instance: Entity) -> Result<[f64; 3], &'static str> {
+    let transform = attachments::owner_component::<Transform>(world, instance)
+        .copied()
+        .unwrap_or_default();
+    if transform.rotation.iter().any(|v| !v.is_finite()) {
+        return Err("voxel object rotation must be finite");
+    }
+    if transform.scale.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+        return Err("voxel object scale must be finite and positive on every axis");
+    }
+    if transform.position.iter().any(|v| !v.is_finite()) {
+        return Err("voxel transform position must be finite");
+    }
+    Ok(transform.position.map(f64::from))
+}
+
 pub(super) fn object_entry(
     world: &World,
     entity: Entity,
     component: &VoxelComponent,
 ) -> Result<VoxelSceneEntry, &'static str> {
-    let (origin, scale) = origin_scale(world, entity)?;
+    let origin = object_origin(world, entity)?;
     if component.dimensions.iter().any(|&size| size == 0) {
         return Err("dimensions must be positive");
     }
@@ -377,7 +415,7 @@ pub(super) fn object_entry(
         source_revision: 0,
         editable: component.editable,
         origin,
-        voxel_size: component.voxel_size * scale,
+        voxel_size: component.voxel_size,
         chunk_edge_voxels: 8,
         lod_scale: 1,
         renderer_id: component.renderer_id.clone(),

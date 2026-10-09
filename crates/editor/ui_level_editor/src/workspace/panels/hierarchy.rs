@@ -2,12 +2,14 @@
 
 use crate::state::LevelEditorState;
 use crate::ui::HierarchyPanel;
+use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::*;
+use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
-    v_flex, ActiveTheme, IconName, Sizable,
+    h_flex, v_flex, ActiveTheme, IconName, Sizable,
 };
 
 /// Hierarchy Panel
@@ -20,6 +22,7 @@ use ui::{
 pub struct HierarchyPanelWrapper {
     hierarchy: HierarchyPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
+    gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
     focus_handle: FocusHandle,
     /// `(store_revision, selected)` last seen by the pump/render pair.
     last_signature: (u64, Option<String>),
@@ -29,6 +32,7 @@ pub struct HierarchyPanelWrapper {
 impl HierarchyPanelWrapper {
     pub fn new(
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
+        gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -39,6 +43,7 @@ impl HierarchyPanelWrapper {
         Self {
             hierarchy: HierarchyPanel::new(),
             state,
+            gpu_engine,
             focus_handle: cx.focus_handle(),
             last_signature,
             pump_started: false,
@@ -84,50 +89,79 @@ impl Render for HierarchyPanelWrapper {
 
         let _state_scope = gpui::render_stats::scope("hierarchy panel: state read");
         let state = self.state.read();
-        let state_clone = self.state.clone();
         drop(_state_scope);
 
         let add_button = Button::new("add_object")
             .icon(IconName::Plus)
             .ghost()
             .xsmall()
-            .on_click(move |_, _, _cx| {
-                use crate::commands::{execute_command, SceneCommand};
-                use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
+            .tooltip(t!("LevelEditor.Hierarchy.AddObject"))
+            .on_click({
+                let state_clone = self.state.clone();
+                let gpu_engine = self.gpu_engine.clone();
+                move |_, _, _cx| {
+                    use crate::commands::{execute_command, SceneCommand};
+                    use crate::scene_edit::{ObjectType, SceneObjectData};
 
-                let mut state = state_clone.write();
-                let new_object = SceneObjectData {
-                    id: String::new(),
-                    name: "New Object".to_string(),
-                    object_type: ObjectType::Empty,
-                    transform: Transform::default(),
-                    visible: true,
-                    locked: false,
-                    parent: None,
-                    children: vec![],
-                    scene_path: String::new(),
-                    props: Default::default(),
-                    component_instances: None,
-                };
-                execute_command(
-                    &mut state,
-                    SceneCommand::AddObject {
-                        data: new_object,
-                        parent_id: None,
-                    },
-                );
-                // No cx.notify() here: the command advanced the store revision,
-                // which this panel's frame pump observes and turns into exactly
-                // one invalidate.
+                    let transform =
+                        crate::ui::hierarchy::editor_camera_spawn_transform(&gpu_engine);
+                    let mut state = state_clone.write();
+                    let new_object = SceneObjectData {
+                        id: String::new(),
+                        name: "New Object".to_string(),
+                        object_type: ObjectType::Empty,
+                        transform,
+                        visible: true,
+                        locked: false,
+                        parent: None,
+                        children: vec![],
+                        scene_path: String::new(),
+                        props: Default::default(),
+                        component_instances: None,
+                    };
+                    execute_command(
+                        &mut state,
+                        SceneCommand::AddObject {
+                            data: new_object,
+                            parent_id: None,
+                        },
+                    );
+                }
             })
+            .into_any_element();
+        // A 2D sprite at the centre of the view (#1060).
+        let sprite_state = self.state.clone();
+        let add_sprite_button = Button::new("add_sprite")
+            .icon(IconName::Image)
+            .ghost()
+            .xsmall()
+            .tooltip("Add 2D Sprite")
+            .on_click(move |_, _, _cx| {
+                crate::scene_edit::sprite::create_sprite(
+                    &mut sprite_state.write(),
+                    [0.0, 0.0],
+                    Default::default(),
+                );
+            })
+            .into_any_element();
+        let add_button = h_flex()
+            .gap_0p5()
+            .child(add_button)
+            .child(add_sprite_button)
             .into_any_element();
 
         let wrapper_entity = cx.entity().downgrade();
 
         v_flex().size_full().bg(cx.theme().sidebar).p_1().child({
             let _scope = gpui::render_stats::scope("hierarchy panel: element build");
-            self.hierarchy
-                .render(&state, self.state.clone(), wrapper_entity, add_button, cx)
+            self.hierarchy.render(
+                &state,
+                self.state.clone(),
+                self.gpu_engine.clone(),
+                wrapper_entity,
+                add_button,
+                cx,
+            )
         })
     }
 }

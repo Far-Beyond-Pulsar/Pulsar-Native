@@ -27,6 +27,13 @@ fn every_linked_class_has_a_row() {
 }
 
 #[test]
+fn unfinished_rows_match_unfinished_declarations() {
+    let linked = linked::collect();
+    assert!(!linked.unfinished.is_empty(), "no unfinished declarations are linked");
+    report("unfinished classes", ledger::check_unfinished(&load(), &linked));
+}
+
+#[test]
 fn every_declared_world_component_is_linked() {
     let declared = source::declared_world_components(&repo_root());
     assert!(!declared.is_empty(), "the source scan found no world components");

@@ -27,6 +27,9 @@ workspace = true
 
 [dependencies]
 helio-voxel-data.workspace = true
+# Physics bodies on the WaterSim channel derive the water simulation's
+# hitbox source rows (Pulsar-Native#1080).
+pulsar_physics.workspace = true
 engine_subsystems = { workspace = true }
 ui_gen_macros = { workspace = true }
 pebble = { package = "PebbleVault", version = "0.7.0" }

@@ -1,6 +1,7 @@
 use crate::scene_edit::ObjectType;
 use crate::scene_edit::SceneObjectData;
 use crate::state::{HierarchyDragPayload, LevelEditorState};
+use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::{prelude::*, *};
 use rust_i18n::t;
 use std::collections::HashSet;
@@ -379,6 +380,7 @@ impl HierarchyPanel {
         &mut self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
         wrapper_entity: WeakEntity<V>,
         add_button: AnyElement,
         cx: &mut Context<V>,
@@ -406,6 +408,7 @@ impl HierarchyPanel {
             add_button,
             {
                 let state_clone = state_arc.clone();
+                let gpu_engine = gpu_engine.clone();
                 Button::new("add_folder")
                     .icon(IconName::FolderPlus)
                     .ghost()
@@ -413,7 +416,8 @@ impl HierarchyPanel {
                     .tooltip(t!("LevelEditor.Hierarchy.AddFolder"))
                     .on_click(move |_, _, _| {
                         use crate::commands::{execute_command, SceneCommand};
-                        use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
+                        use crate::scene_edit::{ObjectType, SceneObjectData};
+                        let transform = editor_camera_spawn_transform(&gpu_engine);
                         let mut state = state_clone.write();
                         execute_command(
                             &mut state,
@@ -422,7 +426,7 @@ impl HierarchyPanel {
                                     id: String::new(),
                                     name: "New Folder".to_string(),
                                     object_type: ObjectType::Folder,
-                                    transform: Transform::default(),
+                                    transform,
                                     visible: true,
                                     locked: false,
                                     parent: None,
@@ -609,6 +613,24 @@ impl HierarchyPanel {
             ObjectType::Blueprint => tree_colors::CODE_BLUE,
         }
     }
+}
+
+/// Put hierarchy-created scene objects at the live editor camera position.
+/// The camera pose is read only when the user clicks, so moving the camera
+/// while the hierarchy is open does not leave newly created objects at a
+/// stale position.
+pub(crate) fn editor_camera_spawn_transform(
+    gpu_engine: &Arc<std::sync::Mutex<GpuRenderer>>,
+) -> crate::scene_edit::Transform {
+    let mut transform = crate::scene_edit::Transform::default();
+    if let Some(camera) = gpu_engine
+        .lock()
+        .ok()
+        .and_then(|engine| engine.editor_camera_state())
+    {
+        transform.position = camera.position.map(|coordinate| coordinate as f32);
+    }
+    transform
 }
 
 use ui::dock::PanelEvent;

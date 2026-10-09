@@ -93,9 +93,9 @@ impl PieSession {
     }
 
     /// Run one simulation frame (nothing while paused, unless a step is
-    /// pending).
-    pub fn tick(&mut self) {
-        self.tick_loop.tick_once();
+    /// pending). Returns the game clock: a paused tick reports a zero delta.
+    pub fn tick(&mut self) -> pulsar_core::GameTime {
+        let time = self.tick_loop.tick_once();
         // Script stop locations use the same problems bus as VM errors, so
         // the Blueprint editor's existing node selection/highlight path can
         // follow a live debugger stop across the PIE dylib boundary.
@@ -141,6 +141,7 @@ impl PieSession {
             let excess = self.problems.len().saturating_sub(MAX_PENDING_PROBLEMS);
             self.problems.drain(..excess);
         }
+        time
     }
 
     /// An asset changed in the editor: publish it on this library's asset
@@ -416,7 +417,12 @@ impl EmbeddedGame {
         // the transferred Arc (identical by single-workspace builds); the
         // host's lock callbacks remain the policy/witness surface for
         // guests that don't share that universe.
-        self.session.tick();
+        let time = self.session.tick();
+        // The game's animation (foliage wind, particles, shader-graph
+        // `time`) runs on the game clock: it stops while the game is paused
+        // and advances by exactly a stepped frame.
+        self.renderer
+            .set_frame_clock_delta(Some(time.delta.as_secs_f32()));
 
         // 2. Advance the shared world's authoritative SceneDB state and flush
         //    its GPU mirror. Helio's scene join reads the mirrored rows

@@ -116,24 +116,17 @@ where
                     div()
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
-                        .child(t!("LevelEditor.ViewportOptions.Cam").to_string()),
-                )
-                .items_center()
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child("GPU"),
+                        .child("Nerds"),
                 )
                 .child({
                     let state_clone = state_arc.clone();
-                    Switch::new("toggle_gpu")
-                        .checked(state.overlays.state.show_gpu_pipeline_overlay)
+                    Switch::new("toggle_nerds")
+                        .checked(state.overlays.state.show_nerds_overlay)
                         .on_click(move |checked, _, _| {
                             state_clone
                                 .write()
                                 .overlays
-                                .set_show_gpu_pipeline_overlay(*checked);
+                                .set_show_nerds_overlay(*checked);
                         })
                 }),
         )

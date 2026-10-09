@@ -215,6 +215,9 @@ impl RuntimeLevel {
         for id in &report.unresolved {
             tracing::warn!(object = %id, "Placed class instance has no class in this project");
         }
+        // One sky and one directional light per level; extras are kept but
+        // disabled, logged.
+        crate::scene::level_rules::enforce_on_load(world);
         // What the migration could not turn into a ClassInstance (a second
         // class bound to one object) has no script instance any more.
         for (stable_id, bindings) in &file.blueprint_bindings {
@@ -328,6 +331,7 @@ fn migrate_scene_file(file: &mut SceneFile, registry: &pulsar_class::ClassRegist
             nested = records.nested.len(),
             mesh_asset_props = records.mesh_asset_props.len(),
             stripped_props = records.stripped_props.len(),
+            retired_fields = records.retired_fields.len(),
             "Migrated legacy component records"
         );
     }
@@ -1002,5 +1006,36 @@ mod tests {
             [42.0],
             "prefab component built on the placed object"
         );
+    }
+
+    /// One directional light per level: a file with two loads with the
+    /// first casting and the second kept as authored, its instance
+    /// disabled.
+    #[test]
+    fn a_level_with_two_directional_lights_loads_with_one() {
+        use helio_component::components::LightType;
+        let mut sun = LightComponent::default();
+        sun.general.light_type = LightType::Directional;
+        let data = serde_json::to_value(&sun).unwrap();
+        let instances = serde_json::json!([
+            { "index": 0, "class_name": "LightComponent", "data": data },
+            { "index": 1, "class_name": "LightComponent", "data": data }
+        ]);
+        let file = level_with_sun_components(Value::Null, Some(instances));
+        let level = RuntimeLevel::from_scene_file(file).unwrap();
+        let scene = level.scene();
+        let scene = scene.read();
+        let world = &scene.world;
+        let lights =
+            pulsar_scene_model::attachments::instances(world, world.entity_for("sun").unwrap());
+        assert_eq!(
+            crate::scene::level_rules::directional_lights(world),
+            [lights[0]]
+        );
+        assert!(!pulsar_scene_model::attachments::is_enabled(
+            world, lights[1]
+        ));
+        let kept = world.get::<LightComponent>(lights[1]).unwrap();
+        assert_eq!(kept.general.light_type, LightType::Directional);
     }
 }

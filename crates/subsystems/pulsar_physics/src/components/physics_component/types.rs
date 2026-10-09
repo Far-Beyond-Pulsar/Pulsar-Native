@@ -22,6 +22,9 @@ pub enum CollisionChannel {
     Character,
     /// Custom user-defined channel
     Custom,
+    /// Disturbs simulated water (Pulsar-Native#1080): a body on this channel
+    /// pushes the water volumes it moves through.
+    WaterSim,
 }
 
 impl Default for CollisionChannel {
@@ -41,6 +44,7 @@ impl From<CollisionChannel> for u64 {
             CollisionChannel::PhysicsActor => 1 << 5,
             CollisionChannel::Trigger => 1 << 6,
             CollisionChannel::Character => 1 << 7,
+            CollisionChannel::WaterSim => 1 << 8,
             CollisionChannel::Custom => 1 << 31,
         }
     }
@@ -65,6 +69,7 @@ fn deserialize_collision_channel_json(value: serde_json::Value) -> ReflectResult
         5 => CollisionChannel::PhysicsActor,
         6 => CollisionChannel::Trigger,
         7 => CollisionChannel::Character,
+        9 => CollisionChannel::WaterSim,
         31 => CollisionChannel::Custom,
         _ => CollisionChannel::Custom,
     })

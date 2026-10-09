@@ -1135,7 +1135,6 @@ fn every_pass_of_the_editor_graph_runs() {
         "ObjectBatch",
         "ShadowMatrix",
         "ShadowDirty",
-        "ShadowCull",
         "Shadow",
         "IndirectDispatch",
         "HiZBuild",
@@ -1672,5 +1671,1305 @@ fn an_idle_scene_encodes_nothing_and_an_edit_wakes_it() {
     assert!(
         after.iter().skip(woken).all(|encoded| !encoded),
         "the renderer did not settle back to idle: {after:?}"
+    );
+}
+
+/// Mean RGB sum over the top quarter of a frame: above the horizon from the
+/// harness camera, where only the sky can be.
+fn sky_brightness(frame: &Frame) -> f64 {
+    let rows = (SIZE / 4) as usize;
+    let pixels = &frame.color[..rows * SIZE as usize * 4];
+    let sum: u64 = pixels
+        .chunks_exact(4)
+        .map(|p| p[0] as u64 + p[1] as u64 + p[2] as u64)
+        .sum();
+    sum as f64 / (rows * SIZE as usize) as f64
+}
+
+/// The sky is the level's AtmosphereComponent (#1057): without one the sky
+/// is black, even with a sun; World Settings' "Create Sky" adds one and the
+/// sky lights up; disabling or removing it makes the sky black again.
+#[test]
+fn the_sky_is_the_levels_atmosphere() {
+    use ui_level_editor::scene_edit::sky;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, 1.0);
+
+    let mut state = LevelEditorState::new();
+    // A sun high overhead, its icon far outside the view.
+    add_light(
+        &mut state,
+        [1.0e4, 0.0, 0.0],
+        helio_component::components::LightType::Directional,
+        SUN,
+    );
+    let mut renderer = harness.renderer(&state);
+    let without = harness.frames(&mut renderer, || {});
+    without.dump("sky_without_atmosphere");
+    let black = sky_brightness(&without);
+
+    let created = sky::create_sky(&mut state);
+    assert!(created.changed, "{}", created.no_op_reason);
+    let with = harness.frames(&mut renderer, || {});
+    with.dump("sky_with_atmosphere");
+    let lit = sky_brightness(&with);
+    println!("SKY without atmosphere {black:.2}, with {lit:.2}");
+    assert!(
+        black < 1.0,
+        "the sky is not black without an atmosphere: {black}"
+    );
+    assert!(lit > 30.0, "the atmosphere did not light the sky: {lit}");
+
+    let found = sky::level_sky(&state.scene.world()).expect("the level has a sky");
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &found.object_id,
+        found.component_index,
+        false
+    ));
+    let disabled = sky_brightness(&harness.frames(&mut renderer, || {}));
+    println!("SKY disabled {disabled:.2}");
+    assert!(
+        disabled < 1.0,
+        "a disabled atmosphere still lights the sky: {disabled}"
+    );
+}
+
+/// Illuminance of the acceptance tests' sun (lux).
+const SUN: f32 = 20.0;
+
+/// Decals (#1058): an authored decal recolours the surfaces in its box and
+/// stays (it is permanent); scripts set how it disappears through its
+/// opacity: `DecalComponent::set_opacity` (its property accessor) and
+/// `DecalComponent::fade_by` (its method), called as a script calls them.
+#[test]
+fn decals_reach_the_frame_and_scripts_set_their_opacity() {
+    use helio_component::components::{DecalComponent, DecalLayers};
+    use pulsar_script_vm::{Host, NativeRegistry, Value};
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let radius = typed_mesh().bounds_local[3];
+    let harness = Harness::new(device, queue, radius);
+
+    // A matte white mesh under a light: the decal recolours its surface.
+    let mut state = LevelEditorState::new();
+    drop_matte_mesh(&mut state);
+    add_light(
+        &mut state,
+        [0.0, radius * 1.5, radius * 2.0],
+        helio_component::components::LightType::Point,
+        BRIGHT,
+    );
+    let mut renderer = harness.renderer(&state);
+    let before = harness.frames(&mut renderer, || {});
+
+    // A blue decal whose box holds the whole mesh.
+    let decal = DecalComponent {
+        size: [radius * 3.0; 3],
+        color: [0.0, 0.2, 1.0],
+        layers: DecalLayers::Albedo,
+        ..Default::default()
+    };
+    let added = execute_command(
+        &mut state,
+        SceneCommand::AddObjectWithComponents {
+            data: SceneObjectData {
+                id: String::new(),
+                name: "Decal".to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                scene_path: String::new(),
+                props: Default::default(),
+                component_instances: None,
+            },
+            parent_id: None,
+            components: vec![TypedComponent::new(decal)],
+        },
+    );
+    let id = added.affected_ids[0].clone();
+    let with = harness.frames(&mut renderer, || {});
+    with.dump("decal");
+    let change = with.difference(&before);
+    println!("DECAL vs without: {change:?}");
+    assert!(
+        change.color_pixels > (SIZE * SIZE / 50) as usize,
+        "the decal did not change the frame: {change:?}"
+    );
+    assert_eq!(change.depth_texels, 0, "a decal moved geometry");
+    // Permanent: still there frames later.
+    let later = harness.frames(&mut renderer, || {});
+    assert!(later.difference(&with).color_pixels < (SIZE * SIZE / 200) as usize);
+
+    // Scripts address the decal as a component reference.
+    let natives = NativeRegistry::with_engine_natives();
+    let call = |state: &LevelEditorState, native: &str, argument: f64| -> Value {
+        let mut world = state.scene.world_mut();
+        let instance = components::instance_at(&world, &id, 0).expect("the decal");
+        let owner = engine_backend::scene::SceneWorldExt::entity_for(&*world, &id).unwrap();
+        let reference =
+            Value::Component(pulsar_scenedb::ComponentRef::of::<DecalComponent>(instance));
+        let mut host = Host::new(&mut world, owner);
+        natives
+            .get(native)
+            .unwrap_or_else(|| panic!("{native} is a script native"))
+            .call(&mut host, &mut [reference, Value::Float(argument)])
+            .unwrap_or_else(|error| panic!("{native}: {error:?}"))
+    };
+    let opacity = |state: &LevelEditorState| {
+        let world = state.scene.world();
+        let instance = components::instance_at(&world, &id, 0).unwrap();
+        world.get::<DecalComponent>(instance).unwrap().opacity
+    };
+
+    call(&state, "DecalComponent::set_opacity", 0.0);
+    assert_eq!(opacity(&state), 0.0);
+    let hidden = harness.frames(&mut renderer, || {});
+    let change = hidden.difference(&before);
+    println!("DECAL opacity 0 vs without: {change:?}");
+    assert!(
+        change.color_pixels < (SIZE * SIZE / 100) as usize,
+        "a decal at opacity 0 still shows: {change:?}"
+    );
+
+    call(&state, "DecalComponent::set_opacity", 1.0);
+    let left = call(&state, "DecalComponent::fade_by", 0.5);
+    assert!(matches!(left, Value::Float(left) if (left - 0.5).abs() < 1e-6));
+    assert_eq!(opacity(&state), 0.5);
+    let half = harness.frames(&mut renderer, || {});
+    let from_full = half.difference(&with);
+    let from_none = half.difference(&before);
+    println!("DECAL opacity 0.5 vs full {from_full:?}, vs without {from_none:?}");
+    assert!(
+        from_full.color_pixels > 0 && from_none.color_pixels > 0,
+        "half opacity is neither the full decal nor none"
+    );
+}
+
+/// Changed pixels in one half of `frame` against `reference`, and their
+/// mean red and green.
+fn half_change(frame: &Frame, reference: &Frame, left: bool) -> (usize, f32, f32) {
+    let (mut count, mut red, mut green) = (0usize, 0.0f32, 0.0f32);
+    for (index, (a, b)) in reference
+        .color
+        .chunks_exact(4)
+        .zip(frame.color.chunks_exact(4))
+        .enumerate()
+    {
+        if ((index as u32 % SIZE) < SIZE / 2) != left {
+            continue;
+        }
+        if (0..3).map(|i| a[i].abs_diff(b[i]) as u32).sum::<u32>() > PIXEL_THRESHOLD {
+            count += 1;
+            red += b[0] as f32;
+            green += b[1] as f32;
+        }
+    }
+    let n = count.max(1) as f32;
+    (count, red / n, green / n)
+}
+
+/// Particle emitters (#1059): an authored emitter's particles reach the
+/// frame; two emitters with different `max_particles` take their own
+/// ranges of the shared particle pool and both draw; disabling one
+/// restores its side of the frame while the other keeps drawing.
+#[test]
+fn particle_emitters_reach_the_frame_from_one_pool() {
+    use helio_component::components::{ParticleEmitterComponent, ParticleEmitterShape};
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, 1.0);
+    // No atmosphere: a black sky, so the particles alone change the frame.
+    let mut state = LevelEditorState::new();
+    let mut renderer = harness.renderer(&state);
+    let before = harness.frames(&mut renderer, || {});
+
+    // Long-lived, still particles inside a sphere around their owner.
+    let add_emitter = |state: &mut LevelEditorState, x: f32, color: [f32; 4], max: u32| {
+        let emitter = ParticleEmitterComponent {
+            max_particles: max,
+            emit_rate: 20_000.0,
+            lifetime: 60.0,
+            lifetime_variation: 0.0,
+            shape: ParticleEmitterShape::Sphere,
+            spawn_radius: 0.7,
+            velocity: [0.0; 3],
+            velocity_variation: [0.0; 3],
+            start_size: 0.12,
+            end_size: 0.12,
+            start_color: color,
+            end_color: color,
+            ..Default::default()
+        };
+        let added = execute_command(
+            state,
+            SceneCommand::AddObjectWithComponents {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: "Particles".to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform {
+                        position: [x, 0.5, 0.0],
+                        ..Transform::default()
+                    },
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+                components: vec![TypedComponent::new(emitter)],
+            },
+        );
+        added.affected_ids[0].clone()
+    };
+
+    // A small red emitter on the left.
+    let red = add_emitter(&mut state, -1.3, [1.0, 0.05, 0.05, 1.0], 300);
+    let one = harness.frames(&mut renderer, || {});
+    one.dump("particles_one");
+    let left = half_change(&one, &before, true);
+    let right = half_change(&one, &before, false);
+    println!("PARTICLES one emitter: left {left:?}, right {right:?}");
+    assert!(left.0 > 200, "the emitter drew no particles: {left:?}");
+    assert!(left.1 > left.2 * 2.0, "the particles are not red: {left:?}");
+    assert!(
+        right.0 < 20,
+        "particles drawn away from the emitter: {right:?}"
+    );
+    assert_eq!(
+        one.difference(&before).depth_texels,
+        0,
+        "particles wrote depth"
+    );
+
+    // A larger green one on the right: its own range of the pool, both draw.
+    let green = add_emitter(&mut state, 1.3, [0.05, 1.0, 0.05, 1.0], 3000);
+    let two = harness.frames(&mut renderer, || {});
+    two.dump("particles_two");
+    let left = half_change(&two, &before, true);
+    let right = half_change(&two, &before, false);
+    println!("PARTICLES two emitters: left {left:?}, right {right:?}");
+    assert!(
+        left.0 > 200 && left.1 > left.2 * 2.0,
+        "the red emitter stopped: {left:?}"
+    );
+    assert!(
+        right.0 > 200 && right.2 > right.1 * 2.0,
+        "the green emitter drew nothing: {right:?}"
+    );
+    assert!(
+        right.0 > left.0,
+        "ten times the particles cover no more of the frame: left {left:?}, right {right:?}"
+    );
+
+    // Disabling the red one restores its side; the green one now packs into
+    // the first row and its first range of the pool, and keeps drawing.
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &red,
+        0,
+        false
+    ));
+    let disabled = harness.frames(&mut renderer, || {});
+    disabled.dump("particles_disabled");
+    let left = half_change(&disabled, &before, true);
+    let right = half_change(&disabled, &before, false);
+    println!("PARTICLES red disabled: left {left:?}, right {right:?}");
+    assert!(left.0 < 20, "a disabled emitter still draws: {left:?}");
+    assert!(
+        right.0 > 200 && right.2 > right.1 * 2.0,
+        "the green emitter stopped: {right:?}"
+    );
+
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &green,
+        0,
+        false
+    ));
+    let none = harness.frames(&mut renderer, || {});
+    let change = none.difference(&before);
+    println!("PARTICLES both disabled: {change:?}");
+    assert!(
+        change.color_pixels < 20,
+        "particles outlive their emitters: {change:?}"
+    );
+}
+
+/// Edit the level's global wind in place, as its World Settings rows do.
+fn set_global_wind(
+    state: &mut LevelEditorState,
+    edit: impl FnOnce(&mut helio_component::components::WindComponent),
+) {
+    let mut world = state.scene.world_mut();
+    let (instance, _) =
+        engine_backend::scene::level_rules::level_wind(&world).expect("the level has a wind");
+    edit(
+        &mut world
+            .get_mut::<helio_component::components::WindComponent>(instance)
+            .unwrap(),
+    );
+}
+
+/// Wind (#1123, #1109): foliage sways in the level's global wind, on the
+/// renderer's frame clock. In a realtime viewport two observations with no
+/// scene write differ while the wind blows; they are identical in a calm or
+/// with Realtime off (the clock frozen). Changing the global wind changes
+/// the foliage's pose: the meadow's own wind is calm, so all its motion is
+/// the global wind's. The frame delta and the projection jitter are fixed,
+/// and observations are compared 64 frames apart (the period of the
+/// foliage LOD cross-fade dither), so an unchanged frame is identical.
+#[test]
+fn foliage_sways_in_the_global_wind_on_the_frame_clock() {
+    use helio_component::components::FoliageComponent;
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, 1.0);
+
+    let mut state = LevelEditorState::new();
+    let mut foliage = FoliageComponent::default();
+    foliage.general.enabled = true;
+    foliage.placement.layer_extent = 20.0;
+    // Calm on its own: only the global wind moves it.
+    foliage.wind.wind_speed = 0.0;
+    foliage.wind.trunk_sway = 1.0;
+    execute_command(
+        &mut state,
+        SceneCommand::AddObjectWithComponents {
+            data: SceneObjectData {
+                id: String::new(),
+                name: "meadow".to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                scene_path: String::new(),
+                props: Default::default(),
+                component_instances: None,
+            },
+            parent_id: None,
+            components: vec![TypedComponent::new(foliage)],
+        },
+    );
+    assert!(ui_level_editor::scene_edit::wind::create_wind(&mut state).changed);
+    set_global_wind(&mut state, |wind| wind.speed = 8.0);
+
+    let mut renderer = harness.renderer(&state);
+    renderer.set_frame_delta_override(Some(1.0 / 30.0));
+    renderer.set_camera_jitter_override(Some([0.0, 0.0]));
+    // Placement fills the camera's ring over several frames.
+    let settle = |renderer: &mut HelioRenderer| {
+        for _ in 0..5 {
+            harness.frames(renderer, || {});
+        }
+    };
+    // Two observations 64 frames apart with no scene write in between: the
+    // depth texels that moved.
+    let per_observation = settle_frames().max(2) & !1;
+    assert_eq!(
+        64 % per_observation,
+        0,
+        "observations must tile the dither period"
+    );
+    let motion = |renderer: &mut HelioRenderer, label: &str| {
+        let first = harness.frames(renderer, || {});
+        for _ in 1..64 / per_observation {
+            harness.frames(renderer, || {});
+        }
+        let second = harness.frames(renderer, || {});
+        second.dump(&format!("wind_{label}"));
+        let moved = second.difference(&first);
+        println!("WIND {label}: {moved:?}");
+        (moved.depth_texels, second)
+    };
+
+    settle(&mut renderer);
+    let (blowing, _) = motion(&mut renderer, "blowing");
+    assert!(
+        blowing > (SIZE * SIZE / 100) as usize,
+        "foliage did not sway in the global wind: {blowing} texels moved"
+    );
+
+    set_global_wind(&mut state, |wind| wind.speed = 0.0);
+    settle(&mut renderer);
+    let (calm, _) = motion(&mut renderer, "calm");
+    assert_eq!(calm, 0, "foliage moved in a calm");
+
+    set_global_wind(&mut state, |wind| wind.speed = 8.0);
+    renderer.set_viewport_realtime(false);
+    settle(&mut renderer);
+    let (frozen, pose) = motion(&mut renderer, "frozen");
+    assert_eq!(frozen, 0, "foliage moved with Realtime off");
+
+    // The clock is frozen, so the pose changes only with the wind.
+    set_global_wind(&mut state, |wind| {
+        wind.direction = [-1.0, 0.0, -0.2];
+        wind.speed = 16.0;
+    });
+    let changed = harness.frames(&mut renderer, || {});
+    let difference = changed.difference(&pose);
+    println!("WIND global wind changed: {difference:?}");
+    assert!(
+        difference.depth_texels > (SIZE * SIZE / 100) as usize,
+        "changing the global wind did not change the foliage: {difference:?}"
+    );
+}
+
+/// Realtime (#1123, #1109): content that animates on its own (particles,
+/// foliage in a wind) keeps a realtime viewport rendering with no scene
+/// write; with Realtime off, in a calm, or once the content is disabled,
+/// the viewport goes idle again.
+#[test]
+fn a_realtime_viewport_keeps_rendering_animated_content() {
+    use helio_component::components::{FoliageComponent, ParticleEmitterComponent};
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, 1.0);
+    let mut state = LevelEditorState::new();
+    let mut renderer = harness.renderer(&state);
+    harness.frames(&mut renderer, || {});
+
+    let view = harness.texture.create_view(&Default::default());
+    let mut encode = |renderer: &mut HelioRenderer| {
+        let encoded = renderer
+            .render_frame(&harness.device, &harness.queue, &view, SIZE, SIZE, FORMAT)
+            .is_some();
+        harness
+            .device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .unwrap();
+        encoded
+    };
+    // Whether the renderer settles to idle within a few frames and then
+    // stays idle.
+    let mut goes_idle = |renderer: &mut HelioRenderer| {
+        let settled = (0..16).any(|_| !encode(renderer));
+        settled && (0..20).all(|_| !encode(renderer))
+    };
+    let mut keeps_rendering = |renderer: &mut HelioRenderer| (0..20).all(|_| encode(renderer));
+    let add = |state: &mut LevelEditorState, name: &str, component: TypedComponent| {
+        let added = execute_command(
+            state,
+            SceneCommand::AddObjectWithComponents {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: name.to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+                components: vec![component],
+            },
+        );
+        added.affected_ids[0].clone()
+    };
+    assert!(goes_idle(&mut renderer), "an empty scene did not go idle");
+
+    // Particles.
+    let emitter = add(
+        &mut state,
+        "Particles",
+        TypedComponent::new(ParticleEmitterComponent::default()),
+    );
+    assert!(keeps_rendering(&mut renderer), "live particles went idle");
+    renderer.set_viewport_realtime(false);
+    assert!(goes_idle(&mut renderer), "frozen particles kept rendering");
+    renderer.set_viewport_realtime(true);
+    assert!(
+        keeps_rendering(&mut renderer),
+        "Realtime back on did not resume"
+    );
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &emitter,
+        0,
+        false
+    ));
+    assert!(
+        goes_idle(&mut renderer),
+        "a disabled emitter kept rendering"
+    );
+
+    // Water simulates on the frame clock (#1065).
+    let water = add(
+        &mut state,
+        "Lake",
+        TypedComponent::new(helio_component::components::WaterVolumeComponent::default()),
+    );
+    assert!(keeps_rendering(&mut renderer), "live water went idle");
+    assert!(components::set_component_enabled(
+        &mut state.scene.world_mut(),
+        &water,
+        0,
+        false
+    ));
+    assert!(goes_idle(&mut renderer), "disabled water kept rendering");
+
+    // Foliage in the global wind.
+    let mut foliage = FoliageComponent::default();
+    foliage.general.enabled = true;
+    foliage.wind.wind_speed = 0.0;
+    add(&mut state, "meadow", TypedComponent::new(foliage));
+    assert!(ui_level_editor::scene_edit::wind::create_wind(&mut state).changed);
+    assert!(
+        keeps_rendering(&mut renderer),
+        "foliage in a wind went idle"
+    );
+    set_global_wind(&mut state, |wind| wind.speed = 0.0);
+    assert!(goes_idle(&mut renderer), "foliage in a calm kept rendering");
+    let revision = state.scene.world().revision();
+    set_global_wind(&mut state, |wind| wind.speed = 3.0);
+    assert!(
+        keeps_rendering(&mut renderer),
+        "the wind rising did not wake it"
+    );
+    assert_eq!(
+        state.scene.world().revision(),
+        revision + 1,
+        "animated frames wrote to the world"
+    );
+}
+
+/// The R channel (height) of one layer of the water simulation's
+/// RGBA16F array texture.
+fn water_heights(harness: &Harness, renderer: &HelioRenderer, layer: u32) -> Vec<f32> {
+    let texture = renderer
+        .debug_water_sim_texture()
+        .expect("the editor graph simulates water");
+    let size = texture.size();
+    let row = size.width * 8;
+    let padded =
+        row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let buffer = harness.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("water-sim-readback"),
+        size: (padded * size.height) as u64,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder = harness.device.create_command_encoder(&Default::default());
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d {
+                x: 0,
+                y: 0,
+                z: layer,
+            },
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(padded),
+                rows_per_image: Some(size.height),
+            },
+        },
+        wgpu::Extent3d {
+            width: size.width,
+            height: size.height,
+            depth_or_array_layers: 1,
+        },
+    );
+    harness.queue.submit([encoder.finish()]);
+    let slice = buffer.slice(..);
+    slice.map_async(wgpu::MapMode::Read, |r| r.expect("map readback"));
+    harness
+        .device
+        .poll(wgpu::PollType::wait_indefinitely())
+        .unwrap();
+    let mapped = slice.get_mapped_range().expect("mapped range");
+    let heights = mapped
+        .chunks_exact(padded as usize)
+        .flat_map(|line| {
+            line[..row as usize]
+                .chunks_exact(8)
+                .map(|texel| f16_to_f32(u16::from_le_bytes([texel[0], texel[1]])))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    drop(mapped);
+    buffer.unmap();
+    heights
+}
+
+fn f16_to_f32(bits: u16) -> f32 {
+    let sign = if bits & 0x8000 != 0 { -1.0 } else { 1.0 };
+    let exponent = i32::from((bits >> 10) & 0x1f);
+    let mantissa = f32::from(bits & 0x03ff);
+    sign * match exponent {
+        0 => mantissa * 2f32.powi(-24),
+        0x1f => f32::INFINITY,
+        _ => (1.0 + mantissa / 1024.0) * 2f32.powi(exponent - 15),
+    }
+}
+
+/// Mean absolute height: how far a layer is from flat water.
+fn roughness(heights: &[f32]) -> f32 {
+    heights.iter().map(|h| h.abs()).sum::<f32>() / heights.len() as f32
+}
+
+/// Water dynamics (#1065): each volume simulates with its own wind, read
+/// back from the simulation: a windy lake moves while a calm pond beside it
+/// stays flat, the pond's waves start when its own wind does (nothing on
+/// the pass is touched), and the simulation advances on the frame clock, so
+/// it stands still with Realtime off.
+#[test]
+fn water_volumes_simulate_with_their_own_dynamics_on_the_frame_clock() {
+    use helio_component::components::WaterVolumeComponent;
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, 1.0);
+    let mut state = LevelEditorState::new();
+    let water = |wind_strength: f32| WaterVolumeComponent {
+        size: [20.0, 4.0, 20.0],
+        use_global_wind: false,
+        wind_direction_x: 1.0,
+        wind_direction_z: 0.3,
+        wind_strength,
+        ..Default::default()
+    };
+    let add = |state: &mut LevelEditorState, name: &str, x: f32, water: WaterVolumeComponent| {
+        execute_command(
+            state,
+            SceneCommand::AddObjectWithComponents {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: name.to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform {
+                        position: [x, 0.0, 0.0],
+                        ..Transform::default()
+                    },
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                    component_instances: None,
+                },
+                parent_id: None,
+                components: vec![TypedComponent::new(water)],
+            },
+        )
+        .affected_ids[0]
+            .clone()
+    };
+    // The lake takes the first water row (layers 0..3), the pond the
+    // second (layers 3..6).
+    add(&mut state, "lake", 0.0, water(5.0));
+    let mut renderer = harness.renderer(&state);
+    renderer.set_frame_delta_override(Some(1.0 / 60.0));
+    harness.frames(&mut renderer, || {});
+    let pond = add(&mut state, "pond", 100.0, water(0.0));
+    harness.frames(&mut renderer, || {});
+    harness.frames(&mut renderer, || {});
+
+    let lake_waves = roughness(&water_heights(&harness, &renderer, 0));
+    let pond_waves = roughness(&water_heights(&harness, &renderer, 3));
+    println!("WATER lake {lake_waves} pond {pond_waves}");
+    assert!(lake_waves > 1e-4, "the windy lake is flat: {lake_waves}");
+    assert_eq!(pond_waves, 0.0, "the calm pond moved");
+
+    // The pond's own wind rises: its waves start.
+    let instance = first_instance(&state, &pond);
+    state
+        .scene
+        .world_mut()
+        .get_mut::<WaterVolumeComponent>(instance)
+        .unwrap()
+        .wind_strength = 5.0;
+    harness.frames(&mut renderer, || {});
+    harness.frames(&mut renderer, || {});
+    let pond_waves = roughness(&water_heights(&harness, &renderer, 3));
+    println!("WATER pond in its own wind {pond_waves}");
+    assert!(
+        pond_waves > 1e-4,
+        "the pond's wind did not move it: {pond_waves}"
+    );
+
+    // Realtime off freezes the frame clock, and the water with it.
+    renderer.set_viewport_realtime(false);
+    harness.frames(&mut renderer, || {});
+    let before = water_heights(&harness, &renderer, 0);
+    harness.frames(&mut renderer, || {});
+    let after = water_heights(&harness, &renderer, 0);
+    assert!(before == after, "the water moved with Realtime off");
+    renderer.set_viewport_realtime(true);
+    harness.frames(&mut renderer, || {});
+    assert!(
+        water_heights(&harness, &renderer, 0) != after,
+        "Realtime back on did not resume the water"
+    );
+}
+
+/// Water interaction (#1080): a body on the `WaterSim` collision channel
+/// pushes the water it sits in, read back from the simulation: the water
+/// under it is displaced while the water under an identical body off the
+/// channel is not; a body at rest does not keep pushing (the water's mass
+/// stays put); moving it displaces the water where it goes.
+#[test]
+fn bodies_on_the_water_sim_channel_push_the_water() {
+    use helio_component::components::WaterVolumeComponent;
+    use pulsar_physics::{CollisionChannel, PhysicsComponent};
+    use ui_level_editor::commands::TypedComponent;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, 1.0);
+    let mut state = LevelEditorState::new();
+    // A calm pool at the origin, its surface at Y 0.
+    execute_command(
+        &mut state,
+        SceneCommand::AddObjectWithComponents {
+            data: SceneObjectData {
+                id: String::new(),
+                name: "pool".to_string(),
+                object_type: ObjectType::Empty,
+                transform: Transform::default(),
+                visible: true,
+                locked: false,
+                parent: None,
+                children: vec![],
+                scene_path: String::new(),
+                props: Default::default(),
+                component_instances: None,
+            },
+            parent_id: None,
+            components: vec![TypedComponent::new(WaterVolumeComponent {
+                size: [40.0, 8.0, 40.0],
+                wind_strength: 0.0,
+                ..Default::default()
+            })],
+        },
+    );
+    // Two 1 m cubes (SM_Cube is 200 units across) half under the surface,
+    // 15 m apart: half of cascade 0's 30 m tile, so their texels are as far
+    // apart as the tile allows.
+    let body = |state: &mut LevelEditorState, position: [f32; 3], water: bool| {
+        let id = drop_matte_mesh(state);
+        let placed = execute_command(
+            state,
+            SceneCommand::SetTransform {
+                id: id.clone(),
+                position: Some(position),
+                rotation: None,
+                scale: Some([0.005; 3]),
+            },
+        );
+        assert!(placed.changed);
+        let mut physics = PhysicsComponent::default();
+        if water {
+            physics.collision.collision_channel |= u64::from(CollisionChannel::WaterSim);
+        }
+        components::add_component_value(
+            &mut state.scene.world_mut(),
+            &id,
+            "PhysicsComponent",
+            Some(Box::new(physics)),
+        )
+        .expect("physics attached");
+        id
+    };
+    let swimmer = body(&mut state, [-7.5, 0.0, 15.0], true);
+    body(&mut state, [7.5, 0.0, 15.0], false);
+
+    // Cascade 0 texel of world XZ: uv = fract(xz / 30).
+    let texel = |x: f32, z: f32| {
+        let u = (x / 30.0).rem_euclid(1.0);
+        let v = (z / 30.0).rem_euclid(1.0);
+        ((u * 256.0) as usize, (v * 256.0) as usize)
+    };
+    // Mean |height| within 6 texels of a point, and the layer's total.
+    let around = |heights: &[f32], (cx, cy): (usize, usize)| {
+        let mut sum = 0.0;
+        let mut n = 0;
+        for y in cy.saturating_sub(6)..(cy + 7).min(256) {
+            for x in cx.saturating_sub(6)..(cx + 7).min(256) {
+                sum += heights[y * 256 + x].abs();
+                n += 1;
+            }
+        }
+        sum / n as f32
+    };
+    let mass = |heights: &[f32]| heights.iter().sum::<f32>();
+
+    let mut renderer = harness.renderer(&state);
+    renderer.set_frame_delta_override(Some(1.0 / 60.0));
+    harness.frames(&mut renderer, || {});
+    let heights = water_heights(&harness, &renderer, 0);
+    let pushed = around(&heights, texel(-7.5, 15.0));
+    let untouched = around(&heights, texel(7.5, 15.0));
+    let displaced = mass(&heights);
+    println!("HITBOX pushed {pushed} untouched {untouched} mass {displaced}");
+    assert!(
+        pushed > 1e-3,
+        "the body on the WaterSim channel did not push the water: {pushed}"
+    );
+    assert_eq!(untouched, 0.0, "the body off the channel pushed the water");
+    assert!(
+        displaced < 0.0,
+        "the body did not displace water: {displaced}"
+    );
+
+    // At rest it pushes no further: the water's mass stays where it was.
+    harness.frames(&mut renderer, || {});
+    let resting = mass(&water_heights(&harness, &renderer, 0));
+    println!("HITBOX resting mass {resting}");
+    assert!(
+        (resting - displaced).abs() < displaced.abs() * 0.25,
+        "a body at rest kept displacing water: {displaced} then {resting}"
+    );
+
+    // Moving it pushes the water where it goes and lets it back where it was.
+    let before = water_heights(&harness, &renderer, 0);
+    move_to(&mut state, &swimmer, [-7.5, 0.0, 7.5]);
+    harness.frames(&mut renderer, || {});
+    let after = water_heights(&harness, &renderer, 0);
+    let at = |heights: &[f32], (x, y): (usize, usize)| heights[y * 256 + x];
+    let (new_spot, old_spot) = (texel(-7.5, 7.5), texel(-7.5, 15.0));
+    println!(
+        "HITBOX moved: new spot {} -> {}, old spot {} -> {}",
+        at(&before, new_spot),
+        at(&after, new_spot),
+        at(&before, old_spot),
+        at(&after, old_spot)
+    );
+    assert!(
+        at(&after, new_spot) < at(&before, new_spot) - 1e-3,
+        "the water did not fall where the body moved to"
+    );
+    assert!(
+        at(&after, old_spot) > at(&before, old_spot) + 1e-3,
+        "the water did not rise where the body left"
+    );
+}
+
+/// The final image's RGBA at pixel `(x, y)`.
+fn pixel(frame: &Frame, x: u32, y: u32) -> [u8; 4] {
+    let i = ((y * SIZE + x) * 4) as usize;
+    frame.color[i..i + 4].try_into().unwrap()
+}
+
+#[track_caller]
+fn assert_color(what: &str, actual: [u8; 4], expected: [u8; 3]) {
+    let close = (0..3).all(|i| actual[i].abs_diff(expected[i]) <= 8);
+    assert!(close, "{what}: {actual:?}, expected {expected:?}");
+}
+
+/// 2D sprites (#1060): an authored sprite draws at its 2D position (pixels
+/// from the centre of the view, Y up) on top of the 3D scene; between two
+/// overlapping sprites the higher Z index is on top, and changing it
+/// changes which; a textured sprite shows its image; moving the 3D camera
+/// does not move a sprite, moving its owner does, and disabling sprites
+/// restores the 3D frame.
+#[test]
+fn sprites_draw_in_2d_over_the_3d_scene() {
+    use helio_component::components::SpriteComponent;
+    use ui_level_editor::scene_edit::sprite::create_sprite;
+
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    let harness = Harness::new(device, queue, typed_mesh().bounds_local[3]);
+    let mut state = LevelEditorState::new();
+    drop_mesh(&mut state);
+    let mut renderer = harness.renderer(&state);
+    let scene = harness.frames(&mut renderer, || {});
+    scene.dump("sprites_scene");
+    let centre = SIZE / 2;
+    assert!(
+        pixel(&scene, centre, centre)[..3] != [255, 0, 0],
+        "the mesh under the sprite is not red"
+    );
+
+    let square = |tint: [f32; 4], z_index: i32| SpriteComponent {
+        tint,
+        width: 40.0,
+        height: 40.0,
+        z_index,
+        ..Default::default()
+    };
+    let red = create_sprite(&mut state, [0.0, 0.0], square([1.0, 0.0, 0.0, 1.0], 0)).affected_ids
+        [0]
+    .clone();
+    let green = create_sprite(&mut state, [15.0, 0.0], square([0.0, 1.0, 0.0, 1.0], 1))
+        .affected_ids[0]
+        .clone();
+    let frame = harness.frames(&mut renderer, || {});
+    frame.dump("sprites_two");
+    assert_color(
+        "the red sprite over the mesh",
+        pixel(&frame, centre - 10, centre),
+        [255, 0, 0],
+    );
+    assert_color(
+        "the overlap (green above red)",
+        pixel(&frame, centre + 8, centre),
+        [0, 255, 0],
+    );
+    assert_color(
+        "the green sprite alone",
+        pixel(&frame, centre + 30, centre),
+        [0, 255, 0],
+    );
+    // Outside both sprites the 3D frame is untouched.
+    for (x, y) in [
+        (centre - 40, centre),
+        (centre, centre - 40),
+        (centre + 50, centre + 30),
+    ] {
+        assert_eq!(
+            pixel(&frame, x, y),
+            pixel(&scene, x, y),
+            "beside the sprites at {x},{y}"
+        );
+    }
+
+    // The Z index orders them.
+    let red_sprite = first_instance(&state, &red);
+    state
+        .scene
+        .world_mut()
+        .get_mut::<SpriteComponent>(red_sprite)
+        .unwrap()
+        .z_index = 2;
+    let frame = harness.frames(&mut renderer, || {});
+    assert_color(
+        "the overlap (red above green)",
+        pixel(&frame, centre + 8, centre),
+        [255, 0, 0],
+    );
+
+    // The 3D camera moves the mesh, not the sprites.
+    renderer.set_editor_camera_state(EditorCameraState {
+        yaw: harness.camera.yaw + 0.4,
+        ..harness.camera
+    });
+    let turned = harness.frames(&mut renderer, || {});
+    turned.dump("sprites_turned");
+    assert!(
+        turned.difference(&frame).depth_texels > 0,
+        "the camera move did not move the 3D scene"
+    );
+    for (x, y) in [
+        (centre - 10, centre),
+        (centre + 8, centre),
+        (centre + 30, centre),
+    ] {
+        assert_eq!(
+            pixel(&turned, x, y),
+            pixel(&frame, x, y),
+            "a sprite moved with the camera at {x},{y}"
+        );
+    }
+    renderer.set_editor_camera_state(harness.camera);
+
+    // Its owner places it: up and to the left is up and to the left.
+    move_to(&mut state, &red, [-60.0, 30.0, 0.0]);
+    let frame = harness.frames(&mut renderer, || {});
+    assert_color(
+        "the moved red sprite",
+        pixel(&frame, centre - 60, centre - 30),
+        [255, 0, 0],
+    );
+    assert_color(
+        "where the red sprite was",
+        pixel(&frame, centre, centre),
+        [0, 255, 0],
+    );
+
+    // An image: a 2x1 sheet, blue then yellow.
+    let dir = std::env::temp_dir().join(format!("pulsar-sprite-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let image = dir.join("blue_yellow.png");
+    image::save_buffer(
+        &image,
+        &[0, 0, 255, 255, 255, 255, 0, 255],
+        2,
+        1,
+        image::ColorType::Rgba8,
+    )
+    .unwrap();
+    let textured = create_sprite(
+        &mut state,
+        [60.0, -60.0],
+        SpriteComponent {
+            texture: image.to_string_lossy().into_owned(),
+            ..square([1.0, 1.0, 1.0, 1.0], 0)
+        },
+    )
+    .affected_ids[0]
+        .clone();
+    let frame = harness.frames(&mut renderer, || {});
+    frame.dump("sprites_textured");
+    assert_color(
+        "the image's left half",
+        pixel(&frame, centre + 50, centre + 60),
+        [0, 0, 255],
+    );
+    assert_color(
+        "the image's right half",
+        pixel(&frame, centre + 70, centre + 60),
+        [255, 255, 0],
+    );
+
+    // Disabled, the 3D frame is back.
+    for id in [&red, &green, &textured] {
+        let instance = first_instance(&state, id);
+        state
+            .scene
+            .world_mut()
+            .get_mut::<SpriteComponent>(instance)
+            .unwrap()
+            .enabled = false;
+    }
+    let frame = harness.frames(&mut renderer, || {});
+    for (x, y) in [
+        (centre - 60, centre - 30),
+        (centre - 10, centre),
+        (centre + 8, centre),
+        (centre + 50, centre + 60),
+    ] {
+        assert_eq!(
+            pixel(&frame, x, y),
+            pixel(&scene, x, y),
+            "a disabled sprite at {x},{y}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Both halves' coverage: which texels differ in depth from `reference`.
+fn full_coverage(frame: &Frame, reference: &Frame) -> Vec<bool> {
+    let mut covered = coverage(frame, reference, true);
+    covered.extend(coverage(frame, reference, false));
+    covered
+}
+
+/// A free-standing voxel volume (#1056) is meshed and drawn as a mesh
+/// instance at its owner: rotating or scaling the owner changes its
+/// silhouette, an edit through a voxel source session changes the frame,
+/// removing the component restores the empty frame, and it casts shadows.
+#[test]
+fn voxel_objects_reach_the_frame_as_meshes() {
+    use engine_backend::scene::voxel_source::{VoxelSourceKind, VoxelSourceSession};
+    use helio_component::components::LightType as Kind;
+    use helio_voxel_data::{VoxelEditTicketState, VoxelInboxClose, VoxelSampleEdit, VoxelSourceId};
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::WARN)
+        .with_test_writer()
+        .try_init();
+    let Some((device, queue)) = device() else {
+        eprintln!("skipping: no GPU adapter available");
+        return;
+    };
+    engine_state::EngineContext::new().set_global();
+    engine_state::set_project_path(env!("CARGO_MANIFEST_DIR").to_string());
+    // The default volume: 16³ one-metre voxels, ~14 m in radius.
+    let harness = Harness::new(device, queue, 14.0);
+    // Lit from in front and above, so the volume's faces are not black.
+    let light = |state: &mut LevelEditorState| add_light(state, [0.0, 20.0, 40.0], Kind::Point, 5.0e4);
+    let add_volume = |state: &mut LevelEditorState| {
+        let id = add_object(state, "Voxels", ObjectType::Empty);
+        // The volume's corner is its object's origin: centre it.
+        move_to(state, &id, [-8.0, -8.0, -8.0]);
+        assert!(
+            execute_command(
+                state,
+                SceneCommand::AddComponent {
+                    id: id.clone(),
+                    class_name: "VoxelComponent".into(),
+                    value: None,
+                },
+            )
+            .changed
+        );
+        id
+    };
+
+    let mut state = LevelEditorState::new();
+    light(&mut state);
+    let mut renderer = harness.renderer(&state);
+    let reference = harness.frames(&mut renderer, || {});
+    let id = add_volume(&mut state);
+    let cube = harness.frames(&mut renderer, || {});
+    cube.dump("voxel_cube");
+    assert_drawn("voxel object", cube.difference(&reference));
+    let again = harness.frames(&mut renderer, || {});
+    let noise = again.difference(&cube).depth_texels;
+    let cube_texels = full_coverage(&cube, &reference);
+
+    // Rotated about its object's origin (the volume's corner).
+    transform(&mut state, &id, Some([0.0, 45.0, 0.0]), None);
+    let rotated = harness.frames(&mut renderer, || {});
+    rotated.dump("voxel_rotated");
+    let same = overlap(&cube_texels, &full_coverage(&rotated, &reference));
+    println!("VOXEL rotated: keeps {same:.3} of the cube's texels");
+    assert_drawn("rotated voxel object", rotated.difference(&reference));
+    assert!(same < 0.9, "rotating the owner did not turn the volume ({same:.3})");
+    transform(&mut state, &id, Some([0.0, 0.0, 0.0]), None);
+
+    // Scaled on two axes: narrower.
+    transform(&mut state, &id, None, Some([0.5, 1.0, 0.5]));
+    let scaled = harness.frames(&mut renderer, || {});
+    scaled.dump("voxel_scaled");
+    let (full, narrow) = (
+        cube.difference(&reference).depth_texels,
+        scaled.difference(&reference).depth_texels,
+    );
+    println!("VOXEL scale: full {full}, scaled {narrow}");
+    assert!(narrow > 0 && narrow * 10 < full * 8, "scaling the owner did not shrink the volume");
+    transform(&mut state, &id, None, Some([1.0, 1.0, 1.0]));
+    let restored = harness.frames(&mut renderer, || {});
+    assert!(overlap(&cube_texels, &full_coverage(&restored, &reference)) > 0.9);
+
+    // An edit: clear a 4 x 4 x 2 notch in the middle of the front face.
+    let instance = first_instance(&state, &id);
+    let session = VoxelSourceSession::open(
+        state.scene.shared_scene(),
+        instance,
+        VoxelSourceKind::Object,
+        VoxelSourceId(7),
+        Default::default(),
+    )
+    .expect("open the volume's source");
+    let edits: Vec<_> = (6..10)
+        .flat_map(|x| (6..10).flat_map(move |y| (14..16).map(move |z| [x, y, z])))
+        .map(|xyz| VoxelSampleEdit {
+            xyz,
+            lod: 0,
+            material_slot: 0,
+        })
+        .collect();
+    let ticket = session.try_submit_edits(edits.into()).expect("edit admitted");
+    assert!(matches!(ticket.wait(), VoxelEditTicketState::Published(_)));
+    let edited = harness.frames(&mut renderer, || {});
+    edited.dump("voxel_edited");
+    let change = edited.difference(&restored).depth_texels;
+    println!("VOXEL edit: {change} depth texels changed (noise {noise})");
+    assert!(change > noise + 50, "the edit did not change the frame ({change}, noise {noise})");
+    let _ = session.finish(VoxelInboxClose::Drain);
+
+    // Removing the component restores the empty frame.
+    assert!(components::remove_component(&mut state.scene.world_mut(), &id, 0));
+    let removed = harness.frames(&mut renderer, || {});
+    assert_not_drawn("removed voxel object", removed.difference(&reference));
+
+    // A shadow on a floor below it.
+    let mut state = LevelEditorState::new();
+    let floor = drop_matte_mesh(&mut state);
+    let half = typed_mesh().bounds_local[3] / 3.0f32.sqrt();
+    move_to(&mut state, &floor, [0.0, -16.0, 0.0]);
+    transform(&mut state, &floor, None, Some([40.0 / half, 0.5 / half, 40.0 / half]));
+    add_volume(&mut state);
+    let lamp = add_light(&mut state, [0.0, 30.0, 0.0], Kind::Point, 5.0e4);
+    let mut renderer = harness.renderer(&state);
+    let shadowed = harness.frames(&mut renderer, || {});
+    shadowed.dump("voxel_shadowed");
+    set_light(&mut state, &lamp, "cast_shadows", Box::new(false));
+    let unshadowed = harness.frames(&mut renderer, || {});
+    unshadowed.dump("voxel_unshadowed");
+    println!(
+        "VOXEL shadow: brightness {} with, {} without",
+        brightness(&shadowed),
+        brightness(&unshadowed)
+    );
+    assert!(
+        brightness(&unshadowed) > brightness(&shadowed),
+        "the volume casts no shadow on the floor"
     );
 }

@@ -315,6 +315,9 @@ pub(crate) fn log_record_migrations(
     for (id, keys) in &records.stripped_props {
         tracing::info!(object = %id, path = %path.display(), ?keys, "Removed component copies from object props");
     }
+    for (id, class, fields) in &records.retired_fields {
+        tracing::info!(object = %id, class = %class, path = %path.display(), ?fields, "Removed retired component fields");
+    }
 }
 
 /// Load a scene from a JSON level file (replaces the current scene).
@@ -422,6 +425,9 @@ fn load_with_classes_and_editor_state<P: AsRef<Path>>(
             unresolved
         );
     }
+    // One sky and one directional light per level; extras are kept but
+    // disabled, logged.
+    engine_backend::scene::level_rules::enforce_on_load(world);
 
     tracing::info!(
         "Scene loaded from: {} (version: {})",

@@ -87,10 +87,16 @@ pub fn globals_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     })
 }
 
-/// Advance the clock the graph's `time` node reads: the same
-/// [`helio_mats::graph_time_seconds`] the renderer's passes upload.
+/// Advance the clock the graph's `time` node reads. The preview is always
+/// live, so its clock is wall time since the first preview frame (the
+/// renderer's passes read their host's frame clock instead).
 pub fn write_globals(queue: &wgpu::Queue, buffer: &wgpu::Buffer, frame: u32) {
-    write_globals_at(queue, buffer, frame, helio_mats::graph_time_seconds());
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let time = START
+        .get_or_init(std::time::Instant::now)
+        .elapsed()
+        .as_secs_f32();
+    write_globals_at(queue, buffer, frame, time);
 }
 
 /// [`write_globals`] with an explicit clock value.
