@@ -870,7 +870,15 @@ mod tests {
         interaction.update_hover(&world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
         assert_eq!(interaction.hovered, Some(Handle::Axis(0)));
         interaction.update_drag(&mut world, Vec3::ZERO, away.normalize(), Vec3::ZERO);
-        assert!(world.get::<Transform>(entity).unwrap().position[0] > length * 3.0);
+        // The cursor is 3.3 handle lengths along the axis from where the drag
+        // started; the moved position lands on the location snap grid.
+        let step = f32::from_bits(LOCATION_SNAP.load(Ordering::Relaxed));
+        let expected = (3.3 * length / step).round() * step;
+        let x = world.get::<Transform>(entity).unwrap().position[0];
+        assert!(
+            (x - expected).abs() < 1e-3 && x > 0.0,
+            "dragged off the handle to x = {x}, expected {expected}"
+        );
         interaction.cancel_drag();
         let final_transform = *world.get::<Transform>(entity).unwrap();
         interaction.update_drag(&mut world, Vec3::ZERO, start.normalize(), Vec3::ZERO);
