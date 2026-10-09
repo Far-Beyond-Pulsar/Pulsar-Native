@@ -154,6 +154,13 @@ impl Render for ViewportPanel {
                             mode == MeshRenderMode::Uv1,
                             editor_entity.clone(),
                             MeshRenderMode::Uv1,
+                        ))
+                        .child(render_mode_button(
+                            "asset_view_vertex_density",
+                            "Density",
+                            mode == MeshRenderMode::VertexDensity,
+                            editor_entity.clone(),
+                            MeshRenderMode::VertexDensity,
                         ));
 
                     div()
@@ -180,6 +187,35 @@ impl Render for ViewportPanel {
                         .on_key_up(AssetViewerPanel::on_key_up(cx))
                         .child(surface_elem)
                         .child(div().absolute().top(px(12.0)).left(px(12.0)).child(overlay))
+                        .child(if mode == MeshRenderMode::VertexDensity {
+                            v_flex()
+                                .absolute()
+                                .bottom(px(12.0))
+                                .left(px(12.0))
+                                .items_center()
+                                .gap_1()
+                                .px_2()
+                                .py_2()
+                                .bg(cx.theme().background.opacity(0.9))
+                                .rounded(cx.theme().radius)
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .text_xs()
+                                .child("Bad")
+                                .child(
+                                    v_flex()
+                                        .w(px(14.0))
+                                        .h(px(72.0))
+                                        .child(div().flex_1().w_full().bg(gpui::rgb(0xf21a0a)))
+                                        .child(div().flex_1().w_full().bg(gpui::rgb(0xff9800)))
+                                        .child(div().flex_1().w_full().bg(gpui::rgb(0xffe600)))
+                                        .child(div().flex_1().w_full().bg(gpui::rgb(0x14d936))),
+                                )
+                                .child("Good")
+                                .into_any_element()
+                        } else {
+                            div().into_any_element()
+                        })
                         .into_any_element()
                 } else {
                     div()

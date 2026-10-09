@@ -53,6 +53,8 @@ pub enum MeshRenderMode {
     Uv0,
     /// UV channel 2 (`tex_coords1`, the lightmap channel) sampled against the UV grid.
     Uv1,
+    /// Relative local vertex packing, from green (sparse) to red (dense).
+    VertexDensity,
 }
 
 pub struct AssetViewerPanel {

@@ -31,12 +31,14 @@ struct VertexInput {
     @location(1) normal: vec3<f32>,
     @location(2) uv0: vec2<f32>,
     @location(3) uv1: vec2<f32>,
+    @location(4) density: f32,
 };
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) world_normal: vec3<f32>,
     @location(1) uv0: vec2<f32>,
     @location(2) uv1: vec2<f32>,
+    @location(3) density: f32,
 };
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
@@ -45,6 +47,7 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     out.world_normal = input.normal;
     out.uv0 = input.uv0;
     out.uv1 = input.uv1;
+    out.density = input.density;
     return out;
 }
 
@@ -71,6 +74,16 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     }
     if uniforms.render_mode.x == 5u {
         return textureSample(uv_grid, uv_grid_sampler, input.uv1);
+    }
+    if uniforms.render_mode.x == 6u {
+        // Green marks sparse regions; yellow and red identify increasingly
+        // packed vertex neighborhoods that may carry more geometry cost.
+        let t = clamp(input.density, 0.0, 1.0);
+        let green = vec3<f32>(0.08, 0.85, 0.2);
+        let yellow = vec3<f32>(1.0, 0.9, 0.05);
+        let red = vec3<f32>(0.95, 0.08, 0.04);
+        let color = select(mix(green, yellow, t * 2.0), mix(yellow, red, (t - 0.5) * 2.0), t > 0.5);
+        return vec4(color, 1.0);
     }
     if uniforms.render_mode.x == 1u {
         return vec4(encode(uniforms.base_color.rgb), 1.0);
@@ -139,9 +152,10 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 "#;
 
 /// Floats per vertex: position, normal, UV channel 0, UV channel 1.
-pub(crate) const VERTEX_FLOATS: usize = 10;
+const SOURCE_VERTEX_FLOATS: usize = 10;
+pub(crate) const VERTEX_FLOATS: usize = 11;
 
-const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 4] = [
+const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 5] = [
     wgpu::VertexAttribute {
         format: wgpu::VertexFormat::Float32x3,
         offset: 0,
@@ -162,6 +176,11 @@ const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 4] = [
         offset: 32,
         shader_location: 3,
     },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32,
+        offset: 40,
+        shader_location: 4,
+    },
 ];
 
 pub(crate) fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
@@ -170,6 +189,61 @@ pub(crate) fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
         step_mode: wgpu::VertexStepMode::Vertex,
         attributes: &MESH_ATTRIBUTES,
     }
+}
+
+/// Estimate local geometric vertex packing with a small spatial hash. Counts
+/// use a 3x3x3 neighborhood, then a log scale limits outlier influence.
+fn local_vertex_density(source_vertices: &[f32], vertex_count: usize) -> Vec<f32> {
+    if vertex_count == 0 {
+        return Vec::new();
+    }
+
+    let cell_width = 1.0 / 32.0;
+    let mut bounds_min = [f32::INFINITY; 3];
+    for vertex in source_vertices.chunks_exact(SOURCE_VERTEX_FLOATS) {
+        for axis in 0..3 {
+            bounds_min[axis] = bounds_min[axis].min(vertex[axis]);
+        }
+    }
+
+    let cells: Vec<[i32; 3]> = source_vertices
+        .chunks_exact(SOURCE_VERTEX_FLOATS)
+        .map(|vertex| {
+            std::array::from_fn(|axis| {
+                ((vertex[axis] - bounds_min[axis]) / cell_width).floor() as i32
+            })
+        })
+        .collect();
+    let mut buckets = std::collections::HashMap::<[i32; 3], Vec<usize>>::new();
+    for (index, cell) in cells.iter().copied().enumerate() {
+        buckets.entry(cell).or_default().push(index);
+    }
+
+    let mut counts = vec![0u32; vertex_count];
+    for (index, [x, y, z]) in cells.iter().copied().enumerate() {
+        let mut count = 0;
+        for dz in -1..=1 {
+            for dy in -1..=1 {
+                for dx in -1..=1 {
+                    if let Some(bucket) = buckets.get(&[x + dx, y + dy, z + dz]) {
+                        count += bucket.len() as u32;
+                    }
+                }
+            }
+        }
+        counts[index] = count.max(1);
+    }
+
+    let mut sorted_counts = counts.clone();
+    sorted_counts.sort_unstable();
+    let low_reference = sorted_counts[((sorted_counts.len() - 1) * 10) / 100].max(1);
+    let high_reference = sorted_counts[((sorted_counts.len() - 1) * 95) / 100].max(1);
+    let log_low = (1.0 + low_reference as f32).ln();
+    let log_span = ((1.0 + high_reference as f32).ln() - log_low).max(1e-5);
+    counts
+        .into_iter()
+        .map(|count| (((1.0 + count as f32).ln() - log_low) / log_span).clamp(0.0, 1.0))
+        .collect()
 }
 
 pub(crate) fn create_mesh_pipeline(
@@ -1038,6 +1112,13 @@ impl AssetViewerPanel {
         verts: &[f32],
         indices: &[u32],
     ) {
+        let vertex_count = verts.len() / SOURCE_VERTEX_FLOATS;
+        let density = local_vertex_density(verts, vertex_count);
+        let mut packed_verts = Vec::with_capacity(vertex_count * VERTEX_FLOATS);
+        for (index, vertex) in verts.chunks_exact(SOURCE_VERTEX_FLOATS).enumerate() {
+            packed_verts.extend_from_slice(vertex);
+            packed_verts.push(density[index]);
+        }
         let wire_indices: Vec<u32> = indices
             .chunks_exact(3)
             .flat_map(|triangle| {
@@ -1054,11 +1135,11 @@ impl AssetViewerPanel {
 
         let vb = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("mesh vertex buffer"),
-            size: (verts.len() * 4) as u64,
+            size: (packed_verts.len() * 4) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        queue.write_buffer(&vb, 0, bytemuck::cast_slice(verts));
+        queue.write_buffer(&vb, 0, bytemuck::cast_slice(&packed_verts));
 
         let ib = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("mesh index buffer"),
@@ -1085,7 +1166,7 @@ impl AssetViewerPanel {
         log::info!(
             "Loaded mesh {:?}: {} verts, {} indices",
             self.current_path,
-            verts.len() / VERTEX_FLOATS,
+            vertex_count,
             indices.len()
         );
     }
@@ -1391,6 +1472,7 @@ impl AssetViewerPanel {
             MeshRenderMode::Normals => 3,
             MeshRenderMode::Uv0 => 4,
             MeshRenderMode::Uv1 => 5,
+            MeshRenderMode::VertexDensity => 6,
         };
         // `.mesh` sections carry linear material colours.
         let linear: u32 = u32::from(!self.mesh_sections.is_empty());
