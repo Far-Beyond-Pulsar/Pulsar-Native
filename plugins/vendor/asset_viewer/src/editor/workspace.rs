@@ -5,7 +5,6 @@ use ui::button::{Button, ButtonVariants as _};
 use ui::dock::{DockChannel, DockItem, PanelEvent};
 use ui::workspace::Workspace;
 use ui::{h_flex, v_flex, ActiveTheme, Selectable};
-use ui::tooltip::Tooltip;
 
 use super::panel::{AssetViewerPanel, MeshRenderMode};
 use super::workspace_panels::AssetPropertiesPanel;
@@ -215,18 +214,14 @@ impl Render for ViewportPanel {
                                             (0x00edf5, "cyan"),
                                             (0x0d33ff, "blue"),
                                             (0x8c14ff, "violet"),
-                                        ].into_iter().enumerate().map(|(index, (color, name))| {
+                                        ].into_iter().enumerate().map(|(index, (color, _name))| {
                                             let band = 6 - index as u32;
-                                            let tooltip = editor.density_band_ranges.map(|ranges| {
-                                                let (low, high) = ranges[band as usize];
-                                                format!("{name}: {:.3}–{:.3} vertices / unit²", low, high)
-                                            }).unwrap_or_else(|| format!("{name} density"));
                                             let editor_entity = editor_entity.clone();
+                                            let viewport_entity = cx.entity().clone();
                                             div()
                                                 .flex_1()
                                                 .w_full()
                                                 .bg(gpui::rgb(color))
-                                                .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
                                                 .on_hover(cx.listener(move |_, hovered: &bool, _, cx| {
                                                     let selected = if *hovered { Some(band) } else { None };
                                                     let _ = editor_entity.update(cx, |panel, cx| {
@@ -235,11 +230,46 @@ impl Render for ViewportPanel {
                                                             cx.notify();
                                                         }
                                                     });
+                                                    // The WGPU surface is rendered from this viewport panel. Notifying
+                                                    // only the editor entity updates the controls, but does not schedule
+                                                    // a new viewport render (and therefore never uploads the new uniform).
+                                                    let _ = viewport_entity.update(cx, |_, cx| cx.notify());
                                                 }))
                                         })),
                                 )
                                 .child("Good")
                                 .into_any_element()
+                        } else {
+                            div().into_any_element()
+                        })
+                        .child(if mode == MeshRenderMode::VertexDensity {
+                            editor.density_hover_band.map_or_else(
+                                || div().into_any_element(),
+                                |band| {
+                                    let name = ["violet", "blue", "cyan", "green", "yellow", "orange", "red"]
+                                        [band as usize];
+                                    let range_text = editor.density_band_ranges.map_or_else(
+                                        || format!("{name} density"),
+                                        |ranges| {
+                                            let (low, high) = ranges[band as usize];
+                                            format!("{name}: {low:.3}–{high:.3} vertices / unit²")
+                                        },
+                                    );
+                                    v_flex()
+                                        .absolute()
+                                        .bottom(px(12.0))
+                                        .left(px(72.0))
+                                        .px_2()
+                                        .py_1()
+                                        .bg(cx.theme().background.opacity(0.96))
+                                        .rounded(cx.theme().radius)
+                                        .border_1()
+                                        .border_color(cx.theme().border)
+                                        .text_xs()
+                                        .child(range_text)
+                                        .into_any_element()
+                                },
+                            )
                         } else {
                             div().into_any_element()
                         })
