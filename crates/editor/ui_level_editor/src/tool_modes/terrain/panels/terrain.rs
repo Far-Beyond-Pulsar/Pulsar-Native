@@ -25,8 +25,8 @@ use ui::{
 };
 
 use super::widgets::{
-    collapsible_header, info_row, panel_header, segmented_row, stepper_row, swatch_color,
-    tool_grid, SharedState, ToolSpec,
+    collapsible_header, info_row, segmented_row, stepper_row, swatch_color, tool_grid, SharedState,
+    ToolSpec,
 };
 use crate::commands::{execute_command, SceneCommand, TypedComponent};
 use crate::scene_edit::{ObjectType, SceneObjectData, Transform};
@@ -253,11 +253,12 @@ impl Render for TerrainPanel {
                     .gap_2()
                     .border_b_1()
                     .border_color(theme.border.opacity(0.55))
-                    .child(panel_header(
-                        &theme,
-                        t!("LevelEditor.TerrainPanel.Title").to_string(),
-                        subtitle,
-                    ))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(subtitle),
+                    )
                     .child(self.render_tab_bar(cx)),
             )
             .child(if let Some(body) = body {

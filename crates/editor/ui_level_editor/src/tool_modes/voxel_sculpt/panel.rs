@@ -191,15 +191,9 @@ impl Render for VoxelSculptPanel {
         let settings = self.state.read().editor.voxel;
         self.last_settings = settings;
         let theme = cx.theme().clone();
-        let (title, subtitle) = match self.kind {
-            PanelKind::Tools => (
-                "LevelEditor.VoxelPanel.ToolsTitle",
-                "LevelEditor.VoxelPanel.ToolsSubtitle",
-            ),
-            PanelKind::Materials => (
-                "LevelEditor.VoxelPanel.MaterialsTitle",
-                "LevelEditor.VoxelPanel.MaterialsSubtitle",
-            ),
+        let subtitle = match self.kind {
+            PanelKind::Tools => "LevelEditor.VoxelPanel.ToolsSubtitle",
+            PanelKind::Materials => "LevelEditor.VoxelPanel.MaterialsSubtitle",
         };
         let body = match self.kind {
             PanelKind::Tools => self.render_brush(settings, window, cx),
@@ -216,12 +210,6 @@ impl Render for VoxelSculptPanel {
                     .gap_1()
                     .border_b_1()
                     .border_color(theme.border.opacity(0.55))
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::BOLD)
-                            .child(t!(title).to_string()),
-                    )
                     .child(
                         div()
                             .text_xs()

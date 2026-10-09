@@ -1232,28 +1232,6 @@ impl Render for SplinePanel {
                     .gap_2()
                     .border_b_1()
                     .border_color(theme.border)
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                Icon::new(IconName::MapPin)
-                                    .size_5()
-                                    .text_color(theme.primary),
-                            )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .font_weight(FontWeight::BOLD)
-                                    .child(t!("LevelEditor.SplinePanel.Title").to_string()),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme.muted_foreground)
-                                    .child(format!("{}", rows.len())),
-                            ),
-                    )
                     .child(tabs),
             )
             .child(body)

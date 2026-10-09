@@ -23,20 +23,7 @@ use crate::state::LevelEditorState;
 
 pub type SharedState = Arc<parking_lot::RwLock<LevelEditorState>>;
 
-// ── Headers & sections ────────────────────────────────────────────────────
-
-/// A panel heading: title plus a muted subtitle line.
-pub fn panel_header(theme: &ui::Theme, title: String, subtitle: String) -> impl IntoElement {
-    v_flex()
-        .gap_1()
-        .child(div().text_sm().font_weight(FontWeight::BOLD).child(title))
-        .child(
-            div()
-                .text_xs()
-                .text_color(theme.muted_foreground)
-                .child(subtitle),
-        )
-}
+// ── Sections ──────────────────────────────────────────────────────────────
 
 /// A non-collapsible upper-case section label with a hairline rule.
 pub fn section(theme: &ui::Theme, label_key: &'static str) -> impl IntoElement {
