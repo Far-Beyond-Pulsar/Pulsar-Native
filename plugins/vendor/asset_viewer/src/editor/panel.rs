@@ -47,6 +47,12 @@ pub enum MeshRenderMode {
     Lit,
     Unlit,
     Wireframe,
+    /// Object-space normals as colour.
+    Normals,
+    /// UV channel 1 (`tex_coords0`) as a checkered gradient.
+    Uv0,
+    /// UV channel 2 (`tex_coords1`, the lightmap channel) likewise.
+    Uv1,
 }
 
 pub struct AssetViewerPanel {

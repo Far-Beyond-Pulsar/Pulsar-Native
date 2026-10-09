@@ -133,6 +133,27 @@ impl Render for ViewportPanel {
                             mode == MeshRenderMode::Wireframe,
                             editor_entity.clone(),
                             MeshRenderMode::Wireframe,
+                        ))
+                        .child(render_mode_button(
+                            "asset_view_normals",
+                            "Normals",
+                            mode == MeshRenderMode::Normals,
+                            editor_entity.clone(),
+                            MeshRenderMode::Normals,
+                        ))
+                        .child(render_mode_button(
+                            "asset_view_uv0",
+                            "UV 1",
+                            mode == MeshRenderMode::Uv0,
+                            editor_entity.clone(),
+                            MeshRenderMode::Uv0,
+                        ))
+                        .child(render_mode_button(
+                            "asset_view_uv1",
+                            "UV 2",
+                            mode == MeshRenderMode::Uv1,
+                            editor_entity.clone(),
+                            MeshRenderMode::Uv1,
                         ));
 
                     div()

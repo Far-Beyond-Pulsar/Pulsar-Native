@@ -18,7 +18,7 @@ const MAX_DRAW_SLOTS: u64 = 128;
 /// Base colour of meshes with no per-section materials (FBX).
 const DEFAULT_BASE_COLOR: [f32; 4] = [0.74, 0.83, 1.0, 1.0];
 
-static MESH_VERTEX_SRC: &str = r#"
+pub(crate) static MESH_VERTEX_SRC: &str = r#"
 struct Uniforms {
     view_proj: mat4x4<f32>,
     render_mode: vec4<u32>,
@@ -29,16 +29,22 @@ struct Uniforms {
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
+    @location(2) uv0: vec2<f32>,
+    @location(3) uv1: vec2<f32>,
 };
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) world_normal: vec3<f32>,
+    @location(1) uv0: vec2<f32>,
+    @location(2) uv1: vec2<f32>,
 };
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.position = uniforms.view_proj * vec4(input.position, 1.0);
     out.world_normal = input.normal;
+    out.uv0 = input.uv0;
+    out.uv1 = input.uv1;
     return out;
 }
 
@@ -50,8 +56,31 @@ fn encode(c: vec3<f32>) -> vec3<f32> {
     return c;
 }
 
+// UV debug view: a U/V gradient under a checker (8 cells per UV unit), tinted
+// red outside 0..1 so overlap and out-of-range islands stand out.
+fn uv_view(uv: vec2<f32>) -> vec3<f32> {
+    let cell = vec2<i32>(floor(uv * 8.0));
+    let checker = f32((cell.x + cell.y) & 1);
+    var color = vec3(fract(uv.x), fract(uv.y), 0.25) * (0.7 + 0.3 * checker);
+    if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
+        color = mix(color, vec3(1.0, 0.2, 0.2), 0.5);
+    }
+    return color;
+}
+
 @fragment
-fn fs_main(@location(0) world_normal: vec3<f32>) -> @location(0) vec4<f32> {
+fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    let world_normal = input.world_normal;
+    // Render modes 3-5 are diagnostic views and ignore materials.
+    if uniforms.render_mode.x == 3u {
+        return vec4(normalize(world_normal) * 0.5 + vec3(0.5), 1.0);
+    }
+    if uniforms.render_mode.x == 4u {
+        return vec4(uv_view(input.uv0), 1.0);
+    }
+    if uniforms.render_mode.x == 5u {
+        return vec4(uv_view(input.uv1), 1.0);
+    }
     if uniforms.render_mode.x == 1u {
         return vec4(encode(uniforms.base_color.rgb), 1.0);
     }
@@ -118,10 +147,10 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 }
 "#;
 
-/// Floats per vertex: position, normal, UV.
-pub(crate) const VERTEX_FLOATS: usize = 8;
+/// Floats per vertex: position, normal, UV channel 0, UV channel 1.
+pub(crate) const VERTEX_FLOATS: usize = 10;
 
-const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 3] = [
+const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 4] = [
     wgpu::VertexAttribute {
         format: wgpu::VertexFormat::Float32x3,
         offset: 0,
@@ -137,6 +166,11 @@ const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 3] = [
         offset: 24,
         shader_location: 2,
     },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x2,
+        offset: 32,
+        shader_location: 3,
+    },
 ];
 
 pub(crate) fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
@@ -147,7 +181,7 @@ pub(crate) fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
-fn create_mesh_pipeline(
+pub(crate) fn create_mesh_pipeline(
     device: &wgpu::Device,
     config: &wgpu::SurfaceConfiguration,
     layout: &wgpu::PipelineLayout,
@@ -620,6 +654,7 @@ impl AssetViewerPanel {
             }
             verts.extend(unpack(v.normal));
             verts.extend(v.tex_coords0);
+            verts.extend(v.tex_coords1);
         }
 
         let triangles = (asset.geometry.indices.len() / 3) as u32;
@@ -815,7 +850,7 @@ impl AssetViewerPanel {
             verts.push(mv.ny);
             verts.push(mv.nz);
             // FBX preview carries no UV layer through this path.
-            verts.extend([0.0, 0.0]);
+            verts.extend([0.0; 4]);
         }
 
         // Build per-mesh properties and scene stats
@@ -1259,11 +1294,14 @@ impl AssetViewerPanel {
             MeshRenderMode::Lit => 0,
             MeshRenderMode::Unlit => 1,
             MeshRenderMode::Wireframe => 2,
+            MeshRenderMode::Normals => 3,
+            MeshRenderMode::Uv0 => 4,
+            MeshRenderMode::Uv1 => 5,
         };
         // `.mesh` sections carry linear material colours.
         let linear: u32 = u32::from(!self.mesh_sections.is_empty());
         let draws: Vec<(std::ops::Range<u32>, [f32; 4], usize)> =
-            if mode == 2 || self.mesh_sections.is_empty() {
+            if mode >= 2 || self.mesh_sections.is_empty() {
                 vec![(0..index_count, DEFAULT_BASE_COLOR, usize::MAX)]
             } else {
                 self.mesh_sections
@@ -1364,7 +1402,7 @@ impl AssetViewerPanel {
                     .and_then(Option::as_ref)
                     .zip(self.empty_bind_group.as_ref())
                     .zip(self.globals_bind_group.as_ref())
-                    .filter(|_| mode != 2);
+                    .filter(|_| mode <= 1);
                 if let Some(((graph, empty), globals)) = graph {
                     // Shader-graph material: its own pipeline; the template
                     // owns groups 0-2 (globals, textures), the viewer
