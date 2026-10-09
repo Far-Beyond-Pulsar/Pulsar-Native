@@ -49,9 +49,9 @@ pub enum MeshRenderMode {
     Wireframe,
     /// Object-space normals as colour.
     Normals,
-    /// UV channel 1 (`tex_coords0`) as a checkered gradient.
+    /// UV channel 1 (`tex_coords0`) sampled against the embedded UV reference grid.
     Uv0,
-    /// UV channel 2 (`tex_coords1`, the lightmap channel) likewise.
+    /// UV channel 2 (`tex_coords1`, the lightmap channel) sampled against the UV grid.
     Uv1,
 }
 
