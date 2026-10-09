@@ -34,6 +34,11 @@ just build        cargo build -p pulsar_engine
 just test         cargo test --workspace
 just clippy       cargo clippy --workspace -- -D warnings
 just submodule-init   git submodule update --init --recursive
+just check-submodule-pins   every submodule pinned to a commit on its upstream main
 ```
+
+Submodule changes merge dependency-first: merge the dependency PR into its
+main, re-pin the submodule to that main commit, then merge the Pulsar PR (see
+"Submodule pins" in `.agents/CRATES.md`).
 
 See `.agents/` for detailed docs on each subsystem.

@@ -119,8 +119,9 @@ Two git submodules referenced as path deps:
 | `wgpui/` | `gpui-ce` crate | The GPU-accelerated UI framework (fork of Zed) |
 | `wgpui-component/` | `ui` + `ui-macros` crates | Rich UI primitives built on GPUI |
 
-Changes to these submodules are committed directly in Pulsar-Native. They are
-not workspace members (Cargo nested workspace limitation).
+Changes to these submodules are committed in their own repositories and
+pinned here (see "Submodule pins" below). They are not workspace members
+(Cargo nested workspace limitation).
 
 ## third-party/ — Vendored deps
 
@@ -142,3 +143,19 @@ git submodule compiled as `cdylib`:
 - `shader_editor` — Shader graph editor
 - `table_editor` — Database table editor
 - `matter_editor` — Material editor
+
+## Submodule pins
+
+Every submodule (Helio, the `third-party/` and `ui/` repos, Pulsar-Reflection,
+the plugins) must pin a commit on its upstream default branch; CI's "submodule
+pins are on upstream main" job (`just check-submodule-pins`) fails otherwise.
+A change that spans a dependency and Pulsar-Native merges in this order:
+
+1. merge the dependency PR into the dependency's default branch;
+2. re-pin the submodule here to that default-branch commit;
+3. merge the Pulsar-Native PR.
+
+Pinning a dependency's feature branch is fine while a PR is in review, but not
+on main. Pins still waiting on an upstream PR are listed, with that PR, in
+`.github/submodule-pin-exceptions.txt`; the check flags a line as stale once
+its pin lands upstream, and the line should then be deleted.
