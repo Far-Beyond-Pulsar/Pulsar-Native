@@ -13,4 +13,4 @@ crates/third-party/psgc a05c2c4a2 PSGC branch codex/texture-src; no upstream PR 
 plugins/vendor/blueprint_editor 06fe1b45c Plugin_Blueprints branch feat/blueprint-graph-crate (includes Plugin_Blueprints#29); no PR to main yet
 plugins/vendor/code_editor 967cbb808 Plugin_CodeEditor branch chore/drop-pbgc-patch; no upstream PR yet
 crates/ui/wgpui 8fb904e49 WGPUI branch claude/cool-hypatia-ict23g, Far-Beyond-Pulsar/WGPUI#266 (test asset source for the sidebar screenshots)
-crates/ui/wgpui-component 6e459a7eb WGPUI-Component branch claude/cool-hypatia-ict23g, Far-Beyond-Pulsar/WGPUI-Component#24 (TabPanel::set_tab_bar_hidden)
+crates/ui/wgpui-component 48f31d242 WGPUI-Component branch claude/cool-hypatia-ict23g, Far-Beyond-Pulsar/WGPUI-Component#24 (TabPanel::set_tab_bar_hidden)

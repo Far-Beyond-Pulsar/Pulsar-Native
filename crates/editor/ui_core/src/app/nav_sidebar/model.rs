@@ -195,21 +195,6 @@ impl SidebarModel {
         }
     }
 
-    /// Expand every folder from the content root down to `path`, so it shows.
-    pub fn reveal_folder(&mut self, root: &Path, path: &Path) {
-        let mut current = path.parent();
-        while let Some(dir) = current {
-            if !dir.starts_with(root) {
-                break;
-            }
-            self.expanded_folders.insert(dir.to_path_buf());
-            if dir == root {
-                break;
-            }
-            current = dir.parent();
-        }
-    }
-
     /// The visible folder rows under `root` (the root itself not included).
     pub fn folder_rows(&self, root: &FolderNode) -> Vec<FolderRow> {
         fn visit(model: &SidebarModel, node: &FolderNode, depth: usize, out: &mut Vec<FolderRow>) {
@@ -557,18 +542,6 @@ mod tests {
         let rows = model.folder_rows(content);
         assert!(rows[1].has_children && rows[1].expanded);
         assert!(!rows[0].has_children);
-    }
-
-    #[test]
-    fn revealing_a_folder_expands_its_ancestors_within_the_root() {
-        let mut model = SidebarModel::default();
-        model.reveal_folder(
-            Path::new("/p/Content"),
-            Path::new("/p/Content/Characters/Hero"),
-        );
-        assert!(model.folder_expanded(Path::new("/p/Content/Characters")));
-        assert!(model.folder_expanded(Path::new("/p/Content")));
-        assert!(!model.folder_expanded(Path::new("/p")));
     }
 
     #[test]
