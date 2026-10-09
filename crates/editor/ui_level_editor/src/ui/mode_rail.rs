@@ -19,12 +19,21 @@ use crate::{
     ui::{frame_pump::spawn_frame_pump, toolbar::SetToolMode},
 };
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 struct ModeEntry {
     id: ToolModeId,
     label: String,
     description: String,
     icon: IconName,
+}
+
+impl PartialEq for ModeEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+            && self.label == other.label
+            && self.description == other.description
+            && format!("{:?}", self.icon) == format!("{:?}", other.icon)
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -106,7 +115,7 @@ impl Render for ModeRailView {
                 .w_full()
                 .tooltip(mode.description)
                 .on_click(move |_, _, cx| {
-                    cx.dispatch_action(Box::new(SetToolMode(mode.id)), cx);
+                    cx.dispatch_action(&SetToolMode(mode.id));
                 });
             modes = modes.child(if is_selected {
                 button.primary()

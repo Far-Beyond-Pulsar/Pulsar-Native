@@ -305,7 +305,7 @@ impl TerrainPanel {
             for (tab, icon, label_key) in items {
                 let tab = *tab;
                 let button = Button::new(format!("terrain_tab_{}", tab as u8))
-                    .icon(*icon)
+                    .icon(icon.clone())
                     .label(t!(*label_key))
                     .small()
                     .on_click(cx.listener(move |this, _, _, cx| {

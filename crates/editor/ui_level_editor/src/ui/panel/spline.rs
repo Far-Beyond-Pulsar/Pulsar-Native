@@ -1103,36 +1103,48 @@ impl Render for SplinePanel {
             self.field_target = target;
         }
         let theme = cx.theme().clone();
-        let mut tabs = h_flex().w_full().gap_1();
+        let mut tabs = h_flex()
+            .w_full()
+            .gap_1()
+            .p(px(2.0))
+            .rounded(px(6.0))
+            .bg(theme.muted.opacity(0.1));
         for tab in Tab::ALL {
             let b = Button::new(tab.key())
                 .label(t!(tab.key()))
                 .small()
+                .w_full()
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.tab = tab;
                     cx.notify();
                 }));
-            tabs = tabs.child(if self.tab == tab {
+            tabs = tabs.child(div().flex_1().child(if self.tab == tab {
                 b.primary()
             } else {
                 b.ghost()
-            });
+            }));
         }
-        let mut tools = h_flex().w_full().flex_wrap().gap_1();
-        for tool in SplineTool::ALL {
-            let state = self.state.clone();
-            let b = Button::new(tool.key())
-                .label(t!(tool.key()))
-                .small()
-                .on_click(cx.listener(move |_, _, _, cx| {
-                    state.write().editor.spline.tool = tool;
-                    cx.notify();
+        let mut tools = v_flex().w_full().gap_1();
+        for tool_row in SplineTool::ALL.chunks(3) {
+            let mut row = h_flex().w_full().gap_1();
+            for tool in tool_row {
+                let tool = *tool;
+                let state = self.state.clone();
+                let b = Button::new(tool.key())
+                    .label(t!(tool.key()))
+                    .small()
+                    .w_full()
+                    .on_click(cx.listener(move |_, _, _, cx| {
+                        state.write().editor.spline.tool = tool;
+                        cx.notify();
+                    }));
+                row = row.child(div().flex_1().child(if settings.tool == tool {
+                    b.primary()
+                } else {
+                    b.ghost()
                 }));
-            tools = tools.child(if settings.tool == tool {
-                b.primary()
-            } else {
-                b.ghost()
-            });
+            }
+            tools = tools.child(row);
         }
         let content = match (self.tab, &selected) {
             (Tab::Manage, _) => self.manage(&rows, &selected, window, cx),
@@ -1153,6 +1165,14 @@ impl Render for SplinePanel {
             .overflow_y_scroll()
             .p_3()
             .gap_3();
+        if self.tab == Tab::Tools {
+            body = body.child(tools).child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(t!("LevelEditor.SplinePanel.ToolHint").to_string()),
+            );
+        }
         if let Some((object, curve)) = &selected {
             body = body
                 .child(
@@ -1234,14 +1254,7 @@ impl Render for SplinePanel {
                                     .child(format!("{}", rows.len())),
                             ),
                     )
-                    .child(tabs)
-                    .child(tools)
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme.muted_foreground)
-                            .child(t!("LevelEditor.SplinePanel.ToolHint").to_string()),
-                    ),
+                    .child(tabs),
             )
             .child(body)
             .child(

@@ -237,15 +237,14 @@ impl Render for VoxelSculptPanel {
                                     .label(t!("LevelEditor.VoxelPanel.ToolsTitle").to_string())
                                     .icon(IconName::Cube)
                                     .small()
-                                    .flex_1()
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.kind = PanelKind::Tools;
                                         cx.notify();
                                     }));
                                 if matches!(self.kind, PanelKind::Tools) {
-                                    button.primary()
+                                    div().flex_1().child(button.primary().w_full())
                                 } else {
-                                    button.ghost()
+                                    div().flex_1().child(button.ghost().w_full())
                                 }
                             })
                             .child({
@@ -253,15 +252,14 @@ impl Render for VoxelSculptPanel {
                                     .label(t!("LevelEditor.VoxelPanel.MaterialsTitle").to_string())
                                     .icon(IconName::Palette)
                                     .small()
-                                    .flex_1()
                                     .on_click(cx.listener(|this, _, _, cx| {
                                         this.kind = PanelKind::Materials;
                                         cx.notify();
                                     }));
                                 if matches!(self.kind, PanelKind::Materials) {
-                                    button.primary()
+                                    div().flex_1().child(button.primary().w_full())
                                 } else {
-                                    button.ghost()
+                                    div().flex_1().child(button.ghost().w_full())
                                 }
                             }),
                     ),

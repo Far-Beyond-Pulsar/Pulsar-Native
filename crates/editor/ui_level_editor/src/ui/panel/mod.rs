@@ -17,6 +17,7 @@ use gpui::*;
 use rust_i18n::t;
 use ui::{
     dock::{DockItem, Panel, PanelEvent},
+    h_flex,
     resizable::ResizableState,
     v_flex,
     workspace::Workspace,
