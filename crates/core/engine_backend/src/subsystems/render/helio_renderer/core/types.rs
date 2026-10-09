@@ -46,6 +46,10 @@ pub struct GpuProfilerData {
     pub readback_drops: u64,
     pub query_overflows: u64,
     pub render_metrics: Vec<DiagnosticMetric>,
+    /// VoxelPlanet GPU timestamp stages. These are kept separately from the
+    /// render-graph pass list so the trace bridge can nest them under the
+    /// `VoxelPlanet` pass rather than laying them out as peer passes.
+    pub voxel_planet_stages: Vec<DiagnosticMetric>,
 }
 
 /// Runtime policy for lightweight frame-spike warning logs.
@@ -93,12 +97,20 @@ impl GpuProfilerData {
         self.query_overflows = snapshot.query_overflows;
 
         self.render_metrics.clear();
-        self.render_metrics
-            .extend(snapshot.passes.iter().map(|pass| DiagnosticMetric {
-                name: pass.name,
+        self.voxel_planet_stages.clear();
+        for pass in &snapshot.passes {
+            let stage = pass.name.strip_prefix("VoxelPlanet::");
+            let metric = DiagnosticMetric {
+                name: stage.unwrap_or(pass.name),
                 cpu_ms: pass.cpu_ms,
                 gpu_ms: pass.gpu_ms,
-            }));
+            };
+            if stage.is_some() {
+                self.voxel_planet_stages.push(metric);
+            } else {
+                self.render_metrics.push(metric);
+            }
+        }
     }
 
     pub fn slowest_cpu_pass(&self) -> Option<(&'static str, f32)> {
