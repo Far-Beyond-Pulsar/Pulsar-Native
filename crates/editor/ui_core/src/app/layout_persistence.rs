@@ -822,6 +822,11 @@ mod tests {
             version: LAYOUT_VERSION,
             sidebar: SavedSidebar {
                 pinned: vec![TabKey::File("Content/Hero.class".into()), TabKey::Panel("Level Editor".into())],
+                groups: vec![super::super::nav_sidebar::model::SavedGroup {
+                    name: "Combat".into(),
+                    members: vec![TabKey::File("Content/Sword.class".into())],
+                    collapsed: false,
+                }],
                 collapsed_groups: vec!["Blueprint Editor".into()],
                 expanded_folders: vec!["Content/Maps".into()],
             },

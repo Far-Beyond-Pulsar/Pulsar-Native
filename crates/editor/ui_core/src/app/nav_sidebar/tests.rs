@@ -3,8 +3,8 @@
 //! hover without moving it, makes room when kept open, switches tabs, and lists
 //! a folder's assets in the bottom drawer.
 //!
-//! `sidebar_screenshots` walks the same steps with real fonts and icons and
-//! saves a PNG of each state, when `PULSAR_SIDEBAR_SHOTS` names a folder and a
+//! `sidebar_screenshots` walks the same steps with real fonts and saves a PNG
+//! of each state, when `PULSAR_SIDEBAR_SHOTS` names a folder and a
 //! GPU adapter is available.
 
 use std::path::{Path, PathBuf};
@@ -18,6 +18,7 @@ use gpui::{
 };
 use ui::dock::{Panel, PanelEvent, PanelView};
 
+use super::model::SectionId;
 use super::render::{DRAWER_WIDTH, RAIL_WIDTH};
 use crate::app::PulsarApp;
 
@@ -206,8 +207,8 @@ fn sidebar_screenshots() {
     let Some(dir) = std::env::var_os("PULSAR_SIDEBAR_SHOTS").map(PathBuf::from) else {
         return;
     };
+    // A test context has no asset source, so icons come out blank.
     let mut cx = TestAppContext::with_real_text_system();
-    cx.set_asset_source(ui::Assets);
     walk(&mut cx, Some(dir));
 }
 
@@ -283,13 +284,22 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
         assert_eq!(drawer.selected_folder(), Some(maps.as_path()));
         assert!(drawer.folder_tree_hidden(), "the sidebar supplies the tree");
     });
+    // The hover sidebar stops above the floating file drawer.
+    let drawer_height = ed.app.read_with(&ed.cx, |app, _| app.state.drawer_height);
+    let sidebar = ed.bounds("nav-sidebar-drawer").expect("hover sidebar");
+    assert_eq!(
+        sidebar.bottom(),
+        area.bottom() - px(drawer_height),
+        "does not cover the assets"
+    );
+    shots.save(cx, "3-hover-above-drawer");
     // The pointer moves on to the assets, so the hover drawer closes.
     ed.app.update(&mut ed.cx, |app, cx| {
         app.state.nav_sidebar.hover.close();
         cx.notify();
     });
     ed.draw();
-    shots.save(cx, "3-folder-assets");
+    shots.save(cx, "4-folder-assets");
     ed.app.update(&mut ed.cx, |app, cx| {
         app.state.drawer_open = false;
         cx.notify();
@@ -313,6 +323,52 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
     assert!(ed.bounds("page-Hero.class").is_some(), "its page is drawn");
     assert!(!ed.hover_open(), "choosing a tab closes the hover drawer");
 
+    // The user's groups: one made from a row, another tab dropped on it.
+    let hero_key = hero.key.clone();
+    ed.app.update_in(&mut ed.cx, |app, window, cx| {
+        app.new_sidebar_group(Some(hero_key.clone()), window, cx)
+    });
+    let (group, field) = ed.app.read_with(&ed.cx, |app, _| {
+        let group = app.state.nav_sidebar.model.groups()[0].id;
+        let field = app.state.nav_sidebar.rename_field(group).cloned();
+        (
+            group,
+            field.expect("a new group starts with its name being edited"),
+        )
+    });
+    field.update_in(&mut ed.cx, |field, window, cx| {
+        field.set_value("Combat", window, cx)
+    });
+    ed.app
+        .update(&mut ed.cx, |app, cx| app.finish_sidebar_group_rename(cx));
+
+    let door = tabs.iter().position(|t| t.title == "Door.class").unwrap();
+    let drag = ed
+        .app
+        .read_with(&ed.cx, |app, cx| app.sidebar_tab_drag(door, cx))
+        .expect("rows drag like tabs");
+    ed.app.read_with(&ed.cx, |_, cx| {
+        assert_eq!(drag.panel().tab_name(cx).as_deref(), Some("Door.class"));
+    });
+    ed.app.update(&mut ed.cx, |app, cx| {
+        app.drop_on_sidebar_section(&SectionId::Custom(group), &drag, cx)
+    });
+    ed.draw();
+    let sections = ed.app.read_with(&ed.cx, |app, cx| {
+        app.state.nav_sidebar.model.sections(&app.sidebar_tabs(cx))
+    });
+    let combat = sections
+        .iter()
+        .find(|s| s.id == SectionId::Custom(group))
+        .unwrap();
+    assert_eq!(combat.label, "Combat");
+    let titles: Vec<&str> = combat.tabs.iter().map(|t| t.title.as_str()).collect();
+    assert_eq!(titles, ["Hero.class", "Door.class"]);
+    assert!(
+        sections.iter().all(|s| s.label != "Blueprint Editor"),
+        "both blueprints left their editor-kind group"
+    );
+
     // Kept open: the drawer takes its own column and the editor moves over.
     set("sidebar_pinned", true);
     ed.draw();
@@ -320,7 +376,7 @@ fn walk(cx: &mut TestAppContext, shots: Option<PathBuf>) {
     let area = ed.bounds("nav-sidebar-editor-area").unwrap();
     assert_eq!(area.origin.x, drawer.origin.x + px(DRAWER_WIDTH));
     assert_eq!(drawer.origin.x, px(0.), "in the rail's place");
-    shots.save(cx, "4-kept-open");
+    shots.save(cx, "5-groups-kept-open");
 
     set("unified_sidebar", false);
     set("sidebar_pinned", false);

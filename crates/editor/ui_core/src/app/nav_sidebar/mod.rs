@@ -8,15 +8,17 @@
 //! - **Drawer.** Hovering the rail opens the full sidebar *over* the editor
 //!   (the viewport does not move). `editor.navigation.sidebar_pinned` keeps it
 //!   open beside the editor instead.
-//! - **Editors.** Tabs the user pinned come first, then the rest grouped by
-//!   editor kind. Groups collapse. A pinned file stays listed after its tab
-//!   closes and reopens in one click.
+//! - **Editors.** Tabs the user pinned come first, then groups the user made
+//!   and named, then the rest grouped by editor kind. Groups collapse. A
+//!   pinned or grouped file stays listed after its tab closes and reopens in
+//!   one click. Rows drag like tabs: onto the editor to split it, or onto a
+//!   group's header to move the tab there.
 //! - **Content.** The project's `Content` folder tree (or the project folder).
 //!   Choosing a folder lists its assets in the bottom file drawer, which in
 //!   this mode leaves out its own tree; opening an asset opens its editor tab.
 //!
-//! Pins, collapsed groups and expanded folders are saved with the project's
-//! layout. [`model`] holds that state and the ordering rules; this module
+//! Pins, the user's groups, collapsed groups and expanded folders are saved
+//! with the project's layout. [`model`] holds that state and the ordering rules; this module
 //! connects it to the dock, and [`render`] draws it.
 
 pub(crate) mod model;
@@ -28,8 +30,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use engine_state::settings::{global_config, ConfigValue, GlobalSettings, NS_EDITOR};
-use gpui::{Context, Entity, Task, Window};
-use ui::dock::{DockPlacement, PanelView, TabPanel};
+use gpui::{AppContext as _, Context, Entity, Subscription, Task, Window};
+use ui::dock::{DockPlacement, DragPanel, PanelView, TabPanel};
+use ui::input::{InputEvent, InputState};
 
 use self::model::{HoverAction, HoverState, SidebarModel, SidebarTab, TabKey, HOVER_CLOSE_DELAY};
 use super::PulsarApp;
@@ -73,6 +76,19 @@ pub struct NavSidebarState {
     pub(crate) model: SidebarModel,
     pub(crate) hover: HoverState,
     close_task: Option<Task<()>>,
+    /// The group whose name is being edited, and its text field.
+    renaming: Option<(u32, Entity<InputState>)>,
+    _rename_events: Option<Subscription>,
+}
+
+impl NavSidebarState {
+    /// The text field of the group being renamed, when it is `id`.
+    pub(crate) fn rename_field(&self, id: u32) -> Option<&Entity<InputState>> {
+        self.renaming
+            .as_ref()
+            .filter(|(renaming, _)| *renaming == id)
+            .map(|(_, field)| field)
+    }
 }
 
 /// An open editor tab and where it lives.
@@ -232,6 +248,121 @@ impl PulsarApp {
 
     pub(crate) fn toggle_sidebar_pin(&mut self, key: &TabKey, cx: &mut Context<Self>) {
         self.state.nav_sidebar.model.toggle_pin(key);
+        self.schedule_layout_save(cx);
+        cx.notify();
+    }
+
+    /// A tab drag of the open tab at `index`, as its tab strip would start.
+    pub(crate) fn sidebar_tab_drag(&self, index: usize, cx: &gpui::App) -> Option<DragPanel> {
+        let open = self.center_tab_list(cx).into_iter().nth(index)?;
+        TabPanel::tab_drag(&open.tabs, open.local_ix, cx)
+    }
+
+    /// A tab dropped on a section's header: into that user group, back to its
+    /// editor-kind group, or pinned.
+    pub(crate) fn drop_on_sidebar_section(
+        &mut self,
+        section: &model::SectionId,
+        drag: &DragPanel,
+        cx: &mut Context<Self>,
+    ) {
+        let panel = drag.panel();
+        let file = panel.panel_file_path(cx);
+        let key = TabKey::of(panel.panel_name(cx), file.as_deref());
+        let model = &mut self.state.nav_sidebar.model;
+        match section {
+            model::SectionId::Custom(id) => model.move_to_group(&key, Some(*id)),
+            model::SectionId::Group(_) => model.move_to_group(&key, None),
+            model::SectionId::Pinned => {
+                if !model.is_pinned(&key) {
+                    model.toggle_pin(&key);
+                }
+            }
+        }
+        self.schedule_layout_save(cx);
+        cx.notify();
+    }
+
+    /// Put a tab in a user group, or with `None` back in its editor-kind group.
+    pub(crate) fn move_sidebar_tab(
+        &mut self,
+        key: &TabKey,
+        to: Option<u32>,
+        cx: &mut Context<Self>,
+    ) {
+        self.state.nav_sidebar.model.move_to_group(key, to);
+        self.schedule_layout_save(cx);
+        cx.notify();
+    }
+
+    /// Make a group, holding `first` if given, and start naming it.
+    pub(crate) fn new_sidebar_group(
+        &mut self,
+        first: Option<TabKey>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let model = &mut self.state.nav_sidebar.model;
+        let id = model.create_group(model.next_group_name());
+        if let Some(key) = first {
+            model.move_to_group(&key, Some(id));
+        }
+        self.schedule_layout_save(cx);
+        self.start_sidebar_group_rename(id, window, cx);
+    }
+
+    /// Edit a group's name in place; Enter or leaving the field keeps it.
+    pub(crate) fn start_sidebar_group_rename(
+        &mut self,
+        id: u32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(name) = self
+            .state
+            .nav_sidebar
+            .model
+            .group(id)
+            .map(|g| g.name.clone())
+        else {
+            return;
+        };
+        let field = cx.new(|cx| InputState::new(window, cx).default_value(name));
+        field.update(cx, |field, cx| field.focus(window, cx));
+        self.state.nav_sidebar._rename_events =
+            Some(cx.subscribe(&field, |app, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                    app.finish_sidebar_group_rename(cx);
+                }
+            }));
+        self.state.nav_sidebar.renaming = Some((id, field));
+        cx.notify();
+    }
+
+    fn finish_sidebar_group_rename(&mut self, cx: &mut Context<Self>) {
+        let Some((id, field)) = self.state.nav_sidebar.renaming.take() else {
+            return;
+        };
+        self.state.nav_sidebar._rename_events = None;
+        let name = field.read(cx).value();
+        self.state.nav_sidebar.model.rename_group(id, &name);
+        self.schedule_layout_save(cx);
+        cx.notify();
+    }
+
+    /// Remove a user group; its tabs go back to their editor-kind groups.
+    pub(crate) fn delete_sidebar_group(&mut self, id: u32, cx: &mut Context<Self>) {
+        if self
+            .state
+            .nav_sidebar
+            .renaming
+            .as_ref()
+            .is_some_and(|(renaming, _)| *renaming == id)
+        {
+            self.state.nav_sidebar.renaming = None;
+            self.state.nav_sidebar._rename_events = None;
+        }
+        self.state.nav_sidebar.model.delete_group(id);
         self.schedule_layout_save(cx);
         cx.notify();
     }
