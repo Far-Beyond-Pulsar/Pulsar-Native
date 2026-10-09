@@ -422,7 +422,8 @@ fn load_with_classes_and_editor_state<P: AsRef<Path>>(
             unresolved
         );
     }
-    // A level holds one sky; extras are kept but disabled, logged.
+    // One sky and one directional light per level; extras are kept but
+    // disabled, logged.
     engine_backend::scene::level_rules::enforce_on_load(world);
 
     tracing::info!(

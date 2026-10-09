@@ -58,6 +58,49 @@ fn edit_components(
     }
 }
 
+/// The value of `id`'s instance at `component_index` when edits of its class
+/// are checked against a level rule (a light), for [`revert_if_refused`].
+fn checked_value(
+    world: &pulsar_scenedb::World,
+    id: &str,
+    component_index: usize,
+) -> Option<(pulsar_scenedb::Entity, Box<dyn std::any::Any + Send + Sync>)> {
+    let instance = crate::scene_edit::components::instance_at(world, id, component_index)?;
+    let class = engine_backend::scene::attachments::meta(world, instance)?
+        .class_name
+        .clone();
+    if !level_rules::edits_are_checked(&class) {
+        return None;
+    }
+    let value = pulsar_world_registry::clone_world_component_value(&class, world, instance)?;
+    Some((instance, value))
+}
+
+/// After an edit of a checked instance ([`checked_value`]): when the edited
+/// instance breaks a level rule, put its previous value back and return
+/// the rule's message.
+fn revert_if_refused(
+    state: &mut LevelEditorState,
+    previous: Option<(pulsar_scenedb::Entity, Box<dyn std::any::Any + Send + Sync>)>,
+) -> Result<(), &'static str> {
+    let Some((instance, previous)) = previous else {
+        return Ok(());
+    };
+    let refused = level_rules::check_instance(&state.scene.world(), instance);
+    if let Err(reason) = refused {
+        let restored = pulsar_world_registry::set_instance_value(
+            &mut state.scene.world_mut(),
+            instance,
+            pulsar_world_registry::InstanceValue::Value(previous),
+        );
+        if let Err(error) = restored {
+            tracing::error!("Could not restore a refused edit: {error}");
+        }
+        return Err(reason);
+    }
+    Ok(())
+}
+
 // ── Executor ──────────────────────────────────────────────────────────────────
 
 /// Apply `cmd` to `state`.
@@ -131,17 +174,13 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                     return CommandResult::noop("Object could not be added");
                 }
                 for component in components {
-                    let index = crate::scene_edit::components::add_component_value(
+                    crate::scene_edit::components::add_component_value_enabled(
                         &mut world,
                         &id,
                         &component.class_name,
                         Some(component.value),
+                        component.enabled,
                     );
-                    if let (Some(index), false) = (index, component.enabled) {
-                        crate::scene_edit::components::set_component_enabled(
-                            &mut world, &id, index, false,
-                        );
-                    }
                 }
                 drop(world);
                 state.scene.bump_revision(true);
@@ -429,6 +468,11 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 // (Pulsar-Native#519): every instance is its own entity with
                 // its own typed value (Pulsar-Native#1035). Only an
                 // unresolved payload falls back to the payload write below.
+                //
+                // A class a level rule covers is checked after the write
+                // (the setter knows which field the name means) and put back
+                // when refused.
+                let previous = checked_value(&state.scene.world(), id, component_index);
                 let update_result = crate::scene_edit::components::update_live_component_property(
                     &mut state.scene.world_mut(),
                     id,
@@ -439,6 +483,9 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 );
                 match update_result {
                     Ok(()) => {
+                        if let Err(reason) = revert_if_refused(state, previous) {
+                            return CommandResult::noop(reason);
+                        }
                         crate::scene_edit::components::after_property_edit(
                             &mut state.scene.world_mut(),
                             id,
@@ -527,23 +574,35 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 ref id,
                 component_index,
                 enabled,
-            } => edit_components(
-                state,
-                id,
-                "No component at that index, or already in that state",
-                |world| {
-                    let instance =
-                        crate::scene_edit::components::instance_at(world, id, component_index);
-                    instance.is_some_and(|instance| {
-                        engine_backend::scene::attachments::is_enabled(world, instance) != enabled
-                    }) && crate::scene_edit::components::set_component_enabled(
-                        world,
-                        id,
-                        component_index,
-                        enabled,
-                    )
-                },
-            ),
+            } => {
+                let refused = {
+                    let world = state.scene.world();
+                    crate::scene_edit::components::instance_at(&world, id, component_index)
+                        .filter(|_| enabled)
+                        .map(|instance| level_rules::check_enable(&world, instance))
+                };
+                if let Some(Err(reason)) = refused {
+                    return CommandResult::noop(reason);
+                }
+                edit_components(
+                    state,
+                    id,
+                    "No component at that index, or already in that state",
+                    |world| {
+                        let instance =
+                            crate::scene_edit::components::instance_at(world, id, component_index);
+                        instance.is_some_and(|instance| {
+                            engine_backend::scene::attachments::is_enabled(world, instance)
+                                != enabled
+                        }) && crate::scene_edit::components::set_component_enabled(
+                            world,
+                            id,
+                            component_index,
+                            enabled,
+                        )
+                    },
+                )
+            }
 
             SceneCommand::DuplicateComponent {
                 ref id,
@@ -588,50 +647,59 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                 ref id,
                 component_index,
                 data,
-            } => edit_components(
-                state,
-                id,
-                "No component at that index, or no change",
-                |world| {
-                    let value = match data {
-                        super::ComponentData::Value(value) => {
-                            pulsar_world_registry::InstanceValue::Value(value)
-                        }
-                        super::ComponentData::Unresolved(data) => {
-                            // Only an unresolved instance takes a new payload.
-                            let instance = crate::scene_edit::components::instance_at(
-                                world,
-                                id,
-                                component_index,
-                            );
-                            let Some(current) = instance.and_then(|instance| {
-                                world
+            } => {
+                let previous = checked_value(&state.scene.world(), id, component_index);
+                let result = edit_components(
+                    state,
+                    id,
+                    "No component at that index, or no change",
+                    |world| {
+                        let value = match data {
+                            super::ComponentData::Value(value) => {
+                                pulsar_world_registry::InstanceValue::Value(value)
+                            }
+                            super::ComponentData::Unresolved(data) => {
+                                // Only an unresolved instance takes a new payload.
+                                let instance = crate::scene_edit::components::instance_at(
+                                    world,
+                                    id,
+                                    component_index,
+                                );
+                                let Some(current) = instance.and_then(|instance| {
+                                    world
                                     .get::<engine_backend::scene::attachments::UnresolvedComponent>(
                                         instance,
                                     )
                                     .cloned()
-                            }) else {
-                                return false;
-                            };
-                            if current.data == data {
-                                return false;
+                                }) else {
+                                    return false;
+                                };
+                                if current.data == data {
+                                    return false;
+                                }
+                                pulsar_world_registry::InstanceValue::Unresolved(
+                                    engine_backend::scene::attachments::UnresolvedComponent {
+                                        data,
+                                        reason: current.reason,
+                                    },
+                                )
                             }
-                            pulsar_world_registry::InstanceValue::Unresolved(
-                                engine_backend::scene::attachments::UnresolvedComponent {
-                                    data,
-                                    reason: current.reason,
-                                },
-                            )
-                        }
-                    };
-                    crate::scene_edit::components::set_component_value(
-                        world,
-                        id,
-                        component_index,
-                        value,
-                    )
-                },
-            ),
+                        };
+                        crate::scene_edit::components::set_component_value(
+                            world,
+                            id,
+                            component_index,
+                            value,
+                        )
+                    },
+                );
+                if result.changed {
+                    if let Err(reason) = revert_if_refused(state, previous) {
+                        return CommandResult::noop(reason);
+                    }
+                }
+                result
+            }
 
             SceneCommand::RevertClassSlot {
                 ref id,
