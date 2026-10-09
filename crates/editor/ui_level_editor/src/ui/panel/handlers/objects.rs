@@ -86,18 +86,12 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use crate::commands::{execute_command, SceneCommand};
         let selected = self.shared_state.read().scene.selected_object();
         if let Some(id) = selected {
             let mut state = self.shared_state.write();
-            execute_command(
-                &mut state,
-                SceneCommand::DuplicateObject {
-                    source_id: id,
-                    count: 1,
-                    position_offset: None,
-                },
-            );
+            crate::commands::duplicate_and_select(&mut state, &id);
+            drop(state);
+            self.sync_gizmo_to_helio();
         }
         cx.notify();
     }

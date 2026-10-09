@@ -137,6 +137,7 @@ arc-swap                           = "1.9"
 profiling-v1                       = { package = "profiling", version = "1", default-features = false }
 engine_fs                          = { path = "crates/core/engine_fs", default-features = false }
 editor_task_queue                  = { path = "crates/core/editor_task_queue" }
+asset_import                       = { path = "crates/core/asset_import" }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }
 engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }

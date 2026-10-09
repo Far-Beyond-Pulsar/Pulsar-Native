@@ -167,17 +167,23 @@ fn save_blocking(
     // Snapshot under a read lock on the shared scene only (the editor-state
     // lock is released straight away), so the renderer keeps going. A level
     // save counts as saved from this point: later edits dirty it again.
-    let scene = {
+    let (scene, settings, foliage_sets) = {
         let mut state = state.write();
         if kind == SaveKind::Level {
             state.scene.has_unsaved_changes = false;
         }
-        state.scene.shared_scene()
+        (
+            state.scene.shared_scene(),
+            state.scene.world_settings.clone(),
+            state.editor.terrain.foliage_sets.clone(),
+        )
     };
     let snapshot = {
         let scene = scene.read();
-        let settings = state.read().scene.world_settings.clone();
-        level_io::snapshot_level(&scene.world, &registry, editor_camera, settings)
+        let mut snapshot =
+            level_io::snapshot_level(&scene.world, &registry, editor_camera, settings);
+        snapshot.foliage_sets = Some(foliage_sets);
+        snapshot
     };
 
     // Write in save order; a snapshot older than one already written to the
@@ -222,6 +228,98 @@ mod tests {
             },
         );
         state
+    }
+
+    #[test]
+    fn foliage_palette_round_trips_with_selection_and_placement() {
+        use crate::state::foliage_sets::FoliageSelection;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("foliage.level");
+        let state = Arc::new(parking_lot::RwLock::new(LevelEditorState::new()));
+        state.write().edit_terrain(|terrain| {
+            let library = &mut terrain.foliage_sets;
+            let set = library.add_set();
+            library.set_mut(set).unwrap().name = "Meadow".into();
+            let oak = library
+                .add_member(set, "assets/trees/oak.glb".into())
+                .unwrap();
+            let bush = library
+                .add_member(set, "assets/plants/bush.fbx".into())
+                .unwrap();
+            library.member_mut(set, bush).unwrap().enabled = false;
+            library
+                .member_mut(set, oak)
+                .unwrap()
+                .placement
+                .set_density(27.0);
+            library
+                .member_mut(set, oak)
+                .unwrap()
+                .placement
+                .set_scale_min(0.7);
+            library.selection = Some(FoliageSelection::Member(set, oak));
+            let disabled = library.add_set();
+            library.set_mut(disabled).unwrap().enabled = false;
+            library.set_mut(disabled).unwrap().expanded = false;
+            library.selection = Some(FoliageSelection::Member(set, oak));
+        });
+        assert!(state.read().scene.has_unsaved_changes);
+        let expected = state.read().editor.terrain.foliage_sets.clone();
+        save_now(&state, &path, None).unwrap();
+        assert!(!state.read().scene.has_unsaved_changes);
+
+        let restored = LevelEditorState::new();
+        let (editor, _) =
+            level_io::load_from_file_with_editor_state(&mut restored.scene.world_mut(), &path)
+                .unwrap();
+        assert_eq!(editor.foliage_sets, expected);
+        assert_eq!(editor.foliage_sets.paintable_members().count(), 1);
+        let mut library = editor.foliage_sets;
+        let added = library.add_set();
+        assert!(!expected.sets.iter().any(|set| set.id == added));
+
+        // World-only saves must preserve authoring state even with a fresh camera.
+        level_io::save_to_file_with_editor_camera(
+            &restored.scene.world(),
+            &path,
+            Some(LevelEditorCameraState {
+                position: [1.0, 2.0, 3.0],
+                yaw: 0.0,
+                pitch: 0.0,
+            }),
+        )
+        .unwrap();
+        let file: crate::scene_edit::LevelFile =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(file.editor.unwrap().foliage_sets, expected);
+
+        // Saving an empty palette explicitly removes the old one.
+        state
+            .write()
+            .edit_terrain(|terrain| terrain.foliage_sets = Default::default());
+        assert!(state.read().scene.has_unsaved_changes);
+        save_now(&state, &path, None).unwrap();
+        let (editor, _) =
+            level_io::load_from_file_with_editor_state(&mut restored.scene.world_mut(), &path)
+                .unwrap();
+        assert!(editor.foliage_sets.sets.is_empty());
+    }
+
+    #[test]
+    fn old_levels_default_to_an_empty_foliage_palette() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("old.level");
+        let state = LevelEditorState::new();
+        level_io::save_to_file(&state.scene.world(), &path).unwrap();
+        let mut json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        json["editor"] = serde_json::json!({ "camera": { "position": [0.0, 0.0, 0.0], "yaw": 0.0, "pitch": 0.0 } });
+        std::fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
+        let (editor, _) =
+            level_io::load_from_file_with_editor_state(&mut state.scene.world_mut(), &path)
+                .unwrap();
+        assert!(editor.foliage_sets.sets.is_empty());
+        assert!(editor.camera.is_some());
     }
 
     #[test]

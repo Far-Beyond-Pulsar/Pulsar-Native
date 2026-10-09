@@ -23,13 +23,7 @@ impl ToolMode for VoxelSculptMode {
             ctx.cx
                 .new(|cx| super::VoxelSculptPanel::new(state, window, cx))
         };
-        let state = ctx.state.clone();
-        let materials = {
-            let window = &mut *ctx.window;
-            ctx.cx
-                .new(|cx| super::VoxelSculptPanel::materials(state, window, cx))
-        };
-        vec![std::sync::Arc::new(panel), std::sync::Arc::new(materials)]
+        vec![std::sync::Arc::new(panel)]
     }
     fn id(&self) -> ToolModeId {
         ToolModeId::VOXEL_SCULPT

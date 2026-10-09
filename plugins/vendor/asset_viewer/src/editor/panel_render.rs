@@ -9,33 +9,80 @@ use solid_rs::registry::Registry;
 
 use super::panel::{AssetViewerPanel, MeshProps, MeshRenderMode, SceneStats};
 
-static MESH_VERTEX_SRC: &str = r#"
+/// Bytes of one draw's uniforms: view-projection, render mode, base colour.
+const UNIFORM_SIZE: u64 = 96;
+/// Dynamic-offset alignment between draws' uniforms.
+const UNIFORM_SLOT_STRIDE: u64 = 256;
+/// Material sections drawn separately; any beyond share the last slot.
+const MAX_DRAW_SLOTS: u64 = 128;
+/// Base colour of meshes with no per-section materials (FBX).
+const DEFAULT_BASE_COLOR: [f32; 4] = [0.74, 0.83, 1.0, 1.0];
+
+pub(crate) static MESH_VERTEX_SRC: &str = r#"
 struct Uniforms {
     view_proj: mat4x4<f32>,
     render_mode: vec4<u32>,
+    base_color: vec4<f32>,
 };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) normal: vec3<f32>,
+    @location(2) uv0: vec2<f32>,
+    @location(3) uv1: vec2<f32>,
 };
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     @location(0) world_normal: vec3<f32>,
+    @location(1) uv0: vec2<f32>,
+    @location(2) uv1: vec2<f32>,
 };
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.position = uniforms.view_proj * vec4(input.position, 1.0);
     out.world_normal = input.normal;
+    out.uv0 = input.uv0;
+    out.uv1 = input.uv1;
     return out;
 }
 
+// Material colours are linear; the target is not sRGB. Flagged per draw.
+fn encode(c: vec3<f32>) -> vec3<f32> {
+    if uniforms.render_mode.y == 1u {
+        return pow(c, vec3(1.0 / 2.2));
+    }
+    return c;
+}
+
+// UV debug view: a U/V gradient under a checker (8 cells per UV unit), tinted
+// red outside 0..1 so overlap and out-of-range islands stand out.
+fn uv_view(uv: vec2<f32>) -> vec3<f32> {
+    let cell = vec2<i32>(floor(uv * 8.0));
+    let checker = f32((cell.x + cell.y) & 1);
+    var color = vec3(fract(uv.x), fract(uv.y), 0.25) * (0.7 + 0.3 * checker);
+    if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
+        color = mix(color, vec3(1.0, 0.2, 0.2), 0.5);
+    }
+    return color;
+}
+
 @fragment
-fn fs_main(@location(0) world_normal: vec3<f32>) -> @location(0) vec4<f32> {
+fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    let world_normal = input.world_normal;
+    // Render modes 3-5 are diagnostic views and ignore materials.
+    if uniforms.render_mode.x == 3u {
+        return vec4(normalize(world_normal) * 0.5 + vec3(0.5), 1.0);
+    }
+    if uniforms.render_mode.x == 4u {
+        return vec4(uv_view(input.uv0), 1.0);
+    }
+    if uniforms.render_mode.x == 5u {
+        return vec4(uv_view(input.uv1), 1.0);
+    }
     if uniforms.render_mode.x == 1u {
-        return vec4(0.74, 0.83, 1.0, 1.0);
+        return vec4(encode(uniforms.base_color.rgb), 1.0);
     }
     if uniforms.render_mode.x == 2u {
         return vec4(0.32, 0.68, 1.0, 1.0);
@@ -45,7 +92,7 @@ fn fs_main(@location(0) world_normal: vec3<f32>) -> @location(0) vec4<f32> {
     let diffuse = max(dot(n, light_dir), 0.0);
     let ambient = 0.3;
     let intensity = ambient + diffuse * 0.7;
-    return vec4(vec3(intensity * 0.74, intensity * 0.83, intensity), 1.0);
+    return vec4(encode(uniforms.base_color.rgb * intensity), 1.0);
 }
 "#;
 
@@ -100,7 +147,41 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 }
 "#;
 
-fn create_mesh_pipeline(
+/// Floats per vertex: position, normal, UV channel 0, UV channel 1.
+pub(crate) const VERTEX_FLOATS: usize = 10;
+
+const MESH_ATTRIBUTES: [wgpu::VertexAttribute; 4] = [
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x3,
+        offset: 0,
+        shader_location: 0,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x3,
+        offset: 12,
+        shader_location: 1,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x2,
+        offset: 24,
+        shader_location: 2,
+    },
+    wgpu::VertexAttribute {
+        format: wgpu::VertexFormat::Float32x2,
+        offset: 32,
+        shader_location: 3,
+    },
+];
+
+pub(crate) fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
+    wgpu::VertexBufferLayout {
+        array_stride: (VERTEX_FLOATS * 4) as u64,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &MESH_ATTRIBUTES,
+    }
+}
+
+pub(crate) fn create_mesh_pipeline(
     device: &wgpu::Device,
     config: &wgpu::SurfaceConfiguration,
     layout: &wgpu::PipelineLayout,
@@ -116,22 +197,7 @@ fn create_mesh_pipeline(
             module: shader,
             entry_point: Some("vs_main"),
             compilation_options: wgpu::PipelineCompilationOptions::default(),
-            buffers: &[Some(wgpu::VertexBufferLayout {
-                array_stride: 24,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &[
-                    wgpu::VertexAttribute {
-                        format: wgpu::VertexFormat::Float32x3,
-                        offset: 0,
-                        shader_location: 0,
-                    },
-                    wgpu::VertexAttribute {
-                        format: wgpu::VertexFormat::Float32x3,
-                        offset: 12,
-                        shader_location: 1,
-                    },
-                ],
-            })],
+            buffers: &[Some(mesh_vertex_layout())],
         },
         fragment: Some(wgpu::FragmentState {
             module: shader,
@@ -233,6 +299,7 @@ impl AssetViewerPanel {
 
             self.setup_mesh_pipeline(&device, &config);
             self.load_and_upload_mesh(&device, &queue);
+            self.rebuild_graph_draws();
         }
         self.needs_rebuild = false;
     }
@@ -240,7 +307,7 @@ impl AssetViewerPanel {
     fn setup_mesh_pipeline(&mut self, device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) {
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("mesh uniform buffer"),
-            size: 80,
+            size: UNIFORM_SLOT_STRIDE * MAX_DRAW_SLOTS,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -253,12 +320,43 @@ impl AssetViewerPanel {
                 visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
+                    has_dynamic_offset: true,
                     min_binding_size: None,
                 },
                 count: None,
             }],
         });
+
+        let empty_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("mesh empty layout"),
+            entries: &[],
+        });
+        self.empty_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("mesh empty bind group"),
+            layout: &empty_layout,
+            entries: &[],
+        }));
+        self.mesh_bgl = Some(bgl.clone());
+
+        // The template's `Globals`: graph materials read the frame counter
+        // and the shared clock from it.
+        let globals_layout = super::graph_material::globals_layout(device);
+        let globals_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("graph material globals"),
+            size: super::graph_material::GLOBALS_SIZE,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.globals_bind_group = Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("graph material globals bind group"),
+            layout: &globals_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 1,
+                resource: globals_buffer.as_entire_binding(),
+            }],
+        }));
+        self.globals_layout = Some(globals_layout);
+        self.globals_buffer = Some(globals_buffer);
 
         let uniform_buf = self.mesh_uniform_buffer.as_ref().unwrap();
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -266,7 +364,13 @@ impl AssetViewerPanel {
             layout: &bgl,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: uniform_buf.as_entire_binding(),
+                // One draw's uniforms; each draw selects its slot with a
+                // dynamic offset.
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: uniform_buf,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(UNIFORM_SIZE),
+                }),
             }],
         });
         self.mesh_bind_group = Some(bind_group);
@@ -510,10 +614,98 @@ impl AssetViewerPanel {
         self.checker_pipeline = Some(pipeline);
     }
 
-    fn load_and_upload_mesh(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        let Some(ref path) = self.current_path else {
+    /// Native `.mesh` assets: already triangulated and merged, so no scene
+    /// walk — just normalize into the viewport's unit box.
+    fn load_native_mesh(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, path: &std::path::Path) {
+        let Some(asset) = helio_component::subsystems::load_mesh_asset_upload(path) else {
+            log::error!("Failed to load native mesh {:?}", path);
             return;
         };
+        let source = &asset.geometry.vertices;
+        if source.is_empty() || asset.geometry.indices.is_empty() {
+            log::error!("Native mesh {:?} has no renderable triangles", path);
+            return;
+        }
+        let mut bbox_min = [f32::MAX; 3];
+        let mut bbox_max = [f32::MIN; 3];
+        for v in source {
+            for axis in 0..3 {
+                bbox_min[axis] = bbox_min[axis].min(v.position[axis]);
+                bbox_max[axis] = bbox_max[axis].max(v.position[axis]);
+            }
+        }
+        let center = [0, 1, 2].map(|a| (bbox_min[a] + bbox_max[a]) * 0.5);
+        let max_extent = [0, 1, 2]
+            .map(|a| bbox_max[a] - bbox_min[a])
+            .into_iter()
+            .fold(1e-6f32, f32::max);
+        let scale = 1.0 / max_extent;
+        self.orbit_target = [0.0; 3];
+        self.distance = 2.0;
+
+        let unpack = |packed: u32| -> [f32; 3] {
+            let c = |shift: u32| ((packed >> shift) as u8 as i8 as f32 / 127.0).max(-1.0);
+            [c(0), c(8), c(16)]
+        };
+        let mut verts: Vec<f32> = Vec::with_capacity(source.len() * VERTEX_FLOATS);
+        for v in source {
+            for axis in 0..3 {
+                verts.push((v.position[axis] - center[axis]) * scale);
+            }
+            verts.extend(unpack(v.normal));
+            verts.extend(v.tex_coords0);
+            verts.extend(v.tex_coords1);
+        }
+
+        let triangles = (asset.geometry.indices.len() / 3) as u32;
+        let has_uvs = source.iter().any(|v| v.tex_coords0 != [0.0, 0.0]);
+        let name = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or_default()
+            .to_owned();
+        self.mesh_props = vec![MeshProps {
+            name: name.clone(),
+            vertex_count: source.len() as u32,
+            index_count: asset.geometry.indices.len() as u32,
+            triangle_count: triangles,
+            primitive_count: asset.sections.len(),
+            morph_count: 0,
+            has_normals: true,
+            has_tangents: true,
+            has_uvs,
+            has_vertex_colors: false,
+            has_skin: false,
+            material_name: asset
+                .material_slots
+                .first()
+                .map(|slot| slot.name.clone())
+                .unwrap_or_default(),
+            bounds_min: bbox_min,
+            bounds_max: bbox_max,
+        }];
+        self.scene_stats = SceneStats {
+            name,
+            generator: "Pulsar native mesh".to_owned(),
+            mesh_count: 1,
+            total_vertices: source.len() as u32,
+            total_indices: asset.geometry.indices.len() as u32,
+            material_count: asset.material_slots.len(),
+            meshes: self.mesh_props.clone(),
+            ..Default::default()
+        };
+        self.upload_mesh_buffers(device, queue, &verts, &asset.geometry.indices);
+    }
+
+    fn load_and_upload_mesh(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let Some(path) = self.current_path.clone() else {
+            return;
+        };
+        let path = &path;
+        if path.extension().and_then(|e| e.to_str()) == Some("mesh") {
+            self.load_native_mesh(device, queue, path);
+            return;
+        }
 
         let mut registry = solid_rs::registry::Registry::new();
         registry.register_loader(solid_fbx::FbxLoader);
@@ -649,7 +841,7 @@ impl AssetViewerPanel {
         let scale = 1.0 / max_extent;
         self.orbit_target = [0.0, 0.0, 0.0];
         self.distance = 2.0;
-        let mut verts: Vec<f32> = Vec::with_capacity(all_verts.len() * 6);
+        let mut verts: Vec<f32> = Vec::with_capacity(all_verts.len() * VERTEX_FLOATS);
         for mv in &all_verts {
             verts.push((mv.px - center[0]) * scale);
             verts.push((mv.py - center[1]) * scale);
@@ -657,6 +849,8 @@ impl AssetViewerPanel {
             verts.push(mv.nx);
             verts.push(mv.ny);
             verts.push(mv.nz);
+            // FBX preview carries no UV layer through this path.
+            verts.extend([0.0; 4]);
         }
 
         // Build per-mesh properties and scene stats
@@ -738,6 +932,18 @@ impl AssetViewerPanel {
             return;
         }
 
+        self.upload_mesh_buffers(device, queue, &verts, &indices);
+    }
+
+    /// Upload normalized `[pos.xyz, normal.xyz]` vertices and triangle
+    /// indices (plus the derived wireframe list) for the viewport.
+    fn upload_mesh_buffers(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        verts: &[f32],
+        indices: &[u32],
+    ) {
         let wire_indices: Vec<u32> = indices
             .chunks_exact(3)
             .flat_map(|triangle| {
@@ -758,7 +964,7 @@ impl AssetViewerPanel {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        queue.write_buffer(&vb, 0, bytemuck::cast_slice(&verts));
+        queue.write_buffer(&vb, 0, bytemuck::cast_slice(verts));
 
         let ib = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("mesh index buffer"),
@@ -766,7 +972,7 @@ impl AssetViewerPanel {
             usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        queue.write_buffer(&ib, 0, bytemuck::cast_slice(&indices));
+        queue.write_buffer(&ib, 0, bytemuck::cast_slice(indices));
 
         let wire_ib = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("mesh wireframe index buffer"),
@@ -783,9 +989,9 @@ impl AssetViewerPanel {
         self.wire_index_count = wire_indices.len() as u32;
 
         log::info!(
-            "Loaded FBX {:?}: {} verts, {} indices",
-            path,
-            verts.len() / 6,
+            "Loaded mesh {:?}: {} verts, {} indices",
+            self.current_path,
+            verts.len() / VERTEX_FLOATS,
             indices.len()
         );
     }
@@ -1082,14 +1288,46 @@ impl AssetViewerPanel {
             }
         }
 
-        if let Some(buf) = &self.mesh_uniform_buffer {
-            queue.write_buffer(buf, 0, bytemuck::bytes_of(&view_proj));
-            let mode = match self.render_mode {
-                MeshRenderMode::Lit => 0,
-                MeshRenderMode::Unlit => 1,
-                MeshRenderMode::Wireframe => 2,
+        // One draw per material section (solid modes), each with its own
+        // uniform slot; wireframe and section-less meshes are a single draw.
+        let mode: u32 = match self.render_mode {
+            MeshRenderMode::Lit => 0,
+            MeshRenderMode::Unlit => 1,
+            MeshRenderMode::Wireframe => 2,
+            MeshRenderMode::Normals => 3,
+            MeshRenderMode::Uv0 => 4,
+            MeshRenderMode::Uv1 => 5,
+        };
+        // `.mesh` sections carry linear material colours.
+        let linear: u32 = u32::from(!self.mesh_sections.is_empty());
+        let draws: Vec<(std::ops::Range<u32>, [f32; 4], usize)> =
+            if mode >= 2 || self.mesh_sections.is_empty() {
+                vec![(0..index_count, DEFAULT_BASE_COLOR, usize::MAX)]
+            } else {
+                self.mesh_sections
+                    .iter()
+                    .map(|&(first, count, slot)| {
+                        let color = self
+                            .slot_colors
+                            .get(slot)
+                            .copied()
+                            .unwrap_or(DEFAULT_BASE_COLOR);
+                        (first..first + count, color, slot)
+                    })
+                    .collect()
             };
-            queue.write_buffer(buf, 64, bytemuck::bytes_of(&[mode, 0, 0, 0]));
+        // Advance the graph clock every frame, so `time` nodes animate.
+        self.frame_counter = self.frame_counter.wrapping_add(1);
+        if let Some(globals) = &self.globals_buffer {
+            super::graph_material::write_globals(queue, globals, self.frame_counter);
+        }
+        if let Some(buf) = &self.mesh_uniform_buffer {
+            for (draw, (_, color, _)) in draws.iter().enumerate() {
+                let offset = draw.min(MAX_DRAW_SLOTS as usize - 1) as u64 * UNIFORM_SLOT_STRIDE;
+                queue.write_buffer(buf, offset, bytemuck::bytes_of(&view_proj));
+                queue.write_buffer(buf, offset + 64, bytemuck::bytes_of(&[mode, linear, 0, 0]));
+                queue.write_buffer(buf, offset + 80, bytemuck::bytes_of(color));
+            }
         }
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -1154,11 +1392,32 @@ impl AssetViewerPanel {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            rpass.set_pipeline(pipeline);
-            rpass.set_bind_group(0, bg, &[]);
             rpass.set_vertex_buffer(0, vb.slice(..));
             rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
-            rpass.draw_indexed(0..index_count, 0, 0..1);
+            for (draw, (range, _, slot)) in draws.iter().enumerate() {
+                let offset = draw.min(MAX_DRAW_SLOTS as usize - 1) as u32 * UNIFORM_SLOT_STRIDE as u32;
+                let graph = self
+                    .graph_draws
+                    .get(*slot)
+                    .and_then(Option::as_ref)
+                    .zip(self.empty_bind_group.as_ref())
+                    .zip(self.globals_bind_group.as_ref())
+                    .filter(|_| mode <= 1);
+                if let Some(((graph, empty), globals)) = graph {
+                    // Shader-graph material: its own pipeline; the template
+                    // owns groups 0-2 (globals, textures), the viewer
+                    // uniforms are group 3.
+                    rpass.set_pipeline(&graph.pipeline);
+                    rpass.set_bind_group(0, globals, &[]);
+                    rpass.set_bind_group(1, &graph.textures, &[]);
+                    rpass.set_bind_group(2, empty, &[]);
+                    rpass.set_bind_group(3, bg, &[offset]);
+                } else {
+                    rpass.set_pipeline(pipeline);
+                    rpass.set_bind_group(0, bg, &[offset]);
+                }
+                rpass.draw_indexed(range.clone(), 0, 0..1);
+            }
         }
 
         queue.submit(Some(encoder.finish()));

@@ -56,6 +56,18 @@ impl EditorPlugin for AssetViewerPlugin {
                 categories: vec!["3D Models".to_string()],
             },
             FileTypeDefinition {
+                id: FileTypeId::new("mesh"),
+                extension: "mesh".to_string(),
+                display_name: t!("AssetViewer.NativeMesh").to_string(),
+                icon: ui::IconName::Cube,
+                color: gpui::rgb(0x00BCD4).into(),
+                structure: FileStructure::Standalone,
+                default_content: json!(""),
+                creation_directory: None,
+
+                categories: vec!["3D Models".to_string()],
+            },
+            FileTypeDefinition {
                 id: FileTypeId::new("png"),
                 extension: "png".to_string(),
                 display_name: t!("AssetViewer.PNGImage").to_string(),
@@ -74,7 +86,11 @@ impl EditorPlugin for AssetViewerPlugin {
         vec![EditorMetadata {
             id: EditorId::new("asset-viewer"),
             display_name: "Asset Viewer".into(),
-            supported_file_types: vec![FileTypeId::new("fbx"), FileTypeId::new("png")],
+            supported_file_types: vec![
+                FileTypeId::new("fbx"),
+                FileTypeId::new("mesh"),
+                FileTypeId::new("png"),
+            ],
         }]
     }
 }

@@ -261,18 +261,18 @@ impl ToolMode for TerrainMode {
         ctx: &mut super::ModePanelContext<'_, '_>,
     ) -> Vec<Arc<dyn ui::dock::PanelView>> {
         let state = ctx.state.clone();
-        let terrain = {
-            let window = &mut *ctx.window;
-            ctx.cx
-                .new(|cx| panels::TerrainPanel::new(state, window, cx))
-        };
-        let state = ctx.state.clone();
         let foliage = {
             let window = &mut *ctx.window;
             ctx.cx
                 .new(|cx| panels::FoliageSetsPanel::new(state, window, cx))
         };
-        vec![Arc::new(terrain), Arc::new(foliage)]
+        let state = ctx.state.clone();
+        let terrain = {
+            let window = &mut *ctx.window;
+            ctx.cx
+                .new(|cx| panels::TerrainPanel::new(state, foliage.clone(), window, cx))
+        };
+        vec![Arc::new(terrain)]
     }
 
     fn id(&self) -> ToolModeId {

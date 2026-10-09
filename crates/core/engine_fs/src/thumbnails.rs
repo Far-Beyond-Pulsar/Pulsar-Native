@@ -410,6 +410,7 @@ fn is_supported_ext(ext: &str) -> bool {
     matches!(
         ext,
         "fbx"
+            | "mesh"
             | "gltf"
             | "glb"
             | "obj"

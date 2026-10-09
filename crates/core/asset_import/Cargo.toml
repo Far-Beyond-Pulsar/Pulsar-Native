@@ -1,0 +1,22 @@
+[package]
+name = "asset_import"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+engine_fs = { workspace = true }
+editor_task_queue = { workspace = true }
+helio_component = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+twox-hash = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

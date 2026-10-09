@@ -199,11 +199,9 @@ pub fn add_component_value(
         attach::NewInstance::new(class_name),
         payload,
     ) {
-        Ok(instance) => {
-            attach::instances(world, owner)
-                .iter()
-                .position(|entity| *entity == instance)
-        }
+        Ok(instance) => attach::instances(world, owner)
+            .iter()
+            .position(|entity| *entity == instance),
         Err(error) => {
             tracing::error!("Could not attach {class_name} to '{object_id}': {error}");
             None

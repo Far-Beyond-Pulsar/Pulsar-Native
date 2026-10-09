@@ -3,7 +3,7 @@
 use std::io::Cursor;
 use std::sync::OnceLock;
 
-use rodio::{Decoder, OutputStream, OutputStreamBuilder, Sink};
+use rodio::{mixer::Mixer, Decoder, OutputStreamBuilder, Sink};
 
 const BUILD_SUCCESS_SOUND: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -14,7 +14,10 @@ const BUILD_ERROR_SOUND: &[u8] = include_bytes!(concat!(
     "/../../../assets/sound/error.mp3"
 ));
 
-static OUTPUT_STREAM: OnceLock<Option<OutputStream>> = OnceLock::new();
+/// The default output's mixer. The `OutputStream` itself cannot live in a
+/// static: on macOS its CoreAudio stream is not `Send`. It is opened once and
+/// leaked, as a static would keep it, so the mixer keeps playing.
+static OUTPUT_MIXER: OnceLock<Option<Mixer>> = OnceLock::new();
 
 pub fn play_build_success() {
     if !enabled("play_success_sound") {
@@ -58,8 +61,13 @@ fn volume() -> f32 {
 fn play(sound: &'static [u8]) {
     // Device setup and MP3 decoding can take a moment. Keep it off the UI task.
     std::thread::spawn(move || {
-        let Some(stream) = OUTPUT_STREAM
-            .get_or_init(|| OutputStreamBuilder::open_default_stream().ok())
+        let Some(mixer) = OUTPUT_MIXER
+            .get_or_init(|| {
+                let stream = OutputStreamBuilder::open_default_stream().ok()?;
+                let mixer = stream.mixer().clone();
+                std::mem::forget(stream);
+                Some(mixer)
+            })
             .as_ref()
         else {
             tracing::warn!("Could not open the default audio output for build sound");
@@ -74,7 +82,7 @@ fn play(sound: &'static [u8]) {
             }
         };
 
-        let sink = Sink::connect_new(stream.mixer());
+        let sink = Sink::connect_new(mixer);
         sink.set_volume(volume());
         sink.append(decoder);
         sink.detach();

@@ -47,6 +47,12 @@ pub enum MeshRenderMode {
     Lit,
     Unlit,
     Wireframe,
+    /// Object-space normals as colour.
+    Normals,
+    /// UV channel 1 (`tex_coords0`) as a checkered gradient.
+    Uv0,
+    /// UV channel 2 (`tex_coords1`, the lightmap channel) likewise.
+    Uv1,
 }
 
 pub struct AssetViewerPanel {
@@ -112,6 +118,25 @@ pub struct AssetViewerPanel {
 
     pub undo_stack: Vec<(u32, u32, Vec<u8>)>,
     pub redo_stack: Vec<(u32, u32, Vec<u8>)>,
+
+    /// Default-material pickers; set only for native `.mesh` files.
+    pub mesh_materials: Option<super::materials::MeshMaterials>,
+    /// `(first_index, index_count, material_slot)` per drawn section of a `.mesh`.
+    pub mesh_sections: Vec<(u32, u32, usize)>,
+    /// Imported surface of each `.mesh` slot (what an empty assignment draws).
+    pub slot_surfaces: Vec<helio_component::mesh_cache::ImportedSurfaceMaterial>,
+    /// Preview colour of each slot's current material.
+    pub slot_colors: Vec<[f32; 4]>,
+    /// Compiled shader-graph material per slot (None: plain colour).
+    pub graph_draws: Vec<Option<super::graph_material::GraphDraw>>,
+    /// Layout of the per-draw uniforms, shared with graph pipelines.
+    pub mesh_bgl: Option<wgpu::BindGroupLayout>,
+    pub empty_bind_group: Option<wgpu::BindGroup>,
+    /// The template's `Globals` (frame + graph clock) for graph materials.
+    pub globals_buffer: Option<wgpu::Buffer>,
+    pub globals_layout: Option<wgpu::BindGroupLayout>,
+    pub globals_bind_group: Option<wgpu::BindGroup>,
+    pub frame_counter: u32,
 }
 
 impl AssetViewerPanel {
@@ -344,7 +369,7 @@ impl AssetViewerPanel {
             .unwrap_or("")
             .to_lowercase();
 
-        let is_3d = ext == "fbx";
+        let is_3d = ext == "fbx" || ext == "mesh";
 
         let image_data = if ext == "png" {
             match image::open(&file_path) {
@@ -367,7 +392,7 @@ impl AssetViewerPanel {
             .and_then(|n| n.to_str())
             .map(|s| s.to_string());
 
-        Self {
+        let mut panel = Self {
             focus_handle: cx.focus_handle(),
             current_path: Some(file_path.clone()),
             is_3d,
@@ -421,6 +446,19 @@ impl AssetViewerPanel {
             last_pan_pos: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
-        }
+            mesh_materials: None,
+            mesh_sections: Vec::new(),
+            slot_surfaces: Vec::new(),
+            slot_colors: Vec::new(),
+            graph_draws: Vec::new(),
+            mesh_bgl: None,
+            empty_bind_group: None,
+            globals_buffer: None,
+            globals_layout: None,
+            globals_bind_group: None,
+            frame_counter: 0,
+        };
+        panel.init_mesh_materials(window, cx);
+        panel
     }
 }

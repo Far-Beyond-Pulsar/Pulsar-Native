@@ -58,3 +58,9 @@ AssetViewer.ColC: C
 AssetViewer.ColMat: Mat
 AssetViewer.Loading: Loading...
 AssetViewer.Unknown: Unknown
+
+AssetViewer.NativeMesh: Native Mesh
+AssetViewer.DefaultMaterials: Default Materials
+AssetViewer.ApplyToAllSlots: Apply to all slots
+AssetViewer.MaterialsHint: Placed meshes use these unless a component overrides a slot.
+AssetViewer.NoMaterial: Imported material

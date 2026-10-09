@@ -91,6 +91,15 @@ impl Default for LevelEditorState {
 }
 
 impl LevelEditorState {
+    /// Persisted foliage edits must participate in the level's dirty state.
+    pub(crate) fn edit_terrain(&mut self, edit: impl FnOnce(&mut terrain::TerrainDomain)) {
+        let before = self.editor.terrain.foliage_sets.clone();
+        edit(&mut self.editor.terrain);
+        if before != self.editor.terrain.foliage_sets {
+            self.scene.has_unsaved_changes = true;
+        }
+    }
+
     pub fn new() -> Self {
         Self::default()
     }

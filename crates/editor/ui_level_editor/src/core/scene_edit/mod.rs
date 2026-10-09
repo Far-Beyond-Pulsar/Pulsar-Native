@@ -147,10 +147,13 @@ pub struct LevelMetadata {
     pub editor_version: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct LevelEditorFileState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub camera: Option<LevelEditorCameraState>,
+    /// Per-level foliage palette, including enabled meshes and placement rules.
+    #[serde(default)]
+    pub foliage_sets: crate::state::foliage_sets::FoliageSetLibrary,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

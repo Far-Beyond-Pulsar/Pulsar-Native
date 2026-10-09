@@ -8,7 +8,7 @@ use gpui::*;
 use rust_i18n::t;
 use std::{collections::HashSet, sync::Arc};
 use ui::{
-    button::Button,
+    button::{Button, ButtonVariants as _},
     h_flex,
     input::{InputEvent, InputState},
     v_flex, ActiveTheme, Icon, IconName, Sizable,
@@ -39,10 +39,6 @@ pub struct VoxelSculptPanel {
 impl VoxelSculptPanel {
     pub fn new(state: SharedState, window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self::create(state, PanelKind::Tools, window, cx)
-    }
-
-    pub fn materials(state: SharedState, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::create(state, PanelKind::Materials, window, cx)
     }
 
     fn create(
@@ -195,15 +191,9 @@ impl Render for VoxelSculptPanel {
         let settings = self.state.read().editor.voxel;
         self.last_settings = settings;
         let theme = cx.theme().clone();
-        let (title, subtitle) = match self.kind {
-            PanelKind::Tools => (
-                "LevelEditor.VoxelPanel.ToolsTitle",
-                "LevelEditor.VoxelPanel.ToolsSubtitle",
-            ),
-            PanelKind::Materials => (
-                "LevelEditor.VoxelPanel.MaterialsTitle",
-                "LevelEditor.VoxelPanel.MaterialsSubtitle",
-            ),
+        let subtitle = match self.kind {
+            PanelKind::Tools => "LevelEditor.VoxelPanel.ToolsSubtitle",
+            PanelKind::Materials => "LevelEditor.VoxelPanel.MaterialsSubtitle",
         };
         let body = match self.kind {
             PanelKind::Tools => self.render_brush(settings, window, cx),
@@ -211,32 +201,76 @@ impl Render for VoxelSculptPanel {
         };
         v_flex()
             .size_full()
-            .overflow_y_scroll()
+            .min_h_0()
             .bg(theme.sidebar)
-            .p_3()
-            .gap_2()
             .child(
-                div()
-                    .text_sm()
-                    .font_weight(FontWeight::BOLD)
-                    .child(t!(title).to_string()),
+                v_flex()
+                    .flex_shrink_0()
+                    .p_3()
+                    .gap_1()
+                    .border_b_1()
+                    .border_color(theme.border.opacity(0.55))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(t!(subtitle).to_string()),
+                    )
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .gap_1()
+                            .child({
+                                let button = Button::new("voxel-mode-tools")
+                                    .label(t!("LevelEditor.VoxelPanel.ToolsTitle").to_string())
+                                    .icon(IconName::Cube)
+                                    .small()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.kind = PanelKind::Tools;
+                                        cx.notify();
+                                    }));
+                                if matches!(self.kind, PanelKind::Tools) {
+                                    div().flex_1().child(button.primary().w_full())
+                                } else {
+                                    div().flex_1().child(button.ghost().w_full())
+                                }
+                            })
+                            .child({
+                                let button = Button::new("voxel-mode-materials")
+                                    .label(t!("LevelEditor.VoxelPanel.MaterialsTitle").to_string())
+                                    .icon(IconName::Palette)
+                                    .small()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.kind = PanelKind::Materials;
+                                        cx.notify();
+                                    }));
+                                if matches!(self.kind, PanelKind::Materials) {
+                                    div().flex_1().child(button.primary().w_full())
+                                } else {
+                                    div().flex_1().child(button.ghost().w_full())
+                                }
+                            }),
+                    ),
             )
             .child(
-                div()
-                    .text_xs()
-                    .text_color(theme.muted_foreground)
-                    .child(t!(subtitle).to_string()),
+                v_flex()
+                    .id(match self.kind {
+                        PanelKind::Tools => "voxel-tools-scroll",
+                        PanelKind::Materials => "voxel-materials-scroll",
+                    })
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .p_3()
+                    .gap_2()
+                    .child(body),
             )
-            .child(body)
     }
 }
 
 impl ui::dock::Panel for VoxelSculptPanel {
     fn panel_name(&self) -> &'static str {
-        match self.kind {
-            PanelKind::Tools => "voxel_sculpt.panel",
-            PanelKind::Materials => "voxel_materials.panel",
-        }
+        "voxel_sculpt.panel"
     }
     fn title(&self, _: &Window, _: &App) -> AnyElement {
         let key = match self.kind {

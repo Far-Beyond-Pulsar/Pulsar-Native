@@ -84,12 +84,11 @@ pub struct LevelEditorPanel {
     /// against, guarding it the same way `applied_pie_signature` guards
     /// `sync_game_tab` — this runs on every render, so a plain `!=` check on
     /// a `Copy` id is what keeps it from touching the dock area for nothing.
-    /// Because this only fires on an actual mode switch (a rare, deliberate
-    /// user action), `sync_mode_layout` is free to fully rebuild the left
-    /// dock's panel set each time rather than caching individual panel
-    /// entities — unlike `sync_game_tab`, there is no per-render cost to
-    /// avoid here.
+    /// Mode panel entities are cached by id so their local navigation,
+    /// search, collapse and scroll state survives mode switches.
     applied_mode_layout: Option<crate::tool_modes::ToolModeId>,
+    mode_panels:
+        std::collections::HashMap<crate::tool_modes::ToolModeId, Vec<Arc<dyn ui::dock::PanelView>>>,
 
     // Keeps the polling task alive for the lifetime of the panel.
     _root_input_poller: gpui::Task<()>,

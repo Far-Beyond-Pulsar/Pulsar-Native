@@ -1,5 +1,5 @@
 {
-  "format_version": 3,
+  "format_version": 5,
   "name": "bp_loops",
   "constants": [
     {
@@ -300,6 +300,18 @@
               "node": "bp"
             }
           }
+        ],
+        "register_sources": [
+          {
+            "register": 4,
+            "node": "body_get",
+            "pin": "value"
+          },
+          {
+            "register": 6,
+            "node": "body_append",
+            "pin": "result"
+          }
         ]
       }
     },
@@ -548,6 +560,28 @@
               "node": "bp2"
             }
           }
+        ],
+        "register_sources": [
+          {
+            "register": 3,
+            "node": "c1",
+            "pin": "value"
+          },
+          {
+            "register": 5,
+            "node": "lt",
+            "pin": "result"
+          },
+          {
+            "register": 6,
+            "node": "c2",
+            "pin": "value"
+          },
+          {
+            "register": 8,
+            "node": "inc",
+            "pin": "result"
+          }
         ]
       }
     },
@@ -733,6 +767,33 @@
               "file": "graph_save.json",
               "node": "chk"
             }
+          }
+        ],
+        "register_sources": [
+          {
+            "register": 0,
+            "node": "chk",
+            "pin": "flag"
+          },
+          {
+            "register": 1,
+            "node": "yes_get",
+            "pin": "value"
+          },
+          {
+            "register": 3,
+            "node": "yes_append",
+            "pin": "result"
+          },
+          {
+            "register": 4,
+            "node": "no_get",
+            "pin": "value"
+          },
+          {
+            "register": 6,
+            "node": "no_append",
+            "pin": "result"
           }
         ]
       }
@@ -1006,6 +1067,38 @@
               "file": "graph_save.json",
               "node": "sq"
             }
+          }
+        ],
+        "register_sources": [
+          {
+            "register": 0,
+            "node": "sa_get",
+            "pin": "value"
+          },
+          {
+            "register": 2,
+            "node": "sa_append",
+            "pin": "result"
+          },
+          {
+            "register": 6,
+            "node": "sb_get",
+            "pin": "value"
+          },
+          {
+            "register": 8,
+            "node": "sb_append",
+            "pin": "result"
+          },
+          {
+            "register": 9,
+            "node": "st_get",
+            "pin": "value"
+          },
+          {
+            "register": 11,
+            "node": "st_append",
+            "pin": "result"
           }
         ]
       }

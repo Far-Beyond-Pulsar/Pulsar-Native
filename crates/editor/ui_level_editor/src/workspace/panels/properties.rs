@@ -240,7 +240,9 @@ impl PropertiesPanelWrapper {
             };
             let header = delta.component == pulsar_scenedb::component_id::<Name>()
                 || delta.component == pulsar_scenedb::component_id::<Visibility>();
-            if delta.entity != object || !(header || delta.component == pulsar_scenedb::component_id::<Transform>()) {
+            if delta.entity != object
+                || !(header || delta.component == pulsar_scenedb::component_id::<Transform>())
+            {
                 if let Some(section) = &self.object_type_fields_section {
                     section.update(cx, |section, cx| section.apply_update(&delta, cx));
                 }

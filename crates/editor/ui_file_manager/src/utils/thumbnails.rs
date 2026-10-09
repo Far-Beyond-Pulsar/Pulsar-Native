@@ -5,6 +5,7 @@ impl FileManagerDrawer {
         matches!(
             ext,
             "fbx"
+                | "mesh"
                 | "gltf"
                 | "glb"
                 | "obj"

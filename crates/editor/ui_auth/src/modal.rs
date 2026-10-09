@@ -76,7 +76,7 @@ pub fn open_device_code_modal(
                             .child(
                                 Button::new("device-code-close")
                                     .ghost()
-                                    .icon(IconName::X)
+                                    .icon(IconName::Close)
                                     .label("Close")
                                     .on_click(|_, window, cx| {
                                         window.close_modal(cx);

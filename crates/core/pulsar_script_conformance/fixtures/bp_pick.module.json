@@ -1,5 +1,5 @@
 {
-  "format_version": 3,
+  "format_version": 5,
   "name": "bp_pick",
   "constants": [
     {
@@ -461,6 +461,48 @@
               "file": "graph_save.json",
               "node": "ev"
             }
+          }
+        ],
+        "register_sources": [
+          {
+            "register": 0,
+            "node": "ev",
+            "pin": "n"
+          },
+          {
+            "register": 1,
+            "node": "pick",
+            "pin": "result"
+          },
+          {
+            "register": 5,
+            "node": "x_get",
+            "pin": "value"
+          },
+          {
+            "register": 7,
+            "node": "x_append",
+            "pin": "result"
+          },
+          {
+            "register": 10,
+            "node": "y_get",
+            "pin": "value"
+          },
+          {
+            "register": 12,
+            "node": "y_append",
+            "pin": "result"
+          },
+          {
+            "register": 15,
+            "node": "z_get",
+            "pin": "value"
+          },
+          {
+            "register": 17,
+            "node": "z_append",
+            "pin": "result"
           }
         ]
       }

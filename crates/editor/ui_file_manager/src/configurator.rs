@@ -25,18 +25,73 @@ use window_manager::{default_window_options, PulsarWindow};
 
 use helio_component::mesh_cache::{self, ImportField};
 
-/// Parameters for opening the import configurator as its own window.
+/// Parameters for opening the import configurator as its own window: one
+/// window per source format, covering every source of that format.
 pub struct ImportConfiguratorParams {
+    pub project_root: PathBuf,
+    /// Source files already inside the project.
     pub sources: Vec<PathBuf>,
-    pub target: PathBuf,
+    /// Lower-case extension all `sources` share (e.g. `fbx`).
+    pub ext: String,
     pub schema: mesh_cache::OptionsSchema,
 }
 
+thread_local! {
+    /// Configurators waiting for the open one to close, so formats are
+    /// configured one after another rather than in a pile of windows.
+    static PENDING: std::cell::RefCell<std::collections::VecDeque<ImportConfiguratorParams>> =
+        const { std::cell::RefCell::new(std::collections::VecDeque::new()) };
+    static OPEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Offer to import `sources` (project files), grouped by extension: one
+/// configurator per format, shown in turn. Formats whose importer advertises
+/// no options are linked straight away with defaults.
+pub fn offer_import(
+    project_root: PathBuf,
+    by_ext: std::collections::BTreeMap<String, Vec<PathBuf>>,
+    cx: &mut App,
+) {
+    for (ext, sources) in by_ext {
+        let Some(schema) = asset_import::importer_for(&ext).and_then(|i| i.options_schema(&ext))
+        else {
+            asset_import::submit_import(
+                project_root.clone(),
+                sources,
+                asset_import::ImportMode::Link,
+                Arc::new(parking_lot::Mutex::new(HashMap::new())),
+            );
+            continue;
+        };
+        PENDING.with(|queue| {
+            queue.borrow_mut().push_back(ImportConfiguratorParams {
+                project_root: project_root.clone(),
+                sources,
+                ext,
+                schema,
+            })
+        });
+    }
+    open_next(cx);
+}
+
+fn open_next(cx: &mut App) {
+    use ui_common::PulsarWindowExt as _;
+    if OPEN.with(|open| open.get()) {
+        return;
+    }
+    if let Some(params) = PENDING.with(|queue| queue.borrow_mut().pop_front()) {
+        OPEN.with(|open| open.set(true));
+        ImportConfigurator::open(params, cx);
+    }
+}
+
 pub struct ImportConfigurator {
+    project_root: PathBuf,
     sources: Vec<PathBuf>,
-    target: PathBuf,
+    ext: String,
     fields: Vec<ImportField>,
-    values_shared: Arc<Mutex<HashMap<String, Box<dyn Any + Send>>>>,
+    values_shared: Arc<parking_lot::Mutex<HashMap<String, Box<dyn Any + Send>>>>,
     /// Caches the current value of each field as JSON so that
     /// `render_field` can produce a `&dyn Any` that reflects the
     /// user's edits (via JSON deserialisation) rather than always
@@ -48,19 +103,23 @@ pub struct ImportConfigurator {
 }
 
 impl ImportConfigurator {
-    pub fn new(
-        sources: Vec<PathBuf>,
-        target: PathBuf,
-        schema: mesh_cache::OptionsSchema,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let values_shared = Arc::new(Mutex::new(HashMap::new()));
+    pub fn new(params: ImportConfiguratorParams, cx: &mut Context<Self>) -> Self {
+        let values_shared = Arc::new(parking_lot::Mutex::new(HashMap::new()));
         let field_json = Arc::new(Mutex::new(HashMap::new()));
 
+        // Whatever closes this window (a button, the title bar), the next
+        // format's configurator opens.
+        cx.on_release(|_this, cx| {
+            OPEN.with(|open| open.set(false));
+            open_next(cx);
+        })
+        .detach();
+
         Self {
-            sources,
-            target,
-            fields: schema.fields,
+            project_root: params.project_root,
+            sources: params.sources,
+            ext: params.ext,
+            fields: params.schema.fields,
             values_shared,
             field_json,
             property_state: PropertyStateManager::new(),
@@ -68,33 +127,36 @@ impl ImportConfigurator {
         }
     }
 
-    fn run_import(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let values = self.values_shared.lock().unwrap();
-        for src in &self.sources {
-            let native = mesh_cache::native_mesh_path(&self.target, src);
-            match mesh_cache::import_model_to_native(src, &native, &values) {
-                Ok(_) => {
-                    let n = native
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("mesh")
-                        .to_string();
-                    window
-                        .push_notification(Notification::success(format!("Imported \"{n}\"")), cx);
-                }
-                Err(e) => {
-                    tracing::error!("Model import failed for {}: {}", src.display(), e);
-                    let n = src
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("model")
-                        .to_string();
-                    window
-                        .push_notification(Notification::error(format!("Import failed: {n}")), cx);
-                }
-            }
+    /// Queue one import task per source (they run in the Tasks window) and
+    /// close. The user can follow progress and errors there.
+    fn run_import(
+        &mut self,
+        mode: asset_import::ImportMode,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let count = self.sources.len();
+        // The shared options map moves into the tasks; this window is done
+        // with it.
+        let options = std::mem::take(&mut *self.values_shared.lock());
+        asset_import::submit_import(
+            self.project_root.clone(),
+            self.sources.clone(),
+            mode,
+            Arc::new(parking_lot::Mutex::new(options)),
+        );
+        window.push_notification(
+            Notification::info(format!("Importing {count} file(s) — see Tasks")),
+            cx,
+        );
+        window.remove_window();
+    }
+
+    /// Leave the sources alone and stop offering them.
+    fn skip_forever(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
+        if let Err(error) = asset_import::ignore_sources(&self.project_root, &self.sources) {
+            tracing::warn!(%error, "could not record ignored import sources");
         }
-        drop(values);
         window.remove_window();
     }
 
@@ -144,7 +206,8 @@ impl ImportConfigurator {
 
         let write_back = Arc::new(
             move |new_val: Box<dyn Any + Send>, _window: &mut Window, _cx: &mut App| {
-                if let Ok(mut v) = vs.lock() {
+                {
+                    let mut v = vs.lock();
                     v.insert(k.clone(), new_val);
                     if let Some(stored) = v.get(&k) {
                         if let Ok(json) =
@@ -192,7 +255,7 @@ impl PulsarWindow for ImportConfigurator {
         _window: &mut gpui::Window,
         cx: &mut gpui::App,
     ) -> gpui::Entity<Self> {
-        cx.new(|cx| ImportConfigurator::new(params.sources, params.target, params.schema, cx))
+        cx.new(|cx| ImportConfigurator::new(params, cx))
     }
 }
 
@@ -205,10 +268,11 @@ impl Focusable for ImportConfigurator {
 impl Render for ImportConfigurator {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let count = self.sources.len();
+        let ext = self.ext.to_uppercase();
         let heading = if count == 1 {
-            "Import model".to_string()
+            format!("Import {ext} file")
         } else {
-            format!("Import {count} models")
+            format!("Import {count} {ext} files")
         };
 
         v_flex()
@@ -230,7 +294,7 @@ impl Render for ImportConfigurator {
                         div()
                             .text_sm()
                             .text_color(cx.theme().muted_foreground)
-                            .child("Set import options — the model is converted to an engine-native mesh asset."),
+                            .child("Link keeps the source file and re-imports when it changes. Convert in place replaces it with the native asset."),
                     ),
             )
             .child(
@@ -257,17 +321,33 @@ impl Render for ImportConfigurator {
                     .gap_2()
                     .pt_3()
                     .child(
-                        Button::new("cfg-cancel").label("Cancel").outline().on_click(
+                        Button::new("cfg-skip")
+                            .label("Don't import")
+                            .outline()
+                            .on_click(cx.listener(|this, _, w, cx| this.skip_forever(w, cx))),
+                    )
+                    .child(
+                        Button::new("cfg-later").label("Later").outline().on_click(
                             cx.listener(|_this, _, w, _cx| {
                                 w.remove_window();
                             }),
                         ),
                     )
                     .child(
-                        Button::new("cfg-import")
-                            .label("Import")
+                        Button::new("cfg-convert")
+                            .label("Convert in place")
+                            .outline()
+                            .on_click(cx.listener(|this, _, w, cx| {
+                                this.run_import(asset_import::ImportMode::ConvertInPlace, w, cx)
+                            })),
+                    )
+                    .child(
+                        Button::new("cfg-link")
+                            .label("Link")
                             .primary()
-                            .on_click(cx.listener(|this, _, w, cx| this.run_import(w, cx))),
+                            .on_click(cx.listener(|this, _, w, cx| {
+                                this.run_import(asset_import::ImportMode::Link, w, cx)
+                            })),
                     ),
             )
     }

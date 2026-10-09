@@ -23,20 +23,7 @@ use crate::state::LevelEditorState;
 
 pub type SharedState = Arc<parking_lot::RwLock<LevelEditorState>>;
 
-// ── Headers & sections ────────────────────────────────────────────────────
-
-/// A panel heading: title plus a muted subtitle line.
-pub fn panel_header(theme: &ui::Theme, title: String, subtitle: String) -> impl IntoElement {
-    v_flex()
-        .gap_1()
-        .child(div().text_sm().font_weight(FontWeight::BOLD).child(title))
-        .child(
-            div()
-                .text_xs()
-                .text_color(theme.muted_foreground)
-                .child(subtitle),
-        )
-}
+// ── Sections ──────────────────────────────────────────────────────────────
 
 /// A non-collapsible upper-case section label with a hairline rule.
 pub fn section(theme: &ui::Theme, label_key: &'static str) -> impl IntoElement {
@@ -233,7 +220,7 @@ where
         .disabled(value <= min)
         .on_click(move |_, _, _| {
             let mut st = dec_state.write();
-            dec_apply(&mut st.editor.terrain, dec_val);
+            st.edit_terrain(|terrain| dec_apply(terrain, dec_val));
         });
 
     let inc = Button::new(format!("{control_id}_inc"))
@@ -243,7 +230,7 @@ where
         .disabled(value >= max)
         .on_click(move |_, _, _| {
             let mut st = state.write();
-            apply(&mut st.editor.terrain, inc_val);
+            st.edit_terrain(|terrain| apply(terrain, inc_val));
         });
 
     h_flex()
@@ -293,7 +280,7 @@ where
         .checked(checked)
         .on_click(move |_, _, _| {
             let mut st = state.write();
-            apply(&mut st.editor.terrain, !checked);
+            st.edit_terrain(|terrain| apply(terrain, !checked));
         })
 }
 
