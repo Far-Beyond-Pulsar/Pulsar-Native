@@ -28,6 +28,9 @@ use crate::state::terrain::{FoliageTool, TerrainDomain};
 use gpui::prelude::FluentBuilder as _;
 use std::sync::Arc;
 
+// Four tiles fit the default 380px terrain dock, including panel/set padding.
+const MESH_TILE_SIZE: f32 = 72.0;
+
 fn edit_library(state: &SharedState, edit: impl FnOnce(&mut FoliageSetLibrary)) {
     state
         .write()
@@ -656,7 +659,7 @@ impl FoliageSetsPanel {
                         || member.display_name().to_lowercase().contains(search)
                 })
                 .collect();
-            let mut members = h_flex().w_full().min_w_0().flex_wrap().gap_2();
+            let mut members = h_flex().w_full().min_w_0().flex_wrap().gap_1p5();
             if visible_members.is_empty() && set.members.is_empty() {
                 members = members.child(
                     div()
@@ -744,7 +747,7 @@ impl FoliageSetsPanel {
         let remove_state = state.clone();
         let preview = div()
             .relative()
-            .size(px(96.0))
+            .size(px(MESH_TILE_SIZE))
             .flex_shrink_0()
             .overflow_hidden()
             .rounded_md()
@@ -817,7 +820,7 @@ impl FoliageSetsPanel {
             );
         v_flex()
             .id(format!("member_select_{}", member_id.0))
-            .w(px(96.0))
+            .w(px(MESH_TILE_SIZE))
             .flex_shrink_0()
             .gap_1()
             .cursor_pointer()
