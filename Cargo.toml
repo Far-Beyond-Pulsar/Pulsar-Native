@@ -149,8 +149,8 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "992378090e211e8cc6aec0299a20ab9c547fd51c", features = ["gpu"] }
-pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "992378090e211e8cc6aec0299a20ab9c547fd51c" }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "685b1b0aa212b64912549efd583c93480bea027f", features = ["gpu"] }
+pulsar_scenedb_derive               = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "685b1b0aa212b64912549efd583c93480bea027f" }
 pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
@@ -448,59 +448,11 @@ pulsar_reflection = { path = "crates/external/pulsar-reflection/crates/pulsar_re
 pulsar_reflection_derive = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_derive" }
 pulsar_reflection_codegen = { path = "crates/external/pulsar-reflection/crates/pulsar_reflection_codegen" }
 
-# SceneDB's World-level subscription system (SceneDB#47, merged at c761890)
-# is what the properties panel's cache-until-signaled rework
-# (Pulsar-Native#575) consumes. Patched -- not merely pinned -- because the
-# Helio git dep / submodule still pins an older SceneDB rev internally; a
-# second, differing `pulsar_scenedb` in the graph would split the
-# `World`/`ComponentId` types exchanged across the Helio seam. Same shape as
-# the Pulsar-Reflection patches above (including the `//` URL spelling,
-# which is what lets a patch point at a different rev of the "same" source).
-# Drop this section once Helio repins.
-#
-# SceneDB#72 (component methods, ComponentRef, and MutDyn) merged to main at
-# e74df984b95ffe5235a67653a5b95a07e579df47. Keep this patch aligned with the
-# merged revision so consumers behind Helio's older internal SceneDB pin share
-# one World/ComponentId type identity.
+# Keep SceneDB's direct pins and every nested manifest on one revision so
+# `World`/`ComponentId` types have one identity across the engine, Helio, and
+# plugins. The patch's alternate `//` URL spelling makes Cargo apply this
+# exact revision to dependency manifests that use the same Git URL with a
+# different spelling.
 [patch."https://github.com/Far-Beyond-Pulsar/SceneDB"]
-# SceneDB#72 (component methods, ComponentRef, and MutDyn) merged to main at
-# e74df984b95ffe5235a67653a5b95a07e579df47. Keep this patch aligned with the
-# merged revision so consumers behind Helio's older internal SceneDB pin share
-# one World/ComponentId type identity.
-#
-# HELIO#237 REPONT (Pulsar-Native#632 -> SceneDB#61): bumped again to
-# 72291d0f211dc8826eb70339aeb0409be4270ad5 -- the tier-storage substrate
-# (`register_segment_layout`, `configure_tiers`/`touch_tier`/`release_tier`,
-# `tier_audit`) that Helio#237's texel-streaming S1 codes against. THAT REV
-# IS ON AN UNPUSHED LOCAL BRANCH of the SceneDB checkout until SceneDB#61
-# lands upstream: fetching it will fail until the branch is pushed, which is
-# exactly why this stays a loud `[patch]` override rather than a plain pin.
-# Local dev against the checkout uses a session-local PATH patch instead
-# (see Helio#237's final report); do NOT reintroduce one here.
-# SCENEDB INSPECTOR + REFLECTION: `main` at the rev carrying the batched
-# `cpu_ranges` inspector protocol AND the `#[derive(SceneStore)]` ->
-# `Reflectable` registration (so `world_telemetry` decodes SceneStore component
-# rows to structured JSON instead of raw hex). Now pushed to `origin/main`, so
-# this points at the GitHub URL rather than the local `file:///D:/GitHub/SceneDB`
-# checkout. `pulsar_scenedb_derive` is patched too: crates depend on it directly
-# (e.g. the Helio passes) and it must be the same rev that emits the
-# registration. Supersedes the 72291d0 pin above.
-#
-# The patch VALUE uses the `//`-spelled URL: cargo refuses a patch that points
-# at the exact source the manifest pins (same URL, even at a different rev), so
-# the alternate spelling is what lets this override resolve the pushed rev.
-#
-# SCRIPT VM support (SceneDB#72) merged to main at
-# e74df984b95ffe5235a67653a5b95a07e579df47: component methods,
-# ComponentRef/ComponentHandle, and erased component access.
-#
-# SCENEDB CORRECTIVE PLAN PHASES 1-7 (Pulsar-Native#1035): a98ff98 on SceneDB
-# branch `claude/cool-hypatia-ict23g-phase-7` (Phase 1's 358ec86 -- erased
-# insert/remove through the normal write path, generic mirror replay on
-# attach, derived GPU rows -- Phase 2's several GPU registrations per
-# component, Phase 5's change cursors bound to their World, and Phase 6's
-# object subscriptions, with process-unique ids, replacing the destructive per-key queue; Phase 7: a read-only get_mut guard uploads nothing).
-# NOT YET MERGED upstream: merge those branches and repin to the merged rev
-# before this lands.
-pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "992378090e211e8cc6aec0299a20ab9c547fd51c" }
-pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "992378090e211e8cc6aec0299a20ab9c547fd51c" }
+pulsar_scenedb = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "685b1b0aa212b64912549efd583c93480bea027f" }
+pulsar_scenedb_derive = { git = "https://github.com//Far-Beyond-Pulsar/SceneDB", rev = "685b1b0aa212b64912549efd583c93480bea027f" }

@@ -39,6 +39,7 @@ use crate::state::LevelEditorState;
 use crate::ui::viewport::components::camera_selector::CameraSpeedControl;
 use components::camera_selector::render_camera_selector;
 use components::gpu_pipeline_overlay::render_gpu_pipeline_overlay;
+use components::nerds_overlay::{render_nerds_overlay, NerdsOverlay};
 use components::performance_overlay::{render_performance_overlay, PerformanceOverlay};
 use components::viewport_options::render_viewport_options;
 use input_state::InputState;
@@ -165,6 +166,9 @@ pub struct ViewportPanel {
     /// The render pipeline overlay, alive only while it is shown.
     gpu_overlay: RefCell<Option<Entity<components::gpu_pipeline_overlay::GpuPipelineOverlay>>>,
 
+    /// Editor diagnostics overlay, alive only while it is shown.
+    nerds_overlay: RefCell<Option<Entity<NerdsOverlay>>>,
+
     /// Lock-free input state
     input_state: Arc<InputState>,
 
@@ -223,6 +227,7 @@ impl ViewportPanel {
             stats: SharedStats::default(),
             perf_overlay: RefCell::new(None),
             gpu_overlay: RefCell::new(None),
+            nerds_overlay: RefCell::new(None),
             input_state,
             input_thread_spawned: Arc::new(AtomicBool::new(false)),
             input_thread_stop: Arc::new(AtomicBool::new(false)),
@@ -294,6 +299,7 @@ fn viewport_options_key(state: &LevelEditorState) -> impl std::hash::Hash {
         state.overlays.state.viewport_options_collapsed,
         state.overlays.state.show_performance_overlay,
         state.overlays.state.show_gpu_pipeline_overlay,
+        state.overlays.state.show_nerds_overlay,
         state.editor.show_grid,
         state.editor.show_wireframe,
         state.editor.show_lighting,
