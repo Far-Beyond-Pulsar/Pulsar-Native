@@ -224,6 +224,33 @@ pub fn check_classes(ledger: &Ledger, linked: &Linked) -> Vec<String> {
     problems
 }
 
+/// A class row is `unfinished` exactly when the linked binary declares the
+/// class with `declare_unfinished_component!`, so the properties card warns
+/// for every class the ledger calls unfinished, and for no other.
+pub fn check_unfinished(ledger: &Ledger, linked: &Linked) -> Vec<String> {
+    let mut problems = Vec::new();
+    for row in &ledger.classes {
+        let declared = linked.unfinished.iter().any(|name| name == &row.name);
+        match (row.d.status == "unfinished", declared) {
+            (true, false) => problems.push(format!(
+                "class `{}` is `unfinished` in the ledger but does not declare_unfinished_component!",
+                row.name
+            )),
+            (false, true) => problems.push(format!(
+                "class `{}` declares itself unfinished but its row status is {:?}",
+                row.name, row.d.status
+            )),
+            _ => {}
+        }
+    }
+    for name in &linked.unfinished {
+        if !ledger.classes.iter().any(|row| &row.name == name) {
+            problems.push(format!("unfinished declaration `{name}` has no class row"));
+        }
+    }
+    problems
+}
+
 /// Every `#[register_world_component]` in source must be linked; otherwise a
 /// class exists in code but is invisible to this binary's registry.
 pub fn check_declared_world_components(declared: &BTreeMap<String, String>, linked: &Linked) -> Vec<String> {

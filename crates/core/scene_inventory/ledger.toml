@@ -112,9 +112,9 @@ category = "Scripting"
 world_registered = true
 own_gpu_columns = false
 owner = "pulsar_class::native_script"
-disposition = "non-render: native script attachment; typed VM adapters"
+disposition = "non-render: native script attachment; typed VM adapters. Declared with declare_unfinished_component! (tracked in #1079): the properties card shows the reason and issue, and the first attach logs them once"
 target_contract = "Phase 3; 02-typed-reflection-and-writes.md"
-test = "tracked in #1079"
+test = "crates/core/pulsar_class/src/native_script.rs (native_script_component_is_declared_unfinished); crates/core/scene_inventory/tests/ledger.rs (unfinished_rows_match_unfinished_declarations); tracked in #1079"
 status = "unfinished"
 notes = "Attach, edit, save and undo are typed; nothing at runtime spawns the native actor it names."
 
