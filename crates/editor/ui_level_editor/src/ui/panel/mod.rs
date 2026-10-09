@@ -17,7 +17,6 @@ use gpui::*;
 use rust_i18n::t;
 use ui::{
     dock::{DockItem, Panel, PanelEvent},
-    h_flex,
     resizable::ResizableState,
     v_flex,
     workspace::Workspace,
@@ -31,7 +30,7 @@ use ui::settings::EngineSettings;
 use ui::{notification::Notification, ContextModal as _};
 
 use super::actions::*;
-use super::{ModeRailView, ToolbarView, ViewportPanel};
+use super::{ToolbarView, ViewportPanel};
 use crate::ai_sessions;
 use crate::scene_edit::LevelEditorCameraState;
 use crate::{LevelEditorState, TransformTool};
@@ -52,7 +51,6 @@ pub struct LevelEditorPanel {
 
     // UI components are separate entities rendered with `AnyView::cached`.
     toolbar: Entity<ToolbarView>,
-    mode_rail: Entity<ModeRailView>,
 
     // Helio viewport rendered via WgpuSurfaceHandle
     viewport: Entity<HelioViewport>,
@@ -387,17 +385,11 @@ impl Render for LevelEditorPanel {
             )
             .child(
                 // Workspace with draggable panels
-                h_flex()
-                    .flex_1()
-                    .min_h_0()
-                    .child(
-                        AnyView::from(self.mode_rail.clone()).cached(ModeRailView::cache_style()),
-                    )
-                    .child(if let Some(ref workspace) = self.workspace {
-                        workspace.clone().into_any_element()
-                    } else {
-                        div().child("Loading workspace...").into_any_element()
-                    }),
+                if let Some(ref workspace) = self.workspace {
+                    workspace.clone().into_any_element()
+                } else {
+                    div().child("Loading workspace...").into_any_element()
+                },
             )
     }
 }
