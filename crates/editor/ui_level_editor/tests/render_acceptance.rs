@@ -1135,7 +1135,6 @@ fn every_pass_of_the_editor_graph_runs() {
         "ObjectBatch",
         "ShadowMatrix",
         "ShadowDirty",
-        "ShadowCull",
         "Shadow",
         "IndirectDispatch",
         "HiZBuild",
