@@ -193,10 +193,7 @@ fn density_shader_source() -> String {
     MESH_VERTEX_SRC
         .replace("// DENSITY_VERTEX_INPUT", "@location(4) density: f32,")
         .replace("// DENSITY_VERTEX_OUTPUT", "@location(3) density: f32,")
-        .replace(
-            "// DENSITY_VERTEX_TRANSFER",
-            "out.density = input.density;",
-        )
+        .replace("// DENSITY_VERTEX_TRANSFER", "out.density = input.density;")
         .replace(
             "// DENSITY_FRAGMENT",
             r#"
@@ -247,7 +244,10 @@ fn local_vertex_density(
             if cancelled.load(Ordering::Relaxed) {
                 return None;
             }
-            progress.store(100 + (triangle_index as u32 * 350 / triangle_count as u32), Ordering::Relaxed);
+            progress.store(
+                100 + (triangle_index as u32 * 350 / triangle_count as u32),
+                Ordering::Relaxed,
+            );
         }
         let [a, b, c] = [
             triangle[0] as usize,
@@ -291,7 +291,10 @@ fn local_vertex_density(
             if cancelled.load(Ordering::Relaxed) {
                 return None;
             }
-            progress.store(500 + (vertex as u32 * 400 / vertex_count as u32), Ordering::Relaxed);
+            progress.store(
+                500 + (vertex as u32 * 400 / vertex_count as u32),
+                Ordering::Relaxed,
+            );
         }
         neighborhood.clear();
         neighborhood.push(vertex);
@@ -377,7 +380,9 @@ pub(crate) fn load_vertex_density(
             .map(|&id| (id, glam::Mat4::IDENTITY.to_cols_array()))
             .collect();
         while let Some((node_id, parent_cols)) = stack.pop() {
-            let Some(node) = scene.node(node_id) else { continue };
+            let Some(node) = scene.node(node_id) else {
+                continue;
+            };
             let node_mat = node.transform.to_matrix().to_cols_array();
             let mut world = [0.0f32; 16];
             for col in 0..4 {
@@ -1707,7 +1712,8 @@ impl AssetViewerPanel {
             };
             (ib, self.wire_index_count, pipeline)
         } else if density_ready {
-            let (Some(ib), Some(pipeline)) = (&self.mesh_index_buffer, &self.density_pipeline) else {
+            let (Some(ib), Some(pipeline)) = (&self.mesh_index_buffer, &self.density_pipeline)
+            else {
                 return;
             };
             (ib, self.mesh_index_count, pipeline)

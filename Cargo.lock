@@ -556,7 +556,6 @@ dependencies = [
  "rust-i18n-support",
  "serde",
  "serde_json",
- "smol",
  "solid-fbx 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=b9eb501f0d3b735d407c7b566a9de8ef2ab9ebf6)",
  "solid-rs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Solid3D?rev=b9eb501f0d3b735d407c7b566a9de8ef2ab9ebf6)",
  "tempfile",

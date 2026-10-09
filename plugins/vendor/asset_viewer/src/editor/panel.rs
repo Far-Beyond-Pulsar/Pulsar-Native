@@ -215,7 +215,13 @@ impl AssetViewerPanel {
             cx.background_executor()
                 .timer(std::time::Duration::from_millis(80))
                 .await;
-            let finished_result = rx.try_recv().ok();
+            let finished_result = match rx.try_recv() {
+                Ok(result) => Some(result),
+                Err(std::sync::mpsc::TryRecvError::Empty) => None,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    Some(Err("Density calculation stopped unexpectedly".into()))
+                }
+            };
             let percent = progress.load(Ordering::Relaxed).min(1000) as f32 / 1000.0;
             let update = this.update(cx, |panel, cx| {
                 if panel.density_job_id != job_id
