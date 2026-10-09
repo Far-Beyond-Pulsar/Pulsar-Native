@@ -1,0 +1,14 @@
+# Submodule pins allowed off their upstream default branch (checked by
+# scripts/submodule-pins.sh, CI job "submodule pins are on upstream main").
+#
+#   <path> <sha (7+ hex)> <why / the upstream PR that lands it>
+#
+# Each line is debt: merge the upstream PR, re-pin the submodule to the
+# upstream default branch, and delete the line. The check reports a line as
+# stale once its pin has landed upstream. Add lines only with an upstream PR
+# (or a note why there is none), never to wave a new PR through.
+
+crates/third-party/pbgc 810876416 PBGC branch refactor/metadata-only; no upstream PR yet
+crates/third-party/psgc a05c2c4a2 PSGC branch codex/texture-src; no upstream PR yet
+plugins/vendor/blueprint_editor 1f7a9b6a3 Plugin_Blueprints branch feat/blueprint-graph-crate, also in Far-Beyond-Pulsar/Plugin_Blueprints#29 (claude/cool-hypatia-ict23g)
+plugins/vendor/code_editor d15d161fc Plugin_CodeEditor branch chore/drop-pbgc-patch; no upstream PR yet

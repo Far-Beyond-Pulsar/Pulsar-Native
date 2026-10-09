@@ -347,3 +347,19 @@ jobs:
 
       - name: Check plugin pins
         run: scripts/plugin-pins.sh check
+
+  # Every submodule must pin a commit on its upstream default branch, so main
+  # never depends on a dependency's feature branch. Merge the dependency PR
+  # first, re-pin to its main, then merge here; pins still waiting on an
+  # upstream PR are listed in .github/submodule-pin-exceptions.txt.
+  submodule-pins:
+    name: submodule pins are on upstream main
+    runs-on: ubuntu-latest
+    steps:
+      # The script reads the pins from the HEAD tree and fetches each
+      # upstream's commit graph itself, so the submodules need not be checked
+      # out (or deep).
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Check submodule pins
+        run: scripts/submodule-pins.sh check
