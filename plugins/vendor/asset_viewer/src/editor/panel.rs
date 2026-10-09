@@ -121,6 +121,11 @@ pub struct AssetViewerPanel {
     pub slot_surfaces: Vec<helio_component::mesh_cache::ImportedSurfaceMaterial>,
     /// Preview colour of each slot's current material.
     pub slot_colors: Vec<[f32; 4]>,
+    /// Compiled shader-graph material per slot (None: plain colour).
+    pub graph_draws: Vec<Option<super::graph_material::GraphDraw>>,
+    /// Layout of the per-draw uniforms, shared with graph pipelines.
+    pub mesh_bgl: Option<wgpu::BindGroupLayout>,
+    pub empty_bind_group: Option<wgpu::BindGroup>,
 }
 
 impl AssetViewerPanel {
@@ -434,6 +439,9 @@ impl AssetViewerPanel {
             mesh_sections: Vec::new(),
             slot_surfaces: Vec::new(),
             slot_colors: Vec::new(),
+            graph_draws: Vec::new(),
+            mesh_bgl: None,
+            empty_bind_group: None,
         };
         panel.init_mesh_materials(window, cx);
         panel

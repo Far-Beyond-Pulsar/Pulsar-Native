@@ -19,6 +19,8 @@ ui      = { workspace = true }
 plugin_editor_api = { workspace = true }
 ui_common         = { workspace = true }
 helio_component   = { workspace = true }
+helio-mats        = { workspace = true }
+pollster          = "0.4"
 engine_state      = { workspace = true }
 
 rust-i18n.workspace = true
@@ -38,3 +40,7 @@ glam = { workspace = true }
 
 solid-rs =  { git = "https://github.com/Far-Beyond-Pulsar/Solid3D", rev = "b9eb501f0d3b735d407c7b566a9de8ef2ab9ebf6" }
 solid-fbx = { git = "https://github.com/Far-Beyond-Pulsar/Solid3D", rev = "b9eb501f0d3b735d407c7b566a9de8ef2ab9ebf6" }
+
+[dev-dependencies]
+psgc = { workspace = true }
+tempfile = { workspace = true }

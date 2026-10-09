@@ -117,6 +117,47 @@ impl AssetViewerPanel {
                     .base_color
             })
             .collect();
+        self.rebuild_graph_draws();
+    }
+
+    /// Compile a pipeline for every slot whose material is a shader graph.
+    /// Needs the GPU device, so it is a no-op until the surface exists;
+    /// `init_surface` calls it again once it does.
+    pub(crate) fn rebuild_graph_draws(&mut self) {
+        let (Some(device), Some(queue), Some(config), Some(layout), Some(materials)) = (
+            self.device.clone(),
+            self.queue.clone(),
+            self.surface_config.clone(),
+            self.mesh_bgl.clone(),
+            self.mesh_materials.as_ref(),
+        ) else {
+            return;
+        };
+        let Some(root) = engine_state::get_project_path().map(std::path::PathBuf::from) else {
+            return;
+        };
+        let ctx = super::graph_material::GraphContext {
+            device: &device,
+            queue: &queue,
+            target_format: config.format,
+            uniform_layout: &layout,
+        };
+        let vertex_layout = super::panel_render::mesh_vertex_layout();
+        let draws = materials
+            .rows
+            .iter()
+            .map(|row| {
+                let preview =
+                    helio_component::graph_preview::compile_graph_preview(&root, &row.material)?;
+                let built = preview.and_then(|preview| {
+                    super::graph_material::build(&ctx, &preview, &[Some(vertex_layout.clone())])
+                });
+                built
+                    .map_err(|error| log::warn!("graph material {:?}: {error}", row.material))
+                    .ok()
+            })
+            .collect();
+        self.graph_draws = draws;
     }
 
     fn set_slot_material(&mut self, index: usize, material: String, cx: &mut Context<Self>) {

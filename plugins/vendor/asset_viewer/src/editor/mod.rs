@@ -1,3 +1,4 @@
+pub mod graph_material;
 pub mod materials;
 pub mod panel;
 pub mod panel_render;
