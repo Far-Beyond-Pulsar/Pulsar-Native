@@ -73,6 +73,9 @@ pub struct FileManagerDrawer {
     pub(crate) deleted_files: Vec<crate::utils::git_integration::DeletedFileEntry>,
     pub(crate) recent_commits: Vec<crate::utils::git_integration::CommitInfo>,
     pub(crate) commit_picker: gpui::Entity<crate::components::commit_picker::CommitPicker>,
+    /// Show only the folder's contents, without the folder tree beside them.
+    /// The editor's left sidebar sets this when it supplies the tree itself.
+    pub(crate) folder_tree_hidden: bool,
 }
 
 impl FileManagerDrawer {
@@ -232,6 +235,7 @@ impl FileManagerDrawer {
             deleted_files: Vec::new(),
             recent_commits: Vec::new(),
             commit_picker,
+            folder_tree_hidden: false,
         };
 
         this.fs_event_listener = Some(cx.spawn(async move |drawer, cx| {
@@ -416,7 +420,10 @@ pub fn render_content(
     d: &mut FileManagerDrawer,
     window: &mut Window,
     cx: &mut Context<FileManagerDrawer>,
-) -> impl IntoElement {
+) -> AnyElement {
+    if d.folder_tree_hidden {
+        return render_file_content(d, window, cx).into_any_element();
+    }
     h_resizable("file-manager-resizable")
         .state(d.resizable_state.clone())
         .child(
@@ -425,6 +432,7 @@ pub fn render_content(
                 .size(px(250.)),
         )
         .child(resizable_panel().child(render_file_content(d, window, cx)))
+        .into_any_element()
 }
 
 pub fn render_file_content(

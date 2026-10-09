@@ -4,6 +4,7 @@ pub mod build_notifications;
 pub mod code_editor;
 pub mod debugger;
 pub mod file_manager;
+pub mod navigation;
 pub mod radial_menu;
 pub mod renderer;
 pub mod source_control;
@@ -17,6 +18,7 @@ pub fn register_all(cfg: &'static ConfigManager) {
     build_notifications::register(cfg);
     code_editor::register(cfg);
     file_manager::register(cfg);
+    navigation::register(cfg);
     renderer::register(cfg);
     viewport::register(cfg);
     advanced::register(cfg);

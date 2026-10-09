@@ -106,6 +106,9 @@ pub struct AppState {
 
     // Navigation history
     pub navigation: super::navigation::NavigationHistory,
+
+    /// Unified left sidebar (Pulsar-Native#1000).
+    pub nav_sidebar: super::nav_sidebar::NavSidebarState,
 }
 
 impl AppState {
